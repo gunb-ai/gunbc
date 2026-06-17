@@ -4673,6 +4673,23 @@ fn eval_builtin(
             }))
         }
 
+        "extdeps_dead_param_count_for_operation" => {
+            let path = expect_str(positional.first().copied(), "extdeps_dead_param_count_for_operation")?;
+            let service = expect_str(positional.get(1).copied(), "extdeps_dead_param_count_for_operation")?;
+            let operation = expect_str(positional.get(2).copied(), "extdeps_dead_param_count_for_operation")?;
+            let count = crate::extdeps_shape_transport_policy_project::dead_param_count_for_operation(
+                path, service, operation,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_dead_param_count_for_path" => {
+            let path = expect_str(positional.first().copied(), "extdeps_dead_param_count_for_path")?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::dead_param_count_for_path(path);
+            Ok(Some(Value::Int(count)))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

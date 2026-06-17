@@ -12,6 +12,7 @@
     clippy::all
 )]
 
+pub mod extdeps_shape_transport_policy_project;
 pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;

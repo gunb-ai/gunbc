@@ -5,9 +5,9 @@
 //       faithful upstream/git surface primitives like git's `diff` / `--name-only`).
 //   (2) TRANSPORT-FUSION FORK — same logical endpoint modeled once per transport.
 //   (3) DEAD PARAM — operation input declared but absent from argv placeholder projection.
-// Status: 🟡 M2 — structural argv projection over synthetic input+argv fact bundles;
-//   dead-param detection wired; corpus regression guards still text-scan via filesystem_read.
-//   Dissolve-on: Node-tree argv projection from parsed service decls supersedes text scan.
+// Status: 🟡 M2 — structural Node-tree argv projection via parse bridge; dead-param
+//   detection on input+argv facts. Corpus witnesses read live `dsl/extdeps/**` through
+//   `extdeps_dead_param_count_for_*` (Node-tree projection, not text scan).
 // Consumer: claim_batch discovery over src/v2/compiler/extdeps_shape_transport_policy.
 
 module v2.lens.extdeps_shape_transport_policy
@@ -111,17 +111,28 @@ fn extdeps_argv_token_is_consumer_policy_literal(token: String) -> Bool {
   }
 }
 
-fn extdeps_live_file_contains_consumer_policy_literal(path: String, token: String) -> Bool {
-  let source = filesystem_read(path: path)
-  string_contains(source.content, token)
-    && extdeps_argv_token_is_consumer_policy_literal(token: token)
-}
-
 fn extdeps_live_file_shows_transport_fusion_fork(path: String) -> Bool {
   let source = filesystem_read(path: path)
   string_contains(source.content, "service oauth2.Google")
     && string_contains(source.content, "service shell.OAuth2")
     && string_contains(source.content, "refresh_token")
+}
+
+// Node-tree projection bridge (v1 interpreter builtin over parsed service decls).
+fn extdeps_live_file_dead_param_count_for_operation(
+  path: String,
+  service: String,
+  operation: String
+) -> Int {
+  extdeps_dead_param_count_for_operation(
+    path: path,
+    service: service,
+    operation: operation
+  )
+}
+
+fn extdeps_live_file_dead_param_count_for_path(path: String) -> Int {
+  extdeps_dead_param_count_for_path(path: path)
 }
 
 fn argv_fact_matches_path(fact: ExtdepsTransportArgvFact, path: String) -> Bool {

@@ -1,0 +1,152 @@
+//! Node-tree argv projection for `v2.lens.extdeps_shape_transport_policy`.
+//! Parses an extdeps `.dag` module and counts dead input params per operation.
+
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use crate::v1_compiler_emit::effective_operation_transport;
+use crate::v1_compiler_parse::parse;
+use crate::v1_compiler_tokenize::tokenize;
+use crate::v1_std_core::{
+    build_newline_index, param_node_name_at, ExprData, LiteralValue, Node,
+};
+
+fn argv_expr_token(node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>) -> String {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => value.clone(),
+            other => format!("{other:?}"),
+        },
+        ExprData::ExprStringInterp => node
+            .children
+            .iter()
+            .map(|child| match child.expr_data.as_ref() {
+                ExprData::ExprLiteral { value } => match value.as_ref() {
+                    LiteralValue::LitStr { value } => value.clone(),
+                    _ => String::new(),
+                },
+                ExprData::ExprVar { .. } => {
+                    let name = crate::v1_std_core::expr_var_name_at(child.clone(), source_indices.clone());
+                    format!("{{{name}}}")
+                }
+                _ => String::new(),
+            })
+            .collect(),
+        _ => String::new(),
+    }
+}
+
+fn argv_token_references_param(token: &str, param_name: &str) -> bool {
+    token.contains(&format!("{{{param_name}}}"))
+}
+
+fn input_param_is_transport_bound(param_name: &str) -> bool {
+    param_name == "env"
+}
+
+fn dead_param_count_for_operation_node(
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> i64 {
+    let eff = effective_operation_transport(op_node.clone(), transport.clone());
+    let argv_tokens: Vec<String> = eff
+        .children
+        .iter()
+        .map(|arg| argv_expr_token(arg, source_indices))
+        .collect();
+
+    let mut count = 0i64;
+    for param in op_node.params.iter() {
+        let name = param_node_name_at(param.clone(), source_indices.clone());
+        if input_param_is_transport_bound(&name) {
+            continue;
+        }
+        if argv_tokens
+            .iter()
+            .any(|token| argv_token_references_param(token, &name))
+        {
+            continue;
+        }
+        count += 1;
+    }
+    count
+}
+
+fn parse_module_items(
+    path: &str,
+) -> (
+    Rc<Vec<Rc<Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    let content = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("extdeps argv projection: failed to read {path}: {e}"));
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path);
+    let tokens = tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.to_string(), source_index);
+    let source_indices = Rc::new(source_indices);
+    let result = parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "extdeps argv projection: parse error in {path}: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .expect("extdeps argv projection: missing module");
+    (module.children.clone(), source_indices)
+}
+
+/// Count dead input params for one `(service, operation)` in a parsed extdeps file.
+pub fn dead_param_count_for_operation(path: String, service: String, operation: String) -> i64 {
+    let (items, source_indices) = parse_module_items(&path);
+    for item in items.iter() {
+        if item.name != service {
+            continue;
+        }
+        let fallback_transport = if let Some(t) = item.transport.as_ref() {
+            t.clone()
+        } else {
+            crate::v1_std_core::local_transport_node(item.span.clone())
+        };
+        for op in item.children.iter() {
+            if op.name != operation {
+                continue;
+            }
+            return dead_param_count_for_operation_node(op, &fallback_transport, &source_indices);
+        }
+    }
+    panic!(
+        "extdeps argv projection: operation {service}.{operation} not found in {path}"
+    );
+}
+
+/// Whole-file dead-param count across all service operations with shell argv.
+pub fn dead_param_count_for_path(path: String) -> i64 {
+    let (items, source_indices) = parse_module_items(&path);
+    let mut total = 0i64;
+    for item in items.iter() {
+        if item.name.is_empty() || item.children.is_empty() {
+            continue;
+        }
+        let fallback_transport = if let Some(t) = item.transport.as_ref() {
+            t.clone()
+        } else {
+            crate::v1_std_core::local_transport_node(item.span.clone())
+        };
+        for op in item.children.iter() {
+            if op.name.is_empty() {
+                continue;
+            }
+            total += dead_param_count_for_operation_node(op, &fallback_transport, &source_indices);
+        }
+    }
+    total
+}
