@@ -1,0 +1,276 @@
+// extdeps/formats/yaml.dag — YAML 1.2 structural value model + byte-faithful serializer.
+//
+// SCAFFOLD — §3 fork of `src/v2/extdeps/formats/yaml.dag` `YamlValue`: this module is the
+// v1-interpreter / projection substrate (ordered `List<YamlKeyValue>`, `serialize_yaml`,
+// witnessable under `gunbc run`). The v2 copy is ingest/grammar-only (Map-based entries).
+// Dissolution trigger: v2 `YamlMapping.entries` migrates to ordered pairs AND v2 emit/ingest
+// imports this module (or a shared `std/formats/yaml.dag` home) — one YamlValue authority,
+// zero parallel type definitions.
+//
+// v2-clean module (no std.unicode / std.render imports) so witnesses execute under
+// the v1 interpreter. Ordered mapping entries preserve YAML key order (DESIGN §2:
+// std Map is an unordered HAMT — unsuitable for deterministic emit).
+//
+// Anchor: https://yaml.org/spec/1.2.2/
+
+module extdeps.formats.yaml
+
+import std.render_repeat_string_bootstrap { repeat_string }
+
+type YamlKeyValue {
+  key: String
+  value: YamlValue
+}
+
+type YamlValue
+  = YamlNull
+  | YamlBool { value: Bool }
+  | YamlInt { lexeme: String }
+  | YamlFloat { lexeme: String }
+  | YamlString { value: String }
+  | YamlSequence { elements: List<YamlValue> }
+  | YamlMapping { entries: List<YamlKeyValue> }
+
+data empty_yaml_values: List<YamlValue> = []
+
+// -- scalar helpers ---------------------------------------------------
+
+fn yaml_string(s: String) -> YamlValue {
+  YamlString { value: s }
+}
+
+fn yaml_int(n: Int) -> YamlValue {
+  YamlInt { lexeme: to_string(n) }
+}
+
+fn yaml_bool(b: Bool) -> YamlValue {
+  YamlBool { value: b }
+}
+
+fn yaml_mapping(entries: List<YamlKeyValue>) -> YamlValue {
+  YamlMapping { entries: entries }
+}
+
+fn yaml_sequence(elements: List<YamlValue>) -> YamlValue {
+  YamlSequence { elements: elements }
+}
+
+fn kv(key: String, value: YamlValue) -> YamlKeyValue {
+  YamlKeyValue { key: key, value: value }
+}
+
+// -- indent / layout --------------------------------------------------
+
+fn indent(depth: Int) -> String {
+  repeat_string(s: "  ", n: depth)
+}
+
+fn concat_lines(lines: List<String>) -> String {
+  fold(lines, init: "", f: (acc, line) => concat(concat(acc, line), "\n"))
+}
+
+fn is_expression(s: String) -> Bool {
+  starts_with(s: s, prefix: "${{")
+}
+
+// Plain scalar unless YAML parsing would mis-read the value. Embedded shell quotes,
+// single quotes in hashFiles(), and colons inside ${{ }} are valid plain scalars.
+fn is_reserved_yaml_scalar(s: String) -> Bool {
+  (s == "true") ||
+    (s == "false") ||
+    (s == "null") ||
+    (s == "yes") ||
+    (s == "no") ||
+    (s == "~")
+}
+
+fn starts_with_yaml_indicator(s: String) -> Bool {
+  starts_with(s: s, prefix: "- ") ||
+    starts_with(s: s, prefix: "?") ||
+    starts_with(s: s, prefix: ":") ||
+    starts_with(s: s, prefix: ",") ||
+    starts_with(s: s, prefix: "[") ||
+    starts_with(s: s, prefix: "]") ||
+    starts_with(s: s, prefix: "{") ||
+    starts_with(s: s, prefix: "}") ||
+    starts_with(s: s, prefix: "#") ||
+    starts_with(s: s, prefix: "&") ||
+    starts_with(s: s, prefix: "*") ||
+    starts_with(s: s, prefix: "!") ||
+    starts_with(s: s, prefix: "|") ||
+    starts_with(s: s, prefix: ">") ||
+    starts_with(s: s, prefix: "'") ||
+    starts_with(s: s, prefix: "\"") ||
+    starts_with(s: s, prefix: "%") ||
+    starts_with(s: s, prefix: "@") ||
+    starts_with(s: s, prefix: "`")
+}
+
+fn needs_double_quotes(s: String) -> Bool {
+  is_reserved_yaml_scalar(s: s) ||
+    starts_with_yaml_indicator(s: s) ||
+    string_contains(s: s, pattern: ": ") ||
+    string_contains(s: s, pattern: " #")
+}
+
+fn escape_double_quoted(s: String) -> String {
+  replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
+}
+
+fn emit_scalar_string(s: String, key_depth: Int) -> String {
+  let content_depth = key_depth + 1
+  if s == "" {
+    "''"
+  } else if string_contains(s: s, pattern: "\n") {
+    concat("|\n", fold(
+      split(s: s, delimiter: "\n"),
+      init: "",
+      f: (acc, line) =>
+        if line == "" {
+          acc
+        } else {
+          concat(concat(acc, indent(depth: content_depth)), concat(line, "\n"))
+        }
+    ))
+  } else if is_expression(s: s) {
+    s
+  } else if needs_double_quotes(s: s) {
+    concat(concat("\"", escape_double_quoted(s: s)), "\"")
+  } else {
+    s
+  }
+}
+
+fn emit_scalar(v: YamlValue, depth: Int) -> String {
+  match v {
+    YamlNull => ""
+    YamlBool { value: b } => if b { "true" } else { "false" }
+    YamlInt { lexeme: l } => l
+    YamlFloat { lexeme: l } => l
+    YamlString { value: s } => emit_scalar_string(s: s, key_depth: depth)
+    YamlSequence { elements: _ } => ""
+    YamlMapping { entries: _ } => ""
+  }
+}
+
+fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
+  fold(elements, init: true, f: (acc, e) => acc && match e {
+    YamlString { value: _ } => true
+    YamlInt { lexeme: _ } => true
+    YamlBool { value: _ } => true
+    _ => false
+  })
+}
+
+fn emit_flow_sequence(elements: List<YamlValue>) -> String {
+  concat(
+    concat(
+      "[",
+      fold(elements, init: "", f: (acc, e) => {
+        let part = emit_scalar(v: e, depth: 0)
+        if acc == "" { part } else { concat(concat(acc, ", "), part) }
+      })
+    ),
+    "]"
+  )
+}
+
+fn strip_leading_indent(line: String, depth: Int) -> String {
+  let prefix = indent(depth: depth)
+  if starts_with(s: line, prefix: prefix) {
+    substring(s: line, start: prefix.length(), end: line.length())
+  } else {
+    line
+  }
+}
+
+// Block sequence of mappings: `- key: val` on the first entry; sibling keys share item indent.
+fn prefix_block_sequence_mapping(body: String, seq_depth: Int) -> String {
+  let item_depth = seq_depth + 1
+  let lines = split(s: body, delimiter: "\n")
+  fold(lines, init: { index: 0, out: "" }, f: (acc, line) => {
+    if line == "" {
+      acc
+    } else if acc.index == 0 {
+      {
+        index: acc.index + 1,
+        out: concat(
+          acc.out,
+          concat(
+            concat(
+              concat(indent(depth: seq_depth), "- "),
+              strip_leading_indent(line: line, depth: item_depth)
+            ),
+            "\n"
+          )
+        )
+      }
+    } else {
+      {
+        index: acc.index + 1,
+        out: concat(acc.out, concat(line, "\n"))
+      }
+    }
+  }).out
+}
+
+fn emit_block_sequence(elements: List<YamlValue>, depth: Int) -> String {
+  fold(elements, init: "", f: (acc, e) => {
+    let line = match e {
+      YamlMapping { entries: ents } =>
+        prefix_block_sequence_mapping(
+          body: emit_mapping_body(entries: ents, depth: depth + 1),
+          seq_depth: depth
+        )
+      _ =>
+        concat(concat(concat(indent(depth: depth), "- "), emit_scalar(v: e, depth: depth)), "\n")
+    }
+    concat(acc, line)
+  })
+}
+
+fn emit_mapping_body(entries: List<YamlKeyValue>, depth: Int) -> String {
+  fold(entries, init: "", f: (acc, entry) => {
+    let key = entry.key
+    let val = entry.value
+    let line = match val {
+      YamlNull =>
+        concat(concat(indent(depth: depth), concat(key, ":")), "\n")
+      YamlMapping { entries: nested } =>
+        concat(
+          concat(concat(indent(depth: depth), concat(key, ":\n")), emit_mapping_body(entries: nested, depth: depth + 1)),
+          ""
+        )
+      YamlSequence { elements: els } =>
+        if all_scalars_flowable(elements: els) {
+          concat(concat(concat(indent(depth: depth), concat(key, ": ")), emit_flow_sequence(elements: els)), "\n")
+        } else {
+          concat(
+            concat(concat(indent(depth: depth), concat(key, ":\n")), emit_block_sequence(elements: els, depth: depth + 1)),
+            ""
+          )
+        }
+      _ =>
+        concat(concat(concat(indent(depth: depth), concat(key, ": ")), emit_scalar(v: val, depth: depth)), "\n")
+    }
+    concat(acc, line)
+  })
+}
+
+fn emit_yaml_value(v: YamlValue, depth: Int) -> String {
+  match v {
+    YamlMapping { entries: ents } => emit_mapping_body(entries: ents, depth: depth)
+    YamlSequence { elements: els } =>
+      if all_scalars_flowable(elements: els) {
+        concat(emit_flow_sequence(elements: els), "\n")
+      } else {
+        emit_block_sequence(elements: els, depth: depth)
+      }
+    _ => concat(emit_scalar(v: v, depth: depth), "\n")
+  }
+}
+
+// Total serializer: YamlValue → byte-faithful YAML text (trailing newline at EOF).
+fn serialize_yaml(v: YamlValue) -> String {
+  emit_yaml_value(v: v, depth: 0)
+}

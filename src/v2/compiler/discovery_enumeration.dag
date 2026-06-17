@@ -29,6 +29,7 @@
 // Consumers (all migrated to this home in the same PR — no two-live-enumerators window):
 //   - v2.test.workflow.glob_discovery_law          (decl-classification laws)
 //   - v2.test.workflow.host_discovered_owned_data_manifest  (compile stub + overlay)
+//   - v2.test.workflow.host_source_root_ingest_manifest     (compile stub + overlay)
 //   - host emitter src/v1/stage0/src/cli_run.rs (emit_dag_manifest import line) + the serde
 //     mirror struct OwnedDataDeclRecord in the same file.
 
