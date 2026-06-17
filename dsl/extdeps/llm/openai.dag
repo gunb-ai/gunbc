@@ -7,9 +7,7 @@
 module extdeps.llm.openai
 
 import extdeps.llm.llm { llm_snake_wire_contract }
-import extdeps.llm.openai_errors { OpenAiErrorShape }
 import std.serialization { CoproductWireContract, VariantEncoding }
-import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
 // Single authority: `extdeps.llm.llm` (`llm_snake_wire_contract`); module-local

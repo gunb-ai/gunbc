@@ -7,10 +7,7 @@
 module extdeps.llm.anthropic
 
 import extdeps.llm.llm { llm_snake_wire_contract }
-import extdeps.llm.anthropic_errors { AnthropicErrorShape }
-import std.credentials { CredentialSource, EnvVar }
 import std.serialization { CoproductWireContract, VariantEncoding }
-import std.types { HttpMethod }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
 data wire_contract: VariantEncoding = llm_snake_wire_contract
