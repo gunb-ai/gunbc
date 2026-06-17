@@ -410,6 +410,21 @@ fn type_decl_point_pixel_emit_distinct_holds() -> Bool {
   }
 }
 
+test fn type_decl_emit_then_reparse_point_holds() -> Bool {
+  type_decl_emit_then_reparse_identity_holds(emitted: type_decl_point_emitted())
+}
+
+test fn type_decl_emit_then_reparse_pixel_holds() -> Bool {
+  type_decl_emit_then_reparse_identity_holds(emitted: type_decl_pixel_emitted())
+}
+
+test fn type_decl_emit_point_golden_holds() -> Bool {
+  type_decl_emit_source_text_matches_golden_holds(
+    emitted: type_decl_point_emitted(),
+    golden: type_decl_point_source_text
+  )
+}
+
 test fn emit_ingest_type_decl_round_trip_holds() -> Bool {
   type_decl_emit_then_reparse_identity_holds(emitted: type_decl_point_emitted())
     && type_decl_emit_then_reparse_identity_holds(emitted: type_decl_pixel_emitted())
