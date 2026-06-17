@@ -1875,3 +1875,217 @@ pub fn owned_data_bool_witness_transport_tsv(
     }
     Ok(out)
 }
+
+// ---------------------------------------------------------------------------
+// discover_source_root_ingest — host transport for Stage C Lane 3a SourceRootIngest
+// ---------------------------------------------------------------------------
+// Mirrors v2.compiler.source_authority.{DagSourceReadWitness, SourceRootIngest,
+// SourceRootProvenanceCoverageReceipt}. Keep field shapes in lockstep with that .dag authority.
+
+/// One host-read `.dag` source file projected to the modeled ingest witness shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceRootReadRecord {
+    pub file_path: String,
+    pub module_path: String,
+    pub source: String,
+}
+
+fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
+    let mut out = String::from('^');
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out == "^" {
+        out.push_str("host_sr_empty");
+    }
+    out
+}
+
+fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("host_sr");
+    source_root_ingest_symbol_from_stem(stem)
+}
+
+fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
+    format!(
+        "{}_cu",
+        source_root_ingest_artifact_id_for_path(path)
+            .trim_start_matches('^')
+    )
+}
+
+fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
+    let mut material = String::new();
+    for rec in records {
+        material.push_str(&rec.file_path);
+        material.push('\0');
+        material.push_str(&rec.source);
+        material.push('\0');
+    }
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in material.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
+fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
+    subpaths
+        .iter()
+        .any(|sub| path.contains(sub) || path.ends_with(sub))
+}
+
+/// Walk `source_roots` for `.dag` files under `scan_dir`, read source text, fail-closed on
+/// missing module headers or duplicate module paths.
+pub fn discover_source_root_reads(
+    source_roots: &[String],
+    scan_dir: &str,
+    exclude_subpaths: &[String],
+) -> Result<Vec<SourceRootReadRecord>, String> {
+    let mut records: Vec<SourceRootReadRecord> = Vec::new();
+    let mut seen_modules: HashMap<String, String> = HashMap::new();
+
+    for root in source_roots {
+        let base = Path::new(root).join(scan_dir);
+        if !base.exists() {
+            return Err(format!(
+                "discover_source_root_ingest: scan dir does not exist: {}",
+                base.display()
+            ));
+        }
+        let mut dag_files = Vec::new();
+        collect_dag_files(&base, &mut dag_files);
+        for path in dag_files {
+            let rel_path = path
+                .strip_prefix(root)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            let rel_forward = rel_path.replace('\\', "/");
+            if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
+            let module_path = extract_module_path(&content).ok_or_else(|| {
+                format!(
+                    "discover_source_root_ingest: no module declaration in {}",
+                    rel_forward
+                )
+            })?;
+            if let Some(prior) = seen_modules.insert(module_path.clone(), rel_forward.clone()) {
+                return Err(format!(
+                    "discover_source_root_ingest: duplicate module path '{}' in {} and {}",
+                    module_path, prior, rel_forward
+                ));
+            }
+            records.push(SourceRootReadRecord {
+                file_path: rel_forward,
+                module_path,
+                source: content,
+            });
+        }
+    }
+
+    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    Ok(records)
+}
+
+fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
+    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
+    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
+    format!(
+        "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: ^{compilation_unit}\n}}",
+        dag_string_escape(&rec.source),
+        dag_string_escape(&rec.file_path),
+    )
+}
+
+fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
+    if records.is_empty() {
+        return "Empty".to_string();
+    }
+    let mut out = String::new();
+    for (idx, rec) in records.iter().enumerate() {
+        if idx == 0 {
+            out.push_str("Cons {\n  head: ");
+            out.push_str(&emit_source_root_read_witness(rec));
+            out.push_str(",\n  tail: ");
+        } else if idx == records.len() - 1 {
+            out.push_str("Cons {\n    head: ");
+            out.push_str(&emit_source_root_read_witness(rec));
+            out.push_str(",\n    tail: Empty\n  }");
+        } else {
+            out.push_str("Cons {\n    head: ");
+            out.push_str(&emit_source_root_read_witness(rec));
+            out.push_str(",\n    tail: ");
+        }
+    }
+    for _ in 0..records.len().saturating_sub(1) {
+        out.push_str("\n  }");
+    }
+    out
+}
+
+/// Emit an ephemeral importable `.dag` manifest (never committed).
+pub fn emit_source_root_ingest_manifest(
+    path: &Path,
+    records: &[SourceRootReadRecord],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
+    }
+
+    let content_hash = source_root_ingest_content_hash_fnv1a64(records);
+    let read_count = records.len();
+    let inline_records = if read_count <= MANIFEST_INLINE_LIST_MAX {
+        records
+    } else {
+        &[]
+    };
+
+    let mut out = String::new();
+    out.push_str(
+        "// GENERATED by discover_source_root_ingest — ephemeral host transport. DO NOT COMMIT.\n",
+    );
+    out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
+    out.push_str("import v2.compiler.source_authority {\n");
+    out.push_str("  DagSourceReadWitness,\n");
+    out.push_str("  SourceRootIngest,\n");
+    out.push_str("  SourceRootProvenanceCoverageReceipt\n");
+    out.push_str("}\n");
+    out.push_str("import v2.std.algebra { Cons, Empty }\n");
+    out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.text { String }\n\n\n");
+    out.push_str(&format!(
+        "data host_source_root_ingest_content_hash: String = \"{}\"\n\n\n",
+        dag_string_escape(&content_hash)
+    ));
+    out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
+    out.push_str(&format!("  ingest_read_count: {read_count},\n"));
+    out.push_str(&format!("  produced_row_count: {read_count},\n"));
+    out.push_str("  coverage_complete: true\n");
+    out.push_str("}\n\n\n");
+    if inline_records.is_empty() && !records.is_empty() {
+        out.push_str(
+            "// Large corpus: inline ingest omitted; standing gates use host_source_root_ingest_coverage_receipt scalars.\n",
+        );
+    }
+    out.push_str("data host_source_root_ingest: SourceRootIngest = ");
+    if inline_records.is_empty() {
+        out.push_str("Empty\n");
+    } else {
+        out.push_str(&emit_source_root_ingest_monoid(inline_records));
+        out.push('\n');
+    }
+
+    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
