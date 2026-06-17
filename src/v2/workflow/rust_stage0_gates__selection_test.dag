@@ -1,0 +1,79 @@
+// Status: by-execution witnesses for the coarse Rust-monolith gate selector
+//   (v2.workflow.rust_stage0_gates). Discovered + run by `ci-claim-gate
+//   --roster-from-discovery`. Positive witnesses prove a Rust-touching diff selects all
+//   three dependents; the *_selects_none witnesses are RED contracts — they go red if the
+//   selector over-fires on a non-Rust path (the discriminating input).
+
+module v2.test.workflow.rust_stage0_gates
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.algebra { length, count_equal }
+import v2.workflow.rust_stage0_gates {
+  RustGate,
+  ClippyGate,
+  FmtGate,
+  InProcessWitnessGate,
+  rust_stage0_affected_gates
+}
+
+
+// Membership by structural equality on the (payload-free) RustGate variants.
+fn contains_gate(gates: List<RustGate>, gate: RustGate) -> Bool {
+  count_equal(xs: gates, item: gate, eq: fn(l, r) { l == r }) != 0
+}
+
+
+// All three dependents present and no others.
+fn selects_all_three(gates: List<RustGate>) -> Bool {
+  (length(xs: gates) == 3)
+    && contains_gate(gates: gates, gate: ClippyGate)
+    && contains_gate(gates: gates, gate: FmtGate)
+    && contains_gate(gates: gates, gate: InProcessWitnessGate)
+}
+
+
+// POSITIVE — a touched `.rs` file selects all three gates.
+test fn rust_gates_rs_path_selects_all_three_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(changed_paths: ["src/v1/stage0/src/lib.rs"]))
+}
+
+
+// POSITIVE — a nested `Cargo.toml` (suffix match, not exact) selects all three.
+test fn rust_gates_cargo_toml_selects_all_three_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(changed_paths: ["src/v1/stage0/Cargo.toml"]))
+}
+
+
+// POSITIVE — `rust-toolchain.toml` selects all three.
+test fn rust_gates_rust_toolchain_selects_all_three_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(changed_paths: ["rust-toolchain.toml"]))
+}
+
+
+// POSITIVE (the `any` semantics) — one Rust path among non-Rust paths still selects all three.
+test fn rust_gates_any_rust_in_mixed_selects_all_three_holds() -> Bool {
+  selects_all_three(gates: rust_stage0_affected_gates(
+    changed_paths: ["src/v2/std/text.dag", "src/v1/stage0/src/main.rs", "README.md"]
+  ))
+}
+
+
+// RED CONTRACT — a `.dag`-only change selects NONE. Goes red if the selector wrongly
+// fires on a non-Rust path (handing the witness affected-set's job to this selector).
+test fn rust_gates_dag_only_change_selects_none_holds() -> Bool {
+  length(xs: rust_stage0_affected_gates(changed_paths: ["src/v2/std/text.dag"])) == 0
+}
+
+
+// RED CONTRACT — `.rs` must be a true suffix, not a substring. A path with `.rs` in the
+// middle (`docs/notes.rs.md`) selects NONE. Goes red if `ends_with` degrades to contains.
+test fn rust_gates_near_miss_rs_substring_selects_none_holds() -> Bool {
+  length(xs: rust_stage0_affected_gates(changed_paths: ["docs/notes.rs.md"])) == 0
+}
+
+
+// An empty change-set selects none.
+test fn rust_gates_empty_change_selects_none_holds() -> Bool {
+  length(xs: rust_stage0_affected_gates(changed_paths: [])) == 0
+}
