@@ -516,45 +516,42 @@ fn kernel_family_label(kernel: KernelFamily) -> NonEmptyStr {
   }
 }
 
-// An optional surface sub-field is honored iff the demand imposes no constraint
-// (Absent) or the supply carries the SAME value. A demand that pins a distro/
-// version the supply does not advertise is fail-closed (Absent supply ≠ proven).
-fn os_optional_str_satisfied(supply: NonEmptyStr?, demand: NonEmptyStr?) -> Bool {
-  match demand {
-    Absent => true
-    Present { value: d } =>
-      match supply {
-        Absent => false
-        Present { value: s } => s == d
-      }
-  }
-}
+// Result of the surface comparison. A dedicated tagged sum (not `NonEmptyStr?`):
+// data-literal `NonEmptyStr?` is raw-nullable and a `match` over it crashes on
+// the null arm, whereas a closed sum matches reliably (cf. DimensionCheck).
+type OsSurfaceMatch
+  = OsSurfaceMatched
+  | OsSurfaceUnmet { field: NonEmptyStr }
 
-// The FULL demanded OS surface must be proven, not just the kernel: distro,
-// version, filesystem and process semantics are all on the demand side and all
-// comparable today (enum/string equality — no ByteSize blocker). Returns the
-// first unmet sub-field as a located diagnostic, or Absent if every field holds.
-fn os_surface_unmet_field(supply: OperatingSystemSurface, demand: OperatingSystemSurface) -> NonEmptyStr? {
+// The FULL demanded surface must be proven, not just the kernel: distro, version,
+// filesystem and process semantics are all on the demand side. Proven by EXACT
+// equality on every field — fail-closed (§5): a demand pinning a distro/version
+// the supply does not advertise is rejected (the reviewer's hole), and a demand
+// that leaves distro/version unpinned matches only an equally-unpinned supply.
+// Returns the first unmet field as a located diagnostic, or Matched if all hold.
+// (Relaxing unpinned-demand to wildcard "any" is a future move once the optional
+// representation supports a portable Absent test.)
+fn os_surface_match(supply: OperatingSystemSurface, demand: OperatingSystemSurface) -> OsSurfaceMatch {
   if supply.kernel == demand.kernel {
-    if os_optional_str_satisfied(supply: supply.distro_or_product, demand: demand.distro_or_product) {
-      if os_optional_str_satisfied(supply: supply.version, demand: demand.version) {
+    if supply.distro_or_product == demand.distro_or_product {
+      if supply.version == demand.version {
         if supply.filesystem_semantics == demand.filesystem_semantics {
           if supply.process_semantics == demand.process_semantics {
-            none
+            OsSurfaceMatched
           } else {
-            Present { value: "os process semantics" }
+            OsSurfaceUnmet { field: "os process semantics" }
           }
         } else {
-          Present { value: "os filesystem semantics" }
+          OsSurfaceUnmet { field: "os filesystem semantics" }
         }
       } else {
-        Present { value: "os version" }
+        OsSurfaceUnmet { field: "os version" }
       }
     } else {
-      Present { value: "os distro/product" }
+      OsSurfaceUnmet { field: "os distro/product" }
     }
   } else {
-    Present { value: kernel_family_label(kernel: demand.kernel) }
+    OsSurfaceUnmet { field: kernel_family_label(kernel: demand.kernel) }
   }
 }
 
@@ -562,9 +559,9 @@ fn check_os(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
   match demand.os {
     Absent => DimensionNotDemanded { dimension: DemandOs }
     Present { value: req } =>
-      match os_surface_unmet_field(supply: offer.supply.execution.os, demand: req.surface) {
-        Absent => DimensionSatisfied { dimension: DemandOs }
-        Present { value: field } =>
+      match os_surface_match(supply: offer.supply.execution.os, demand: req.surface) {
+        OsSurfaceMatched => DimensionSatisfied { dimension: DemandOs }
+        OsSurfaceUnmet { field: field } =>
           DimensionUnmet { fact: MissingDemandFact { dimension: DemandOs, required: field } }
       }
   }
