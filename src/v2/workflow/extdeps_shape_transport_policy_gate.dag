@@ -53,17 +53,16 @@ data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShape
   function: "corpus_gcp_oauth_defused_holds"
 }
 
-<<<<<<< HEAD
 data row_corpus_gist_create: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
   label: "extdeps_shape_transport_policy/corpus/gist_create_policy_leak",
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gist_create_policy_leak_test.dag",
   function: "corpus_gist_create_defused_holds"
-=======
+}
+
 data row_lens_unit_dead_param: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
   label: "extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build",
   entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/dead_param_cargo_build_test.dag",
   function: "dead_param_cargo_build_is_red_holds"
->>>>>>> 570b5cf031 (WIP: §3 lens hardening: structural argv projection (dead-param detection))
 }
 
 data extdeps_shape_transport_policy_claim_run_rows: List<ExtdepsShapeTransportPolicyClaimRunRow> = [
