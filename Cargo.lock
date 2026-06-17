@@ -120,29 +120,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-<<<<<<< HEAD
-name = "ci_affected_components"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "ci_timings_collector"
-version = "0.1.0"
-dependencies = [
- "ci_affected_components",
- "serde_json",
-=======
-name = "ci_claim_gate"
-version = "0.1.0"
-dependencies = [
->>>>>>> origin/main
- "v1-compiler",
-]
-
-[[package]]
 name = "clap"
 version = "4.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
