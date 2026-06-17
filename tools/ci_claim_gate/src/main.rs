@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, discover_owned_data_decls, make_eval_context,
