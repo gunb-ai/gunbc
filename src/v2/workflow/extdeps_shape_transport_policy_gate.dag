@@ -42,9 +42,15 @@ data row_lens_unit_transport_fusion: ExtdepsShapeTransportPolicyClaimRunRow = Ex
 }
 
 data row_corpus_cargo_build: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
-  label: "extdeps_shape_transport_policy/corpus/cargo_build_policy_leak",
+  label: "extdeps_shape_transport_policy/corpus/cargo_build_defused",
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
-  function: "corpus_cargo_build_policy_leak_is_red_holds"
+  function: "corpus_cargo_build_defused_holds"
+}
+
+data row_corpus_git_policy_leak: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
+  label: "extdeps_shape_transport_policy/corpus/git_policy_leak_defused",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/git_policy_leak_test.dag",
+  function: "corpus_git_policy_leak_defused_holds"
 }
 
 data row_corpus_gcp_oauth: ExtdepsShapeTransportPolicyClaimRunRow = ExtdepsShapeTransportPolicyClaimRunRow {
@@ -65,6 +71,7 @@ data extdeps_shape_transport_policy_claim_run_rows: List<ExtdepsShapeTransportPo
   row_lens_unit_clean_gist_create,
   row_lens_unit_transport_fusion,
   row_corpus_cargo_build,
+  row_corpus_git_policy_leak,
   row_corpus_gcp_oauth,
   row_corpus_gist_create
 ]

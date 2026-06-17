@@ -22,7 +22,10 @@ import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffTwoDot }
 // pass iff both succeed.
 func run_gates() -> ProcessExit {
   fmt = cargo.Build.Fmt()
-  clippy = cargo.Build.Clippy()
+  clippy = cargo.Build.Clippy(
+    extra_args: ["--all-targets"],
+    lint_args: ["-D", "warnings"]
+  )
   return if fmt.success && clippy.success {
     ExitSuccess
   } else {
@@ -31,6 +34,7 @@ func run_gates() -> ProcessExit {
 }
 
 // Entry: consult the diff, fire the gates only when the Rust monolith is touched.
+// Policy (which base ref, three-dot merge-base mode) lives here — not in extdeps/git.
 func run_rust_monolith_gate() -> ProcessExit {
   let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {
