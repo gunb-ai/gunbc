@@ -439,7 +439,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
     assert!(record.status.success(), "record must capture");
 
     // Mutate live filesystem AFTER record — hermetic must NOT observe this.
-    fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
+    fs::write(target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
 
     let hermetic = run_claim_batch(&[
         "--source-root",
