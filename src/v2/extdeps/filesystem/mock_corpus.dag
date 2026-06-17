@@ -1,0 +1,57 @@
+// src/v2/extdeps/filesystem/mock_corpus.dag
+// Scope: the filesystem layer's PUBLISHED mock corpus as a closed, declared structural fact.
+// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
+//
+// The operator's layering contract: each layer PUBLISHES an extensive mock corpus as a
+// structural fact, an adjacent layer materializes ANY case impl-blind, and a lens enforces
+// the consumer is TOTAL over the published corpus (`v2.lens.mock_totality`). This file is the
+// published-corpus half for ONE proven layer — filesystem — whose live I/O contract
+// (dsl/extdeps/filesystem/filesystem_io.dag) declares the operations `Write` and `Read`. A
+// corpus ROW mirrors only that contract's operation key (plus a `case_id` ordinal) and NOTHING
+// of the response payload, so there is no second copy of a mock value to drift (§3).
+//
+// NOTE (post-#5090): Phase-2 RecordedFixture dissolved the inline `mock_response` clauses that
+// once carried the per-case payloads — those now live in the hermetic fixture store (recorded
+// wet via claim_batch --record, replayed via --fixture-store), and filesystem_io.dag forbids
+// reintroducing them. The corpus's authority for WHICH cases exist therefore splits cleanly:
+// the operation set stays in the `service Filesystem` decl; the per-case payloads (which this
+// corpus deliberately does NOT carry) are the fixture store's. The dissolution trigger below
+// is re-pointed accordingly.
+
+module v2.extdeps.filesystem.mock_corpus
+
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+
+// One published mock case of the filesystem I/O contract: the structural key
+// (which operation, which case ordinal) an adjacent layer must be able to
+// materialize impl-blind. Carries NO response payload — post-#5090 those live
+// in the Phase-2 RecordedFixture store, not here.
+type FilesystemMockCase {
+  operation: Symbol
+  case_id: Int
+}
+
+data filesystem_mock_case_write_committed: FilesystemMockCase = FilesystemMockCase {
+  operation: ^Write,
+  case_id: 0
+}
+
+data filesystem_mock_case_read_contents: FilesystemMockCase = FilesystemMockCase {
+  operation: ^Read,
+  case_id: 0
+}
+
+// 🟡 gated — feature:filesystem-mock-corpus-from-service-decl — bind node://adhoc-a9399cb3-628
+// dissolve-on-arrival: project this corpus directly from the `service Filesystem` operation set
+// in dsl/extdeps/filesystem/filesystem_io.dag (the SINGLE authority for WHICH operations exist),
+// joined with the Phase-2 RecordedFixture store (the authority for WHICH recorded cases exist
+// per operation), once a v2 lens can read a service decl's operation nodes and the fixture
+// store's keys; this declared list then deletes in the same PR. forbidden: a row carrying a
+// response VALUE (success/bytes_written/content/error) — that would fork the payload authority,
+// now owned by the fixture store (§3); rows mirror the (operation, case ordinal) structural key
+// ONLY, and grow when a published operation/case is added upstream.
+data filesystem_published_mock_corpus: List<FilesystemMockCase> = [
+  filesystem_mock_case_write_committed,
+  filesystem_mock_case_read_contents
+]
