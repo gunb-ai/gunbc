@@ -99,6 +99,14 @@ fn witness_ci_gates_use_release_binary() -> Bool {
     !string_contains(s: ci_gates_invoke(spec: gunbc_ci_spec), pattern: "cargo run")
 }
 
+fn witness_release_build_eagain_cold_retry() -> Bool {
+  let script = ci_release_build_script()
+  string_contains(s: script, pattern: "Resource temporarily unavailable|failed to spawn") &&
+    string_contains(s: script, pattern: "unset RUSTC_WRAPPER") &&
+    string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1") &&
+    string_contains(s: script, pattern: "sccache --show-stats")
+}
+
 fn witness_workflow_run_is_collapsed_script() -> Bool {
   gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_run_script(spec: gunbc_ci_spec)
 }
@@ -111,6 +119,7 @@ fn ci_spec_witnesses() -> Bool {
     witness_notice_title_from_spec() &&
     witness_run_script_composes_from_spec() &&
     witness_release_build_unifies_features() &&
+    witness_release_build_eagain_cold_retry() &&
     witness_claim_batch_uses_release_binary() &&
     witness_ci_gates_use_release_binary() &&
     witness_workflow_run_is_collapsed_script()
