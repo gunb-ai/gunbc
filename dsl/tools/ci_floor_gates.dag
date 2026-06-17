@@ -19,7 +19,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
-import tools.dsl_compile_clean_gate { run_gate as run_dsl_compile_clean_gate }
+import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
 import tools.ci_yaml_gate { run_ci_yaml_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {

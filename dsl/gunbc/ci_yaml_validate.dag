@@ -14,7 +14,16 @@ fn ci_yml_parse_script(path: String) -> String {
     concat(yaml_parse_python, " "),
     concat(
       path,
-      concat(" 2>/dev/null || actionlint ", concat(path, " 2>/dev/null"))
+      concat(
+        " 2>/dev/null || actionlint ",
+        concat(
+          path,
+          concat(
+            " 2>/dev/null || cargo run -q -p v1-compiler --release --bin yaml_check -- ",
+            path
+          )
+        )
+      )
     )
   )
 }

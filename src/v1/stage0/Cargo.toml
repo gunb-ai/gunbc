@@ -21,6 +21,7 @@ clap = { version = "4", features = ["derive"] }
 lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
+serde_yaml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
 
 [[bin]]
@@ -53,3 +54,7 @@ path = "src/bin/claim_executor.rs"
 [[bin]]
 name = "discover_owned_data"
 path = "src/bin/discover_owned_data.rs"
+
+[[bin]]
+name = "yaml_check"
+path = "src/bin/yaml_check.rs"
