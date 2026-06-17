@@ -16,7 +16,7 @@
 // projected CONSTANT — the loop fold scales the iteration count by the body via
 // IterativeCost = symbolic_product, and symbolic_product's (correct) absorbing zero annihilated
 // the linear factor. Fixed in cost.dag with an ADDITIVE per-iteration floor at the loop layer
-// (compose_child_cost IterativeCost = symbolic_product(acc, symbolic_sequential(child, unit_cost())),
+// (compose_child_cost IterativeCost = symbolic_product(acc, symbolic_max(child, unit_cost())),
 // so an empty body still costs O(n)); symbolic_product KEEPS absorbing zero. Real wave-1 bodies
 // now project non-constant complexity where warranted. The synthetic control below still keeps
 // the gate non-vacuous when the real corpus is optimal.
