@@ -305,7 +305,8 @@ pub fn build_valid_artifact_bytes(
 }
 
 /// Test-scoped fixture payload serde (reuses `CachePayload` — no parallel serializer).
-/// Dissolve-on: hermetic inter-stage fixture loader lands in pipeline proper (P5).
+/// Dissolve-on: full-P5 hermetic inter-stage fixture loader (#5094 SOUND-WITH-NAMED-GUARD
+/// follow-up — promote _for_test serde shim into pipeline proper).
 pub fn serialize_fixture_payload_for_test(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
@@ -322,7 +323,8 @@ pub fn serialize_fixture_payload_for_test(
 }
 
 /// Test-scoped fixture loader (inverse of `serialize_fixture_payload_for_test`).
-/// Dissolve-on: hermetic inter-stage fixture loader lands in pipeline proper (P5).
+/// Dissolve-on: full-P5 hermetic inter-stage fixture loader (#5094 SOUND-WITH-NAMED-GUARD
+/// follow-up — promote _for_test serde shim into pipeline proper).
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
     let payload: CachePayload =
         serde_json::from_slice(bytes).map_err(|e| format!("fixture payload decode: {e}"))?;
@@ -340,7 +342,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
 }
 
 /// Guard: binding keys must resolve to their bound names in the fixture's embedded intern_table.
-/// Dissolve-on: guard moves into pipeline loader when P5 hermetic fixtures land.
+/// Dissolve-on: full-P5 hermetic inter-stage fixture loader (#5094 follow-up — born-mark
+/// guard moves from _for_test shim into pipeline loader).
 pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> Result<(), String> {
     use crate::v1_std_core::intern_str;
     for m in cached.graph.modules.iter() {
