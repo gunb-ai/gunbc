@@ -142,16 +142,13 @@ fn hermetic_fixture_staleness_fails_closed() {
     ]);
     assert!(record.status.success(), "record must capture absent-read");
 
-    // Tamper: rewrite every fixture's inputs_hash to force staleness on replay.
+    // Tamper: backdate recorded_at to force freshness-window expiry on replay.
     for path in fixture_files(&store_dir) {
         let bytes = fs::read(&path).expect("read fixture");
         let mut fixture: serde_json::Value =
             serde_json::from_slice(&bytes).expect("parse fixture");
         if let Some(obj) = fixture.as_object_mut() {
-            obj.insert(
-                "input_hash".to_string(),
-                serde_json::Value::String("deadbeefdeadbeef".to_string()),
-            );
+            obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
         }
         fs::write(&path, serde_json::to_vec_pretty(&fixture).expect("serialize")).expect("write");
     }
@@ -180,7 +177,7 @@ fn hermetic_fixture_staleness_fails_closed() {
         String::from_utf8_lossy(&hermetic.stderr)
     );
     assert!(
-        combined.contains("stale recorded fixture") || combined.contains("input_hash="),
+        combined.contains("expired recorded fixture") || combined.contains("refusing to replay stale value"),
         "expected staleness diagnostic, got:\n{combined}"
     );
 }
