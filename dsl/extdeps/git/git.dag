@@ -201,7 +201,10 @@ service git.Core {
   // modeling only what git provides.
   operation DiffNameOnly {
     input { base: GitRef, head: GitRef = "HEAD" }
-    output { paths: List<FilePath> from "stdout_lines" }
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+    }
     readonly
     transport shell { argv: ["git", "diff", "--name-only", "{base}", "{head}"] }
     exit {
@@ -209,7 +212,7 @@ service git.Core {
       128 => String "Invalid ref or not a git repository"
     }
     mock_response {
-      0 => { paths: [] } "No changed files"
+      0 => { paths: [], success: true } "No changed files"
     }
   }
 
@@ -217,7 +220,10 @@ service git.Core {
   // diverged from `base`. A documented git primitive (`git diff A...B`).
   operation DiffNameOnlyMerge {
     input { base: GitRef, head: GitRef = "HEAD" }
-    output { paths: List<FilePath> from "stdout_lines" }
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+    }
     readonly
     transport shell { argv: ["git", "diff", "--name-only", "{base}...{head}"] }
     exit {
@@ -225,7 +231,7 @@ service git.Core {
       128 => String "Invalid ref or not a git repository"
     }
     mock_response {
-      0 => { paths: [] } "No changed files"
+      0 => { paths: [], success: true } "No changed files"
     }
   }
 
