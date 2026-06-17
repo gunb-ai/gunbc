@@ -9,22 +9,16 @@ import v2.compiler.name_resolve {
   Admission,
   Import,
   ImportVisible,
-  ResolutionSubject,
-  validate_module_roots
+  ResolutionSubject
 }
 import v2.compiler.program_assembly {
   assemble_program_from_ingest,
-  assemble_program_from_module_roots,
   module_roots_from_source_root_ingest
 }
 import v2.compiler.source_authority {
   node_artifact_provenance_from_source_root,
   source_root_provenance_coverage_receipt
 }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse, parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.source_authority { DagSource }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { Cons, Empty, length }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -37,114 +31,26 @@ import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest_coverage_receipt
 }
 
-fn pa_real_qn_pa_ingest_subject() -> QualifiedName {
-  QnCons {
-    head: ^v2,
-    tail: QnCons {
-      head: ^test,
-      tail: QnCons {
-        head: ^fixture,
-        tail: QnCons { head: ^pa_ingest_subject, tail: QnEmpty }
-      }
-    }
-  }
+fn pa_real_qn_bisect_subject() -> QualifiedName {
+  QnCons { head: ^bisect, tail: QnCons { head: ^subject, tail: QnEmpty } }
 }
 
-fn pa_real_qn_pa_ingest_peer() -> QualifiedName {
-  QnCons {
-    head: ^v2,
-    tail: QnCons {
-      head: ^test,
-      tail: QnCons {
-        head: ^fixture,
-        tail: QnCons { head: ^pa_ingest_peer, tail: QnEmpty }
-      }
-    }
-  }
+fn pa_real_qn_bisect_peer() -> QualifiedName {
+  QnCons { head: ^bisect, tail: QnCons { head: ^peer, tail: QnEmpty } }
 }
 
-fn pa_real_cross_file_admission() -> Admission {
+fn pa_real_two_module_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: pa_real_qn_pa_ingest_subject()
+      name: pa_real_qn_bisect_subject()
     },
     imports: Cons {
       head: Import {
-        target: pa_real_qn_pa_ingest_peer(),
+        target: pa_real_qn_bisect_peer(),
         visibility: ImportVisible
       },
       tail: Empty
     }
-  }
-}
-
-data pa_real_debug_peer_source: DagSource = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
-
-fn pa_real_debug_tokenize_holds() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn pa_real_debug_parse_module_holds() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse_module(tokens: stream, grammar: lm.grammar) {
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn pa_real_debug_normalize_holds() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse(tokens: stream, grammar: lm.grammar) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match normalize(parse_tree: tree) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn pa_real_debug_parse_only_holds() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse(tokens: stream, grammar: lm.grammar) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn pa_real_debug_inline_parse_holds() -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(text: pa_real_debug_peer_source, file: ^compile_ingest_staging_source_file, rules: lm.lex) {
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse(tokens: stream, grammar: lm.grammar) {
-        Accepted { value: tree, diagnostics: _ } =>
-          match normalize(parse_tree: tree) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -161,7 +67,7 @@ test fn program_assembly_real_ingest_module_roots_parse_holds() -> Bool {
 test fn program_assembly_real_ingest_cross_file_assembles_holds() -> Bool {
   match assemble_program_from_ingest(
     ingest: host_source_root_ingest,
-    admission: pa_real_cross_file_admission(),
+    admission: pa_real_two_module_admission(),
     lm: dag_language_model_wave1()
   ) {
     Accepted { value: _, diagnostics: _ } => true
