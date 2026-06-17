@@ -3814,6 +3814,8 @@ fn dag_grammar_sequence_from_token_classes_field_access() -> GrammarExpr {
       dag_grammar_terminal(token_class: ^dag_token_kw_fn)
     DagGramBuild1StateReady { expr: result } => result
   }
+}
+
 // DESIGN-6 / grammar-inverse wave-2a — `.dag` type-decl Conj keystone (record with field block).
 data dag_wave2a_task_type_decl_source_text: String = "type Task { id: TaskId, title: String, status: TaskStatus }"
 
