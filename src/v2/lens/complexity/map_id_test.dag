@@ -2,7 +2,15 @@
 module v2.test.lens_complexity.map_id
 
 import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
-import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
+import v2.lens.cost {
+  LinearCost,
+  ProductCost,
+  SizeVariable,
+  SumCost,
+  SymbolicCost,
+  cost_lens,
+  unit_cost
+}
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
   AmbiguousIntent,
@@ -54,7 +62,10 @@ data map_id_input: Node = Node {
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   input: map_id_input,
-  expected_cost: LinearCost { variable: SizeVariable { source: map_id_input } },
+  expected_cost: ProductCost {
+    lhs: LinearCost { variable: SizeVariable { source: map_id_input } },
+    rhs: SumCost { lhs: unit_cost(), rhs: unit_cost() }
+  },
   expected_complexity: linear_complexity(size_var: SizeVariable { source: map_id_input }),
   falsification: Diagnostic {
     reason: ^map_id_claim_reason,

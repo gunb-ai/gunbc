@@ -1,7 +1,14 @@
 
 module v2.test.lens_cost.nested_product
 
-import v2.lens.cost { LinearCost, ProductCost, SizeVariable, cost_lens }
+import v2.lens.cost {
+  LinearCost,
+  ProductCost,
+  SizeVariable,
+  SumCost,
+  cost_lens,
+  unit_cost
+}
 import v2.std.logic { Bool }
 import v2.std.node {
   Cardinality,
@@ -48,12 +55,20 @@ data nested_product_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+data nested_product_inner_folded_cost: SymbolicCost = ProductCost {
+  lhs: LinearCost { variable: SizeVariable { source: nested_product_inner } },
+  rhs: SumCost { lhs: unit_cost(), rhs: unit_cost() }
+}
+
 fn nested_product_claim_holds() -> Bool {
   match cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
       actual == ProductCost {
         lhs: LinearCost { variable: SizeVariable { source: nested_product_input } },
-        rhs: LinearCost { variable: SizeVariable { source: nested_product_inner } }
+        rhs: SumCost {
+          lhs: nested_product_inner_folded_cost,
+          rhs: unit_cost()
+        }
       }
     _ => false
   }
