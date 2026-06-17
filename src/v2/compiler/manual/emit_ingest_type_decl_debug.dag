@@ -7,7 +7,7 @@ import v2.extdeps.languages.dag {
   dag_type_decl_structural_target_model
 }
 import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
-import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.algebra { list_append }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 
@@ -132,7 +132,7 @@ test fn type_decl_serialize_accepts_holds() -> Bool {
   }
 }
 
-test fn type_decl_emit_text_holds() -> Bool {
+fn type_decl_emit_text_equals(expected: String) -> Bool {
   match grammar_relation_row_for_emitted(
     rules: dag_type_decl_productions_only_translation_rules(),
     emitted: type_decl_point_emitted()
@@ -146,7 +146,7 @@ test fn type_decl_emit_text_holds() -> Bool {
                 target: dag_type_decl_structural_target_model(),
                 tokens: tokens
               ) {
-                Accepted { value: text, diagnostics: _ } => text == type_decl_point_text_spaced
+                Accepted { value: text, diagnostics: _ } => text == expected
                 Rejected { diagnostics: _ } => false
               }
             Rejected { diagnostics: _ } => false
@@ -155,4 +155,47 @@ test fn type_decl_emit_text_holds() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn type_decl_emit_text_holds() -> Bool {
+  type_decl_emit_text_equals(expected: type_decl_point_text_spaced)
+}
+
+test fn type_decl_emit_text_v1_holds() -> Bool {
+  type_decl_emit_text_equals(expected: type_decl_point_text_v1)
+}
+
+test fn type_decl_emit_text_v2_holds() -> Bool {
+  type_decl_emit_text_equals(expected: type_decl_point_text_v2)
+}
+
+fn type_decl_point_expected_tight() -> String {
+  let s0 = list_append(left: "type", right: "Point")
+  let s1 = list_append(left: s0, right: "{")
+  let s2 = list_append(left: s1, right: "x")
+  let s3 = list_append(left: s2, right: ":")
+  let s4 = list_append(left: s3, right: "Int")
+  let s5 = list_append(left: s4, right: ",")
+  let s6 = list_append(left: s5, right: "y")
+  let s7 = list_append(left: s6, right: ":")
+  let s8 = list_append(left: s7, right: "Int")
+  list_append(left: s8, right: "}")
+}
+
+fn type_decl_point_expected_spaced() -> String {
+  let s0 = list_append(left: "type", right: " ")
+  let s1 = list_append(left: s0, right: "Point")
+  let s2 = list_append(left: s1, right: " { ")
+  let s3 = list_append(left: s2, right: "x")
+  let s4 = list_append(left: s3, right: ": ")
+  let s5 = list_append(left: s4, right: "Int")
+  let s6 = list_append(left: s5, right: ", ")
+  let s7 = list_append(left: s6, right: "y")
+  let s8 = list_append(left: s7, right: ": ")
+  let s9 = list_append(left: s8, right: "Int")
+  list_append(left: s9, right: " }")
+}
+
+test fn type_decl_emit_text_spaced_built_holds() -> Bool {
+  type_decl_emit_text_equals(expected: type_decl_point_expected_spaced())
 }
