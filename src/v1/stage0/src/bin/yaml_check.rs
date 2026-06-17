@@ -1,5 +1,7 @@
 //! Parse-check a YAML file (exit 0 = valid, 1 = invalid/missing). Used by ci_yaml_gate.
 
+#![allow(clippy::disallowed_macros)]
+
 use std::{env, fs, process::ExitCode};
 
 fn main() -> ExitCode {
