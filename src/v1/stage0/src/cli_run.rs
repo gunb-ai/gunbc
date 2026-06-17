@@ -2077,17 +2077,37 @@ pub fn discover_floor_corpus_rows(
 }
 
 /// Run the whole floor discovery corpus through one shared module index
-/// (resolve-once-per-entry), returning a pass/fail summary. Fail-closed: an
-/// empty roster is an error (a zero-witness corpus is never a successful run).
-/// This is the `DiscoveryBatch` scheduler-node handler; `claim_batch` keeps its
-/// own timing/stats loop but shares the roster (`discover_floor_corpus_rows`).
+/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
+/// are appended to the discovered roster with `(entry, function)` dedup — exactly
+/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
+/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
+/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
+/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
+/// `claim_batch` keeps its own timing/stats loop but shares the roster.
 pub fn run_discovery_corpus(
     source_roots: &[String],
     scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
-    let rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
+    let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
+    // Append explicit rows with (entry, function) dedup, then re-sort so each
+    // entry's witnesses stay grouped for the resolve-once loop below.
+    let mut seen: std::collections::BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.entry.clone(), r.function.clone()))
+        .collect();
+    for (entry, function) in explicit_entries {
+        if seen.insert((entry.clone(), function.clone())) {
+            rows.push(DiscoveryRow {
+                label: function.clone(),
+                entry: entry.clone(),
+                function: function.clone(),
+            });
+        }
+    }
+    rows.sort_by(|a, b| a.entry.cmp(&b.entry).then_with(|| a.function.cmp(&b.function)));
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }

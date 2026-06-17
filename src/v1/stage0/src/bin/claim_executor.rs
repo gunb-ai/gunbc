@@ -64,6 +64,7 @@ enum Runnable {
     DiscoveryBatch {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
+        explicit_entries: Vec<(String, String)>,
     },
 }
 
@@ -191,9 +192,35 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("RunnableDiscoveryBatch missing field `scan_dirs`".to_string()),
             };
+            // explicit_entries: a List of records with `entry`/`function` String
+            // fields (the CiSpec witness_entries appended to the discovery roster).
+            let explicit_entries = match ctx.field(fields, "explicit_entries") {
+                Some(v) => {
+                    let mut out = Vec::new();
+                    for elem in free_monoid_elems(v, ctx)? {
+                        let efields = match elem {
+                            Value::Record { fields, .. } => fields,
+                            Value::Variant { fields, .. } => fields,
+                            other => {
+                                return Err(format!(
+                                    "RunnableDiscoveryBatch.explicit_entries element is {}, not a record",
+                                    other.type_label_public()
+                                ))
+                            }
+                        };
+                        out.push((
+                            str_field(efields, "entry", "explicit_entries", ctx)?,
+                            str_field(efields, "function", "explicit_entries", ctx)?,
+                        ));
+                    }
+                    out
+                }
+                None => Vec::new(),
+            };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,
+                explicit_entries,
             })
         }
         other => Err(format!(
@@ -233,7 +260,8 @@ fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResul
         Runnable::DiscoveryBatch {
             source_roots: roots,
             scan_dirs,
-        } => run_discovery_batch_node(roots, scan_dirs),
+            explicit_entries,
+        } => run_discovery_batch_node(roots, scan_dirs, explicit_entries),
     }
 }
 
@@ -289,9 +317,17 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
 /// Run the whole discovery corpus as one plan node, reusing the shared roster +
 /// run loop (`cli_run::run_discovery_corpus`). Fail-closed: an empty roster, a
 /// resolve failure, or any failing witness fails the node.
-fn run_discovery_batch_node(source_roots: Vec<String>, scan_dirs: Vec<String>) -> ClaimResult {
-    let label = format!("discovery-corpus[{}]", scan_dirs.join(","));
-    match run_discovery_corpus(&source_roots, &scan_dirs, ExecutionMode::Wet) {
+fn run_discovery_batch_node(
+    source_roots: Vec<String>,
+    scan_dirs: Vec<String>,
+    explicit_entries: Vec<(String, String)>,
+) -> ClaimResult {
+    let label = format!(
+        "discovery-corpus[{} root(s)+{} explicit]",
+        source_roots.len(),
+        explicit_entries.len()
+    );
+    match run_discovery_corpus(&source_roots, &scan_dirs, &explicit_entries, ExecutionMode::Wet) {
         Ok(summary) if summary.failures.is_empty() => ClaimResult {
             function: format!("{label} ({} witnesses)", summary.total),
             ok: true,
@@ -440,10 +476,17 @@ fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
 /// transform `ci-claim-gate` uses) so the planted witness evaluates false.
 fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> {
     let text = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let needle = format!("fn {function}(");
-    let start = text
-        .find(&needle)
-        .ok_or_else(|| format!("{}: missing function {function}", path.display()))?;
+    // Match both `fn NAME(` and `func NAME(` (effectful gates are `func`). Prefer
+    // whichever appears; `func ` ends in `c ` so it won't be confused with `fn `.
+    let needle_fn = format!("fn {function}(");
+    let needle_func = format!("func {function}(");
+    let start = match (text.find(&needle_func), text.find(&needle_fn)) {
+        (Some(f), _) => f,
+        (None, Some(f)) => f,
+        (None, None) => {
+            return Err(format!("{}: missing function {function}", path.display()))
+        }
+    };
     let brace = start
         + text[start..]
             .find('{')
@@ -564,9 +607,11 @@ fn run_perturb_check(
                     Runnable::DiscoveryBatch {
                         source_roots: roots,
                         scan_dirs,
+                        explicit_entries,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
+                        explicit_entries: explicit_entries.clone(),
                     },
                 })
                 .collect()
