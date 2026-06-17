@@ -63,3 +63,8 @@ path = "src/bin/discover_owned_data.rs"
 [[bin]]
 name = "yaml_check"
 path = "src/bin/yaml_check.rs"
+
+# Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
+[[bin]]
+name = "discover_source_root_ingest"
+path = "src/bin/discover_source_root_ingest.rs"
