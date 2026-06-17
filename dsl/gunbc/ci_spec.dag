@@ -2,12 +2,7 @@
 
 module gunbc.ci_spec
 
-import v2.std.algebra { bag_eq, Empty, list_snoc_item, length }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Behavior, Symbol }
-import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 
 type Gate
   = RustMonolithGate
@@ -39,11 +34,14 @@ data witness_discovery_scan_dirs: List<String> = [
   "src/v2/test/claim/layering_imports"
 ]
 
-data reflect_gate_type: Symbol = ^Gate
-
 // 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
-// dissolve-on-arrival: generic Symbol→inhabitant replaces exhaustive match roster;
-// until then the roster is witness-checked against coproduct reflection on ^Gate.
+// dissolve-on-arrival: generic Symbol→inhabitant replaces this exhaustive match roster.
+// The roster is held HONEST by a discovered witness (dsl/test/claim/ci_spec_witness.dag,
+// gate_roster_matches_coproduct_arms) that reflects ^Gate's arms via std.node_query and
+// fails RED if this list drifts from the coproduct. That reflection lives in the WITNESS,
+// never here: importing std.node_query into this runtime spec drags it (and std.diagnostic)
+// into the `gunbc ci` resolution closure, where the v2 FreeMonoid<T> generic-alias bootstrap
+// limitation (src/v2/std/qualified_name.dag:25) makes its Empty/Cons constructors unresolvable.
 data gunbc_ci_gates: List<Gate> = [
   RustMonolithGate,
   EmitHostGate,
@@ -60,30 +58,6 @@ data gunbc_ci_spec: CiSpec = {
     mode: DiffMergeBase
   },
   notice_title: "v2 claim corpus"
-}
-
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
-  a == b
-}
-
-fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
-  fold(inhabitants, init: Empty, f: fn(acc, v) {
-    list_snoc_item(xs: acc, item: discriminant(v: v))
-  })
-}
-
-fn gate_roster_matches_coproduct_arms() -> Bool {
-  let arm_keys = coproduct_arm_keys(type_name: reflect_gate_type)
-  match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
-      (length(xs: gunbc_ci_gates) == length(xs: arm_keys)) &&
-        bag_eq(
-          xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
-          ys: arm_keys,
-          eq: symbol_eq
-        )
-    Rejected { diagnostics: _ } => false
-  }
 }
 
 fn join_slash(parts: List<String>) -> String {
