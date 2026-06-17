@@ -28,6 +28,15 @@ import extdeps.github.log_annotations {
 import extdeps.formats.yaml { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit }
 
+// §3 layering — ordered env/with/outputs on Workflow / Job / Step:
+// 🟡 SCAFFOLD. Fields use `List<YamlKeyValue>` from `extdeps.formats.yaml` so emit
+// preserves YAML key order (std Map is an unordered HAMT — see yaml.dag:11-12). The
+// YAML value carrier binding the GitHub Actions syntax model is a known layer inversion
+// (yaml.dag:5-8 documents the parallel fork; this module is the upward leak site).
+// Dissolution trigger: `std` gains an ordered key/value pair primitive (reused by
+// TOML/JSON emitters); `actions.dag` migrates to that type and format projectors
+// consume it only at the extdeps/formats seam.
+
 type GitHubActionsRuntime {
   oidc_request_url_env: NonEmptyStr
   oidc_request_token_env: NonEmptyStr
