@@ -2973,18 +2973,30 @@ fn eval_algebra_method(
         // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
         // FreeMonoid<Char>, but `.get` on a String is not char-list indexing (ctrl#1476 B1;
         // same Str-representation rule as `index` / `slice` / `contains`).
-        "get" => {
+        //
+        // `map_get` is the structural-method name the typechecker desugars from bare
+        // `map_get(m, k)` calls (std.graph adjacency, complexity.dag, …). It shares the
+        // `get` implementation: raw_map_lookup + the Optional Present/Absent pattern bridge.
+        // NOT added to eval_builtin — B-LOOKUP-1 routes typed v2.std.collection `map_get`
+        // (Outcome<Optional<V>>) through eval_call as a user function instead.
+        "get" | "map_get" => {
             if matches!(&receiver, Value::Str(_)) {
+                let key = args.first().ok_or_else(|| InterpError::TypeError {
+                    msg: format!("{} requires a key argument", method),
+                })?;
+                raw_map_lookup(&receiver, key, env, ctx)
+            } else if method == "get" {
+                if let Ok(items) = expect_list(&receiver, "get") {
+                    let idx = expect_int(args.first(), "get")?;
+                    return Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null));
+                }
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
                 })?;
                 raw_map_lookup(&receiver, key, env, ctx)
-            } else if let Ok(items) = expect_list(&receiver, "get") {
-                let idx = expect_int(args.first(), "get")?;
-                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
             } else {
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
-                    msg: "get requires a key argument".to_string(),
+                    msg: "map_get requires a key argument".to_string(),
                 })?;
                 raw_map_lookup(&receiver, key, env, ctx)
             }
