@@ -68,6 +68,48 @@ type CargoTarget
   | Example { name: String }
   | Bench { name: String }
 
+// The per-CargoTarget DEFAULT source-file path — Cargo's target auto-discovery
+// rule, modeled as DATA so the file set DERIVES from the crate model rather than
+// being a hand-declared path list (DESIGN §2 deep). SINGLE AUTHORITY: this is the
+// one place the target→file rule lives; the content-addressed CI gate and (later)
+// the stage0_crates emitter both reuse it instead of re-coining `src/lib.rs` /
+// `src/main.rs` literals. (Cargo Reference: "Package Layout" / "Target
+// auto-discovery".) Returns the structured `FilePathParts` (the grounded path
+// authority), not the `String` alias.
+//
+//   Lib                                  → src/lib.rs
+//   Bin{name} where name == package      → src/main.rs   (the package-named bin)
+//   Bin{name}                            → src/bin/{name}.rs
+//   CargoTest{name}                      → tests/{name}.rs
+//   Example{name}                        → examples/{name}.rs
+//   Bench{name}                          → benches/{name}.rs
+fn cargo_target_source_path(target: CargoTarget, package_name: String) -> FilePathParts {
+  match target {
+    Lib => FilePathParts { segments: ["src", "lib.rs"] }
+    Bin { name: name } =>
+      if name == package_name {
+        FilePathParts { segments: ["src", "main.rs"] }
+      } else {
+        FilePathParts { segments: ["src", "bin", concat(name, ".rs")] }
+      }
+    CargoTest { name: name } => FilePathParts { segments: ["tests", concat(name, ".rs")] }
+    Example { name: name } => FilePathParts { segments: ["examples", concat(name, ".rs")] }
+    Bench { name: name } => FilePathParts { segments: ["benches", concat(name, ".rs")] }
+  }
+}
+
+// A Rust module stem resolves to one of two candidate files (Cargo/rustc module
+// rule): `src/{stem}.rs` OR `src/{stem}/mod.rs`. Modeled as data (the rule, not a
+// resolution — which of the two exists on disk is a host read at gate time, the
+// §3(b) seam). Single authority for the {mod}.rs vs {mod}/mod.rs rule that is
+// today prose in `languages/rust/imports.dag`.
+fn rust_module_candidate_paths(stem: String) -> List<FilePathParts> {
+  [
+    FilePathParts { segments: ["src", concat(stem, ".rs")] },
+    FilePathParts { segments: ["src", stem, "mod.rs"] }
+  ]
+}
+
 // -- Profiles ------------------------------------------------------
 // Cargo allows arbitrary user-defined profiles in Cargo.toml
 // (e.g., [profile.ci-optimized]). Use String to avoid a closed-world
@@ -89,8 +131,8 @@ type CargoFeature {
 type TestHarness = Harness | NoHarness
 
 // -- Constants -----------------------------------------------------
-
-data default_edition: String = "2021"
+// (Edition default is `default_rust_edition: RustEdition` above — the single
+// authority; the old `default_edition: String` lived here and was the fork.)
 
 data default_profile: CargoProfile = "dev"
 

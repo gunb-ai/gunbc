@@ -72,7 +72,9 @@ data bin_entry: String = "src/main.rs"
 
 data cargo_package_template: String = "[package]\nname = \"\{name\}\"\nversion = \"\{version\}\"\nedition = \"\{edition\}\"\n"
 data cargo_deps_header: String = "\n[dependencies]\n"
-data default_edition: String = "2021"
+// Edition default is the single authority `extdeps.cargo.default_rust_edition`
+// (a closed `RustEdition`); render the manifest token via `rust_edition_str`.
+// The old `default_edition: String = "2021"` here was the §3 fork — removed.
 
 // "What crate dependencies does a generated Rust project need?"
 data base_deps: List<CargoDependency> = [
