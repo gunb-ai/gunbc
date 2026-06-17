@@ -81,3 +81,4 @@ jobs:
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/emit_host_gate.dag --function main
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/power_watt_witness.dag --function power_watt_witnesses --claim-run
