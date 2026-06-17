@@ -53,6 +53,7 @@ import v2.std.runtime {
   BranchRuntimeInterpreter,
   LoopRuntimeInterpreter,
   BindRuntimeInterpreter,
+  MatchRuntimeInterpreter,
   Suspend,
   ControlTransfer,
   RuntimeValue,
@@ -1878,6 +1879,84 @@ fn eval_bind_node(
   )
 }
 
+fn eval_match_scrutinee_edge(node: Node) -> Outcome<Edge> {
+  eval_nth_child(
+    node: node,
+    wanted: 0,
+    absent_reason: ^eval_rejected_branch_argument_absent
+  )
+}
+
+fn eval_match_node_eval(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    MatchRuntimeInterpreter { interpreter: match_interpreter } =>
+      bind_outcome(
+        o: eval_match_scrutinee_edge(node: node),
+        f: fn(scrutinee_edge) {
+          bind_outcome(
+            o: eval_runtime_node(
+              node: scrutinee_edge.target,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime,
+              effect_io: effect_io
+            ),
+            f: fn(scrutinee_value) {
+              bind_outcome(
+                o: match_interpreter.choose_arm(node, scrutinee_value, environment),
+                f: fn(chosen) {
+                  eval_runtime_node(
+                    node: chosen,
+                    tree: tree,
+                    interpretation: interpretation,
+                    environment: environment,
+                    runtime: runtime,
+                    effect_io: effect_io
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        eval_diagnostic(reason: ^eval_rejected_type_node, node: node)
+      )
+  }
+}
+
+fn eval_match_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  eval_match_node_eval(
+    node: node,
+    tree: tree,
+    interpretation: interpretation,
+    interpreter: interpreter,
+    environment: environment,
+    runtime: runtime,
+    effect_io: effect_io
+  )
+}
+
 fn eval_computation_node(
   behavior: Behavior,
   node: Node,
@@ -1941,6 +2020,18 @@ fn eval_computation_node(
         )
       BindRuntimeInterpreter { interpreter: _ } =>
         eval_bind_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpretation: interpretation,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime,
+          effect_io: effect_io
+        )
+      MatchRuntimeInterpreter { interpreter: _ } =>
+        eval_match_node(
           node: node,
           args: args,
           facts: facts,

@@ -263,6 +263,11 @@ fn behavior_eq(a: Behavior, b: Behavior) -> Bool {
         Bind => true
         _ => false
       }
+    Match =>
+      match b {
+        Match => true
+        _ => false
+      }
   }
 }
 

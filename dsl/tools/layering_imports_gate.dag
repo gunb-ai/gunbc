@@ -34,3 +34,8 @@ func run_gate() -> ProcessExit {
 func main() -> ProcessExit {
   run_gate()
 }
+
+// Composed CI floor entry point (tools.ci_floor_gates imports this name).
+func run_layering_imports_ci_gate() -> ProcessExit {
+  run_gate()
+}

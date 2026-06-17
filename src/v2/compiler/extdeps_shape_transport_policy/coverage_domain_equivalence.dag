@@ -26,36 +26,36 @@ type ExtdepsShapeTransportPolicyReceiptRow {
 data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit cargo_build policy leak",
   violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_build_test.dag",
   function: "policy_leak_cargo_build_is_red_holds"
 }
 
 data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "corpus cargo_build policy leak",
   violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_build_policy_leak_test.dag",
   function: "corpus_cargo_build_policy_leak_is_red_holds"
 }
 
 data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit clean git diff",
   violation_kind: violation_kind_policy_leak,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
   function: "clean_git_diff_is_green_holds"
 }
 
 data receipt_transport_fusion_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
   label: "lens-unit gcp oauth fusion",
   violation_kind: violation_kind_transport_fusion,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth.dag",
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/transport_fusion_gcp_oauth_test.dag",
   function: "transport_fusion_gcp_oauth_is_red_holds"
 }
 
 data receipt_transport_fusion_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus gcp oauth fusion",
+  label: "corpus gcp oauth de-fused (regression guard)",
   violation_kind: violation_kind_transport_fusion,
-  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork.dag",
-  function: "corpus_gcp_oauth_fusion_fork_is_red_holds"
+  entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_oauth_fusion_fork_test.dag",
+  function: "corpus_gcp_oauth_defused_holds"
 }
 
 data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [

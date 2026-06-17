@@ -1,0 +1,33 @@
+// tools/dsl_compile_clean_gate.dag — whole-tree dsl/ compile-clean gate, run by `gunbc`.
+//
+// Run in CI:
+//   cargo run -p v1-compiler --release --bin gunbc -- run \
+//     --source-root dsl --entry dsl/tools/dsl_compile_clean_gate.dag --function main
+//
+// SCAFFOLD — uses `--target rust` pending v1.compiler.dag_collect identity-key fix (180
+// collisions on `--target dag` emit); flip to `--target dag` when that backend bug lands.
+// Parse→resolve→typecheck front-end is identical; rust emit proves the tree is well-typed.
+
+module tools.dsl_compile_clean_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.dsl_compile_clean_transport {
+  run_clean_tree_compile,
+  run_perturb_optional_skew_red_receipt
+}
+
+func run_gate() -> ProcessExit {
+  let clean = run_clean_tree_compile()
+  let perturb = run_perturb_optional_skew_red_receipt()
+  return if clean && perturb {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "dsl compile-clean gate failed: clean-tree compile and/or perturb red receipt"
+    )
+  }
+}
+
+func main() -> ProcessExit {
+  run_gate()
+}

@@ -389,7 +389,8 @@ fn subsumption_interpretation_structure_witness() -> InterpretationStructureWitn
     call_primitive: ^subsumption_call_primitive_sym,
     choose_branch: ^subsumption_choose_branch_sym,
     step_loop: ^subsumption_step_loop_sym,
-    bind_value: ^subsumption_bind_value_sym
+    bind_value: ^subsumption_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

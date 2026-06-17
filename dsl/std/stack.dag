@@ -56,7 +56,7 @@ fn stack_pop<T>(stack: Stack<T>) -> Stack<T> {
 fn stack_peek<T>(stack: Stack<T>) -> T? {
   match stack {
     Empty => none
-    Push { top: t, rest: _ } => Some { value: t }
+    Push { top: t, rest: _ } => Present { value: t }
   }
 }
 

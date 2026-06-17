@@ -341,7 +341,8 @@ fn eval_mvp2_interpretation_structure_witness() -> InterpretationStructureWitnes
     call_primitive: ^eval_mvp2_call_primitive_sym,
     choose_branch: ^eval_mvp2_choose_branch_sym,
     step_loop: ^eval_mvp2_step_loop_sym,
-    bind_value: ^eval_mvp2_bind_value_sym
+    bind_value: ^eval_mvp2_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 

@@ -82,8 +82,8 @@ fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
     DigestNotReady { first_reason: "draft", more_reasons: [] }
   } else {
     match pr.merged_at {
-      Some { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
-      None =>
+      Present { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
+      Absent =>
         if pr.state != "open" {
           DigestNotReady { first_reason: "not open", more_reasons: [] }
         } else {
@@ -134,7 +134,7 @@ fn render_pull_request_digest_line(view: PullRequestDigestView) -> String {
 fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
   let entries = [
     kv_pair(key: "PR", sep: ": ", value: "#\{view.subject.number\} \{view.subject.title\}"),
-    kv_pair(key: "URL", sep: ": ", value: view.subject.url),
+    kv_pair(key: "URL", sep: ": ", value: view.subject.url as String),
     kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
     kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
     kv_pair(key: "State", sep: ": ", value: view.subject.state),

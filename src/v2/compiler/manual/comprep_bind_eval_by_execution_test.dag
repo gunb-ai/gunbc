@@ -224,7 +224,8 @@ fn comprep_bind_interpretation_structure_witness() -> InterpretationStructureWit
     call_primitive: ^comprep_bind_call_primitive_sym,
     choose_branch: ^comprep_bind_choose_branch_sym,
     step_loop: ^comprep_bind_step_loop_sym,
-    bind_value: ^comprep_bind_bind_value_sym
+    bind_value: ^comprep_bind_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
