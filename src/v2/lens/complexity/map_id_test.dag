@@ -3,6 +3,7 @@ module v2.test.lens_complexity.map_id
 
 import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
 import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
+import v2.std.logic { Bool }
 import v2.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -22,7 +23,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.witness { Witness }
+import v2.std.witness { Holds, Violates, Witness }
 type LensComplexityClaim {
   input: Node
   expected_cost: SymbolicCost
@@ -68,4 +69,22 @@ fn map_id_actual_cost() -> Witness<SymbolicCost> {
 
 fn map_id_actual_complexity() -> Witness<ComplexityBound> {
   complexity_lens(n: map_id_input)
+}
+
+// By-execution gate: cost_lens projects the iterative Cardinality body to the
+// declared LinearCost; a wrong fold (e.g. constant or quadratic) goes RED.
+test fn map_id_cost_projection_holds() -> Bool {
+  match map_id_actual_cost() {
+    Holds { value: actual } => actual == map_id_claim.expected_cost
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// By-execution gate: the complexity lens (asymptotic projection of cost_lens)
+// yields the declared linear bound. Discriminates a mis-projected class/variable.
+test fn map_id_complexity_projection_holds() -> Bool {
+  match map_id_actual_complexity() {
+    Holds { value: actual } => actual == map_id_claim.expected_complexity
+    Violates { diagnostic: _ } => false
+  }
 }
