@@ -60,26 +60,21 @@ data ci_workflow: Workflow = {
         run: concat(
           concat(
             concat(
-              concat(
-                "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
-                "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
-              ),
-              "echo \"SCCACHE_DIR=$RUNNER_TEMP/sccache\" >> \"$GITHUB_ENV\"\n"
+              "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
+              "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
             ),
-            concat(
-              "echo \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n",
-              "sccache --stop-server >/dev/null 2>&1 || true\n"
-            )
+            "echo \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n"
           ),
           concat(
             concat(
-              "sccache --start-server >/dev/null 2>&1 || { echo \"::error::sccache server failed to start (SCCACHE_DIR=$SCCACHE_DIR)\"; exit 1; }\n",
-              "sccache --show-stats >/dev/null 2>&1 || { echo \"::error::sccache unreachable after start\"; exit 1; }\n"
+              "# Fleet runners expose SCCACHE_SERVER_UDS; never sccache --stop-server (#4991).\n",
+              "if sccache --show-stats >/dev/null 2>&1; then\n"
             ),
             concat(
-              "echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
-              "echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\""
-            )
+              "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
+              "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n"
+            ),
+            "fi"
           )
         ),
         shell: none,
@@ -142,16 +137,13 @@ data ci_workflow: Workflow = {
             kv(key: "path", value: yaml_string(s: concat(
               concat(
                 concat(
-                  concat(
-                    "${{ runner.temp }}/cargo/registry/index/\n",
-                    "${{ runner.temp }}/cargo/registry/cache/\n"
-                  ),
-                  concat(
-                    "${{ runner.temp }}/cargo/git/db/\n",
-                    "${{ runner.temp }}/sccache/\n"
-                  )
+                  "${{ runner.temp }}/cargo/registry/index/\n",
+                  "${{ runner.temp }}/cargo/registry/cache/\n"
                 ),
-                "target/"
+                concat(
+                  "${{ runner.temp }}/cargo/git/db/\n",
+                  "target/"
+                )
               ),
               ""
             ))),

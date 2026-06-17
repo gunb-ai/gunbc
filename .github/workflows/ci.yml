@@ -24,13 +24,7 @@ jobs:
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
           echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-          sccache --stop-server >/dev/null 2>&1 || true
-          sccache --start-server >/dev/null 2>&1 || { echo "::error::sccache server failed to start (SCCACHE_DIR=$SCCACHE_DIR)"; exit 1; }
-          sccache --show-stats >/dev/null 2>&1 || { echo "::error::sccache unreachable after start"; exit 1; }
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -52,7 +46,6 @@ jobs:
             ${{ runner.temp }}/cargo/registry/index/
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
-            ${{ runner.temp }}/sccache/
             target/
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
