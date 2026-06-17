@@ -5,7 +5,8 @@
 //   validate_module_roots + resolve_with_admission so the compile pipeline ingests MANY
 //   DagSourceReadWitness rows, not a single Source string.
 // Status: producing fold landed — module_roots_from_source_root_ingest +
-//   assemble_program_from_ingest; compile entry wired from 00_compile.dag.
+//   assemble_program_from_module_roots / assemble_program_from_ingest;
+//   compile_source_root_ingest_with_admission in 00_compile.dag.
 // Anchor: stage C multi-file ingestion (merry-crab-687 Lane 3).
 
 module v2.compiler.program_assembly
@@ -123,7 +124,26 @@ fn module_roots_from_source_root_ingest(
 }
 
 
-// Program assembly: validated module roots + cross-file admission → single resolved CoreNode.
+// Validated module roots + cross-file admission → single resolved program CoreNode.
+fn assemble_program_from_module_roots(
+  roots: FreeMonoid<Node>,
+  admission: Admission,
+  lm: DagLanguageModel
+) -> Outcome<Node> {
+  bind_outcome(
+    o: validate_module_roots(roots: roots),
+    f: fn(validated_roots) {
+      resolve_with_admission(
+        lm: lm,
+        roots: validated_roots,
+        admission: admission
+      )
+    }
+  )
+}
+
+
+// Program assembly: whole ingest monoid → validated roots → admitted resolved program.
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
@@ -132,15 +152,10 @@ fn assemble_program_from_ingest(
   bind_outcome(
     o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
     f: fn(roots) {
-      bind_outcome(
-        o: validate_module_roots(roots: roots),
-        f: fn(validated_roots) {
-          resolve_with_admission(
-            lm: lm,
-            roots: validated_roots,
-            admission: admission
-          )
-        }
+      assemble_program_from_module_roots(
+        roots: roots,
+        admission: admission,
+        lm: lm
       )
     }
   )
