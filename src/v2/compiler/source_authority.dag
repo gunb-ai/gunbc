@@ -730,11 +730,11 @@ fn canonical_dag_source_from_emitted(
   )
 }
 
-// Serializer determinism + parse/print for emission from an IR node (routes through existing law).
-fn canonical_dag_source_emission_law_from_emitted(
+// Serializer determinism for IR-node emission (routes through deterministic_dag_source_serializer_witness).
+fn canonical_dag_source_serializer_determinism_from_emitted(
   emitted: Node,
   canonical_source_target: TargetModel
-) -> Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
+) -> Outcome<Witness<DeterministicDagSourceSerializerLaw>> {
   bind_outcome(
     o: canonical_dag_source_from_emitted(
       emitted: emitted,
@@ -747,21 +747,11 @@ fn canonical_dag_source_emission_law_from_emitted(
           canonical_source_target: canonical_source_target
         ),
         f: fn(canonical_source_second) {
-          bind_outcome(
-            o: parse_dag_source_ast(source: canonical_source_first),
-            f: fn(original_ast) {
-              bind_outcome(
-                o: parse_dag_source_ast(source: canonical_source_first),
-                f: fn(reparsed_ast) {
-                  canonical_dag_source_emission_law_from_parts(
-                    original_ast: original_ast,
-                    canonical_source_first: canonical_source_first,
-                    canonical_source_second: canonical_source_second,
-                    reparsed_ast: reparsed_ast
-                  )
-                }
-              )
-            }
+          outcome_accepted(
+            value: deterministic_dag_source_serializer_witness(
+              first: canonical_source_first,
+              second: canonical_source_second
+            )
           )
         }
       )

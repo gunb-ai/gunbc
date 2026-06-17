@@ -3,8 +3,8 @@
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
 import v2.compiler.source_authority {
-  canonical_dag_source_emission_law_from_emitted,
   canonical_dag_source_from_emitted,
+  canonical_dag_source_serializer_determinism_from_emitted,
   dag_source_patch_from_applied_diff
 }
 import v2.extdeps.languages.dag {
@@ -58,7 +58,7 @@ fn serialize_loop_before_after_differ() -> Bool {
 }
 
 fn serialize_loop_serializer_law_holds() -> Bool {
-  match canonical_dag_source_emission_law_from_emitted(
+  match canonical_dag_source_serializer_determinism_from_emitted(
     emitted: dag_mvp1_fixture_emitted_loop_fn,
     canonical_source_target: serialize_loop_target
   ) {
