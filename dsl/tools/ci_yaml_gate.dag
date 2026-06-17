@@ -13,15 +13,22 @@ module tools.ci_yaml_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
+import gunbc.ci_yaml_validate { ci_yml_parses }
 
 data ci_yml_path: String = ".github/workflows/ci.yml"
 
 func run_gate() -> ProcessExit {
   let committed = Filesystem.Read(path: ci_yml_path)
-  return if committed.success && !ci_yml_drifted(committed: committed.content) {
+  let drift_ok = committed.success && !ci_yml_drifted(committed: committed.content)
+  let parse_ok = ci_yml_parses(path: ci_yml_path)
+  return if drift_ok && parse_ok {
     ExitSuccess
-  } else {
+  } else if !drift_ok {
     exit_failure(reason: "ci.yml drift: regenerate via main_wet on dsl/tools/ci_yaml_gate.dag")
+  } else {
+    exit_failure(
+      reason: "ci.yml does not parse as YAML (install python3-yaml or actionlint; see gunbc.ci_yaml_validate)"
+    )
   }
 }
 
