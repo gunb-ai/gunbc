@@ -4222,6 +4222,17 @@ fn eval_builtin(
             }),
         },
 
+        "filesystem_read" => {
+            let path = expect_str(positional.first().copied(), "filesystem_read")?;
+            let result = v1_rt::filesystem_read(path);
+            let mut fields = HashMap::new();
+            fields.insert(ctx.sym("content"), Value::Str(result.content));
+            Ok(Some(Value::Record {
+                type_name: ctx.sym("FilesystemReadResult"),
+                fields: Rc::new(fields),
+            }))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }
