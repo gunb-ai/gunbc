@@ -49,6 +49,14 @@ struct Config {
     perturb: bool,
     print_tsv_only: bool,
     notice_title: String,
+    /// Opt-in (`--rust-gates`): after the witness floor passes, run the conditional
+    /// Rust-monolith clippy/fmt gates. Off by default (backward compatible).
+    rust_gates: bool,
+    /// Explicit changed paths for the Rust-gate selector (`--changed-path`, repeatable).
+    /// Empty → fall back to `git diff` against `rust_gates_base`.
+    rust_gates_changed_paths: Vec<String>,
+    /// Merge base for the Rust-gate `git diff` fallback (`--base`, default `origin/main`).
+    rust_gates_base: String,
 }
 
 // Mirror of discover_owned_data's default exclude set: the manifest/law files that
@@ -71,7 +79,8 @@ fn usage() -> ! {
         "usage: ci-claim-gate --source-root <dir> [--source-root <dir> ...] \\\n\
          \x20       ( --gate-entry <file.dag> --rows-fn <function>          \\\n\
          \x20       | --roster-from-discovery --scan-dir <dir> [--scan-dir <dir> ...] ) \\\n\
-         \x20       [--perturb-check] [--print-tsv-only] [--notice-title <title>]"
+         \x20       [--perturb-check] [--print-tsv-only] [--notice-title <title>] \\\n\
+         \x20       [--rust-gates [--changed-path <p> ...] [--base <ref>]]"
     );
     std::process::exit(2);
 }
@@ -86,6 +95,9 @@ fn parse_args() -> Config {
     let mut perturb = false;
     let mut print_tsv_only = false;
     let mut notice_title = "v2 CI claim gate".to_string();
+    let mut rust_gates = false;
+    let mut rust_gates_changed_paths: Vec<String> = Vec::new();
+    let mut rust_gates_base = "origin/main".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -112,6 +124,15 @@ fn parse_args() -> Config {
             "--notice-title" => {
                 i += 1;
                 notice_title = args.get(i).cloned().unwrap_or_else(|| usage());
+            }
+            "--rust-gates" => rust_gates = true,
+            "--changed-path" => {
+                i += 1;
+                rust_gates_changed_paths.push(args.get(i).cloned().unwrap_or_else(|| usage()));
+            }
+            "--base" => {
+                i += 1;
+                rust_gates_base = args.get(i).cloned().unwrap_or_else(|| usage());
             }
             other => {
                 eprintln!("ci-claim-gate: unknown argument: {other}");
@@ -154,6 +175,9 @@ fn parse_args() -> Config {
         perturb,
         print_tsv_only,
         notice_title,
+        rust_gates,
+        rust_gates_changed_paths,
+        rust_gates_base,
     }
 }
 
@@ -461,6 +485,163 @@ fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Rust-monolith conditional gates (folded from the former `rust_gate_runner`).
+//
+// `src/v2/workflow/rust_stage0_gates.dag` is the *selection authority*: it decides
+// which changed paths belong to the Rust monolith (`path_is_rust_monolith`). This
+// phase REALIZES that model's clippy/fmt dependents — it asks the selector (per
+// changed path, String in / Bool out, evaluated in-interpreter so the matching
+// logic is never re-implemented here) and, if any path is Rust, runs the two host
+// gates: `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings`.
+//
+// The in-process witness gate above is the ALWAYS-ON CI floor; this only adds the
+// two gates conditional on the Rust seed changing. FAIL-CLOSED BIAS (§5): if the
+// diff cannot be determined (git error or empty result), the gates run anyway —
+// under-firing ships broken Rust silently, over-firing only costs CI time.
+//
+// SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7).
+// ---------------------------------------------------------------------------
+
+/// Selection authority: the `.dag` model that decides Rust-monolith membership.
+const RUST_GATES_ENTRY: &str = "src/v2/workflow/rust_stage0_gates.dag";
+/// The selector predicate (`path: String -> Bool`) consulted per changed path.
+const RUST_GATES_PREDICATE: &str = "path_is_rust_monolith";
+
+/// `Some(paths)` if the diff was determined, `None` if it could not be (spawn error,
+/// non-zero git status, or empty output). The caller treats `None` as fail-closed.
+fn changed_paths_from_git(base: &str) -> Option<Vec<String>> {
+    let out = Command::new("git")
+        .args(["diff", "--name-only", &format!("{base}...HEAD")])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let paths: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if paths.is_empty() {
+        None
+    } else {
+        Some(paths)
+    }
+}
+
+/// Ask the `.dag` selector whether any changed path belongs to the Rust monolith. The
+/// selector is the authority — this never re-implements the matching. `Err(code)` on a
+/// selector-transport error (exit 2).
+fn rust_touched_via_selector(source_roots: &[String], paths: &[String]) -> Result<bool, ExitCode> {
+    let index = build_multi_entry_index(source_roots);
+    let (graph, si) = match resolve_entry_with_index(&index, RUST_GATES_ENTRY) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("ci-claim-gate (rust gates): resolve {RUST_GATES_ENTRY}: {e}");
+            return Err(ExitCode::from(2));
+        }
+    };
+    let ctx = make_eval_context(&graph, si);
+    for p in paths {
+        match run_in_context_with_args(
+            &ctx,
+            RUST_GATES_PREDICATE,
+            &[(Some("path".to_string()), Value::Str(p.clone()))],
+            false,
+        ) {
+            Ok(Value::Bool(true)) => return Ok(true),
+            Ok(Value::Bool(false)) => {}
+            Ok(other) => {
+                eprintln!(
+                    "ci-claim-gate (rust gates): {RUST_GATES_PREDICATE} returned `{other}`, expected Bool"
+                );
+                return Err(ExitCode::from(2));
+            }
+            Err(e) => {
+                eprintln!("ci-claim-gate (rust gates): {e}");
+                return Err(ExitCode::from(2));
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// Run both Rust gates, fail-closed, without short-circuiting — so a single CI run reports
+/// every failing gate, not just the first. Returns `true` iff all gates passed.
+fn run_rust_gates() -> bool {
+    let gates: [(&str, &[&str]); 2] = [
+        ("cargo fmt --all --check", &["fmt", "--all", "--check"]),
+        (
+            "cargo clippy --all-targets -- -D warnings",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+        ),
+    ];
+    let mut failures: Vec<&str> = Vec::new();
+    for (name, args) in gates {
+        println!("ci-claim-gate (rust gates): running {name}");
+        match Command::new("cargo").args(args).status() {
+            Ok(s) if s.success() => {}
+            Ok(_) => failures.push(name),
+            Err(e) => {
+                eprintln!("ci-claim-gate (rust gates): failed to spawn `{name}`: {e}");
+                failures.push(name);
+            }
+        }
+    }
+    if failures.is_empty() {
+        println!("ci-claim-gate (rust gates): all Rust gates passed (fmt, clippy)");
+        true
+    } else {
+        for name in &failures {
+            eprintln!("::error::rust gate failed: {name}");
+        }
+        false
+    }
+}
+
+/// The conditional Rust-gate phase: determine the changed paths (explicit `--changed-path`
+/// or `git diff` fallback, fail-closed), ask the `.dag` selector whether the Rust monolith
+/// was touched, and run clippy/fmt iff so. Returns `None` when the phase passed or skipped
+/// (caller continues), or `Some(code)` to short-circuit `main` with that exit code.
+fn run_rust_gates_phase(cfg: &Config) -> Option<ExitCode> {
+    let (paths, fail_closed): (Vec<String>, bool) = if !cfg.rust_gates_changed_paths.is_empty() {
+        (cfg.rust_gates_changed_paths.clone(), false)
+    } else {
+        match changed_paths_from_git(&cfg.rust_gates_base) {
+            Some(p) => (p, false),
+            None => {
+                println!(
+                    "ci-claim-gate (rust gates): could not determine changed paths (git error or empty) — running gates fail-closed"
+                );
+                (Vec::new(), true)
+            }
+        }
+    };
+
+    let rust_touched = if fail_closed {
+        true
+    } else {
+        match rust_touched_via_selector(&cfg.source_roots, &paths) {
+            Ok(t) => t,
+            Err(code) => return Some(code),
+        }
+    };
+
+    if !rust_touched {
+        println!(
+            "ci-claim-gate (rust gates): no Rust-monolith path in diff — clippy/fmt skipped (in-process witness gate is the always-on floor)"
+        );
+        return None;
+    }
+
+    if run_rust_gates() {
+        None
+    } else {
+        Some(ExitCode::from(1))
+    }
+}
+
 fn main() -> ExitCode {
     let cfg = parse_args();
     if cfg.source_roots.is_empty() {
@@ -542,5 +723,14 @@ fn main() -> ExitCode {
         cfg.notice_title,
         rows.len()
     );
+
+    // Conditional Rust-monolith gates (opt-in). The witness floor above is always-on;
+    // these only fire when the diff touches the Rust seed (per the `.dag` selector).
+    if cfg.rust_gates {
+        if let Some(code) = run_rust_gates_phase(&cfg) {
+            return code;
+        }
+    }
+
     ExitCode::SUCCESS
 }
