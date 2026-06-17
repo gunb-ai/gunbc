@@ -21,7 +21,6 @@ import v2.std.leaf_model_verification {
   leaf_model_claim_python_r1_int_surface_spelling,
   TargetPythonExerciseVerdict,
   TargetPythonExecRejected,
-  target_diagnostic_python_name_error_undefined_name
 }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -101,5 +100,5 @@ data claim_python_r1_surface_spelling_fact_ids_stable: TestClaim = EqualsClaim {
 }
 
 data python_r1_modeled_falsification_expectation: TargetPythonExerciseVerdict = TargetPythonExecRejected {
-  diagnostic_code: target_diagnostic_python_name_error_undefined_name
+  diagnostic_code: ^target_diagnostic_python_name_error_undefined_name
 }

@@ -43,10 +43,8 @@ import v2.std.diagnostic {
 }
 import v2.std.find_witness {
   TargetDeclaredPriority,
-  find_witness_reason_no_candidate
 }
 import v2.std.node { Node }
-import v2.std.compilers.target_model { target_model_edge_declared_inhabitants }
 import v2.std.verdict { Fail, Pass, Deferred }
 import v2.std.verification {
   CompilesClaim,
@@ -85,7 +83,7 @@ fn cross_target_python_to_rust_i32_coercion_fold() -> Outcome<CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
       inhabitants_root: rust_declared_inhabitants_root(),
-      closedness_property: target_model_edge_declared_inhabitants
+      closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       coercion_fold(
@@ -106,7 +104,7 @@ fn coercion_outcome_node_projection(actual: Outcome<CoercionResult>) -> Outcome<
 }
 
 data cross_target_upstream_find_witness_rejection: Diagnostic = Diagnostic {
-  reason: find_witness_reason_no_candidate,
+  reason: ^find_witness_reason_no_candidate,
   at: node_locus(node: python_int_inhabitant_node()),
   correction: Unavailable { reason: ExternalContractUnknown }
 }
@@ -184,7 +182,7 @@ fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<CoercionResult
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
       inhabitants_root: python_declared_inhabitants_root(),
-      closedness_property: target_model_edge_declared_inhabitants
+      closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       coercion_fold_mvp_rust_i32_to_python_int_widening(
@@ -233,7 +231,7 @@ fn cross_target_python_to_rust_i32_narrowing_fold() -> Outcome<CoercionResult> {
   bind_outcome(
     o: coercion_candidate_set_from_declared_inhabitants(
       inhabitants_root: rust_declared_inhabitants_root(),
-      closedness_property: target_model_edge_declared_inhabitants
+      closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       coercion_fold_mvp_python_int_to_rust_i32_narrowing(

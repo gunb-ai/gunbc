@@ -63,7 +63,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.compilers.target_model { TargetModel}
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.verification {
   CompilesClaim,
   DiagnosticClaim,

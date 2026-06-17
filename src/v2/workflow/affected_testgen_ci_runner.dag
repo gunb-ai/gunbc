@@ -34,7 +34,6 @@ import v2.std.verification {
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.find_witness {
   PreservationPredicate,
-  preservation_rule_constraint_satisfaction
 }
 import v2.lens.testgen {
   testgen_emit_witness_validity_claim
@@ -47,16 +46,6 @@ import v2.test.lens_common.infer_fixture {
 }
 
 
-data affected_testgen_graph_root_symbol: Symbol = ^affected_testgen_graph_root_symbol
-data affected_testgen_graph_edge_symbol: Symbol = ^affected_testgen_graph_edge_symbol
-data affected_testgen_source_dependency_symbol: Symbol = ^affected_testgen_source_dependency_symbol
-data affected_testgen_generated_input_symbol: Symbol = ^affected_testgen_generated_input_symbol
-data affected_testgen_source_dependency_edge_symbol: Symbol = ^affected_testgen_source_dependency_edge_symbol
-data affected_testgen_generated_claim_artifact_id: Symbol = ^affected_testgen_generated_claim_artifact_id
-data affected_testgen_source_dependency_artifact_id: Symbol = ^affected_testgen_source_dependency_artifact_id
-data affected_testgen_type_symbol: Symbol = ^affected_testgen_type_symbol
-data affected_testgen_algebra_symbol: Symbol = ^affected_testgen_algebra_symbol
-data affected_testgen_descent_symbol: Symbol = ^affected_testgen_descent_symbol
 data affected_testgen_path_witness_validity: RepoPath = "src/v2/compiler/generated/witness_validity.dag"
 data affected_testgen_path_source_dependency: RepoPath = "src/v2/compiler/manual/connective_anchors.dag"
 data affected_testgen_path_unrelated: RepoPath = "src/v2/compiler/generated/refinement_preservation.dag"
@@ -64,17 +53,17 @@ data affected_testgen_generated_claim_label: String = "witness-validity: constra
 
 
 data affected_testgen_generated_claim_input: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_testgen_generated_input_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^affected_testgen_generated_input_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 
 data affected_testgen_source_dependency: Node = Node {
-  kind: TypeNode { connective: Atom { identity: affected_testgen_source_dependency_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^affected_testgen_source_dependency_symbol } },
   children: [
     Edge {
-      label: Named { name: affected_testgen_source_dependency_edge_symbol },
+      label: Named { name: ^affected_testgen_source_dependency_edge_symbol },
       target: affected_testgen_generated_claim_input
     }
   ],
@@ -86,7 +75,7 @@ data affected_testgen_graph_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: affected_testgen_graph_edge_symbol },
+      label: Named { name: ^affected_testgen_graph_edge_symbol },
       target: affected_testgen_source_dependency
     }
   ],
@@ -96,14 +85,14 @@ data affected_testgen_graph_root: Node = Node {
 
 data affected_testgen_generated_claim_artifact: Artifact = Artifact {
   kind: SourceFile,
-  id: affected_testgen_generated_claim_artifact_id,
+  id: ^affected_testgen_generated_claim_artifact_id,
   file_path: affected_testgen_path_witness_validity
 }
 
 
 data affected_testgen_source_dependency_artifact: Artifact = Artifact {
   kind: SourceFile,
-  id: affected_testgen_source_dependency_artifact_id,
+  id: ^affected_testgen_source_dependency_artifact_id,
   file_path: affected_testgen_path_source_dependency
 }
 
@@ -139,9 +128,9 @@ fn affected_testgen_claim_tree() -> InferredTree {
   claim_inferred_tree(
     root: affected_testgen_graph_root,
     facts: claim_inferred_facts(
-      type_symbol: affected_testgen_type_symbol,
-      algebra_symbol: affected_testgen_algebra_symbol,
-      descent_symbol: affected_testgen_descent_symbol
+      type_symbol: ^affected_testgen_type_symbol,
+      algebra_symbol: ^affected_testgen_algebra_symbol,
+      descent_symbol: ^affected_testgen_descent_symbol
     )
   )
 }
@@ -168,10 +157,10 @@ fn affected_testgen_emit_generated_claim() -> Outcome<TestClaim> {
     candidate: affected_testgen_generated_claim_input,
     predicate: PreservationPredicate {
       algebra: stub_empty_conj,
-      preservation_rule: preservation_rule_constraint_satisfaction,
+      preservation_rule: ^preservation_rule_constraint_satisfaction,
     },
     witness: StructuralPropertyWitness {
-      property: preservation_rule_constraint_satisfaction,
+      property: ^preservation_rule_constraint_satisfaction,
       evidence: stub_empty_conj,
     }
   )

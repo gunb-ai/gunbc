@@ -35,13 +35,12 @@ import v2.test.manual.connective_anchors { stub_empty_conj }
 import v2.compiler.target_carriers { TargetSource }
 
 
-data comprep_b3_claim_pin: Symbol = comprep_b3_claim_pin
 
 fn comprep_b3_emit_host_fixture_inputs() -> Inputs {
   inputs_for_emit_host(
     claim_input_root: stub_empty_conj,
     expected_eval_root: stub_empty_conj,
-    claim_pin: comprep_b3_claim_pin
+    claim_pin: ^comprep_b3_claim_pin
   )
 }
 

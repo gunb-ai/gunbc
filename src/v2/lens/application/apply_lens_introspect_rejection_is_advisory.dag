@@ -7,7 +7,6 @@ import v2.compiler.compile {
   CompileLensEnforce,
   CompileLensIntrospect,
   apply_compile_lens,
-  compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic
 }
 import v2.compiler.infer { InferredTree }
@@ -56,7 +55,7 @@ fn apply_lens_mode_gate_rejects_enforce() -> Bool {
     inferred: apply_lens_mode_tree(),
     mode: CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -65,7 +64,7 @@ fn apply_lens_mode_gate_rejects_enforce() -> Bool {
 // the original gate rejection reason (not a fabricated diagnostic).
 fn introspect_witness_violates_reason_matches(w: Witness<Node>) -> Bool {
   match w {
-    Violates { diagnostic: d } => d.reason == compile_lens_gate_rejected
+    Violates { diagnostic: d } => d.reason == ^compile_lens_gate_rejected
     Holds { value: _ } => false
   }
 }
@@ -75,7 +74,7 @@ fn introspect_witness_violates_reason_matches(w: Witness<Node>) -> Bool {
 // gate rejection reason. Does not pin locus, tail, or correction — only head.reason identity.
 fn introspect_diagnostics_head_reason_matches(od: Diagnostics) -> Bool {
   match od {
-    Some { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Some { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     None => false
   }
 }

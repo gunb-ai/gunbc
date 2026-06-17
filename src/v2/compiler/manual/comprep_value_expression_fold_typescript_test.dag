@@ -51,12 +51,6 @@ import v2.std.compilers.target_model {
   TargetModel,
   canonical_operation_op_add,
   concrete_syntax_token_list_to_node,
-  target_model_edge_declared_inhabitants,
-  target_model_edge_operator_realizations,
-  target_model_edge_selection_policy,
-  target_model_edge_serialize_source,
-  target_model_edge_translation_rules,
-  target_model_edge_value_expression_projection,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   target_project_arrow_body_to_value_expression,
@@ -93,29 +87,29 @@ fn comprep_fold_target_model_bundle(operator_catalog: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       comprep_fold_named_edge(
-        name: target_model_edge_selection_policy,
+        name: ^target_model_edge_selection_policy,
         target: ts_mvp1_selection_policy_node()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_declared_inhabitants,
+        name: ^target_model_edge_declared_inhabitants,
         target: ts_mvp1_declared_inhabitants_root()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_translation_rules,
+        name: ^target_model_edge_translation_rules,
         target: ts_mvp1_translation_rules_node()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_serialize_source,
+        name: ^target_model_edge_serialize_source,
         target: ts_mvp1_serialize_source_node()
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_value_expression_projection,
+        name: ^target_model_edge_value_expression_projection,
         target: value_expr_projection_bundle_node(
           projection: ts_value_expression_projection()
         )
       ),
       comprep_fold_named_edge(
-        name: target_model_edge_operator_realizations,
+        name: ^target_model_edge_operator_realizations,
         target: operator_catalog
       )
     ]

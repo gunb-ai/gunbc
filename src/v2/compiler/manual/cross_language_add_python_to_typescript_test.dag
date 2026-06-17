@@ -92,15 +92,12 @@ type ParseTreeToTargetModelBridge {
 
 type ParseTreeToTargetModelBridgeCheck = Witness<ParseTreeToTargetModelBridge>
 
-data parse_tree_to_target_model_bridge_not_realized: Symbol = parse_tree_to_target_model_bridge_not_realized
-data cross_language_bridge_port: Symbol = cross_language_bridge_port
 
 // Honest, BOUND label for what the per-merge typed check actually covers: the bridge fn is realized,
 // proven on the hermetic DISCRIMINATING fixture in ingest_bridge.dag (frontier recovery + perturbed-
 // frontier RED + fail-closed) — NOT the real nested python tree, which the heavy `…chain_status_holds`
 // applies the bridge to by execution (~627s). Replaces the prior unbound `^cross_language_python_add_
 // parse_tree` decorative atom that misleadingly named a real python parse tree never fed to the bridge.
-data ingest_bridge_hermetic_fixture_parse_tree: Symbol = ingest_bridge_hermetic_fixture_parse_tree
 
 // Named regression guard: un-neutralized cross-language emit still fails closed — the python add
 // core carries python `int` while TS rows key on `number`, so infer→emit(target: ts) rejects without
@@ -108,13 +105,11 @@ data ingest_bridge_hermetic_fixture_parse_tree: Symbol = ingest_bridge_hermetic_
 // hermetic receipt: inhabitant_neutralization_emit_after_neutralize_holds) and is wired into
 // cross_language_compile. Verified: emit(python add core, target: ts) -> Rejected;
 // neutralize→emit -> Accepted (hermetic); cross_language_compile -> Accepted (heavy e2e).
-data cross_language_emit_inhabitant_neutralization_not_realized: Symbol = cross_language_emit_inhabitant_neutralization_not_realized
 
 // Named break point for the go cell: go's grammar validates but its add-fn parse
 // production currently rejects (go_mvp1_grammar_validates_fixture=true,
 // go_mvp1_grammar_parse_accepted=false, both by execution). This is a distinct,
 // upstream-of-the-bridge gap — reported, not hidden.
-data go_add_parse_production_currently_rejects: Symbol = go_add_parse_production_currently_rejects
 
 // Holds iff the forward interpreter is realized — proven HERMETICALLY (real bridge applied,
 // sub-second) by `ingest_bridge_realized`: frontier recovery + canonical IR + perturbed-frontier
@@ -132,15 +127,15 @@ fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetMode
   if ingest_bridge_realized() {
     Holds {
       value: ParseTreeToTargetModelBridge {
-        source_parse_tree: ingest_bridge_hermetic_fixture_parse_tree,
+        source_parse_tree: ^ingest_bridge_hermetic_fixture_parse_tree,
         intended_target_language: ^typescript
       }
     }
   } else {
     Violates {
       diagnostic: Diagnostic {
-        reason: parse_tree_to_target_model_bridge_not_realized,
-        at: port_locus(port: cross_language_bridge_port),
+        reason: ^parse_tree_to_target_model_bridge_not_realized,
+        at: port_locus(port: ^cross_language_bridge_port),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }
@@ -161,7 +156,7 @@ test fn parse_tree_to_target_model_bridge_realized() -> Bool {
 // true) so any regression that un-realizes the bridge re-trips this to true — the named-gap guard.
 fn parse_tree_to_target_model_bridge_fails_closed() -> Bool {
   match parse_tree_to_target_model_bridge_scaffold() {
-    Violates { diagnostic: d } => d.reason == parse_tree_to_target_model_bridge_not_realized
+    Violates { diagnostic: d } => d.reason == ^parse_tree_to_target_model_bridge_not_realized
     Holds { value: _ } => false
   }
 }
@@ -309,7 +304,7 @@ data cross_language_emit_matrix: List<CrossLanguageEmitMatrixRow> = [
   CrossLanguageEmitMatrixRow {
     source_language: ^go,
     target_language: ^typescript,
-    status: ChainFailsClosedAtCheck { check: go_add_parse_production_currently_rejects }
+    status: ChainFailsClosedAtCheck { check: ^go_add_parse_production_currently_rejects }
   }
 ]
 

@@ -32,32 +32,27 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-data scheduler_root_symbol: Symbol = scheduler_root_symbol
-data scheduler_build_symbol: Symbol = scheduler_build_symbol
-data scheduler_test_symbol: Symbol = scheduler_test_symbol
-data scheduler_emit_symbol: Symbol = scheduler_emit_symbol
-data scheduler_missing_source_symbol: Symbol = scheduler_missing_source_symbol
 
 data scheduler_build_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: scheduler_build_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^scheduler_build_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_test_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: scheduler_test_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^scheduler_test_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_emit_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: scheduler_emit_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^scheduler_emit_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data scheduler_missing_source_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: scheduler_missing_source_symbol } },
+  kind: TypeNode { connective: Atom { identity: ^scheduler_missing_source_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
@@ -65,9 +60,9 @@ data scheduler_missing_source_node: Node = Node {
 data scheduler_fixture_graph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: scheduler_build_symbol }, target: scheduler_build_node },
-    Edge { label: Named { name: scheduler_test_symbol }, target: scheduler_test_node },
-    Edge { label: Named { name: scheduler_emit_symbol }, target: scheduler_emit_node }
+    Edge { label: Named { name: ^scheduler_build_symbol }, target: scheduler_build_node },
+    Edge { label: Named { name: ^scheduler_test_symbol }, target: scheduler_test_node },
+    Edge { label: Named { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
   ],
   occurrence_id: SyntheticOccurrence
 }

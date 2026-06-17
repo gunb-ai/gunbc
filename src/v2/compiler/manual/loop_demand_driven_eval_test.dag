@@ -49,8 +49,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   SyntheticOccurrence,
-  arrow_body_edge,
-  loop_bound_edge
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -239,7 +237,7 @@ fn loop_eval_loop_node(body: Node) -> Node {
     occurrence_id: SyntheticOccurrence,
     children: [
       Edge { label: Positional, target: body },
-      Edge { label: Named { name: loop_bound_edge }, target: loop_eval_measure() }
+      Edge { label: Named { name: ^loop_bound_edge }, target: loop_eval_measure() }
     ]
   }
 }
@@ -267,7 +265,7 @@ fn loop_eval_arrow_with_body(body: Node) -> Node {
       },
       Edge { label: Positional, target: loop_eval_i64() },
       Edge { label: Positional, target: loop_eval_i64() },
-      Edge { label: Named { name: arrow_body_edge }, target: body }
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ]
   }
 }

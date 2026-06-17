@@ -32,7 +32,6 @@ import v2.std.inhabitant_neutralization {
   target_inhabitant_for_std_projection
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.inhabitant_bridge { std_projection_additive_numeric }
 import v2.std.logic { Bool }
 import v2.std.verification {
   BoolWitness,
@@ -49,14 +48,14 @@ import v2.std.verification {
 
 fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
-    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
-    std_projection: std_projection_additive_numeric,
+    std_projection: ^std_projection_additive_numeric,
     target: ts_mvp1_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -68,7 +67,7 @@ fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(
     inhabitant: go_int64_additive_numeric_inhabitant_node()
   ) {
-    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
     Rejected { diagnostics: _ } => false
   }
 }
@@ -77,14 +76,14 @@ fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> B
   match inhabitant_std_projection_symbol(
     inhabitant: go_int_additive_numeric_inhabitant_node()
   ) {
-    Accepted { value: proj, diagnostics: _ } => proj == std_projection_additive_numeric
+    Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bool {
   match target_inhabitant_for_std_projection(
-    std_projection: std_projection_additive_numeric,
+    std_projection: ^std_projection_additive_numeric,
     target: go_mvp1_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -96,7 +95,7 @@ fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bo
 // platform int via go_mvp1_selection_policy (go_int_inhabitant_node fact-alignment).
 fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds() -> Bool {
   match target_inhabitant_for_std_projection(
-    std_projection: std_projection_additive_numeric,
+    std_projection: ^std_projection_additive_numeric,
     target: go_mvp1_target_model()
   ) {
     Accepted { value: selected, diagnostics: _ } =>
@@ -108,7 +107,7 @@ fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platfor
 // (B) fail-closed discrimination: tiebreak winner is a function of selection_policy, not hardcoded.
 test fn inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds() -> Bool {
   match target_inhabitant_for_std_projection(
-    std_projection: std_projection_additive_numeric,
+    std_projection: ^std_projection_additive_numeric,
     target: go_mvp1_target_model_int64_selection_policy()
   ) {
     Accepted { value: selected, diagnostics: _ } =>

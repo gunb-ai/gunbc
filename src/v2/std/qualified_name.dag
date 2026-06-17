@@ -7,7 +7,6 @@
 module v2.std.qualified_name
 
 
-import v2.std.algebra { fold_list_node_head, fold_list_node_tail }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -111,7 +110,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
         QnFoldDone { qn: child_qn } =>
           match edge.label {
             Named { name: ename } =>
-              if ename == fold_list_node_head {
+              if ename == ^fold_list_node_head {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
                     match child_qn {
@@ -137,7 +136,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                     correction: Unavailable { reason: ExternalContractUnknown }
                   }}
                 }
-              } else if ename == fold_list_node_tail {
+              } else if ename == ^fold_list_node_tail {
                 match edge.target.kind {
                   TypeNode { connective: Conj } =>
                     match acc {

@@ -43,7 +43,6 @@ data provenance_producer_path_fixture: RepoPath = "src/v2/lens/affected_set/sour
 data provenance_producer_path_mid: RepoPath = "src/v2/lens/affected_set.dag"
 data provenance_producer_path_root: RepoPath = "src/v2/lens/affected_set_examples.dag"
 data provenance_producer_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
-data provenance_producer_compilation_unit: Symbol = ^provenance_producer_compilation_unit
 
 data provenance_producer_fixture_source: DagSource = dag_mvp1_source_text
 data provenance_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + "
@@ -59,19 +58,19 @@ data provenance_producer_fixture_artifact: Artifact = Artifact {
 data provenance_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_fixture_source,
   artifact: provenance_producer_fixture_artifact,
-  compilation_unit: provenance_producer_compilation_unit
+  compilation_unit: ^provenance_producer_compilation_unit
 }
 
 data provenance_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_malformed_source,
   artifact: provenance_producer_fixture_artifact,
-  compilation_unit: provenance_producer_compilation_unit
+  compilation_unit: ^provenance_producer_compilation_unit
 }
 
 data provenance_producer_module_surface_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_module_surface_source,
   artifact: provenance_producer_fixture_artifact,
-  compilation_unit: provenance_producer_compilation_unit
+  compilation_unit: ^provenance_producer_compilation_unit
 }
 
 data provenance_producer_single_read_ingest: SourceRootIngest = [provenance_producer_fixture_source_read]
