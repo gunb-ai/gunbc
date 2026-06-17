@@ -1,6 +1,6 @@
 // cli_run.rs — Hand-maintained Run subcommand handler.
 // Not generated — survives stage0 regeneration.
-// The generated main.rs calls handle_run() for the Run subcommand.
+// The generated main.rs calls handle_run_with_options() for the Run subcommand.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

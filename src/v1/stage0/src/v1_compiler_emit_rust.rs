@@ -21221,7 +21221,7 @@ pub fn emit_run_match_arm(crate_name: String) -> String {
         v1_rt::concat(
             "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n"
                 .to_string(),
-            "            cli_run::handle_run(source_roots, function, entry, claim_run);\n"
+            "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n"
                 .to_string(),
         ),
         "        },".to_string(),
