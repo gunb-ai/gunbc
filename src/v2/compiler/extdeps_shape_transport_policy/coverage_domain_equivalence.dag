@@ -105,10 +105,10 @@ data receipt_dead_param_cargo_clippy_lens_unit: ExtdepsShapeTransportPolicyRecei
 }
 
 data receipt_dead_param_cargo_clippy_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
-  label: "corpus cargo clippy dead param",
+  label: "corpus cargo clippy dead param de-fused (regression guard)",
   violation_kind: violation_kind_dead_param,
   entry: "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
-  function: "corpus_cargo_clippy_dead_param_is_red_holds"
+  function: "corpus_cargo_clippy_dead_param_defused_holds"
 }
 
 data receipt_dead_param_gcp_login_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
