@@ -11,7 +11,7 @@
 
 module extdeps.memory.sk_hynix
 
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, bit_width }
 import std.memory.types { DramModuleCatalogRow }
 
 // 16 GiB per stick (1×16GB, 2Gx72). The "PC4-21300" / "PC4-2666V" JEDEC class is
@@ -33,7 +33,7 @@ data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,
-  chip_width: X4,
+  chip_width: bit_width(4),
   // rank is NOT a part-number field — derived from the SK Hynix datasheet ordering
   // table (16GB x4 = 1R) and CONFIRMED on live hardware 2026-06-17:
   //   sudo dmidecode --type 17 | grep -E 'Part Number:|Rank:'   → every DIMM Rank: 1

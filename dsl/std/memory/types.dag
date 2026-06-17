@@ -2,7 +2,7 @@
 
 module std.memory.types
 
-import std.measure { ByteSize }
+import std.measure { ByteSize, BitWidth }
 import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
@@ -17,48 +17,40 @@ type DramManufacturer = SkHynix | Samsung | Micron
 // Anchor: https://en.wikipedia.org/wiki/Registered_memory  (RDIMM vs LRDIMM)
 type DimmBuffering = Unbuffered | Registered | LoadReduced
 
-// DramChipWidth — the data width of each DRAM device on the module: the "xN"
-// organization in the part number (e.g. SK Hynix "...R4N" = x4). Width is the
-// power-vs-chipkill axis: narrower devices (x4) spread a 72-bit word across more
-// chips (better RAS/chipkill, more chips/power), wider devices (x8/x16) use fewer.
-// The trailing organization digit is a grounded device width, not an opaque token —
-// and NOT a rank count (the single most common misread of "...R4..." is "rank=4";
-// it is device width x4).
-// Anchor: SK Hynix DDR4 module decoder (DDR4MODULE_20170623.fm), ORGANIZATION field
-//   { 4 = x4, 8 = x8, 6 = x16 }.
-type DramChipWidth = X4 | X8 | X16
-
-// DramRankCount — the number of independently chip-selected sets of DRAM devices on
-// the module. Rank count is the bandwidth-interleave-vs-electrical-loading axis: more
-// ranks let the controller interleave (bandwidth bonus) but add bus load (downclock).
-// For SK Hynix DDR4 the rank is NOT a part-number field — it is derived per
-// density+width from the datasheet ordering table (16GB x4 = 1R, 16GB x8 = 2R) — so a
-// row must not guess it from the PN alone; confirm against the datasheet/SPD.
-// Anchor: SK Hynix datasheet Rev.1.7 Aug.2019 "288pin DDR4 SDRAM Registered DIMM"
-//   ordering table (# of ranks per density/width).
-type DramRankCount = SingleRank | DualRank | QuadRank
-
 // A populated DIMM identifies itself by its catalog row — std/memory owns the SHAPE
 // + the manufacturer taxonomy; the per-vendor rows live in extdeps/memory/<vendor>.
 // No std-level enum of one vendor's SKUs (that would make the taxonomy a purchase
 // order). One JEDEC part is ONE catalog row regardless of how many marketplace
-// listings sell it: the row decomposes the part number into grounded axes
-// (chip_width / rank_count / buffering), it does not carry listing labels.
+// listings sell it: the row decomposes the part number into grounded axes. The two
+// numeric organization axes carry their MAGNITUDE (not an opaque enum token) so
+// derivations compute on them directly — chips_per_rank = 72 / chip_width bits,
+// capacity = die_density × chips_per_rank × rank_count.
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: DramManufacturer
-  // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until the geometry
-  // axes (die_density_gbit, chips_per_rank) are confirmed live on srv1/srv2 (SPD /
-  // dmidecode) and a `derive_capacity_bytes` fn lands in std.memory with a +/- claim —
-  // then this becomes a derive over rank_count × chip_width × die_density and
-  // memory.dag's reader calls it. Until then a stored, PN-certain capacity (16GB here)
-  // is more trustworthy than an inferred-die-density derivation (fail-closed, §5).
+  // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
+  // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in std.memory with
+  // a +/- claim — then capacity = die_density × (72 / bit_width_count(chip_width)) ×
+  // rank_count and memory.dag's reader calls it. A PN-certain stored 16GB beats an
+  // inferred-die-density derivation today (fail-closed, §5).
   capacity_bytes: ByteSize
   data_rate_mts: Int
   ecc: Bool
+  // buffering — command/address path (UDIMM/RDIMM/LRDIMM). A categorical axis with no
+  // magnitude, and a Bool could not tell RDIMM from LRDIMM, so it is a closed enum.
   buffering: DimmBuffering
-  chip_width: DramChipWidth
-  rank_count: DramRankCount
+  // chip_width — the "xN" DRAM device data width as a grounded BIT-WIDTH (x4 = 4 bits),
+  // reusing std.measure.BitWidth rather than minting a fresh enum (§2: map onto the
+  // concept that already exists). The power-vs-chipkill axis; NOT a rank count (the
+  // "...R4..." misread). Magnitude lets chips_per_rank = 72 / bit_width_count(chip_width).
+  // Anchor: SK Hynix DDR4 decoder DDR4MODULE_20170623.fm ORGANIZATION { 4=x4, 8=x8, 6=x16 }.
+  chip_width: BitWidth
+  // rank_count — number of independently chip-selected device sets (1/2/4): the
+  // bandwidth-interleave-vs-electrical-loading axis, as a grounded cardinal Int (like
+  // CpuModelCatalogRow.cores), so interleave/capacity derivations multiply by it.
+  // For SK Hynix DDR4 rank is NOT a PN field — derived per density+width and confirmed
+  // on the live host (dmidecode `Rank:`); never guessed from the "...R4..." digit.
+  rank_count: Int
 }
 
 type MemoryPopulationRow {

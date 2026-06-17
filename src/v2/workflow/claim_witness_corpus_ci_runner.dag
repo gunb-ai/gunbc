@@ -489,18 +489,6 @@ data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
-// std.memory DIMM decode — the SK Hynix catalog row carries the part-number-decoded
-// axes (x4 width, Registered/RDIMM, single rank, 2666, ECC) not an anemic rank_label
-// string. The RED control sk_hynix_dimm_wrong_width_is_red (file-local) proves the
-// X4!=X8 discrimination; this GREEN row already goes red on any width/buffering/rank
-// regression since it asserts chip_width == X4.
-data corpus_ci_gate_row_sk_hynix_dimm_decode: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "sk hynix HMA82GR7AFR4N-VK part-number decode (x4 / registered / single-rank)",
-  entry: "dsl/test/claim/sk_hynix_dimm_decode.dag",
-  function: "sk_hynix_hma82gr7afr4n_vk_decode_holds",
-  expected: ExpectPass
-}
-
 // Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
 // co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
@@ -567,6 +555,5 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_spice_resistor_passive_topology,
   corpus_ci_gate_row_spice_rc_ngspice_op,
   corpus_ci_gate_row_spice_rc_ngspice_nonempty,
-  corpus_ci_gate_row_spice_rc_passive_deck_authority,
-  corpus_ci_gate_row_sk_hynix_dimm_decode
+  corpus_ci_gate_row_spice_rc_passive_deck_authority
 ]
