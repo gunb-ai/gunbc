@@ -219,6 +219,7 @@ fn witness() -> Bool {
             &empty_inputs,
             &val_a,
             &ctx,
+            v1_interpreter::fixture_now_secs(&ctx).expect("clock"),
         )
         .expect("first record");
 
@@ -247,6 +248,7 @@ fn witness() -> Bool {
             &empty_inputs,
             &val_b,
             &ctx_b,
+            v1_interpreter::fixture_now_secs(&ctx_b).expect("clock"),
         )
         .expect_err("same input_hash with different response must fail closed");
     assert!(
@@ -329,10 +331,12 @@ fn witness() -> Bool {
             &empty_inputs,
             &val,
             &ctx,
+            v1_interpreter::fixture_now_secs(&ctx).expect("clock"),
         )
         .expect("record");
+    let now = v1_interpreter::fixture_now_secs(&ctx).expect("clock");
     let fixture = store
-        .lookup("Filesystem.Write", "0123456789abcdef", &empty_inputs)
+        .lookup("Filesystem.Write", "0123456789abcdef", &empty_inputs, now)
         .expect("lookup");
     let back = v1_compiler::recorded_fixture::value_from_fixture_json(&fixture.response, &ctx)
         .expect("deserialize");

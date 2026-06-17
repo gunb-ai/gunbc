@@ -3217,6 +3217,94 @@ fn eval_algebra_method(
 // Service dispatch (I-2)
 // ---------------------------------------------------------------------------
 
+/// Infra clock for RecordedFixture `recorded_at` / freshness — always wet shell
+/// transport (`date +%s`), matching extdeps/clock/clock.dag. Never SystemTime.
+pub fn fixture_now_secs(_ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
+    wet_clock_unix_secs_via_shell()
+}
+
+/// Clock.Now via the full service + RecordedFixture seam (for witnesses/tests).
+pub fn clock_now_via_service(
+    ctx: &InterpContext,
+) -> Result<u64, crate::recorded_fixture::FixtureError> {
+    if ctx.service_ops.contains_key("Clock.Now") {
+        match eval_service_call("Clock", "Now", &[], &Env::empty(), ctx) {
+            Ok(val) => value_unix_secs(&val, ctx),
+            Err(_) => wet_clock_unix_secs_via_shell(),
+        }
+    } else {
+        wet_clock_unix_secs_via_shell()
+    }
+}
+
+fn wet_clock_unix_secs_via_shell() -> Result<u64, crate::recorded_fixture::FixtureError> {
+    let output = std::process::Command::new("date")
+        .args(["+%s"])
+        .output()
+        .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)?;
+    if !output.status.success() {
+        return Err(crate::recorded_fixture::FixtureError::ClockUnavailable);
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    s.parse::<u64>()
+        .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
+}
+
+fn value_unix_secs(
+    val: &Value,
+    ctx: &InterpContext,
+) -> Result<u64, crate::recorded_fixture::FixtureError> {
+    match val {
+        Value::Record { fields, .. } => {
+            let raw = ctx
+                .field(fields, "unix_secs")
+                .or_else(|| ctx.field(fields, "timestamp"))
+                .map(|v| format!("{v}"))
+                .ok_or(crate::recorded_fixture::FixtureError::ClockUnavailable)?;
+            raw.parse::<u64>()
+                .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
+        }
+        Value::Str(s) => s
+            .parse::<u64>()
+            .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable),
+        Value::Int(n) if *n >= 0 => Ok(*n as u64),
+        _ => Err(crate::recorded_fixture::FixtureError::ClockUnavailable),
+    }
+}
+
+/// Wet shell.Env.Get transport — printenv realization (extdeps/shell/shell.dag).
+fn wet_env_var(name: &str) -> Option<String> {
+    let output = std::process::Command::new("printenv")
+        .arg(name)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
+    if ctx.service_ops.contains_key("shell.Env.Get") {
+        let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
+        match eval_service_call("shell.Env", "Get", &args, &Env::empty(), ctx) {
+            Ok(Value::Record { fields, .. }) => ctx.field(fields, "value").and_then(|v| match v {
+                Value::Str(s) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            }),
+            Ok(Value::Str(s)) if !s.is_empty() => Some(s),
+            _ => None,
+        }
+    } else {
+        wet_env_var(var_name)
+    }
+}
+
 fn eval_service_call(
     service_name: &str,
     op_name: &str,
@@ -3256,8 +3344,10 @@ fn eval_service_call(
                 "[hermetic:fixture] {}.{} inputs_hash={}",
                 service_name, op_name, inputs_hash
             );
+            let now_secs = fixture_now_secs(ctx)
+                .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
             let fixture = store
-                .lookup(&key, &inputs_hash, &inputs_json)
+                .lookup(&key, &inputs_hash, &inputs_json, now_secs)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
@@ -3275,8 +3365,10 @@ fn eval_service_call(
             .ok_or_else(|| InterpError::TypeError {
                 msg: "--record requires --fixture-store".to_string(),
             })?;
+        let now_secs = fixture_now_secs(ctx)
+            .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
         store
-            .record(&key, &inputs_hash, &inputs_json, &result, ctx)
+            .record(&key, &inputs_hash, &inputs_json, &result, ctx, now_secs)
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
         eprintln!(
             "[record] {}.{} inputs_hash={}",
@@ -3705,7 +3797,7 @@ fn dispatch_rest(
     };
 
     // 4. Auth header
-    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si);
+    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si, ctx);
 
     // 5. Custom headers from transport properties.
     // Non-reserved properties on the transport node are custom headers.
@@ -3849,6 +3941,7 @@ fn resolve_auth(
     service_node: &Rc<Node>,
     _transport: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ctx: &InterpContext,
 ) -> (String, Option<String>) {
     let mut header_name = "Authorization".to_string();
     let mut env_var_name: Option<String> = None;
@@ -3900,7 +3993,7 @@ fn resolve_auth(
         }
     }
 
-    let token = env_var_name.and_then(|var| std::env::var(&var).ok());
+    let token = env_var_name.and_then(|var| resolve_env_var_token(ctx, &var));
     (header_name, token)
 }
 

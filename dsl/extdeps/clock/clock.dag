@@ -1,0 +1,29 @@
+// extdeps/clock/clock.dag -- Wall-clock observation (POSIX date utility).
+//
+// Spec: POSIX.1 date utility — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html
+//
+// Host-effect peer of extdeps/filesystem/filesystem_io.dag: a read-only service
+// whose operations the v1 interpreter dispatches live via the `shell` transport.
+// `Clock.Now()` returns the current Unix epoch seconds as a decimal string from
+// `date +%s`. Fixture infrastructure (RecordedFixture recorded_at / freshness)
+// routes through this service — never raw SystemTime.
+//
+// 🟡 dissolved — feature:clock-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch
+// --fixture-store (recorded wet via --record); forbidden: reintroducing mock_response
+// constants for Hermetic dispatch on this shape.
+
+module extdeps.clock
+
+service Clock {
+  operation Now {
+    input {}
+    output { unix_secs: String from "stdout" }
+    readonly
+    transport shell { argv: ["date", "+%s"] }
+    exit {
+      0 => Unit
+      nonzero => String "date command failed"
+    }
+  }
+}
