@@ -1,6 +1,7 @@
 
 module v2.test.lens_application.empty_required_lenses_skip_gate
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.compile {
   CompileOutput,
   TranslateResult,
@@ -33,7 +34,8 @@ data empty_lenses_target_model_stub: TargetModel = TargetModel {
 },
   lex: VoidLexRules,
   binding_spellings: empty_map(),
-  authority_source_text: Empty
+  authority_source_text: Empty,
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 data empty_lenses_authority_node: Node = Node {

@@ -11,11 +11,17 @@ import v2.std.algebra {
   FreeMonoid,
   fold_list,
   fold_list_node,
+  fold_list_node_head,
+  fold_list_node_tail,
+  free_monoid_field_head,
+  free_monoid_field_tail,
+  free_monoid_variant_empty,
   is_empty,
   list_snoc_item,
   length,
   list_append,
   fold_list_right,
+  ring_field_add
 }
 import v2.std.collection {
   Absent,
@@ -61,6 +67,8 @@ import v2.std.find_witness {
   PreservationPredicate,
   UniqueOnly,
   find_witness,
+  preservation_rule_exact_structural_equality_zip_fold,
+  preservation_rule_type_expr_projection_discipline_zip_fold
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -101,6 +109,13 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.witness { StructuralPropertyWitness }
+import v2.std.type_expr_projection_row_schema {
+  target_type_expr_discipline_labeled,
+  target_type_expr_discipline_no_edges,
+  target_type_expr_discipline_positional,
+  target_type_expr_field_child_slot_discipline,
+  target_type_expr_field_child_slots
+}
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
@@ -110,6 +125,11 @@ import v2.std.node_query {
 }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  TargetEmitHostRuntimeRow,
+  configured_emit_host_runtime_row_from_target_row
+}
 
 // NEGATIVE TRIPWIRE — do NOT add `import v2.std.runtime` (or any closure-widening import:
 // machine, model_core) here. target_model's large generic-type closure trips a v2 bootstrap
@@ -126,8 +146,13 @@ type TargetModel {
   lex: LexRules
   binding_spellings: Map<Symbol, String>
   authority_source_text: String
+  runtime_row: TargetEmitHostRuntimeRow
 }
 type TargetModelBundle = TargetModel
+
+fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
+  configured_emit_host_runtime_row_from_target_row(row: target.runtime_row)
+}
 
 // #g-bidir Q-G2 — per-target C5 quotient: Conj of per-feature FidelityDisposition inhabitants.
 // T-11: the typed ConcreteSyntaxToken coproduct below is the single concrete-syntax-token
@@ -532,7 +557,7 @@ type CanonicalOperation
   = OpAdd { algebra_field: Symbol }
 
 fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ^ring_field_add }
+  OpAdd { algebra_field: ring_field_add }
 }
 
 // T6 — per-language operator spelling shape axis.
@@ -1318,7 +1343,7 @@ fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEff
 }
 
 // Fold the effect-callee catalog rows off the wire bundle. Row edges carry
-// `^target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
+// `target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
 // differently and are skipped here (decoded by `decode_effect_apply_shape_bundle`). A malformed row
 // fails the whole decode closed.
 fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
@@ -1880,10 +1905,10 @@ fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List
         outcome_accepted(Empty)
       } else {
         bind_outcome(
-          o: find_named_child(root: node, name: ^fold_list_node_head),
+          o: find_named_child(root: node, name: fold_list_node_head),
           f: fn(head) {
             bind_outcome(
-              o: find_named_child(root: node, name: ^fold_list_node_tail),
+              o: find_named_child(root: node, name: fold_list_node_tail),
               f: fn(tail) {
                 bind_outcome(
                   o: concrete_syntax_token_node_targets_from_list_node(node: tail),
@@ -2216,7 +2241,7 @@ fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> O
   } else {
     match source.kind {
       TypeNode { connective: Atom { identity: id } } =>
-        if id == ^free_monoid_variant_empty {
+        if id == free_monoid_variant_empty {
           optional_present(source_atom_string(value: source))
         } else {
           optional_absent()
@@ -2225,9 +2250,9 @@ fn source_atom_string_projection_from_node_bounded(source: Node, fuel: Int) -> O
         if (source.children |> count) != 2 {
           optional_absent()
         } else {
-          match find_named_child(root: source, name: ^free_monoid_field_head) {
+          match find_named_child(root: source, name: free_monoid_field_head) {
             Accepted { value: head } =>
-              match find_named_child(root: source, name: ^free_monoid_field_tail) {
+              match find_named_child(root: source, name: free_monoid_field_tail) {
                 Accepted { value: tail } =>
                   match source_atom_char_projection_from_node(source: head) {
                     Present { value: _ } =>
@@ -7913,11 +7938,11 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
 // TypeNode connectives never map to LoopBoundEdges (see node.dag connective_edge_discipline).
 fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> Node {
   match connective_edge_discipline(c: connective) {
-    NoEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_no_edges)
-    LabeledEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_labeled)
-    PositionalEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
-    ArrowBodyEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
-    LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    NoEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_no_edges)
+    LabeledEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_labeled)
+    PositionalEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+    ArrowBodyEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
+    LoopBoundEdges => target_type_expr_symbol_atom(id: target_type_expr_discipline_positional)
   }
 }
 
@@ -7931,7 +7956,7 @@ fn type_expr_projection_row_shape_envelope(
       left: envelope.children,
       right: Cons {
         head: target_model_named_edge(
-          name: ^target_type_expr_field_child_slot_discipline,
+          name: target_type_expr_field_child_slot_discipline,
           target: type_expr_projection_child_slot_discipline_atom(connective: connective)
         ),
         tail: Empty
@@ -7951,7 +7976,7 @@ fn type_expr_projection_graft_child_slots_coordinate(
       left: envelope.children,
       right: Cons {
         head: target_model_named_edge(
-          name: ^target_type_expr_field_child_slots,
+          name: target_type_expr_field_child_slots,
           target: facts
         ),
         tail: Empty
@@ -8177,7 +8202,7 @@ fn type_expr_projection_row_shape_witness_gate(
     source_facts: source_facts,
     projection: projection,
     connective: connective,
-    preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+    preservation_rule: preservation_rule_exact_structural_equality_zip_fold
   )
 }
 
@@ -8191,7 +8216,7 @@ fn type_expr_projection_graft_witness_gate(
     source_facts: source_facts,
     projection: projection,
     connective: connective,
-    preservation_rule: ^preservation_rule_type_expr_projection_discipline_zip_fold
+    preservation_rule: preservation_rule_type_expr_projection_discipline_zip_fold
   )
 }
 

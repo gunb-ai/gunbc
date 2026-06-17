@@ -185,6 +185,18 @@ import v2.std.algebra {
   ordered_ring_type_node
 }
 import v2.std.cardinality { Never }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  TargetEmitHostRuntimeRow,
+  HostRuntimeRowPresent,
+  FixedWidthBytes,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  WorkspaceContent,
+  WorkspaceFile,
+  target_emit_host_runtime_row_unconfigured
+}
 import v2.std.integer {
   IntegerIntervalSpec,
   int8_interval_spec,
@@ -1526,12 +1538,55 @@ fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(m5, ^target_collection_set_carrier, "Set")
 }
 
+// T-22 emit-host runtime row — gunbc#4750 (replaces authority_source_text dispatch in emit_host.dag).
+
+fn rust_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^rust_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^rust_host_transport_mvp1_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "src/main.rs",
+        content: EmittedSource
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        tool: ^host_tool_cargo,
+        args: [LiteralArg { text: "build" }]
+      }
+    ],
+    run: ProcessInvocation {
+      tool: ^host_tool_cargo,
+      args: [LiteralArg { text: "run" }]
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn rust_mvp1_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: rust_host_transport_mvp1_descriptor(),
+      runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
 fn rust_mvp1_target_model_staging() -> TargetModel {
   TargetModel {
     bundle: rust_mvp1_target_model_bundle_core(),
     lex: rust_wave1_lex(),
     binding_spellings: rust_mvp1_binding_spellings(),
-    authority_source_text: rust_mvp1_source_text_authority()
+    authority_source_text: rust_mvp1_source_text_authority(),
+    runtime_row: rust_mvp1_runtime_row()
   }
 }
 fn rust_target_atom_type_form(spelling: Symbol) -> TargetTypeExpression {
@@ -1630,7 +1685,8 @@ fn rust_mvp1_target_model() -> TargetModel {
     bundle: rust_mvp1_target_model_node(),
     lex: rust_wave1_lex(),
     binding_spellings: rust_mvp1_binding_spellings(),
-    authority_source_text: rust_mvp1_source_text_authority()
+    authority_source_text: rust_mvp1_source_text_authority(),
+    runtime_row: rust_mvp1_runtime_row()
   }
 }
 
@@ -3469,7 +3525,8 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
-    authority_source_text: rust_sg2_type_alias_text
+    authority_source_text: rust_sg2_type_alias_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -3518,7 +3575,8 @@ fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
     bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
-    authority_source_text: rust_sg2_type_alias_text
+    authority_source_text: rust_sg2_type_alias_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -3531,7 +3589,8 @@ fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
     bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
-    authority_source_text: rust_sg2_type_alias_text
+    authority_source_text: rust_sg2_type_alias_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 fn rust_sg5_non_ordable_type_node() -> Node {

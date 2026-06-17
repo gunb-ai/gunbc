@@ -58,7 +58,7 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      # CI floor — one step, five `.dag` evaluations:
+      # CI floor — one step, eight `.dag` evaluations:
       #   (1) claim_batch: the always-on src/v2 witness corpus (the compiler-seed
       #       `claim_batch` bin, --roster-from-discovery). Discovery is a build-time
       #       lens over parsed source (NOT runtime reflection), so it is a Rust host today;
@@ -72,12 +72,22 @@ jobs:
       #   (4) gunbc: emit-host gate WITNESSES (tools.emit_host_fixtures contract pins).
       #   (5) gunbc: emit-host GATE (tools.emit_host_gate) — compiles+runs MVP fixtures per
       #       target row; replaces deleted `tools/emit_host_runner` (DESIGN §7).
+      #   (6) gunbc: layering-imports coverage witness (pure roster pins, src/v2).
+      #   (7) gunbc: layering-imports GATE (tools.layering_imports_gate) — host scan +
+      #       clean_tree + scanner-execution perturb receipts; replaces deleted
+      #       layering_imports_scan + scripts/v4-layering-imports-gate.sh (DESIGN §7).
+      #   (8) gunbc: filesystem entry-kind witness (test.claim.filesystem_entry_kind_witness) —
+      #       by-execution proof that the cited posix/ntfs reductions map to the agnostic
+      #       std.filesystem.types.EntryKind (socket/junction → Other, not nicknamed Symlink).
       # The git fetch makes `origin/main...HEAD` resolvable.
       - name: CI floor (.dag witness corpus + gates via gunbc)
         run: |
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --notice-title "v2 claim corpus"
+          cargo run -p v1-compiler --release --bin claim_batch -- --source-root src/v2 --roster-from-discovery --scan-dir src/v2/test --scan-dir src/v2/compiler/extdeps_shape_transport_policy --notice-title "v2 claim corpus"
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/rust_stage0_gates_witness.dag --function rust_stage0_gates_witnesses --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/emit_host_gate_witness.dag --function emit_host_gate_witnesses --claim-run
           cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/emit_host_gate.dag --function main
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root src/v2 --entry src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag --function coverage_domain_equivalence_argument_holds --claim-run
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/tools/layering_imports_gate.dag --function main
+          cargo run -p v1-compiler --release --bin gunbc -- run --source-root dsl --entry dsl/test/claim/filesystem_entry_kind_witness.dag --function filesystem_entry_kind_witnesses --claim-run

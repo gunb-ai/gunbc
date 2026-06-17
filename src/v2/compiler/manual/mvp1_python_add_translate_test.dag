@@ -1,6 +1,7 @@
 
 module v2.test.manual.mvp1_python_add_translate
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
   CompileOutput,
@@ -18,6 +19,7 @@ import v2.compiler.eval {
 import v2.compiler.translate {
   target_serialize_source_from_model,
   translate,
+  translate_target_bundle_malformed
 }
 import v2.extdeps.languages.python {
   python_facts_int,
@@ -32,6 +34,7 @@ import v2.extdeps.languages.python {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetSource }
+import v2.std.inhabitant_bridge { std_projection_additive_numeric }
 import v2.std.compilers.target_model { TargetModel }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add_mvp {
@@ -100,7 +103,8 @@ data mvp1_python_poisoned_authority_target_model: TargetModel = TargetModel {
   bundle: python_mvp1_target_model_node(),
   lex: python_wave1_lex(),
   binding_spellings: python_mvp1_binding_spellings(),
-  authority_source_text: mvp1_python_forbidden_authority_source_text
+  authority_source_text: mvp1_python_forbidden_authority_source_text,
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 data mvp1_python_empty_translation_rules_bundle: Node = Node {
@@ -113,7 +117,8 @@ data mvp1_python_missing_translation_rules_target: TargetModel = TargetModel {
   bundle: mvp1_python_empty_translation_rules_bundle,
   lex: python_wave1_lex(),
   binding_spellings: empty_map(),
-  authority_source_text: ""
+  authority_source_text: "",
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 fn anchor_mvp1_python_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
@@ -203,7 +208,7 @@ fn mvp1_python_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding
         algebra: mvp1_python_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^std_projection_additive_numeric) {
+  } else if node == python_inhabitant_atom(id: std_projection_additive_numeric) {
     Holds {
       value: mvp1_python_canonical_grounding(
         node: node,
@@ -388,7 +393,7 @@ data claim_mvp1_python_serialize_rejects_missing_translation_rules: TestClaim = 
   input: mvp1_python_emitted_root,
   expected_rejection: diagnostics_singleton(
     d: Diagnostic {
-      reason: ^translate_target_bundle_malformed,
+      reason: translate_target_bundle_malformed,
       at: node_locus(node: mvp1_python_empty_translation_rules_bundle),
       correction: Unavailable { reason: ExternalContractUnknown }
     }

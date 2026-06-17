@@ -78,6 +78,9 @@ import v2.std.model_core {
   FailClosedAtBoundary,
   ModelCore,
   ModelCorePrimitiveFactAxis,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
@@ -86,6 +89,10 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth,
   primitive_fact_axis_unbound_diagnostic
+}
+import v2.std.inhabitant_bridge {
+  facts_field_std_projection,
+  std_projection_additive_numeric
 }
 import v2.std.diagnostic {
   Accepted,
@@ -164,9 +171,13 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  arrow_body_edge,
   SyntheticOccurrence
 }
 import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  HostRuntimeRowPresent,
+  TargetEmitHostRuntimeRow,
   EmittedWithSuffix,
   HostTransportDescriptor,
   LiteralArg,
@@ -174,8 +185,9 @@ import v2.std.host_transport {
   ProducedArtifact,
   SignedI32Le,
   WorkspaceFile,
+  target_emit_host_runtime_row_unconfigured
 }
-import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
+import v2.std.logic { Bool, bool_boolean_algebra, bool_node, bool_node_symbol }
 import v2.std.algebra {
   algebra_binary_fn_node,
   approximate_field_type_node,
@@ -244,7 +256,7 @@ data ts_mvp1_source_text: String = "function add(x: number, y: number): number {
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ^ts_surface_spelling_number,
   ieee754_binary: ^ts_ieee754_binary64,
-  std_projection: ^std_projection_additive_numeric,
+  std_projection: std_projection_additive_numeric,
 }
 
 data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
@@ -319,7 +331,7 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -340,7 +352,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -365,7 +377,7 @@ fn ts_bool_facts_node(facts: TsBooleanPrimitiveFacts) -> Node {
         target: ts_bool_operation_semantics_node(facts: facts)
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       ),
       ts_named_edge(
@@ -481,7 +493,7 @@ fn ts_mvp1_number_zip_fold_closure_edges() -> List<Edge> {
     ),
     ts_named_edge(
       name: ^ts_coercion_field_number_std_projection,
-      target: ts_inhabitant_atom(id: ^std_projection_additive_numeric)
+      target: ts_inhabitant_atom(id: std_projection_additive_numeric)
     )
   ]
 }
@@ -547,7 +559,7 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge { label: Positional, target: ts_inhabitant_number_node() },
       Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: Named { name: arrow_body_edge },
         target: ts_mvp1_add_binary_body_node()
       }
     ],
@@ -1331,7 +1343,8 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
           bundle: bundle,
           lex: ts_wave2a_lex(),
           binding_spellings: ts_pr3_identity_binding_spellings(),
-          authority_source_text: ts_pr3_identity_source_text
+          authority_source_text: ts_pr3_identity_source_text,
+          runtime_row: target_emit_host_runtime_row_unconfigured
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -1476,7 +1489,8 @@ fn ts_mvp1_target_model() -> TargetModel {
     bundle: ts_mvp1_target_model_node(),
     lex: ts_wave1_lex(),
     binding_spellings: ts_mvp1_binding_spellings(),
-    authority_source_text: ts_mvp1_source_text_authority()
+    authority_source_text: ts_mvp1_source_text_authority(),
+    runtime_row: ts_mvp1_runtime_row()
   }
 }
 
@@ -1520,6 +1534,24 @@ fn ts_host_transport_mvp1_descriptor() -> HostTransportDescriptor {
       args: [ProducedArtifact { path: "fixture.js" }]
     },
     runtime_value_codec: SignedI32Le
+  }
+}
+
+
+fn ts_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^ts_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ts_mvp1_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: ts_host_transport_mvp1_descriptor(),
+      runtime_primitive_type: ts_emit_host_runtime_primitive_type_node()
+    }
   }
 }
 
@@ -1596,7 +1628,7 @@ data ts_target_atom_realization_bool: TargetAtomRealization = TargetAtomRealizat
   type_form: ts_target_atom_type_form(spelling: ^ts_surface_spelling_boolean),
   value_form: target_value_template_for_kind(kind: ValueBoolLiteral),
   constructor_form: optional_absent(),
-  display_name: ^bool_node_symbol
+  display_name: bool_node_symbol
 }
 
 fn ts_std_text_string_type_node() -> Node {
@@ -1701,7 +1733,8 @@ fn ts_sg2_type_expr_target_model() -> TargetModel {
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
     binding_spellings: ts_sg2_binding_spellings(),
-    authority_source_text: ts_mvp1_source_text_authority()
+    authority_source_text: ts_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -1967,7 +2000,8 @@ fn ts_wave2a_task_target_model_witness() -> Witness<TargetModel> {
           bundle: bundle,
           lex: ts_wave2a_lex(),
           binding_spellings: ts_mvp1_binding_spellings(),
-          authority_source_text: ts_task_type_alias_source_text
+          authority_source_text: ts_task_type_alias_source_text,
+          runtime_row: target_emit_host_runtime_row_unconfigured
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -2209,7 +2243,7 @@ fn ts_number_algebra_witness_node(facts: TsNumberPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.ieee754_binary)
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -2230,7 +2264,7 @@ fn ts_bigint_algebra_witness_node(facts: TsBigIntPrimitiveFacts) -> Node {
         target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3134,7 +3168,7 @@ fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3170,7 +3204,7 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
         target: ts_inhabitant_atom(id: facts.encoding)
       ),
       ts_named_edge(
-        name: ^facts_field_std_projection,
+        name: facts_field_std_projection,
         target: ts_inhabitant_atom(id: facts.std_projection)
       )
     ],
@@ -3384,10 +3418,10 @@ fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      ts_named_edge(name: ^model_core_wave1_law_field_subject, target: witness),
-      ts_named_edge(name: ^model_core_wave1_law_field_algebra, target: algebra),
+      ts_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      ts_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       ts_named_edge(
-        name: ^model_core_wave1_law_field_kind,
+        name: model_core_wave1_law_field_kind,
         target: ts_inhabitant_atom(id: discriminant(v: key))
       )
     ],

@@ -8,6 +8,7 @@
 
 module v2.extdeps.languages.swift
 
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
@@ -740,7 +741,8 @@ fn swift_mvp1_target_model() -> TargetModel {
     bundle: swift_mvp1_target_model_node(),
     lex: swift_wave1_lex(),
     binding_spellings: swift_mvp1_binding_spellings(),
-    authority_source_text: swift_mvp1_source_text_authority()
+    authority_source_text: swift_mvp1_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
