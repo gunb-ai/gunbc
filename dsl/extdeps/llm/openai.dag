@@ -1,10 +1,8 @@
-// extdeps/llm/openai.dag -- "What is the OpenAI API?"
+// extdeps/llm/openai.dag — OpenAI Chat Completions / Responses protocol (types + wire contracts).
 //
-// OpenAI-specific: models, response formats, tool choice,
-// function calling, finish reasons.
-//
-// Complements extdeps/llm/pricing.dag (model specs and pricing)
-// and extdeps/llm/core.dag (universal protocol types).
+// REST transport binding: `openai_rest.dag` (`module extdeps.llm.openai_rest`).
+// Cross-provider facts: `llm.dag` (`module extdeps.llm.llm`).
+// Error envelope: `openai_errors.dag`.
 //
 module extdeps.llm.openai
 
@@ -302,93 +300,6 @@ type OpenAiResponses200Body {
   output: List<OpenAiResponses200OutputItem>
   usage: OpenAiResponses200Usage
   service_tier: String?
-}
-
-// -- Service: REST transport wiring ------------------------------
-
-service llm.OpenAI {
-  config {
-    endpoint: "https://api.openai.com"
-    auth: Bearer
-    auth_input: api_key
-    // OpenAI API rate limits: varies by tier (500-3500 RPM), use conservative default
-    rate_limit: { requests: 500, per: minute, scope: chat }
-    // Retry on rate limit and server errors with exponential backoff
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
-  }
-
-  operation ChatCompletion {
-    input {
-      api_key: Secret
-      model: String
-      messages: List<OpenAiChatMessage>
-      temperature: Float?
-      max_tokens: Int?
-    }
-    output {
-      content: String from "choices/0/message/content"
-      model: String from "model"
-      finish_reason: OpenAiFinishReason from "choices/0/finish_reason"
-      prompt_tokens: Int from "usage/prompt_tokens"
-      completion_tokens: Int from "usage/completion_tokens"
-    }
-    transport rest {
-      method: POST,
-      path: "/v1/chat/completions",
-      body: { model: model, messages: messages, temperature: temperature, max_tokens: max_tokens }
-    }
-    response {
-      200 => OpenAiChatCompletion200Body
-      400 => OpenAiErrorShape
-      401 => OpenAiErrorShape
-      403 => OpenAiErrorShape
-      404 => OpenAiErrorShape
-      429 => OpenAiErrorShape
-      5xx => OpenAiErrorShape
-    }
-    mock_response {
-      200 => { id: "chatcmpl-mock123", object: "chat.completion", created: 1710000000, choices: [{ index: 0, message: { role: "assistant", content: "Mock response from GPT" }, finish_reason: "stop" }], model: "gpt-4o", usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } "Successful completion",
-      400 => { error: { message: "Invalid request", type: "invalid_request_error", code: null } } "Invalid request",
-      401 => { error: { message: "Incorrect API key provided", type: "invalid_api_key", code: "invalid_api_key" } } "Invalid API key",
-      429 => { error: { message: "Rate limit reached", type: "rate_limit_exceeded", code: "rate_limit_exceeded" } } "Rate limited"
-    }
-  }
-
-  operation Responses {
-    input {
-      api_key: Secret
-      model: String
-      input: Json
-      instructions: String?
-      max_output_tokens: Int?
-    }
-    output {
-      content: String from "output/0/content/0/text"
-      model: String from "model"
-      output_tokens: Int from "usage/output_tokens"
-      input_tokens: Int from "usage/input_tokens"
-    }
-    transport rest {
-      method: POST,
-      path: "/v1/responses",
-      body: { model: model, input: input, instructions: instructions, max_output_tokens: max_output_tokens }
-    }
-    response {
-      200 => OpenAiResponses200Body
-      400 => OpenAiErrorShape
-      401 => OpenAiErrorShape
-      403 => OpenAiErrorShape
-      404 => OpenAiErrorShape
-      429 => OpenAiErrorShape
-      5xx => OpenAiErrorShape
-    }
-    mock_response {
-      200 => { id: "resp_mock123", object: "response", output: [{ type: "message", content: [{ type: "text", text: "Mock response" }] }], model: "gpt-4o", usage: { input_tokens: 15, output_tokens: 5 } } "Successful response",
-      400 => { error: { message: "Invalid request", type: "invalid_request_error", code: null } } "Invalid request",
-      401 => { error: { message: "Incorrect API key", type: "invalid_api_key", code: "invalid_api_key" } } "Invalid API key",
-      429 => { error: { message: "Rate limit reached", type: "rate_limit_exceeded", code: "rate_limit_exceeded" } } "Rate limited"
-    }
-  }
 }
 
 // -- Tests ----------------------------------------------------------

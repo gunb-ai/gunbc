@@ -1,8 +1,10 @@
 // extdeps/llm/llm.dag — cross-provider LLM facts only.
 //
 // Provider-shaped types live in discrete homes:
-//   extdeps/llm/anthropic.dag — Anthropic Messages API
-//   extdeps/llm/openai.dag    — OpenAI Chat Completions / Responses
+//   extdeps/llm/anthropic.dag      — Anthropic Messages API protocol
+//   extdeps/llm/anthropic_rest.dag — Anthropic REST transport
+//   extdeps/llm/openai.dag         — OpenAI protocol
+//   extdeps/llm/openai_rest.dag    — OpenAI REST transport
 //
 // Land a row here only when the fact is structurally shared across providers.
 
