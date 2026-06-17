@@ -48,7 +48,9 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
-    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" }
+    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
+    { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
+    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" }
   ],
   gates: [
     RustMonolithGate,

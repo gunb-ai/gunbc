@@ -37,6 +37,7 @@ import std.measure {
   ByteSize,
   byte_size,
   byte_size_count,
+  bit_width_count,
   Watt,
   watt,
   watt_count,
@@ -49,7 +50,7 @@ import std.measure {
 }
 import product.compute_fabric { Bandwidth }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable }
+import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width }
 import std.pareto {
   AxisComparison,
   DominanceVerdict,
@@ -107,11 +108,13 @@ type Platform {
   max_data_rate_mts: Int
 }
 
-// DRAM data bus is 64 bits = 8 bytes per channel (ECC adds check bits, not data width).
-// Grounded as a ByteSize (the std.measure carrier already consumed for capacity) — it is a real
-// size in bytes, not a bare scaling factor; peeled with byte_size_count where the bandwidth
-// arithmetic needs the magnitude.
-data dram_channel_bus_bytes: ByteSize = byte_size(count: 8)
+// Bytes per transfer per channel = the JEDEC data bus width (std.memory.dram_data_word_width,
+// 64 bits) / 8 bits-per-byte. Derived from the SINGLE data-bus-width authority that
+// std.memory.dram_data_chips_per_rank also keys on — so the 64-bit bus is modeled once (as a
+// BitWidth, the same width concept as chip_width), not duplicated as a separate 8-byte constant.
+fn dram_channel_bus_bytes() -> Int {
+  bit_width_count(b: dram_data_word_width) / 8
+}
 
 // 🟡 CALIBRATE(board-downclock-thresholds) — the signal-integrity downclock model, one of
 // the two points to confirm against a live measurement. At 1 DIMM-per-channel the bus runs
@@ -194,7 +197,7 @@ fn rank_interleave_percent(rank_count: Int) -> Int {
 fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> Bandwidth {
   let rated = min_int(a: cfg.module.data_rate_mts, b: effective_data_rate_mts(platform: platform, dimms_per_channel: cfg.dimms_per_channel, rank_count: cfg.module.rank_count))
   let interleaved = rated * rank_interleave_percent(rank_count: cfg.module.rank_count) / 100
-  Bandwidth { count: interleaved * 1000000 * byte_size_count(b: dram_channel_bus_bytes) * platform.memory_channels }
+  Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes() * platform.memory_channels }
 }
 
 // DRAM device count per stick, DERIVED from the grounded axes (DESIGN §2 derive-don't-store):

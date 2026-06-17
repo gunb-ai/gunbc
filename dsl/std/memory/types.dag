@@ -2,7 +2,7 @@
 
 module std.memory.types
 
-import std.measure { ByteSize, BitWidth, byte_size_count, bit_width_count }
+import std.measure { ByteSize, BitWidth, byte_size_count, bit_width, bit_width_count }
 import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
@@ -57,26 +57,36 @@ type DramModuleCatalogRow {
   rank_count: Int
 }
 
-// dram_chips_per_rank — the PHYSICAL DRAM devices in one rank: a 72-bit ECC word spread
-// across (72 / device-width) devices, INCLUDING the ECC device. This is the POWER divisor —
-// an ECC chip draws power, so memory_power / devices_per_stick key on it. It is NOT the
+// The JEDEC DDR memory bus WORD widths — the single authority for the 64-vs-72 distinction,
+// each a BitWidth (bits-in-parallel, the same width concept as chip_width — NOT a byte size).
+// A rank presents 64 DATA bits in parallel to the channel; ECC adds 8 check bits → a 72-bit
+// total word. Every per-rank device count AND the per-transfer byte width DERIVE from these, so
+// the 64 / 72 live here ONCE rather than as scattered literals (DESIGN §2/§3: one fact, one home;
+// this is also the data bus width product.hardware_selection's bandwidth math reads, killing the
+// duplicate raw `64` / `8 bytes` that previously appeared in two layers).
+data dram_data_word_width: BitWidth = bit_width(count: 64)
+data dram_ecc_word_width: BitWidth = bit_width(count: 72)
+
+// dram_chips_per_rank — the PHYSICAL DRAM devices in one rank: the 72-bit ECC word spread
+// across (ecc-word / device-width) devices, INCLUDING the ECC device. This is the POWER divisor
+// — an ECC chip draws power, so memory_power / devices_per_stick key on it. It is NOT the
 // capacity divisor (see dram_data_chips_per_rank below — capacity excludes ECC silicon).
-// 🟡 all current corpus parts are ECC, so 72 is exact; generalize to (ecc ? 72 : 64)/width if
-// a non-ECC module ever enters the catalog (a non-ECC stick's physical count is also 64/width).
+// 🟡 all current corpus parts are ECC, so the 72-bit word is exact; generalize to a per-module
+// (ecc ? 72 : 64)-bit word if a non-ECC module ever enters (its physical count is also 64/width).
 fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
-  72 / bit_width_count(b: module.chip_width)
+  bit_width_count(b: dram_ecc_word_width) / bit_width_count(b: module.chip_width)
 }
 
-// dram_data_chips_per_rank — the DATA DRAM devices in one rank: a 64-bit DATA word spread
-// across (64 / device-width) devices, EXCLUDING ECC. This is the CAPACITY / die-density
+// dram_data_chips_per_rank — the DATA DRAM devices in one rank: the 64-bit DATA word spread
+// across (data-word / device-width) devices, EXCLUDING ECC. This is the CAPACITY / die-density
 // divisor: capacity_bytes is the MARKETED data capacity (a 16GB part is sold as 16 GiB of
 // usable memory; its ECC chips are not counted), so the per-die density implied by that
 // marketed capacity divides by data devices only. Splitting this from dram_chips_per_rank
 // avoids the §2 state-space trap of one name meaning two distinct device counts: dividing the
-// marketed capacity by 72/width would compute a non-existent die density for EVERY real part
-// (a 16GB 1Rx4 → 7.11 Gibit, a die that does not exist), defeating the §5 realizability guard.
+// marketed capacity by the 72-bit word would compute a non-existent die density for EVERY real
+// part (a 16GB 1Rx4 → 7.11 Gibit, a die that does not exist), defeating the §5 realizability guard.
 fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
-  64 / bit_width_count(b: module.chip_width)
+  bit_width_count(b: dram_data_word_width) / bit_width_count(b: module.chip_width)
 }
 
 // REALIZABILITY (the inverse of the DERIVE-TRIGGER(P-CF-DIMM-CAPACITY) relationship above,
