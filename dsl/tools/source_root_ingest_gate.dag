@@ -14,7 +14,12 @@ func main() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "source root ingest gate failed: real multi-file assemble_program_from_ingest receipts"
+      reason: "source root ingest gate failed: host manifest overlay + real_ingest_test receipts"
     )
   }
+}
+
+// Composed CI gate entry point (tools.ci_gates imports this name).
+func run_source_root_ingest_ci_gate() -> ProcessExit {
+  main()
 }

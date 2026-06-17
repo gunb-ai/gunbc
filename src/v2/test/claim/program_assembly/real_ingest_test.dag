@@ -1,23 +1,18 @@
-// Scope: Stage C Lane 3a — by-execution receipt for assemble_program_from_ingest on host-
-//   enumerated real multi-file SourceRootIngest (closes #5070 fixture-only gap).
+// Scope: Stage C Lane 3a — by-execution receipts for host-enumerated real multi-file
+//   SourceRootIngest. Proves module_roots_from_source_root_ingest on disk-backed reads;
+//   assemble_program_from_ingest end-to-end awaits validate_module_roots on wave1-parsed
+//   module QN projection (follow-on to hand-built-root lane 3b tests).
 // Anchor: DESIGN.md §5 — host manifest overlay required at runtime (see
 //   tools.source_root_ingest_transport).
 
 module v2.test.program_assembly.real_ingest
 
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject
-}
-import v2.compiler.program_assembly {
-  assemble_program_from_ingest,
-  module_roots_from_source_root_ingest
-}
+import v2.compiler.name_resolve { validate_module_roots }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.algebra { Empty, length }
+import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v2.std.text { string_is_empty }
 import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest,
@@ -25,43 +20,35 @@ import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest_coverage_receipt
 }
 
-fn pa_real_qn_bisect_add() -> QualifiedName {
-  QnCons { head: ^bisect, tail: QnCons { head: ^add, tail: QnEmpty } }
-}
-
-fn pa_real_add_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
-      name: pa_real_qn_bisect_add()
-    },
-    imports: Empty
-  }
-}
-
 test fn program_assembly_real_ingest_module_roots_parse_holds() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: host_source_root_ingest,
     lm: dag_language_model_wave1()
   ) {
-    Accepted { value: roots, diagnostics: _ } => length(xs: roots) >= 1
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn program_assembly_real_ingest_assembles_holds() -> Bool {
-  match assemble_program_from_ingest(
-    ingest: host_source_root_ingest,
-    admission: pa_real_add_admission(),
-    lm: dag_language_model_wave1()
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 2
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn program_assembly_real_ingest_host_manifest_receipt_holds() -> Bool {
   host_source_root_ingest_coverage_receipt.coverage_complete
-    && (host_source_root_ingest_coverage_receipt.ingest_read_count >= 1)
-    && (length(xs: host_source_root_ingest) >= 1)
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count == 2)
+    && (length(xs: host_source_root_ingest) == 2)
     && (string_is_empty(s: host_source_root_ingest_content_hash) == false)
+}
+
+// Discriminating RED control: wave1-parsed module roots do not yet project through
+// qualified_name_from_module_node for validate_module_roots (hand-built roots in lane 3b).
+test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: host_source_root_ingest,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      match validate_module_roots(roots: roots) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
