@@ -492,7 +492,7 @@ fn run_witnesses(
 }
 
 /// Group discovered rows into per-entry `EntryGroup`s, preserving the discovery
-/// sort order (rows are sorted by (entry, function) in `discover_roster`).
+/// sort order (rows are sorted by (entry, function) in `discover_floor_corpus_rows`).
 fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
     let mut groups: Vec<EntryGroup> = Vec::new();
     for row in rows {
@@ -670,7 +670,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod discovery_exclude_tests {
-    use super::discovery_path_excluded;
+    use v1_compiler::cli_run::floor_discovery_path_excluded;
 
     #[test]
     fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
@@ -680,7 +680,7 @@ mod discovery_exclude_tests {
         ];
         for path in paths {
             assert!(
-                discovery_path_excluded(path),
+                floor_discovery_path_excluded(path),
                 "expected gate-only overlay witness excluded: {path}"
             );
         }

@@ -28,7 +28,8 @@ module v2.workflow.ci_floor_plan
 
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec, WitnessRoot, WitnessEntry,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate,
+  SourceRootIngestGate
 }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
@@ -70,6 +71,7 @@ fn gate_node(g: Gate) -> Node {
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
+    SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
   }
 }
 
@@ -82,6 +84,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
+    SourceRootIngestGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "source_root_ingest_gate_passes" }
   }
 }
 

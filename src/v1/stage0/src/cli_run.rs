@@ -1924,6 +1924,13 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
+/// True if `path` matches any `FLOOR_DISCOVERY_EXCLUDES` subpath. Excluded files
+/// are skipped by BOTH the `unified_claim_*` scan and the `test fn`/`test data`
+/// scan — gate-only / manifest / manual-lane witnesses must not enter the floor.
+pub fn floor_discovery_path_excluded(path: &str) -> bool {
+    FLOOR_DISCOVERY_EXCLUDES.iter().any(|sub| path.contains(sub))
+}
+
 /// Tolerant `.dag` walk (silently skips unreadable dirs — a gate must not panic
 /// on a transient read error). The eager `collect_dag_files` above panics, which
 /// is wrong for the floor scan.
@@ -2047,6 +2054,9 @@ pub fn discover_floor_corpus_rows(
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
+            if floor_discovery_path_excluded(&entry) {
+                continue;
+            }
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
             let names = scan_test_decl_names(&content);
