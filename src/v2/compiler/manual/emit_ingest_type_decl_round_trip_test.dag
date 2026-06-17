@@ -15,8 +15,8 @@ import v2.compiler.translate {
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
   dag_type_decl_productions_only_translation_rules,
-  dag_type_decl_structural_target_model,
-  dag_wave1_formal_productions
+  dag_type_decl_structural_formal_productions,
+  dag_type_decl_structural_target_model
 }
 import v2.std.algebra { Empty, fold_list, list_append }
 import v2.std.collection { List }
@@ -262,7 +262,9 @@ fn type_decl_translation_rules_with_row(row: Node) -> Node {
     children: [
       Edge {
         label: Named { name: ^grammar_relation_rules_formal_productions },
-        target: formal_productions_catalog_to_node(productions: dag_wave1_formal_productions())
+        target: formal_productions_catalog_to_node(
+          productions: dag_type_decl_structural_formal_productions()
+        )
       },
       Edge {
         label: Named { name: ^type_decl_round_trip_foreign_binding },

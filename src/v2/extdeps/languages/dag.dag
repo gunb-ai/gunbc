@@ -3824,6 +3824,54 @@ fn dag_grammar_sequence_from_token_classes_field_access() -> GrammarExpr {
 }
 
 // Grammar-inverse type-decl — wave-1 free-ident productions; rows derived at emit (no fixture rows).
+fn dag_type_decl_structural_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^dag_production_qualified_name,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
+      ]
+    ),
+    grammar_formal_production(lhs: ^dag_production_qualified_name_repeat_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^dag_production_type_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_qualified_name)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_comma_field_decl_list,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
+        grammar_formal_terminal(identity: ^dag_token_comma),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^dag_production_comma_field_decl_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^dag_production_field_decl_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_decl_list),
+        grammar_formal_terminal(identity: ^dag_token_rbrace)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_type_decl,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_kw_type),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_field_decl_block)
+      ]
+    )
+  ]
+}
+
 fn dag_type_decl_productions_only_translation_rules() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -3831,7 +3879,7 @@ fn dag_type_decl_productions_only_translation_rules() -> Node {
       dag_named_edge(
         name: ^grammar_relation_rules_formal_productions,
         target: formal_productions_catalog_to_node(
-          productions: dag_wave1_formal_productions()
+          productions: dag_type_decl_structural_formal_productions()
         )
       )
     ],
