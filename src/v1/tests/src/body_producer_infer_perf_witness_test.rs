@@ -1,8 +1,10 @@
-//! §5 discriminating witness: body_producer closure resolve is bounded AND inference stays fail-closed.
+//! §5 execution witnesses: body_producer closure resolves cleanly AND inference stays fail-closed.
+//! Structural guards (map_is_empty / VEP shard) are in infer_perf_structural_guard_test.{dag,rs}
+//! — NOT wall-clock (flakes under CI contention).
+//!
 //! Run: cargo test -p v1-compiler-tests body_producer_infer_perf_witness -- --nocapture
 
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 
@@ -10,8 +12,6 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 
 const ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_perf_repro.dag";
 const WRONG_TYPE_ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_wrong_type_repro.dag";
-/// Cold resolve budget after target_model VEP shard (was ~244s pre-fix).
-const RESOLVE_BUDGET: Duration = Duration::from_secs(60);
 
 fn sources_for(entry: &str) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
@@ -29,21 +29,13 @@ fn non_complexity_errors(resolved: &v1_compiler::v1_compiler_compile::ResolvedPi
 }
 
 #[test]
-fn body_producer_infer_perf_witness_resolves_within_budget() {
+fn body_producer_infer_perf_witness_resolves_clean() {
     let sources = sources_for(ENTRY);
-    let t0 = Instant::now();
     let resolved = compile_to_resolved(Rc::new(sources));
-    let elapsed = t0.elapsed();
     let errs = non_complexity_errors(&resolved);
     assert!(
         errs.is_empty() && resolved.graph.is_some(),
         "body_producer closure must resolve cleanly, got errors {errs:?}"
-    );
-    assert!(
-        elapsed < RESOLVE_BUDGET,
-        "body_producer closure resolve took {:?}, budget {:?}",
-        elapsed,
-        RESOLVE_BUDGET
     );
 }
 

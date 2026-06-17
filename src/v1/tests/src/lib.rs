@@ -19,6 +19,8 @@ mod b1_hash_primitive_test;
 mod body_producer_infer_perf_witness_test;
 mod body_producer_infer_profile_test;
 #[cfg(test)]
+mod infer_perf_structural_guard_test;
+#[cfg(test)]
 mod languages_import_elaboration_profile_test;
 #[cfg(test)]
 mod bootstrap;
