@@ -39,22 +39,27 @@ import v2.std.node {
   node_synthetic
 }
 
-// A declared tracked file of a content unit:
-//   - `path`           — the file's declared path (manifest substrate data: this file belongs
-//     to this unit). The §3 single authority for "which files we track".
+// A tracked file of a content unit:
+//   - `path`           — the file's path (rendered from the grounded `FilePathParts` the
+//     crate model's `cargo_target_source_path` rule produces — see
+//     `v2.lens.rust_crate_content_unit`). NOT a hand-declared bare token: it DERIVES from the
+//     crate. A `String` here is the node-identity carrier (a `Symbol` and `String` are the
+//     same `Value::Str` at runtime).
 //   - `content_digest` — the host-read content fingerprint of that file's bytes. Reading the
 //     bytes is a host realization (the §3(b) transport seam); the digest is what crosses into
 //     the substrate as an opaque `Symbol`. Two files with equal `content_digest` have
 //     byte-identical content; an edited file changes its digest.
 type TrackedFile {
-  path: Symbol
+  path: String
   content_digest: Symbol
 }
 
-// A content unit: a named bundle addressed by the content of its DECLARED tracked-file set.
+// A content unit: a named bundle addressed by the content of its tracked-file set. The set is
+// DERIVED from a crate model (`v2.lens.rust_crate_content_unit`), not hand-declared — this
+// carrier is the agnostic std type the crate grounds into.
 //   - `identity`      — which unit this is (stable across content changes), e.g. a crate name.
-//   - `tracked_files` — the declared file set the fingerprint is derived over. Decomposed (not
-//     an opaque blob) so the cache can falsify impurity against it (read-outside-set).
+//   - `tracked_files` — the file set the fingerprint is derived over. Decomposed (not an
+//     opaque blob) so the cache can falsify impurity against it (read-outside-set).
 type ContentUnit {
   identity: Symbol
   tracked_files: List<TrackedFile>

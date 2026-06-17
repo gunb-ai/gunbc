@@ -1,0 +1,88 @@
+// src/v2/lens/rust_crate_content_unit.dag
+// Scope: derive a content unit FROM the rust/cargo crate model — the file set is NOT a
+//   hand-declared path list (that is the parallel-ledger anemia, DESIGN §2 deep); it DERIVES
+//   from the crate's CargoTargets via the single-authority `cargo_target_source_path` rule in
+//   `extdeps.cargo`. "Model the crate, get the concrete files for free."
+//
+// §3 split (Option B, operator/design-authority direction):
+//   - the file-derivation RULE is declared once in `extdeps.cargo` and REUSED here (not
+//     re-coined);
+//   - the file CONTENTS (per-file digests) and the host-enumerated file sets (the monolith's
+//     `crate_dir` glob, the manifest files) are HOST reads — represented here as inputs
+//     (`digest_of`, `extra_files`), the §3(b) transport seam;
+//   - the general `ContentUnit` carrier stays in `v2.std` with no crate dependency (no layer
+//     inversion); this module sits above it and grounds it in the crate model.
+//
+// The gate (PR-2) supplies the live inputs by reading disk (the Cargo.toml [workspace] members
+// the `v1.compiler.workspace_members` authority emits, and a `crate_dir` glob); this module is
+// the pure derivation those host reads feed.
+
+module v2.lens.rust_crate_content_unit
+
+import v2.std.collection { List }
+import v2.std.content_unit { ContentUnit, TrackedFile }
+import extdeps.cargo { CargoTarget, cargo_target_source_path }
+import std.types { FilePathParts }
+
+// Render a structured path to its identity string ("src/bin/foo.rs"). The grounded
+// `FilePathParts` is the authority (from the cargo rule); this flattens it to the scalar the
+// content-unit node keys on. Separator is the cargo/posix "/".
+fn render_path(parts: FilePathParts) -> String {
+  fold(parts.segments, init: "", f: fn(acc, seg) {
+    if acc == "" { seg } else { concat(acc, concat("/", seg)) }
+  })
+}
+
+// One tracked file from a rendered path + its host-read content digest. `path` carries the
+// rendered file path (derived from the crate, not hand-declared); `content_digest` is the
+// host-read fingerprint of that file's bytes (§3(b) seam).
+fn tracked_file_for(path: String, digest_of: fn(String) -> Symbol) -> TrackedFile {
+  TrackedFile { path: path, content_digest: digest_of(path) }
+}
+
+// The DERIVED tracked-file set of a rust crate:
+//   - one file per CargoTarget, via the single-authority `cargo_target_source_path` rule
+//     (Lib → src/lib.rs, Bin{name} → src/bin/{name}.rs or src/main.rs, …);
+//   - PLUS `extra_files`: the host-enumerated remainder — the manifest (Cargo.toml/Cargo.lock)
+//     and, for the hand-authored monolith crate whose sources are not a clean target list, the
+//     `crate_dir` .rs glob. Over-inclusive is the FAIL-SAFE direction for a content key (you
+//     may re-run when an unused file changes; you never MISS a change — DESIGN §5).
+// A changed target set, a changed file content (digest), or a changed file set all change the
+// derived tracked files and hence the unit's fingerprint.
+fn rust_crate_tracked_files(
+  package_name: String,
+  targets: List<CargoTarget>,
+  extra_files: List<FilePathParts>,
+  digest_of: fn(String) -> Symbol
+) -> List<TrackedFile> {
+  let target_paths = fold(targets, init: [], f: fn(acc, target) {
+    concat(acc, [render_path(parts: cargo_target_source_path(target: target, package_name: package_name))])
+  })
+  let extra_paths = fold(extra_files, init: [], f: fn(acc, parts) {
+    concat(acc, [render_path(parts: parts)])
+  })
+  fold(concat(target_paths, extra_paths), init: [], f: fn(acc, path) {
+    concat(acc, [tracked_file_for(path: path, digest_of: digest_of)])
+  })
+}
+
+// A rust crate AS a content unit: its identity is the crate name; its tracked files DERIVE
+// from its targets + host-enumerated extras. This is the crate-grounded inhabitant of the
+// general `ContentUnit` — feed it through `v2.lens.content_unit_affected` exactly as any unit.
+fn rust_crate_content_unit(
+  identity: Symbol,
+  package_name: String,
+  targets: List<CargoTarget>,
+  extra_files: List<FilePathParts>,
+  digest_of: fn(String) -> Symbol
+) -> ContentUnit {
+  ContentUnit {
+    identity: identity,
+    tracked_files: rust_crate_tracked_files(
+      package_name: package_name,
+      targets: targets,
+      extra_files: extra_files,
+      digest_of: digest_of
+    )
+  }
+}

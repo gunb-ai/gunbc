@@ -1,24 +1,22 @@
 // src/v2/lens/content_unit_affected/witness.dag
 // Discriminating witnesses (DESIGN §5 — green by execution, RED on wrong behavior) that a
-// content unit participates in the canonical affected-set lens by its content fingerprint:
-//   - an UNCHANGED unit prunes (one boundary exclusion, no rerun) — the purity oracle: a
-//     content-identical replay re-executes nothing.
-//   - a CHANGED unit is NOT pruned and yields a ChangedSubgraphFrontier — it enters the
-//     re-execution frontier.
-//   - SOUNDNESS / content-addressed, not path-addressed: in a two-unit set where only the
-//     SECOND unit's fingerprint drifted, the first prunes and the second does not — the
-//     decision is a pure function of fingerprints and consulted no change-set path list. This
-//     is precisely what the old path-suffix selector missed: a drifted unit not "touched" by
-//     the change-set would have been skipped; here it re-runs.
+// rust crate, modeled via the crate-grounded derivation, participates in the canonical
+// affected-set lens by the CONTENT of its DERIVED file set:
+//   - UNCHANGED crate → prunes (purity oracle: content-identical replay re-executes nothing).
+//   - CONTENT change (a file's digest drifts) → not pruned, enters the frontier.
+//   - ADD-TARGET (add a Bin target, all digests unchanged) → the derived file set GAINS
+//     src/bin/{name}.rs via `cargo_target_source_path`, the fingerprint changes, unit enters
+//     the frontier. THE proof that the file set DERIVES from the crate, not a declared list.
+//   - MONOLITH new file (a new .rs appears in the host crate_dir glob) → fingerprint changes.
+//   - peer isolation: a drifted crate reruns while an unchanged peer prunes — content-keyed,
+//     no path list consulted.
 //
-// RED controls: flip a baseline/current fingerprint and the prune/expand counts invert — the
-// unchanged claim goes RED if pruning silently always fires; the changed claim goes RED if it
-// never fires.
+// host inputs (per-file digests, the monolith dir-glob, the manifest file set) are TEST DATA
+// here standing for the gate's disk reads (§3(b) seam).
 
 module v2.test.lens_content_unit_affected.witness
 
 import v2.std.algebra { length }
-import v2.std.content_unit { ContentUnit, TrackedFile }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.verification {
@@ -37,51 +35,119 @@ import v2.lens.affected_set_examples {
   affected_set_example_node
 }
 import v2.lens.content_unit_affected { content_unit_frontier }
+import v2.lens.rust_crate_content_unit { rust_crate_content_unit }
+import v2.std.content_unit { ContentUnit }
+import extdeps.cargo { CargoTarget, Lib, Bin }
+import std.types { FilePathParts }
 
-// Tracked files (declared path + host-read content digest). v1/v2 of a file = an edit (same
-// path, different digest).
-data cu_file_a_lib_v1: TrackedFile = TrackedFile { path: ^cu_a_lib_rs, content_digest: ^cu_dig_a_lib_v1 }
-data cu_file_a_lib_v2: TrackedFile = TrackedFile { path: ^cu_a_lib_rs, content_digest: ^cu_dig_a_lib_v2 }
-data cu_file_a_cargo: TrackedFile = TrackedFile { path: ^cu_a_cargo_toml, content_digest: ^cu_dig_a_cargo_v1 }
-data cu_file_b_lib_v1: TrackedFile = TrackedFile { path: ^cu_b_lib_rs, content_digest: ^cu_dig_b_lib_v1 }
-data cu_file_b_lib_v2: TrackedFile = TrackedFile { path: ^cu_b_lib_rs, content_digest: ^cu_dig_b_lib_v2 }
+// Host digest functions (test data standing for disk reads). `cu_dig_base` gives every file
+// the same baseline digest; `cu_dig_lib_edited` drifts only src/lib.rs (a content edit).
+fn cu_dig_base(path: String) -> Symbol { ^cu_dig_base_v1 }
+fn cu_dig_lib_edited(path: String) -> Symbol {
+  if path == "src/lib.rs" { ^cu_dig_lib_v2 } else { ^cu_dig_base_v1 }
+}
 
-// Units, each over a declared tracked-file set.
-//   a_v1: {a/lib.rs@v1, a/Cargo.toml}      — baseline.
-//   a_v2: {a/lib.rs@v2, a/Cargo.toml}      — one file's CONTENT edited (digest drift).
-//   a_v1_plus: {a/lib.rs@v1, a/Cargo.toml, a/extra.rs}  — SAME digests, a file ADDED (membership).
-data cu_crate_a_v1: ContentUnit = ContentUnit { identity: ^cu_crate_a, tracked_files: [cu_file_a_lib_v1, cu_file_a_cargo] }
-data cu_crate_a_v2: ContentUnit = ContentUnit { identity: ^cu_crate_a, tracked_files: [cu_file_a_lib_v2, cu_file_a_cargo] }
-data cu_file_a_extra: TrackedFile = TrackedFile { path: ^cu_a_extra_rs, content_digest: ^cu_dig_a_extra_v1 }
-data cu_crate_a_v1_plus: ContentUnit = ContentUnit { identity: ^cu_crate_a, tracked_files: [cu_file_a_lib_v1, cu_file_a_cargo, cu_file_a_extra] }
-data cu_crate_b_v1: ContentUnit = ContentUnit { identity: ^cu_crate_b, tracked_files: [cu_file_b_lib_v1] }
-data cu_crate_b_v2: ContentUnit = ContentUnit { identity: ^cu_crate_b, tracked_files: [cu_file_b_lib_v2] }
+data cu_manifest: FilePathParts = FilePathParts { segments: ["Cargo.toml"] }
+data cu_monolith_new_file: FilePathParts = FilePathParts { segments: ["src", "v1_new_module.rs"] }
 
-// An unchanged unit prunes: exactly one boundary exclusion, ChangedSubgraphFrontier.
-fn cu_unchanged_unit_prunes() -> Bool {
-  match content_unit_frontier(baseline: [cu_crate_a_v1], current: [cu_crate_a_v1]) {
+// Baseline crate: package "v1-compiler", one Lib target + the manifest, all baseline digests.
+fn cu_crate_baseline() -> ContentUnit {
+  rust_crate_content_unit(
+    identity: ^cu_crate_main,
+    package_name: "v1-compiler",
+    targets: [Lib],
+    extra_files: [cu_manifest],
+    digest_of: cu_dig_base
+  )
+}
+
+// Same crate, one file's CONTENT edited (src/lib.rs digest drifts).
+fn cu_crate_content_edited() -> ContentUnit {
+  rust_crate_content_unit(
+    identity: ^cu_crate_main,
+    package_name: "v1-compiler",
+    targets: [Lib],
+    extra_files: [cu_manifest],
+    digest_of: cu_dig_lib_edited
+  )
+}
+
+// Same crate with a Bin target ADDED (digests unchanged) — derivation gains src/bin/helper.rs.
+fn cu_crate_added_bin() -> ContentUnit {
+  rust_crate_content_unit(
+    identity: ^cu_crate_main,
+    package_name: "v1-compiler",
+    targets: [Lib, Bin { name: "helper" }],
+    extra_files: [cu_manifest],
+    digest_of: cu_dig_base
+  )
+}
+
+// Same crate with a new .rs appearing in the host crate_dir glob (monolith case).
+fn cu_crate_monolith_grown() -> ContentUnit {
+  rust_crate_content_unit(
+    identity: ^cu_crate_main,
+    package_name: "v1-compiler",
+    targets: [Lib],
+    extra_files: [cu_manifest, cu_monolith_new_file],
+    digest_of: cu_dig_base
+  )
+}
+
+// A second, independent crate (for peer isolation).
+fn cu_crate_peer(digest_of: fn(String) -> Symbol) -> ContentUnit {
+  rust_crate_content_unit(
+    identity: ^cu_crate_peer,
+    package_name: "v1-stage0-core",
+    targets: [Lib],
+    extra_files: [cu_manifest],
+    digest_of: digest_of
+  )
+}
+
+// An unchanged crate prunes: exactly one boundary exclusion.
+fn cu_unchanged_crate_prunes() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_baseline()], current: [cu_crate_baseline()]) {
     Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
       length(xs: boundary_exclusions) == 1
     _ => false
   }
 }
 
-// A changed unit is NOT pruned (zero boundary exclusions) and still yields a real frontier.
-fn cu_changed_unit_enters_frontier() -> Bool {
-  match content_unit_frontier(baseline: [cu_crate_a_v1], current: [cu_crate_a_v2]) {
+// A content edit (file digest drift) is NOT pruned.
+fn cu_content_edit_enters_frontier() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_baseline()], current: [cu_crate_content_edited()]) {
     Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
       length(xs: boundary_exclusions) == 0
     _ => false
   }
 }
 
-// Content-addressed, not path-addressed: baseline {A@v1, B@v1}, current {A@v1, B@v2}. Only A
-// prunes (one boundary exclusion); B's drift expands it into the frontier — with no change-set
-// path list consulted.
-fn cu_drifted_unit_reruns_unchanged_peer_prunes() -> Bool {
+// Adding a Bin TARGET (digests unchanged) changes the DERIVED file set → not pruned. The proof
+// the file set derives from the crate's targets, not a hand-declared list.
+fn cu_added_target_enters_frontier() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_baseline()], current: [cu_crate_added_bin()]) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 0
+    _ => false
+  }
+}
+
+// A new .rs in the monolith crate_dir glob changes the fingerprint → not pruned.
+fn cu_monolith_new_file_enters_frontier() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_baseline()], current: [cu_crate_monolith_grown()]) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 0
+    _ => false
+  }
+}
+
+// Peer isolation: baseline {main, peer}; current {main, peer'} where only the peer's content
+// drifted. main prunes (one boundary exclusion), peer reruns — content-keyed, no path list.
+fn cu_drifted_peer_reruns_unchanged_main_prunes() -> Bool {
   match content_unit_frontier(
-    baseline: [cu_crate_a_v1, cu_crate_b_v1],
-    current: [cu_crate_a_v1, cu_crate_b_v2]
+    baseline: [cu_crate_baseline(), cu_crate_peer(digest_of: cu_dig_base)],
+    current: [cu_crate_baseline(), cu_crate_peer(digest_of: cu_dig_lib_edited)]
   ) {
     Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
       length(xs: boundary_exclusions) == 1
@@ -89,71 +155,70 @@ fn cu_drifted_unit_reruns_unchanged_peer_prunes() -> Bool {
   }
 }
 
-// MEMBERSHIP change: add a tracked file to the set with all per-file digests UNCHANGED. The
-// declared set itself is part of the content address, so this must NOT prune — it expands into
-// the frontier. This is the witness that most directly demonstrates the purity-falsifier
-// property the downstream cache needs: the declared set is what "read outside the set" is
-// checked against, so a set delta must be a content delta.
-fn cu_membership_change_enters_frontier() -> Bool {
-  match content_unit_frontier(baseline: [cu_crate_a_v1], current: [cu_crate_a_v1_plus]) {
-    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
-      length(xs: boundary_exclusions) == 0
-    _ => false
-  }
-}
-
-// Aggregator for a single-entry resolve (fast local check / hand-enrollable witness row).
 fn content_unit_affected_witnesses() -> Bool {
-  cu_unchanged_unit_prunes()
-    && cu_changed_unit_enters_frontier()
-    && cu_drifted_unit_reruns_unchanged_peer_prunes()
-    && cu_membership_change_enters_frontier()
+  cu_unchanged_crate_prunes()
+    && cu_content_edit_enters_frontier()
+    && cu_added_target_enters_frontier()
+    && cu_monolith_new_file_enters_frontier()
+    && cu_drifted_peer_reruns_unchanged_main_prunes()
 }
 
-fn cu_unchanged_unit_prunes_rhs() -> Node {
-  if cu_unchanged_unit_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
+fn cu_unchanged_crate_prunes_rhs() -> Node {
+  if cu_unchanged_crate_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
 }
 
-fn cu_changed_unit_enters_frontier_rhs() -> Node {
-  if cu_changed_unit_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
+fn cu_content_edit_enters_frontier_rhs() -> Node {
+  if cu_content_edit_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
 }
 
-fn cu_drifted_unit_reruns_unchanged_peer_prunes_rhs() -> Node {
-  if cu_drifted_unit_reruns_unchanged_peer_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
+fn cu_added_target_enters_frontier_rhs() -> Node {
+  if cu_added_target_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
 }
 
-fn cu_membership_change_enters_frontier_rhs() -> Node {
-  if cu_membership_change_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
+fn cu_monolith_new_file_enters_frontier_rhs() -> Node {
+  if cu_monolith_new_file_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
 }
 
-data claim_cu_unchanged_unit_prunes: TestClaim = EqualsClaim {
-  label: "lens_content_unit_affected/unchanged_unit_prunes: content-identical unit prunes (purity oracle)",
+fn cu_drifted_peer_reruns_unchanged_main_prunes_rhs() -> Node {
+  if cu_drifted_peer_reruns_unchanged_main_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
+}
+
+data claim_cu_unchanged_crate_prunes: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/unchanged_crate_prunes: content-identical crate prunes (purity oracle)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: cu_unchanged_unit_prunes_rhs(),
+  rhs: cu_unchanged_crate_prunes_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_cu_changed_unit_enters_frontier: TestClaim = EqualsClaim {
-  label: "lens_content_unit_affected/changed_unit_enters_frontier: drifted fingerprint is not pruned",
+data claim_cu_content_edit_enters_frontier: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/content_edit_enters_frontier: a file content edit (digest drift) is not pruned",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: cu_changed_unit_enters_frontier_rhs(),
+  rhs: cu_content_edit_enters_frontier_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_cu_drifted_unit_reruns_unchanged_peer_prunes: TestClaim = EqualsClaim {
-  label: "lens_content_unit_affected/content_addressed_not_path_addressed: drifted peer reruns, unchanged peer prunes — no path list consulted",
+data claim_cu_added_target_enters_frontier: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/added_target_enters_frontier: adding a Bin target changes the DERIVED file set (files derive from the crate)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: cu_drifted_unit_reruns_unchanged_peer_prunes_rhs(),
+  rhs: cu_added_target_enters_frontier_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_cu_membership_change_enters_frontier: TestClaim = EqualsClaim {
-  label: "lens_content_unit_affected/membership_change_enters_frontier: adding a tracked file (digests unchanged) is a content delta — declared set is part of the address",
+data claim_cu_monolith_new_file_enters_frontier: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/monolith_new_file_enters_frontier: a new .rs in the crate_dir glob changes the fingerprint",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: cu_membership_change_enters_frontier_rhs(),
+  rhs: cu_monolith_new_file_enters_frontier_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cu_drifted_peer_reruns_unchanged_main_prunes: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/peer_isolation: drifted peer crate reruns, unchanged peer prunes — content-keyed, no path list",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: cu_drifted_peer_reruns_unchanged_main_prunes_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
