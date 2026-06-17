@@ -1,0 +1,120 @@
+// src/v2/lens/content_unit_affected/witness.dag
+// Discriminating witnesses (DESIGN §5 — green by execution, RED on wrong behavior) that a
+// content unit participates in the canonical affected-set lens by its content fingerprint:
+//   - an UNCHANGED unit prunes (one boundary exclusion, no rerun) — the purity oracle: a
+//     content-identical replay re-executes nothing.
+//   - a CHANGED unit is NOT pruned and yields a ChangedSubgraphFrontier — it enters the
+//     re-execution frontier.
+//   - SOUNDNESS / content-addressed, not path-addressed: in a two-unit set where only the
+//     SECOND unit's fingerprint drifted, the first prunes and the second does not — the
+//     decision is a pure function of fingerprints and consulted no change-set path list. This
+//     is precisely what the old path-suffix selector missed: a drifted unit not "touched" by
+//     the change-set would have been skipped; here it re-runs.
+//
+// RED controls: flip a baseline/current fingerprint and the prune/expand counts invert — the
+// unchanged claim goes RED if pruning silently always fires; the changed claim goes RED if it
+// never fires.
+
+module v2.test.lens_content_unit_affected.witness
+
+import v2.std.algebra { length }
+import v2.std.content_unit { ContentUnit }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds }
+import v2.lens.affected_set { ChangedSubgraphFrontier }
+import v2.lens.affected_set_examples {
+  affected_set_claim_failure_node,
+  affected_set_example_node
+}
+import v2.lens.content_unit_affected { content_unit_frontier }
+
+// Two units, each at two fingerprints (v1 baseline, v2 drift).
+data cu_crate_a_v1: ContentUnit = ContentUnit { identity: ^cu_crate_a, fingerprint: ^cu_fp_a_v1 }
+data cu_crate_a_v2: ContentUnit = ContentUnit { identity: ^cu_crate_a, fingerprint: ^cu_fp_a_v2 }
+data cu_crate_b_v1: ContentUnit = ContentUnit { identity: ^cu_crate_b, fingerprint: ^cu_fp_b_v1 }
+data cu_crate_b_v2: ContentUnit = ContentUnit { identity: ^cu_crate_b, fingerprint: ^cu_fp_b_v2 }
+
+// An unchanged unit prunes: exactly one boundary exclusion, ChangedSubgraphFrontier.
+fn cu_unchanged_unit_prunes() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_a_v1], current: [cu_crate_a_v1]) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 1
+    _ => false
+  }
+}
+
+// A changed unit is NOT pruned (zero boundary exclusions) and still yields a real frontier.
+fn cu_changed_unit_enters_frontier() -> Bool {
+  match content_unit_frontier(baseline: [cu_crate_a_v1], current: [cu_crate_a_v2]) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 0
+    _ => false
+  }
+}
+
+// Content-addressed, not path-addressed: baseline {A@v1, B@v1}, current {A@v1, B@v2}. Only A
+// prunes (one boundary exclusion); B's drift expands it into the frontier — with no change-set
+// path list consulted.
+fn cu_drifted_unit_reruns_unchanged_peer_prunes() -> Bool {
+  match content_unit_frontier(
+    baseline: [cu_crate_a_v1, cu_crate_b_v1],
+    current: [cu_crate_a_v1, cu_crate_b_v2]
+  ) {
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 1
+    _ => false
+  }
+}
+
+// Aggregator for a single-entry resolve (fast local check / hand-enrollable witness row).
+fn content_unit_affected_witnesses() -> Bool {
+  cu_unchanged_unit_prunes()
+    && cu_changed_unit_enters_frontier()
+    && cu_drifted_unit_reruns_unchanged_peer_prunes()
+}
+
+fn cu_unchanged_unit_prunes_rhs() -> Node {
+  if cu_unchanged_unit_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
+}
+
+fn cu_changed_unit_enters_frontier_rhs() -> Node {
+  if cu_changed_unit_enters_frontier() { affected_set_example_node } else { affected_set_claim_failure_node }
+}
+
+fn cu_drifted_unit_reruns_unchanged_peer_prunes_rhs() -> Node {
+  if cu_drifted_unit_reruns_unchanged_peer_prunes() { affected_set_example_node } else { affected_set_claim_failure_node }
+}
+
+data claim_cu_unchanged_unit_prunes: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/unchanged_unit_prunes: content-identical unit prunes (purity oracle)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: cu_unchanged_unit_prunes_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cu_changed_unit_enters_frontier: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/changed_unit_enters_frontier: drifted fingerprint is not pruned",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: cu_changed_unit_enters_frontier_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cu_drifted_unit_reruns_unchanged_peer_prunes: TestClaim = EqualsClaim {
+  label: "lens_content_unit_affected/content_addressed_not_path_addressed: drifted peer reruns, unchanged peer prunes — no path list consulted",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: cu_drifted_unit_reruns_unchanged_peer_prunes_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
