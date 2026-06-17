@@ -1,0 +1,142 @@
+// gunbc/ci_spec.dag — CI intent as data (witness roots, gates, diff policy).
+
+module gunbc.ci_spec
+
+type WitnessRoot {
+  root: String
+  scan_subtrees: List<String>
+}
+
+type WitnessEntry {
+  entry: String
+  function: String
+}
+
+type Gate
+  = RustMonolithGate
+  | EmitHostGate
+  | LayeringImportsGate
+  | DslCompileCleanGate
+  | CiYamlGate
+
+type DiffMode = DiffMergeBase | DiffTwoDot
+
+type DiffPolicy {
+  base: String
+  head: String
+  mode: DiffMode
+}
+
+type CiSpec {
+  witness_roots: List<WitnessRoot>
+  witness_entries: List<WitnessEntry>
+  gates: List<Gate>
+  diff_policy: DiffPolicy
+  notice_title: String
+}
+
+data gunbc_ci_spec: CiSpec = {
+  witness_roots: [
+    { root: "src/v2", scan_subtrees: [] },
+    { root: "dsl", scan_subtrees: [] }
+  ],
+  witness_entries: [
+    { entry: "dsl/test/claim/rust_stage0_gates_witness.dag", function: "rust_stage0_gates_witnesses" },
+    { entry: "dsl/test/claim/emit_host_gate_witness.dag", function: "emit_host_gate_witnesses" },
+    { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
+    { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
+    { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
+    { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
+    { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
+    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" }
+  ],
+  gates: [
+    RustMonolithGate,
+    EmitHostGate,
+    LayeringImportsGate,
+    DslCompileCleanGate,
+    CiYamlGate
+  ],
+  diff_policy: {
+    base: "origin/main",
+    head: "HEAD",
+    mode: DiffMergeBase
+  },
+  notice_title: "v2 claim corpus"
+}
+
+fn join_slash(parts: List<String>) -> String {
+  fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+}
+
+fn git_fetch_script(policy: DiffPolicy) -> String {
+  let parts = split(s: policy.base, delimiter: "/")
+  let remote = parts.first()
+  let ref_name = join_slash(parts: parts.skip(n: 1))
+  concat(
+    concat(concat("git fetch --no-tags ", remote), " "),
+    concat(ref_name, " 2>/dev/null || true")
+  )
+}
+
+fn witness_root_source_flag(wr: WitnessRoot) -> String {
+  concat(" --source-root ", wr.root)
+}
+
+fn witness_root_scan_flags(wr: WitnessRoot) -> String {
+  fold(wr.scan_subtrees, init: "", f: (acc, sub) => {
+    let dir = if starts_with(s: sub, prefix: wr.root) {
+      sub
+    } else {
+      concat(concat(wr.root, "/"), sub)
+    }
+    concat(acc, concat(" --scan-dir ", dir))
+  })
+}
+
+fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
+  fold(roots, init: "", f: (acc, wr) =>
+    concat(concat(acc, witness_root_source_flag(wr: wr)), witness_root_scan_flags(wr: wr))
+  )
+}
+
+fn witness_entry_flags(row: WitnessEntry) -> String {
+  concat(concat(" --entry ", row.entry), concat(" --function ", row.function))
+}
+
+fn claim_batch_script(spec: CiSpec) -> String {
+  concat(
+    concat(
+      concat(
+        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_roots_flags(roots: spec.witness_roots)),
+        " --roster-from-discovery"
+      ),
+      fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
+    ),
+    concat(concat(" --notice-title \"", spec.notice_title), "\"")
+  )
+}
+
+fn ci_gates_invoke(spec: CiSpec) -> String {
+  concat(
+    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
+    " --entry dsl/tools/ci_gates.dag --function main"
+  )
+}
+
+fn gunbc_ci_run_script(spec: CiSpec) -> String {
+  concat(
+    concat(
+      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(claim_batch_script(spec: spec), "\n")
+    ),
+    ci_gates_invoke(spec: spec)
+  )
+}
+
+fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
+  concat(
+    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    "cargo run -p v1-compiler --release --bin gunbc -- ci"
+  )
+}

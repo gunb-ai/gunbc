@@ -25,7 +25,17 @@ import extdeps.github.log_annotations {
   annotation_stop_commands_prefix,
   render_log_annotation
 }
+import extdeps.formats.yaml { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit }
+
+// §3 layering — ordered env/with/outputs on Workflow / Job / Step:
+// 🟡 SCAFFOLD. Fields use `List<YamlKeyValue>` from `extdeps.formats.yaml` so emit
+// preserves YAML key order (std Map is an unordered HAMT — see yaml.dag:11-12). The
+// YAML value carrier binding the GitHub Actions syntax model is a known layer inversion
+// (yaml.dag:5-8 documents the parallel fork; this module is the upward leak site).
+// Dissolution trigger: `std` gains an ordered key/value pair primitive (reused by
+// TOML/JSON emitters); `actions.dag` migrates to that type and format projectors
+// consume it only at the extdeps/formats seam.
 
 type GitHubActionsRuntime {
   oidc_request_url_env: NonEmptyStr
@@ -49,15 +59,16 @@ type Workflow {
   concurrency: ConcurrencySpec?
   jobs: List<Job>
   // `none` models an absent top-level `env:` block in Actions YAML (no fabricated keys).
-  env: Map<String, String>?
+  // Ordered key/value pairs (YAML key order is semantic; std Map is unordered).
+  env: List<YamlKeyValue>?
   permissions: WorkflowPermissions?
 }
 
 type WorkflowPermissions {
-  contents: PermissionLevel
-  pull_requests: PermissionLevel
-  issues: PermissionLevel
-  actions: PermissionLevel
+  contents: PermissionLevel?
+  pull_requests: PermissionLevel?
+  issues: PermissionLevel?
+  actions: PermissionLevel?
 }
 
 type PermissionLevel = PermRead | PermWrite | PermNone
@@ -143,13 +154,13 @@ type Job {
   steps: List<Step>
   needs: List<String>
   // `none` models an absent `env:` block in Actions YAML (no fabricated keys).
-  env: Map<String, String>?
-  // Job outputs: map output name -> expression string (e.g. `${{ steps.id.outputs.k }}`).
-  outputs: Map<String, String>?
+  env: List<YamlKeyValue>?
+  // Job outputs: ordered name -> expression pairs.
+  outputs: List<YamlKeyValue>?
   if_condition: String?
   strategy: MatrixStrategy?
   timeout_minutes: Int?
-  continue_on_error: Bool
+  continue_on_error: Bool?
   concurrency: ConcurrencySpec?
 }
 
@@ -241,11 +252,11 @@ type Step
       name: String?,
       id: String?,
       run: String,
-      shell: ShellType,
-      env: Map<String, String>?,
+      shell: ShellType?,
+      env: List<YamlKeyValue>?,
       working_directory: String?,
       if_condition: String?,
-      continue_on_error: Bool,
+      continue_on_error: Bool?,
       timeout_minutes: Int?
     }
   | UsesStep {
@@ -253,10 +264,10 @@ type Step
       id: String?,
       uses: ActionRef,
       // `none` models omitted `with:` or YAML `with: {}` (no fabricated action inputs).
-      with: Map<String, String>?,
-      env: Map<String, String>?,
+      with: List<YamlKeyValue>?,
+      env: List<YamlKeyValue>?,
       if_condition: String?,
-      continue_on_error: Bool,
+      continue_on_error: Bool?,
       timeout_minutes: Int?
     }
 
@@ -317,7 +328,7 @@ type CheckConclusion
 // Well-known actions referenced by CI workflows.
 
 data checkout_action: ActionRef = ActionRef {
-  owner: "actions", repo: "checkout", ref: "v2"
+  owner: "actions", repo: "checkout", ref: "v5"
 }
 
 data setup_rust_action: ActionRef = ActionRef {
@@ -325,7 +336,7 @@ data setup_rust_action: ActionRef = ActionRef {
 }
 
 data cache_action: ActionRef = ActionRef {
-  owner: "actions", repo: "cache", ref: "v2"
+  owner: "actions", repo: "cache", ref: "v5"
 }
 
 // -- Platform constants -----------------------------------------------

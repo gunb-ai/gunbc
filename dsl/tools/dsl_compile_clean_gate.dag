@@ -28,6 +28,10 @@ func run_gate() -> ProcessExit {
   }
 }
 
+func run_dsl_compile_clean_gate() -> ProcessExit {
+  run_gate()
+}
+
 func main() -> ProcessExit {
   run_gate()
 }
