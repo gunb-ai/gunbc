@@ -11,14 +11,6 @@ module v2.compiler.emit_host
 
 
 import v2.compiler.emit { emit }
-import v2.extdeps.languages.typescript {
-  ts_host_transport_mvp1_descriptor,
-  ts_host_transport_mvp1_identity,
-  ts_mvp1_source_text_authority
-}
-import v2.extdeps.languages.rust { rust_mvp1_source_text_authority }
-import v2.extdeps.languages.python { python_mvp1_source_text }
-import v2.extdeps.languages.go { go_mvp1_source_text }
 import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
@@ -33,7 +25,10 @@ import v2.compiler.eval {
 }
 import v2.compiler.target_carriers { TargetSource }
 import v2.std.collection { List, optional_present }
-import v2.std.host_transport { HostTransportDescriptor }
+import v2.std.host_transport {
+  EmitHostRuntimeConfigured,
+  runtime_value_parse_from_row
+}
 import v2.std.diagnostic {
   Diagnostic,
   Outcome,
@@ -43,7 +38,8 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   port_locus,
   node_locus,
-  outcome_rejected
+  outcome_rejected,
+  bind_outcome
 }
 import v2.std.host_run {
   BuildLog,
@@ -63,8 +59,8 @@ import v2.std.test_claim_falsification {
 import v2.std.integer { Int }
 import v2.std.machine { Byte }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.runtime { RuntimeValue, RuntimePrimitive }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.runtime { RuntimeValue }
+import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
 import v2.std.text { String }
 import v2.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
 import v2.std.verification {
@@ -77,24 +73,13 @@ import v2.std.witness { Holds, Violates }
 
 data emit_host_transport_not_wired: Symbol = emit_host_transport_not_wired
 data emit_host_transport_port: Symbol = emit_host_transport_port
-data emit_host_parse_unsupported_target: Symbol = emit_host_parse_unsupported_target
 data emit_host_run_unsupported_target: Symbol = emit_host_run_unsupported_target
 data emit_host_emit_vs_eval_deferred: Symbol = emit_host_emit_vs_eval_deferred
 data emit_host_exit_not_ok: Symbol = emit_host_exit_not_ok
-data emit_host_rust_i64_symbol: Symbol = emit_host_rust_i64_symbol
-data emit_host_ts_i32_symbol: Symbol = emit_host_ts_i32_symbol
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: emit_host_transport_not_wired,
-    at: port_locus(port: emit_host_transport_port),
-    correction: None
-  }
-}
-
-fn emit_host_parse_unsupported_target_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: emit_host_parse_unsupported_target,
     at: port_locus(port: emit_host_transport_port),
     correction: None
   }
@@ -130,22 +115,6 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
       outcome_rejected(d: d)
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
-  }
-}
-
-fn emit_host_rust_i64_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: emit_host_rust_i64_symbol } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn emit_host_ts_i32_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: emit_host_ts_i32_symbol } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
   }
 }
 
