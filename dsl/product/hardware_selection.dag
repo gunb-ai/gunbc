@@ -327,8 +327,12 @@ fn axes_on_front(candidate: HardwareAxes, pool: List<HardwareAxes>) -> Bool {
 // Derived, not stored (DESIGN §2 model-local/derive-global): every config already carries
 // the four axes, so the ratios fall out. Guard divide-by-zero fail-closed (0 capacity/power
 // is a degenerate config, not a 1).
-// Nat magnitudes widen to Int for the ratio arithmetic below (Nat ⊂ Int); a single Int
-// domain keeps the divide-by-zero guards single-typed.
+// Nat→Int widener. NOT a removable no-op: the v2 checker does NOT auto-widen Nat to Int when
+// unifying `if` branches, so a guard like `if p <= 0 { 1 } else { p }` over a Nat-typed `p`
+// (a `*_count` magnitude) fails with "if branches resolve to incompatible types: Int vs Nat"
+// (verified by execution). Routing the magnitude through `as_int` first pins a single Int
+// domain so the divide-by-zero guards below type-check. Dissolves if/when v2 widens Nat⊂Int
+// across branch unification (then the call sites read the `*_count` Nat directly).
 fn as_int(n: Int) -> Int {
   n
 }
