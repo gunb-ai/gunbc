@@ -60,7 +60,7 @@ fn spine_name_resolve_qn_node(seg: Symbol) -> Node {
   )
 }
 
-fn spine_name_resolve_module_root(seg: Symbol, export_sym: Symbol) -> Node {
+fn spine_name_resolve_subject_module_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -70,14 +70,56 @@ fn spine_name_resolve_module_root(seg: Symbol, export_sym: Symbol) -> Node {
       ),
       dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
-        target: spine_name_resolve_qn_node(seg: seg)
+        target: spine_name_resolve_qn_node(seg: ^spine_name_resolve_subject_seg)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn spine_name_resolve_imported_module_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: spine_name_resolve_qn_node(seg: ^spine_name_resolve_import_seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Named { name: ^spine_name_resolve_imported_export },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn spine_name_resolve_subject_module_root_with_import_use() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: spine_name_resolve_qn_node(seg: ^spine_name_resolve_subject_seg)
+      ),
+      Edge {
+        label: Named { name: ^spine_name_resolve_subject_import_use },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^spine_name_resolve_imported_export } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -97,25 +139,16 @@ fn spine_name_resolve_import_target() -> QualifiedName {
 
 fn spine_name_resolve_single_subject_roots() -> FreeMonoid<Node> {
   Cons {
-    head: spine_name_resolve_module_root(
-      seg: ^spine_name_resolve_subject_seg,
-      export_sym: ^spine_name_resolve_subject_export
-    ),
+    head: spine_name_resolve_subject_module_root(),
     tail: Empty
   }
 }
 
 fn spine_name_resolve_cross_file_roots() -> FreeMonoid<Node> {
   Cons {
-    head: spine_name_resolve_module_root(
-      seg: ^spine_name_resolve_subject_seg,
-      export_sym: ^spine_name_resolve_subject_export
-    ),
+    head: spine_name_resolve_subject_module_root_with_import_use(),
     tail: Cons {
-      head: spine_name_resolve_module_root(
-        seg: ^spine_name_resolve_import_seg,
-        export_sym: ^spine_name_resolve_imported_export
-      ),
+      head: spine_name_resolve_imported_module_root(),
       tail: Empty
     }
   }
