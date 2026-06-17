@@ -10,6 +10,8 @@
 //!
 //! Either way it then runs:
 //!
+//! 0. FILENAME HYGIENE — fail-closed: no `__` in any `.dag` basename under
+//!    `--source-root` (legacy flat-dir encoding; use subdirectories instead).
 //! 1. GREEN pass — one `claim_batch`-style multi-entry resolve (module index once)
 //! 2. PERTURB pass (optional) — per-row temp-tree witness body → `false`, must fail
 //!
@@ -441,6 +443,33 @@ fn scan_test_decl_names(content: &str) -> Vec<String> {
     names
 }
 
+/// Fail-closed: `.dag` basenames under `--source-root` must not contain `__`.
+fn check_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
+    let mut violations: Vec<String> = Vec::new();
+    for root in source_roots {
+        let mut dag_files: Vec<PathBuf> = Vec::new();
+        collect_dag_files(Path::new(root), &mut dag_files);
+        for path in dag_files {
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| name.contains("__"))
+            {
+                violations.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    if violations.is_empty() {
+        return Ok(());
+    }
+    violations.sort();
+    Err(format!(
+        "filename hygiene: `.dag` basenames must not contain `__` (use subdirectories); \
+         offending file(s): {}",
+        violations.join(", ")
+    ))
+}
+
 fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
     if !from.is_dir() {
         return Err(format!("{} is not a directory", from.display()));
@@ -465,6 +494,11 @@ fn main() -> ExitCode {
     let cfg = parse_args();
     if cfg.source_roots.is_empty() {
         eprintln!("ci-claim-gate: provide at least one --source-root");
+        return ExitCode::from(2);
+    }
+
+    if let Err(e) = check_filename_hygiene(&cfg.source_roots) {
+        eprintln!("ci-claim-gate: {e}");
         return ExitCode::from(2);
     }
 

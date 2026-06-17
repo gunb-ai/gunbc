@@ -46,7 +46,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v2/lens/affected_set.dag"
-data edit_locus_path_source_producer_fixture: RepoPath = "src/v2/test/claim/lens_affected_set/source_producer_fixture.dag"
+data edit_locus_path_source_producer_fixture: RepoPath = "src/v2/lens/affected_set/source_producer_fixture.dag"
 data edit_locus_source_producer_fixture_compilation_unit: Symbol = ^edit_locus_source_producer_fixture_compilation_unit
 data edit_locus_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens

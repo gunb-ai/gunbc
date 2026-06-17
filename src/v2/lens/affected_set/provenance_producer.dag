@@ -39,7 +39,7 @@ import v2.test.lens_common.infer_fixture {
 }
 
 
-data provenance_producer_path_fixture: RepoPath = "src/v2/test/claim/lens_affected_set/source_producer_fixture.dag"
+data provenance_producer_path_fixture: RepoPath = "src/v2/lens/affected_set/source_producer_fixture.dag"
 data provenance_producer_path_mid: RepoPath = "src/v2/lens/affected_set.dag"
 data provenance_producer_path_root: RepoPath = "src/v2/lens/affected_set_examples.dag"
 data provenance_producer_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
