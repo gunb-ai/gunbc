@@ -3479,6 +3479,20 @@ struct ShellResult {
     stderr: String,
 }
 
+/// Push one evaluated argv expression onto `argv`. `List<String>` carriers splice
+/// element-wise (faithful cargo-style flag lists); every other value is one token.
+fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
+    if let Value::List(items) = val {
+        for item in items.iter() {
+            push_shell_argv_tokens(argv, item.clone())?;
+        }
+        Ok(())
+    } else {
+        argv.push(format!("{}", val));
+        Ok(())
+    }
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3490,7 +3504,7 @@ fn dispatch_shell(
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
         let val = eval_expr(node, param_env, ctx)?;
-        argv.push(format!("{}", val));
+        push_shell_argv_tokens(&mut argv, val)?;
     }
 
     if argv.is_empty() {
