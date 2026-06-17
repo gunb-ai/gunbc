@@ -4160,6 +4160,7 @@ fn eval_builtin(
                 Err(_) => Ok(Some(Value::Null)),
             }
         }
+
         "concat" => {
             // Variadic string concat (common in .dag code)
             if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
