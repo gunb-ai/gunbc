@@ -79,10 +79,10 @@ fn is_text_readable(entry: FileEntry) -> Bool {
 // Helper: does this optional encoding represent a known text encoding?
 fn is_text_encoding(e: Encoding?) -> Bool {
   match e {
-    Some { value: ASCII } => true
-    Some { value: UTF8 } => true
-    Some { value: Latin1 } => true
-    Some { value: Text } => true
+    Present { value: ASCII } => true
+    Present { value: UTF8 } => true
+    Present { value: Latin1 } => true
+    Present { value: Text } => true
     _ => false
   }
 }

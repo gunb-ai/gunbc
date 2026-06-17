@@ -164,21 +164,21 @@ data standard_symbols: List<SymbolEntry> = [
 fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
   let matches = filter(standard_symbols, e => e.id == id)
   match matches |> first {
-    Some { value: entry } =>
+    Present { value: entry } =>
       match tier {
-        Emoji   => Some { value: entry.emoji }
-        Unicode => Some { value: entry.unicode }
-        Ascii   => Some { value: entry.ascii }
+        Emoji   => Present { value: entry.emoji }
+        Unicode => Present { value: entry.unicode }
+        Ascii   => Present { value: entry.ascii }
       }
-    None => none
+    Absent => none
   }
 }
 
 fn symbol_color(id: SymbolId) -> SemanticColor? {
   let matches = filter(standard_symbols, e => e.id == id)
   match matches |> first {
-    Some { value: entry } => Some { value: entry.color }
-    None => none
+    Present { value: entry } => Present { value: entry.color }
+    Absent => none
   }
 }
 
@@ -206,7 +206,7 @@ data ansi_mappings: List<AnsiMapping> = [
 fn ansi_code(c: SemanticColor) -> String? {
   let matches = filter(ansi_mappings, m => m.color == c)
   match matches |> first {
-    Some { value: mapping } => Some { value: mapping.code }
-    None => none
+    Present { value: mapping } => Present { value: mapping.code }
+    Absent => none
   }
 }

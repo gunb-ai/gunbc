@@ -160,7 +160,8 @@ fn lbe_interpretation_structure_witness() -> InterpretationStructureWitness {
     call_primitive: ^lbe_call_primitive_sym,
     choose_branch: ^lbe_choose_branch_sym,
     step_loop: ^lbe_step_loop_sym,
-    bind_value: ^lbe_bind_value_sym
+    bind_value: ^lbe_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
