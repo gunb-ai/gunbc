@@ -17,11 +17,18 @@ import v2.std.collection {
   optional_present
 }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  Outcome,
+  Rejected,
   Unavailable,
-  node_locus
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
 }
+import v2.std.node_query { find_named_child }
 import v2.std.compilers.lexing { LexRules }
 import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
@@ -472,6 +479,311 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
     ],
     occurrence_id: SyntheticOccurrence
 }
+}
+
+
+// Structural inverse of formal_production_to_node — decode a production wire-node back into the
+// typed FormalProduction carrier (fail-closed on malformed projections).
+fn grammar_atom_identity_from_node(node: Node) -> Witness<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => Holds { value: id }
+  _ =>
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_production_not_found,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+
+fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: node, name: ^formal_nonterminal_identity_node_projection) {
+        Accepted { value: identity_node, diagnostics: _ } =>
+          match grammar_atom_identity_from_node(node: identity_node) {
+            Holds { value: id } =>
+              Holds { value: FormalNonterminal { identity: id } }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Rejected { diagnostics: nd } =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_production_not_found,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: node, name: ^formal_terminal_identity_node_projection) {
+        Accepted { value: identity_node, diagnostics: _ } =>
+          match grammar_atom_identity_from_node(node: identity_node) {
+            Holds { value: id } =>
+              Holds { value: FormalTerminal { identity: id } }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Rejected { diagnostics: _ } =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_production_not_found,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalTerminalOccurrence> {
+  match formal_terminal_from_node(node: node) {
+    Holds { value: terminal } =>
+      match find_named_child(root: node, name: ^formal_terminal_occurrence_binding_node_projection) {
+        Accepted { value: binding_node, diagnostics: _ } =>
+          match grammar_atom_identity_from_node(node: binding_node) {
+            Holds { value: binding } =>
+              Holds {
+                value: FormalTerminalOccurrence {
+                  terminal: terminal,
+                  binding: optional_present(value: binding)
+                }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Rejected { diagnostics: _ } =>
+          Holds {
+            value: FormalTerminalOccurrence {
+              terminal: terminal,
+              binding: optional_absent()
+            }
+          }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+
+fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: node, name: ^formal_symbol_terminal_node_projection) {
+        Accepted { value: terminal_node, diagnostics: _ } =>
+          match formal_terminal_occurrence_from_node(node: terminal_node) {
+            Holds { value: occurrence } =>
+              Holds {
+                value: FormalTerminalOccurrence {
+                  terminal: occurrence.terminal,
+                  binding: occurrence.binding
+                }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Rejected { diagnostics: _ } =>
+          match find_named_child(root: node, name: ^formal_symbol_nonterminal_node_projection) {
+            Accepted { value: nonterminal_node, diagnostics: _ } =>
+              match formal_nonterminal_from_node(node: nonterminal_node) {
+                Holds { value: nonterminal } =>
+                  Holds {
+                    value: FormalNonterminalOccurrence { nonterminal: nonterminal }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+            Rejected { diagnostics: _ } =>
+              Violates {
+                diagnostic: Diagnostic {
+                  reason: ^grammar_relation_production_not_found,
+                  at: node_locus(node: node),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              }
+          }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        node.children,
+        init: Holds { value: Empty },
+        f: fn(acc, edge) {
+          match acc {
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+            Holds { value: symbols } =>
+              match edge.label {
+                Positional =>
+                  match formal_grammar_symbol_from_node(node: edge.target) {
+                    Holds { value: symbol } =>
+                      Holds {
+                        value: list_snoc_item(xs: symbols, item: symbol)
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Named { name: _ } => acc
+              }
+          }
+        }
+      ) {
+        Holds { value: symbols } => Holds { value: symbols }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match find_named_child(root: node, name: ^formal_production_lhs_node_projection) {
+        Accepted { value: lhs_node, diagnostics: _ } =>
+          match find_named_child(root: node, name: ^formal_production_rhs_node_projection) {
+            Accepted { value: rhs_node, diagnostics: _ } =>
+              match formal_nonterminal_from_node(node: lhs_node) {
+                Holds { value: lhs } =>
+                  match formal_rhs_from_node(node: rhs_node) {
+                    Holds { value: rhs } =>
+                      Holds {
+                        value: FormalProduction { lhs: lhs, rhs: rhs }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+            Rejected { diagnostics: _ } =>
+              Violates {
+                diagnostic: Diagnostic {
+                  reason: ^grammar_relation_production_not_found,
+                  at: node_locus(node: node),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              }
+          }
+        Rejected { diagnostics: _ } =>
+          Violates {
+            diagnostic: Diagnostic {
+              reason: ^grammar_relation_production_not_found,
+              at: node_locus(node: node),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          }
+      }
+    _ =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduction> {
+  match find_named_child(root: row, name: ^grammar_relation_field_production) {
+    Accepted { value: production_node, diagnostics: _ } =>
+      formal_production_from_node(node: production_node)
+    Rejected { diagnostics: nd } =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: row),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+
+fn grammar_relation_row_emitted_fixture(row: Node) -> Outcome<Node> {
+  find_named_child(root: row, name: ^grammar_relation_field_emitted)
+}
+
+
+fn grammar_relation_rules_formal_productions_step(
+  acc: Outcome<List<FormalProduction>>,
+  row: Node
+) -> Outcome<List<FormalProduction>> {
+  bind_outcome(
+    o: acc,
+    f: fn(productions) {
+      match grammar_relation_row_production_from_node(row: row) {
+        Holds { value: production } =>
+          outcome_accepted(value: list_snoc_item(xs: productions, item: production))
+        Violates { diagnostic: _ } => outcome_accepted(value: productions)
+      }
+    }
+  )
+}
+
+
+fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        rules.children,
+        init: outcome_accepted(value: Empty),
+        f: fn(acc, edge) {
+          match edge.label {
+            Named { name: _ } =>
+              grammar_relation_rules_formal_productions_step(acc: acc, row: edge.target)
+            Positional => acc
+          }
+        }
+      )
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^grammar_relation_production_not_found,
+          at: node_locus(node: rules),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
 }
 
 
