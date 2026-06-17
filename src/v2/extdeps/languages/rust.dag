@@ -1194,7 +1194,7 @@ fn rust_mvp1_serialize_source_node() -> Node {
 }
 
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 type RustGramBuild1State

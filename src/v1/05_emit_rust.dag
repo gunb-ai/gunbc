@@ -7919,7 +7919,7 @@ fn emit_compile_match_arm(crate_name: String) -> String {
 fn emit_run_match_arm(crate_name: String) -> String {
   concat(
     "\n        Commands::Run { source_roots, function, entry, claim_run } => {\n",
-    "            cli_run::handle_run(source_roots, function, entry, claim_run);\n",
+    "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n",
     "        },")
 }
 

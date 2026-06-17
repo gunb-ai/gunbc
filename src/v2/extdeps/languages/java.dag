@@ -644,7 +644,7 @@ fn java_mvp1_serialize_source_node() -> Node {
 }
 
 fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
+  Terminal { token_class: token_class, binding: Absent }
 }
 
 fn java_grammar_nonterminal(production: Symbol) -> GrammarExpr {

@@ -23,7 +23,7 @@ import v2.compiler.target_carriers { TargetModel, TargetSource }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
-import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
@@ -368,6 +368,64 @@ fn validate_then_compile(
 }
 
 
+fn compile_ingest_with_admission(
+  source: Source,
+  target: TargetModel,
+  peer_roots: FreeMonoid<Node>,
+  admission: Admission
+) -> Outcome<TargetSource> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: compile_ingest_staging_source_file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) {
+              let roots = Cons { head: normalized, tail: peer_roots }
+              bind_outcome(
+                o: resolve_with_admission(
+                  lm: lm,
+                  roots: roots,
+                  admission: admission
+                ),
+                f: fn(resolved) {
+                  bind_outcome(
+                    o: validate_then_compile(
+                      source: resolved,
+                      lenses: [],
+                      mode: TranslateTo { target: target }
+                    ),
+                    f: fn(validated) {
+                      match validated.value {
+                        TranslateResult { source: target_source } =>
+                          outcome_accepted(target_source)
+                        EvalResult { value: _ } =>
+                          outcome_rejected(
+                            compile_eval_not_realized_diagnostic(
+                              at: port_locus(port: compile_stage_locus_port)
+                            )
+                          )
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
 fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   let lm = dag_language_model_wave1()
   bind_outcome(
@@ -383,7 +441,6 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
           bind_outcome(
             o: normalize(parse_tree: parse_tree),
             f: fn(normalized) {
-              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must call compiler/03_name_resolve.dag for cross-file admission.
               bind_outcome(
                 o: resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
