@@ -431,8 +431,10 @@ fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> 
 // of cpu/gpu/memory/… demand — a fail-OPEN admission. The fold closes that hole:
 // every demanded dimension must now be proven.)
 //
-// Grounded today (real comparisons of three distinct kinds): isolation (lattice
-// ordinal), cpu (Int core count + architecture enum), os (kernel family enum),
+// Grounded today (real comparisons of distinct kinds): isolation (lattice
+// ordinal), cpu (Int core count + architecture enum), os (FULL surface — kernel
+// + distro/version + filesystem/process semantics, each enum/string equality;
+// a matching kernel with a mismatched sub-field is fail-closed, not admitted),
 // toolchains (name+version membership). The remaining supply-match dimensions
 // are modeled but FAIL-CLOSED pending their comparison primitive:
 //   🟡 P-CF-DIM-BYTESIZE — memory/storage/gpu-vram need an ORDERED ByteSize;
@@ -514,19 +516,56 @@ fn kernel_family_label(kernel: KernelFamily) -> NonEmptyStr {
   }
 }
 
+// An optional surface sub-field is honored iff the demand imposes no constraint
+// (Absent) or the supply carries the SAME value. A demand that pins a distro/
+// version the supply does not advertise is fail-closed (Absent supply ≠ proven).
+fn os_optional_str_satisfied(supply: NonEmptyStr?, demand: NonEmptyStr?) -> Bool {
+  match demand {
+    Absent => true
+    Present { value: d } =>
+      match supply {
+        Absent => false
+        Present { value: s } => s == d
+      }
+  }
+}
+
+// The FULL demanded OS surface must be proven, not just the kernel: distro,
+// version, filesystem and process semantics are all on the demand side and all
+// comparable today (enum/string equality — no ByteSize blocker). Returns the
+// first unmet sub-field as a located diagnostic, or Absent if every field holds.
+fn os_surface_unmet_field(supply: OperatingSystemSurface, demand: OperatingSystemSurface) -> NonEmptyStr? {
+  if supply.kernel == demand.kernel {
+    if os_optional_str_satisfied(supply: supply.distro_or_product, demand: demand.distro_or_product) {
+      if os_optional_str_satisfied(supply: supply.version, demand: demand.version) {
+        if supply.filesystem_semantics == demand.filesystem_semantics {
+          if supply.process_semantics == demand.process_semantics {
+            none
+          } else {
+            Present { value: "os process semantics" }
+          }
+        } else {
+          Present { value: "os filesystem semantics" }
+        }
+      } else {
+        Present { value: "os version" }
+      }
+    } else {
+      Present { value: "os distro/product" }
+    }
+  } else {
+    Present { value: kernel_family_label(kernel: demand.kernel) }
+  }
+}
+
 fn check_os(offer: ComputeOffer, demand: WorkDemand) -> DimensionCheck {
   match demand.os {
     Absent => DimensionNotDemanded { dimension: DemandOs }
     Present { value: req } =>
-      if offer.supply.execution.os.kernel == req.surface.kernel {
-        DimensionSatisfied { dimension: DemandOs }
-      } else {
-        DimensionUnmet {
-          fact: MissingDemandFact {
-            dimension: DemandOs,
-            required: kernel_family_label(kernel: req.surface.kernel),
-          },
-        }
+      match os_surface_unmet_field(supply: offer.supply.execution.os, demand: req.surface) {
+        Absent => DimensionSatisfied { dimension: DemandOs }
+        Present { value: field } =>
+          DimensionUnmet { fact: MissingDemandFact { dimension: DemandOs, required: field } }
       }
   }
 }
@@ -962,6 +1001,34 @@ data vm_darwin_os_demand: WorkDemand = WorkDemand {
   effects: [],
 }
 
+// Linux surface pinning a distro the example supply does NOT advertise
+// (example_linux_os_surface has distro_or_product: none) — same kernel, but a
+// demanded sub-field the supply cannot prove.
+data example_ubuntu_os_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: "Ubuntu",
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+// Vm isolation + Linux-kernel demand that pins distro "Ubuntu".
+data vm_ubuntu_os_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: Present { value: OperatingSystemRequirement { surface: example_ubuntu_os_surface } },
+  isolation: IsolationRequirement { boundary: Vm },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
 // cpu — a 4-core demand is admitted by the 64-core supply (Int comparison green;
 // isolation SharedHostHome also honored).
 fn witness_cpu_demand_admitted_when_cores_suffice() -> Bool {
@@ -1009,6 +1076,21 @@ fn witness_os_demand_admitted_matching_kernel() -> Bool {
 // Darwin demand) even though isolation is honored — dimensions are independent.
 fn witness_os_demand_rejected_mismatched_kernel() -> Bool {
   match satisfies(offer: example_vm_offer, demand: vm_darwin_os_demand) {
+    Rejected { reason: r } =>
+      match r.dimension {
+        DemandOs => true
+        _ => false
+      }
+    Eligible { witness: _ } => false
+  }
+}
+
+// os — a matching kernel with a mismatched distro is rejected on the os axis:
+// the full demanded surface (not just kernel) must be proven. The Vm offer is
+// Linux/no-distro; the demand pins Linux/"Ubuntu", so a sub-field goes red even
+// though the kernel matches (discriminating against the kernel-only check).
+fn witness_os_demand_rejected_distro_mismatch() -> Bool {
+  match satisfies(offer: example_vm_offer, demand: vm_ubuntu_os_demand) {
     Rejected { reason: r } =>
       match r.dimension {
         DemandOs => true
