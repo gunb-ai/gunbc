@@ -83,9 +83,10 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, discover_owned_data_decls, make_eval_context,
+    build_multi_entry_index, discover_owned_data_decls, make_eval_context_with_fixture_store,
     resolve_entry_with_index, run_claim, ClaimOutcome, MultiEntryIndex, OwnedDataDeclInitializer,
 };
+use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
@@ -389,9 +390,11 @@ struct ParsedArgs {
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
     /// Witness execution mode. Phase 1 default: Wet (CI unchanged).
-    /// `--hermetic` selects modeled `mock_response`; `--wet` is explicit Wet
-    /// (Phase 2 opt-in when default flips Hermetic).
+    /// `--hermetic` replays recorded fixtures when `--fixture-store` is set, else
+    /// modeled `mock_response`; `--record` is wet capture into the fixture store.
     execution_mode: ExecutionMode,
+    /// Directory for recorded fixture JSON files (`--fixture-store <path>`).
+    fixture_store: Option<PathBuf>,
 }
 
 /// Discovery-mode config (set when `--roster-from-discovery` is given).
@@ -409,6 +412,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
     // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
     let mut execution_mode = ExecutionMode::Wet;
+    let mut fixture_store: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -466,6 +470,11 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             "--claim-run" => {}
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
+            "--record" => execution_mode = ExecutionMode::Record,
+            "--fixture-store" => {
+                i += 1;
+                fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
+            }
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -498,6 +507,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         entry_groups,
         discovery,
         execution_mode,
+        fixture_store,
     })
 }
 
@@ -621,15 +631,33 @@ fn print_eval_profile(function: &str) {
     }
 }
 
+fn fixture_store_rc(path: &Option<PathBuf>) -> Option<Rc<RecordedFixtureStore>> {
+    path.as_ref()
+        .map(|p| Rc::new(RecordedFixtureStore::open(p.clone())))
+}
+
+fn validate_fixture_flags(
+    execution_mode: ExecutionMode,
+    fixture_store: &Option<PathBuf>,
+) -> Result<(), ExitCode> {
+    if execution_mode.is_record() && fixture_store.is_none() {
+        eprintln!("claim_batch: --record requires --fixture-store <path>");
+        return Err(ExitCode::from(2));
+    }
+    Ok(())
+}
+
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
     execution_mode: ExecutionMode,
+    fixture_store: Option<Rc<RecordedFixtureStore>>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
-    let ctx = make_eval_context(&graph, source_indices, execution_mode);
+    let ctx =
+        make_eval_context_with_fixture_store(&graph, source_indices, execution_mode, fixture_store);
     for function in &group.functions {
         run_claim_timed(&ctx, function, any_failed, timings);
     }
@@ -657,6 +685,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     let parsed = parse_args(&args)?;
     let source_roots = parsed.source_roots;
     let execution_mode = parsed.execution_mode;
+    let fixture_store_path = parsed.fixture_store;
+    validate_fixture_flags(execution_mode, &fixture_store_path)?;
+    let fixture_store = fixture_store_rc(&fixture_store_path);
 
     if source_roots.is_empty() {
         eprintln!("claim_batch: provide at least one --source-root");
@@ -728,7 +759,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
-        let ctx = make_eval_context(&graph, source_indices, execution_mode);
+        let ctx = make_eval_context_with_fixture_store(
+            &graph,
+            source_indices,
+            execution_mode,
+            fixture_store.clone(),
+        );
         for function in &group.functions {
             run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
         }
@@ -743,7 +779,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group.entry,
                 group.functions.len()
             );
-            run_witnesses(&index, group, execution_mode, &mut any_failed, &mut timings)?;
+            run_witnesses(
+                &index,
+                group,
+                execution_mode,
+                fixture_store.clone(),
+                &mut any_failed,
+                &mut timings,
+            )?;
         }
         if stats_requested {
             print_interp_stats_multi_entry(flatten_baseline);

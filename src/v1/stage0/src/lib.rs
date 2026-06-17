@@ -27,6 +27,7 @@ pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
+pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;
 pub mod std_algebra;
