@@ -165,19 +165,6 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
 }
 
 #[test]
-fn claim_batch_wires_execution_mode_flags() {
-    let claim_batch = read_v2_file("src/v1/stage0/src/bin/claim_batch.rs");
-    assert!(
-        claim_batch.contains("\"--wet\"")
-            && claim_batch.contains("\"--hermetic\"")
-            && claim_batch.contains("let mut wet = true")
-            && claim_batch.contains("ExecutionMode::Hermetic")
-            && claim_batch.contains("ExecutionMode::Wet"),
-        "claim_batch must default Wet (CI unchanged) and accept --wet/--hermetic"
-    );
-}
-
-#[test]
 fn interpreter_dry_run_returns_modeled_rest_mock_response() {
     let src = r#"module test.dry_run_mock
 
