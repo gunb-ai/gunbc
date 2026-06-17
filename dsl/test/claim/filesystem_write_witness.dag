@@ -6,6 +6,12 @@
 //   gunbc run --source-root dsl --entry dsl/test/claim/filesystem_write_witness.dag \
 //     --function filesystem_write_keystone_holds --claim-run
 //
+// Hermetic replay (Phase 2): record wet capture, then replay without live I/O:
+//   claim_batch --source-root . --source-root dsl \
+//     --entry dsl/test/claim/filesystem_write_witness.dag \
+//     --function filesystem_write_keystone_holds --record --fixture-store /tmp/fixtures
+//   claim_batch ... --hermetic --fixture-store /tmp/fixtures
+//
 // These are EFFECTFUL witnesses (`func`, not `fn`): they actually write to and
 // read from /tmp, proving the interpreter executes the host effect live —
 // mirroring git.Core's shell transport. The discriminators:
