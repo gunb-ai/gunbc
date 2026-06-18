@@ -1,7 +1,7 @@
 // tools/rust_gates_ci.dag -- the Rust-monolith CI gate, run by `gunbc` (NOT a Rust binary).
 //
-// Realizes the two dependents of the Rust monolith (cargo fmt, cargo clippy) selected by
-// `tools.rust_stage0_gates`. `git diff` and the cargo invocations are shell transports
+// Realizes the three dependents of the Rust monolith (cargo fmt, cargo clippy, cargo test)
+// selected by `tools.rust_stage0_gates`. `git diff` and the cargo invocations are shell transports
 // (extdeps.git / extdeps.cargo_build); the decision is the pure selector. This is the §7 shape:
 // the gate logic is `.dag` authority, the only Rust left is the `gunbc` interpreter seed.
 //
@@ -18,18 +18,24 @@ import extdeps.cargo_build
 import tools.rust_stage0_gates { should_run_gates }
 import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffTwoDot }
 
-// Run cargo fmt AND clippy (both evaluated — no short-circuit, so both failures surface),
-// pass iff both succeed.
+// Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
+// pass iff all three succeed.
+// SCAFFOLD — gate scope: hermetic seam discriminators only (interp_recorded_fixture).
+// Dissolve-on: promote to extra_args ["--workspace"] when v1-compiler --lib self_* quartet
+// and full v1-compiler-tests package are green without ignored tests (§6 named trigger).
 func run_gates() -> ProcessExit {
-  fmt = cargo.Build.Fmt()
+  fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   clippy = cargo.Build.Clippy(
     extra_args: ["--all-targets"],
     lint_args: ["-D", "warnings"]
   )
-  return if fmt.success && clippy.success {
+  test = cargo.Build.Test(
+    extra_args: ["-p", "v1-compiler-tests", "interp_recorded_fixture"]
+  )
+  return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
-    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings" }
+    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo test (hermetic discriminators)" }
   }
 }
 

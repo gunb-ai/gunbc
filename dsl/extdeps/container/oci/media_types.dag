@@ -5,10 +5,19 @@
 
 module extdeps.container.oci.media_types
 
+import extdeps.container.oci.types {
+  OciMediaType,
+  OciImageManifestV1,
+  OciImageConfigV1,
+  OciImageLayerV1TarGzip,
+  OciImageIndexV1,
+  OciDescriptorV1,
+}
+
 data oci_image_schema_version: Int = 2
 
-data media_type_oci_image_manifest_v1: String = "application/vnd.oci.image.manifest.v1+json"
-data media_type_oci_image_config_v1: String = "application/vnd.oci.image.config.v1+json"
-data media_type_oci_image_layer_v1_tar_gzip: String = "application/vnd.oci.image.layer.v1.tar+gzip"
-data media_type_oci_image_index_v1: String = "application/vnd.oci.image.index.v1+json"
-data media_type_oci_descriptor_v1: String = "application/vnd.oci.descriptor.v1+json"
+data media_type_oci_image_manifest_v1: OciMediaType = OciImageManifestV1
+data media_type_oci_image_config_v1: OciMediaType = OciImageConfigV1
+data media_type_oci_image_layer_v1_tar_gzip: OciMediaType = OciImageLayerV1TarGzip
+data media_type_oci_image_index_v1: OciMediaType = OciImageIndexV1
+data media_type_oci_descriptor_v1: OciMediaType = OciDescriptorV1

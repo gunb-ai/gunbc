@@ -1,0 +1,197 @@
+// extdeps/container/oci/types.dag — shared OCI grounded types (image-spec + runtime-spec).
+//
+// Wire strings from JSON ingress are parsed into std facts at the boundary;
+// egress re-encodes via the paired label functions. Reuse std types — do not re-mint.
+
+module extdeps.container.oci.types
+
+import std.types {
+  Aarch64,
+  Android,
+  Arch,
+  Arm,
+  Armv7,
+  ContentHash,
+  FilePath,
+  Freebsd,
+  Ios,
+  Linux,
+  Macos,
+  Mips,
+  Mips64,
+  Mips64el,
+  Mipsel,
+  NonEmptyStr,
+  Os,
+  Port,
+  Riscv64,
+  SemVer,
+  Wasi,
+  Wasm32,
+  Windows,
+  X86,
+  X86_64,
+}
+
+// GOARCH/GOOS boundary decode (image-spec config.md) → std Arch/Os.
+data goarch_amd64_wire: String = "amd64"
+data goarch_arm64_wire: String = "arm64"
+data goarch_386_wire: String = "386"
+data goarch_arm_wire: String = "arm"
+data goarch_riscv64_wire: String = "riscv64"
+data goarch_wasm_wire: String = "wasm"
+
+data goos_linux_wire: String = "linux"
+data goos_windows_wire: String = "windows"
+data goos_darwin_wire: String = "darwin"
+
+type ImageConfigGoarchParse
+  = ImageConfigGoarchKnown { value: Arch }
+  | ImageConfigGoarchUnknown { wire: String }
+
+type ImageConfigGoosParse
+  = ImageConfigGoosKnown { value: Os }
+  | ImageConfigGoosUnknown { wire: String }
+
+type ImageConfigGoarchLabel
+  = ImageConfigGoarchWireLabel { wire: String }
+  | ImageConfigGoarchUnrepresentable
+
+type ImageConfigGoosLabel
+  = ImageConfigGoosWireLabel { wire: String }
+  | ImageConfigGoosUnrepresentable
+
+fn parse_image_config_goarch(raw: String) -> ImageConfigGoarchParse {
+  if raw == goarch_amd64_wire { ImageConfigGoarchKnown { value: X86_64 } }
+  else if raw == goarch_arm64_wire { ImageConfigGoarchKnown { value: Aarch64 } }
+  else if raw == goarch_386_wire { ImageConfigGoarchKnown { value: X86 } }
+  else if raw == goarch_arm_wire { ImageConfigGoarchKnown { value: Arm } }
+  else if raw == goarch_riscv64_wire { ImageConfigGoarchKnown { value: Riscv64 } }
+  else if raw == goarch_wasm_wire { ImageConfigGoarchKnown { value: Wasm32 } }
+  else { ImageConfigGoarchUnknown { wire: raw } }
+}
+
+fn image_config_goarch_label(arch: Arch) -> ImageConfigGoarchLabel {
+  match arch {
+    X86_64 => ImageConfigGoarchWireLabel { wire: goarch_amd64_wire }
+    Aarch64 => ImageConfigGoarchWireLabel { wire: goarch_arm64_wire }
+    X86 => ImageConfigGoarchWireLabel { wire: goarch_386_wire }
+    Arm => ImageConfigGoarchWireLabel { wire: goarch_arm_wire }
+    Riscv64 => ImageConfigGoarchWireLabel { wire: goarch_riscv64_wire }
+    Wasm32 => ImageConfigGoarchWireLabel { wire: goarch_wasm_wire }
+    Armv7 => ImageConfigGoarchUnrepresentable
+    Mips => ImageConfigGoarchUnrepresentable
+    Mipsel => ImageConfigGoarchUnrepresentable
+    Mips64 => ImageConfigGoarchUnrepresentable
+    Mips64el => ImageConfigGoarchUnrepresentable
+  }
+}
+
+fn parse_image_config_goos(raw: String) -> ImageConfigGoosParse {
+  if raw == goos_linux_wire { ImageConfigGoosKnown { value: Linux } }
+  else if raw == goos_windows_wire { ImageConfigGoosKnown { value: Windows } }
+  else if raw == goos_darwin_wire { ImageConfigGoosKnown { value: Macos } }
+  else { ImageConfigGoosUnknown { wire: raw } }
+}
+
+fn image_config_goos_label(os: Os) -> ImageConfigGoosLabel {
+  match os {
+    Linux => ImageConfigGoosWireLabel { wire: goos_linux_wire }
+    Windows => ImageConfigGoosWireLabel { wire: goos_windows_wire }
+    Macos => ImageConfigGoosWireLabel { wire: goos_darwin_wire }
+    Freebsd => ImageConfigGoosUnrepresentable
+    Android => ImageConfigGoosUnrepresentable
+    Ios => ImageConfigGoosUnrepresentable
+    Wasi => ImageConfigGoosUnrepresentable
+  }
+}
+
+// Container exposed port (image-spec config.md `ExposedPorts` map keys).
+type ContainerPortProtocol = Tcp | Udp
+
+type ContainerExposedPort {
+  port: Port
+  protocol: ContainerPortProtocol
+}
+
+// Runtime bundle mount kind (runtime-spec config.md `mounts[].type`).
+type RuntimeMountKind
+  = RuntimeMountBind
+  | RuntimeMountTmpfs
+  | RuntimeMountProc
+  | RuntimeMountSys
+  | RuntimeMountUnknown { raw: String }
+
+data runtime_mount_bind_wire: String = "bind"
+data runtime_mount_tmpfs_wire: String = "tmpfs"
+data runtime_mount_proc_wire: String = "proc"
+data runtime_mount_sys_wire: String = "sys"
+
+fn parse_runtime_mount_kind(raw: String) -> RuntimeMountKind {
+  if raw == runtime_mount_bind_wire { RuntimeMountBind }
+  else if raw == runtime_mount_tmpfs_wire { RuntimeMountTmpfs }
+  else if raw == runtime_mount_proc_wire { RuntimeMountProc }
+  else if raw == runtime_mount_sys_wire { RuntimeMountSys }
+  else { RuntimeMountUnknown { raw: raw } }
+}
+
+fn runtime_mount_kind_label(kind: RuntimeMountKind) -> String {
+  match kind {
+    RuntimeMountBind => runtime_mount_bind_wire
+    RuntimeMountTmpfs => runtime_mount_tmpfs_wire
+    RuntimeMountProc => runtime_mount_proc_wire
+    RuntimeMountSys => runtime_mount_sys_wire
+    RuntimeMountUnknown { raw: r } => r
+  }
+}
+
+// Runtime mount source (runtime-spec config.md `mounts[].source`).
+// Bind mounts name a host pathname; tmpfs/proc/sys carry a symbolic wire label or omit.
+type RuntimeMountSource
+  = MountBindSource { host_path: FilePath }
+  | MountSymbolicSource { label: NonEmptyStr }
+
+fn runtime_mount_source_label(source: RuntimeMountSource) -> String {
+  match source {
+    MountBindSource { host_path: path } => path
+    MountSymbolicSource { label: label } => label
+  }
+}
+
+// OCI runtime bundle version (runtime-spec config.md `ociVersion`).
+type OciRuntimeVersion = SemVer
+
+// OCI media type (image-spec media-types.md). Known registry rows + open escape for extensions.
+type OciMediaType
+  = OciImageManifestV1
+  | OciImageConfigV1
+  | OciImageLayerV1TarGzip
+  | OciImageIndexV1
+  | OciDescriptorV1
+  | OciMediaTypeOther { raw: NonEmptyStr }
+
+data oci_media_type_manifest_v1_wire: String = "application/vnd.oci.image.manifest.v1+json"
+data oci_media_type_config_v1_wire: String = "application/vnd.oci.image.config.v1+json"
+data oci_media_type_layer_v1_tar_gzip_wire: String = "application/vnd.oci.image.layer.v1.tar+gzip"
+data oci_media_type_index_v1_wire: String = "application/vnd.oci.image.index.v1+json"
+data oci_media_type_descriptor_v1_wire: String = "application/vnd.oci.descriptor.v1+json"
+
+fn parse_oci_media_type(raw: String) -> OciMediaType {
+  if raw == oci_media_type_manifest_v1_wire { OciImageManifestV1 }
+  else if raw == oci_media_type_config_v1_wire { OciImageConfigV1 }
+  else if raw == oci_media_type_layer_v1_tar_gzip_wire { OciImageLayerV1TarGzip }
+  else if raw == oci_media_type_index_v1_wire { OciImageIndexV1 }
+  else if raw == oci_media_type_descriptor_v1_wire { OciDescriptorV1 }
+  else { OciMediaTypeOther { raw: raw } }
+}
+
+fn oci_media_type_label(media_type: OciMediaType) -> String {
+  match media_type {
+    OciImageManifestV1 => oci_media_type_manifest_v1_wire
+    OciImageConfigV1 => oci_media_type_config_v1_wire
+    OciImageLayerV1TarGzip => oci_media_type_layer_v1_tar_gzip_wire
+    OciImageIndexV1 => oci_media_type_index_v1_wire
+    OciDescriptorV1 => oci_media_type_descriptor_v1_wire
+    OciMediaTypeOther { raw: r } => r
+  }
+}

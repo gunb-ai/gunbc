@@ -157,7 +157,7 @@ func review_cycle(
     auth_token: "",
     owner: owner,
     repo: repo,
-    state: "open"
+    state: Open
   )
 
   // Review each PR (review_pr handles dedup internally)

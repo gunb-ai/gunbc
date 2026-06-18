@@ -1,0 +1,103 @@
+// dsl/test/claim/medium_fidelity_witness_test.dag — Cut 2 gated witness for std.medium.
+//
+// GREEN: (a) text Medium<String> Lossless; (b) non-text Medium<ProbeVerdict> Lossless;
+//        (c) lossy prose Medium<String> Lossy — each tag reads back via match.
+// RED (discriminating): mis-tagged lossy prose reads as Lossless under tag-only
+//        is_lossless — proves the tag-only gap Cut 3+ semantic decode must close.
+//        Cut 2 is pure decls; this does NOT claim std rejects mis-tags (§5 honesty).
+//
+// Run: gunbc run --source-root dsl --entry <this> --function medium_fidelity_holds --claim-run
+
+module test.claim.medium_fidelity
+
+import std.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import std.types { String }
+import std.logic { Bool }
+
+// Local non-text representation — grammar-free verdict coproduct (not String).
+type ProbeVerdict = Dominates | Incomparable
+
+// Witness-local classifier (not substrate authority — predicate dissolution stays out of std/).
+fn is_lossless(f: DecodeFidelity) -> Bool {
+  match f {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn text_medium_lossless() -> Medium<String> {
+  Medium {
+    carried: "fn add(x: Int, y: Int) -> Int { x + y }",
+    fidelity: Lossless
+  }
+}
+
+fn probe_medium_lossless() -> Medium<ProbeVerdict> {
+  Medium { carried: Dominates, fidelity: Lossless }
+}
+
+fn prose_medium() -> Medium<String> {
+  Medium {
+    carried: "roughly linear time, details omitted",
+    fidelity: Lossy
+  }
+}
+
+fn mis_tagged_prose_medium() -> Medium<String> {
+  Medium {
+    carried: "roughly linear time, details omitted",
+    fidelity: Lossless
+  }
+}
+
+fn text_medium_tag_is_lossless() -> Bool {
+  let m = text_medium_lossless()
+  match m.fidelity {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn probe_medium_tag_is_lossless() -> Bool {
+  let m = probe_medium_lossless()
+  match m.fidelity {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn probe_carried_is_non_text() -> Bool {
+  let m = probe_medium_lossless()
+  match m.carried {
+    Dominates => true
+    Incomparable => false
+  }
+}
+
+fn prose_medium_tag_is_lossy() -> Bool {
+  let m = prose_medium()
+  match m.fidelity {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+// GREEN: correctly tagged lossy prose must NOT read as lossless by tag.
+fn lossy_prose_not_advertised_lossless() -> Bool {
+  !is_lossless(prose_medium().fidelity)
+}
+
+// RED (discriminating, lens_verdict pattern): mis-tagged lossy prose falsely certifies
+// lossless under tag-only is_lossless — documents gap, does not claim std rejects.
+fn red_mistag_certifies_lossless_by_tag_alone() -> Bool {
+  is_lossless(mis_tagged_prose_medium().fidelity)
+}
+
+test fn medium_fidelity_holds() -> Bool {
+  text_medium_tag_is_lossless()
+    && probe_medium_tag_is_lossless()
+    && probe_carried_is_non_text()
+    && prose_medium_tag_is_lossy()
+    && lossy_prose_not_advertised_lossless()
+    && red_mistag_certifies_lossless_by_tag_alone()
+}

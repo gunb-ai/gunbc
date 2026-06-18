@@ -5,7 +5,7 @@
 
 module extdeps.container.oci.linux
 
-import std.types { Bool }
+import std.types { Bool, FilePath }
 
 type LinuxNamespaceType
   = LinuxNsPid
@@ -20,7 +20,7 @@ type LinuxNamespaceType
 
 type LinuxNamespace {
   namespace_type: LinuxNamespaceType
-  path: String?
+  path: FilePath?
 }
 
 type LinuxMemoryResources {
@@ -38,7 +38,7 @@ type LinuxPlatform {
 }
 
 type LinuxPlatformRejectReason
-  = DuplicateNamespaceType { ns_type: String }
+  = DuplicateNamespaceType { ns_type: LinuxNamespaceType }
 
 type LinuxPlatformOutcome
   = LinuxPlatformAccepted { value: LinuxPlatform }
@@ -83,9 +83,9 @@ fn accept_linux_platform(p: LinuxPlatform) -> LinuxPlatformOutcome {
   match p.namespaces {
     null => LinuxPlatformAccepted { value: p }
     namespaces =>
-      match duplicate_namespace_label(namespaces, index: 0, seen: []) {
-        Present { value: label } =>
-          LinuxPlatformRejected { reason: DuplicateNamespaceType { ns_type: label } }
+      match duplicate_namespace_type(namespaces, index: 0, seen: []) {
+        Present { value: ns_type } =>
+          LinuxPlatformRejected { reason: DuplicateNamespaceType { ns_type: ns_type } }
         Absent => LinuxPlatformAccepted { value: p }
       }
   }
@@ -98,29 +98,37 @@ fn namespace_at(namespaces: List<LinuxNamespace>, index: Int) -> LinuxNamespace?
   }
 }
 
-fn duplicate_namespace_label(
+fn duplicate_namespace_type(
   namespaces: List<LinuxNamespace>,
   index: Int,
-  seen: List<String>,
-) -> String? {
+  seen: List<LinuxNamespaceType>,
+) -> LinuxNamespaceType? {
   if index >= count(namespaces) {
     Absent
   } else {
     match namespace_at(namespaces, index) {
       null => Absent
       ns =>
-        let label = linux_namespace_type_label(ns.namespace_type)
-        if contains(seen, label) {
-          Present { value: label }
+        let ns_type = ns.namespace_type
+        if contains_namespace_type(seen, ns_type) {
+          Present { value: ns_type }
         } else {
-          duplicate_namespace_label(
+          duplicate_namespace_type(
             namespaces,
             index: index + 1,
-            seen: append(seen, items: [label]),
+            seen: append(seen, items: [ns_type]),
           )
         }
     }
   }
+}
+
+fn contains_namespace_type(seen: List<LinuxNamespaceType>, target: LinuxNamespaceType) -> Bool {
+  fold(seen, false, fn(acc, ns) { acc || namespace_types_equal(ns, target) })
+}
+
+fn namespace_types_equal(left: LinuxNamespaceType, right: LinuxNamespaceType) -> Bool {
+  left == right
 }
 
 fn linux_namespace_count(p: LinuxPlatform) -> Int {
