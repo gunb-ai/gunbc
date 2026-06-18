@@ -18,8 +18,8 @@ import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDi
 // ReadLatencyClass, ConsistencyModel, CacheLookupSemantics, CacheWriteSemantics,
 // CacheMissSemantics, KeyDerivationClass, InputSurface, VisibilityScope, InvalidationTrigger.
 // feature:cache-interface-substrate-landed
-// consumer: ci harness cache projection + downstream cache lookup planner
-// dissolve-on-arrival: Grounding binds literal row fields when first consumer lands
+// consumer: cache-layer planner (plan_cache_layers) + ci harness cache projection
+// dissolve-on-arrival: cost-aware reach binds Phase-0 measured recompute cost
 
 type StorageSurface = NonEmptyStr where brand("StorageSurface")
 
@@ -537,7 +537,7 @@ data parse_table_memo_facts: CacheInterfaceFacts = {
   ]
 }
 
-// --- §1.7 cache-layer planner (first catalog consumer) -----------------------
+// --- §1.8 cache-layer planner (first catalog consumer) -----------------------
 
 data cache_catalog_rows: List<CacheInterfaceFacts> = [
   parse_table_memo_facts,
@@ -606,49 +606,38 @@ fn plan_cache_layers(deployment: CacheDeploymentBackends) -> CacheLayerPlan {
   }
 }
 
-fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId? {
-  match plan.layers.first() {
-    Absent => none
-    Present { value: id } => Present { value: id }
-  }
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId {
+  plan.layers.first()
 }
 
-fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId? {
-  match plan.layers.skip(n: 1).first() {
-    Absent => none
-    Present { value: id } => Present { value: id }
-  }
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
+  plan.layers.skip(n: 1).first()
 }
 
-fn cache_facts_for_id(id: CacheInterfaceId) -> CacheInterfaceFacts? {
-  match cache_catalog_rows
+fn cache_facts_for_id(id: CacheInterfaceId) -> CacheInterfaceFacts {
+  cache_catalog_rows
     |> filter(facts => facts.identity == id)
-    |> first() {
-    Absent => none
-    Present { value: facts } => Present { value: facts }
-  }
+    |> first()
 }
 
 fn cache_layer_ids_respect_locality(
   layers: List<CacheInterfaceId>,
   last_rank: Int,
 ) -> Bool {
-  match layers.first() {
-    Absent => true
-    Present { value: id } =>
-      match cache_facts_for_id(id: id) {
-        Absent => false
-        Present { value: facts } =>
-          let rank = persistence_locality_rank(locality: facts.locality)
-          if rank < last_rank {
-            false
-          } else {
-            cache_layer_ids_respect_locality(
-              layers: layers.skip(n: 1),
-              last_rank: rank,
-            )
-          }
-      }
+  if layers.length() == 0 {
+    true
+  } else {
+    let id = layers.first()
+    let facts = cache_facts_for_id(id: id)
+    let rank = persistence_locality_rank(locality: facts.locality)
+    if rank < last_rank {
+      false
+    } else {
+      cache_layer_ids_respect_locality(
+        layers: layers.skip(n: 1),
+        last_rank: rank,
+      )
+    }
   }
 }
 
@@ -658,7 +647,7 @@ fn cache_layer_plan_respects_locality_order(plan: CacheLayerPlan) -> Bool {
   cache_layer_ids_respect_locality(layers: plan.layers, last_rank: -1)
 }
 
-// --- §1.8 projection + view helpers ------------------------------------------
+// --- §1.9 projection + view helpers ------------------------------------------
 
 fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
   CacheStoreView { facts: facts }
