@@ -14,14 +14,11 @@ import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_ci_floor_batches, corpus_scan_dirs, corpus_runnable
+  gunbc_ci_floor_batches, corpus_runnable
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
-
-// Alternate scan dirs for discriminating plan derivation (not a parallel CiSpec fork).
-data alternate_scan_dirs: List<String> = ["src/v2/test"]
 
 data corpus_sentinel: String = "__corpus__"
 
@@ -65,18 +62,21 @@ fn witness_independent_jobs_parallelize() -> Bool {
   gunbc_ci_floor_batches().skip(n: 1).first().length() > 1
 }
 
-// Scan dirs are carried by the plan (the corpus DiscoveryBatch), the single
-// authority — NOT by the scheduler argv. Discriminating: alternate dirs surface
-// in `corpus_scan_dirs`; a derivation that dropped them would go RED here.
-fn witness_scan_dirs_flow_through_plan() -> Bool {
-  list_contains_str(xs: corpus_scan_dirs(scan_dirs: alternate_scan_dirs), target: "src/v2/test")
+// Scan dirs are carried by the plan discovery batch — authority from ci_layer_roots.
+fn witness_discovery_scan_dirs_in_plan() -> Bool {
+  match corpus_runnable() {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _ } =>
+      list_contains_str(xs: dirs, target: "dsl/test/claim")
+    _ => false
+  }
 }
 
-fn witness_discovery_scan_dirs_in_plan() -> Bool {
-  list_contains_str(
-    xs: corpus_scan_dirs(scan_dirs: witness_discovery_scan_dirs),
-    target: "dsl/test/claim"
-  )
+fn witness_scan_dirs_match_layer_authority() -> Bool {
+  match corpus_runnable() {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _ } =>
+      list_contains_str(xs: dirs, target: witness_discovery_scan_dirs.first())
+    _ => false
+  }
 }
 
 // Dissolution relocated from CiSpec.witness_entries: the plan's discovery batch
@@ -97,7 +97,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
-    witness_scan_dirs_flow_through_plan() &&
     witness_discovery_scan_dirs_in_plan() &&
+    witness_scan_dirs_match_layer_authority() &&
     witness_corpus_has_no_explicit_entries()
 }

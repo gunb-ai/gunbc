@@ -144,7 +144,8 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 
 // `claim_executor` takes ONLY `--source-root` (to resolve the plan) — it has no
 // `--scan-dir` flag and hard-errors on any unknown argument. Scan dirs are carried
-// SOLELY by the plan (`ci_floor_plan.corpus_scan_dirs` → `RunnableDiscoveryBatch.
+// SOLELY by the plan (`ci_floor_plan` discovery batch `scan_dirs` from
+// `gunbc.ci_layer_roots.witness_discovery_scan_dirs` → `RunnableDiscoveryBatch.
 // scan_dirs`), the single authority for that derivation (DESIGN §3); emitting them
 // on the argv too would be a redundant, fail-closed mis-wire (DESIGN §5).
 //
