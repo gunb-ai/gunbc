@@ -1,0 +1,86 @@
+// gunbc/ci_fleet.dag — Phase 3a-ours: gunbc CI fleet ComputeOffer meta-model.
+//
+// OUR self-hosted runner fleet instantiated as compute_fabric data. Concrete srv1/srv2
+// operator inventory remains private (ctrl); this module is public-in-repo meta-modeling
+// consumed by ci_workflow / ci_yaml_emit via gunbc_ci_runner_spec().
+
+module gunbc.ci_fleet
+
+import extdeps.cpu.ampere { altra_q6430_catalog }
+import extdeps.github.actions { RunnerSpec }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import product.compute_fabric {
+  ComputeOffer,
+  ComputeSupplyFacts,
+  ComputeHost,
+  ExecutionSurface,
+  MemoryDevice,
+  CpuProcessor,
+  AvailabilityWindow,
+  CostModel,
+  ProviderCostModel,
+  OwnedMarginalZero,
+  PerJobFilesystem,
+  Dram,
+}
+import std.cpu.types { CpuFacts, CpuDeploymentFacts }
+import std.measure { byte_size, hertz }
+import std.os.types {
+  OperatingSystemSurface,
+  Linux,
+  Posix,
+  PosixProcess,
+}
+import std.placement_supply { HostIdentity }
+
+data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
+
+data gunbc_ci_cpu: CpuFacts = CpuFacts {
+  catalog: altra_q6430_catalog,
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: none,
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+data gunbc_ci_host: ComputeHost = ComputeHost {
+  identity: gunbc_ci_host_identity,
+  processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
+  memory: [MemoryDevice { capacity: byte_size(274877906944), memory_kind: Dram, bandwidth: none }],
+  storage: [],
+  network_interfaces: [],
+}
+
+data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-ci-fleet",
+  supply: ComputeSupplyFacts {
+    physical: gunbc_ci_host,
+    execution: ExecutionSurface {
+      os: gunbc_ci_linux_surface,
+      isolation: PerJobFilesystem,
+      container_runtime: none,
+      toolchains: [],
+      mounted_storage: [],
+      network: [],
+    },
+    cost: Present {
+      value: CostModel {
+        cost_class: OwnedMarginalZero,
+        rates: ProviderCostModel { placeholder: true },
+      },
+    },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+fn gunbc_ci_runner_spec() -> RunnerSpec {
+  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+}

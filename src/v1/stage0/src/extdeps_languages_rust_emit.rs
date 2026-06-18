@@ -156,6 +156,24 @@ pub fn rust_serde_tag() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn rust_serde_rename_all_snake_case() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#[serde(rename_all = \"snake_case\")]".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_serde_rename_all_screaming_snake_case() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn rust_serde_rename_template() -> String {
     thread_local! {
         static CACHED: String = {

@@ -10,24 +10,16 @@ use crate::v1_compiler_emit_core_support::is_data_def_item;
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{
-    build_newline_index, field_init_node_name_at, field_init_node_value, param_node_name_at,
-    ExprData, LiteralValue, Node,
+    build_newline_index, field_init_node_name_at, field_init_node_value, is_rest_transport,
+    param_node_name_at, transport_request_body, ExprData, LiteralValue, Node,
 };
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
-}
 
 fn resolve_extdeps_path(path: &str) -> PathBuf {
     let candidate = Path::new(path);
     if candidate.is_file() {
         return candidate.to_path_buf();
     }
-    let rooted = workspace_root().join(path);
+    let rooted = crate::module_path_index::workspace_root().join(path);
     if rooted.is_file() {
         return rooted;
     }
@@ -207,7 +199,7 @@ fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
     if token.contains('{') && token.contains('}') {
         return false;
     }
-    if token == "diff" || token == "--name-only" || token == "git" {
+    if token == "diff" || token == "--name-only" || token == "git" || token == "..." {
         return false;
     }
     token == "--all-targets"
@@ -265,6 +257,240 @@ pub fn embedded_policy_literal_count_for_path(path: String) -> i64 {
     total
 }
 
+/// QualifiedName is in the derived module set (build_module_index); path never surfaces to .dag.
+pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    !module_path.is_empty()
+        && crate::module_path_index::build_module_path_index().contains_key(&module_path)
+}
+
+pub fn dead_param_count_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+    service: String,
+    operation: String,
+) -> i64 {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    dead_param_count_for_module_path(module_path, service, operation)
+}
+
+pub fn embedded_policy_literal_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    embedded_policy_literal_count_for_module_path(module_path)
+}
+
+pub fn policy_leak_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    policy_leak_count_for_module_path(module_path)
+}
+
+pub fn transport_fusion_fork_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    transport_fusion_fork_count_for_module_path(module_path)
+}
+
+pub fn gist_create_declares_filename_input_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    gist_create_declares_filename_input(module_path)
+}
+
+fn source_path_for_module_path(module_path: &str) -> String {
+    crate::module_path_index::source_path_for_module_path(module_path.to_string())
+}
+
+pub fn dead_param_count_for_module_path(
+    module_path: String,
+    service: String,
+    operation: String,
+) -> i64 {
+    dead_param_count_for_operation(
+        source_path_for_module_path(&module_path),
+        service,
+        operation,
+    )
+}
+
+pub fn dead_param_count_for_module_path_file(module_path: String) -> i64 {
+    dead_param_count_for_path(source_path_for_module_path(&module_path))
+}
+
+pub fn embedded_policy_literal_count_for_module_path(module_path: String) -> i64 {
+    embedded_policy_literal_count_for_path(source_path_for_module_path(&module_path))
+}
+
+fn policy_leak_count_for_parsed_module(
+    items: &Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> i64 {
+    let mut count = 0i64;
+    for item in items.iter() {
+        if item.name.is_empty() || item.children.is_empty() {
+            continue;
+        }
+        let fallback_transport = if let Some(t) = item.transport.as_ref() {
+            t.clone()
+        } else {
+            crate::v1_std_core::local_transport_node(item.span.clone())
+        };
+        for op in item.children.iter() {
+            if op.name.is_empty() {
+                continue;
+            }
+            let eff = effective_operation_transport(op.clone(), fallback_transport.clone());
+            for arg in eff.children.iter() {
+                let token = argv_expr_token(arg, source_indices);
+                if argv_token_is_consumer_policy_literal(&token) {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+/// Structural argv projection — consumer-policy literals in operation argv.
+pub fn policy_leak_count_for_module_path(module_path: String) -> i64 {
+    let path = source_path_for_module_path(&module_path);
+    let (items, source_indices) = parse_module_items(&path);
+    policy_leak_count_for_parsed_module(&items, &source_indices)
+}
+
+fn transport_fusion_fork_count_for_parsed_module(items: &Rc<Vec<Rc<Node>>>) -> i64 {
+    let mut service_names: Vec<String> = Vec::new();
+    for item in items.iter() {
+        if item.name.is_empty() || item.children.is_empty() {
+            continue;
+        }
+        service_names.push(item.name.clone());
+    }
+    let has_oauth_google = service_names.iter().any(|s| s == "oauth2.Google");
+    let has_shell_oauth = service_names.iter().any(|s| s == "shell.OAuth2");
+    if has_oauth_google && has_shell_oauth {
+        1
+    } else {
+        0
+    }
+}
+
+/// Structural service-decl projection — transport-fusion fork across handlers.
+pub fn transport_fusion_fork_count_for_module_path(module_path: String) -> i64 {
+    let path = source_path_for_module_path(&module_path);
+    let (items, _) = parse_module_items(&path);
+    transport_fusion_fork_count_for_parsed_module(&items)
+}
+
+/// Gist Create op declares `filename` input (structural — not a filepath nickname check).
+pub fn gist_create_declares_filename_input(module_path: String) -> bool {
+    let path = source_path_for_module_path(&module_path);
+    let (items, source_indices) = parse_module_items(&path);
+    gist_create_declares_filename_input_for_parsed_module(&items, &source_indices)
+}
+
+fn gist_create_declares_filename_input_for_parsed_module(
+    items: &Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    for item in items.iter() {
+        if item.name != "github.Gist" {
+            continue;
+        }
+        for op in item.children.iter() {
+            if op.name != "Create" {
+                continue;
+            }
+            for param in op.params.iter() {
+                let name = param_node_name_at(param.clone(), source_indices.clone());
+                if name == "filename" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn record_field_value(
+    record: &Rc<Node>,
+    field_name: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    if !matches!(record.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+        return None;
+    }
+    for field_init in record.children.iter() {
+        let name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+        if name == field_name {
+            return Some(field_init_node_value(field_init.clone()));
+        }
+    }
+    None
+}
+
+fn map_literal_keys_use_filename_placeholder(
+    map_node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    if !matches!(map_node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+        return false;
+    }
+    if map_node.children.is_empty() {
+        return false;
+    }
+    for entry in map_node.children.iter() {
+        let key = field_init_node_name_at(entry.clone(), source_indices.clone());
+        if !argv_token_references_param(&key, "filename") {
+            return false;
+        }
+    }
+    true
+}
+
+/// Gist Create REST body `files` map keys use `{filename}` — no hardcoded workflow filename.
+pub fn gist_create_files_keyed_by_filename_placeholder(module_path: String) -> bool {
+    let path = source_path_for_module_path(&module_path);
+    let (items, source_indices) = parse_module_items(&path);
+    gist_create_files_keyed_by_filename_placeholder_for_parsed_module(&items, &source_indices)
+}
+
+fn gist_create_files_keyed_by_filename_placeholder_for_parsed_module(
+    items: &Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    for item in items.iter() {
+        if item.name != "github.Gist" {
+            continue;
+        }
+        for op in item.children.iter() {
+            if op.name != "Create" {
+                continue;
+            }
+            let Some(transport) = op.transport.as_ref() else {
+                return false;
+            };
+            if !is_rest_transport(transport.clone(), source_indices.clone()) {
+                return false;
+            }
+            let Some(body) = transport_request_body(transport.clone(), source_indices.clone())
+            else {
+                return false;
+            };
+            let Some(files) = record_field_value(&body, "files", source_indices) else {
+                return false;
+            };
+            return map_literal_keys_use_filename_placeholder(&files, source_indices);
+        }
+    }
+    false
+}
+
+pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    gist_create_files_keyed_by_filename_placeholder(module_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,8 +498,8 @@ mod tests {
     #[test]
     fn cargo_clippy_dead_param_defused_after_list_argv_splice() {
         assert_eq!(
-            dead_param_count_for_operation(
-                "dsl/extdeps/rust/cargo_build.dag".to_string(),
+            dead_param_count_for_module_path(
+                "extdeps.cargo_build".to_string(),
                 "cargo.Build".to_string(),
                 "Clippy".to_string(),
             ),
@@ -284,8 +510,8 @@ mod tests {
     #[test]
     fn cargo_fmt_dead_param_defused_on_live_tree() {
         assert_eq!(
-            dead_param_count_for_operation(
-                "dsl/extdeps/rust/cargo_build.dag".to_string(),
+            dead_param_count_for_module_path(
+                "extdeps.cargo_build".to_string(),
                 "cargo.Build".to_string(),
                 "Fmt".to_string(),
             ),
@@ -296,12 +522,96 @@ mod tests {
     #[test]
     fn cargo_doc_dead_param_defused_on_live_tree() {
         assert_eq!(
-            dead_param_count_for_operation(
-                "dsl/extdeps/rust/cargo_build.dag".to_string(),
+            dead_param_count_for_module_path(
+                "extdeps.cargo_build".to_string(),
                 "cargo.Build".to_string(),
                 "Doc".to_string(),
             ),
             0
+        );
+    }
+
+    #[test]
+    fn git_policy_leak_defused_by_module_path() {
+        assert_eq!(
+            policy_leak_count_for_module_path("extdeps.git".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn cargo_build_policy_leak_defused_by_module_path() {
+        assert_eq!(
+            policy_leak_count_for_module_path("extdeps.cargo_build".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn gcp_oauth_fusion_defused_by_module_path() {
+        assert_eq!(
+            transport_fusion_fork_count_for_module_path("extdeps.cloud.gcp.gcp".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn gist_create_files_keyed_by_filename_placeholder_on_live_tree() {
+        assert!(gist_create_files_keyed_by_filename_placeholder(
+            "extdeps.github.gists".to_string(),
+        ));
+    }
+
+    /// §5 perturbation: hardcoded `snapshot.md` body key must fail placeholder projection.
+    #[test]
+    fn gist_create_hardcoded_snapshot_md_red_under_perturbation() {
+        let ws = crate::module_path_index::workspace_root();
+        let path = ws.join("target/test_gist_perturb_snapshot_md.dag");
+        let content = r#"module extdeps.github.gists
+
+service github.Gist {
+  operation Create {
+    input { description: String, filename: String, content: String, auth_token: Secret }
+    transport rest {
+      method: POST,
+      path: "/gists",
+      body: {
+        description: description,
+        public: false,
+        files: { "snapshot.md": { content: content } }
+      }
+    }
+  }
+}
+"#;
+        std::fs::create_dir_all(ws.join("target")).ok();
+        std::fs::write(&path, content).expect("write perturb fixture");
+        let rel = path
+            .strip_prefix(&ws)
+            .expect("under workspace")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let (items, source_indices) = parse_module_items(&rel);
+        assert!(
+            !gist_create_files_keyed_by_filename_placeholder_for_parsed_module(
+                &items,
+                &source_indices
+            ),
+            "hardcoded snapshot.md must not pass files_keyed_by_filename projection"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// §5 perturbation: benign no-space env-var name must not flag; shell command must.
+    #[test]
+    fn embedded_policy_predicate_discriminates_benign_env_var() {
+        assert!(
+            !data_literal_is_embedded_policy_literal("GOOGLE_APPLICATION_CREDENTIALS"),
+            "adc_env_var benign control must not flag"
+        );
+        assert!(
+            data_literal_is_embedded_policy_literal("gcloud auth print-access-token"),
+            "fallback_auth_command policy literal must flag"
         );
     }
 }

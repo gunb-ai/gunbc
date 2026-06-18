@@ -9,7 +9,7 @@
 //   3. --hermetic (no store)        → eval_mock_response finds no mock_response →
 //      FAIL CLOSED ("no mock_response ... refusing to fabricate") — NOT a stub value
 //
-// CI floor (execution-backed, v1-compiler-tests / rust gate when wired):
+// CI floor (execution-backed via rust_gates_ci cargo test gate):
 //   * hermetic_http_pilot_without_fixture_store_fails_closed
 //   * hermetic_http_pilot_fixture_staleness_fails_closed
 //

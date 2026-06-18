@@ -2,9 +2,8 @@
 //
 // This module is the extdeps home for **where** GitHub expects workflow YAML
 // under a repository tree — not the YAML syntax model (`extdeps.github.actions`
-// in actions.dag). The gunbc CI gate/projection model (gunbc/ci.dag,
-// gunbc/ci_emission.dag, WorkflowRuntime, project_github_actions) was retired in
-// the CI-track rework: `.github/workflows/ci.yml` is hand-edited, not generated.
+// in actions.dag). gunbc CI workflow YAML is emitted from `gunbc.ci_workflow`
+// via `gunbc.ci_yaml_emit` (byte-drift-gated; see dsl/tools/ci_yaml_gate.dag).
 //
 // `extdeps.github.actions.Workflow` stays a platform-only carrier (no emission-
 // policy fields). This module declares only *where* GitHub loads workflow YAML.

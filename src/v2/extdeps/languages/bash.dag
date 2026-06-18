@@ -8,22 +8,12 @@
 //
 // Anchor: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
 //
-// MIGRATION SLICE 1 (this file) — the minimal proof that `emit(_, Bash)` renders real shell through
-// the existing pipeline with ZERO substrate change: a single fixed command
-//   'git' 'rev-parse' '--show-toplevel'
-// emitted from a synthetic intent node, every word a single-quoted FixedToken. The quoting +
-// adjacent layout are baked into each token's `LiteralPattern.text` (the same interim
-// layout-in-literal policy rust uses, e.g. "fn " not "fn"; see rust.dag T-6 TokenLayout). This
-// matches `serialize_bash`'s `single_quote` output for fixed words byte-for-byte (POSIX §2.2.2:
-// inside single quotes every character is literal).
+// MIGRATION SLICE 1 — fixed-token command `'git' 'rev-parse' '--show-toplevel'` (landed #5155).
 //
-// 🟡 SCOPED FOLLOW-ON (slice 2, may touch load-bearing substrate — design carefully / escalate):
-// BOUND words (a dynamic value — a variable path, a user-supplied argument) cannot pre-bake quotes,
-// so the `single_quote` wrapper (with the canonical `'\''` escape for an embedded `'`) needs a home
-// as an emit-time spelling transform keyed by token class — single-quoting is NOT a lex
-// *recognition* concern today (lex rules are ingest patterns; `token_spelling_from_model` reads
-// `LiteralPattern.text` verbatim). That wrapper, then growing rows to cover the ShellWord/ShellStmt
-// surface, then migrating the 7 sidecar consumers, then deleting program.dag — the full arc.
+// MIGRATION SLICE 2 — bound-word emit-time quoting via `token_class_emit_transforms` on
+// TargetModel (target_model.dag). Dynamic words (VarRef, Lit payloads) use BoundToken rows;
+// POSIX single-quote / double-quoted var-ref wrapping runs at emit time keyed by token class.
+// Next slices: ShellStmt vocab rows → migrate 7 sidecar consumers → delete program.dag.
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
 
@@ -46,12 +36,15 @@ import v2.std.compilers.lexing {
   TokenRule
 }
 import v2.std.compilers.target_model {
+  BoundToken,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
+  target_model_emit_transforms_empty,
+  target_model_make_with_emit_transforms,
   concrete_syntax_token_to_node
 }
-import v2.std.collection { List, empty_map }
+import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Arrow,
@@ -177,27 +170,86 @@ fn bash_mvp1_translation_rules_node() -> Node {
   }
 }
 
-// serialize_source — the grammar-inverse path (06_translate.dag grammar_inverse_source_validated)
-// reads this edge and asserts its token targets are byte-identical to the relation row's, so the
-// SAME `grammar_relation_tokens_node` builder feeds both (no second token authority). All-Named Conj
-// so `well_formed` passes (Conj-requires-named is strict). The source_text/source_grammar atoms are
-// liveness anchors pairing the emitted text with its production, mirroring rust's mvp1.
-fn bash_mvp1_serialize_source_node() -> Node {
+fn bash_bound_words_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       bash_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: bash_word_atom(id: ^bash_mvp1_source_literal)
+        name: ^bash_relation_rule_bound_words,
+        target: bash_bound_words_grammar_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_embedded_quote_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^bash_relation_rule_embedded_quote_lit,
+        target: bash_embedded_quote_grammar_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// =========================================================================
+// Slice 2 — bound words: VarRef double-quoted + Lit single-quoted at emit time.
+// Byte-identical to serialize_bash(command([var_ref("ROOT"), lit("ROOT")])) => "$ROOT" 'ROOT'
+// =========================================================================
+
+data bash_bound_words_emitted_command: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_var_ROOT) },
+    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_lit_ROOT) }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
+
+fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
+    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^bash_binding_lit_ROOT }
+  ]
+}
+
+fn bash_bound_words_grammar_expression() -> GrammarExpr {
+  Sequence {
+    left: grammar_expr_terminal(token_class: ^bash_token_var_ref),
+    right: grammar_expr_terminal(token_class: ^bash_token_lit_spaced)
+  }
+}
+
+fn bash_bound_words_grammar_production() -> GrammarProduction {
+  GrammarProduction {
+    name: ^bash_production_bound_words,
+    expression: bash_bound_words_grammar_expression(),
+    emitted: bash_word_atom(id: ^bash_surface_bound_words)
+  }
+}
+
+fn bash_bound_words_grammar_relation_row_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^grammar_relation_field_production,
+        target: grammar_production_to_node(production: bash_bound_words_grammar_production())
       ),
       bash_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: bash_word_atom(id: ^bash_production_command)
+        name: ^grammar_relation_field_emitted,
+        target: bash_bound_words_emitted_command
       ),
       bash_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
-          tokens: bash_mvp1_concrete_tokens(),
+          tokens: bash_bound_words_concrete_tokens(),
           token_to_node: bash_concrete_token_node
         )
       )
@@ -206,27 +258,172 @@ fn bash_mvp1_serialize_source_node() -> Node {
   }
 }
 
-// Emit bundle. `translation_rules` (the row `emit` matches + serializes) + `serialize_source` (the
-// grammar-inverse validator). No `target_model_edge_type_expression_projection` edge — the bundle
-// reads as ProjectionAbsent so `translate_node` takes the mvp1 grammar-match path (06_translate.dag),
-// and the Arrow emitted node is `TypeExprKindNotEmitted` (the grammar-inverse serialize branch).
-// Coercion/ingest edges (selection_policy, declared_inhabitants) are not exercised by emit and are
-// deliberately omitted from slice 1.
-fn bash_mvp1_target_model_bundle() -> Node {
+// Single-word bound lit with an embedded single quote — total POSIX escaping.
+data bash_embedded_quote_emitted_command: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_lit_a_quote_b) }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bash_embedded_quote_source_text: String = "'a'\\''b'"
+
+fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken {
+      token_class: ^bash_token_lit,
+      binding: ^bash_binding_lit_a_quote_b
+    }
+  ]
+}
+
+fn bash_embedded_quote_grammar_production() -> GrammarProduction {
+  GrammarProduction {
+    name: ^bash_production_embedded_quote_lit,
+    expression: grammar_expr_terminal(token_class: ^bash_token_lit),
+    emitted: bash_word_atom(id: ^bash_surface_embedded_quote_lit)
+  }
+}
+
+fn bash_embedded_quote_grammar_relation_row_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^grammar_relation_field_production,
+        target: grammar_production_to_node(production: bash_embedded_quote_grammar_production())
+      ),
+      bash_named_edge(
+        name: ^grammar_relation_field_emitted,
+        target: bash_embedded_quote_emitted_command
+      ),
+      bash_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: bash_embedded_quote_concrete_tokens(),
+          token_to_node: bash_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_binding_spellings() -> Map<Symbol, String> {
+  let m0 = map_insert(empty_map(), ^bash_binding_var_ROOT, "ROOT")
+  let m1 = map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
+  map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
+}
+
+// POSIX §2.2.2 — inside single quotes every character is literal; embedded `'` → `'\''`.
+fn bash_single_quote(spelling: String) -> String {
+  concat("'", concat(replace(spelling, "'", "'\\''"), "'"))
+}
+
+// Layout + quoting composed (§2: not a Cartesian product enum case in std).
+fn bash_single_quote_spaced(spelling: String) -> String {
+  concat(" ", bash_single_quote(spelling: spelling))
+}
+
+fn bash_var_ref_spelling(spelling: String) -> String {
+  concat("\"$", concat(spelling, "\""))
+}
+
+fn bash_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+  let m0 = map_insert(empty_map(), ^bash_token_lit, bash_single_quote)
+  let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_single_quote_spaced)
+  map_insert(m1, ^bash_token_var_ref, bash_var_ref_spelling)
+}
+
+fn bash_serialize_source_node(
+  source_text_binding: Symbol,
+  production_binding: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^serialize_source_field_source_text,
+        target: bash_word_atom(id: source_text_binding)
+      ),
+      bash_named_edge(
+        name: ^serialize_source_field_source_grammar,
+        target: bash_word_atom(id: production_binding)
+      ),
+      bash_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: tokens,
+          token_to_node: bash_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       bash_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: bash_mvp1_translation_rules_node()
+        target: rules
       ),
       bash_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: bash_mvp1_serialize_source_node()
+        target: serialize_source
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
+}
+
+fn bash_mvp1_serialize_source_node() -> Node {
+  bash_serialize_source_node(
+    source_text_binding: ^bash_mvp1_source_literal,
+    production_binding: ^bash_production_command,
+    tokens: bash_mvp1_concrete_tokens()
+  )
+}
+
+fn bash_bound_words_serialize_source_node() -> Node {
+  bash_serialize_source_node(
+    source_text_binding: ^bash_bound_words_source_literal,
+    production_binding: ^bash_production_bound_words,
+    tokens: bash_bound_words_concrete_tokens()
+  )
+}
+
+fn bash_embedded_quote_serialize_source_node() -> Node {
+  bash_serialize_source_node(
+    source_text_binding: ^bash_embedded_quote_source_literal,
+    production_binding: ^bash_production_embedded_quote_lit,
+    tokens: bash_embedded_quote_concrete_tokens()
+  )
+}
+
+fn bash_mvp1_target_model_bundle() -> Node {
+  bash_target_model_bundle(
+    rules: bash_mvp1_translation_rules_node(),
+    serialize_source: bash_mvp1_serialize_source_node()
+  )
+}
+
+fn bash_bound_words_target_model_bundle() -> Node {
+  bash_target_model_bundle(
+    rules: bash_bound_words_translation_rules_node(),
+    serialize_source: bash_bound_words_serialize_source_node()
+  )
+}
+
+fn bash_embedded_quote_target_model_bundle() -> Node {
+  bash_target_model_bundle(
+    rules: bash_embedded_quote_translation_rules_node(),
+    serialize_source: bash_embedded_quote_serialize_source_node()
+  )
 }
 
 // =========================================================================
@@ -257,11 +454,34 @@ fn bash_mvp1_lex() -> LexRules {
 }
 
 fn bash_mvp1_target_model() -> TargetModel {
-  TargetModel {
+  target_model_make_with_emit_transforms(
     bundle: bash_mvp1_target_model_bundle(),
     lex: bash_mvp1_lex(),
     binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: bash_mvp1_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
-  }
+  )
+}
+
+fn bash_bound_words_target_model() -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: bash_bound_words_target_model_bundle(),
+    lex: bash_mvp1_lex(),
+    binding_spellings: bash_binding_spellings(),
+    token_class_emit_transforms: bash_token_class_emit_transforms(),
+    authority_source_text: bash_bound_words_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
+}
+
+fn bash_embedded_quote_target_model() -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: bash_embedded_quote_target_model_bundle(),
+    lex: bash_mvp1_lex(),
+    binding_spellings: bash_binding_spellings(),
+    token_class_emit_transforms: bash_token_class_emit_transforms(),
+    authority_source_text: bash_embedded_quote_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
 }

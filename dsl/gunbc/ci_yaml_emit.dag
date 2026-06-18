@@ -1,4 +1,7 @@
 // gunbc/ci_yaml_emit.dag — composed CI workflow YAML projection.
+//
+// `runs-on:` is derived from `gunbc_ci_fleet_offer` via `runner_spec_from_offer`
+// (Phase 3a seam) — see gunbc.ci_fleet + gunbc.runner_spec_from_offer.
 
 module gunbc.ci_yaml_emit
 
