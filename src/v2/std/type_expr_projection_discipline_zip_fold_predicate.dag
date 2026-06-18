@@ -124,7 +124,7 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
           // into those leaves and rejects. Check container edge discipline only.
           locally_well_formed(n: source_facts)
             && well_formed(n: candidate)
-            && locally_well_formed(n: algebra)
+            && well_formed(n: algebra)
             && locally_well_formed(n: child_slots_node)
             && (algebra == source_facts)
             && type_expr_projection_row_envelope_exact_equal(
