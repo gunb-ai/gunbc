@@ -118,9 +118,8 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). GPU vendors are a closed hardware-vendor surface; mirrors
-// std.cpu CpuVendor rigor (DESIGN.md §2 anemic-leaf trap).
+// dissolution-trigger: fold into a shared Vendor authority with std.cpu.CpuVendor
+// pending the parked std-conflation vendor-unification decision (operator-gated).
 type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
 
 // NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
