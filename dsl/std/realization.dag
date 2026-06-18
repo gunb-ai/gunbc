@@ -42,23 +42,12 @@ import std.realization_schedule {
   ScheduleLensVerdict,
   runnable_step_label,
   schedule_batch_contains_label,
+  string_list_eq,
 }
 
 // --- Independence classifier (fail-closed) ------------------------------------
 
 type Independence = Independent | Dependent | Unknown
-
-fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
-  if left.length() != right.length() {
-    false
-  } else if left.length() == 0 {
-    true
-  } else if left.first() != right.first() {
-    false
-  } else {
-    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
-  }
-}
 
 fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
   match left {
