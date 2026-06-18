@@ -145,7 +145,9 @@ fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
   }
 }
 
-// Double-init dedup (increment 1): two create-if-absent effects collapse iff they share identity.
+// Increment-1 membership: is this shape in the create-if-absent dedup-eligible class?
+// Pairwise Share collapse (same identity) is create_double_init_collapsible, not this predicate.
+// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
 fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
