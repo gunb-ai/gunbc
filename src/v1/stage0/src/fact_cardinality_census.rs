@@ -229,6 +229,11 @@ mod tests {
     }
 
     #[test]
+    fn _fork_count_probe() {
+        panic!("count={}", cross_tree_fork_count());
+    }
+
+    #[test]
     fn extract_top_level_decls_captures_split_brace_body() {
         let source = include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
         let decls = extract_top_level_decls(source);
