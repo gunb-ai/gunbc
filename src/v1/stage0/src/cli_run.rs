@@ -2310,18 +2310,20 @@ pub struct SourceRootReadRecord {
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
-    let mut out = String::from('^');
+    let mut body = String::new();
     for ch in stem.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' {
-            out.push(ch);
+            body.push(ch);
         } else {
-            out.push('_');
+            body.push('_');
         }
     }
-    if out == "^" {
-        out.push_str("host_sr_empty");
+    if body.is_empty() {
+        body.push_str("host_sr_empty");
+    } else if body.as_bytes()[0].is_ascii_digit() {
+        body = format!("sr_{body}");
     }
-    out
+    format!("^{body}")
 }
 
 fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
@@ -2338,6 +2340,100 @@ fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("host_sr");
     source_root_ingest_symbol_from_stem(stem)
+}
+
+/// Parsed `Admission` facts for the scoped `--entry` module (subject + import targets).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceRootEntryAdmission {
+    pub subject: Vec<String>,
+    pub imports: Vec<Vec<String>>,
+}
+
+fn parse_dotted_module_path(path: &str) -> Option<Vec<String>> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let segments: Vec<String> = trimmed
+        .split('.')
+        .filter(|seg| !seg.is_empty())
+        .map(str::to_string)
+        .collect();
+    if segments.is_empty() {
+        None
+    } else {
+        Some(segments)
+    }
+}
+
+/// Parse `module …` and `import …` lines from an entry `.dag` source for manifest admission.
+pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntryAdmission, String> {
+    let mut subject: Option<Vec<String>> = None;
+    let mut imports: Vec<Vec<String>> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+
+    for line in source.lines() {
+        let line = line.split("//").next().unwrap_or("").trim();
+        if let Some(rest) = line.strip_prefix("module ") {
+            subject = parse_dotted_module_path(rest);
+        } else if let Some(rest) = line.strip_prefix("import ") {
+            let module_path = rest.split_whitespace().next().unwrap_or("");
+            if let Some(segments) = parse_dotted_module_path(module_path) {
+                if seen.insert(segments.clone()) {
+                    imports.push(segments);
+                }
+            }
+        }
+    }
+
+    subject
+        .map(|subject| SourceRootEntryAdmission { subject, imports })
+        .ok_or_else(|| "entry source missing `module` declaration".to_string())
+}
+
+fn emit_qualified_name_dag(segments: &[String]) -> String {
+    if segments.is_empty() {
+        return "QnEmpty".to_string();
+    }
+    let mut out = String::new();
+    for (idx, seg) in segments.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", tail: ");
+        }
+        if idx == 0 {
+            out.push_str("QnCons { head: ");
+        } else {
+            out.push_str("QnCons { head: ");
+        }
+        out.push('^');
+        out.push_str(seg);
+        if idx + 1 == segments.len() {
+            out.push_str(", tail: QnEmpty }");
+        }
+    }
+    for _ in 0..segments.len().saturating_sub(1) {
+        out.push('}');
+    }
+    out
+}
+
+fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
+    let mut out = String::from("Empty");
+    for import in imports.iter().rev() {
+        out = format!(
+            "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
+            emit_qualified_name_dag(import)
+        );
+    }
+    out
+}
+
+fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -> String {
+    format!(
+        "data host_compiler_closure_admission: Admission = Admission {{\n  subject: ResolutionSubject {{\n    name: {}\n  }},\n  imports: {}\n}}\n\n\n",
+        emit_qualified_name_dag(&admission.subject),
+        emit_import_admission_list(&admission.imports)
+    )
 }
 
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
@@ -2490,6 +2586,7 @@ fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
+    entry_admission: Option<&SourceRootEntryAdmission>,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -2516,7 +2613,17 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
-    out.push_str("import v2.std.text { String }\n\n\n");
+    out.push_str("import v2.std.text { String }\n");
+    if entry_admission.is_some() {
+        out.push_str("import v2.compiler.name_resolve {\n");
+        out.push_str("  Admission,\n");
+        out.push_str("  Import,\n");
+        out.push_str("  ImportVisible,\n");
+        out.push_str("  ResolutionSubject\n");
+        out.push_str("}\n");
+        out.push_str("import v2.std.qualified_name { QnCons, QnEmpty }\n");
+    }
+    out.push('\n');
     out.push_str(&format!(
         "data host_source_root_ingest_content_hash: String = \"{}\"\n\n\n",
         dag_string_escape(&content_hash)
