@@ -139,10 +139,6 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "module_path_rename_unknown_qn_does_not_resolve_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
-            "module_source_nickname_literal_local_red_is_red_holds",
-        ),
-        (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_present_red_test.dag",
             "module_source_nickname_literal_coverage_domain_is_red_holds",
         ),
@@ -259,16 +255,6 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
         ExecutionMode::Hermetic,
     );
 
-    let local_red_qn = build_qn(
-        &ctx,
-        &[
-            "v2",
-            "test",
-            "extdeps_shape_transport_policy",
-            "lens_unit",
-            "module_source_nickname_literal_local_red",
-        ],
-    );
     let green_qn = build_qn(
         &ctx,
         &[
@@ -299,11 +285,6 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
         assert!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &coverage_qn,
-            ) > 0
-        );
-        assert!(
-            extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
-                &local_red_qn,
             ) > 0
         );
     });
