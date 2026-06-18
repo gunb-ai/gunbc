@@ -307,26 +307,16 @@ pub fn check_modifier_vs_derivation(
         } else {
             if (declared_idempotent.clone() && !derived_idempotent.clone()) {
                 match (*op.shape.clone()).clone() {
-                    EffectShape::CreateEffect { ref cause, .. } => {
-                        let CreateCause::PostAlways = cause.as_ref() else {
-                            unreachable!()
-                        };
-                        Rc::new(ModifierAgreement::DerivationUnknown {
-    reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
-})
-                    }
-                    EffectShape::CreateEffect { ref cause, .. } => {
-                        let CreateCause::CreateIfAbsent {
-                            key_source: key_source,
-                            ..
-                        } = cause.as_ref()
-                        else {
-                            unreachable!()
-                        };
-                        Rc::new(ModifierAgreement::Disagrees {
-    reason: "create-if-absent has proven identity but modifier declares non-idempotent".to_string(),
-})
-                    }
+                    EffectShape::CreateEffect { cause, .. } => match (*cause).clone() {
+                        CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
+                            reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared"
+                                .to_string(),
+                        }),
+                        CreateCause::CreateIfAbsent { .. } => Rc::new(ModifierAgreement::Disagrees {
+                            reason: "create-if-absent has proven identity but modifier declares non-idempotent"
+                                .to_string(),
+                        }),
+                    },
                     _ => Rc::new(ModifierAgreement::Disagrees {
                         reason: "derivation says non-idempotent but modifier declares idempotent"
                             .to_string(),

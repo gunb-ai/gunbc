@@ -688,6 +688,50 @@ fn create_always_is_not_dedupable() {
 }
 
 #[test]
+fn create_if_absent_declared_idempotent_agrees_with_derivation() {
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent {
+            key_source: Rc::new(KeySource::InputField {
+                field: "id".to_string(),
+            }),
+        }),
+    });
+    let op = Rc::new(DerivedOpEffect {
+        operation_name: "create_secret".to_string(),
+        method: HttpMethod::POST,
+        path_template: parse_ok("/secrets"),
+        shape: shape.clone(),
+    });
+    let result = check_modifier_vs_derivation(op, true, false);
+    assert!(
+        matches!(*result.agreement, ModifierAgreement::Agrees),
+        "create-if-absent with declared idempotent should agree with derivation, got {:?}",
+        result.agreement
+    );
+}
+
+#[test]
+fn create_always_declared_idempotent_is_derivation_unknown() {
+    let op = Rc::new(DerivedOpEffect {
+        operation_name: "add_version".to_string(),
+        method: HttpMethod::POST,
+        path_template: parse_ok("/versions"),
+        shape: Rc::new(EffectShape::CreateEffect {
+            cause: Rc::new(CreateCause::PostAlways),
+        }),
+    });
+    let result = check_modifier_vs_derivation(op, true, false);
+    assert!(
+        matches!(
+            *result.agreement,
+            ModifierAgreement::DerivationUnknown { .. }
+        ),
+        "PostAlways create with declared idempotent should be DerivationUnknown, got {:?}",
+        result.agreement
+    );
+}
+
+#[test]
 fn extdep_rest_fingerprints_are_unique_in_authority_closure() {
     let mut seen: std::collections::HashSet<(String, String, String, String)> =
         std::collections::HashSet::new();
