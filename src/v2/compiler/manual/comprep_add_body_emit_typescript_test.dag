@@ -48,7 +48,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_add,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node}
+  value_expr_projection_bundle_node, target_model_emit_transforms_empty}
 import v2.compiler.target_carriers { TargetSource }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection { Map, empty_map }

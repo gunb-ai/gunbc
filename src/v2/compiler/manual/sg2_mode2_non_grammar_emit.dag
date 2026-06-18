@@ -374,7 +374,6 @@ data claim_sg2_mode2_gap2_lex_only_prep: TestClaim = CompilesClaim {
 }
 
 data claim_sg2_mode2_gap2_lex_only_rejects_binding_spellings: TestClaim = CompilesClaim {
-    token_class_emit_transforms: target_model_emit_transforms_empty,
   label: "manual/sg2-mode2 GAP-2 prep: lex-only atom rejects serialize (no binding_spellings fail-open)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_mode2_claim_input(

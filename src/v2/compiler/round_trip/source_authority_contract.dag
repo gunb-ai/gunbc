@@ -19,7 +19,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.witness { Holds, Violates }
 import v2.std.verification {
   CompilesClaim,

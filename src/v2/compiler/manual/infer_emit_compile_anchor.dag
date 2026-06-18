@@ -12,7 +12,7 @@ import v2.compiler.compile {
   compile_ingest_staging
 }
 import v2.compiler.target_carriers { TargetSource }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.compiler.emit { emit }
 import v2.compiler.infer {

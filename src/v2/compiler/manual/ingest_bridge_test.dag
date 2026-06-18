@@ -39,7 +39,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
-  TargetModel
+  TargetModel, target_model_emit_transforms_empty
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
 import v2.std.logic { Bool }

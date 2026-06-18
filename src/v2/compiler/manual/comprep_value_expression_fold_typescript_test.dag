@@ -49,6 +49,7 @@ import v2.std.compilers.target_model {
   FixedToken,
   InfixToken,
   TargetModel,
+  target_model_emit_transforms_empty,
   canonical_operation_op_add,
   concrete_syntax_token_list_to_node,
   target_operator_realization_node,
