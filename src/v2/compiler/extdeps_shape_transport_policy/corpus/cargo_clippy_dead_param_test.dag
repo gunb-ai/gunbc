@@ -1,5 +1,6 @@
-// Scope: corpus RED witness — Node-tree projection over live cargo_build.dag.
-// Asserts cargo.Build.Clippy has dead params (deny_args, all_targets) on main.
+// Scope: corpus regression GUARD — Node-tree projection over live cargo_build.dag Clippy op.
+// #5107 de-fused deny_args/all_targets to workflow lint_args; asserts no dead params remain.
+// Detection teeth proven by lens_unit dead_param_cargo_clippy synthetic witness.
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.extdeps_shape_transport_policy.corpus.cargo_clippy_dead_param
@@ -13,10 +14,10 @@ data cargo_clippy_path: String = "dsl/extdeps/rust/cargo_build.dag"
 data cargo_clippy_service: String = "cargo.Build"
 data cargo_clippy_operation: String = "Clippy"
 
-test fn corpus_cargo_clippy_dead_param_is_red_holds() -> Bool {
+test fn corpus_cargo_clippy_dead_param_defused_holds() -> Bool {
   extdeps_live_file_dead_param_count_for_operation(
     path: cargo_clippy_path,
     service: cargo_clippy_service,
     operation: cargo_clippy_operation
-  ) >= 2
+  ) == 0
 }

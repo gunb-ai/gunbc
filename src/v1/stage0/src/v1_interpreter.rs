@@ -3615,6 +3615,38 @@ struct ShellResult {
     stderr: String,
 }
 
+/// Push one evaluated argv expression onto `argv`. List carriers splice
+/// element-wise; strings stay atomic (never exploded to codepoints).
+fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
+    match &val {
+        Value::Str(s) => {
+            argv.push(s.clone());
+            Ok(())
+        }
+        Value::List(items) => {
+            for item in items.iter() {
+                push_shell_argv_tokens(argv, item.clone())?;
+            }
+            Ok(())
+        }
+        Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(&val) {
+                for item in items {
+                    push_shell_argv_tokens(argv, item)?;
+                }
+                Ok(())
+            } else {
+                argv.push(format!("{}", val));
+                Ok(())
+            }
+        }
+        _ => {
+            argv.push(format!("{}", val));
+            Ok(())
+        }
+    }
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3626,7 +3658,7 @@ fn dispatch_shell(
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
         let val = eval_expr(node, param_env, ctx)?;
-        argv.push(format!("{}", val));
+        push_shell_argv_tokens(&mut argv, val)?;
     }
 
     if argv.is_empty() {
@@ -4880,6 +4912,18 @@ fn eval_builtin(
             )?;
             let count =
                 crate::extdeps_shape_transport_policy_project::dead_param_count_for_path(path);
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_embedded_policy_literal_count_for_path" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "extdeps_embedded_policy_literal_count_for_path",
+            )?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::embedded_policy_literal_count_for_path(
+                    path,
+                );
             Ok(Some(Value::Int(count)))
         }
 
