@@ -101,10 +101,9 @@ fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
     match pr.merged_at {
       Present { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
       Absent =>
-        if pr.state != Open {
-          DigestNotReady { first_reason: "not open", more_reasons: [] }
-        } else {
-          DigestOpenForReview
+        match pr.state {
+          Open => DigestOpenForReview
+          Closed => DigestNotReady { first_reason: "not open", more_reasons: [] }
         }
     }
   }
