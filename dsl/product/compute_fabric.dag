@@ -635,6 +635,7 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
   network: [],
 }
 
+// SCAFFOLD 🟡 — witness fixture only; wall_nanos is bare Nat from v1 host bridge.
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
   wall_nanos: Nat,
