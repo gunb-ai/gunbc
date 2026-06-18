@@ -711,6 +711,32 @@ fn create_if_absent_declared_idempotent_agrees_with_derivation() {
 }
 
 #[test]
+fn create_if_absent_declared_non_idempotent_disagrees_with_derivation() {
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent {
+            key_source: Rc::new(KeySource::InputField {
+                field: "id".to_string(),
+            }),
+        }),
+    });
+    let op = Rc::new(DerivedOpEffect {
+        operation_name: "create_secret".to_string(),
+        method: HttpMethod::POST,
+        path_template: parse_ok("/secrets"),
+        shape: shape.clone(),
+    });
+    let result = check_modifier_vs_derivation(op, false, false);
+    assert!(
+        matches!(
+            *result.agreement,
+            ModifierAgreement::Disagrees { .. }
+        ),
+        "create-if-absent with declared non-idempotent should disagree with derivation, got {:?}",
+        result.agreement
+    );
+}
+
+#[test]
 fn create_always_declared_idempotent_is_derivation_unknown() {
     let op = Rc::new(DerivedOpEffect {
         operation_name: "add_version".to_string(),

@@ -159,6 +159,8 @@ fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   }
 }
 
+// Pairwise Share collapse for increment-1 create-if-absent double-init dedup.
+// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
 fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
   match a {
     CreateEffect { cause: cause_a } =>
@@ -374,10 +376,15 @@ fn check_modifier_vs_derivation(
     match op.shape {
       CreateEffect { cause: PostAlways } =>
         DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+      _ =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+    }
+  } else if !declared_idempotent && derived_idempotent {
+    match op.shape {
       CreateEffect { cause: CreateIfAbsent { key_source: key_source } } =>
         Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
       _ =>
-        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+        Agrees
     }
   } else if !declared_idempotent && declared_readonly {
     match op.method {

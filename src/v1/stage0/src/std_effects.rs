@@ -313,7 +313,7 @@ pub fn check_modifier_vs_derivation(
                                 .to_string(),
                         }),
                         CreateCause::CreateIfAbsent { .. } => Rc::new(ModifierAgreement::Disagrees {
-                            reason: "create-if-absent has proven identity but modifier declares non-idempotent"
+                            reason: "derivation says non-idempotent but modifier declares idempotent"
                                 .to_string(),
                         }),
                     },
@@ -323,18 +323,33 @@ pub fn check_modifier_vs_derivation(
                     }),
                 }
             } else {
-                if (!declared_idempotent.clone() && declared_readonly.clone()) {
-                    match op.method.clone() {
-                        HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
-                        HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
-                        HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
-                        _ => Rc::new(ModifierAgreement::Disagrees {
-                            reason: "readonly declared but method is not GET/HEAD/OPTIONS"
-                                .to_string(),
-                        }),
+                if (!declared_idempotent.clone() && derived_idempotent.clone()) {
+                    match (*op.shape.clone()).clone() {
+                        EffectShape::CreateEffect { cause, .. } => match (*cause).clone() {
+                            CreateCause::CreateIfAbsent { .. } => {
+                                Rc::new(ModifierAgreement::Disagrees {
+                                    reason: "create-if-absent has proven identity but modifier declares non-idempotent"
+                                        .to_string(),
+                                })
+                            }
+                            CreateCause::PostAlways => Rc::new(ModifierAgreement::Agrees),
+                        },
+                        _ => Rc::new(ModifierAgreement::Agrees),
                     }
                 } else {
-                    Rc::new(ModifierAgreement::Agrees)
+                    if (!declared_idempotent.clone() && declared_readonly.clone()) {
+                        match op.method.clone() {
+                            HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
+                            HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
+                            HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
+                            _ => Rc::new(ModifierAgreement::Disagrees {
+                                reason: "readonly declared but method is not GET/HEAD/OPTIONS"
+                                    .to_string(),
+                            }),
+                        }
+                    } else {
+                        Rc::new(ModifierAgreement::Agrees)
+                    }
                 }
             }
         };
