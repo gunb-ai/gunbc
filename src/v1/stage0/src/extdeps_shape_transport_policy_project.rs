@@ -288,8 +288,17 @@ fn module_source_nickname_literal_count_in_node(
             count += 1;
         }
     }
+    if let Some(body) = node.body.as_ref() {
+        count += module_source_nickname_literal_count_in_node(body, real_paths);
+    }
     for child in node.children.iter() {
         count += module_source_nickname_literal_count_in_node(child, real_paths);
+    }
+    for param in node.params.iter() {
+        count += module_source_nickname_literal_count_in_node(param, real_paths);
+    }
+    if let Some(type_annotation) = node.type_annotation.as_ref() {
+        count += module_source_nickname_literal_count_in_node(type_annotation, real_paths);
     }
     count
 }
@@ -527,6 +536,21 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coverage_domain_module_source_nickname_literal_count_is_positive() {
+        let path = crate::module_path_index::source_path_for_module_path(
+            "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence".to_string(),
+        );
+        let index = crate::module_path_index::build_module_path_index();
+        let real_paths: HashSet<String> = index.into_values().collect();
+        let (items, _) = parse_module_items(&path);
+        let mut total = 0i64;
+        for item in items.iter() {
+            total += module_source_nickname_literal_count_in_node(item, &real_paths);
+        }
+        assert!(total > 0, "expected nickname literals, got {total}");
+    }
 
     #[test]
     fn cargo_clippy_dead_param_defused_after_list_argv_splice() {
