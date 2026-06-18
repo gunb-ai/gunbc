@@ -33,6 +33,7 @@ import std.measure {
   MoneyMicros,
   NanosecondDuration,
   nanosecond_duration,
+  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -582,7 +583,7 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  wall_duration: Duration
+  wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
@@ -590,25 +591,14 @@ type PerformanceReceipt {
   cache_state_summary: NonEmptyStr?
 }
 
-// SCAFFOLD 🟡 — host-bridge: bare Nat from v1 Duration.count (scale not modeled yet).
-// dissolve-on: extdeps/realization scale-aware Duration conversion; prefer
-// performance_receipts_total_time / cost_account_measured_from_time.
-fn duration_wall_nanos(duration: Duration) -> Nat {
-  duration.count
-}
-
-// SCAFFOLD 🟡 — see duration_wall_nanos; dissolve-on with carrier-preserving roll-up.
-fn performance_receipt_wall_nanos(receipt: PerformanceReceipt) -> Nat {
-  duration_wall_nanos(duration: receipt.wall_duration)
-}
-
-// SCAFFOLD 🟡 — see duration_wall_nanos; dissolve-on with performance_receipts_total_time.
-fn performance_receipts_total_wall_nanos(receipts: List<PerformanceReceipt>) -> Nat {
-  fold(receipts, init: 0, f: (acc, receipt) => acc + performance_receipt_wall_nanos(receipt: receipt))
-}
-
 fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
-  nanosecond_duration(count: performance_receipts_total_wall_nanos(receipts: receipts))
+  nanosecond_duration(
+    count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + nanosecond_duration_count(d: receipt.wall_duration)
+    )
+  )
 }
 
 // Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
@@ -635,15 +625,14 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
   network: [],
 }
 
-// SCAFFOLD 🟡 — witness fixture only; wall_nanos is bare Nat from v1 host bridge.
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
-  wall_nanos: Nat,
+  wall_time: NanosecondDuration,
 ) -> PerformanceReceipt {
   PerformanceReceipt {
     provider: host_v1_interpreter_provider,
     work_shape: work_shape,
-    wall_duration: Duration { count: wall_nanos },
+    wall_duration: wall_time,
     cpu_seconds: none,
     sample_count: 1,
     measurement_context: host_v1_interpreter_execution_surface,

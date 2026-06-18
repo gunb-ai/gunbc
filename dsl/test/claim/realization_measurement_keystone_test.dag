@@ -17,7 +17,6 @@ import std.realization_schedule {
 import std.realization_measurement {
   RealizationMeasureEffect,
   v1_eval_expr_measure_handler_id,
-  cost_account_measured_from_wall_nanos,
   witness_measured_rollup_differs_from_predicted_zero,
 }
 import product.compute_fabric {
@@ -26,10 +25,11 @@ import product.compute_fabric {
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
 }
-import std.measure { nanosecond_duration_count }
+import std.measure { nanosecond_duration, nanosecond_duration_count }
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
+data sample_wall_time: NanosecondDuration = nanosecond_duration(count: 5000000)
 
 data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
   subject: sample_subject
@@ -46,7 +46,7 @@ fn witness_predicted_zero_is_predicted_basis() -> Bool {
 fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   let receipt = performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
-    wall_nanos: 5000000,
+    wall_time: sample_wall_time,
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
   let rolled = cost_account_time_nanos(account: total)
@@ -60,7 +60,7 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
-  witness_measured_rollup_differs_from_predicted_zero(wall_nanos: 5000000)
+  witness_measured_rollup_differs_from_predicted_zero(wall_time: sample_wall_time)
 }
 
 fn witness_v1_handler_id_declared() -> Bool {

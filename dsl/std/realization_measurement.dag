@@ -14,7 +14,11 @@ module std.realization_measurement
 
 import std.types { ContentHash, Bool, String, List }
 import std.nat { Nat }
-import std.measure { nanosecond_duration, NanosecondDuration }
+import std.measure {
+  NanosecondDuration,
+  nanosecond_duration,
+  nanosecond_duration_count,
+}
 import std.realization_schedule {
   CostAccount,
   CostBasis,
@@ -37,37 +41,32 @@ type RealizationMeasureEffect
 data v1_eval_expr_measure_handler_id: String = "host:v1-interpreter.eval_expr_self_time"
 
 // --- Pure roll-up lens: observations → CostAccount.time --------------------
-//
-// SCAFFOLD 🟡 — host-bridge Nat nanoseconds (v1 proving handler only).
-// dissolve-on: delete *_wall_nanos / *_from_wall_nanos when extdeps/realization
-// supplies scale-aware Duration→NanosecondDuration conversion; use carrier path below.
 
 fn cost_account_measured_from_time(time: NanosecondDuration) -> CostAccount {
   cost_account_measured(time: time)
 }
 
-fn cost_account_measured_from_wall_nanos(wall_nanos: Nat) -> CostAccount {
-  cost_account_measured_from_time(time: nanosecond_duration(count: wall_nanos))
+fn nanosecond_duration_list_total(times: List<NanosecondDuration>) -> NanosecondDuration {
+  nanosecond_duration(
+    count: fold(times, init: 0, f: (acc, t) => acc + nanosecond_duration_count(d: t))
+  )
 }
 
-fn wall_nanos_list_total(nanos_list: List<Nat>) -> Nat {
-  fold(nanos_list, init: 0, f: (acc, n) => acc + n)
+fn cost_account_measured_from_time_list(times: List<NanosecondDuration>) -> CostAccount {
+  cost_account_measured_from_time(time: nanosecond_duration_list_total(times: times))
 }
 
-fn cost_account_measured_from_wall_nanos_list(nanos_list: List<Nat>) -> CostAccount {
-  cost_account_measured_from_wall_nanos(wall_nanos: wall_nanos_list_total(nanos_list: nanos_list))
-}
-
-// Discriminating lens: non-zero measured roll-up nanos must differ from predicted_zero
-// and match the input (§5 — goes red if roll-up aliases predicted_zero or drops nanos).
-fn witness_measured_rollup_differs_from_predicted_zero(wall_nanos: Nat) -> Bool {
-  if wall_nanos == 0 {
+// Discriminating lens: non-zero measured roll-up must differ from predicted_zero
+// and preserve nanosecond count (§5 — goes red if roll-up aliases or drops time).
+fn witness_measured_rollup_differs_from_predicted_zero(wall_time: NanosecondDuration) -> Bool {
+  if nanosecond_duration_count(d: wall_time) == 0 {
     false
   } else {
     let measured_nanos = cost_account_time_nanos(
-      account: cost_account_measured_from_wall_nanos(wall_nanos: wall_nanos)
+      account: cost_account_measured_from_time(time: wall_time)
     )
     let predicted_nanos = cost_account_time_nanos(account: cost_account_predicted_zero())
-    measured_nanos != predicted_nanos && measured_nanos == wall_nanos
+    measured_nanos != predicted_nanos
+      && measured_nanos == nanosecond_duration_count(d: wall_time)
   }
 }
