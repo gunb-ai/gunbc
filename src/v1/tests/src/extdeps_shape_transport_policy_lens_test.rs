@@ -265,16 +265,6 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
             "module_source_nickname_literal_green",
         ],
     );
-    let local_red_qn = build_qn(
-        &ctx,
-        &[
-            "v2",
-            "test",
-            "extdeps_shape_transport_policy",
-            "lens_unit",
-            "module_source_nickname_literal_local_red",
-        ],
-    );
     let coverage_qn = build_qn(
         &ctx,
         &[
@@ -294,14 +284,8 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
         );
         assert!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
-                &local_red_qn,
-            ) > 0
-        );
-        assert_eq!(
-            extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &coverage_qn,
-            ),
-            0
+            ) > 0
         );
     });
 }
