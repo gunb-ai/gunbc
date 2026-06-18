@@ -753,6 +753,34 @@ struct PureCallMemo {
     keepalive_fns: Vec<Rc<Node>>,
 }
 
+/// In-process parse-table memo — minimal Realization host handler for
+/// `ParseTableRealization` (§2 sccache pattern; spec in `dsl/std/cache_interface.dag`
+/// `parse_table_memo_facts` + `02_parse.dag` `parse_table_lookup`/`parse_table_insert`).
+///
+/// Rust owns only lookup/insert glue keyed by the carrier's content-address fields;
+/// miss/compute/insert *decision* stays in `parse_nonterminal_memoized` (.dag). No
+/// `length()`-style substrate builtin was added (#5084 negative receipt).
+///
+/// Scoped to `InterpContext` like `PureCallMemo`. Keyed by (grammar_digest,
+/// token_stream_digest, position, production) — same tuple `parse_table_memo_scope_and_key`
+/// extracts from the carrier record the pure spec constructs.
+#[derive(Default)]
+struct ParseTableMemo {
+    map: HashMap<(String, String, i64, Symbol), Value>,
+    keepalive: Vec<Value>,
+    lookups: u64,
+    hits: u64,
+    inserts: u64,
+}
+
+/// Parse-table memo counters for amortization witnesses (grammar-scoped reuse across files).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParseTableMemoStats {
+    pub lookups: u64,
+    pub hits: u64,
+    pub inserts: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Phase-0 memory measurement (ctrl#1533)
 // ---------------------------------------------------------------------------
@@ -1085,6 +1113,8 @@ pub struct InterpContext {
     /// Memo for pure structural predicates, with the same context scoping as
     /// `data_cache` (see `PureCallMemo`).
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
+    /// Lazy parse-table memo for `parse_table_lookup` / `parse_table_insert` (Realization handler).
+    parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     /// Phase-0 measurement counters (ctrl#1533): copy work done by the
     /// copy-on-update collection primitives, scoped to this context like the
     /// caches above. Always on — a few integer adds next to O(n) clones.
@@ -1132,6 +1162,15 @@ impl InterpContext {
     /// allocations interning avoided (the #4799 dedup receipt).
     pub fn interner_stats_snapshot(&self) -> InternStats {
         self.symbols.borrow().stats()
+    }
+
+    pub fn parse_table_memo_stats_snapshot(&self) -> ParseTableMemoStats {
+        let st = self.parse_table_memo.borrow();
+        ParseTableMemoStats {
+            lookups: st.lookups,
+            hits: st.hits,
+            inserts: st.inserts,
+        }
     }
 
     /// Sharing-aware byte accounting over everything this context retains
@@ -1221,6 +1260,7 @@ impl InterpContext {
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
+            parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
         }
@@ -2327,6 +2367,11 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         }
     };
 
+    // parse_table_lookup/insert: in-process Realization memo (content-keyed by table scope).
+    if let Some(result) = try_parse_table_memo_dispatch(ctx, &func_name, &fn_node, &args, env)? {
+        return Ok(result);
+    }
+
     // Sharing-preservation memo: cache results of pure module functions keyed by the
     // RESOLVED function identity (collision-free) plus argument identities. Sound because a
     // module fn is deterministic in its args and same-Rc args ⇒ same value, so a hit is
@@ -2391,6 +2436,97 @@ fn eval_fold_list_right_native(
         acc = apply_closure(*snoc, &[acc, item], env, ctx)?;
     }
     Ok(acc)
+}
+
+/// Build `Witness<T>::Holds { value }` for parse-table memo hits.
+fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
+    let mut fields = HashMap::new();
+    fields.insert(ctx.sym("value"), value);
+    Value::Variant {
+        type_name: ctx.sym("Witness"),
+        variant_name: ctx.sym("Holds"),
+        fields: Rc::new(fields),
+    }
+}
+
+fn parse_table_memo_scope_and_key(
+    ctx: &InterpContext,
+    table: &Value,
+    key: &Value,
+) -> Option<(String, String, i64, Symbol)> {
+    let table_fields = match table {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    let grammar_digest = match ctx.field(table_fields, "grammar_digest")? {
+        Value::Str(s) => s.clone(),
+        _ => return None,
+    };
+    let token_stream_digest = match ctx.field(table_fields, "token_stream_digest")? {
+        Value::Str(s) => s.clone(),
+        _ => return None,
+    };
+    let key_fields = match key {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    let position = match key_fields.get(&ctx.sym("position")) {
+        Some(Value::Int(n)) => *n,
+        _ => return None,
+    };
+    let production = match key_fields.get(&ctx.sym("production")) {
+        Some(Value::Str(s)) => ctx.sym(s),
+        _ => return None,
+    };
+    Some((grammar_digest, token_stream_digest, position, production))
+}
+
+fn try_parse_table_memo_dispatch(
+    ctx: &InterpContext,
+    func_name: &str,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Option<Value>> {
+    match func_name {
+        "parse_table_lookup" => {
+            let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+            let [table, key] = match positional.as_slice() {
+                [table, key] => [table, key],
+                _ => return Ok(None),
+            };
+            let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) else {
+                return Ok(None);
+            };
+            let mut st = ctx.parse_table_memo.borrow_mut();
+            st.lookups += 1;
+            if let Some(v) = st.map.get(&memo_key).cloned() {
+                st.hits += 1;
+                return Ok(Some(witness_holds(v, ctx)));
+            }
+            drop(st);
+            let result = call_function(ctx, fn_node, args, env)?;
+            Ok(Some(result))
+        }
+        "parse_table_insert" => {
+            let positional: Vec<&Value> = args.iter().map(|(_, v)| v).collect();
+            let [table, key, value] = match positional.as_slice() {
+                [table, key, value] => [table, key, value],
+                _ => return Ok(None),
+            };
+            if let Some(memo_key) = parse_table_memo_scope_and_key(ctx, table, key) {
+                let mut st = ctx.parse_table_memo.borrow_mut();
+                st.keepalive.push((*table).clone());
+                st.keepalive.push((*key).clone());
+                st.keepalive.push((*value).clone());
+                st.map.insert(memo_key, (*value).clone());
+                st.inserts += 1;
+            }
+            let result = call_function(ctx, fn_node, args, env)?;
+            Ok(Some(result))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn is_structural_pure_fn(name: &str) -> bool {
