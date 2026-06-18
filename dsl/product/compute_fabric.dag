@@ -118,6 +118,8 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
+// 🟡 YELLOW (scaffold). GpuVendor overlaps std.cpu.CpuVendor on Intel|Amd|Apple|Qualcomm;
+// the closed enum kills the anemic NonEmptyStr leaf pending vendor-unification.
 // dissolution-trigger: fold into a shared Vendor authority with std.cpu.CpuVendor
 // pending the parked std-conflation vendor-unification decision (operator-gated).
 type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
