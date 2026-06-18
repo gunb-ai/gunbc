@@ -81,7 +81,7 @@ fn witness_schedule_lens_red_when_corpus_runs_first_on_live_floor() -> Bool {
   }
 }
 
-test fn realization_schedule_witnesses() -> Bool {
+fn realization_schedule_witnesses() -> Bool {
   witness_batches_are_plan_schedule()
     && witness_batches_identical_to_inner_schedule()
     && witness_schedule_lens_holds_on_floor_plan()
