@@ -246,7 +246,9 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                         Value::Str(s) => Some(s.clone()),
                         _ => None,
                     })
-                    .unwrap_or_else(|| panic!("qualified_name_to_module_path: QnCons.head not Str"));
+                    .unwrap_or_else(|| {
+                        panic!("qualified_name_to_module_path: QnCons.head not Str")
+                    });
                 let tail = fields
                     .iter()
                     .find(|(k, _)| resolve_sym(**k) == "tail")
@@ -262,9 +264,9 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                 panic!("qualified_name_to_module_path: unexpected variant '{variant}'");
             }
         }
-        other => panic!(
-            "qualified_name_to_module_path: expected QualifiedName variant, got {other:?}"
-        ),
+        other => {
+            panic!("qualified_name_to_module_path: expected QualifiedName variant, got {other:?}")
+        }
     }
 }
 

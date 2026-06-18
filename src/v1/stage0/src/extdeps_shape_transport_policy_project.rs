@@ -207,7 +207,12 @@ fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
     if token.contains('{') && token.contains('}') {
         return false;
     }
-    if token == "diff" || token == "--name-only" || token == "git" || token == "--no-deps" || token == "..." {
+    if token == "diff"
+        || token == "--name-only"
+        || token == "git"
+        || token == "--no-deps"
+        || token == "..."
+    {
         return false;
     }
     token == "--all-targets"
@@ -280,9 +285,7 @@ pub fn dead_param_count_for_qualified_name(
     dead_param_count_for_module_path(module_path, service, operation)
 }
 
-pub fn embedded_policy_literal_count_for_qualified_name(
-    qn: &crate::v1_interpreter::Value,
-) -> i64 {
+pub fn embedded_policy_literal_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     embedded_policy_literal_count_for_module_path(module_path)
 }
@@ -292,9 +295,7 @@ pub fn policy_leak_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -
     policy_leak_count_for_module_path(module_path)
 }
 
-pub fn transport_fusion_fork_count_for_qualified_name(
-    qn: &crate::v1_interpreter::Value,
-) -> i64 {
+pub fn transport_fusion_fork_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     transport_fusion_fork_count_for_module_path(module_path)
 }

@@ -87,9 +87,10 @@ pub fn build_module_path_index() -> HashMap<String, String> {
 
 pub fn source_path_for_module_path(module_path: String) -> String {
     let index = build_module_path_index();
-    index.get(&module_path).cloned().unwrap_or_else(|| {
-        panic!("module_path_index: unknown module path '{module_path}'")
-    })
+    index
+        .get(&module_path)
+        .cloned()
+        .unwrap_or_else(|| panic!("module_path_index: unknown module path '{module_path}'"))
 }
 
 pub fn qualified_name_value_to_module_path(value: &crate::v1_interpreter::Value) -> String {
