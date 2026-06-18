@@ -201,6 +201,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false, wraps_result: false },
   { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true,  wraps_result: false },
   { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true,  wraps_result: false },
+  { name: "map_is_empty",       bridge_name: "map_is_empty",     passes_by_ref: true,  wraps_result: false },
   { name: "reverse",            bridge_name: "reverse",          passes_by_ref: false, wraps_result: false },
   { name: "replace",            bridge_name: "replace",          passes_by_ref: false, wraps_result: false },
   { name: "chars_to_string",    bridge_name: "chars_to_string",  passes_by_ref: true,  wraps_result: false },
@@ -210,7 +211,11 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "count",              bridge_name: "count",            passes_by_ref: false, wraps_result: false },
   { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false },
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
-  { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false }
+  { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false },
+  // Identity hints: owned Rc args (cheap refcount bump preserves inner pointers),
+  // so emit through the normal clone path -- no all-args-by-ref borrow rule needed.
+  { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
+  { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false }
 ]
 
 // Derived indexes from rt_function_registry — all computed, single authority.
