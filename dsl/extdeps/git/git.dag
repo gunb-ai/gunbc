@@ -14,7 +14,7 @@
 
 module extdeps.git
 
-import std.types { CommitSha, Email, FilePath, GitRef, Timestamp, Url }
+import std.types { CommitSha, FilePath, GitRef, Timestamp, Url }
 
 // -- Object model --------------------------------------------------
 
@@ -22,8 +22,19 @@ type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
 type GitAuthor {
   name: String
-  email: Email
+  email: String
   timestamp: Timestamp
+}
+
+// Git separates author (who wrote the patch) from committer (who applied
+// it to the tree -- e.g., merge queue, bot, maintainer). Both are needed
+// for SLSA provenance and accurate attribution in automated workflows.
+type GitCommit {
+  sha: CommitSha
+  message: String
+  author: GitAuthor
+  committer: GitAuthor
+  parent_shas: List<CommitSha>
 }
 
 // -- Refs ----------------------------------------------------------
@@ -69,6 +80,10 @@ type GitWorktree {
   is_main: Bool             // the original checkout vs a linked worktree
   locked: Bool              // `git worktree lock` -- protected from prune
 }
+
+// -- Merge strategies ----------------------------------------------
+
+type GitMergeStrategy = GitMerge | GitSquash | GitRebase | GitFastForward
 
 // -- Diff model ----------------------------------------------------
 

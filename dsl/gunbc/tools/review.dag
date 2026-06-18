@@ -12,7 +12,6 @@ module gunbc.tools.review
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
 import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
 import extdeps.github.pulls
-import std.types { CommitSha }
 import extdeps.llm.anthropic
 import extdeps.llm.anthropic_rest
 import extdeps.shell
@@ -35,7 +34,7 @@ data review_messages: List<AnthropicChatMessage> = [
 
 // -- Pure functions ---------------------------------------------------
 
-fn has_review_at_sha(reviews: List<PullReview>, sha: CommitSha) -> Bool {
+fn has_review_at_sha(reviews: List<PullReview>, sha: String) -> Bool {
   any(reviews, r => r.commit_id == sha && contains(r.body, "Review"))
 }
 
