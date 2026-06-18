@@ -29,9 +29,7 @@ impl TransportScriptArgShape {
     pub fn is_literal_blob(self) -> bool {
         matches!(
             self,
-            Self::BareStringLiteral
-                | Self::LetBoundStringLiteral
-                | Self::StringInterpLiteralsOnly
+            Self::BareStringLiteral | Self::LetBoundStringLiteral | Self::StringInterpLiteralsOnly
         )
     }
 }
