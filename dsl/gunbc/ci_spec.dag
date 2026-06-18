@@ -50,6 +50,7 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/cargo_target_path_witness.dag", function: "cargo_target_path_witnesses" },
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
+    { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
     { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
     { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
     { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" }
@@ -88,54 +89,40 @@ fn witness_root_source_flag(wr: WitnessRoot) -> String {
   concat(" --source-root ", wr.root)
 }
 
-fn witness_root_scan_flags(wr: WitnessRoot) -> String {
-  fold(wr.scan_subtrees, init: "", f: (acc, sub) => {
-    let dir = if starts_with(s: sub, prefix: wr.root) {
-      sub
-    } else {
-      concat(concat(wr.root, "/"), sub)
-    }
-    concat(acc, concat(" --scan-dir ", dir))
-  })
+// `claim_executor` takes ONLY `--source-root` (to resolve the plan) — it has no
+// `--scan-dir` flag and hard-errors on any unknown argument. Scan dirs are carried
+// SOLELY by the plan (`ci_floor_plan.corpus_scan_dirs` → `RunnableDiscoveryBatch.
+// scan_dirs`), the single authority for that derivation (DESIGN §3); emitting them
+// on the argv too would be a redundant, fail-closed mis-wire (DESIGN §5).
+fn witness_roots_source_flags(roots: List<WitnessRoot>) -> String {
+  fold(roots, init: "", f: (acc, wr) => concat(acc, witness_root_source_flag(wr: wr)))
 }
 
-fn witness_roots_flags(roots: List<WitnessRoot>) -> String {
-  fold(roots, init: "", f: (acc, wr) =>
-    concat(concat(acc, witness_root_source_flag(wr: wr)), witness_root_scan_flags(wr: wr))
-  )
-}
+// The dependency-ordered scheduler plan (the single floor topology, DESIGN §3) and
+// the host entry the executor evaluates. The scheduler — NOT a flat claim_batch +
+// gates pair — is the default CI runtime: both the discovery corpus and the gates
+// are scheduler plan nodes (`dsl/gunbc/ci_floor_plan.dag`), run dependency-ordered
+// and parallel-where-independent, fail-closed (DESIGN §4/§5).
+data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
+data floor_plan_function: String = "gunbc_ci_floor_batches"
 
-fn witness_entry_flags(row: WitnessEntry) -> String {
-  concat(concat(" --entry ", row.entry), concat(" --function ", row.function))
-}
-
-fn claim_batch_script(spec: CiSpec) -> String {
+fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_batch --", witness_roots_flags(roots: spec.witness_roots)),
-        " --roster-from-discovery"
+        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
+        concat(" --plan-entry ", floor_plan_entry)
       ),
-      fold(spec.witness_entries, init: "", f: (acc, row) => concat(acc, witness_entry_flags(row: row)))
+      concat(" --plan-function ", floor_plan_function)
     ),
     concat(concat(" --notice-title \"", spec.notice_title), "\"")
   )
 }
 
-fn ci_gates_invoke(spec: CiSpec) -> String {
-  concat(
-    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
-    " --entry dsl/tools/ci_gates.dag --function main"
-  )
-}
-
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
-    concat(
-      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-      concat(claim_batch_script(spec: spec), "\n")
-    ),
-    ci_gates_invoke(spec: spec)
+    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    scheduler_invoke(spec: spec)
   )
 }
 
