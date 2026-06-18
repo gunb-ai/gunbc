@@ -443,8 +443,8 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fixture-not-live");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    let target = "/tmp/gunbc_fs_write_witness.txt";
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
+    let target = store_dir.join("fs_witness.txt");
     let payload = "hello from the v2 file transport\n";
 
     let record = run_claim_batch(&[
@@ -463,7 +463,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
     assert!(record.status.success(), "record must capture");
 
     // Mutate live filesystem AFTER record — hermetic must NOT observe this.
-    fs::write(target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
+    fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
 
     let hermetic = run_claim_batch(&[
         "--source-root",
@@ -490,7 +490,9 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
 #[test]
 fn filesystem_hermetic_without_fixture_store_fails_closed() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let scratch = fixture_store_dir("fs-no-store-fails-closed");
+    fs::create_dir_all(&scratch).expect("scratch dir");
+    let entry = unique_fs_witness_entry(&ws, &scratch);
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
@@ -515,6 +517,7 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
         combined.contains("no mock_response") || combined.contains("refusing to fabricate"),
         "expected fail-closed mock_response diagnostic, got:\n{combined}"
     );
+    let _ = fs::remove_dir_all(&scratch);
 }
 
 // M4 hermetic-realization fold: the PUBLISHED mock corpus is the single authority the runtime
