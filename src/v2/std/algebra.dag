@@ -76,6 +76,9 @@ type BooleanAlgebra<T> {
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
+fn freemonoid_empty<T>() -> FreeMonoid<T> {
+  Empty
+}
 type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool

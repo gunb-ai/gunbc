@@ -9,8 +9,9 @@ module test.claim.ci_spec_witness
 
 import gunbc.ci_spec {
   CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase,
-  gunbc_ci_spec,
-  scheduler_invoke, gunbc_ci_run_script, git_fetch_script
+  gunbc_ci_spec, ci_release_features,
+  scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, git_fetch_script,
+  ci_release_build_script
 }
 
 data spec_alternate_root: CiSpec = {
@@ -82,7 +83,37 @@ fn witness_run_script_invokes_scheduler() -> Bool {
   string_contains(s: script, pattern: git_fetch_script(policy: gunbc_ci_spec.diff_policy)) &&
     string_contains(s: script, pattern: scheduler_invoke(spec: gunbc_ci_spec)) &&
     string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches") &&
-    !string_contains(s: script, pattern: "--bin claim_batch")
+    !string_contains(s: script, pattern: "--bin claim_batch") &&
+    !string_contains(s: script, pattern: "cargo run -p v1-compiler --release --bin claim_executor")
+}
+
+fn witness_release_build_unifies_features() -> Bool {
+  string_contains(
+    s: ci_release_build_script(),
+    pattern: concat("--features ", ci_release_features)
+  )
+}
+
+fn witness_release_build_eagain_cold_retry() -> Bool {
+  let script = ci_release_build_script()
+  string_contains(s: script, pattern: "Resource temporarily unavailable|failed to spawn") &&
+    string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1") &&
+    string_contains(s: script, pattern: "keep sccache") &&
+    string_contains(s: script, pattern: "without RUSTC_WRAPPER") &&
+    string_contains(s: script, pattern: "env -u RUSTC_WRAPPER") &&
+    string_contains(s: script, pattern: "sccache --show-stats")
+}
+
+fn witness_scheduler_uses_release_binary() -> Bool {
+  string_contains(
+    s: scheduler_invoke(spec: gunbc_ci_spec),
+    pattern: "$ROOT/target/release/claim_executor"
+  ) &&
+    !string_contains(s: scheduler_invoke(spec: gunbc_ci_spec), pattern: "cargo run")
+}
+
+fn witness_workflow_run_is_collapsed_script() -> Bool {
+  gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_run_script(spec: gunbc_ci_spec)
 }
 
 fn ci_spec_witnesses() -> Bool {
@@ -91,5 +122,9 @@ fn ci_spec_witnesses() -> Bool {
     witness_scan_subtree_not_in_scheduler_argv() &&
     witness_diff_policy_drives_fetch() &&
     witness_notice_title_from_spec() &&
-    witness_run_script_invokes_scheduler()
+    witness_run_script_invokes_scheduler() &&
+    witness_release_build_unifies_features() &&
+    witness_release_build_eagain_cold_retry() &&
+    witness_scheduler_uses_release_binary() &&
+    witness_workflow_run_is_collapsed_script()
 }

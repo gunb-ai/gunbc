@@ -53,7 +53,9 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
     { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
     { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
-    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" }
+    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" },
+    { entry: "dsl/test/claim/realization_witness.dag", function: "realization_witnesses" },
+    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" }
   ],
   gates: [
     RustMonolithGate,
@@ -69,6 +71,83 @@ data gunbc_ci_spec: CiSpec = {
     mode: DiffMergeBase
   },
   notice_title: "v2 claim corpus"
+}
+
+// Unify v1-compiler feature set across CI cargo invocations. v1-compiler-tests enables
+// text_lookup_work_counter; building gunbc/claim_executor without it forces a second full
+// v1-compiler compile when rust gates run clippy --all-targets (~49% CI wall-time prong).
+data ci_release_features: String = "text_lookup_work_counter"
+
+fn ci_repo_root_shell() -> String {
+  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+}
+
+fn ci_release_build_line() -> String {
+  concat(
+    concat(
+      "cargo build -p v1-compiler --release --features ",
+      ci_release_features
+    ),
+    " --bins"
+  )
+}
+
+// Two-tier cold retry on fleet EAGAIN (#4978 / #5138): first CARGO_BUILD_JOBS=1 with
+// sccache (populate daemon when it works); if sccache still cannot spawn rustc, drop
+// RUSTC_WRAPPER and compile direct. Then print stats.
+fn ci_release_build_script() -> String {
+  let build = ci_release_build_line()
+  concat(
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        "set -o pipefail\n"
+      ),
+      concat(
+        concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
+        concat(build, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
+      )
+    ),
+    concat(
+      concat(
+        concat(
+          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' \"$BUILD_LOG\"; then\n",
+          "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
+        ),
+        concat(
+          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
+          concat(build, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
+        )
+      ),
+      concat(
+        concat(
+          concat(
+            "      if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$RETRY_LOG\"; then\n",
+            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
+          ),
+          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(build, " || exit 1\n"))
+        ),
+        concat(
+          concat("      else\n", "        exit 1\n"),
+          concat("      fi\n", "    fi\n")
+        )
+      )
+    ),
+    concat(
+      concat(
+        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
+        concat("    exit 1\n", "  fi\n")
+      ),
+      concat(
+        concat("fi\n", "rm -f \"$BUILD_LOG\"\n"),
+        concat("sccache --show-stats 2>/dev/null || true", "")
+      )
+    )
+  )
+}
+
+fn claim_executor_bin_shell() -> String {
+  "\"$ROOT/target/release/claim_executor\""
 }
 
 fn join_slash(parts: List<String>) -> String {
@@ -110,25 +189,25 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
-        concat(" --plan-entry ", floor_plan_entry)
+        concat(concat(claim_executor_bin_shell(), witness_roots_source_flags(roots: spec.witness_roots)), concat(" --plan-entry ", floor_plan_entry)),
+        concat(" --plan-function ", floor_plan_function)
       ),
-      concat(" --plan-function ", floor_plan_function)
+      concat(concat(" --notice-title \"", spec.notice_title), "\"")
     ),
-    concat(concat(" --notice-title \"", spec.notice_title), "\"")
+    ""
   )
 }
 
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
-    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    concat(
+      concat(ci_release_build_script(), "\n"),
+      concat(git_fetch_script(policy: spec.diff_policy), "\n")
+    ),
     scheduler_invoke(spec: spec)
   )
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  concat(
-    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-    "cargo run -p v1-compiler --release --bin gunbc -- ci"
-  )
+  gunbc_ci_run_script(spec: spec)
 }
