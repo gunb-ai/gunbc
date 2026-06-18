@@ -53,7 +53,9 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
     { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
     { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
-    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" }
+    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" },
+    { entry: "dsl/test/claim/realization_witness.dag", function: "realization_witnesses" },
+    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" }
   ],
   gates: [
     RustMonolithGate,
@@ -108,14 +110,17 @@ data floor_plan_function: String = "gunbc_ci_floor_batches"
 
 fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
+    "cargo build -q -p v1-compiler --release --bin claim_executor --bin yaml_check && ",
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
-        concat(" --plan-entry ", floor_plan_entry)
+        concat(
+          concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
+          concat(" --plan-entry ", floor_plan_entry)
+        ),
+        concat(" --plan-function ", floor_plan_function)
       ),
-      concat(" --plan-function ", floor_plan_function)
-    ),
-    concat(concat(" --notice-title \"", spec.notice_title), "\"")
+      concat(concat(" --notice-title \"", spec.notice_title), "\"")
+    )
   )
 }
 

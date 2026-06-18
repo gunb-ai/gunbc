@@ -10,8 +10,10 @@
 
 module v2.test.claim.ci_floor_plan_witness
 
-import v2.workflow.ci_floor_plan {
+import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
+}
+import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_scan_dirs
 }
 import gunbc.ci_spec { CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase }
