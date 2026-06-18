@@ -7,7 +7,7 @@
 module v2.std.diagnostic
 
 
-import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item, fold_list, freemonoid_empty }
+import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item }
 import v2.std.node { Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
@@ -313,13 +313,43 @@ fn sequence_outcome<T>(
   xs: List<Outcome<T>>,
   policy: StageDiagnosticPolicy
 ) -> Outcome<List<T>> {
-  fold_list(
-    xs: xs,
-    empty: outcome_accepted(value: freemonoid_empty()),
-    cons: fn(acc, o) {
-      append_outcome_value(acc: acc, child: o, policy: policy)
+  fold(xs, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, o) {
+    match policy.accumulation {
+      ShortCircuit => match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: vs, diagnostics: ad } => match o {
+          Rejected { diagnostics: r } =>
+            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          Accepted { value: v, diagnostics: od } =>
+            accepted_thread_diagnostics(
+              value: list_snoc_item(xs: vs, item: v),
+              accumulated: ad,
+              incoming: od
+            )
+        }
+      }
+      Accumulate => match acc {
+        Accepted { value: vs, diagnostics: ad } => match o {
+          Accepted { value: v, diagnostics: od } =>
+            accepted_thread_diagnostics(
+              value: list_snoc_item(xs: vs, item: v),
+              accumulated: ad,
+              incoming: od
+            )
+          Rejected { diagnostics: r } =>
+            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+        }
+        Rejected { diagnostics: ra } => match o {
+          Accepted { value: _, diagnostics: od } =>
+            Rejected { diagnostics: rejected_with_pending(pending: od, rejected: ra) }
+          Rejected { diagnostics: rb } =>
+            Rejected {
+              diagnostics: non_empty_diagnostics_append(a: ra, b: rb)
+            }
+        }
+      }
     }
-  )
+  })
 }
 // traverse_outcome / traverse_node / sequence_node deferred: v2 bootstrap rejects
 // fn(T) -> Outcome<U> and fn(Node) -> Outcome<R> in higher-order parameter types
