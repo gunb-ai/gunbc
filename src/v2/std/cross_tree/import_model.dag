@@ -25,8 +25,8 @@
 module v2.std.cross_tree.import_model
 
 import v2.std.algebra { FreeMonoid, contains, fold_list }
+import v2.std.layer { LayerPrefix, layer_prefix_ordinal }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 import v2.std.text { String }
 
 
@@ -40,19 +40,6 @@ type SourceRootRef
 
 // SourceRootSet — ordered list of source trees in a compilation closure.
 type SourceRootSet = FreeMonoid<SourceRootRef>
-
-
-// ── Layer vocabulary ─────────────────────────────────────────────────────────
-
-// LayerPrefix — the 4-tier layer DAG from DESIGN.md §3.
-// "std ← extdeps ← compiler ← workflow, imports point toward std"
-// LayerPrefixOther covers any prefix not in the canonical 4-tier DAG (fail-closed at ordinal 4).
-type LayerPrefix
-  = LayerPrefixStd
-  | LayerPrefixExtdeps
-  | LayerPrefixCompiler
-  | LayerPrefixWorkflow
-  | LayerPrefixOther
 
 
 // ── Import edge ──────────────────────────────────────────────────────────────
@@ -86,26 +73,21 @@ type TreeFundamentalityOrder
   | CoFundamental
   | FundamentalityUnknown
 
+// CrossTreeDenialReason — exhaustive closed coproduct of denial causes (§3 fail-closed).
+type CrossTreeDenialReason
+  = CrossTreeFromTreeNotInRootSet
+  | CrossTreeToTreeNotInRootSet
+  | CrossTreeFundamentalityUnknownFailClosed
+  | CrossTreeToTreeLessFundamental
+  | CrossTreeLayerDirectionViolated
+
 // CrossTreeAdmissionVerdict — fail-closed result; CrossTreeDenied is the default for unknowns.
 type CrossTreeAdmissionVerdict
   = CrossTreeAdmitted
-  | CrossTreeDenied { reason: Symbol }
+  | CrossTreeDenied { reason: CrossTreeDenialReason }
 
 
 // ── Derived admission functions ───────────────────────────────────────────────
-
-// layer_prefix_ordinal — std=0 (most fundamental) through other=4 (fail-closed high).
-// Ordinal 4 for LayerPrefixOther ensures any cross-tree import from an unclassified
-// layer fails the layer-direction check (4 > any canonical ordinal).
-fn layer_prefix_ordinal(l: LayerPrefix) -> Int {
-  match l {
-    LayerPrefixStd => 0
-    LayerPrefixExtdeps => 1
-    LayerPrefixCompiler => 2
-    LayerPrefixWorkflow => 3
-    LayerPrefixOther => 4
-  }
-}
 
 fn source_root_ref_eq(a: SourceRootRef, b: SourceRootRef) -> Bool {
   match a {
@@ -130,7 +112,7 @@ fn cross_tree_directional_admit(edge: CrossTreeImport) -> CrossTreeAdmissionVerd
   if cross_tree_layer_direction_holds(edge: edge) {
     CrossTreeAdmitted
   } else {
-    CrossTreeDenied { reason: ^cross_tree_layer_direction_violated }
+    CrossTreeDenied { reason: CrossTreeLayerDirectionViolated }
   }
 }
 
@@ -150,15 +132,15 @@ fn cross_tree_import_admitted(
   order: TreeFundamentalityOrder
 ) -> CrossTreeAdmissionVerdict {
   if !source_root_set_contains(roots: roots, r: edge.from_tree) {
-    CrossTreeDenied { reason: ^cross_tree_from_tree_not_in_root_set }
+    CrossTreeDenied { reason: CrossTreeFromTreeNotInRootSet }
   } else if !source_root_set_contains(roots: roots, r: edge.to_tree) {
-    CrossTreeDenied { reason: ^cross_tree_to_tree_not_in_root_set }
+    CrossTreeDenied { reason: CrossTreeToTreeNotInRootSet }
   } else {
     match order {
       FundamentalityUnknown =>
-        CrossTreeDenied { reason: ^cross_tree_fundamentality_unknown_fail_closed }
+        CrossTreeDenied { reason: CrossTreeFundamentalityUnknownFailClosed }
       LessFundamental =>
-        CrossTreeDenied { reason: ^cross_tree_to_tree_less_fundamental }
+        CrossTreeDenied { reason: CrossTreeToTreeLessFundamental }
       MoreFundamental =>
         cross_tree_directional_admit(edge: edge)
       CoFundamental =>

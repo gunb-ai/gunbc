@@ -8,7 +8,7 @@ import v2.lens.layering_imports {
   layering_imports_violation_count
 }
 import v2.std.collection { List }
-import v2.std.cross_tree.import_model { LayerPrefixExtdeps }
+import v2.std.layer { LayerPrefixExtdeps }
 import v2.std.logic { Bool }
 
 data extdeps_to_compiler_fixture_facts: List<LayerImportFact> = [

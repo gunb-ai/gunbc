@@ -8,7 +8,7 @@ import v2.lens.layering_imports {
   layering_imports_violation_count
 }
 import v2.std.collection { List }
-import v2.std.cross_tree.import_model { LayerPrefixStd }
+import v2.std.layer { LayerPrefixStd }
 import v2.std.logic { Bool }
 
 data parse_level_pre_resolve_fixture_facts: List<LayerImportFact> = [

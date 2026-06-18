@@ -20,9 +20,6 @@ import v2.std.cross_tree.import_model {
   DslTree,
   FundamentalityUnknown,
   ImportClosure,
-  LayerPrefixCompiler,
-  LayerPrefixStd,
-  LayerPrefixWorkflow,
   LessFundamental,
   MoreFundamental,
   SourceRootSet,
@@ -30,6 +27,7 @@ import v2.std.cross_tree.import_model {
   cross_tree_import_admitted,
   cross_tree_import_closure_admitted
 }
+import v2.std.layer { LayerPrefixCompiler, LayerPrefixStd, LayerPrefixWorkflow }
 import v2.std.logic { Bool }
 
 
