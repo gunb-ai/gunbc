@@ -115,8 +115,7 @@ fn nv2_eval_context(manifest_dir: &Path) -> Result<InterpContext, String> {
         ws.join("src/v2").to_string_lossy().to_string(),
         manifest_dir.to_string_lossy().to_string(),
     ];
-    let (graph, source_indices) =
-        resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))?;
+    let (graph, source_indices) = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))?;
     Ok(make_eval_context(
         &graph,
         source_indices,

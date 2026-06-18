@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/v2-compiler-closure-nv2-gate.sh — N_v2 substrate path (v2 emit_for_target via interpreter).
 #
-# Emits scoped 53-module ingest manifest + entry admission, then runs claim-run witnesses.
+# Emits scoped ingest manifest + entry admission, then runs claim-run witnesses.
 #
 # Usage: v2-compiler-closure-nv2-gate.sh [repo_root]
 

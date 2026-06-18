@@ -7818,6 +7818,24 @@ fn scoped_closure_excludes_known_non_closure_module() {
 }
 
 #[test]
+fn scoped_closure_fixture_scalar_receipt_matches_live_discovery() {
+    let ws = crate::helpers::workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry = ws.join("src/v2/compiler/00_compile.dag");
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let closure = v1_compiler::cli_run::load_sources_for_entry(
+        &roots,
+        entry.to_str().expect("entry path utf8"),
+    )
+    .expect("load compiler entry closure");
+    assert_eq!(
+        closure.len(),
+        59,
+        "update compiler_closure_scoped_module_count in compiler_closure_scope_receipt.dag"
+    );
+}
+
+#[test]
 fn scoped_closure_is_smaller_than_whole_v2_tree() {
     let ws = crate::helpers::workspace_root();
     let v2_root = ws.join("src/v2");
@@ -7851,12 +7869,9 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let entry = entry_path.to_str().expect("entry path utf8");
     let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
     let roots = vec![v2_root.to_string_lossy().to_string()];
-    let module_count = v1_compiler::cli_run::load_sources_for_entry(
-        &roots,
-        entry,
-    )
-    .expect("load compiler entry closure")
-    .len();
+    let module_count = v1_compiler::cli_run::load_sources_for_entry(&roots, entry)
+        .expect("load compiler entry closure")
+        .len();
     let out_dir = unique_temp_dir("v2-compiler-closure-out");
 
     let result = crate::helpers::compile_dag_named_with_source_roots(

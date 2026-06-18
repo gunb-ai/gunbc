@@ -10,15 +10,13 @@ module v2.test.workflow.host_source_root_ingest_manifest
 
 import v2.compiler.name_resolve {
   Admission,
-  Import,
-  ImportVisible,
   ResolutionSubject,
 }
 import v2.compiler.source_authority {
   SourceRootIngest,
   SourceRootProvenanceCoverageReceipt,
 }
-import v2.std.algebra { Cons, Empty }
+import v2.std.algebra { Empty }
 import v2.std.qualified_name { QnCons, QnEmpty }
 import v2.std.text { String }
 
