@@ -55,7 +55,8 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
     { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" },
     { entry: "dsl/test/claim/realization_witness.dag", function: "realization_witnesses" },
-    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" }
+    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" },
+    { entry: "dsl/test/claim/bash_serializer_witness.dag", function: "bash_serializer_keystone_holds" }
   ],
   gates: [
     RustMonolithGate,
