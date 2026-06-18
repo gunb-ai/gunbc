@@ -39,8 +39,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, discovery_corpus_rows, make_eval_context, resolve_entry_with_index,
-    run_claim, run_discovery_rows_resolved, run_value, ClaimOutcome, MultiEntryIndex,
+    build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_claim,
+    run_discovery_corpus_with_index, run_value, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
@@ -322,8 +322,8 @@ fn run_single_claim(index: &MultiEntryIndex, entry: String, function: String) ->
 }
 
 /// Run the whole discovery corpus as one plan node, reusing the shared roster +
-/// run loop (`cli_run::run_discovery_corpus`). Fail-closed: an empty roster, a
-/// resolve failure, or any failing witness fails the node.
+/// run loop (`cli_run::run_discovery_corpus_with_index`). Fail-closed: an empty
+/// roster, a resolve failure, or any failing witness fails the node.
 fn run_discovery_batch_node(
     index: &MultiEntryIndex,
     source_roots: Vec<String>,
@@ -335,19 +335,11 @@ fn run_discovery_batch_node(
         source_roots.len(),
         explicit_entries.len()
     );
-    let rows = match discovery_corpus_rows(&source_roots, &scan_dirs, &explicit_entries) {
-        Ok(rows) => rows,
-        Err(msg) => {
-            return ClaimResult {
-                function: label,
-                ok: false,
-                detail: format!("discovery corpus failed: {msg}"),
-            };
-        }
-    };
-    match run_discovery_rows_resolved(
-        |entry| resolve_entry_with_index(index, entry),
-        &rows,
+    match run_discovery_corpus_with_index(
+        index,
+        &source_roots,
+        &scan_dirs,
+        &explicit_entries,
         ExecutionMode::Wet,
     ) {
         Ok(summary) if summary.failures.is_empty() => ClaimResult {
