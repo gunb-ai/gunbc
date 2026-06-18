@@ -521,93 +521,62 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
 }
 
 // M4 hermetic-realization fold: the PUBLISHED mock corpus is the single authority the runtime
-// reads to decide hermetic realizability — the SAME model the M2 mock_totality_lens reads. This
-// is the §5 discriminating pair (a real consumer GREEN by execution PLUS a discriminating input
-// that goes RED when the runtime decision and the published model DISAGREE), NOT a truth-table:
-//   - GREEN: `Read` IS a published case  -> the op realizes (here via its inline mock).
-//   - RED:   `Probe` is NOT published, on the SAME corpus-governed service `test.Fs`, yet it
-//            HAS an inline mock_response -> the runtime MUST fail closed. The teeth: without the
-//            corpus read, Probe would silently return its inline mock, diverging from the model.
-// A local `PublishedMockCase` type proves the runtime matches the corpus by SHAPE (the record's
-// constructor name), exactly as it does over the real std.hermetic_replay corpus.
+// reads to decide hermetic realizability — the SAME model the M2 mock_totality_lens reads. This is
+// the §5 discriminating pair (a real consumer GREEN by execution PLUS a discriminating input that
+// goes RED when the runtime decision and the published model DISAGREE), proven on the REAL
+// claim_batch CLI path (a subprocess over dsl/test/claim/m4_governed_service_witness.dag), NOT an
+// in-process harness that embeds its own corpus:
+//   - GREEN: GovernedProbe.Allowed IS a published case   -> the op realizes (via its inline mock).
+//   - RED:   GovernedProbe.Forbidden is NOT published, on the SAME corpus-governed service, yet it
+//            HAS an inline mock_response -> the run fails closed (non-zero exit). The teeth:
+//            without the corpus read, Forbidden would silently return its inline mock.
+// Hermetic with NO --fixture-store, so realization falls to the inline-mock branch the gate must
+// override. The corpus rows inhabit the real std.hermetic_replay.PublishedMockCase, resolved from
+// the entry's import closure exactly as a real Filesystem consumer's corpus now is (co-located via
+// the `import extdeps.filesystem.mock_corpus` in filesystem_io.dag).
 #[test]
-fn m4_published_corpus_governs_runtime_hermetic_decision() {
-    let src = r#"module test.m4_corpus_gate
-
-type PublishedMockCase {
-  operation_key: String
-  case_id: Int
-}
-
-service test.Fs {
-  config {
-    endpoint: "https://fs.example.com"
-  }
-  operation Read {
-    output { data: String }
-    transport rest { method: GET, path: "/read" }
-    response {
-      200 => String
-    }
-    mock_response {
-      200 => { data: "published-read" }
-    }
-  }
-  operation Probe {
-    output { data: String }
-    transport rest { method: GET, path: "/probe" }
-    response {
-      200 => String
-    }
-    mock_response {
-      200 => { data: "unpublished-probe" }
-    }
-  }
-}
-
-data fs_published_mock_corpus: List<PublishedMockCase> = [
-  PublishedMockCase { operation_key: "test.Fs.Read", case_id: 0 }
-]
-
-fn witness_read() -> String {
-  let r = test.Fs.Read()
-  r.data
-}
-
-fn witness_probe() -> String {
-  let r = test.Fs.Probe()
-  r.data
-}
-"#;
-    let resolved = {
-        let sources = resolve_imports_transitively("test.dag", src);
-        let resolved = compile_to_resolved(Rc::new(sources));
-        assert_resolved_no_hard_errors(&resolved);
-        resolved
+fn m4_governed_service_published_realizes_unpublished_fails_closed() {
+    let ws = workspace_root();
+    let common = |func: &str| -> std::process::Output {
+        run_claim_batch(&[
+            "--source-root",
+            ws.to_str().expect("workspace"),
+            "--source-root",
+            ws.join("dsl").to_str().expect("dsl root"),
+            "--entry",
+            ws.join("dsl/test/claim/m4_governed_service_witness.dag")
+                .to_str()
+                .expect("entry"),
+            "--function",
+            func,
+            "--hermetic",
+        ])
     };
-    let graph = resolved.graph.as_ref().expect("graph");
-    let ctx = v1_interpreter::InterpContext::new(
-        graph,
-        resolved.source_indices.clone(),
-        ExecutionMode::Hermetic,
-    );
 
-    // GREEN by execution: the published op realizes (the runtime reads the model and allows it).
-    match v1_interpreter::run_in_context(&ctx, "witness_read", false) {
-        Ok(Value::Str(s)) => assert_eq!(s, "published-read"),
-        other => panic!("published op must realize hermetically, got {other:?}"),
-    }
-
-    // RED on disagreement (the teeth): an unpublished op on the SAME corpus-governed service must
-    // fail closed, EVEN THOUGH it has an inline mock_response. A vacuous runtime that returned the
-    // inline mock would diverge from the published model — this is what proves the model is read.
-    let err = v1_interpreter::run_in_context(&ctx, "witness_probe", false).expect_err(
-        "unpublished op on a corpus-governed service must fail closed despite an inline mock",
-    );
-    let msg = err.to_string();
+    // GREEN by execution on the real CLI path: the published op realizes (gate passes -> inline mock).
+    let green = common("witness_published_realizes");
     assert!(
-        msg.contains("not a published mock case"),
-        "expected published-corpus refusal diagnostic, got: {msg}"
+        green.status.success(),
+        "published op must realize hermetically on the claim_batch path; stderr={}",
+        String::from_utf8_lossy(&green.stderr)
+    );
+
+    // RED on disagreement (the teeth): the unpublished op on the SAME corpus-governed service must
+    // fail closed, EVEN THOUGH it has an inline mock_response. A vacuous runtime that returned the
+    // inline mock would diverge from the published model — this proves the model is genuinely read.
+    let red = common("witness_unpublished_fails_closed");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&red.stdout),
+        String::from_utf8_lossy(&red.stderr)
+    );
+    assert!(
+        !red.status.success(),
+        "unpublished op on a corpus-governed service must fail closed (non-zero exit); output:\n{combined}"
+    );
+    assert!(
+        combined.contains("not a published mock case"),
+        "expected published-corpus refusal diagnostic, got:\n{combined}"
     );
 }
 
