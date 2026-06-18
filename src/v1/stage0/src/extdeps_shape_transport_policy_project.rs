@@ -211,6 +211,8 @@ fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
         return false;
     }
     token == "--all-targets"
+        || token == "--all"
+        || token == "--check"
         || token == "--workspace"
         || token == "--no-deps"
         || token == "-D"
