@@ -1,5 +1,4 @@
 // Scope: lens-unit RED witness — cargo Clippy declares deny_args/all_targets but argv hardcodes.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_clippy
 
@@ -8,28 +7,28 @@ import v2.lens.extdeps_shape_transport_policy {
   ExtdepsTransportArgvFact,
   extdeps_shape_transport_policy_dead_param_count_for_operation
 }
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-data dead_param_cargo_clippy_path: String = "dsl/extdeps/rust/cargo_build.dag"
 data dead_param_cargo_clippy_service: String = "cargo.Build"
 data dead_param_cargo_clippy_operation: String = "Clippy"
 
 data dead_param_cargo_clippy_input_facts: List<ExtdepsOperationInputFact> = [
   ExtdepsOperationInputFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     param_name: "all_targets"
   },
   ExtdepsOperationInputFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     param_name: "deny_args"
   },
   ExtdepsOperationInputFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     param_name: "env"
@@ -38,7 +37,7 @@ data dead_param_cargo_clippy_input_facts: List<ExtdepsOperationInputFact> = [
 
 data dead_param_cargo_clippy_argv_facts: List<ExtdepsTransportArgvFact> = [
   ExtdepsTransportArgvFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     transport_kind: Shell,
@@ -46,7 +45,7 @@ data dead_param_cargo_clippy_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "cargo"
   },
   ExtdepsTransportArgvFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     transport_kind: Shell,
@@ -54,7 +53,7 @@ data dead_param_cargo_clippy_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "clippy"
   },
   ExtdepsTransportArgvFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     transport_kind: Shell,
@@ -62,7 +61,7 @@ data dead_param_cargo_clippy_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "--all-targets"
   },
   ExtdepsTransportArgvFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     transport_kind: Shell,
@@ -70,7 +69,7 @@ data dead_param_cargo_clippy_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "--"
   },
   ExtdepsTransportArgvFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     transport_kind: Shell,
@@ -78,7 +77,7 @@ data dead_param_cargo_clippy_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "-D"
   },
   ExtdepsTransportArgvFact {
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation,
     transport_kind: Shell,
@@ -91,7 +90,7 @@ test fn dead_param_cargo_clippy_is_red_holds() -> Bool {
   extdeps_shape_transport_policy_dead_param_count_for_operation(
     argv_facts: dead_param_cargo_clippy_argv_facts,
     input_facts: dead_param_cargo_clippy_input_facts,
-    path: dead_param_cargo_clippy_path,
+    module: extdeps_cargo_build_module,
     service: dead_param_cargo_clippy_service,
     operation: dead_param_cargo_clippy_operation
   ) == 2

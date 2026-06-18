@@ -19,7 +19,32 @@ import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { Timestamp, Url, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
-import std.serialization { WireFormat, Text }
+import std.serialization { WireFormat, Text, CoproductWireContract, StringVariant, SnakeCase, ScreamingSnakeCase }
+
+// -- Enumerations: GitHub-spec closed vocabularies --------------------
+// Spec: https://docs.github.com/en/rest/pulls/pulls#list-pull-requests
+// Wire: "open" | "closed" (lowercase, SnakeCase)
+type PullRequestState = Open | Closed
+data pull_request_state_wire_contract: CoproductWireContract = {
+  coproduct: "PullRequestState",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+// Spec: https://docs.github.com/en/rest/pulls/reviews
+// Wire: "PENDING" | "COMMENTED" | "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED"
+type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
+data review_state_wire_contract: CoproductWireContract = {
+  coproduct: "ReviewState",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}
+
+// Spec: https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request
+// Wire: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" | "PENDING"
+type ReviewEvent = Approve | RequestChanges | Comment | Pending
+data review_event_wire_contract: CoproductWireContract = {
+  coproduct: "ReviewEvent",
+  encoding: StringVariant { naming: ScreamingSnakeCase }
+}
 
 // -- Pull request model -----------------------------------------------
 
@@ -33,7 +58,7 @@ type PullRequest {
   number: Int
   title: String
   body: String?
-  state: String
+  state: PullRequestState
   html_url: Url
   user: GitHubUser
   head: PullRequestRef
@@ -69,7 +94,7 @@ service github.Pulls {
       auth_token: Secret
       owner: String
       repo: String
-      state: String = "open"
+      state: PullRequestState = Open
       per_page: Int = default_per_page
     }
     output {
@@ -94,9 +119,9 @@ service github.Pulls {
           number: 42,
           title: "Add widget support",
           body: "Implements widget rendering",
-          state: "open",
+          state: Open,
           html_url: "https://github.com/mock-owner/mock-repo/pull/42",
-          user: { login: "mock-user", id: 1, type: "User" },
+          user: { login: "mock-user", id: 1, type: User },
           head: { ref: "feature-widgets", sha: "abc1234def5678", label: "mock-user:feature-widgets" },
           base: { ref: "main", sha: "000aaa111bbb", label: "mock-owner:main" },
           created_at: "2026-03-01T10:00:00Z",
@@ -134,9 +159,9 @@ service github.Pulls {
         number: 42,
         title: "Add widget support",
         body: "Implements widget rendering",
-        state: "open",
+        state: Open,
         html_url: "https://github.com/mock-owner/mock-repo/pull/42",
-        user: { login: "mock-user", id: 1, type: "User" },
+        user: { login: "mock-user", id: 1, type: User },
         head: { ref: "feature-widgets", sha: "abc1234def5678", label: "mock-user:feature-widgets" },
         base: { ref: "main", sha: "000aaa111bbb", label: "mock-owner:main" },
         created_at: "2026-03-01T10:00:00Z",
@@ -251,7 +276,7 @@ service github.Pulls {
       pull_number: Int
       commit_id: String
       body: String
-      event: String = "COMMENT"
+      event: ReviewEvent = Comment
       comments: Json
     }
     output {
@@ -270,7 +295,7 @@ service github.Pulls {
       5xx => GitHubErrorShape
     }
     mock_response {
-      200 => { id: 1, body: "Review created", state: "COMMENTED", commit_id: "mock", html_url: "https://github.com/mock/pull/1#pullrequestreview-1" } "Review created"
+      200 => { id: 1, body: "Review created", state: Commented, commit_id: "mock", html_url: "https://github.com/mock/pull/1#pullrequestreview-1" } "Review created"
     }
   }
 
@@ -308,7 +333,7 @@ service github.Pulls {
 type PullReview {
   id: Int
   body: String
-  state: String
+  state: ReviewState
   commit_id: String
   html_url: Url
 }

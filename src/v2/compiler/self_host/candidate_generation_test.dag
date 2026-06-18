@@ -1,0 +1,31 @@
+// src/v2/compiler/self_host/candidate_generation_test.dag
+// Scope: Route B entry proof — generate_translate_self_emit_candidate emits a Node by execution.
+// Status: live-executed via claim_batch test-fn discovery over --source-root src/v2.
+
+module v2.test.self_host.candidate_generation
+
+import v2.compiler.self_host.candidate_generation {
+  generate_translate_self_emit_candidate
+}
+import v2.extdeps.languages.dag {
+  dag_mvp1_emitted_add_fn_node,
+  dag_mvp1_target_model
+}
+import v2.test.manual.mvp1_dag_add_round_trip {
+  mvp1_dag_emitted_root,
+  mvp1_dag_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+
+test fn candidate_generation_translate_self_emit_mvp1_slice_holds() -> Bool {
+  match generate_translate_self_emit_candidate(
+    resolved_module: mvp1_dag_emitted_root,
+    dag_target: mvp1_dag_target_model
+  ) {
+    Accepted { value: candidate, diagnostics: d } =>
+      (candidate.emitted == dag_mvp1_emitted_add_fn_node()) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
