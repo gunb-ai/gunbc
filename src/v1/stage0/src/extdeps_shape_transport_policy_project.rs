@@ -431,7 +431,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
     fn cargo_fmt_dead_param_defused_on_live_tree() {
         assert_eq!(
             dead_param_count_for_module_path(
@@ -451,11 +450,14 @@ mod tests {
                 "cargo.Build".to_string(),
                 "Doc".to_string(),
             ),
-=======
+            0
+        );
+    }
+
+    #[test]
     fn git_policy_leak_defused_by_module_path() {
         assert_eq!(
             policy_leak_count_for_module_path("extdeps.git".to_string()),
->>>>>>> 67591ca46 (WIP: Dissolve filepath literals → QualifiedName over the derived module set ()
             0
         );
     }
