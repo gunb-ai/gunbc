@@ -61,7 +61,8 @@ import v1.std.core {
   make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
-  is_rest_transport, is_shell_transport, is_file_transport
+  is_rest_transport, is_shell_transport, is_file_transport,
+  empty_intern_table
 }
 
 import v1.compiler.artifact { RenderTarget, Rust }
@@ -1094,6 +1095,7 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
 
 // =========================================================================
 // RC1: Variant-to-enum resolution helpers
+// dissolve-on: v1 Rust seed reaches zero (§7) — fold into target_model type-render rows; delete when emit is interpreter-direct.
 // =========================================================================
 
 fn rust_qualify_type_leaf_name(name: String, variant_to_enum: Map<String, String>) -> String {
@@ -7443,9 +7445,21 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
   }
 }
 
+fn stub_test_projection_type_env(source_indices: Map<String, NewlineIndex>) -> TypeEnv {
+  TypeEnv {
+    bindings: empty_map(),
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: source_indices,
+    intern_table: empty_intern_table()
+  }
+}
+
 fn rust_test_signature_comment(projection: TestProjection) -> String {
+  let stub_env = stub_test_projection_type_env(source_indices: projection.source_indices)
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map())))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: stub_env)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
