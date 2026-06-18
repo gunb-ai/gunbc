@@ -8413,8 +8413,7 @@ fn github_review_enums_wire_matches_screaming_snake_contract() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_github_pulls.rs");
 
-    let review_state_attrs =
-        attrs_immediately_above_enum(&content, "pub enum ReviewState");
+    let review_state_attrs = attrs_immediately_above_enum(&content, "pub enum ReviewState");
     assert!(
         review_state_attrs.contains(&"#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"),
         "expected ScreamingSnakeCase serde attr immediately above ReviewState; attrs: {:?}",
@@ -8434,8 +8433,7 @@ fn github_review_enums_wire_matches_screaming_snake_contract() {
         );
     }
 
-    let review_event_attrs =
-        attrs_immediately_above_enum(&content, "pub enum ReviewEvent");
+    let review_event_attrs = attrs_immediately_above_enum(&content, "pub enum ReviewEvent");
     assert!(
         review_event_attrs.contains(&"#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"),
         "expected ScreamingSnakeCase serde attr immediately above ReviewEvent; attrs: {:?}",
