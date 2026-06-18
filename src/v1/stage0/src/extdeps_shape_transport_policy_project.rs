@@ -199,7 +199,7 @@ fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
     if token.contains('{') && token.contains('}') {
         return false;
     }
-    if token == "diff" || token == "--name-only" || token == "git" {
+    if token == "diff" || token == "--name-only" || token == "git" || token == "..." {
         return false;
     }
     token == "--all-targets"
