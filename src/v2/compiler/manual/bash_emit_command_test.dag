@@ -1,0 +1,110 @@
+
+module v2.test.manual.bash_emit_command
+
+// Execution witness for the bash emit TARGET (src/v2/extdeps/languages/bash.dag, migration slice 1).
+// Proves `emit(intent, Bash)` renders real POSIX shell through the row-driven pipeline
+// (`emit = serialize_target ∘ translate`) — NOT a structural grep ratchet. The keystone asserts the
+// emitted source is byte-identical to the canonical single-quoted command, and a fail-closed control
+// asserts a bundle missing translation rules is REJECTED (DESIGN.md §5: a wrong answer is a loud
+// error, never a fabricated plausible output).
+//
+// Run:
+//   gunbc run --source-root src/v2 \
+//     --entry src/v2/compiler/manual/bash_emit_command_test.dag \
+//     --function bash_emit_command_accepts_holds --claim-run
+
+import v2.compiler.emit { emit }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.target_carriers { TargetSource }
+import v2.std.compilers.target_model { TargetModel }
+import v2.extdeps.languages.bash {
+  bash_mvp1_emitted_command,
+  bash_mvp1_source_text,
+  bash_mvp1_lex,
+  bash_mvp1_target_model
+}
+import v2.std.collection { Map, empty_map }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Violates, Witness }
+
+// The bash emit anchor matches its grammar relation row by exact fixture equality, so `translate`'s
+// grammar-first short-circuit returns the node raw and NEVER consults facts. This lookup is
+// therefore never called; it fails-closed (Violates) so any unexpected facts consultation surfaces
+// as a rejection rather than fabricated data.
+fn bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_emit_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data bash_emit_inferred_tree: InferredTree = InferredTree {
+  root: bash_mvp1_emitted_command,
+  facts: Map {
+    lookup: bash_facts_lookup
+  }
+}
+
+fn anchor_bash_emit_accepts() -> Outcome<TargetSource> {
+  emit(tree: bash_emit_inferred_tree, target: bash_mvp1_target_model())
+}
+
+data bash_emit_receipt: Outcome<TargetSource> = anchor_bash_emit_accepts()
+
+// Keystone — emit(intent, Bash) must produce the canonical single-quoted command source
+// (`'git' 'rev-parse' '--show-toplevel'`). Discriminating: any quoting/word/layout drift in the lex
+// rules changes the emitted string and turns this RED.
+test fn bash_emit_command_accepts_holds() -> Bool {
+  match bash_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == bash_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Fail-closed control — a bundle whose Conj carries no `target_model_edge_translation_rules` edge
+// must be REJECTED by the serialize path (no fabricated empty/plausible output).
+data bash_empty_bundle: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bash_missing_rules_target: TargetModel = TargetModel {
+  bundle: bash_empty_bundle,
+  lex: bash_mvp1_lex(),
+  binding_spellings: empty_map(),
+  authority_source_text: "",
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<TargetSource> {
+  target_serialize_source_from_model(
+    target: bash_missing_rules_target,
+    emitted: bash_mvp1_emitted_command
+  )
+}
+
+data bash_serialize_reject_receipt: Outcome<TargetSource> = anchor_bash_serialize_rejects_missing_rules()
+
+test fn bash_emit_missing_rules_rejects_holds() -> Bool {
+  match bash_serialize_reject_receipt {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
