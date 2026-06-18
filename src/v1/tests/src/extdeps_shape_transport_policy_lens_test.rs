@@ -140,7 +140,7 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_present_red_test.dag",
-            "module_source_nickname_literal_coverage_domain_is_green_holds",
+            "module_source_nickname_literal_coverage_domain_is_red_holds",
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
@@ -285,7 +285,7 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
         assert!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &coverage_qn,
-            ) == 0
+            ) > 0
         );
     });
 }
