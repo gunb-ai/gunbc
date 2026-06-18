@@ -244,7 +244,7 @@ fn derived_ratios_are_computed() -> Bool {
     && bandwidth_per_watt(a: cfg_a_axes) > bandwidth_per_watt(a: cfg_b_axes)
 }
 
-fn hardware_selection_holds() -> Bool {
+test fn hardware_selection_holds() -> Bool {
   downclock_is_rank_dependent()
     && psu_sizing_is_computed()
     && rank_tradeoff_is_incomparable()
