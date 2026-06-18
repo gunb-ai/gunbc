@@ -9,6 +9,7 @@ module gunbc.ci_yaml_validate
 import extdeps.shell
 
 data yaml_parse_python: String = "python3 -c \"import yaml,sys; yaml.safe_load(open(sys.argv[1]))\""
+data yaml_check_release_bin: String = "target/release/yaml_check"
 
 fn ci_yml_parse_script(path: String) -> String {
   concat(
@@ -20,8 +21,17 @@ fn ci_yml_parse_script(path: String) -> String {
         concat(
           path,
           concat(
-            " 2>/dev/null || cargo run -q -p v1-compiler --release --bin yaml_check -- ",
-            path
+            " 2>/dev/null || (test -x ",
+            concat(
+              yaml_check_release_bin,
+              concat(
+                " && ",
+                concat(
+                  yaml_check_release_bin,
+                  concat(" ", concat(path, " ) || cargo run -q -p v1-compiler --release --bin yaml_check -- ", path))
+                )
+              )
+            )
           )
         )
       )
