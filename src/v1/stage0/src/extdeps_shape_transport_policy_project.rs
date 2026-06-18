@@ -538,7 +538,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn coverage_domain_module_source_nickname_literal_count_is_positive() {
+    fn local_red_fixture_module_source_nickname_literal_count_is_positive() {
+        let path = crate::module_path_index::source_path_for_module_path(
+            "v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_local_red"
+                .to_string(),
+        );
+        let index = crate::module_path_index::build_module_path_index();
+        let real_paths: HashSet<String> = index.into_values().collect();
+        let (items, _) = parse_module_items(&path);
+        let mut total = 0i64;
+        for item in items.iter() {
+            total += module_source_nickname_literal_count_in_node(item, &real_paths);
+        }
+        assert!(
+            total > 0,
+            "expected nickname literals in local_red fixture, got {total}"
+        );
+    }
+
+    #[test]
+    fn coverage_domain_module_source_nickname_literal_count_is_zero_after_qn_migration() {
         let path = crate::module_path_index::source_path_for_module_path(
             "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence".to_string(),
         );
@@ -549,7 +568,7 @@ mod tests {
         for item in items.iter() {
             total += module_source_nickname_literal_count_in_node(item, &real_paths);
         }
-        assert!(total > 0, "expected nickname literals, got {total}");
+        assert_eq!(total, 0);
     }
 
     #[test]

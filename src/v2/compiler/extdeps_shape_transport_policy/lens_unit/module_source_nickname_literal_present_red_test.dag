@@ -1,4 +1,4 @@
-// Scope: lens-unit present-RED witness — coverage_domain_equivalence carries module-path nicknames.
+// Scope: lens-unit post-migration GREEN witness — coverage_domain_equivalence uses QN, not path nicknames.
 // dissolve-on: ROADMAP Lane 3a SourceRootIngest (#5126).
 
 module v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_present_red
@@ -11,8 +11,8 @@ import v2.lens.extdeps_shape_transport_policy.module_refs {
 }
 import v2.std.logic { Bool }
 
-test fn module_source_nickname_literal_coverage_domain_is_red_holds() -> Bool {
+test fn module_source_nickname_literal_coverage_domain_is_green_holds() -> Bool {
   extdeps_live_module_source_nickname_literal_count(
     module: coverage_domain_equivalence_module
-  ) > 0
+  ) == 0
 }
