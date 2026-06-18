@@ -51,7 +51,7 @@ data bitwidth_modeled_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn bitwidth_modeled_passes_holds() -> Bool {
+test fn bitwidth_modeled_passes_holds() -> Bool {
   match unit_modeling_gate(node: bitwidth_modeled_input) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

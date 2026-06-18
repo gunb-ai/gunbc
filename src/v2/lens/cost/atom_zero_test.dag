@@ -20,7 +20,7 @@ data atom_zero_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn atom_zero_claim_holds() -> Bool {
+test fn atom_zero_claim_holds() -> Bool {
   match cost_lens(n: atom_zero_input) {
     Holds { value: actual } => actual == zero_cost()
     _ => false

@@ -87,7 +87,7 @@ data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralReso
   }
 }
 
-fn binds_to_resolved_claim_holds() -> Bool {
+test fn binds_to_resolved_claim_holds() -> Bool {
   match lens_structural_resolution_actual(claim: binds_to_resolved_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: binds_to_resolved_claim.expected)

@@ -743,7 +743,7 @@ fn nullary_coproduct_variant_value(
 // unavoidable. Fabrication-safe via: (1) labels from resolved-graph variant children only,
 // (2) fail-closed Rejected on ANY payload arm, (3) dissolve-mark above, (4) set-completeness
 // witness — fabricated/extra/dropped inhabitants break both-directions bag_eq against the
-// already-signed coproduct_arm_keys(T) (see coproduct_reflection_conformance.dag).
+// already-signed coproduct_arm_keys(T) (see coproduct_reflection_conformance_test.dag).
 pub fn eval_coproduct_nullary_inhabitants(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],

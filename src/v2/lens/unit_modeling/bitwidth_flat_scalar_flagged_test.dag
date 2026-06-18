@@ -45,7 +45,7 @@ data bitwidth_flat_scalar_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn bitwidth_flat_scalar_flagged_holds() -> Bool {
+test fn bitwidth_flat_scalar_flagged_holds() -> Bool {
   match unit_modeling_gate(node: bitwidth_flat_scalar_input) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false

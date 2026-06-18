@@ -52,28 +52,28 @@ fn coproduct_arm_payload_pair_set_matches_syntactic(type_name: Symbol) -> Bool {
 }
 
 
-fn witness_connective_arm_key_set_path3() -> Bool {
+test fn witness_connective_arm_key_set_path3() -> Bool {
   coproduct_arm_key_set_matches_syntactic(type_name: reflect_connective_type)
 }
 
 
-fn witness_behavior_arm_key_set_path3() -> Bool {
+test fn witness_behavior_arm_key_set_path3() -> Bool {
   coproduct_arm_key_set_matches_syntactic(type_name: reflect_behavior_type)
 }
 
 
-fn witness_connective_arm_payload_pair_path3() -> Bool {
+test fn witness_connective_arm_payload_pair_path3() -> Bool {
   coproduct_arm_payload_pair_set_matches_syntactic(type_name: reflect_connective_type)
 }
 
 
-fn witness_behavior_arm_payload_pair_path3() -> Bool {
+test fn witness_behavior_arm_payload_pair_path3() -> Bool {
   coproduct_arm_payload_pair_set_matches_syntactic(type_name: reflect_behavior_type)
 }
 
 
 // Discrimination: Connective and Behavior arm key-sets must differ (proves bag_eq is not vacuous).
-fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
+test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
     xs: coproduct_arm_keys(type_name: reflect_connective_type),
     ys: coproduct_arm_keys(type_name: reflect_behavior_type),
@@ -113,7 +113,7 @@ fn all_inhabitant_discriminants_are_reflected_arms(
 // constructed discriminants == ALL arm keys. IF D2 is ever relaxed to return the nullary
 // SUBSET of a MIXED coproduct, this witness MUST be re-scoped to compare against the NULLARY
 // SUBSET of coproduct_arm_keys(T), else it false-fails closed. Do not weaken silently.
-fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
+test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
   match coproduct_nullary_inhabitants(type_name: reflect_behavior_type) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
@@ -130,7 +130,7 @@ fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 }
 
 
-fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
+test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
   match coproduct_nullary_inhabitants(type_name: reflect_connective_type) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -138,7 +138,7 @@ fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
 }
 
 
-fn coproduct_reflection_conformance_holds() -> Bool {
+test fn coproduct_reflection_conformance_holds() -> Bool {
   witness_connective_arm_key_set_path3()
     && witness_behavior_arm_key_set_path3()
     && witness_connective_arm_payload_pair_path3()
