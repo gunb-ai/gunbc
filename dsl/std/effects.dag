@@ -58,8 +58,8 @@ import std.http_path {
 //                    meet(state, {k: v}) applied twice = applied once
 //   DeleteEffect:    lattice meet with bottom on key — removes key
 //                    meet(state, {k: ⊥}) applied twice = applied once
-//   CreateEffect:    monoid append — adds new entry without key guard
-//                    NOT idempotent (creates duplicates)
+//   CreateEffect:    monoid append when create-always (PostAlways) — NOT idempotent
+//                    create-if-absent (proven KeySource) — lattice meet, idempotent
 //   AppendEffect:    monoid append on ordered collection
 //                    NOT idempotent (appends duplicates)
 //
@@ -72,8 +72,14 @@ type EffectShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }
   | DeleteEffect { key_source: KeySource }
-  | CreateEffect
+  | CreateEffect { cause: CreateCause }
   | AppendEffect
+
+// Why a create-shaped effect was derived. PostAlways = fail-closed create-always
+// (no proven resource identity). CreateIfAbsent = guarded create with proven KeySource.
+type CreateCause
+  = PostAlways
+  | CreateIfAbsent { key_source: KeySource }
 
 // Where the idempotency key comes from.
 //
@@ -111,8 +117,47 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
     ReadEffect => true
     UpsertEffect => true
     DeleteEffect => true
+    CreateEffect { cause: CreateIfAbsent { key_source: _ } } => true
     CreateEffect => false
     AppendEffect => false
+  }
+}
+
+fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
+  match a {
+    PathParam { param: pa } => match b {
+      PathParam { param: pb } => pa == pb
+      _ => false
+    }
+    InputField { field: fa } => match b {
+      InputField { field: fb } => fa == fb
+      _ => false
+    }
+    CompositeKey { fields: fa } => match b {
+      CompositeKey { fields: fb } => fa == fb
+      _ => false
+    }
+  }
+}
+
+// Double-init dedup (increment 1): two create-if-absent effects collapse iff they share identity.
+fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
+  match shape {
+    CreateEffect { cause: CreateIfAbsent { key_source: _ } } => true
+    CreateEffect => false
+    _ => false
+  }
+}
+
+fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
+  match a {
+    CreateEffect { cause: CreateIfAbsent { key_source: ka } } =>
+      match b {
+        CreateEffect { cause: CreateIfAbsent { key_source: kb } } =>
+          key_source_eq(a: ka, b: kb)
+        _ => false
+      }
+    _ => false
   }
 }
 
@@ -250,21 +295,21 @@ fn derive_effect_shape(
     GET     => ReadEffect
     HEAD    => ReadEffect
     OPTIONS => ReadEffect
-    POST    => CreateEffect
+    POST    => CreateEffect { cause: PostAlways }
     DELETE =>
       match last_path_param(template: path) {
         Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect
+        Absent => CreateEffect { cause: PostAlways }
       }
     PUT =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect
+        Absent => CreateEffect { cause: PostAlways }
       }
     PATCH =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect
+        Absent => CreateEffect { cause: PostAlways }
       }
   }
 }
@@ -310,8 +355,10 @@ fn check_modifier_vs_derivation(
     Agrees
   } else if declared_idempotent && !derived_idempotent {
     match op.shape {
-      CreateEffect =>
+      CreateEffect { cause: PostAlways } =>
         DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+      CreateEffect { cause: CreateIfAbsent { key_source: _ } } =>
+        Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
       _ =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
     }

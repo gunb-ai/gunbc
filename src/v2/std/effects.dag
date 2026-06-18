@@ -155,6 +155,57 @@ fn effect_shape_for_create_cause(cause: CreateCause) -> EffectShape {
 }
 
 
+fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
+  match a {
+    PathParam { param: pa } => match b {
+      PathParam { param: pb } => pa == pb
+      _ => false
+    }
+    InputField { field: fa } => match b {
+      InputField { field: fb } => fa == fb
+      _ => false
+    }
+  }
+}
+
+
+// Double-init dedup (increment 1): collapse two content-identical idempotent creates (Share).
+fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
+  match shape {
+    IsIdempotent(CreateIfAbsentEffect { key_source: _ }) => true
+    IsBreaking(CreateEffect { cause: _ }) => false
+    IsBreaking(AppendEffect) => false
+    IsIdempotent(_) => false
+  }
+}
+
+
+fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
+  match a {
+    IsIdempotent(CreateIfAbsentEffect { key_source: ka }) =>
+      match b {
+        IsIdempotent(CreateIfAbsentEffect { key_source: kb }) =>
+          key_source_eq(a: ka, b: kb)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+data sample_create_if_absent_key_b: KeySource = InputField { field: ^sample_alt_path_key_slug }
+
+
+fn create_if_absent_shape(key_source: KeySource) -> EffectShape {
+  effect_shape_for_create_cause(cause: CreateIfAbsent { key_source: key_source })
+}
+
+
+fn create_always_shape() -> EffectShape {
+  effect_shape_for_create_cause(cause: PostAlways)
+}
+
+
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
