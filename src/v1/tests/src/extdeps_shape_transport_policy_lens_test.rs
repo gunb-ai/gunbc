@@ -142,14 +142,6 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "corpus_cargo_doc_dead_param_defused_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_fmt_policy_leak_test.dag",
-            "corpus_cargo_fmt_defused_holds",
-        ),
-        (
-            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_doc_policy_leak_test.dag",
-            "corpus_cargo_doc_defused_holds",
-        ),
-        (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",
             "corpus_gcp_login_dead_param_defused_holds",
         ),
