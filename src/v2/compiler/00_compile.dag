@@ -10,6 +10,7 @@ module v2.compiler.compile
 
 
 import v2.compiler.emit { emit }
+import v2.compiler.eval { eval_node, inputs_root_only }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.name_resolve {
   Admission,
@@ -52,6 +53,8 @@ import v2.std.witness { Holds, Violates, Witness }
 
 type CoreNode = Node
 
+// 🟡 gated — feature:compile-eval-runtime-target — dissolve-on: runtime selects
+// InterpretationAlgebra / EvalContext (Cut 4+); wave-1: eval input root pin only.
 type RuntimeTarget = Node
 
 type Source = String
@@ -292,11 +295,15 @@ fn compile_inferred(
           outcome_accepted(TranslateResult { source: target_source })
         }
       )
-    Eval { runtime: _ } =>
-      outcome_rejected(
-        compile_eval_not_realized_diagnostic(
-          at: port_locus(port: ^compile_stage_locus_port)
-        )
+    Eval { runtime: runtime } =>
+      bind_outcome(
+        o: eval_node(
+          tree: inferred,
+          inputs: inputs_root_only(root: runtime)
+        ),
+        f: fn(value) {
+          outcome_accepted(EvalResult { value: value })
+        }
       )
   }
 }
