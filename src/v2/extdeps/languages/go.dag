@@ -1907,6 +1907,7 @@ fn go_mvp1_target_model_staging() -> TargetModel {
     bundle: go_mvp1_target_model_bundle_core(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: go_mvp1_source_text,
     runtime_row: go_mvp1_runtime_row()
   }
@@ -1984,6 +1985,7 @@ fn go_mvp1_target_model() -> TargetModel {
     bundle: go_mvp1_target_model_node(),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: go_mvp1_source_text,
     runtime_row: go_mvp1_runtime_row()
   }
@@ -2016,6 +2018,7 @@ fn go_mvp1_target_model_int64_selection_policy() -> TargetModel {
     ),
     lex: go_wave1_lex(),
     binding_spellings: go_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: go_mvp1_source_text,
     runtime_row: go_mvp1_runtime_row()
   }

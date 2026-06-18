@@ -134,10 +134,22 @@ import v2.std.host_transport {
 // by ci_floor_emit + v2_lens witnesses (they went red on it; head eed2a7a). v2 fix is tracked
 // separately (work-item adhoc-708ea66d-bb3) — this absence assertion stands until that lands.
 
+// Emit-time spelling transform keyed by BoundToken token_class. FixedToken spellings still
+// resolve from lex LiteralPattern.text verbatim; bound spellings resolve from binding_spellings
+// (or symbol interning) then pass through this transform when the class is present in the map.
+// Absent => verbatim (preserves every existing target). Bash slice 2 is the first consumer.
+type TokenClassEmitTransform
+  = EmitSpellingVerbatim
+  | EmitSpellingShellSingleQuoted
+  | EmitSpellingShellSingleQuotedSpaced
+  | EmitSpellingShellVarRef
+  | EmitSpellingShellVarRefSpaced
+
 type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
 }
@@ -455,6 +467,58 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
+fn posix_shell_single_quote_literal(text: String) -> String {
+  concat("'", concat(replace(text, "'", "'\\''"), "'"))
+}
+
+fn apply_token_class_emit_transform(
+  transform: TokenClassEmitTransform,
+  spelling: String
+) -> String {
+  match transform {
+    EmitSpellingVerbatim => spelling
+    EmitSpellingShellSingleQuoted =>
+      posix_shell_single_quote_literal(text: spelling)
+    EmitSpellingShellSingleQuotedSpaced =>
+      concat(" ", posix_shell_single_quote_literal(text: spelling))
+    EmitSpellingShellVarRef =>
+      concat("\"$", concat(spelling, "\""))
+    EmitSpellingShellVarRefSpaced =>
+      concat(" ", concat("\"$", concat(spelling, "\"")))
+  }
+}
+
+fn token_class_emit_transform_lookup(
+  target: TargetModel,
+  token_class: Symbol
+) -> TokenClassEmitTransform {
+  match map_get(target.token_class_emit_transforms, token_class) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: transform } => transform
+      Absent => EmitSpellingVerbatim
+    }
+    Rejected { diagnostics: _ } => EmitSpellingVerbatim
+  }
+}
+
+fn bound_token_spelling_from_model(
+  target: TargetModel,
+  token_class: Symbol,
+  binding: Symbol
+) -> Outcome<String> {
+  bind_outcome(
+    o: target_binding_spelling_lookup(target: target, binding: binding),
+    f: fn(spelling) {
+      outcome_accepted(
+        apply_token_class_emit_transform(
+          transform: token_class_emit_transform_lookup(target: target, token_class: token_class),
+          spelling: spelling
+        )
+      )
+    }
+  )
+}
+
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
   bind_outcome(
     o: concrete_syntax_token_from_node(token: token),
@@ -462,8 +526,12 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
       match decoded {
         FixedToken { token_class: token_class } =>
           lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-        BoundToken { token_class: _, binding: binding } =>
-          target_binding_spelling_lookup(target: target, binding: binding)
+        BoundToken { token_class: token_class, binding: binding } =>
+          bound_token_spelling_from_model(
+            target: target,
+            token_class: token_class,
+            binding: binding
+          )
       }
     }
   )

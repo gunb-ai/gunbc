@@ -715,6 +715,7 @@ fn english_add_fn_target_model() -> TargetModel {
     bundle: english_add_fn_target_model_node(),
     lex: english_wave1_lex(),
     binding_spellings: english_add_fn_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: english_add_fn_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }

@@ -3963,6 +3963,7 @@ fn dag_type_decl_structural_target_model() -> TargetModel {
     },
     lex: dag_type_decl_structural_lex(),
     binding_spellings: empty_map(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -5127,6 +5128,7 @@ fn dag_mvp1_pick_target_model() -> TargetModel {
     bundle: dag_mvp1_pick_target_model_bundle_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_pick_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -5268,6 +5270,7 @@ fn dag_mvp1_bind_target_model() -> TargetModel {
     bundle: dag_mvp1_bind_target_model_bundle_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_bind_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -5409,6 +5412,7 @@ fn dag_mvp1_loop_target_model() -> TargetModel {
     bundle: dag_mvp1_loop_target_model_bundle_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_loop_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -5531,6 +5535,7 @@ fn dag_mvp1_match_target_model() -> TargetModel {
     bundle: dag_mvp1_match_target_model_bundle_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_match_source_text
   }
 }
@@ -5671,6 +5676,7 @@ fn dag_mvp1_rec_target_model() -> TargetModel {
     bundle: dag_mvp1_rec_target_model_bundle_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_rec_source_text
   }
 }
@@ -5814,6 +5820,7 @@ fn dag_mvp1_field_access_target_model() -> TargetModel {
     bundle: dag_mvp1_field_access_target_model_bundle_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_field_access_source_text
   }
 }
@@ -5823,6 +5830,7 @@ fn dag_mvp1_target_model() -> TargetModel {
     bundle: dag_mvp1_target_model_node(),
     lex: dag_wave1_lex(),
     binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: dag_mvp1_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }

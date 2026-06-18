@@ -202,6 +202,7 @@ fn fold_call_target_model() -> TargetModel {
     ),
     lex: ts_wave1_lex_rules(),
     binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: ts_mvp1_source_text_authority()
   }
 }

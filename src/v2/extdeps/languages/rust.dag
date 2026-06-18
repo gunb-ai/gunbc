@@ -1587,6 +1587,7 @@ fn rust_mvp1_target_model_staging() -> TargetModel {
     bundle: rust_mvp1_target_model_bundle_core(),
     lex: rust_wave1_lex(),
     binding_spellings: rust_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: rust_mvp1_source_text_authority(),
     runtime_row: rust_mvp1_runtime_row()
   }
@@ -1687,6 +1688,7 @@ fn rust_mvp1_target_model() -> TargetModel {
     bundle: rust_mvp1_target_model_node(),
     lex: rust_wave1_lex(),
     binding_spellings: rust_mvp1_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: rust_mvp1_source_text_authority(),
     runtime_row: rust_mvp1_runtime_row()
   }
@@ -3527,6 +3529,7 @@ fn rust_sg2_type_expr_target_model() -> TargetModel {
     bundle: rust_sg2_type_expr_target_model_node(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: rust_sg2_type_alias_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -3577,6 +3580,7 @@ fn rust_sg2_type_expr_projection_probe_target_model() -> TargetModel {
     bundle: rust_sg2_type_expr_projection_probe_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: rust_sg2_type_alias_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -3591,6 +3595,7 @@ fn rust_sg2_type_expr_target_model_staging() -> TargetModel {
     bundle: rust_sg2_type_expr_target_model_bundle_core(),
     lex: ModeledLexRules { root: rust_sg2_wave1_lex_rules() },
     binding_spellings: rust_sg2_binding_spellings(),
+    token_class_emit_transforms: empty_map(),
     authority_source_text: rust_sg2_type_alias_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
