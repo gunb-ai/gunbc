@@ -124,9 +124,7 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
-  type_expr_projection_graft_substrate_in_row_slot,
   type_expr_projection_row_closedness_from_target,
-  type_expr_projection_graft_witness_gate,
   type_expression_projection_from_target,
   lex_rules_literal_for_class,
   lex_rules_literal,
@@ -1726,34 +1724,12 @@ fn translate_type_expression_arrow_project(
           anchor: node
         ),
         f: fn(split) {
-          bind_outcome(
-            o: type_expr_projection_graft_substrate_in_row_slot(
-              projection: projection,
-              connective: Arrow,
-              node: node,
-              projected_positional: list_append(
-                left: split.inputs,
-                right: Cons { head: split.output, tail: Empty }
-              )
-            ),
-            f: fn(grafted) {
-              bind_outcome(
-                o: type_expr_projection_graft_witness_gate(
-                  source_facts: grafted,
-                  projection: projection,
-                  connective: Arrow
-                ),
-                f: fn(_) {
-                  outcome_accepted(
-                    target_type_expr_arrow_emitted(
-                      form: projection.arrow_form,
-                      inputs: split.inputs,
-                      output: split.output
-                    )
-                  )
-                }
-              )
-            }
+          outcome_accepted(
+            target_type_expr_arrow_emitted(
+              form: projection.arrow_form,
+              inputs: split.inputs,
+              output: split.output
+            )
           )
         }
       )
