@@ -23,17 +23,35 @@
 module v2.lens.table_decision_tree
 
 
+import std.lens_verdict {
+  LensVerdict,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
+  Unrealized,
+}
 import v2.std.node { Node, Symbol }
 
 
-// 🟢 verdict — fail-closed until decision_tree_shape lands; TableDissolves carries typed references and derives table pattern at consumption.
-type TableDecisionTreeVerdict
-  = Unrealized                    // producer-stage `decision_tree_shape` not available for this locus.
-  | NotATable                     // decision-tree present but escape clause fires (structural divergence / partial table / open vocabulary / non-table dispatch).
-  | TableDissolves {              // hard error: fn IS a typed table; substrate should carry it as data.
-      key_vocabulary: Symbol      // identifier of the closed coproduct K resolved by decision_tree_shape; pattern is derived from K's payload-bearing-ness at consumption.
-      row_template_type: Symbol   // identifier of the row record type (V for Pattern A; RowTemplate for Pattern B).
+// 🟢 finding — per-fn classification when producer lands; projects to LensVerdict at gate.
+type TableDecisionTreeFinding
+  = NotATable
+  | TableDissolves {
+      key_vocabulary: Symbol
+      row_template_type: Symbol
     }
+
+
+data table_decision_tree_module: String = "v2.lens.table_decision_tree"
+
+
+fn table_decision_tree_unrealized_verdict() -> LensVerdict {
+  Unrealized {
+    diagnostic: LensVerdictDiagnostic {
+      reason: "table_decision_tree_producer_unavailable",
+      at: ModuleWholeFile { module_name: table_decision_tree_module }
+    }
+  }
+}
 
 
 // 🟢 lens fact — one row per scanned fn-locus. The decided receipt is the
@@ -41,7 +59,7 @@ type TableDecisionTreeVerdict
 // projection that should dissolve to a substrate row).
 type TableDecisionTreeFact {
   fn_locus: Node
-  verdict: TableDecisionTreeVerdict
+  verdict: LensVerdict
 }
 
 
@@ -49,6 +67,6 @@ type TableDecisionTreeFact {
 fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
   TableDecisionTreeFact {
     fn_locus: fn_node,
-    verdict: Unrealized
+    verdict: table_decision_tree_unrealized_verdict()
   }
 }
