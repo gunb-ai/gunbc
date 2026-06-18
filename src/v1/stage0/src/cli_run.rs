@@ -2422,6 +2422,50 @@ pub fn discover_source_root_reads(
     Ok(records)
 }
 
+/// Parse-level import closure for one entry `.dag` file — same scope as
+/// `--claim-run --entry` / `load_sources_for_entry`, projected to ingest witnesses.
+pub fn discover_source_root_reads_for_entry(
+    source_roots: &[String],
+    entry_path: &str,
+    exclude_subpaths: &[String],
+) -> Result<Vec<SourceRootReadRecord>, String> {
+    for root in source_roots {
+        let root_path = Path::new(root);
+        if !root_path.exists() {
+            return Err(format!(
+                "discover_source_root_ingest: source root does not exist: {}",
+                root
+            ));
+        }
+    }
+
+    let closure = load_sources_for_entry(source_roots, entry_path).map_err(|msg| {
+        format!("discover_source_root_ingest: entry closure load failed: {msg}")
+    })?;
+
+    let mut records: Vec<SourceRootReadRecord> = Vec::new();
+    for source in closure {
+        let rel_forward = source.path.replace('\\', "/");
+        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
+            continue;
+        }
+        let module_path = extract_module_path(&source.content).ok_or_else(|| {
+            format!(
+                "discover_source_root_ingest: no module declaration in {}",
+                rel_forward
+            )
+        })?;
+        records.push(SourceRootReadRecord {
+            file_path: rel_forward,
+            module_path,
+            source: source.content.clone(),
+        });
+    }
+
+    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    Ok(records)
+}
+
 fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);

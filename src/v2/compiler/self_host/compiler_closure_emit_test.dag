@@ -7,7 +7,7 @@ module v2.test.self_host.compiler_closure_emit
 import v2.compiler.self_host.compiler_closure_emit {
   compiler_import_closure,
   compiler_import_closure_is_acyclic,
-  emit_compiler_import_closure_for_target
+  emit_compiler_import_closure_for_inferred
 }
 import v2.extdeps.languages.rust { rust_mvp1_source_text, rust_mvp1_target_model }
 import v2.std.diagnostic { Accepted, None, Rejected }
@@ -26,7 +26,7 @@ fn v2_emits_v2_closure_acyclic_on_fixture() -> Bool {
 
 
 fn v2_emits_v2_rust_emit_accepts_with_receipt() -> Bool {
-  match emit_compiler_import_closure_for_target(
+  match emit_compiler_import_closure_for_inferred(
     program: mvp1_rust_inferred_tree,
     edit_locus: mvp1_rust_emitted_root,
     target: rust_mvp1_target_model(),

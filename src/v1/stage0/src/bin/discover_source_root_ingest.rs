@@ -6,8 +6,12 @@
 //! Usage:
 //!   discover_source_root_ingest --source-root src/v2 \
 //!       [--scan-dir src/v2/test/fixture/program_assembly] \
+//!       [--entry src/v2/compiler/00_compile.dag] \
 //!       [--exclude-subpath host_source_root_ingest_manifest.dag] \
 //!       [--emit-dag-manifest target/v2-source-root-ingest-manifest.dag]
+//!
+//! With `--entry`, only the parse-level transitive import closure of that file is
+//! included (same scope as `gunbc run --claim-run --entry`).
 //!
 //! Exit codes: 0 = success; 1 = discovery failure; 2 = usage error.
 
@@ -17,8 +21,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    discover_source_root_reads, emit_source_root_ingest_manifest,
-    source_root_ingest_content_hash_fnv1a64,
+    discover_source_root_reads, discover_source_root_reads_for_entry,
+    emit_source_root_ingest_manifest, source_root_ingest_content_hash_fnv1a64,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -35,6 +39,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut scan_dir = "src/v2/test/fixture/program_assembly".to_string();
+    let mut entry_path: Option<String> = None;
     let mut exclude_subpaths: Vec<String> =
         vec!["host_source_root_ingest_manifest.dag".to_string()];
     let mut manifest_path: Option<PathBuf> = None;
@@ -49,6 +54,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--scan-dir" => {
                 i += 1;
                 scan_dir = require_value(&args, i, "--scan-dir")?;
+            }
+            "--entry" => {
+                i += 1;
+                entry_path = Some(require_value(&args, i, "--entry")?);
             }
             "--exclude-subpath" => {
                 i += 1;
@@ -75,7 +84,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
-    let records = match discover_source_root_reads(&source_roots, &scan_dir, &exclude_subpaths) {
+    let records = match entry_path.as_deref() {
+        Some(entry) => discover_source_root_reads_for_entry(&source_roots, entry, &exclude_subpaths),
+        None => discover_source_root_reads(&source_roots, &scan_dir, &exclude_subpaths),
+    };
+    let records = match records {
         Ok(records) => records,
         Err(msg) => {
             eprintln!("discover_source_root_ingest: {}", msg);

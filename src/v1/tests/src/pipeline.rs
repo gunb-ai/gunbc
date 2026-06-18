@@ -7793,6 +7793,110 @@ fn write_emitted_crate(
 }
 
 #[test]
+fn v2_compiler_import_closure_is_smaller_than_whole_v2_tree() {
+    let ws = crate::helpers::workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry = ws.join("src/v2/compiler/00_compile.dag");
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let closure = v1_compiler::cli_run::load_sources_for_entry(
+        &roots,
+        entry.to_str().expect("entry path utf8"),
+    )
+    .expect("load compiler entry closure");
+    let whole_tree = count_dag_files_under(&v2_root);
+    assert!(
+        closure.len() < whole_tree,
+        "expected scoped closure ({}) < whole src/v2 tree ({})",
+        closure.len(),
+        whole_tree
+    );
+    eprintln!(
+        "v2-emits-v2 scope: {} modules in compiler closure vs {} .dag files under src/v2",
+        closure.len(),
+        whole_tree
+    );
+}
+
+#[test]
+#[ignore] // Boundary: scoped compiler-closure emit + cargo check; records first v2-emits-v2 error count.
+fn v2_compiler_import_closure_emits_rust_cargo_check_records_error_count() {
+    let ws = crate::helpers::workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry_path = ws.join("src/v2/compiler/00_compile.dag");
+    let entry = entry_path.to_str().expect("entry path utf8");
+    let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
+    let out_dir = unique_temp_dir("v2-compiler-closure-out");
+
+    let result = crate::helpers::compile_dag_named_with_source_roots(
+        entry,
+        &entry_content,
+        v1_compiler::v1_compiler_compile::RenderTarget::Rust,
+        &[v2_root.clone()],
+    );
+
+    let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "compiler closure emit has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+    assert!(
+        !result.files.is_empty(),
+        "compiler closure emit produced no files"
+    );
+    write_emitted_crate(&result, &out_dir);
+
+    let manifest = out_dir.join("Cargo.toml");
+    assert!(manifest.is_file(), "emitted crate missing Cargo.toml");
+
+    let check = std::process::Command::new(cargo_binary())
+        .arg("check")
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("failed to run cargo check");
+    let stdout = String::from_utf8_lossy(&check.stdout);
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    let combined = format!("{stdout}\n{stderr}");
+    let error_count = combined.matches("error[").count() + combined.matches("error:").count();
+    eprintln!(
+        "v2-emits-v2: cargo check success={} error_count={} emitted_files={}",
+        check.status.success(),
+        error_count,
+        result.files.len()
+    );
+    if !check.status.success() {
+        eprintln!("--- cargo check stdout ---\n{stdout}");
+        eprintln!("--- cargo check stderr ---\n{stderr}");
+    }
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    assert!(
+        error_count > 0 || check.status.success(),
+        "cargo check produced no diagnostics and did not succeed"
+    );
+}
+
+fn count_dag_files_under(dir: &std::path::Path) -> usize {
+    let mut count = 0usize;
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            count += count_dag_files_under(&path);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            count += 1;
+        }
+    }
+    count
+}
+
+#[test]
 #[ignore] // Boundary test: writes temp project and runs cargo check.
 fn v2_trivial_import_emits_rust_that_cargo_checks() {
     let ws = crate::helpers::workspace_root();

@@ -1,15 +1,19 @@
 // src/v2/compiler/self_host/compiler_closure_emit.dag
-// Scope: Keystone wrapper — dependency_lens + affected_set_closure + emit_for_target for scoped
-//   compiler import-closure emit (v2-emits-v2 measurability + acyclic gate).
-// Status: MVP whole-program emit scoped by closure receipt; per-frontier-node partition emit is
-//   stage-C follow-on once real multi-module compiler inferred trees land (Lane 3a.2).
+// Scope: Keystone wrapper — parse-scoped ingest → assemble → infer →
+//   dependency_lens + affected_set_closure (acyclic gate) → emit_for_target(SubtreeRoot).
+// Status: ingest-scoped compiler closure emit for v2-emits-v2 bootstrap (§7).
 // Anchor: sibling to candidate_generation.dag; does NOT modify load-bearing self_host.dag.
+// Host: discover_source_root_ingest --entry src/v2/compiler/00_compile.dag scopes ingest.
 
 module v2.compiler.self_host.compiler_closure_emit
 
-import v2.compiler.infer { InferredTree }
+import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.name_resolve { Admission }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.program_partition { emit_for_target }
+import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.target_carriers { TargetSource }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 import v2.std.algebra { length }
 import v2.std.collection { List }
@@ -34,7 +38,8 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
 import v2.std.program_segment {
   PartitionBoundaryPolicy,
-  program_segment_whole_program
+  program_segment_subtree_root,
+  partition_boundary_fail_closed
 }
 
 
@@ -107,8 +112,7 @@ fn compiler_closure_cyclic_diagnostic(root: Node) -> Diagnostic {
 }
 
 
-// PRIMARY ENTRY — compose dependency_lens → affected_set_closure → acyclic gate → emit_for_target.
-fn emit_compiler_import_closure_for_target(
+fn emit_compiler_import_closure_for_inferred(
   program: InferredTree,
   edit_locus: Node,
   target: TargetModel,
@@ -119,7 +123,7 @@ fn emit_compiler_import_closure_for_target(
     bind_outcome(
       o: emit_for_target(
         program: program,
-        segment: program_segment_whole_program(),
+        segment: program_segment_subtree_root(root: program.root),
         target: target,
         boundary: boundary
       ),
@@ -137,4 +141,30 @@ fn emit_compiler_import_closure_for_target(
   } else {
     outcome_rejected(d: compiler_closure_cyclic_diagnostic(root: program.root))
   }
+}
+
+
+// PRIMARY ENTRY — scoped SourceRootIngest (host-filtered parse-level import closure) → emit Rust.
+fn emit_compiler_import_closure_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel
+) -> Outcome<CompilerClosureEmitReceipt> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: infer(tree: resolved),
+        f: fn(inferred) {
+          emit_compiler_import_closure_for_inferred(
+            program: inferred,
+            edit_locus: inferred.root,
+            target: target,
+            boundary: partition_boundary_fail_closed()
+          )
+        }
+      )
+    }
+  )
 }
