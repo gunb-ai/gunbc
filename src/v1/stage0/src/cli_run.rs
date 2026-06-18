@@ -2095,24 +2095,16 @@ pub fn discover_floor_corpus_rows(
     Ok(rows)
 }
 
-/// Run the whole floor discovery corpus through one shared module index
-/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
-/// are appended to the discovered roster with `(entry, function)` dedup — exactly
-/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
-/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
-/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
-/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
-/// `claim_batch` keeps its own timing/stats loop but shares the roster.
-pub fn run_discovery_corpus(
+/// Build the floor discovery roster: reflect over `scan_dirs`, append
+/// `explicit_entries` with `(entry, function)` dedup, sort by `(entry, function)`.
+/// Fail-closed on an empty roster.
+pub fn discovery_corpus_rows(
     source_roots: &[String],
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<DiscoverySummary, String> {
+) -> Result<Vec<DiscoveryRow>, String> {
     check_floor_filename_hygiene(source_roots)?;
     let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
-    // Append explicit rows with (entry, function) dedup, then re-sort so each
-    // entry's witnesses stay grouped for the resolve-once loop below.
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
         .map(|r| (r.entry.clone(), r.function.clone()))
@@ -2134,10 +2126,25 @@ pub fn run_discovery_corpus(
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
-    let index = build_multi_entry_index(source_roots);
+    Ok(rows)
+}
 
-    // Group by entry (rows are sorted by (entry, function)), resolve each entry
-    // once, run its witnesses against the shared graph.
+/// Run a pre-built discovery roster, resolving each distinct entry through
+/// `resolve_entry` (resolve-once-per-entry), returning a pass/fail summary.
+pub fn run_discovery_rows_resolved<F>(
+    resolve_entry: F,
+    rows: &[DiscoveryRow],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String>
+where
+    F: Fn(&str) -> Result<
+        (
+            Rc<v1_compiler_compile::ResolvedGraph>,
+            Rc<HashMap<String, Rc<NewlineIndex>>>,
+        ),
+        String,
+    >,
+{
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
@@ -2145,10 +2152,9 @@ pub fn run_discovery_corpus(
     };
     let mut current_entry: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    for row in &rows {
+    for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
-                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let (graph, source_indices) = resolve_entry(&row.entry)?;
             ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
             current_entry = Some(row.entry.clone());
         }
@@ -2170,6 +2176,53 @@ pub fn run_discovery_corpus(
         }
     }
     Ok(summary)
+}
+
+/// Run a pre-built discovery roster through one shared module index
+/// (resolve-once-per-entry), returning a pass/fail summary.
+pub fn run_discovery_rows_with_index(
+    index: &MultiEntryIndex,
+    rows: &[DiscoveryRow],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    run_discovery_rows_resolved(
+        |entry| resolve_entry_with_index(index, entry),
+        rows,
+        execution_mode,
+    )
+}
+
+/// Run the whole floor discovery corpus through one shared module index
+/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
+/// are appended to the discovered roster with `(entry, function)` dedup — exactly
+/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
+/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
+/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
+/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
+/// `claim_batch` keeps its own timing/stats loop but shares the roster.
+pub fn run_discovery_corpus(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    let rows = discovery_corpus_rows(source_roots, scan_dirs, explicit_entries)?;
+    let index = build_multi_entry_index(source_roots);
+    run_discovery_rows_with_index(&index, &rows, execution_mode)
+}
+
+/// Like [`run_discovery_corpus`], but reuses a caller-built `MultiEntryIndex` so
+/// parse/typed-module caches stay warm across the executor's plan eval, gate
+/// witnesses, and discovery corpus in one process.
+pub fn run_discovery_corpus_with_index(
+    index: &MultiEntryIndex,
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    let rows = discovery_corpus_rows(source_roots, scan_dirs, explicit_entries)?;
+    run_discovery_rows_with_index(index, &rows, execution_mode)
 }
 
 // ---------------------------------------------------------------------------
