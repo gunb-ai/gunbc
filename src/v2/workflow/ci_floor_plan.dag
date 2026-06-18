@@ -36,6 +36,17 @@ import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
+import std.types { ContentHash }
+import std.realization {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableSingleClaim,
+  RunnableDiscoveryBatch,
+  ScheduleWitnessEntry,
+  cost_account_predicted_zero,
+  schedule_lens_holds_for_ci_floor
+}
 import v2.workflow.executor {
   ExecutorBatch,
   ExecutorRunBlocked,
@@ -44,16 +55,10 @@ import v2.workflow.executor {
   parallel_executor_plan_from_dependencies
 }
 
-// Host-readable runnable (parsed by claim_executor). A `DiscoveryBatch` node is
-// the whole `claim_batch` floor step: discovery over `source_roots` (+ `scan_dirs`)
-// PLUS the appended `explicit_entries`.
-type Runnable
-  = RunnableSingleClaim { entry: String, function: String }
-  | RunnableDiscoveryBatch {
-      source_roots: List<String>,
-      scan_dirs: List<String>,
-      explicit_entries: List<WitnessEntry>
-    }
+// CI floor target digest (subgraph grain — dissolution: content_hash(floor_nodes)).
+data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
+
+data ci_floor_compile_gate_fn: String = "dsl_compile_clean_gate_passes"
 
 data floor_gate_witness_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
 
@@ -109,11 +114,21 @@ fn corpus_scan_dirs(spec: CiSpec) -> List<String> {
   })
 }
 
+fn schedule_witness_from_entry(e: WitnessEntry) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: e.entry, function: e.function }
+}
+
+fn corpus_explicit_schedule_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
+  fold(spec.witness_entries, init: [], f: fn(acc, we) {
+    list_snoc_item(xs: acc, item: schedule_witness_from_entry(e: we))
+  })
+}
+
 fn corpus_runnable(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(spec: spec),
     scan_dirs: corpus_scan_dirs(spec: spec),
-    explicit_entries: spec.witness_entries
+    explicit_entries: corpus_explicit_schedule_entries(spec: spec)
   }
 }
 
@@ -166,8 +181,8 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-// Top-level host entry: the scheduler-decided batches projected to runnables.
-fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
+// Scheduler-decided batches projected to runnables (inner — plan.schedule authority).
+fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
     nodes: floor_nodes(spec: gunbc_ci_spec),
     dependencies: floor_dependencies(spec: gunbc_ci_spec),
@@ -180,4 +195,27 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
   }
+}
+
+// Generative: RealizationPlan.schedule is the authority; host reads this field.
+fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
+  RealizationPlan {
+    target: ci_floor_target_digest
+    objective: RealizationObjective { goals: [] }
+    schedule: gunbc_ci_floor_schedule_inner()
+    total: cost_account_predicted_zero()
+  }
+}
+
+// claim_executor entry — schedule projected from the plan (execute = interpret plan).
+fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan().schedule
+}
+
+// Schedule lens receipt (observable independently of host execution).
+fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
+  schedule_lens_holds_for_ci_floor(
+    plan: gunbc_ci_floor_realization_plan(),
+    compile_gate_fn: ci_floor_compile_gate_fn
+  )
 }

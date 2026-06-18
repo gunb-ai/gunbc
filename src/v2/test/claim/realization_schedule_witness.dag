@@ -1,0 +1,82 @@
+// v2/test/claim/realization_schedule_witness.dag
+//
+// Generative + schedule-lens witnesses for std.realization wired to ci_floor_plan.
+// Proves execute=interpret-plan: batches are projected from RealizationPlan.schedule,
+// and the schedule lens is GREEN on the live floor plan but RED when batch-0 order
+// is perturbed (discriminating — DESIGN §5).
+
+module v2.test.claim.realization_schedule_witness
+
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { List }
+import std.realization {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableSingleClaim,
+  RunnableDiscoveryBatch,
+  schedule_lens_holds_for_ci_floor,
+  schedule_generates_same_batch_count,
+  cost_account_predicted_zero,
+}
+import v2.workflow.ci_floor_plan {
+  gunbc_ci_floor_realization_plan,
+  gunbc_ci_floor_batches,
+  gunbc_ci_floor_schedule_inner,
+  ci_floor_target_digest,
+  ci_floor_compile_gate_fn,
+}
+
+data corpus_sentinel: String = "__discovery_corpus__"
+
+fn runnable_function_label(r: Runnable) -> String {
+  match r {
+    RunnableSingleClaim { entry: _, function: f } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => corpus_sentinel
+  }
+}
+
+// Generative: host entry gunbc_ci_floor_batches reads plan.schedule, not a parallel list.
+fn witness_batches_are_plan_schedule() -> Bool {
+  schedule_generates_same_batch_count(
+    left: gunbc_ci_floor_realization_plan(),
+    right: RealizationPlan {
+      target: ci_floor_target_digest
+      objective: RealizationObjective { goals: [] }
+      schedule: gunbc_ci_floor_batches()
+      total: cost_account_predicted_zero()
+    }
+  )
+}
+
+fn witness_schedule_lens_holds_on_floor_plan() -> Bool {
+  schedule_lens_holds_for_ci_floor(
+    plan: gunbc_ci_floor_realization_plan(),
+    compile_gate_fn: ci_floor_compile_gate_fn
+  )
+}
+
+// Discriminating RED: swap batch-0 and batch-1 — compile gate no longer first.
+fn perturbed_schedule_wrong_order(inner: List<List<Runnable>>) -> List<List<Runnable>> {
+  list_snoc_item(
+    xs: list_snoc_item(xs: [], item: inner.skip(n: 1).first()),
+    item: inner.first()
+  )
+}
+
+fn witness_schedule_lens_red_when_corpus_runs_first() -> Bool {
+  let inner = gunbc_ci_floor_schedule_inner()
+  let perturbed = RealizationPlan {
+    target: ci_floor_target_digest
+    objective: RealizationObjective { goals: [] }
+    schedule: perturbed_schedule_wrong_order(inner: inner)
+    total: cost_account_predicted_zero()
+  }
+  schedule_lens_holds_for_ci_floor(plan: perturbed, compile_gate_fn: ci_floor_compile_gate_fn) == false
+}
+
+fn realization_schedule_witnesses() -> Bool {
+  witness_batches_are_plan_schedule()
+    && witness_schedule_lens_holds_on_floor_plan()
+    && witness_schedule_lens_red_when_corpus_runs_first()
+}

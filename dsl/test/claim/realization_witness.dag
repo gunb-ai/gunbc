@@ -1,38 +1,35 @@
-// dsl/test/claim/realization_witness.dag — by-execution witnesses for std.realization lens.
+// dsl/test/claim/realization_witness.dag — by-execution witnesses for std.realization.
 //
-// GREEN: canonical parse_table + resolved_graph plans pass realization_plan_holds.
-// RED:   bogus artifact/interface pair fails closed.
-//
+// GREEN: may_reorder fail-closed (Unknown → Dependent); Read+Read independent.
 // Run: gunbc run --source-root dsl --entry <this> --function realization_witnesses --claim-run
 
 module test.claim.realization_witness
 
+import std.effects { ReadEffect, CreateEffect }
 import std.realization {
-  RealizationPlan,
-  parse_table_realization_plan,
-  resolved_graph_realization_plan,
-  realization_plan_holds,
+  Unknown,
+  independence_from_effect_shapes,
+  may_reorder,
 }
 
-data bogus_realization_plan: RealizationPlan = {
-  artifact_kind: "bogus_artifact"
-  interface: "bogus_interface"
+fn witness_unknown_independence_never_reorders() -> Bool {
+  may_reorder(indep: Unknown) == false
 }
 
-fn witness_parse_table_plan_holds() -> Bool {
-  realization_plan_holds(plan: parse_table_realization_plan)
+fn witness_read_read_may_reorder() -> Bool {
+  may_reorder(
+    indep: independence_from_effect_shapes(left: ReadEffect, right: ReadEffect)
+  ) == true
 }
 
-fn witness_resolved_graph_plan_holds() -> Bool {
-  realization_plan_holds(plan: resolved_graph_realization_plan)
-}
-
-fn witness_bogus_plan_fails_closed() -> Bool {
-  realization_plan_holds(plan: bogus_realization_plan) == false
+fn witness_create_unknown_never_reorders() -> Bool {
+  may_reorder(
+    indep: independence_from_effect_shapes(left: CreateEffect, right: ReadEffect)
+  ) == false
 }
 
 fn realization_witnesses() -> Bool {
-  witness_parse_table_plan_holds()
-    && witness_resolved_graph_plan_holds()
-    && witness_bogus_plan_fails_closed()
+  witness_unknown_independence_never_reorders()
+    && witness_read_read_may_reorder()
+    && witness_create_unknown_never_reorders()
 }
