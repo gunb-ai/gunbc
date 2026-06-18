@@ -1787,25 +1787,16 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Instantiation },
-          children: [
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }
-            }
-          ],
+          kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
+          children: [],
           occurrence_id: SyntheticOccurrence
         }
       }

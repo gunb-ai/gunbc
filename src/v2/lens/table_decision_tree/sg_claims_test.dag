@@ -6,9 +6,14 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
 
-import v2.lens.table_decision_tree {
-  TableDecisionTreeVerdict,
+import std.lens_verdict {
+  Holds,
+  LensVerdict,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
   Unrealized,
+}
+import v2.lens.table_decision_tree {
   table_decision_tree_fact_for_fn
 }
 import v2.std.logic { Bool }
@@ -18,20 +23,66 @@ import v2.test.lens_common.infer_fixture { claim_atom_node }
 
 
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
+data tdt_witness_module: String = "v2.lens.table_decision_tree"
 
 
-// treating this as a permanent variant-discriminant authority.
-fn tdt_verdict_is_unrealized(verdict: TableDecisionTreeVerdict) -> Bool {
+fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   match verdict {
-    Unrealized => true
+    Unrealized { diagnostic: _ } => true
+    _ => false
+  }
+}
+
+
+fn witness_tdt_unrealized_green_on_fact() -> Bool {
+  tdt_verdict_is_unrealized(
+    verdict: table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict
+  )
+}
+
+
+fn tdt_sample_holds() -> LensVerdict {
+  Holds
+}
+
+
+fn witness_tdt_unrealized_red_on_holds() -> Bool {
+  match tdt_sample_holds() {
+    Unrealized { diagnostic: _ } => false
+    _ => true
+  }
+}
+
+
+fn witness_tdt_locus_green_on_fact() -> Bool {
+  match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
+    Unrealized { diagnostic: d } => match d.at {
+      ModuleWholeFile { module_name: m } => m == tdt_witness_module
+    }
+    _ => false
+  }
+}
+
+
+fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
+  let perturbed = Unrealized {
+    diagnostic: LensVerdictDiagnostic {
+      reason: "table_decision_tree_perturbed",
+      at: ModuleWholeFile { module_name: "v2.lens.table_decision_tree_wrong_module" }
+    }
+  }
+  match perturbed {
+    Unrealized { diagnostic: d } => match d.at {
+      ModuleWholeFile { module_name: m } => m != tdt_witness_module
+    }
     _ => false
   }
 }
 
 
 test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
-  tdt_verdict_is_unrealized(
-    verdict: table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict
-  )
+  witness_tdt_unrealized_green_on_fact()
+    && witness_tdt_unrealized_red_on_holds()
+    && witness_tdt_locus_green_on_fact()
+    && witness_tdt_locus_red_on_perturbed_module()
 }
-
