@@ -89,7 +89,7 @@ fn unknown_rule_predicate() -> PreservationPredicate {
 }
 fn candidate_set_identity_single() -> CandidateSet {
   CandidateSet {
-    candidates: [identity_other_node()],
+    candidates: [identity_source_node()],
     closedness: identity_closedness()
   }
 }
