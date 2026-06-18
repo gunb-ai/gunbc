@@ -32,8 +32,9 @@ type ShellWord
   | VarRef { name: String }
   | Concat { parts: List<ShellWord> }
   | CmdSubst { body: ShellStmt }
-  // 🟡 dissolution trigger: a structural model exists for every fragment that today
-  // reaches for Raw (the host-language ban lens RED-flags Raw in transport position).
+  // 🟡 dissolution trigger: `v2.lens.host_language_embedded` (#5132, quiet-swift-814) RED-flags
+  // a `Raw`/`RawLine` constructor in transport position once every fragment that reaches for Raw
+  // has a structural model. Tracked in that PR's lens; no caller in this PR uses Raw.
   | Raw { text: String }
 
 // =========================================================================
@@ -66,7 +67,7 @@ type ShellStmt
   // not smuggled policy. Always a quoted delimiter (no expansion in the body).
   | Heredoc { path: ShellWord, delimiter: String, body: String }
   | Exit { code: Int }
-  // 🟡 dissolution trigger: same as ShellWord.Raw.
+  // 🟡 dissolution trigger: same as ShellWord.Raw — `v2.lens.host_language_embedded` (#5132).
   | RawLine { text: String }
 
 type ShellProgram {
