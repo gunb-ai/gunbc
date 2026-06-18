@@ -141,6 +141,11 @@ import v2.std.host_transport {
 type TokenClassEmitTransform
   = EmitSpellingVerbatim
   | EmitSpellingShellSingleQuoted
+  // 🟡 dissolution trigger — feature:T-6-token-layout-trivia-policy — layout whitespace is
+  // baked into the *Spaced arms (same interim layout-in-literal policy rust.dag flags for lex
+  // LiteralPattern.text; see rust.dag T-6 TokenLayout). Dissolves when T-6 TokenLayout/
+  // TriviaPolicy separates layout from quoting and token_sequence_to_source interleaves
+  // whitespace structurally — forbidden: growing more layout-encoded transform variants.
   | EmitSpellingShellSingleQuotedSpaced
   | EmitSpellingShellVarRef
   | EmitSpellingShellVarRefSpaced
