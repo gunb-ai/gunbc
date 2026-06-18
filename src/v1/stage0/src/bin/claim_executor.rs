@@ -405,13 +405,11 @@ struct WalkOutcome {
     batches_run: usize,
 }
 
-/// Run batch by batch (executor ordering); claims within a batch in parallel. The
-/// batch boundary is a barrier: batch N+1 starts only after every claim in batch N
-/// has reported. A failed batch halts the walk before its dependents. The batch
-/// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
 /// Run batch by batch (executor ordering); runnables within a batch sequentially
 /// against one shared module index. The batch boundary is a barrier: batch N+1
-/// starts only after every runnable in batch N has reported.
+/// starts only after every runnable in batch N has reported. A failed batch halts
+/// the walk before its dependents. Batch membership and order are the `.dag` plan's
+/// — this only walks them.
 fn run_walk(index: &MultiEntryIndex, batches: &[Vec<Runnable>]) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
