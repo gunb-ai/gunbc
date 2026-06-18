@@ -67,14 +67,6 @@ fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> Stri
   }
 }
 
-fn rust_wire_serde_attr_lex_spelling(naming: VariantNaming) -> String {
-  match rust_wire_serde_attr_token_class(naming: naming) {
-    ^rust_ws_token_attr_empty => ""
-    _ =>
-      concat(rust_wire_serde_string_variant_rename_all_attr(naming: naming), "\n")
-  }
-}
-
 fn rust_wire_serde_attr_token_class(naming: VariantNaming) -> Symbol {
   match naming {
     ScreamingSnakeCase => ^rust_ws_token_attr_screaming
@@ -86,18 +78,40 @@ fn rust_wire_serde_attr_token_class(naming: VariantNaming) -> Symbol {
   }
 }
 
+fn rust_wire_serde_attr_lex_spelling(naming: VariantNaming) -> String {
+  match naming {
+    SnakeCase =>
+      concat(rust_wire_serde_string_variant_rename_all_attr(naming: naming), "\n")
+    ScreamingSnakeCase =>
+      concat(rust_wire_serde_string_variant_rename_all_attr(naming: naming), "\n")
+    AsAuthored => ""
+    StripPrefixAndSnakeCase { prefix: _ } => ""
+    StripSuffixAndSnakeCase { suffix: _ } => ""
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } => ""
+  }
+}
+
 // --- ReviewEvent-shaped unit enum fixture (github pulls ReviewEvent wire contract) ---
 
 data rust_ws_review_event_body_golden: String = "pub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
 
 fn rust_ws_review_event_golden(naming: VariantNaming) -> String {
-  match rust_wire_serde_attr_token_class(naming: naming) {
-    ^rust_ws_token_attr_empty => rust_ws_review_event_body_golden
-    _ =>
+  match naming {
+    SnakeCase =>
       concat(
         rust_wire_serde_string_variant_rename_all_attr(naming: naming),
         concat("\n", rust_ws_review_event_body_golden)
       )
+    ScreamingSnakeCase =>
+      concat(
+        rust_wire_serde_string_variant_rename_all_attr(naming: naming),
+        concat("\n", rust_ws_review_event_body_golden)
+      )
+    AsAuthored => rust_ws_review_event_body_golden
+    StripPrefixAndSnakeCase { prefix: _ } => rust_ws_review_event_body_golden
+    StripSuffixAndSnakeCase { suffix: _ } => rust_ws_review_event_body_golden
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } =>
+      rust_ws_review_event_body_golden
   }
 }
 
