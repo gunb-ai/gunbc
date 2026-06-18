@@ -336,9 +336,11 @@ fn run_discovery_batch_node(
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
-                "[measurement] discovery corpus: {} witness(es), {:.3}ms total wall",
+                "[measurement] discovery corpus: {} witness(es), resolve {:.3}ms, evalu {:.3}ms, CostAccount.time basis=Measured {}ns",
                 summary.total,
+                summary.total_resolve_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos as f64 / 1.0e6,
+                v1_compiler::cli_run::discovery_summary_cost_account_time_nanos(&summary),
             );
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),

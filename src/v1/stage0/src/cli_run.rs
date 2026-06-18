@@ -2244,6 +2244,8 @@ pub fn run_discovery_corpus(
         total: rows.len(),
         passed: 0,
         failures: Vec::new(),
+        entry_resolve_receipts: Vec::new(),
+        total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
     };
@@ -2254,9 +2256,18 @@ pub fn run_discovery_corpus(
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
-            current_closure_subject = Some(subject_digest_for_closure(&sources));
+            let closure_subject = subject_digest_for_closure(&sources);
+            let resolve_started = std::time::Instant::now();
             let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
                 .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let resolve_nanos = resolve_started.elapsed().as_nanos();
+            summary.total_resolve_nanos += resolve_nanos;
+            summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                entry: row.entry.clone(),
+                closure_subject: closure_subject.clone(),
+                resolve_nanos,
+            });
+            current_closure_subject = Some(closure_subject);
             ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
             current_entry = Some(row.entry.clone());
         }
