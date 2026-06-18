@@ -35,6 +35,11 @@ fn hardware_threads_int(supply: PlacementSupplyRow) -> Int {
 }
 
 // Peripheral width fold: min(IndependentShards.shard_count, PlacementSupplyRow.hardware_threads).
+// GATE-0 Int↔Nat: shard_count is Int (IndependentShards carrier); hardware_thread_count(count:)
+// expects Nat. Nat⊂Int widening at the constructor is load-bearing and verified by witness
+// execution today (realization_width_witness_test.dag).
+//   feature:v2-nat-int-tightening — dissolve-on: explicit Nat projection when the checker
+//   stops auto-widening Int to Nat at measure constructors.
 fn bounded_host_spawn_width(shard_count: Int, supply: PlacementSupplyRow) -> HardwareThreadCount {
   let demand = shard_count_positive(shard_count: shard_count)
   let cores = hardware_threads_int(supply: supply)
