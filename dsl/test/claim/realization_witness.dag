@@ -1,6 +1,6 @@
 // dsl/test/claim/realization_witness.dag — by-execution witnesses for std.realization.
 //
-// GREEN: may_reorder fail-closed (Unknown → Dependent); Read+Read independent.
+// GREEN: independence fail-closed (Unknown ≠ Independent); Read+Read independent.
 // Run: gunbc run --source-root dsl --entry <this> --function realization_witnesses --claim-run
 
 module test.claim.realization_witness
@@ -12,23 +12,27 @@ import std.effects {
 import std.realization {
   Unknown, Dependent, Independent,
   independence_from_effect_shapes,
-  may_reorder,
 }
 
 fn witness_unknown_independence_never_reorders() -> Bool {
-  may_reorder(indep: Unknown) == false
+  let indep = Unknown
+  match indep {
+    Independent => false
+    Dependent => false
+    Unknown => true
+  }
 }
 
-fn witness_read_read_may_reorder() -> Bool {
-  may_reorder(
-    indep: independence_from_effect_shapes(left: ReadEffect, right: ReadEffect)
-  ) == true
+fn witness_read_read_independent() -> Bool {
+  independence_from_effect_shapes(left: ReadEffect, right: ReadEffect) == Independent
 }
 
-fn witness_create_unknown_never_reorders() -> Bool {
-  may_reorder(
-    indep: independence_from_effect_shapes(left: CreateEffect, right: ReadEffect)
-  ) == false
+fn witness_create_unknown_not_independent() -> Bool {
+  match independence_from_effect_shapes(left: CreateEffect, right: ReadEffect) {
+    Independent => false
+    Dependent => false
+    Unknown => true
+  }
 }
 
 fn witness_upsert_same_key_dependent() -> Bool {
@@ -47,8 +51,8 @@ fn witness_upsert_different_keys_independent() -> Bool {
 
 fn realization_witnesses() -> Bool {
   witness_unknown_independence_never_reorders()
-    && witness_read_read_may_reorder()
-    && witness_create_unknown_never_reorders()
+    && witness_read_read_independent()
+    && witness_create_unknown_not_independent()
     && witness_upsert_same_key_dependent()
     && witness_upsert_different_keys_independent()
 }

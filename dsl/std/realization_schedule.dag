@@ -10,26 +10,24 @@ module std.realization_schedule
 import std.types { ContentHash, Bool, String, List, Int }
 import std.nat { Nat }
 import std.measure {
-  Measure, Time, Nano, ByteSize, Watt,
-  byte_size, watt
+  ByteSize, Watt, NanosecondDuration,
+  byte_size, watt, nanosecond_duration
 }
 import std.pareto { AxisGoal }
-
-type NanosecondDuration = Measure<Time, Nano, Nat>
 
 // dissolve-on: extdeps/realization measured cost handlers — add `basis: CostBasis`
 //   (Measured | Predicted) and cost_account_measured_* / cost_account_predicted_zero rows.
 type CostAccount {
   time: NanosecondDuration
   space: ByteSize
-  energy: Watt
+  power: Watt
 }
 
 fn cost_account_predicted_zero() -> CostAccount {
   CostAccount {
-    time: NanosecondDuration { count: 0 }
+    time: nanosecond_duration(count: 0)
     space: byte_size(count: 0)
-    energy: watt(count: 0)
+    power: watt(count: 0)
   }
 }
 
@@ -104,14 +102,6 @@ fn schedule_lens_verdict_for_ci_floor(plan: RealizationPlan, compile_gate_fn: St
         Holds
       }
     }
-  }
-}
-
-fn schedule_lens_holds_for_ci_floor(plan: RealizationPlan, compile_gate_fn: String) -> Bool {
-  match schedule_lens_verdict_for_ci_floor(plan: plan, compile_gate_fn: compile_gate_fn) {
-    Holds => true
-    Violation { kind: _ } => false
-    NotApplicable => false
   }
 }
 

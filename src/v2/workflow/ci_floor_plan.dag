@@ -45,7 +45,7 @@ import std.realization_schedule {
   RunnableDiscoveryBatch,
   ScheduleWitnessEntry,
   cost_account_predicted_zero,
-  schedule_lens_holds_for_ci_floor
+  schedule_lens_verdict_for_ci_floor
 }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -214,8 +214,12 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
 
 // Schedule lens receipt (observable independently of host execution).
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
-  schedule_lens_holds_for_ci_floor(
+  match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
     compile_gate_fn: ci_floor_compile_gate_fn
-  )
+  ) {
+    Holds => true
+    Violation { kind: _ } => false
+    NotApplicable => false
+  }
 }
