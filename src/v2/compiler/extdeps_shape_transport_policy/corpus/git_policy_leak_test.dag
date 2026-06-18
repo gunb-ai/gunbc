@@ -1,24 +1,15 @@
-// Scope: corpus regression GUARD — reads live dsl/extdeps/git/git.dag via filesystem_read.
-// Asserts the origin/main...HEAD consumer-policy literal is ABSENT: #5107 dissolved
-// ChangedFiles into tools.rust_gates_ci composing DiffNameOnlyMerge directly.
+// Scope: corpus regression GUARD — structural argv projection over extdeps.git.
+// Asserts the origin/main...HEAD consumer-policy literal is ABSENT post-#5107.
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.extdeps_shape_transport_policy.corpus.git_policy_leak
 
-import v2.std.logic { Bool }
-import v2.std.text { String }
-
-data git_core_path: String = "dsl/extdeps/git/git.dag"
-data git_policy_leak_token: String = "origin/main...HEAD"
-
-fn extdeps_live_file_lacks_token(path: String, token: String) -> Bool {
-  let source = filesystem_read(path: path)
-  !string_contains(source.content, token)
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_policy_leak_count
 }
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_git_module }
+import v2.std.logic { Bool }
 
 test fn corpus_git_policy_leak_defused_holds() -> Bool {
-  extdeps_live_file_lacks_token(
-    path: git_core_path,
-    token: git_policy_leak_token
-  )
+  extdeps_live_module_policy_leak_count(module: extdeps_git_module) == 0
 }

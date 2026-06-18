@@ -1,0 +1,125 @@
+// gunbc/ci_runner.dag — CI fleet runner: ComputeOffer → RunnerSpec seam (Phase 3a).
+//
+// The committed `.github/workflows/ci.yml` `runs-on:` block is the GHA realization of
+// `gunbc_ci_fleet_offer` via `runner_spec_from_offer` — not a hand-authored literal.
+// Concrete srv1/srv2 SKU rows remain operator-private (ctrl); this module owns the
+// public schema + generic fleet projection only.
+
+module gunbc.ci_runner
+
+import extdeps.github.actions { RunnerSpec, SelfHosted }
+import extdeps.cpu.ampere { altra_q6430_catalog }
+import product.compute_fabric {
+  ComputeOffer,
+  ComputeSupplyFacts,
+  ComputeHost,
+  ExecutionSurface,
+  MemoryDevice,
+  CpuProcessor,
+  AvailabilityWindow,
+  CostModel,
+  ProviderCostModel,
+  OwnedMarginalZero,
+  PerJobFilesystem,
+  Dram,
+  compute_host_primary_cpu,
+}
+import std.cpu.types { CpuFacts, CpuDeploymentFacts, CpuArchitecture, Aarch64 }
+import std.cpu { cpu_facts_architecture }
+import std.measure { byte_size, hertz }
+import std.os.types {
+  OperatingSystemSurface,
+  KernelFamily,
+  Linux,
+  Posix,
+  PosixProcess,
+}
+import std.placement_supply { HostIdentity }
+
+fn kernel_runner_label(kernel: KernelFamily) -> String {
+  match kernel {
+    Linux => "linux"
+    Darwin => "macos"
+    WindowsNt => "windows"
+    LinuxGuestOnWindows => "linux"
+  }
+}
+
+fn cpu_architecture_runner_label(arch: CpuArchitecture) -> String {
+  match arch {
+    Aarch64 => "arm64"
+    X86_64 => "x64"
+    Armv7 => "arm"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+  }
+}
+
+// GHA `runs-on:` realization of a self-hosted fleet offer (hosted/cloud variants
+// dissolve when RunnerSpec gains their typed carriers).
+fn runner_spec_from_offer(offer: ComputeOffer) -> RunnerSpec {
+  let os = offer.supply.execution.os
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
+      SelfHosted { labels: concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]) }
+    Present { value: cpu } =>
+      SelfHosted {
+        labels: concat(
+          concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]),
+          [cpu_architecture_runner_label(arch: cpu_facts_architecture(cpu: cpu))],
+        ),
+      }
+  }
+}
+
+data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
+
+data gunbc_ci_cpu: CpuFacts = CpuFacts {
+  catalog: altra_q6430_catalog,
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
+  kernel: Linux,
+  distro_or_product: none,
+  version: none,
+  filesystem_semantics: Posix,
+  process_semantics: PosixProcess,
+}
+
+data gunbc_ci_host: ComputeHost = ComputeHost {
+  identity: gunbc_ci_host_identity,
+  processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
+  memory: [MemoryDevice { capacity: byte_size(274877906944), memory_kind: Dram, bandwidth: none }],
+  storage: [],
+  network_interfaces: [],
+}
+
+data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-ci-fleet",
+  supply: ComputeSupplyFacts {
+    physical: gunbc_ci_host,
+    execution: ExecutionSurface {
+      os: gunbc_ci_linux_surface,
+      isolation: PerJobFilesystem,
+      container_runtime: none,
+      toolchains: [],
+      mounted_storage: [],
+      network: [],
+    },
+    cost: Present {
+      value: CostModel {
+        cost_class: OwnedMarginalZero,
+        rates: ProviderCostModel { placeholder: true },
+      },
+    },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+fn gunbc_ci_runner_spec() -> RunnerSpec {
+  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+}

@@ -1,54 +1,53 @@
 // extdeps/container/oci/image_config.dag — OCI Image Configuration (image-spec config.md).
 //
 // Spec: https://github.com/opencontainers/image-spec/blob/main/config.md
-// Version: image-spec v1.1.0
+// Version: image-spec 1.1.0
 
 module extdeps.container.oci.image_config
 
-import std.types { Bool }
+import extdeps.container.oci.types {
+  ContainerExposedPort,
+  ContainerPortProtocol,
+  Tcp,
+}
+import std.types { Arch, Bool, ContentHash, FilePath, NonEmptyStr, Os }
 
 type ContainerImageConfig {
-  User: String?
+  User: NonEmptyStr?
   Env: List<String>?
   Entrypoint: List<String>?
   Cmd: List<String>?
-  WorkingDir: String?
-  ExposedPorts: List<String>?
+  WorkingDir: FilePath?
+  ExposedPorts: List<ContainerExposedPort>?
 }
 
 type ImageRootfs
-  = RootfsLayers { diff_ids: List<String> }
+  = RootfsLayers { diff_ids: List<ContentHash> }
 
 type ImageConfiguration {
-  architecture: String
-  os: String
+  architecture: Arch
+  os: Os
   config: ContainerImageConfig?
   rootfs: ImageRootfs
 }
 
+// dissolve-on: delete ImageConfigRejectUnspecified when a second real reject reason lands.
 type ImageConfigRejectReason
-  = EmptyArchitecture
-  | EmptyOs
-  | EmptyDiffIds
+  = EmptyDiffIds
+  | ImageConfigRejectUnspecified
 
 type ImageConfigOutcome
   = ImageConfigAccepted { value: ImageConfiguration }
   | ImageConfigRejected { reason: ImageConfigRejectReason }
 
 fn accept_image_configuration(c: ImageConfiguration) -> ImageConfigOutcome {
-  if c.architecture == "" {
-    ImageConfigRejected { reason: EmptyArchitecture }
-  } else if c.os == "" {
-    ImageConfigRejected { reason: EmptyOs }
-  } else {
-    match c.rootfs {
-      RootfsLayers { diff_ids: ids } =>
-        if count(ids) == 0 {
-          ImageConfigRejected { reason: EmptyDiffIds }
-        } else {
-          ImageConfigAccepted { value: c }
-        }
-    }
+  match c.rootfs {
+    RootfsLayers { diff_ids: ids } =>
+      if count(ids) == 0 {
+        ImageConfigRejected { reason: EmptyDiffIds }
+      } else {
+        ImageConfigAccepted { value: c }
+      }
   }
 }
 
@@ -69,17 +68,32 @@ fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   }
 }
 
-fn image_config_first_exposed_port(c: ImageConfiguration) -> String? {
+fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPort? {
   match c.config {
     null => null
     cfg =>
       match cfg.ExposedPorts {
         null => null
         ports =>
-          match ports |> first {
-            Present { value: port } => port
-            Absent => null
+          match ports |> get(0) {
+            null => null
+            port => port
           }
       }
+  }
+}
+
+fn container_exposed_port_is(port: ContainerExposedPort, expected_port: Int, protocol: ContainerPortProtocol) -> Bool {
+  port.port == expected_port && port.protocol == protocol
+}
+
+fn image_config_has_exposed_port(
+  c: ImageConfiguration,
+  expected_port: Int,
+  protocol: ContainerPortProtocol,
+) -> Bool {
+  match image_config_first_exposed_port(c) {
+    null => false
+    port => container_exposed_port_is(port: port, expected_port: expected_port, protocol: protocol)
   }
 }

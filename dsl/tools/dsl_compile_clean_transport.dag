@@ -1,7 +1,8 @@
 // tools/dsl_compile_clean_transport.dag — shell transport for whole-tree dsl/ compile-clean.
 //
 // Host runs `gunbc compile --source-root <dsl> --target rust` over the live tree (GREEN) and
-// a temp-tree perturb receipt (RED: planted optional Some/None skew must fail typecheck).
+// a perturb receipt (RED: planted fresh-name unimported module resolved against the live
+// dsl/ index as dependency pool — no cp -r + cold whole-tree rebuild).
 //
 // Both transports are modeled off hand-written `let script = "..."` blobs onto structured
 // `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
@@ -48,10 +49,13 @@ fn run_clean_tree_compile() -> Bool {
 // The planted module whose legacy Some/None on a builtin T? must fail typecheck.
 data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"
 
-// RED receipt: copy dsl/ + plant the bad module; compile MUST fail (if it succeeds → exit 1).
-//   set -e; <prelude>; TMP=$(mktemp -d); cp -r "$ROOT"/dsl "$TMP"/dsl
-//   cat > "$TMP"/dsl/test/_perturb_compile_clean_red.dag <<'PERTURB' ... PERTURB
-//   if "$GUNBC" compile --source-root "$TMP"/dsl --output-dir "$TMP"/out --target rust >/dev/null 2>&1
+// RED receipt: plant the fresh-name unimported bad module; resolve against the live dsl/
+// index (second --source-root) as dependency pool — no cp -r + cold whole-tree rebuild.
+// Compile MUST fail (if it succeeds → exit 1).
+//   set -e; <prelude>; TMP=$(mktemp -d)
+//   cat > "$TMP"/_perturb_compile_clean_red.dag <<'PERTURB' ... PERTURB
+//   if "$GUNBC" compile --source-root "$TMP" --source-root "$ROOT"/dsl \
+//        --output-dir "$TMP"/out --target rust >/dev/null 2>&1
 //     then rm -rf "$TMP"; exit 1; fi
 //   rm -rf "$TMP"; exit 0
 fn perturb_program() -> ShellProgram {
@@ -62,13 +66,8 @@ fn perturb_program() -> ShellProgram {
     set_e: true,
     statements: concat(ensure_gunbc_built(), [
       assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: [
-        lit(text: "cp"), lit(text: "-r"),
-        Concat { parts: [root, lit(text: "/dsl")] },
-        Concat { parts: [tmp, lit(text: "/dsl")] }
-      ]),
       Heredoc {
-        path: Concat { parts: [tmp, lit(text: "/dsl/test/_perturb_compile_clean_red.dag")] },
+        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_red.dag")] },
         delimiter: "PERTURB",
         body: perturb_module_source
       },
@@ -76,7 +75,8 @@ fn perturb_program() -> ShellProgram {
         cond: WithRedir {
           stmt: command(words: [
             gunbc, lit(text: "compile"),
-            lit(text: "--source-root"), Concat { parts: [tmp, lit(text: "/dsl")] },
+            lit(text: "--source-root"), tmp,
+            lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
             lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
             lit(text: "--target"), lit(text: "rust")
           ]),
