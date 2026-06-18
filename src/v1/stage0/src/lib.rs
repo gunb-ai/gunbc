@@ -28,6 +28,7 @@ pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
 pub mod extdeps_shape_transport_policy_project;
+pub mod transport_script_position_project;
 pub mod fact_cardinality_census;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
