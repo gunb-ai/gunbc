@@ -1,0 +1,69 @@
+// std/medium.dag — Medium-axis foundation for representational carriers.
+//
+// Authority: idea→idea machine Cut 2 — how semantic content R is carried in an
+// external medium and whether decode back to semantic values preserves information.
+//
+// Layer split (§3):
+//   dsl/std/medium.dag      — Medium<R> + DecodeFidelity (this file)
+//   dsl/std/encoding.dag  — byte-sequence character interpretation lattice
+//   std/fidelity.dag      — transport cost/hermetic classification (unrelated axis)
+//   v2/std/text.dag       — Unicode text carriers (dissolve-on: import Medium when
+//                           cross-tree std import lands; HostStringText is a text-side
+//                           projection, not a forked medium name)
+//
+// Un-forked naming (§3): `Medium<R>` and `DecodeFidelity` are the substrate
+// authority here. Do not nickname as TextMedium / ByteMedium / StorageMedium —
+// `product.compute_fabric.StorageMedium`, `behavioral.Severity.Medium`, and
+// `LatencyClass.Medium` are unrelated axes on other types.
+//
+// NOT in scope (follow-on cuts):
+//   - encode/decode operations
+//   - concrete media rows (ByteString, FileBody, source text)
+//   - transport handlers in extdeps/
+
+module std.medium
+
+import std.types { Bool }
+
+// Whether decoding from a medium back to semantic values loses information.
+// Lossless: decode preserves all medium-side facts needed for round-trip.
+// Lossy: decode collapses distinctions — no bijection to the semantic domain.
+//
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
+// Two mutually exclusive decode policies — not dimensional axes of one space,
+// not reducible to a Bool without losing the named policy vocabulary.
+// Distinct from std.fidelity.TransportClass (transport cost / hermetic axis).
+type DecodeFidelity = Lossless | Lossy
+
+fn decode_fidelity_is_lossless(f: DecodeFidelity) -> Bool {
+  match f {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn decode_fidelity_is_lossy(f: DecodeFidelity) -> Bool {
+  match f {
+    Lossless => false
+    Lossy => true
+  }
+}
+
+// Semantic value of type R as carried in an external medium.
+//
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
+// Type-parameter carrier for the medium axis — same epistemic-stacking pattern as
+// ReferenceModel<T> (types.dag) and MachineWidth<bits> (machine_constraints.dag).
+// `<R>` is the semantic/reference type the medium represents; concrete representation
+// shapes (bytes, text, AST) land as projections/handlers in extdeps/, not as
+// substrate coproduct variants here.
+//
+// HARD BOUNDARIES (Cut 2 pure decls):
+//   - No runtime payload at this declaration — representation handlers are follow-on.
+//   - Do not fork as TextMedium / ByteMedium / StorageMedium — those are either
+//     downstream projections or unrelated product axes (compute_fabric.StorageMedium).
+//
+// 🟡 gated — feature:medium-carrier-inhabitance — dissolve-on: first concrete
+// Medium<R> projection (e.g. text admission from bytes via encoding witness) lands
+// with a constructor; until then only DecodeFidelity predicates execute.
+type Medium<R>
