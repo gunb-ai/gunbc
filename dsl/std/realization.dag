@@ -22,7 +22,7 @@ module std.realization
 import std.types { Bool, String, List }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
-  KeySource, PathParam, InputField, CompositeKey
+  key_source_eq
 }
 import std.realization_schedule {
   RealizationPlan,
@@ -42,32 +42,11 @@ import std.realization_schedule {
   ScheduleLensVerdict,
   runnable_step_label,
   schedule_batch_contains_label,
-  string_list_eq,
 }
 
 // --- Independence classifier (fail-closed) ------------------------------------
 
 type Independence = Independent | Dependent | Unknown
-
-fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
-  match left {
-    PathParam { param: lp } => match right {
-      PathParam { param: rp } => lp == rp
-      InputField { field: _ } => false
-      CompositeKey { fields: _ } => false
-    }
-    InputField { field: lf } => match right {
-      PathParam { param: _ } => false
-      InputField { field: rf } => lf == rf
-      CompositeKey { fields: _ } => false
-    }
-    CompositeKey { fields: lf } => match right {
-      PathParam { param: _ } => false
-      InputField { field: _ } => false
-      CompositeKey { fields: rf } => string_list_eq(left: lf, right: rf)
-    }
-  }
-}
 
 // Compare effect keys for upsert/delete; unmatched arms stay Unknown (fail-closed).
 fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Independence {
@@ -76,7 +55,7 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
       ReadEffect => Independent
       UpsertEffect { key_source: _ } => Unknown
       DeleteEffect { key_source: _ } => Unknown
-      CreateEffect => Unknown
+      CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
     }
     UpsertEffect { key_source: lk } => match right {
@@ -85,7 +64,7 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      CreateEffect => Unknown
+      CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
     }
     DeleteEffect { key_source: lk } => match right {
@@ -94,10 +73,10 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
         if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      CreateEffect => Unknown
+      CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
     }
-    CreateEffect => Unknown
+    CreateEffect { cause: _ } => Unknown
     AppendEffect => Unknown
   }
 }

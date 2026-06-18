@@ -38,7 +38,8 @@
 
 module std.effects
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, String, List }
+import std.realization_schedule { string_list_eq }
 import std.http_path {
   PathTemplate,
   PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
@@ -139,7 +140,7 @@ fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
       _ => false
     }
     CompositeKey { fields: fa } => match b {
-      CompositeKey { fields: fb } => fa == fb
+      CompositeKey { fields: fb } => string_list_eq(left: fa, right: fb)
       _ => false
     }
   }
