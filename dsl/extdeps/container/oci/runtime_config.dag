@@ -14,6 +14,7 @@ import extdeps.container.oci.linux {
 import extdeps.container.oci.types {
   OciRuntimeVersion,
   RuntimeMountKind,
+  RuntimeMountSource,
 }
 import std.types { Bool, FilePath, NonEmptyStr }
 
@@ -31,7 +32,7 @@ type RuntimeRoot {
 
 type RuntimeMount {
   destination: FilePath
-  source: FilePath?
+  source: RuntimeMountSource?
   mount_type: RuntimeMountKind?
   options: List<String>?
 }

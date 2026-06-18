@@ -72,6 +72,7 @@ import extdeps.container.oci.types {
   ImageArchArm64,
   ImageOsLinux,
   ImageOsUnknown,
+  MountSymbolicSource,
   OciDigest,
   RuntimeMountTmpfs,
   Tcp,
@@ -152,7 +153,7 @@ data ctrl_session_runtime_config: RuntimeBundleConfig = {
   mounts: [
     {
       destination: "/tmp",
-      source: "tmpfs",
+      source: MountSymbolicSource { label: "tmpfs" },
       mount_type: RuntimeMountTmpfs,
       options: ["nosuid", "strictatime", "mode=755", "size=65536k"],
     },

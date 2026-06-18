@@ -117,6 +117,37 @@ fn runtime_mount_kind_label(kind: RuntimeMountKind) -> String {
   }
 }
 
+// Runtime mount source (runtime-spec config.md `mounts[].source`).
+// Bind mounts name a host pathname; tmpfs/proc/sys carry a symbolic wire label or omit.
+type RuntimeMountSource
+  = MountBindSource { host_path: FilePath }
+  | MountSymbolicSource { label: NonEmptyStr }
+
+fn parse_runtime_mount_source(raw: String, kind: RuntimeMountKind?) -> RuntimeMountSource? {
+  if raw == "" {
+    null
+  } else {
+    match kind {
+      null => MountSymbolicSource { label: raw }
+      other =>
+        match other {
+          RuntimeMountBind => MountBindSource { host_path: raw }
+          RuntimeMountTmpfs => MountSymbolicSource { label: raw }
+          RuntimeMountProc => MountSymbolicSource { label: raw }
+          RuntimeMountSys => MountSymbolicSource { label: raw }
+          RuntimeMountUnknown { raw: _ } => MountSymbolicSource { label: raw }
+        }
+    }
+  }
+}
+
+fn runtime_mount_source_label(source: RuntimeMountSource) -> String {
+  match source {
+    MountBindSource { host_path: path } => path
+    MountSymbolicSource { label: label } => label
+  }
+}
+
 // OCI runtime bundle version (runtime-spec config.md `ociVersion`).
 type OciRuntimeVersion = SemVer
 
