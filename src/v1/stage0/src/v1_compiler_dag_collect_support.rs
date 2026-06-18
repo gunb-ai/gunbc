@@ -155,3 +155,61 @@ pub fn connective_name(value: Connective) -> String {
         Connective::Arrow => "Arrow".to_string(),
     }
 }
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::*;
+    use crate::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
+    use std::rc::Rc;
+
+    fn synth_span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "witness.dag".to_string(),
+            start: 0,
+            end: 0,
+        })
+    }
+
+    fn shell_node(
+        name: &str,
+        connective: Connective,
+        children: Vec<Rc<Node>>,
+        params: Vec<Rc<Node>>,
+    ) -> Rc<Node> {
+        Rc::new(Node {
+            name: name.to_string(),
+            ident: None,
+            span: synth_span(),
+            ident_span: None,
+            children: Rc::new(children),
+            connective,
+            params: Rc::new(params),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })
+    }
+
+    /// Names-only fingerprint would treat these as equal; recursive hash must not.
+    #[test]
+    fn recursive_fingerprint_distinguishes_same_named_child_subtrees() {
+        let child_a_conj = shell_node("a", Connective::Conj, vec![], vec![]);
+        let child_a_disj = shell_node("a", Connective::Disj, vec![], vec![]);
+        let left = shell_node("wrap", Connective::Conj, vec![child_a_conj], vec![]);
+        let right = shell_node("wrap", Connective::Conj, vec![child_a_disj], vec![]);
+        let left_fp = dag_node_surface_fingerprint(left);
+        let right_fp = dag_node_surface_fingerprint(right);
+        assert_ne!(
+            left_fp, right_fp,
+            "recursive fingerprint must distinguish structurally different 0..0 subtrees with identical child names"
+        );
+    }
+}
