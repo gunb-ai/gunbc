@@ -1,0 +1,167 @@
+// test/claim/reduce_to_fixpoint_witness_test.dag — by-execution witness for std.reduce_to_fixpoint.
+//
+// Proves the objective-first reduce-to-fixpoint toolkit (std/reduce_to_fixpoint.dag)
+// by RUNNING it (DESIGN §5). The discriminating cases:
+//   - Unknown absorbs in the verdict monoid (fail-closed join)
+//   - Irreducible is distinct from Reduced (stable on first step vs progress-then-stable)
+//   - bound exhaustion without stability → Unknown, not Reduced
+
+module test.claim.reduce_to_fixpoint_witness
+
+import std.logic { Bool }
+import std.types { Int, List }
+import std.reduce_to_fixpoint {
+  Progress,
+  ReduceBranch,
+  ReduceLeaf,
+  ReduceTree,
+  Reduced,
+  ReductionObjective,
+  ReductionStepOutcome,
+  ReductionVerdict,
+  Stable,
+  StepUnknown,
+  Irreducible,
+  Unknown,
+  reduce_to_fixpoint_bounded,
+  reduce_tree_verdict,
+  reduction_verdict_combine,
+  reduction_verdict_fold,
+  verdict_is_irreducible,
+  verdict_is_reduced,
+  verdict_is_unknown,
+}
+
+fn objective_always_stable() -> ReductionObjective<Int> {
+  fn(n) {
+    Stable
+  }
+}
+
+fn objective_decrement_to_zero() -> ReductionObjective<Int> {
+  fn(n) {
+    if n > 0 { Progress { value: n - 1 } } else { Stable }
+  }
+}
+
+fn objective_always_unknown() -> ReductionObjective<Int> {
+  fn(_) { StepUnknown }
+}
+
+fn objective_always_progress() -> ReductionObjective<Int> {
+  fn(n) { Progress { value: n + 1 } }
+}
+
+// Monoid: Unknown absorbs from either side.
+fn unknown_absorbs_left() -> Bool {
+  verdict_is_unknown(
+    v: reduction_verdict_combine(a: Unknown, b: Reduced)
+  )
+}
+
+fn unknown_absorbs_right() -> Bool {
+  verdict_is_unknown(
+    v: reduction_verdict_combine(a: Reduced, b: Unknown)
+  )
+}
+
+// Monoid: Reduced is identity; Irreducible is sticky over Reduced.
+fn reduced_is_identity_for_irreducible() -> Bool {
+  match reduction_verdict_combine(a: Reduced, b: Irreducible) {
+    Irreducible => true
+    _ => false
+  }
+}
+
+fn irreducible_is_sticky() -> Bool {
+  match reduction_verdict_combine(a: Irreducible, b: Reduced) {
+    Irreducible => true
+    _ => false
+  }
+}
+
+// Fixpoint: stable on first step → Irreducible, not Reduced.
+fn stable_first_step_is_irreducible() -> Bool {
+  let r = reduce_to_fixpoint_bounded(
+    step: objective_always_stable(),
+    value: 7,
+    bound: 4
+  )
+  verdict_is_irreducible(v: r.verdict) && !verdict_is_reduced(v: r.verdict)
+}
+
+// Fixpoint: progress then stability → Reduced.
+fn progress_then_stable_is_reduced() -> Bool {
+  let r = reduce_to_fixpoint_bounded(
+    step: objective_decrement_to_zero(),
+    value: 3,
+    bound: 8
+  )
+  verdict_is_reduced(v: r.verdict) && r.value == 0
+}
+
+// Fail-closed: StepUnknown on any step → Unknown.
+fn step_unknown_is_unknown() -> Bool {
+  let r = reduce_to_fixpoint_bounded(
+    step: objective_always_unknown(),
+    value: 1,
+    bound: 4
+  )
+  verdict_is_unknown(v: r.verdict)
+}
+
+// DISCRIMINATING: bound exhausted without stability → Unknown, not Reduced.
+fn bound_exhausted_without_stability_is_unknown() -> Bool {
+  let r = reduce_to_fixpoint_bounded(
+    step: objective_always_progress(),
+    value: 0,
+    bound: 2
+  )
+  verdict_is_unknown(v: r.verdict) && !verdict_is_reduced(v: r.verdict)
+}
+
+// Tree catamorphism: one Unknown leaf poisons the branch fold.
+fn tree_fold_absorbs_unknown_child() -> Bool {
+  let tree = ReduceBranch {
+    children: [
+      ReduceLeaf { value: 0 },
+      ReduceLeaf { value: 1 }
+    ]
+  }
+  let v = reduce_tree_verdict(
+    tree: tree,
+    step: objective_always_unknown()
+  )
+  verdict_is_unknown(v: v)
+}
+
+// Tree catamorphism: all leaves Reduced → branch Reduced.
+fn tree_fold_all_reduced() -> Bool {
+  let tree = ReduceBranch {
+    children: [
+      ReduceLeaf { value: 0 },
+      ReduceLeaf { value: 0 }
+    ]
+  }
+  let v = reduce_tree_verdict(
+    tree: tree,
+    step: objective_always_stable()
+  )
+  match v {
+    Irreducible => true
+    _ => false
+  }
+}
+
+test fn reduce_to_fixpoint_witnesses() -> Bool {
+  unknown_absorbs_left()
+    && unknown_absorbs_right()
+    && reduced_is_identity_for_irreducible()
+    && irreducible_is_sticky()
+    && stable_first_step_is_irreducible()
+    && progress_then_stable_is_reduced()
+    && step_unknown_is_unknown()
+    && bound_exhausted_without_stability_is_unknown()
+    && tree_fold_absorbs_unknown_child()
+    && tree_fold_all_reduced()
+}
