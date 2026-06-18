@@ -1,11 +1,11 @@
-// Scope: lens-unit RED witness — synthetic cross-tree content mismatch is a fork.
+// Scope: lens-unit RED witness — synthetic cross-tree content mismatch is diverged.
 // Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
 
 module v2.test.fact_cardinality.lens_unit.synthetic_fork_red
 
 import v2.lens.fact_cardinality {
   FactCardinalityDeclFact,
-  fact_cardinality_cross_tree_variant_mismatch
+  fact_cardinality_cross_tree_diverged_fork
 }
 import v2.std.logic { Bool }
 
@@ -22,7 +22,7 @@ data synthetic_fork_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
 }
 
 test fn synthetic_fork_red_holds() -> Bool {
-  fact_cardinality_cross_tree_variant_mismatch(
+  fact_cardinality_cross_tree_diverged_fork(
     left: synthetic_fork_dsl,
     right: synthetic_fork_v2
   )

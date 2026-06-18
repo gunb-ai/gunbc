@@ -6,8 +6,9 @@
 //!
 //! Host-reads `dsl/` and `src/v2/` without cross-resolve: each `.dag` file is scanned
 //! for column-0 `type` / `data` / `fn` items, normalized body text is hashed, and
-//! `{rel_path_within_tree}:{decl_name}` keys present in BOTH trees with >1 distinct hash
-//! are forks (e.g. `std/algebra.dag:FreeMonoid`).
+//! `{rel_path_within_tree}:{decl_name}` keys present in BOTH trees are coexistence debt
+//! (§3 dual-authority regardless of hash). Keys with >1 distinct hash across trees are
+//! additionally diverged forks (drift signal).
 //!
 //! 🟡 bridge-boundary — `tree: String` here is host transport only (`"dsl"` / `"v2"`);
 //! modeled facts use `FactCardinalityTree = Dsl | V2` in the lens.
@@ -176,7 +177,25 @@ pub fn cross_tree_decl_records() -> Vec<FactCardinalityDeclRecord> {
     records
 }
 
-pub fn cross_tree_fork_keys(records: &[FactCardinalityDeclRecord]) -> Vec<String> {
+pub fn cross_tree_coexistence_keys(records: &[FactCardinalityDeclRecord]) -> Vec<String> {
+    let mut by_key: HashMap<String, HashSet<String>> = HashMap::new();
+    for record in records {
+        by_key
+            .entry(record.rel_path_decl_key.clone())
+            .or_default()
+            .insert(record.tree.clone());
+    }
+    let mut keys = Vec::new();
+    for (key, trees) in by_key {
+        if trees.contains("dsl") && trees.contains("v2") {
+            keys.push(key);
+        }
+    }
+    keys.sort();
+    keys
+}
+
+pub fn cross_tree_diverged_fork_keys(records: &[FactCardinalityDeclRecord]) -> Vec<String> {
     let mut by_key: HashMap<String, HashMap<String, HashSet<String>>> = HashMap::new();
     for record in records {
         by_key
@@ -203,12 +222,23 @@ pub fn cross_tree_fork_keys(records: &[FactCardinalityDeclRecord]) -> Vec<String
     forks
 }
 
-pub fn cross_tree_fork_count() -> i64 {
-    cross_tree_fork_keys(&cross_tree_decl_records()).len() as i64
+pub fn cross_tree_coexistence_count() -> i64 {
+    cross_tree_coexistence_keys(&cross_tree_decl_records()).len() as i64
 }
 
-pub fn cross_tree_is_fork(rel_path_decl_key: String) -> bool {
-    let forks: HashSet<String> = cross_tree_fork_keys(&cross_tree_decl_records())
+pub fn cross_tree_diverged_fork_count() -> i64 {
+    cross_tree_diverged_fork_keys(&cross_tree_decl_records()).len() as i64
+}
+
+pub fn cross_tree_is_coexistence(rel_path_decl_key: String) -> bool {
+    let keys: HashSet<String> = cross_tree_coexistence_keys(&cross_tree_decl_records())
+        .into_iter()
+        .collect();
+    keys.contains(&rel_path_decl_key)
+}
+
+pub fn cross_tree_is_diverged_fork(rel_path_decl_key: String) -> bool {
+    let forks: HashSet<String> = cross_tree_diverged_fork_keys(&cross_tree_decl_records())
         .into_iter()
         .collect();
     forks.contains(&rel_path_decl_key)
@@ -219,13 +249,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn free_monoid_is_cross_tree_fork() {
-        assert!(cross_tree_is_fork("std/algebra.dag:FreeMonoid".to_string()));
+    fn free_monoid_is_cross_tree_coexistence() {
+        assert!(cross_tree_is_coexistence(
+            "std/algebra.dag:FreeMonoid".to_string()
+        ));
     }
 
     #[test]
-    fn lattice_is_not_cross_tree_fork() {
-        assert!(!cross_tree_is_fork("std/algebra.dag:Lattice".to_string()));
+    fn free_monoid_is_cross_tree_diverged_fork() {
+        assert!(cross_tree_is_diverged_fork(
+            "std/algebra.dag:FreeMonoid".to_string()
+        ));
+    }
+
+    #[test]
+    fn lattice_is_cross_tree_coexistence_debt() {
+        assert!(cross_tree_is_coexistence("std/algebra.dag:Lattice".to_string()));
+    }
+
+    #[test]
+    fn lattice_is_not_cross_tree_diverged_fork() {
+        assert!(!cross_tree_is_diverged_fork(
+            "std/algebra.dag:Lattice".to_string()
+        ));
+    }
+
+    #[test]
+    fn _coexistence_count_probe() {
+        panic!(
+            "coexistence={} diverged={}",
+            cross_tree_coexistence_count(),
+            cross_tree_diverged_fork_count()
+        );
     }
 
     #[test]

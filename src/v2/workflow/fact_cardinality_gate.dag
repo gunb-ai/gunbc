@@ -1,6 +1,6 @@
 // src/v2/workflow/fact_cardinality_gate.dag
 //
-// Fact-cardinality gate transport authority (DESIGN.md §3 cross-tree fork census).
+// Fact-cardinality gate transport authority (DESIGN.md §3 cross-tree coexistence census).
 // Witness roster: unified_claim_* rows discovered by claim_batch; lens owns semantics.
 //
 // Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
@@ -29,30 +29,37 @@ data row_lens_unit_synthetic_unified_green: FactCardinalityClaimRunRow = FactCar
   function: "synthetic_unified_green_holds"
 }
 
-data row_corpus_free_monoid_fork: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
-  label: "fact_cardinality/corpus/free_monoid_fork",
-  entry: "src/v2/compiler/fact_cardinality/corpus/free_monoid_fork_test.dag",
-  function: "corpus_free_monoid_fork_detected_holds"
+data row_corpus_free_monoid_diverged_fork: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
+  label: "fact_cardinality/corpus/free_monoid_diverged_fork",
+  entry: "src/v2/compiler/fact_cardinality/corpus/free_monoid_diverged_fork_test.dag",
+  function: "corpus_free_monoid_diverged_fork_detected_holds"
 }
 
-data row_corpus_unified_lattice_green: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
-  label: "fact_cardinality/corpus/unified_lattice_green",
-  entry: "src/v2/compiler/fact_cardinality/corpus/unified_lattice_green_test.dag",
-  function: "corpus_unified_lattice_green_holds"
+data row_corpus_lattice_coexistence_debt: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
+  label: "fact_cardinality/corpus/lattice_coexistence_debt",
+  entry: "src/v2/compiler/fact_cardinality/corpus/lattice_coexistence_debt_test.dag",
+  function: "corpus_lattice_coexistence_debt_holds"
 }
 
-data row_corpus_ratchet_baseline: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
-  label: "fact_cardinality/corpus/ratchet_baseline",
+data row_corpus_lattice_not_diverged_green: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
+  label: "fact_cardinality/corpus/lattice_not_diverged_green",
+  entry: "src/v2/compiler/fact_cardinality/corpus/lattice_not_diverged_green_test.dag",
+  function: "corpus_lattice_not_diverged_green_holds"
+}
+
+data row_corpus_coexistence_ratchet_baseline: FactCardinalityClaimRunRow = FactCardinalityClaimRunRow {
+  label: "fact_cardinality/corpus/coexistence_ratchet_baseline",
   entry: "src/v2/compiler/fact_cardinality/corpus/ratchet_baseline_test.dag",
-  function: "corpus_ratchet_baseline_holds"
+  function: "corpus_coexistence_ratchet_baseline_holds"
 }
 
 data fact_cardinality_claim_run_rows: List<FactCardinalityClaimRunRow> = [
   row_lens_unit_synthetic_fork_red,
   row_lens_unit_synthetic_unified_green,
-  row_corpus_free_monoid_fork,
-  row_corpus_unified_lattice_green,
-  row_corpus_ratchet_baseline
+  row_corpus_free_monoid_diverged_fork,
+  row_corpus_lattice_coexistence_debt,
+  row_corpus_lattice_not_diverged_green,
+  row_corpus_coexistence_ratchet_baseline
 ]
 
 fn fact_cardinality_claim_run_rows_tsv() -> String {

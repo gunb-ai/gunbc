@@ -4809,17 +4809,31 @@ fn eval_builtin(
             }))
         }
 
-        "fact_cardinality_cross_tree_fork_count" => Ok(Some(Value::Int(
-            crate::fact_cardinality_census::cross_tree_fork_count(),
+        "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
 
-        "fact_cardinality_cross_tree_is_fork" => {
+        "fact_cardinality_cross_tree_diverged_fork_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_diverged_fork_count(),
+        ))),
+
+        "fact_cardinality_cross_tree_is_coexistence" => {
             let key = expect_str(
                 positional.first().copied(),
-                "fact_cardinality_cross_tree_is_fork",
+                "fact_cardinality_cross_tree_is_coexistence",
             )?;
             Ok(Some(Value::Bool(
-                crate::fact_cardinality_census::cross_tree_is_fork(key),
+                crate::fact_cardinality_census::cross_tree_is_coexistence(key),
+            )))
+        }
+
+        "fact_cardinality_cross_tree_is_diverged_fork" => {
+            let key = expect_str(
+                positional.first().copied(),
+                "fact_cardinality_cross_tree_is_diverged_fork",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::fact_cardinality_census::cross_tree_is_diverged_fork(key),
             )))
         }
 

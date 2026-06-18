@@ -1,7 +1,10 @@
 // src/v2/lens/fact_cardinality.dag
-// Scope: fact-cardinality lens — cross-tree named-declaration fork census + ratchet.
-// DESIGN.md §3 single-authority enforcement: flags `{rel_path_within_tree}:{decl_name}` keys that
-// appear in BOTH `dsl/` and `src/v2/` with distinct normalized body content-hashes.
+// Scope: fact-cardinality lens — cross-tree named-declaration coexistence census + ratchet.
+// DESIGN.md §3 single-authority enforcement:
+//   - COEXISTENCE (ratchet): `{rel_path}:{decl_name}` in BOTH `dsl/` and `src/v2/` — dual
+//     authority regardless of body hash; only goes DOWN via genuine consolidation.
+//   - DIVERGENCE (drift signal): same key in both trees with distinct normalized hashes —
+//     higher severity; byte-sync does NOT clear coexistence debt.
 // Status: 🟡 M1 — host census bridge + lens-unit synthetic facts + corpus witnesses.
 // Consumer: claim_batch discovery over src/v2/compiler/fact_cardinality.
 // Hand-Rust scaffold receipt (DESIGN.md §7): `fact_cardinality_census.rs` is bootstrap
@@ -29,35 +32,59 @@ type FactCardinalityDeclFact {
   content_hash: String
 }
 
-// Ratchet baseline — current cross-tree fork debt counted by execution (2026-06-18).
-// Only moves DOWN as forks unify; gate RED if live count exceeds this.
-data fact_cardinality_cross_tree_fork_baseline: Int = 37
+// Coexistence ratchet baseline — dual-authority keys in BOTH trees (any hash).
+// Only moves DOWN when one authority is deleted / consolidated; gate RED if count grows.
+data fact_cardinality_cross_tree_coexistence_baseline: Int = 0
 
-fn fact_cardinality_cross_tree_variant_mismatch(
+fn fact_cardinality_cross_tree_coexistence(
   left: FactCardinalityDeclFact,
   right: FactCardinalityDeclFact
 ) -> Bool {
   left.rel_path_decl_key == right.rel_path_decl_key
     && left.tree != right.tree
+}
+
+// Divergence — distinct body hashes across trees (drifted fork; higher severity).
+fn fact_cardinality_cross_tree_diverged_fork(
+  left: FactCardinalityDeclFact,
+  right: FactCardinalityDeclFact
+) -> Bool {
+  fact_cardinality_cross_tree_coexistence(left: left, right: right)
     && left.content_hash != right.content_hash
 }
 
-fn fact_cardinality_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+// Alias retained for lens-unit witnesses authored before diverged_fork rename.
+fn fact_cardinality_cross_tree_variant_mismatch(
+  left: FactCardinalityDeclFact,
+  right: FactCardinalityDeclFact
+) -> Bool {
+  fact_cardinality_cross_tree_diverged_fork(left: left, right: right)
+}
+
+fn fact_cardinality_coexistence_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
   live_count <= baseline
 }
 
 // Host census bridge (reads live dsl/ + src/v2/ trees; no cross-resolve).
-fn fact_cardinality_live_cross_tree_fork_count() -> Int {
-  fact_cardinality_cross_tree_fork_count()
+fn fact_cardinality_live_cross_tree_coexistence_count() -> Int {
+  fact_cardinality_cross_tree_coexistence_count()
 }
 
-fn fact_cardinality_live_cross_tree_is_fork(rel_path_decl_key: String) -> Bool {
-  fact_cardinality_cross_tree_is_fork(key: rel_path_decl_key)
+fn fact_cardinality_live_cross_tree_diverged_fork_count() -> Int {
+  fact_cardinality_cross_tree_diverged_fork_count()
 }
 
-fn fact_cardinality_live_ratchet_holds() -> Bool {
-  fact_cardinality_ratchet_holds(
-    live_count: fact_cardinality_live_cross_tree_fork_count(),
-    baseline: fact_cardinality_cross_tree_fork_baseline
+fn fact_cardinality_live_cross_tree_is_coexistence(rel_path_decl_key: String) -> Bool {
+  fact_cardinality_cross_tree_is_coexistence(key: rel_path_decl_key)
+}
+
+fn fact_cardinality_live_cross_tree_is_diverged_fork(rel_path_decl_key: String) -> Bool {
+  fact_cardinality_cross_tree_is_diverged_fork(key: rel_path_decl_key)
+}
+
+fn fact_cardinality_live_coexistence_ratchet_holds() -> Bool {
+  fact_cardinality_coexistence_ratchet_holds(
+    live_count: fact_cardinality_live_cross_tree_coexistence_count(),
+    baseline: fact_cardinality_cross_tree_coexistence_baseline
   )
 }
