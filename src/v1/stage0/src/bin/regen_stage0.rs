@@ -751,6 +751,7 @@ fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
 
 struct DagCollectPatch {
     compile_text: String,
+    #[cfg_attr(not(test), allow(dead_code))]
     support_text: String,
 }
 
