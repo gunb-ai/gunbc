@@ -41,29 +41,39 @@ fn witness_tdt_unrealized_green_on_fact() -> Bool {
 }
 
 
+fn tdt_sample_holds() -> LensVerdict {
+  Holds
+}
+
+
 fn witness_tdt_unrealized_red_on_holds() -> Bool {
-  match Holds {
+  match tdt_sample_holds() {
     Unrealized { diagnostic: _ } => false
     _ => true
   }
 }
 
 
-fn witness_tdt_unrealized_red_on_perturbed_diagnostic() -> Bool {
+fn witness_tdt_locus_green_on_fact() -> Bool {
+  match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
+    Unrealized { diagnostic: d } => match d.at {
+      ModuleWholeFile { module_name: m } => m == tdt_witness_module
+    }
+    _ => false
+  }
+}
+
+
+fn witness_tdt_locus_red_on_perturbed_module() -> Bool {
   let perturbed = Unrealized {
     diagnostic: LensVerdictDiagnostic {
       reason: "table_decision_tree_perturbed",
       at: ModuleWholeFile { module_name: "v2.lens.table_decision_tree_wrong_module" }
     }
   }
-  match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
+  match perturbed {
     Unrealized { diagnostic: d } => match d.at {
-      ModuleWholeFile { module_name: m } => m == tdt_witness_module
-        && match perturbed {
-          Unrealized { diagnostic: pd } => match pd.at {
-            ModuleWholeFile { module_name: pm } => pm != tdt_witness_module
-          }
-        }
+      ModuleWholeFile { module_name: m } => m != tdt_witness_module
     }
     _ => false
   }
@@ -73,5 +83,6 @@ fn witness_tdt_unrealized_red_on_perturbed_diagnostic() -> Bool {
 test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
   witness_tdt_unrealized_green_on_fact()
     && witness_tdt_unrealized_red_on_holds()
-    && witness_tdt_unrealized_red_on_perturbed_diagnostic()
+    && witness_tdt_locus_green_on_fact()
+    && witness_tdt_locus_red_on_perturbed_module()
 }
