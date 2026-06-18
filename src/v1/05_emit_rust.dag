@@ -2582,7 +2582,19 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
+        n: resolved_type(n: item),
+        generic_param_names: [],
+        shared_types: shared_types,
+        source_indices: env.source_indices,
+        scope: scope,
+        imports: imports,
+        registry: registry,
+        module_name: module_name,
+        export_sets: export_sets,
+        typed_modules: typed_modules,
+        module_index: module_index,
+        variant_to_enum: emit_info.variant_to_enum), ";")
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
