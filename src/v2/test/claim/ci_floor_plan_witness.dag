@@ -1,0 +1,88 @@
+// v2/test/claim/ci_floor_plan_witness.dag
+//
+// Model witnesses for the spec-derived CI floor plan (`v2.workflow.ci_floor_plan`) — the
+// topology the scheduler runs as the default CI runtime. These prove the ORDER and
+// PARALLELISM facts on the pure plan (no host), each discriminating (DESIGN §5):
+//   - dependency order: the compile-clean gate is the sole batch-0 job;
+//   - fail-fast root:   the corpus does NOT run before compile-clean;
+//   - parallelism:      the independent gates + corpus share one later layer.
+// (The fail-closed-on-RED + halt fact is the host's `--perturb-check` receipt.)
+
+module v2.test.claim.ci_floor_plan_witness
+
+import v2.workflow.ci_floor_plan {
+  Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
+  gunbc_ci_floor_batches, corpus_scan_dirs
+}
+import gunbc.ci_spec { CiSpec, WitnessRoot, DiffPolicy, DiffMergeBase }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { List }
+
+// A spec whose witness root carries a `scan_subtrees` — the scan dir must surface
+// in the PLAN (`corpus_scan_dirs`), the single authority for that derivation, NOT
+// on the `claim_executor` argv (proven absent in `ci_spec_witness`).
+data spec_with_scan_subtree: CiSpec = {
+  witness_roots: [{ root: "src/v2", scan_subtrees: ["test"] }],
+  witness_entries: [],
+  gates: [],
+  diff_policy: { base: "origin/main", head: "HEAD", mode: DiffMergeBase },
+  notice_title: "scan-test"
+}
+
+data corpus_sentinel: String = "__corpus__"
+
+fn runnable_function(r: Runnable) -> String {
+  match r {
+    RunnableSingleClaim { entry: _, function: f } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => corpus_sentinel
+  }
+}
+
+fn batch_functions(b: List<Runnable>) -> List<String> {
+  fold(b, init: [], f: fn(acc, r) { list_snoc_item(xs: acc, item: runnable_function(r: r)) })
+}
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
+}
+
+// Two readiness layers: compile-clean, then everything that depends on it.
+fn witness_two_readiness_layers() -> Bool {
+  gunbc_ci_floor_batches().length() == 2
+}
+
+// Dependency order: the compile-clean gate is the SOLE batch-0 job.
+fn witness_compile_root_runs_first() -> Bool {
+  let batches = gunbc_ci_floor_batches()
+  (batches.first().length() == 1) &&
+    list_contains_str(xs: batch_functions(b: batches.first()), target: "dsl_compile_clean_gate_passes")
+}
+
+// Discriminating: the corpus must NOT be in batch 0 — it depends on compile-clean,
+// so a plan that scheduled it eagerly (no dependency edge) goes RED here.
+fn witness_corpus_not_before_compile() -> Bool {
+  let batches = gunbc_ci_floor_batches()
+  !list_contains_str(xs: batch_functions(b: batches.first()), target: corpus_sentinel)
+}
+
+// Parallelism: the independent gates + corpus share one later readiness layer
+// (a per-node serialization would split them, giving length 1 → RED).
+fn witness_independent_jobs_parallelize() -> Bool {
+  gunbc_ci_floor_batches().skip(n: 1).first().length() > 1
+}
+
+// Scan dirs are carried by the plan (the corpus DiscoveryBatch), the single
+// authority — NOT by the scheduler argv. A spec with `scan_subtrees: ["test"]`
+// under root `src/v2` yields `src/v2/test`; a derivation that dropped the subtree
+// would go RED here.
+fn witness_scan_subtree_flows_through_plan() -> Bool {
+  list_contains_str(xs: corpus_scan_dirs(spec: spec_with_scan_subtree), target: "src/v2/test")
+}
+
+fn ci_floor_plan_witnesses() -> Bool {
+  witness_two_readiness_layers() &&
+    witness_compile_root_runs_first() &&
+    witness_corpus_not_before_compile() &&
+    witness_independent_jobs_parallelize() &&
+    witness_scan_subtree_flows_through_plan()
+}

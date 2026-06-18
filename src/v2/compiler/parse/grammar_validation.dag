@@ -132,7 +132,7 @@ data validation_left_recursive_root: GrammarRoot = GrammarRoot {
 
 // Right-recursive grammar: A = "x" A? — not left-recursive; grammar_has_left_recursion returns false.
 // This exercises the validator boundary: right-recursive grammars are accepted and parse_expr
-// handles them via memoized ParseTable (position × production) built by structurally bounded fold.
+// handles them via lazy ParseTableRealization memo (position × production).
 data validation_right_recursive_root: GrammarRoot = GrammarRoot {
   start: ^validation_rec_start,
   productions: Cons {
