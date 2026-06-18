@@ -288,7 +288,7 @@ fn main() {
                     }
                 }
 
-                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
+                let resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
                 eprintln!(
                     "resolved {} sources (transitive import closure)",
                     resolved.len()
