@@ -5,8 +5,9 @@
 // lenses independently of the WHAT (the pure Node DAG).
 //
 // Layer split (§3):
-//   std/realization.dag           — independence classifier + schedule re-exports
+//   std/realization.dag           — independence classifier + schedule/measurement/width re-exports
 //   std/realization_schedule.dag  — schedule arm + lens (dsl-tree witnesses)
+//   std/realization_width.dag     — peripheral host spawn-width fold (Phase 1)
 //   extdeps/realization/*           — placement/materialization handlers (follow-on)
 //   workflow/*                    — policy (which Objective for prod vs dev)
 //
