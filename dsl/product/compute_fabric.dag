@@ -24,14 +24,39 @@ import std.os.types {
   ProcessSemantics,
 }
 import std.float { Float }
-import std.measure { Measure, Time, DataRate, One, ByteSize, MoneyMicros }
+import std.measure {
+  Measure,
+  Time,
+  DataRate,
+  One,
+  ByteSize,
+  MoneyMicros,
+  HardwareThreadCount,
+  byte_size,
+  byte_size_count,
+  hardware_thread_count,
+  hardware_thread_count_value,
+}
 import std.currency { CurrencyCode }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuFacts,
   CpuArchitecture,
+  cpu_facts_architecture,
   cpu_facts_sustained_per_thread_hz,
-  cpu_facts_threads
+  cpu_facts_threads,
+}
+import std.cpu.types {
+  CpuDeploymentFacts,
+  CpuModelCatalogRow,
+  CpuSocket,
+  CpuVendor,
+  SocketPackage,
+  Aarch64,
+  X86_64,
+  Armv7,
+  Riscv64,
+  Wasm32,
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
@@ -226,6 +251,90 @@ fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: 
   }
 }
 
+fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
+  match host.processors.first() {
+    Absent => none
+    Present { value: kind } =>
+      match kind {
+        CpuProcessor { cpu: c } => Present { value: c }
+        GpuProcessor { gpu: _ } => none
+        AcceleratorProcessor { accelerator: _ } => none
+      }
+  }
+}
+
+fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
+  byte_size(
+    host.memory
+      |> fold(
+        init: 0,
+        f: (acc, dev) => acc + byte_size_count(dev.capacity),
+      ),
+  )
+}
+
+fn offer_placement_supply_row(offer: ComputeOffer) -> PlacementSupplyRow? {
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent => none
+    Present { value: cpu } =>
+      Present {
+        value: placement_supply_row(
+          identity: offer.supply.physical.identity,
+          cpu: cpu,
+          ram_bytes_total: compute_host_ram_bytes_total(host: offer.supply.physical),
+        ),
+      }
+  }
+}
+
+fn cpu_threads_satisfies(supply: PlacementSupplyRow, demand: CpuRequirement?) -> Bool {
+  match demand {
+    Absent => true
+    Present { value: req } =>
+      hardware_thread_count_value(supply.hardware_threads)
+        >= hardware_thread_count_value(req.min_threads)
+  }
+}
+
+fn cpu_architecture_satisfies(host: ComputeHost, demand: CpuRequirement?) -> Bool {
+  match demand {
+    Absent => true
+    Present { value: req } =>
+      match req.architecture {
+        Absent => true
+        Present { value: arch } =>
+          match compute_host_primary_cpu(host: host) {
+            Absent => false
+            Present { value: cpu } => cpu_facts_architecture(cpu: cpu) == arch
+          }
+      }
+  }
+}
+
+fn memory_requirement_satisfies(supply: PlacementSupplyRow, demand: MemoryRequirement?) -> Bool {
+  match demand {
+    Absent => true
+    Present { value: req } =>
+      byte_size_count(supply.ram_bytes) >= byte_size_count(req.min_bytes)
+  }
+}
+
+fn satisfied_dimensions_for(demand: WorkDemand) -> List<DemandDimension> {
+  concat(
+    [DemandIsolation],
+    concat(
+      match demand.resources.cpu {
+        Absent => []
+        Present { value: _ } => [DemandCpu]
+      },
+      match demand.resources.memory {
+        Absent => []
+        Present { value: _ } => [DemandMemory]
+      },
+    ),
+  )
+}
+
 // --- §1.2 demand -------------------------------------------------------------
 
 type ResourceEnvelope {
@@ -236,7 +345,7 @@ type ResourceEnvelope {
   network: NetworkRequirement?
 }
 
-type CpuRequirement { min_cores: Int, architecture: CpuArchitecture? }
+type CpuRequirement { min_threads: HardwareThreadCount, architecture: CpuArchitecture? }
 type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
 type MemoryRequirement { min_bytes: ByteSize }
 type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
@@ -370,24 +479,57 @@ fn isolation_satisfies(supply: IsolationBoundary, demand: IsolationBoundary) -> 
   isolation_boundary_ordinal(boundary: supply) >= isolation_boundary_ordinal(boundary: demand)
 }
 
-// Gates on the isolation dimension (load-bearing); other dimensions attach as their comparison
-// helpers land. Fail-closed: Vm demand on SharedHostHome supply is Rejected, witness enumerates
-// only the dimensions actually proven.
+// Gates isolation + thread-count/memory feasibility (measurement-free — no Pareto pick).
+// Fail-closed: weaker isolation, insufficient threads/RAM, or missing CPU facts → Rejected;
+// witness enumerates only dimensions actually proven.
 // Lens: host selection over the offer free-list — first-fit allocator semantics (cf. placement_supply).
 fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility {
-  if isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
-    Eligible {
-      witness: ComputeLeaseWitness {
-        provider: offer.provider,
-        satisfied: [DemandIsolation],
-      },
-    }
-  } else {
+  if !isolation_satisfies(supply: offer.supply.execution.isolation, demand: demand.isolation.boundary) {
     Rejected {
       reason: MissingDemandFact {
         dimension: DemandIsolation,
         required: isolation_boundary_label(boundary: demand.isolation.boundary),
       },
+    }
+  } else {
+    match offer_placement_supply_row(offer: offer) {
+      Absent =>
+        Rejected {
+          reason: MissingDemandFact {
+            dimension: DemandCpu,
+            required: "primary_cpu",
+          },
+        }
+      Present { value: row } =>
+        if !cpu_threads_satisfies(supply: row, demand: demand.resources.cpu) {
+          Rejected {
+            reason: MissingDemandFact {
+              dimension: DemandCpu,
+              required: "min_threads",
+            },
+          }
+        } else if !cpu_architecture_satisfies(host: offer.supply.physical, demand: demand.resources.cpu) {
+          Rejected {
+            reason: MissingDemandFact {
+              dimension: DemandCpu,
+              required: "cpu_architecture",
+            },
+          }
+        } else if !memory_requirement_satisfies(supply: row, demand: demand.resources.memory) {
+          Rejected {
+            reason: MissingDemandFact {
+              dimension: DemandMemory,
+              required: "min_bytes",
+            },
+          }
+        } else {
+          Eligible {
+            witness: ComputeLeaseWitness {
+              provider: offer.provider,
+              satisfied: satisfied_dimensions_for(demand: demand),
+            },
+          }
+        }
     }
   }
 }
