@@ -2,7 +2,7 @@
 // Scope: Route B live coverage — candidate-generation entry + 06_translate error-profile probes.
 // Status: executed by claim_batch test-fn discovery over --source-root src/v2.
 //   GREEN: dag-mvp1 resolved slice emits a Node by execution (infer ∘ translate pre-serialize).
-//   MEASURED: translate reject head reasons classify through translate_outcome_head_reason_is_known.
+//   MEASURED: translate reject head reasons classify via TranslateDiagnosticReason coproduct (from_symbol match).
 //   DEFERRED: full SourceRootIngest→translate on real modules (interpreted path OOMs at ~130s in container).
 
 module v2.test.self_host.candidate_generation

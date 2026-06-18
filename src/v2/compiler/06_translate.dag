@@ -3924,43 +3924,61 @@ type TranslateDiagnosticReason
   | TargetTypeExprEmittedShapeMalformed
 
 fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symbol {
-  discriminant(v: reason)
+  match reason {
+    TargetBundleMalformed => ^translate_target_bundle_malformed
+    TargetBundleDuplicateEdge => ^translate_target_bundle_duplicate_edge
+    SgRcBundlePartial => ^translate_sg_rc_bundle_partial
+    GrammarInverseNotRealized => ^translate_grammar_inverse_not_realized
+    GrammarRelationRowNotFound => ^translate_grammar_relation_row_not_found
+    ConjInvalidEdge => ^translate_conj_invalid_edge
+    ConjNamedChildMissing => ^translate_conj_named_child_missing
+    ConcreteTokenClassMissing => ^translate_concrete_token_class_missing
+    ConcreteTokenKindInvalid => ^translate_concrete_token_kind_invalid
+    SerializeRecursionLimitExhausted => ^translate_serialize_recursion_limit_exhausted
+    LexRuleLiteralNotFound => ^translate_lex_rule_literal_not_found
+    BindingSpellingNotFound => ^translate_binding_spelling_not_found
+    TypeExpressionShapeMissing => ^translate_type_expression_shape_missing
+    TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
+    TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
+    TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
+    TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
+  }
 }
 
 fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
-  if sym == translate_diagnostic_reason_symbol(reason: TargetBundleMalformed) {
+  if sym == ^translate_target_bundle_malformed {
     optional_present(value: TargetBundleMalformed)
-  } else if sym == translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge) {
+  } else if sym == ^translate_target_bundle_duplicate_edge {
     optional_present(value: TargetBundleDuplicateEdge)
-  } else if sym == translate_diagnostic_reason_symbol(reason: SgRcBundlePartial) {
+  } else if sym == ^translate_sg_rc_bundle_partial {
     optional_present(value: SgRcBundlePartial)
-  } else if sym == translate_diagnostic_reason_symbol(reason: GrammarInverseNotRealized) {
+  } else if sym == ^translate_grammar_inverse_not_realized {
     optional_present(value: GrammarInverseNotRealized)
-  } else if sym == translate_diagnostic_reason_symbol(reason: GrammarRelationRowNotFound) {
+  } else if sym == ^translate_grammar_relation_row_not_found {
     optional_present(value: GrammarRelationRowNotFound)
-  } else if sym == translate_diagnostic_reason_symbol(reason: ConjInvalidEdge) {
+  } else if sym == ^translate_conj_invalid_edge {
     optional_present(value: ConjInvalidEdge)
-  } else if sym == translate_diagnostic_reason_symbol(reason: ConjNamedChildMissing) {
+  } else if sym == ^translate_conj_named_child_missing {
     optional_present(value: ConjNamedChildMissing)
-  } else if sym == translate_diagnostic_reason_symbol(reason: ConcreteTokenClassMissing) {
+  } else if sym == ^translate_concrete_token_class_missing {
     optional_present(value: ConcreteTokenClassMissing)
-  } else if sym == translate_diagnostic_reason_symbol(reason: ConcreteTokenKindInvalid) {
+  } else if sym == ^translate_concrete_token_kind_invalid {
     optional_present(value: ConcreteTokenKindInvalid)
-  } else if sym == translate_diagnostic_reason_symbol(reason: SerializeRecursionLimitExhausted) {
+  } else if sym == ^translate_serialize_recursion_limit_exhausted {
     optional_present(value: SerializeRecursionLimitExhausted)
-  } else if sym == translate_diagnostic_reason_symbol(reason: LexRuleLiteralNotFound) {
+  } else if sym == ^translate_lex_rule_literal_not_found {
     optional_present(value: LexRuleLiteralNotFound)
-  } else if sym == translate_diagnostic_reason_symbol(reason: BindingSpellingNotFound) {
+  } else if sym == ^translate_binding_spelling_not_found {
     optional_present(value: BindingSpellingNotFound)
-  } else if sym == translate_diagnostic_reason_symbol(reason: TypeExpressionShapeMissing) {
+  } else if sym == ^translate_type_expression_shape_missing {
     optional_present(value: TypeExpressionShapeMissing)
-  } else if sym == translate_diagnostic_reason_symbol(reason: TypeExprKindAuthorityInvalid) {
+  } else if sym == ^translate_type_expr_kind_authority_invalid {
     optional_present(value: TypeExprKindAuthorityInvalid)
-  } else if sym == translate_diagnostic_reason_symbol(reason: TargetAtomRealizationLookupMiss) {
+  } else if sym == ^target_atom_realization_lookup_miss {
     optional_present(value: TargetAtomRealizationLookupMiss)
-  } else if sym == translate_diagnostic_reason_symbol(reason: TargetFunctionSignatureRealizationLookupMiss) {
+  } else if sym == ^target_function_signature_realization_lookup_miss {
     optional_present(value: TargetFunctionSignatureRealizationLookupMiss)
-  } else if sym == translate_diagnostic_reason_symbol(reason: TargetTypeExprEmittedShapeMalformed) {
+  } else if sym == ^target_type_expr_emitted_shape_malformed {
     optional_present(value: TargetTypeExprEmittedShapeMalformed)
   } else {
     optional_absent()
