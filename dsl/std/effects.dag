@@ -129,17 +129,17 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
 
 // dissolve-on: derived structural == on KeySource (closed coproduct equality) replaces this
 // hand-rolled predicate; interim owner: increment-1 create_double_init_collapsible identity.
-fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
-  match a {
-    PathParam { param: pa } => match b {
+fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
+  match left {
+    PathParam { param: pa } => match right {
       PathParam { param: pb } => pa == pb
       _ => false
     }
-    InputField { field: fa } => match b {
+    InputField { field: fa } => match right {
       InputField { field: fb } => fa == fb
       _ => false
     }
-    CompositeKey { fields: fa } => match b {
+    CompositeKey { fields: fa } => match right {
       CompositeKey { fields: fb } => string_list_eq(left: fa, right: fb)
       _ => false
     }
