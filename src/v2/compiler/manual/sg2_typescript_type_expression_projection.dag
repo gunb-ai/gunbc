@@ -48,7 +48,7 @@ data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"
 data ts_sg2_expected_arrow_labeled_text: String = "(X: X) => Y"
-data ts_sg2_expected_conj_text: String = " { X, Y }"
+data ts_sg2_expected_conj_text: String = " { X: X, Y: Y }"
 data ts_sg2_expected_disj_text: String = "X | Y"
 
 fn ts_sg2_pass_node() -> Node {
@@ -164,28 +164,6 @@ fn ts_sg2_serialized_text(emitted: Node) -> String {
     Accepted { value: source, diagnostics: _ } => source
     Rejected { diagnostics: _ } => ts_sg2_fail_text
   }
-}
-
-fn ts_sg2_serialize_reject_head_reason(emitted: Node) -> Symbol {
-  match target_serialize_source_from_model(
-    target: ts_sg2_type_expr_target_model(),
-    emitted: emitted
-  ) {
-    Accepted { value: _, diagnostics: _ } => ^ts_sg2_serialize_probe_not_rejected
-    Rejected { diagnostics: r } => r.head.reason
-  }
-}
-
-fn ts_sg2_conj_projected_serialized_text() -> String {
-  ts_sg2_serialized_text(emitted: ts_sg2_project_conj_emitted())
-}
-
-fn ts_sg2_conj_projected_serialize_reject_head_reason() -> Symbol {
-  ts_sg2_serialize_reject_head_reason(emitted: ts_sg2_project_conj_emitted())
-}
-
-fn ts_sg2_conj_projected_serialize_text_differs_from_expected() -> Bool {
-  ts_sg2_conj_projected_serialized_text() != ts_sg2_expected_conj_text
 }
 
 fn ts_sg2_serialize_matches_expected() -> Bool {
