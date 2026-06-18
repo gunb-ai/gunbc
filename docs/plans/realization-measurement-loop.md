@@ -124,15 +124,25 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
   projection** over the same seam. Per-variant counters are a *dead end* (a variant is not a cacheable
   identity → can't feed Phase 2).
 - **Instrumentation = the dual of the cache.** Both wrap the same fold boundary keyed by the same
-  content-hash: the cache stores node→value, the instrument stores node→duration. Emit a side-channel
-  `List<SubjectTiming{ content_hash, self_nanos, subtree_nanos }>` (a §1 host-effect); the *analysis* is a
-  pure lens. Use the existing gross−children self-time decomposition (`v1_interpreter.rs:1466-1476`).
+  content-hash: the cache stores node→value, the instrument stores node→duration. The *analysis* is a pure
+  lens; the measurement itself is a §1 host-effect. Use the existing gross−children self-time decomposition
+  (`v1_interpreter.rs:1466-1476`).
+- **The measurement output is a `PerformanceReceipt`, NOT a new struct (§3 — do not coin a 4th).** The
+  observation carrier already exists: `compute_fabric.PerformanceReceipt{ wall_duration, sample_count,
+  confidence }` (`compute_fabric.dag:414-423`), and `ExecutionReceipt.performance` (`:453`) already hangs it
+  on the receipt. So Phase 0 emits a `PerformanceReceipt` keyed by the cache-subject hash → it rolls up into
+  `CostAccount.time` (the aggregate). This is what *fuses the keystone to the compute-fabric deliverable*:
+  the thing Phase 0 measures **is** the fabric's execution receipt, and `MeasurementConfidence`
+  (SingleSample/Range/DistributionSummary) is exactly the per-witness-distribution honesty the audit's
+  observability gap needs.
 - **Feed `CostAccount`.** Add `CostBasis = Measured | Predicted` (the `:25-26` dissolve-on); aggregate
-  SubjectTiming → `RealizationPlan.total`.
-- **Converge the two time authorities (§3).** `NanosecondDuration` (`measure.dag:258`) is the authority;
-  `TestNodeCostDimension.measured_ms` (Milliseconds, `verification.dag`) **dissolves** into a
-  budget-*predicate* over the measured `CostAccount.time` (a ns threshold), not a parallel measured field
-  (ms truncates a 5 ns step to 0 — DESIGN §6 "it might be a 5 ns step").
+  PerformanceReceipts → `RealizationPlan.total`.
+- **Converge the time authorities — there are THREE, not two (§3).** `NanosecondDuration` (`measure.dag:258`)
+  is the authority. `TestNodeCostDimension.measured_ms` (Milliseconds, `verification.dag`) **dissolves**
+  into a budget-*predicate* over the measured `CostAccount.time` (a ns threshold), not a parallel measured
+  field (ms truncates a 5 ns step to 0 — DESIGN §6). And `PerformanceReceipt.wall_duration` is the
+  *observation* feeding the roll-up — observation vs roll-up, not a fork. Net: one observation carrier
+  (`PerformanceReceipt`), one roll-up (`CostAccount.time`), `measured_ms` deleted.
 - **Persist the dropped timing.** Carry per-witness/per-entry timing through `DiscoverySummary` and the
   floor path (`claim_executor`), closing the audit's observability gap (the "two-clock" per-entry-resolve
   vs aggregate-per-witness split) — which is *itself* the profiling the operator was about to do by hand,
@@ -148,8 +158,11 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
 **Depends on:** Phase 0 (shard balance needs measured per-shard cost).
 
 - **Explode the corpus node** (`ci_floor_plan.dag:107`) into per-entry-group `Runnable`s — **rows, not
-  Rust**. Shard *by whole entry-group* to preserve the warm `typed_module_cache` (splitting an entry's
-  witnesses re-incurs its cold resolve). This is the keystone both background audits independently named.
+  Rust**. Express it as a `WorkDemand` whose `parallelism = IndependentShards{shard_count}`
+  (`compute_fabric.dag:282`) — the corpus is today a *degenerate (unsharded) projection* of exactly that,
+  so this reuses the carrier rather than minting a scheduler-local shard list. Shard *by whole entry-group*
+  to preserve the warm `typed_module_cache` (splitting an entry's witnesses re-incurs its cold resolve).
+  This is the keystone both background audits independently named.
 - **The hardware budget is what `compute_fabric` PROVISIONS — do not coin a fresh carrier (§2/§3).** The
   width-fold reads the `PlacementSupplyRow` that `compute_fabric` already projects (`placement_supply_row`,
   `compute_fabric.dag:220`; `PlacementSupplyRow.hardware_threads` `placement_supply.dag:29-31`). **The
@@ -193,10 +206,15 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
   a deployment's *available* backends, emit a `CacheLayerPlan` (type exists, `:91`): L1 in-process → L2
   sccache / cargo target / resolved-graph → L3 CAS.
 - **One content-address lookup kernel, N backends bound by `transport_encoding`** (§4 one-kernel/N-handlers).
-  The in-process memo is just the `InProcess` row of the *same* kernel. **Converge the 3 bespoke key
-  derivations** (`parse_cache` by path, `typed_module_cache` by module-name, `resolved_graph` by
-  content-hash; `pure_call_memo` by address) onto **one content-addressed subject identity** — the
-  `key_derivation` axis exists for exactly this.
+  The in-process memo is just the `InProcess` row of the *same* kernel. **Converge the key derivations onto
+  ONE content-addressed subject identity.** Today there are *four* keyings: `parse_cache` by path,
+  `typed_module_cache` by module-name, `resolved_graph` by content-hash, `pure_call_memo` by address — **and
+  the `ExecutionReceipt` digest the whole three-dimension unification rests on is itself a 4th stub**:
+  `execution_receipt_digest` returns `receipt.work.id`, a hand-authored brand, not a content hash
+  (`compute_fabric.dag:588-594`). The §0 thesis ("all three dimensions keyed on one `ExecutionReceipt`")
+  is only *true once this digest becomes a real content hash aligned with the cache-subject identity* — so
+  this convergence is shared work between Phase 2 (cache) and the compute-fabric track, not cache-local.
+  The `key_derivation` axis exists for exactly this.
 - **Cost-aware reach (§1).** Reach for a layer only when its predicted delta favors it:
   `min(recompute, lookup + p(miss)·recompute)` — `read_latency` (InProcessNs…WanTensMs) is already a
   modeled axis; `recompute` comes from Phase 0. A WAN CAS hit can lose to recomputing a cheap node.
@@ -228,11 +246,15 @@ runner *declares* is the budget Phase 1's scheduler *consumes*.
   (`actions.dag:233` — `SelfHosted{labels}` is stringly today; its dissolution note calls for a "typed
   runner-label substrate … where the compiler owns runner topology") so a runner spec is the GHA
   *realization* of a `compute_fabric` offer/demand (runner labels ≈ the demand's isolation/locality). ci.yml
-  is *already* generated from `CiFloorSpec` (`dsl/tools/gunbc_ci.dag`, `extdeps/github/ci.dag`) — **extend
-  that generation** to emit runner + job + provisioning config from the fabric model rather than
-  hand-authoring `.github/workflows/ci.yml`. DFS before minting: `compute_fabric` first, then
-  `extdeps/github/actions.dag`, `extdeps/os/{ubuntu,…}`, `extdeps/container`, `extdeps/docker`,
-  `extdeps/cloud`, `dsl/std/os.dag`.
+  **is already generated and byte-drift-gated** — generator `expected_ci_yml()`
+  (`dsl/gunbc/ci_yaml_emit.dag:9`), gate `dsl/tools/ci_yaml_gate.dag`, validate
+  `dsl/gunbc/ci_yaml_validate.dag` — so this is **extend existing generation, not build new**. The concrete
+  seam (start-now, measurement-free): `ci_yaml_emit.dag` emits `runs-on: [self-hosted,linux,arm64]` as a
+  **literal** today; route it through `RunnerSpec` derived from a `compute_fabric` `ComputeOffer` (the
+  carrier's own dissolution trigger, `actions.dag:226-232`, names "gunbc/ci_emission.dag projection for
+  emitted workflow YAML"). DFS before minting: `compute_fabric` first, then `extdeps/github/actions.dag`,
+  `extdeps/os/{ubuntu,…}`, `extdeps/container`, `extdeps/docker`, `extdeps/cloud`, `dsl/std/os.dag`.
+  ⚠️ Ignore the stale `extdeps/github/ci.dag:7` "hand-edited, not generated" comment (track for deletion).
 - **3b — private ctrl instantiation (separate, NOT this PR).** The *concrete* srv1/srv2 facts — access
   creds, runner registration tokens, the exact SKUs each host runs, host provisioning — are **ctrl-tier
   private**, in **ctrl `plans.fabric.operator_fleet`** (named by `compute_fabric.dag:5`;
@@ -309,6 +331,11 @@ groundwork. **Critical path:** Phase 0 → 1 / 2.
    *availability probe* is runtime/peripheral. Confirm the split when scoping Phase 2.
 4. **Runner-label vocabulary** — how far to close `SelfHosted{labels: List<String>}` toward a typed
    topology / a `compute_fabric` offer (3a) without over-fitting to srv1/srv2 (which live in ctrl).
-5. **Sharding ↔ `compute_fabric` `Partitioner`/`Reducer` stubs** (`compute_fabric.dag:48-58`, `= Node`
-   forward) — does Phase 1's corpus-sharding dissolve those stubs (partition work → place → reduce
-   verdicts), or stay scheduler-local? Decide whether the work-graph partition is a fabric concern.
+5. **Sharding lives in the demand model — Phase 1 and 3 meet at the parallelism shape, not just the
+   budget.** `ParallelismShape = ... | IndependentShards{shard_count} | PartitionedReduce{...}`
+   (`compute_fabric.dag:280-289`) already exists, and the corpus `RunnableDiscoveryBatch` is a **degenerate
+   (unsharded) projection of a `WorkDemand` whose `parallelism = IndependentShards`** (independent
+   witnesses). So the easy case needs no new stubs; the `Partitioner`/`Reducer`/`SymbolicCost = Node`
+   forwards (`:48-58`) are only for the harder `PartitionedReduce` (whole-tree compile → reduce verdicts).
+   Decide: does Phase 1 express the corpus as an `IndependentShards` `WorkDemand` (preferred — reuses the
+   carrier) vs a scheduler-local shard list?
