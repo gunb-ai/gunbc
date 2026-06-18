@@ -1,0 +1,54 @@
+// dsl/test/claim/hermetic_replay_fidelity_witness.dag
+//
+// Discriminating fidelity witnesses for per-op REST hermetic coverage (§5).
+// Folds HermeticRealization — covered ops produce RecordedFixtureReplay,
+// uncovered ops produce InlineMockScaffold (fail-closed, not default-true).
+
+module test.claim.hermetic_replay_fidelity_witness
+
+import std.fidelity {
+  RestNetwork,
+  operation_hermetic_realization,
+  transport_hermetic_with_recorded_coverage
+}
+import std.hermetic_replay {
+  HermeticRealization,
+  InlineMockScaffold,
+  RecordedFixtureReplay
+}
+
+fn rest_coverage_grants_hermetic_holds() -> Bool {
+  transport_hermetic_with_recorded_coverage(
+    tc: RestNetwork,
+    has_recorded_fixture_coverage: true
+  )
+}
+
+fn rest_without_coverage_fails_closed_holds() -> Bool {
+  !transport_hermetic_with_recorded_coverage(
+    tc: RestNetwork,
+    has_recorded_fixture_coverage: false
+  )
+}
+
+fn http_pilot_operation_hermetic_capable_holds() -> Bool {
+  match operation_hermetic_realization(
+    tc: RestNetwork,
+    in_published_corpus: true,
+    has_recorded_fixture_coverage: true
+  ) {
+    RecordedFixtureReplay => true
+    InlineMockScaffold => false
+  }
+}
+
+fn http_pilot_without_corpus_fails_closed_holds() -> Bool {
+  match operation_hermetic_realization(
+    tc: RestNetwork,
+    in_published_corpus: false,
+    has_recorded_fixture_coverage: true
+  ) {
+    InlineMockScaffold => true
+    RecordedFixtureReplay => false
+  }
+}

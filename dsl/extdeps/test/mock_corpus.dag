@@ -1,0 +1,18 @@
+// extdeps/test/mock_corpus.dag -- Published structural mock corpus for http_pilot (P4b M1).
+//
+// Payload authority: Phase-2 RecordedFixture store only (§3). Rows mirror
+// (operation_key, case_id) — no response values.
+
+module extdeps.test.mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+import std.list { List }
+
+data http_pilot_mock_case_get_post: PublishedMockCase = PublishedMockCase {
+  operation_key: "test.HttpPilot.GetPost",
+  case_id: 0
+}
+
+data http_pilot_published_mock_corpus: List<PublishedMockCase> = [
+  http_pilot_mock_case_get_post
+]

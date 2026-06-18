@@ -17,7 +17,7 @@ module v2.test.lens_mock_totality.filesystem_mock_totality
 
 import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
 import v2.extdeps.filesystem.mock_corpus {
-  FilesystemMockCase,
+  PublishedMockCase,
   filesystem_published_mock_corpus
 }
 import v2.std.algebra { filter }
@@ -27,17 +27,17 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 // The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
-// the real payload is filesystem_io.dag's `mock_response` (out of spike scope, see §3 note there).
+// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
 type MaterializedFilesystemMock {
   tag: Symbol
 }
 
 // The REAL consumer: materializes ANY published filesystem case impl-blind, keyed on the
-// operation; fail-closes (the canonical `mock_unhandled_rejection`) for an unpublished operation.
-fn materialize_filesystem_mock(case: FilesystemMockCase) -> Outcome<MaterializedFilesystemMock> {
-  if case.operation == ^Write {
+// operation_key; fail-closes (the canonical `mock_unhandled_rejection`) for an unpublished op.
+fn materialize_filesystem_mock(case: PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
+  if case.operation_key == "Filesystem.Write" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })
-  } else if case.operation == ^Read {
+  } else if case.operation_key == "Filesystem.Read" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_read })
   } else {
     mock_unhandled_rejection()
@@ -46,20 +46,20 @@ fn materialize_filesystem_mock(case: FilesystemMockCase) -> Outcome<Materialized
 
 // The DELIBERATELY-INCOMPLETE consumer: omits `Read` → fail-closes on the published Read case.
 // This is the discriminating input that drives the lens RED on omission.
-fn materialize_filesystem_mock_omits_read(case: FilesystemMockCase) -> Outcome<MaterializedFilesystemMock> {
-  if case.operation == ^Write {
+fn materialize_filesystem_mock_omits_read(case: PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
+  if case.operation_key == "Filesystem.Write" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })
   } else {
     mock_unhandled_rejection()
   }
 }
 
-fn filesystem_mock_case_eq(a: FilesystemMockCase, b: FilesystemMockCase) -> Bool {
-  a.operation == b.operation && a.case_id == b.case_id
+fn filesystem_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
+  a.operation_key == b.operation_key && a.case_id == b.case_id
 }
 
 // Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
-fn real_consumer_handles(case: FilesystemMockCase) -> Bool {
+fn real_consumer_handles(case: PublishedMockCase) -> Bool {
   match materialize_filesystem_mock(case: case) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -67,7 +67,7 @@ fn real_consumer_handles(case: FilesystemMockCase) -> Bool {
 }
 
 // Did the DELIBERATELY-INCOMPLETE consumer (no `Read` handler) materialize this case?
-fn omits_read_consumer_handles(case: FilesystemMockCase) -> Bool {
+fn omits_read_consumer_handles(case: PublishedMockCase) -> Bool {
   match materialize_filesystem_mock_omits_read(case: case) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -75,7 +75,7 @@ fn omits_read_consumer_handles(case: FilesystemMockCase) -> Bool {
 }
 
 // The handled set = the published members a consumer accepts, BY EXECUTION over the corpus.
-fn handled_by(consumer_handles: fn(FilesystemMockCase) -> Bool) -> List<FilesystemMockCase> {
+fn handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
   filter(xs: filesystem_published_mock_corpus, predicate: consumer_handles)
 }
 

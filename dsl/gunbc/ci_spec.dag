@@ -49,6 +49,10 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
     { entry: "dsl/test/claim/cargo_target_path_witness.dag", function: "cargo_target_path_witnesses" },
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
+    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "rest_coverage_grants_hermetic_holds" },
+    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "rest_without_coverage_fails_closed_holds" },
+    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "http_pilot_operation_hermetic_capable_holds" },
+    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "http_pilot_without_corpus_fails_closed_holds" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
     { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
     { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
@@ -119,10 +123,74 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   )
 }
 
+<<<<<<< HEAD
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
     concat(git_fetch_script(policy: spec.diff_policy), "\n"),
     scheduler_invoke(spec: spec)
+=======
+fn ci_gates_invoke(spec: CiSpec) -> String {
+  concat(
+    concat("cargo run -p v1-compiler --release --bin gunbc -- run", witness_roots_flags(roots: spec.witness_roots)),
+    " --entry dsl/tools/ci_gates.dag --function main"
+  )
+}
+
+// P4b REST hermetic pilot: replay from committed fixture seed (no live jsonplaceholder).
+fn http_pilot_hermetic_floor_script() -> String {
+  concat(
+    concat(
+      concat(
+        "# P4b REST hermetic pilot: hermetic replay from committed fixture seed.\n",
+        "HTTP_PILOT_FIXTURES=\"$(pwd)/dsl/extdeps/test/fixtures/http_pilot\"\n"
+      ),
+      concat(
+        "cargo run -p v1-compiler --release --bin claim_batch -- \\\n",
+        concat(
+          "  --source-root . --source-root dsl \\\n",
+          concat(
+            "  --entry dsl/test/claim/http_pilot_rest_witness.dag \\\n",
+            concat(
+              "  --function http_pilot_rest_keystone_holds \\\n",
+              "  --hermetic --fixture-store \"$HTTP_PILOT_FIXTURES\" \\\n  --claim-run\n"
+            )
+          )
+        )
+      )
+    ),
+    concat(
+      "if cargo run -p v1-compiler --release --bin claim_batch -- \\\n",
+      concat(
+        "  --source-root . --source-root dsl \\\n",
+        concat(
+          "  --entry dsl/test/claim/http_pilot_rest_witness.dag \\\n",
+          concat(
+            "  --function http_pilot_rest_keystone_holds \\\n",
+            concat(
+              "  --hermetic --claim-run; then\n",
+              concat(
+                "  echo \"http pilot must fail closed without fixture store (no inline mock_response)\"\n",
+                "  exit 1\nfi"
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn gunbc_ci_run_script(spec: CiSpec) -> String {
+  concat(
+    concat(
+      concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+      concat(claim_batch_script(spec: spec), "\n")
+    ),
+    concat(
+      concat(http_pilot_hermetic_floor_script(), "\n"),
+      ci_gates_invoke(spec: spec)
+    )
+>>>>>>> a16f1359ba (P4b M0+M1: REST hermetic pilot + PublishedMockCase unification.)
   )
 }
 

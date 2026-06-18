@@ -14,6 +14,7 @@ module std.fidelity
 
 import std.types { FermiDepth }
 import std.fermi { fermi_max_of }
+import std.hermetic_replay { HermeticRealization, InlineMockScaffold, RecordedFixtureReplay }
 
 // Transport classification (mirrors ServiceTransportClass in compiler)
 type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
@@ -33,7 +34,9 @@ fn transport_depth(tc: TransportClass) -> FermiDepth {
   }
 }
 
-// Transport -> hermetic flag (can it be mocked in DryRun?)
+// Transport -> hermetic flag (legacy coarse classifier for classify_transports).
+// RestNetwork stays fail-closed here — per-op hermetic capability with proven
+// RecordedFixture coverage lives in std.hermetic_replay (transport_hermetic_with_recorded_coverage).
 fn transport_hermetic(tc: TransportClass) -> Bool {
   match tc {
     LocalDirect    => true
@@ -42,6 +45,49 @@ fn transport_hermetic(tc: TransportClass) -> Bool {
     FileBoundary   => true
     RestNetwork    => false
     Unknown        => false
+  }
+}
+
+// Per-op hermetic capability: fail-closed unless proven fixture coverage exists.
+// RestNetwork is NOT blanket-hermetic — coverage must be demonstrated by execution
+// (record→replay witness) before any consumer treats the op as hermetic-capable.
+fn transport_hermetic_with_recorded_coverage(
+  tc: TransportClass,
+  has_recorded_fixture_coverage: Bool
+) -> Bool {
+  match tc {
+    LocalDirect =>
+      true
+    InterfaceStub =>
+      true
+    ShellLocal =>
+      true
+    FileBoundary =>
+      true
+    RestNetwork =>
+      has_recorded_fixture_coverage
+    Unknown =>
+      false
+  }
+}
+
+// Published-mock corpus membership is evidence of structural coverage intent;
+// RecordedFixture replay is the payload authority. Produces HermeticRealization
+// for fidelity witnesses to fold directly (no Bool predicate dissolution).
+fn operation_hermetic_realization(
+  tc: TransportClass,
+  in_published_corpus: Bool,
+  has_recorded_fixture_coverage: Bool
+) -> HermeticRealization {
+  if in_published_corpus
+    && has_recorded_fixture_coverage
+    && transport_hermetic_with_recorded_coverage(
+      tc: tc,
+      has_recorded_fixture_coverage: true
+    ) {
+    RecordedFixtureReplay
+  } else {
+    InlineMockScaffold
   }
 }
 

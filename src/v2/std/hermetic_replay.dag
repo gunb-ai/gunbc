@@ -1,0 +1,11 @@
+// v2/std/hermetic_replay.dag -- Published mock-case structural key (v2 carrier).
+//
+// Mirror of dsl/std/hermetic_replay.PublishedMockCase — dissolve when v2 resolves
+// dsl std.hermetic_replay directly (§3 single authority; bootstrap seed only).
+
+module v2.std.hermetic_replay
+
+type PublishedMockCase {
+  operation_key: String
+  case_id: Int
+}
