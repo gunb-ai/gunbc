@@ -19,7 +19,13 @@ import extdeps.languages.rust.emit {
   rust_serde_rename_all_snake_case,
   rust_serde_rename_all_screaming_snake_case
 }
-import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import v2.extdeps.languages.rust {
+  rust_concrete_token_node,
+  rust_inhabitant_atom,
+  rust_named_edge,
+  rust_reference_layer_tokens
+}
+import v2.std.algebra { Empty, fold_list, list_append }
 import v2.std.collection { List, Map, empty_map }
 import v2.std.compilers.lexing {
   LexRule,
@@ -33,32 +39,20 @@ import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
-  TargetEmitHostRuntimeRow,
   concrete_syntax_token_class,
-  concrete_syntax_token_to_node,
-  grammar_relation_tokens_node,
   target_reference_layer_tokens_node
 }
 import v2.std.grammar {
   GrammarExpr,
   GrammarProduction,
   Sequence,
+  StampClass,
   Terminal,
-  grammar_formal_production,
-  grammar_formal_terminal,
   grammar_production_to_node,
-  grammar_empty_sync_tokens
+  grammar_relation_tokens_node
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 
 // --- VariantNaming → extdeps serde attr (single authority, no fork) -----------------
 
@@ -92,20 +86,21 @@ data rust_ws_review_event_screaming_golden: String = "#[serde(rename_all = \"SCR
 
 data rust_ws_review_event_snake_golden: String = "#[serde(rename_all = \"snake_case\")]\npub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
 
-fn rust_ws_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
-}
-
-fn rust_ws_inhabitant_atom(id: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: id } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn rust_ws_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  concrete_syntax_token_to_node(token: token)
+// Arrow sentinel — exact grammar_relation_field_emitted fixture match (Atom would take the
+// lhs-exact singleton-terminal path, which does not fit a multi-terminal enum production).
+data rust_wire_serde_review_event_emitted: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge {
+      label: Positional,
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
 }
 
 fn rust_ws_review_event_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToken> {
@@ -156,21 +151,37 @@ fn rust_ws_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
+type RustWireSerdeGramBuildState
+  = RustWireSerdeGramBuildInit
+  | RustWireSerdeGramBuildReady { expr: GrammarExpr }
+
 fn rust_ws_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
   match fold_list(
     xs: tokens,
-    empty: optional_absent(),
-    cons: fn(acc, token) {
-      let term = rust_ws_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
-      match acc {
-        Absent => optional_present(value: term)
-        Present { value: left } =>
-          optional_present(value: Sequence { left: left, right: term })
+    empty: RustWireSerdeGramBuildInit,
+    cons: fn(state, token) {
+      match state {
+        RustWireSerdeGramBuildInit =>
+          RustWireSerdeGramBuildReady {
+            expr: rust_ws_grammar_terminal(
+              token_class: concrete_syntax_token_class(token: token)
+            )
+          }
+        RustWireSerdeGramBuildReady { expr: acc } =>
+          RustWireSerdeGramBuildReady {
+            expr: Sequence {
+              left: acc,
+              right: rust_ws_grammar_terminal(
+                token_class: concrete_syntax_token_class(token: token)
+              )
+            }
+          }
       }
     }
   ) {
-    Absent => rust_ws_grammar_terminal(token_class: ^rust_ws_token_attr_empty)
-    Present { value: expr } => expr
+    RustWireSerdeGramBuildInit =>
+      rust_ws_grammar_terminal(token_class: ^rust_ws_token_attr_empty)
+    RustWireSerdeGramBuildReady { expr: result } => result
   }
 }
 
@@ -178,7 +189,7 @@ fn rust_ws_grammar_production_string_variant_enum(tokens: List<ConcreteSyntaxTok
   GrammarProduction {
     name: ^rust_ws_production_string_variant_enum,
     expression: rust_ws_grammar_sequence_from_tokens(tokens: tokens),
-    emitted: rust_ws_inhabitant_atom(id: ^rust_ws_surface_string_variant_enum)
+    emitted: rust_inhabitant_atom(id: ^rust_ws_surface_string_variant_enum)
   }
 }
 
@@ -186,7 +197,7 @@ fn rust_ws_grammar_relation_row(naming: VariantNaming) -> RustWireSerdeGrammarRo
   let tokens = rust_ws_review_event_tokens(naming: naming)
   RustWireSerdeGrammarRow {
     production: rust_ws_grammar_production_string_variant_enum(tokens: tokens),
-    emitted: rust_ws_inhabitant_atom(id: ^rust_ws_emitted_review_event),
+    emitted: rust_wire_serde_review_event_emitted,
     tokens: tokens
   }
 }
@@ -195,16 +206,16 @@ fn rust_ws_grammar_relation_row_node(row: RustWireSerdeGrammarRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_ws_named_edge(
+      rust_named_edge(
         name: ^grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      rust_ws_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
-      rust_ws_named_edge(
+      rust_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+      rust_named_edge(
         name: ^grammar_relation_field_tokens,
         target: grammar_relation_tokens_node(
           tokens: row.tokens,
-          token_to_node: rust_ws_concrete_token_node
+          token_to_node: rust_concrete_token_node
         )
       )
     ],
@@ -216,7 +227,7 @@ fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_ws_named_edge(
+      rust_named_edge(
         name: ^rust_ws_relation_rule_review_event,
         target: rust_ws_grammar_relation_row_node(row: rust_ws_grammar_relation_row(naming: naming))
       )
@@ -225,46 +236,49 @@ fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
   }
 }
 
-fn rust_ws_target_model_core_edges(naming: VariantNaming) -> List<Edge> {
+fn rust_ws_serialize_source_prefix_edges(naming: VariantNaming) -> List<Edge> {
   [
-    rust_ws_named_edge(
-      name: ^target_model_edge_translation_rules,
-      target: rust_ws_translation_rules_node(naming: naming)
+    rust_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: rust_inhabitant_atom(id: ^rust_ws_source_literal)
     ),
-    rust_ws_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_ws_serialize_source_node(naming: naming)
+    rust_named_edge(
+      name: ^serialize_source_field_source_grammar,
+      target: rust_inhabitant_atom(id: ^rust_ws_production_string_variant_enum)
     ),
-    rust_ws_named_edge(
-      name: ^target_model_edge_reference_layer_tokens,
-      target: target_reference_layer_tokens_node(tokens: [])
+    rust_named_edge(
+      name: ^grammar_relation_field_tokens,
+      target: grammar_relation_tokens_node(
+        tokens: rust_ws_review_event_tokens(naming: naming),
+        token_to_node: rust_concrete_token_node
+      )
     )
   ]
 }
 
 fn rust_ws_serialize_source_node(naming: VariantNaming) -> Node {
-  let row = rust_ws_grammar_relation_row(naming: naming)
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      rust_ws_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: rust_ws_inhabitant_atom(id: ^rust_ws_source_literal)
-      ),
-      rust_ws_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: rust_ws_inhabitant_atom(id: ^rust_ws_production_string_variant_enum)
-      ),
-      rust_ws_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: row.tokens,
-          token_to_node: rust_ws_concrete_token_node
-        )
-      )
-    ],
+    children: rust_ws_serialize_source_prefix_edges(naming: naming),
     occurrence_id: SyntheticOccurrence
   }
+}
+
+fn rust_ws_target_model_core_edges(naming: VariantNaming) -> List<Edge> {
+  [
+    rust_named_edge(
+      name: ^target_model_edge_translation_rules,
+      target: rust_ws_translation_rules_node(naming: naming)
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_serialize_source,
+      target: rust_ws_serialize_source_node(naming: naming)
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_reference_layer_tokens,
+      target: target_reference_layer_tokens_node(tokens: rust_reference_layer_tokens())
+    )
+  ]
 }
 
 fn rust_ws_target_model_bundle(naming: VariantNaming) -> Node {
@@ -294,12 +308,6 @@ fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
     authority_source_text: rust_ws_authority_source_text(naming: naming),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
-}
-
-data rust_wire_serde_review_event_emitted: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
-  children: [],
-  occurrence_id: SyntheticOccurrence
 }
 
 data rust_wire_serde_screaming_snake_target: TargetModel = rust_wire_serde_target_model(
