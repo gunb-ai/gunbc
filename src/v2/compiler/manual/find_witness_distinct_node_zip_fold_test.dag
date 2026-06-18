@@ -202,7 +202,7 @@ fn quality_is_exact(q: CoercionQuality) -> Bool {
     Widened => false
   }
 }
-data witness_find_witness_distinct_node_accepts: Bool = match find_witness(
+test data witness_find_witness_distinct_node_accepts: Bool = match find_witness(
   source_facts: distinct_source_add_node(),
   candidates: distinct_candidate_set(),
   predicate: distinct_exact_predicate(),
@@ -211,7 +211,7 @@ data witness_find_witness_distinct_node_accepts: Bool = match find_witness(
   Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_add_node()
   Rejected { diagnostics: _ } => false
 }
-data witness_verify_witness_distinct_node_accepts: Bool = match verify_witness(
+test data witness_verify_witness_distinct_node_accepts: Bool = match verify_witness(
   source_facts: distinct_source_add_node(),
   candidate: distinct_target_add_node(),
   predicate: distinct_exact_predicate(),
@@ -220,7 +220,7 @@ data witness_verify_witness_distinct_node_accepts: Bool = match verify_witness(
   Accepted { value: _, diagnostics: _ } => true
   Rejected { diagnostics: _ } => false
 }
-data witness_find_witness_wrong_arity_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_wrong_arity_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: distinct_source_add_node(),
     candidates: distinct_wrong_arity_candidate_set(),
@@ -228,7 +228,7 @@ data witness_find_witness_wrong_arity_rejects: Bool = rejected_for_no_candidate(
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_wrong_subtree_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_wrong_subtree_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: distinct_source_add_node(),
     candidates: distinct_wrong_subtree_candidate_set(),
@@ -236,7 +236,7 @@ data witness_find_witness_wrong_subtree_rejects: Bool = rejected_for_no_candidat
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_nested_distinct_node_accepts: Bool = match find_witness(
+test data witness_find_witness_nested_distinct_node_accepts: Bool = match find_witness(
   source_facts: distinct_source_nested_node(),
   candidates: distinct_nested_candidate_set(),
   predicate: distinct_nested_predicate(),
@@ -257,7 +257,7 @@ fn distinct_grounding() -> CanonicalGrounding {
 fn distinct_coercion_candidates() -> CoercionCandidateSet {
   CoercionCandidateSet { set: distinct_candidate_set() }
 }
-data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fold(
+test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fold(
   source: distinct_grounding(),
   candidates: distinct_coercion_candidates(),
   policy: TargetDeclaredPriority { priority: distinct_target_add_node() }
@@ -330,13 +330,4 @@ data claim_coercion_fold_distinct_node_accepts: TestClaim = CompilesClaim {
   input: distinct_witness_claim_input(ok: witness_coercion_fold_distinct_node_accepts),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-test fn find_witness_distinct_node_zip_fold_holds() -> Bool {
-  witness_find_witness_distinct_node_accepts
-    && witness_verify_witness_distinct_node_accepts
-    && witness_find_witness_wrong_arity_rejects
-    && witness_find_witness_wrong_subtree_rejects
-    && witness_find_witness_nested_distinct_node_accepts
-    && witness_coercion_fold_distinct_node_accepts
 }
