@@ -3,45 +3,67 @@
 // Peer of `dsl/extdeps/formats/yaml.dag` (a YamlValue AST + serialize_yaml fold). This module
 // models a shell *program* as data so that host-transport scripts stop being hand-written string
 // blobs (`let script = "set -e\nWORKDIR=$(mktemp -d)..."`). The serializer output feeds
-// `shell.Exec.Run { input { script: String } }` — the transport that is already modeled.
+// `shell.Exec.Run { input { script: String } }` — the transport that is already modeled — so a
+// transport's policy lives in a typed Node tree, not in an opaque String the §5/§6 way.
 //
-// Spec: POSIX.1-2017 Shell Command Language §2.2 (Quoting), §2.9 (Compound Commands)
+// Spec: POSIX.1-2017 Shell Command Language §2.2 (Quoting), §2.9 (Lists / Compound Commands)
 //       https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
 //
 // Consumers:
 //   test.claim.bash_serializer_witness  -- golden + discriminating by-execution witness
-//   tools/dsl_compile_clean_transport   -- (step 3) real transport rewritten off the blob
+//   tools/dsl_compile_clean_transport   -- first real transport rewritten off the blob
 
 module extdeps.languages.bash.program
 
 // =========================================================================
 // Words — the atoms of a simple command.
 //
-// `Lit` is a literal value that MUST be single-quoted so the shell does not
-// expand metacharacters inside it (POSIX §2.2.2: single quotes preserve every
-// character literally). `VarRef` is a double-quoted parameter expansion. `CmdSubst`
-// is `$( ... )`. `Raw` is the escape hatch for an already-correct fragment that has
-// no structural model yet.
+// `Lit` MUST be single-quoted so the shell does not expand metacharacters inside it
+// (POSIX §2.2.2: single quotes preserve every character literally). `VarRef` is a
+// double-quoted parameter expansion. `Concat` glues adjacent words with no separator
+// (the structural form of `"$ROOT"/path` interpolation). `CmdSubst` is `$( stmt )`.
+// `Raw` is the escape hatch for an already-correct fragment with no structural model.
 // =========================================================================
 
 type ShellWord
   = Lit { text: String }
   | VarRef { name: String }
-  | CmdSubst { argv: List<ShellWord> }
+  | Concat { parts: List<ShellWord> }
+  | CmdSubst { body: ShellStmt }
   // 🟡 dissolution trigger: a structural model exists for every fragment that today
-  // reaches for Raw (the step-4 lens RED-flags Raw in transport position).
+  // reaches for Raw (the host-language ban lens RED-flags Raw in transport position).
   | Raw { text: String }
 
 // =========================================================================
-// Statements.
+// Tests — the `[ ... ]` condition of an `if`. Minimal, grown on demand.
 // =========================================================================
+
+type ShellTest
+  = NotExecutable { path: ShellWord }       // [ ! -x word ]
+
+// =========================================================================
+// Statements + lists.
+// =========================================================================
+
+type AndOrOp
+  = AndThen                                 // &&
+  | OrElse                                  // ||
+
+type Redir
+  = StderrToNull                            // 2>/dev/null
+  | StdoutAndStderrToNull                   // >/dev/null 2>&1
 
 type ShellStmt
   = Command { words: List<ShellWord> }
   | Assign { name: String, value: ShellWord }
-  // 🟡 dissolution trigger: same as ShellWord.Raw — a verbatim line with no structural model.
+  | If { cond: ShellTest, then: List<ShellStmt> }
+  | Subshell { body: List<ShellStmt> }
+  | AndOr { left: ShellStmt, op: AndOrOp, right: ShellStmt }
+  | WithRedir { stmt: ShellStmt, redir: Redir }
+  | Exit { code: Int }
+  // 🟡 dissolution trigger: same as ShellWord.Raw.
   | RawLine { text: String }
 
 type ShellProgram {
@@ -82,7 +104,8 @@ fn serialize_word(w: ShellWord) -> String {
   match w {
     Lit { text: t } => single_quote(s: t)
     VarRef { name: n } => concat("\"$", concat(n, "\""))
-    CmdSubst { argv: a } => concat("$(", concat(join_words(words: a), ")"))
+    Concat { parts: ps } => fold(ps, init: "", f: (acc, p) => concat(acc, serialize_word(w: p)))
+    CmdSubst { body: b } => concat("$(", concat(serialize_stmt(s: b), ")"))
     Raw { text: t } => t
   }
 }
@@ -94,10 +117,48 @@ fn join_words(words: List<ShellWord>) -> String {
   })
 }
 
+fn serialize_test(t: ShellTest) -> String {
+  match t {
+    NotExecutable { path: p } => concat("[ ! -x ", concat(serialize_word(w: p), " ]"))
+  }
+}
+
+fn serialize_redir(r: Redir) -> String {
+  match r {
+    StderrToNull => "2>/dev/null"
+    StdoutAndStderrToNull => ">/dev/null 2>&1"
+  }
+}
+
+fn serialize_and_or_op(op: AndOrOp) -> String {
+  match op {
+    AndThen => "&&"
+    OrElse => "||"
+  }
+}
+
+// then-body / subshell-body: statements joined by `; ` (single-line compound command).
+fn join_stmts_semi(stmts: List<ShellStmt>) -> String {
+  fold(stmts, init: "", f: (acc, s) => {
+    let part = serialize_stmt(s: s)
+    if acc == "" { part } else { concat(acc, concat("; ", part)) }
+  })
+}
+
 fn serialize_stmt(s: ShellStmt) -> String {
   match s {
     Command { words: ws } => join_words(words: ws)
     Assign { name: n, value: v } => concat(n, concat("=", serialize_word(w: v)))
+    If { cond: c, then: body } =>
+      concat("if ", concat(serialize_test(t: c),
+        concat("; then ", concat(join_stmts_semi(stmts: body), "; fi"))))
+    Subshell { body: b } => concat("(", concat(join_stmts_semi(stmts: b), ")"))
+    AndOr { left: l, op: o, right: r } =>
+      concat(serialize_stmt(s: l),
+        concat(" ", concat(serialize_and_or_op(op: o), concat(" ", serialize_stmt(s: r)))))
+    WithRedir { stmt: st, redir: rd } =>
+      concat(serialize_stmt(s: st), concat(" ", serialize_redir(r: rd)))
+    Exit { code: c } => concat("exit ", to_string(c))
     RawLine { text: t } => t
   }
 }
