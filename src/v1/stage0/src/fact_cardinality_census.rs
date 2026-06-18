@@ -238,11 +238,11 @@ mod tests {
     }
 
     #[test]
-    fn cross_tree_fork_count_matches_baseline() {
+    fn cross_tree_fork_count_satisfies_ratchet_baseline() {
         let count = cross_tree_fork_count();
-        assert_eq!(
-            count, FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE,
-            "fork count drifted from lens baseline {}; retune both if intentional",
+        assert!(
+            count <= FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE,
+            "fork count {count} exceeds lens ratchet baseline {}; debt grew — retune baseline down only after fork unification",
             FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE
         );
     }
