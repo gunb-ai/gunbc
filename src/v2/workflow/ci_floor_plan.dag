@@ -37,7 +37,7 @@ import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash }
-import std.realization {
+import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
   Runnable,

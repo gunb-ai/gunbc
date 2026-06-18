@@ -5,43 +5,112 @@
 // lenses independently of the WHAT (the pure Node DAG).
 //
 // Layer split (§3):
-//   std/realization.dag     — agnostic shapes, may_reorder, realize sig (dispatch-free)
-//   extdeps/realization/*   — cost-measurement + placement handlers (follow-on:
-//                             CacheInterfaceFacts → Materialization handlers)
-//   workflow/*              — policy (which Objective for prod vs dev)
+//   std/realization.dag           — may_reorder + schedule re-exports
+//   std/realization_schedule.dag  — schedule arm + lens (dsl-tree witnesses)
+//   extdeps/realization/*           — placement/materialization handlers (follow-on)
+//   workflow/*                    — policy (which Objective for prod vs dev)
 //
 // Dissolution triggers (named):
+//   - v2/test/claim/realization_schedule_witness.dag enrolls in CI discovery when
+//     v2 self-compile-clean closes the Empty-in-generic sequence_outcome gap.
 //   - cache_interface.dag → Materialization rows become extdeps/realization handlers
-//   - ParseTableRealization / resolved_graph_cache → RealizedStep.materialization
-//   - placement + measured CostAccount → extdeps/realization/<target>.dag
+//   - RealizedStep / Placement / Materialization return in the feature follow-on
 //   - target digest → content_hash(subgraph) when dsl/v2 cross-tree Node import lands
 
 module std.realization
 
-import std.types { ContentHash, Bool, String, List }
-import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect }
-import std.measure {
-  Measure, Time, Nano, ByteSize, Watt,
-  byte_size, watt
+import std.types { Bool, String, List }
+import std.effects {
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  KeySource, PathParam, InputField, CompositeKey
 }
-import std.pareto { AxisGoal }
+import std.realization_schedule {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableSingleClaim,
+  RunnableDiscoveryBatch,
+  ScheduleWitnessEntry,
+  Schedule,
+  CostAccount,
+  CostBasis,
+  NanosecondDuration,
+  cost_account_predicted_zero,
+  schedule_lens_verdict_for_ci_floor,
+  schedule_lens_holds_for_ci_floor,
+  schedule_generates_same_batch_count,
+  schedule_generates_identical_schedule,
+  schedule_eq,
+  ScheduleLensViolation,
+  ScheduleLensVerdict,
+  runnable_step_label,
+  schedule_batch_contains_label,
+}
 
 // --- Independence / may_reorder (fail-closed) ---------------------------------
 
-// Unknown implies Dependent — never optimistic reordering.
 type Independence = Independent | Dependent | Unknown
 
+fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else if left.first() != right.first() {
+    false
+  } else {
+    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
+  match left {
+    PathParam { param: lp } => match right {
+      PathParam { param: rp } => lp == rp
+      InputField { field: _ } => false
+      CompositeKey { fields: _ } => false
+    }
+    InputField { field: lf } => match right {
+      PathParam { param: _ } => false
+      InputField { field: rf } => lf == rf
+      CompositeKey { fields: _ } => false
+    }
+    CompositeKey { fields: lf } => match right {
+      PathParam { param: _ } => false
+      InputField { field: _ } => false
+      CompositeKey { fields: rf } => string_list_eq(left: lf, right: rf)
+    }
+  }
+}
+
+// Compare effect keys for upsert/delete; unmatched arms stay Unknown (fail-closed).
 fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Independence {
   match left {
     ReadEffect => match right {
       ReadEffect => Independent
-      UpsertEffect => Unknown
-      DeleteEffect => Unknown
+      UpsertEffect { key_source: _ } => Unknown
+      DeleteEffect { key_source: _ } => Unknown
       CreateEffect => Unknown
       AppendEffect => Unknown
     }
-    UpsertEffect => Unknown
-    DeleteEffect => Unknown
+    UpsertEffect { key_source: lk } => match right {
+      ReadEffect => Unknown
+      UpsertEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      DeleteEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      CreateEffect => Unknown
+      AppendEffect => Unknown
+    }
+    DeleteEffect { key_source: lk } => match right {
+      ReadEffect => Unknown
+      UpsertEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      DeleteEffect { key_source: rk } =>
+        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      CreateEffect => Unknown
+      AppendEffect => Unknown
+    }
     CreateEffect => Unknown
     AppendEffect => Unknown
   }
@@ -53,146 +122,4 @@ fn may_reorder(indep: Independence) -> Bool {
     Dependent => false
     Unknown => false
   }
-}
-
-// --- Placement / materialization / cost -------------------------------------
-
-type Placement = LocalInProcess | LocalFilesystem | RemoteNetwork
-
-type Materialization = Recompute | Memoize | Share
-
-type CostBasis = Measured | Predicted
-
-type NanosecondDuration = Measure<Time, Nano, Nat>
-
-type CostAccount {
-  time: NanosecondDuration
-  space: ByteSize
-  energy: Watt
-  basis: CostBasis
-}
-
-fn cost_account_predicted_zero() -> CostAccount {
-  CostAccount {
-    time: NanosecondDuration { count: 0 }
-    space: byte_size(count: 0)
-    energy: watt(count: 0)
-    basis: Predicted
-  }
-}
-
-// Pareto axes name the objective; dominance verdicts are lens-derived (std.pareto).
-type RealizationObjective {
-  goals: List<AxisGoal>
-}
-
-// --- Schedule (generative arm — claim_executor interprets this shape) --------
-
-type ScheduleWitnessEntry {
-  entry: String
-  function: String
-}
-
-// Host-readable runnable (parsed by claim_executor). Kept here so std owns the
-// schedule authority; v2.workflow.ci_floor_plan populates RealizationPlan.schedule.
-type Runnable
-  = RunnableSingleClaim { entry: String, function: String }
-  | RunnableDiscoveryBatch {
-      source_roots: List<String>
-      scan_dirs: List<String>
-      explicit_entries: List<ScheduleWitnessEntry>
-    }
-
-type Schedule = List<List<Runnable>>
-
-// --- Realized step + plan ----------------------------------------------------
-
-// intent points at a SUBGRAPH (content_hash), not always a leaf.
-type RealizedStep {
-  intent: ContentHash
-  placement: Placement
-  materialization: Materialization
-  cost: CostAccount
-  licensed_by: ContentHash
-}
-
-type RealizationPlan {
-  target: ContentHash
-  objective: RealizationObjective
-  schedule: Schedule
-  total: CostAccount
-}
-
-// Dispatch-free realize signature — extdeps handlers bind at the seam (§3).
-type RealizeIntent {
-  target: ContentHash
-}
-
-// --- Schedule helpers (shared by plan builders + lens) ------------------------
-
-fn runnable_step_label(r: Runnable) -> String {
-  match r {
-    RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => "__discovery_corpus__"
-  }
-}
-
-fn schedule_batch_contains_label(batch: List<Runnable>, target: String) -> Bool {
-  fold(batch, init: false, f: fn(acc, r) {
-    acc || (runnable_step_label(r: r) == target)
-  })
-}
-
-// --- Schedule lens (pure reader; stores nothing) ------------------------------
-
-type ScheduleLensViolation
-  = EmptySchedule
-  | CompileGateNotFirst { expected: String }
-  | CorpusBeforeCompile
-  | SingleBatchOnly
-
-type ScheduleLensVerdict
-  = Holds
-  | Violation { kind: ScheduleLensViolation }
-  | NotApplicable
-
-// CI floor discriminant: compile-clean must be the sole batch-0 job.
-fn schedule_lens_verdict_for_ci_floor(plan: RealizationPlan, compile_gate_fn: String) -> ScheduleLensVerdict {
-  if plan.schedule.length() == 0 {
-    Violation { kind: EmptySchedule }
-  } else if plan.schedule.length() < 2 {
-    Violation { kind: SingleBatchOnly }
-  } else {
-    let batch0 = plan.schedule.first()
-    if batch0.length() != 1 {
-      Violation { kind: CompileGateNotFirst { expected: compile_gate_fn } }
-    } else if !schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
-      Violation { kind: CompileGateNotFirst { expected: compile_gate_fn } }
-    } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
-      Violation { kind: CorpusBeforeCompile }
-    } else {
-      let batch1 = plan.schedule.skip(n: 1).first()
-      if batch1.length() < 2 {
-        Violation { kind: SingleBatchOnly }
-      } else {
-        Holds
-      }
-    }
-  }
-}
-
-fn schedule_lens_holds_for_ci_floor(plan: RealizationPlan, compile_gate_fn: String) -> Bool {
-  match schedule_lens_verdict_for_ci_floor(plan: plan, compile_gate_fn: compile_gate_fn) {
-    Holds => true
-    Violation { kind: _ } => false
-    NotApplicable => false
-  }
-}
-
-fn schedule_batch_count(plan: RealizationPlan) -> Int {
-  plan.schedule.length()
-}
-
-fn schedule_generates_same_batch_count(left: RealizationPlan, right: RealizationPlan) -> Bool {
-  left.schedule.length() == right.schedule.length()
 }

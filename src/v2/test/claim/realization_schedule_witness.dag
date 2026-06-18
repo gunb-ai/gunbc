@@ -1,9 +1,14 @@
 // v2/test/claim/realization_schedule_witness.dag
 //
-// Generative + schedule-lens witnesses for std.realization wired to ci_floor_plan.
-// Proves execute=interpret-plan: batches are projected from RealizationPlan.schedule,
-// and the schedule lens is GREEN on the live floor plan but RED when batch-0 order
-// is perturbed (discriminating — DESIGN §5).
+// Generative + schedule-lens witnesses for std.realization wired to LIVE ci_floor_plan.
+// Proves execute=interpret-plan: gunbc_ci_floor_batches is a pure pass-through of the
+// inner scheduler schedule (identical content + order), and the schedule lens is GREEN
+// on the live floor plan but RED when batch-0 order is perturbed (discriminating — §5).
+//
+// DISSOLUTION TRIGGER: enroll in default CI discovery corpus when v2 self-compile-clean
+// closes the Empty-in-generic sequence_outcome substrate gap (v2.std.diagnostic). Until
+// then, dsl/test/claim/realization_schedule_witness.dag proves the lens by execution on
+// a synthetic RealizationPlan in the dsl tree.
 
 module v2.test.claim.realization_schedule_witness
 
@@ -13,10 +18,9 @@ import std.realization {
   RealizationPlan,
   RealizationObjective,
   Runnable,
-  RunnableSingleClaim,
-  RunnableDiscoveryBatch,
   schedule_lens_holds_for_ci_floor,
-  schedule_generates_same_batch_count,
+  schedule_generates_identical_schedule,
+  schedule_eq,
   cost_account_predicted_zero,
 }
 import v2.workflow.ci_floor_plan {
@@ -27,25 +31,19 @@ import v2.workflow.ci_floor_plan {
   ci_floor_compile_gate_fn,
 }
 
-data corpus_sentinel: String = "__discovery_corpus__"
-
-fn runnable_function_label(r: Runnable) -> String {
-  match r {
-    RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => corpus_sentinel
-  }
+// Generative pass-through: host entry reads plan.schedule, identical to inner scheduler.
+fn witness_batches_are_plan_schedule() -> Bool {
+  schedule_generates_identical_schedule(
+    plan: gunbc_ci_floor_realization_plan(),
+    schedule: gunbc_ci_floor_batches()
+  )
 }
 
-// Generative: host entry gunbc_ci_floor_batches reads plan.schedule, not a parallel list.
-fn witness_batches_are_plan_schedule() -> Bool {
-  schedule_generates_same_batch_count(
-    left: gunbc_ci_floor_realization_plan(),
-    right: RealizationPlan {
-      target: ci_floor_target_digest
-      objective: RealizationObjective { goals: [] }
-      schedule: gunbc_ci_floor_batches()
-      total: cost_account_predicted_zero()
-    }
+// Safety: generative routing cannot perturb the live floor — exact schedule equality.
+fn witness_batches_identical_to_inner_schedule() -> Bool {
+  schedule_eq(
+    left: gunbc_ci_floor_batches(),
+    right: gunbc_ci_floor_schedule_inner()
   )
 }
 
@@ -77,6 +75,7 @@ fn witness_schedule_lens_red_when_corpus_runs_first() -> Bool {
 
 fn realization_schedule_witnesses() -> Bool {
   witness_batches_are_plan_schedule()
+    && witness_batches_identical_to_inner_schedule()
     && witness_schedule_lens_holds_on_floor_plan()
     && witness_schedule_lens_red_when_corpus_runs_first()
 }
