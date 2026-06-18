@@ -12,10 +12,23 @@ module test.claim.realization_reconcile_witness
 import std.types { Bool, String, List }
 import std.effects { CreateEffect, CreateIfAbsent, PostAlways, InputField }
 import std.realization {
-  RealizedStep, LocalInProcess, Recompute,
-  reconcile, is_share,
+  RealizedStep, LocalInProcess,
+  Materialization, Recompute, Memoize, Share,
+  reconcile,
 }
 import std.realization_schedule { cost_account_predicted_zero }
+
+// Test-local Share discriminator. `is_share` is NOT in std.realization: reconcile sets
+// `materialization: Share` directly and nothing in std/ reads it back, so a Materialization
+// `is_*` predicate there would be an undispositioned std/ predicate (review #5168). The
+// only consumer is this witness, so the match lives here (single owner, std/ stays fold-clean).
+fn is_share(m: Materialization) -> Bool {
+  match m {
+    Share => true
+    Recompute => false
+    Memoize => false
+  }
+}
 
 fn step_create_if_absent(field: String) -> RealizedStep {
   RealizedStep {

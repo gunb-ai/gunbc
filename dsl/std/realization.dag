@@ -100,14 +100,6 @@ type RealizedStep {
   cost: CostAccount
 }
 
-fn is_share(m: Materialization) -> Bool {
-  match m {
-    Share => true
-    Recompute => false
-    Memoize => false
-  }
-}
-
 // Mark every accumulator step whose effect is the same-KeySource create-if-absent
 // twin of `s` as Share (s collapses INTO the shared materialization; not appended).
 fn mark_collapsible_share(acc: List<RealizedStep>, s: RealizedStep) -> List<RealizedStep> {
