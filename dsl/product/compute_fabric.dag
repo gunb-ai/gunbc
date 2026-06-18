@@ -44,11 +44,6 @@ import std.measure {
 import std.currency { CurrencyCode }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
-import std.content_hash {
-  content_hash_atom,
-  content_hash_combine,
-  content_hash_tagged,
-}
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuFacts,
@@ -58,16 +53,11 @@ import std.cpu {
   cpu_facts_threads,
 }
 import std.cpu.types {
-  CpuArchitecture,
   CpuDeploymentFacts,
   CpuModelCatalogRow,
   CpuSocket,
   SocketPackage,
   Aarch64,
-  X86_64,
-  Armv7,
-  Riscv64,
-  Wasm32,
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
@@ -978,122 +968,10 @@ fn witness_resource_offer_admits_feasible_demand() -> Bool {
   }
 }
 
-// Content-addressed digest over work identity + demand (action/inputs/output spec
-// join when ArtifactRef/WorkAction inhabit — P-CF-INGRESS). Returns a 16-hex hash,
-// never the hand-authored work.id brand (§0 one-key-for-3-dimensions).
-data execution_receipt_digest_schema: NonEmptyStr = "execution-receipt-canonical-v1"
-
-fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
-  content_hash_atom(value: isolation_boundary_label(boundary: boundary))
-}
-
-fn cpu_architecture_digest(arch: CpuArchitecture) -> ContentHash {
-  match arch {
-    X86_64 => content_hash_atom(value: "arch:X86_64")
-    Aarch64 => content_hash_atom(value: "arch:Aarch64")
-    Armv7 => content_hash_atom(value: "arch:Armv7")
-    Riscv64 => content_hash_atom(value: "arch:Riscv64")
-    Wasm32 => content_hash_atom(value: "arch:Wasm32")
-  }
-}
-
-fn optional_cpu_requirement_digest(req: CpuRequirement?) -> ContentHash {
-  match req {
-    Absent => content_hash_atom(value: "cpu:none")
-    Present { value: r } =>
-      content_hash_combine(
-        content_hash_atom(value: "cpu"),
-        content_hash_combine(
-          content_hash_atom(value: to_string(hardware_thread_count_value(r.min_threads))),
-          match r.architecture {
-            Absent => content_hash_atom(value: "arch:any")
-            Present { value: arch } => cpu_architecture_digest(arch: arch)
-          },
-        ),
-      )
-  }
-}
-
-fn optional_memory_requirement_digest(req: MemoryRequirement?) -> ContentHash {
-  match req {
-    Absent => content_hash_atom(value: "memory:none")
-    Present { value: r } =>
-      content_hash_combine(
-        content_hash_atom(value: "memory"),
-        content_hash_atom(value: to_string(byte_size_count(r.min_bytes))),
-      )
-  }
-}
-
-fn resource_envelope_digest(envelope: ResourceEnvelope) -> ContentHash {
-  content_hash_combine(
-    optional_cpu_requirement_digest(req: envelope.cpu),
-    content_hash_combine(
-      optional_memory_requirement_digest(req: envelope.memory),
-      content_hash_atom(value: "resource-envelope-v1"),
-    ),
-  )
-}
-
-fn parallelism_shape_digest(shape: ParallelismShape) -> ContentHash {
-  match shape {
-    SingleWorkItem => content_hash_atom(value: "parallelism:SingleWorkItem")
-    IndependentShards { shard_count: n } =>
-      content_hash_combine(
-        content_hash_atom(value: "parallelism:IndependentShards"),
-        content_hash_atom(value: to_string(n)),
-      )
-    DependencyGraphParallel { graph: _ } =>
-      content_hash_atom(value: "parallelism:DependencyGraphParallel")
-    PartitionedReduce { partitioner: _, map: _, reduce: _, laws: _ } =>
-      content_hash_atom(value: "parallelism:PartitionedReduce")
-  }
-}
-
-fn work_demand_content_digest(demand: WorkDemand) -> ContentHash {
-  content_hash_combine(
-    resource_envelope_digest(envelope: demand.resources),
-    content_hash_combine(
-      isolation_boundary_digest(boundary: demand.isolation.boundary),
-      content_hash_combine(
-        parallelism_shape_digest(shape: demand.parallelism),
-        content_hash_atom(value: "work-demand-v1"),
-      ),
-    ),
-  )
-}
-
-fn execution_receipt_subject_digest(
-  work_id: WorkUnitId,
-  demand: WorkDemand,
-) -> ExecutionReceiptDigest {
-  content_hash_tagged(
-    tag: execution_receipt_digest_schema,
-    payload: content_hash_combine(
-      content_hash_atom(value: work_id),
-      work_demand_content_digest(demand: demand),
-    ),
-  )
-}
-
+// Content-pure digest projected from work identity (work.id) only; output
+// content_digest joins when ArtifactRef inhabits. Full canonical encoding
+// (action + inputs + output spec + output content_digest) supplied by the
+// harness when Outcome/ArtifactRef inhabit (Node stubs today).
 fn execution_receipt_digest<T>(receipt: ExecutionReceipt<T>) -> ExecutionReceiptDigest {
-  execution_receipt_subject_digest(
-    work_id: receipt.work.id,
-    demand: receipt.work.requirements,
-  )
-}
-
-fn witness_execution_receipt_digest_not_raw_work_id(
-  work_id: WorkUnitId,
-  demand: WorkDemand,
-) -> Bool {
-  execution_receipt_subject_digest(work_id: work_id, demand: demand) != work_id
-}
-
-fn witness_execution_receipt_digest_differs_by_demand(
-  work_id: WorkUnitId,
-  left: WorkDemand,
-  right: WorkDemand,
-) -> Bool {
-  execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
+  receipt.work.id
 }

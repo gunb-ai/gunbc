@@ -102,6 +102,7 @@ type CacheMissSemantics
 
 // Cross-store L1→L2→L3 fallback is composition — not a field on CacheInterfaceFacts.
 // Ordered nearest→farthest (InProcess → runner/host filesystem → network CAS).
+// Empty layers = fail-closed recompute-only (recompute is the implicit terminal).
 type CacheLayerPlan {
   layers: List<CacheInterfaceId>
 }
