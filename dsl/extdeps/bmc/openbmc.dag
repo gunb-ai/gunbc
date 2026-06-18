@@ -16,11 +16,11 @@
 module extdeps.bmc.openbmc
 
 import std.bmc { BmcFirmwareFamily, OpenBmc, BmcProtocol, Redfish, Ipmi }
-import std.credentials { Credential }
+import std.credentials { AccountLogin }
 import std.types { List, Secret }
 
 // The published OpenBMC factory login (see anchor above).
-data openbmc_factory_credential: Credential = Credential {
+data openbmc_factory_credential: AccountLogin = AccountLogin {
   username: "root",
   secret: "0penBmc" as Secret,
 }
@@ -31,7 +31,7 @@ data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
 
 // firmware → published factory credential. Closed match; fail-closed on a new family
 // until its own cited file lands.
-fn bmc_firmware_factory_credential(family: BmcFirmwareFamily) -> Credential {
+fn bmc_firmware_factory_credential(family: BmcFirmwareFamily) -> AccountLogin {
   match family {
     OpenBmc => openbmc_factory_credential
   }
