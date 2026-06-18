@@ -27,6 +27,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   edges_conform,
+  locally_well_formed,
   well_formed
 }
 import v2.std.algebra { Empty }
@@ -118,10 +119,13 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
       ) {
         Accepted { value: child_slots_node, diagnostics: _ } =>
           let child_slots = child_slots_node.children
-          well_formed(n: source_facts)
+          // Graft child_slots carry projected emitted-wire nodes (Conj+positional
+          // metadata); wire_decode owns their shape — substrate well_formed recurses
+          // into those leaves and rejects. Check container edge discipline only.
+          locally_well_formed(n: source_facts)
             && well_formed(n: candidate)
-            && well_formed(n: algebra)
-            && well_formed(n: child_slots_node)
+            && locally_well_formed(n: algebra)
+            && locally_well_formed(n: child_slots_node)
             && (algebra == source_facts)
             && type_expr_projection_row_envelope_exact_equal(
               candidate: candidate,

@@ -36,22 +36,34 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection,
   rust_type_expression_projection_bundle_node
 }
+import v2.std.type_expr_projection_discipline_zip_fold_predicate {
+  type_expr_projection_child_slot_discipline_from_envelope,
+  type_expr_projection_discipline_zip_fold_preservation_holds,
+  type_expr_projection_row_envelope_exact_equal
+}
 import v2.std.compilers.target_model {
   TargetFunctionTypeShape,
   TargetModel,
   TargetTypeExpressionProjection,
+  target_type_expr_arrow_emitted,
+  target_type_expr_atom_emitted,
   target_type_expr_emitted_wire_decode,
   type_expr_projection_bundle_shape_for_connective,
+  type_expr_projection_graft_substrate_in_row_slot,
+  type_expr_projection_graft_witness_gate,
+  type_expr_projection_shape_for_connective,
   type_expr_projection_row_closedness_from_target,
   type_expr_projection_row_shape_witness_gate
 }
-import v2.std.node { Arrow }
+import v2.std.node { Arrow, edges_conform, well_formed }
 import v2.test.manual.mvp1_rust_add_translate {
   mvp1_rust_inferred_tree,
   mvp1_rust_target_model
 }
+import v2.std.algebra { Cons, Empty, list_append }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
+import v2.std.collection { Absent, Present }
+import v2.std.node_query { find_named_child }
 import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
 import v2.std.text { String }
 import v2.std.verification {
@@ -483,6 +495,249 @@ data claim_sg2_mvp1_translate_fallback: TestClaim = CompilesClaim {
   input: sg2_claim_input(ok: sg2_mvp1_translate_fallback_accepts()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn sg2_arrow_graft_envelope_equal() -> Bool {
+  let node = rust_sg2_arrow_source_type_node()
+  let projected_positional = list_append(
+    left: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    right: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    }
+  )
+  match type_expr_projection_graft_substrate_in_row_slot(
+    projection: rust_type_expression_projection(),
+    connective: Arrow,
+    node: node,
+    projected_positional: projected_positional
+  ) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      match type_expr_projection_shape_for_connective(
+        projection: rust_type_expression_projection(),
+        connective: Arrow
+      ) {
+        Accepted { value: candidate, diagnostics: _ } =>
+          type_expr_projection_row_envelope_exact_equal(
+            candidate: candidate,
+            source_facts: grafted
+          )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_emitted_atom_well_formed() -> Bool {
+  well_formed(
+    n: target_type_expr_atom_emitted(
+      form: rust_type_expression_projection().atom_form,
+      identity: ^rust_binding_sg2_x
+    )
+  )
+}
+
+fn sg2_arrow_graft_child_slots_well_formed() -> Bool {
+  let node = rust_sg2_arrow_source_type_node()
+  let projected_positional = list_append(
+    left: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    right: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    }
+  )
+  match type_expr_projection_graft_substrate_in_row_slot(
+    projection: rust_type_expression_projection(),
+    connective: Arrow,
+    node: node,
+    projected_positional: projected_positional
+  ) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      match find_named_child(
+        root: grafted,
+        name: ^target_type_expr_field_child_slots
+      ) {
+        Accepted { value: child_slots_node, diagnostics: _ } => well_formed(n: child_slots_node)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_arrow_graft_well_formed() -> Bool {
+  let node = rust_sg2_arrow_source_type_node()
+  let projected_positional = list_append(
+    left: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    right: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    }
+  )
+  match type_expr_projection_graft_substrate_in_row_slot(
+    projection: rust_type_expression_projection(),
+    connective: Arrow,
+    node: node,
+    projected_positional: projected_positional
+  ) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      match find_named_child(
+        root: grafted,
+        name: ^target_type_expr_field_child_slots
+      ) {
+        Accepted { value: child_slots_node, diagnostics: _ } =>
+          match type_expr_projection_shape_for_connective(
+            projection: rust_type_expression_projection(),
+            connective: Arrow
+          ) {
+            Accepted { value: candidate, diagnostics: _ } =>
+              match type_expr_projection_child_slot_discipline_from_envelope(node: candidate) {
+                Present { value: discipline } =>
+                  well_formed(n: grafted)
+                    && well_formed(n: candidate)
+                    && well_formed(n: child_slots_node)
+                    && edges_conform(children: child_slots_node.children, d: discipline)
+                Absent => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_arrow_discipline_zip_fold_holds() -> Bool {
+  let node = rust_sg2_arrow_source_type_node()
+  let projected_positional = list_append(
+    left: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    right: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    }
+  )
+  match type_expr_projection_graft_substrate_in_row_slot(
+    projection: rust_type_expression_projection(),
+    connective: Arrow,
+    node: node,
+    projected_positional: projected_positional
+  ) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      match type_expr_projection_shape_for_connective(
+        projection: rust_type_expression_projection(),
+        connective: Arrow
+      ) {
+        Accepted { value: candidate, diagnostics: _ } =>
+          type_expr_projection_discipline_zip_fold_preservation_holds(
+            source_facts: grafted,
+            candidate: candidate,
+            algebra: grafted
+          )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_arrow_graft_accepts() -> Bool {
+  let node = rust_sg2_arrow_source_type_node()
+  let projected_positional = list_append(
+    left: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    right: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    }
+  )
+  match type_expr_projection_graft_substrate_in_row_slot(
+    projection: rust_type_expression_projection(),
+    connective: Arrow,
+    node: node,
+    projected_positional: projected_positional
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sg2_arrow_graft_witness_gate_accepts() -> Bool {
+  let node = rust_sg2_arrow_source_type_node()
+  let projected_positional = list_append(
+    left: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_x
+      ),
+      tail: Empty
+    },
+    right: Cons {
+      head: target_type_expr_atom_emitted(
+        form: rust_type_expression_projection().atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    }
+  )
+  match type_expr_projection_graft_substrate_in_row_slot(
+    projection: rust_type_expression_projection(),
+    connective: Arrow,
+    node: node,
+    projected_positional: projected_positional
+  ) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      match type_expr_projection_graft_witness_gate(
+        source_facts: grafted,
+        projection: rust_type_expression_projection(),
+        connective: Arrow
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn sg2_arrow_row_closedness_accepts() -> Bool {
