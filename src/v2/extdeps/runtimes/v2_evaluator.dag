@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import v2.std.logic { Bool, bool_primitive_facts, bool_primitive_facts_node }
+import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.model_core {
   EffectSignature,
@@ -75,6 +75,37 @@ fn v2_eval_wave1_unit_type_node() -> Node {
     children: [],
     occurrence_id: SyntheticOccurrence
 }
+}
+
+// 🟡 gated — wave-1 compile(Eval) thesis pins — dissolve-on: T-22 literal semantics
+// inhabit wave1_model_core primitives without per-node identity pins.
+data v2_eval_wave1_bool_literal_pin: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_bool_literal_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data v2_eval_wave1_unit_literal_pin: Node = v2_eval_wave1_unit_type_node()
+
+fn v2_eval_wave1_bool_true_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn v2_eval_wave1_bool_true_primitive() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: v2_eval_wave1_bool_literal_pin,
+      bytes: [v2_eval_wave1_bool_true_byte()]
+    }
+  }
+}
+
+fn v2_eval_wave1_unit_runtime_value() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue {
+      unit_type: v2_eval_wave1_unit_literal_pin
+    }
+  }
 }
 
 fn v2_eval_wave1_boundary_operation_node() -> Node {
@@ -139,7 +170,13 @@ fn v2_eval_wave1_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> 
 }
 
 fn v2_eval_wave1_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  v2_eval_wave1_represent_literal(node: node, env: env)
+  if node == v2_eval_wave1_bool_literal_pin {
+    Accepted { value: v2_eval_wave1_bool_true_primitive(), diagnostics: None }
+  } else if node == v2_eval_wave1_unit_literal_pin {
+    Accepted { value: v2_eval_wave1_unit_runtime_value(), diagnostics: None }
+  } else {
+    v2_eval_wave1_represent_literal(node: node, env: env)
+  }
 }
 
 fn v2_eval_wave1_call_primitive(
