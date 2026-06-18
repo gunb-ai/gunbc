@@ -497,6 +497,97 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
     );
 }
 
+// M4 hermetic-realization fold: the PUBLISHED mock corpus is the single authority the runtime
+// reads to decide hermetic realizability — the SAME model the M2 mock_totality_lens reads. This
+// is the §5 discriminating pair (a real consumer GREEN by execution PLUS a discriminating input
+// that goes RED when the runtime decision and the published model DISAGREE), NOT a truth-table:
+//   - GREEN: `Read` IS a published case  -> the op realizes (here via its inline mock).
+//   - RED:   `Probe` is NOT published, on the SAME corpus-governed service `test.Fs`, yet it
+//            HAS an inline mock_response -> the runtime MUST fail closed. The teeth: without the
+//            corpus read, Probe would silently return its inline mock, diverging from the model.
+// A local `PublishedMockCase` type proves the runtime matches the corpus by SHAPE (the record's
+// constructor name), exactly as it does over the real std.hermetic_replay corpus.
+#[test]
+fn m4_published_corpus_governs_runtime_hermetic_decision() {
+    let src = r#"module test.m4_corpus_gate
+
+type PublishedMockCase {
+  operation_key: String
+  case_id: Int
+}
+
+service test.Fs {
+  config {
+    endpoint: "https://fs.example.com"
+  }
+  operation Read {
+    output { data: String }
+    transport rest { method: GET, path: "/read" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "published-read" }
+    }
+  }
+  operation Probe {
+    output { data: String }
+    transport rest { method: GET, path: "/probe" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => { data: "unpublished-probe" }
+    }
+  }
+}
+
+data fs_published_mock_corpus: List<PublishedMockCase> = [
+  PublishedMockCase { operation_key: "test.Fs.Read", case_id: 0 }
+]
+
+fn witness_read() -> String {
+  let r = test.Fs.Read()
+  r.data
+}
+
+fn witness_probe() -> String {
+  let r = test.Fs.Probe()
+  r.data
+}
+"#;
+    let resolved = {
+        let sources = resolve_imports_transitively("test.dag", src);
+        let resolved = compile_to_resolved(Rc::new(sources));
+        assert_resolved_no_hard_errors(&resolved);
+        resolved
+    };
+    let graph = resolved.graph.as_ref().expect("graph");
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Hermetic,
+    );
+
+    // GREEN by execution: the published op realizes (the runtime reads the model and allows it).
+    match v1_interpreter::run_in_context(&ctx, "witness_read", false) {
+        Ok(Value::Str(s)) => assert_eq!(s, "published-read"),
+        other => panic!("published op must realize hermetically, got {other:?}"),
+    }
+
+    // RED on disagreement (the teeth): an unpublished op on the SAME corpus-governed service must
+    // fail closed, EVEN THOUGH it has an inline mock_response. A vacuous runtime that returned the
+    // inline mock would diverge from the published model — this is what proves the model is read.
+    let err = v1_interpreter::run_in_context(&ctx, "witness_probe", false).expect_err(
+        "unpublished op on a corpus-governed service must fail closed despite an inline mock",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("not a published mock case"),
+        "expected published-corpus refusal diagnostic, got: {msg}"
+    );
+}
+
 fn fixture_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_json_files(dir, &mut out);
