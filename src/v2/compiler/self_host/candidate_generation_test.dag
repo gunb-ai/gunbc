@@ -19,8 +19,7 @@ import v2.compiler.translate {
   TargetBundleMalformed,
   TranslateDiagnosticReason
 }
-import v2.std.collection { Absent, Optional, Present, optional_present }
-import v2.std.node { Symbol }
+import v2.std.collection { Absent, List, Optional, Present, optional_present }
 import v2.extdeps.languages.dag {
   dag_mvp1_emitted_add_fn_node,
   dag_mvp1_target_model
@@ -42,9 +41,61 @@ import v2.test.manual.sg2_type_expression_projection {
   sg2_project_instantiation_emitted,
   sg2_type_expr_target
 }
-import v2.std.algebra { length }
+import v2.std.algebra { bag_eq, fold, length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.node { Behavior, Symbol }
+import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+
+
+data reflect_translate_diagnostic_reason_type: Symbol = ^TranslateDiagnosticReason
+
+
+fn symbol_eq(left: Symbol, right: Symbol) -> Bool {
+  left == right
+}
+
+
+fn translate_diagnostic_reason_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
+  fold(inhabitants, init: [], f: fn(acc, inhabitant) {
+    list_snoc_item(xs: acc, item: translate_diagnostic_reason_symbol(reason: inhabitant))
+  })
+}
+
+
+fn translate_diagnostic_reason_from_symbol_round_trips_inhabitants(
+  inhabitants: List<Behavior>
+) -> Bool {
+  fold(inhabitants, init: true, f: fn(acc, inhabitant) {
+    acc && match translate_diagnostic_reason_from_symbol(
+      sym: translate_diagnostic_reason_symbol(reason: inhabitant)
+    ) {
+      Present { value: reason } =>
+        translate_diagnostic_reason_symbol(reason: reason)
+          == translate_diagnostic_reason_symbol(reason: inhabitant)
+      Absent => false
+    }
+  })
+}
+
+
+fn translate_diagnostic_reason_roster_matches_coproduct_arms() -> Bool {
+  match coproduct_nullary_inhabitants(type_name: reflect_translate_diagnostic_reason_type) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      let arm_keys = coproduct_arm_keys(type_name: reflect_translate_diagnostic_reason_type)
+      let projected = translate_diagnostic_reason_inhabitant_discriminants(inhabitants: inhabitants)
+      (length(xs: inhabitants) == length(xs: arm_keys))
+        && bag_eq(
+          xs: translate_diagnostic_reason_roster(),
+          ys: projected,
+          eq: symbol_eq
+        )
+        && translate_diagnostic_reason_from_symbol_round_trips_inhabitants(
+          inhabitants: inhabitants
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 
 fn candidate_generation_mvp1_dag_slice_accepts() -> Bool {
@@ -150,6 +201,11 @@ fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
         Absent => false
       }
   }
+}
+
+
+test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
+  translate_diagnostic_reason_roster_matches_coproduct_arms()
 }
 
 

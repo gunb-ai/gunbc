@@ -63,6 +63,7 @@ import v2.std.diagnostic {
 import v2.std.node {
   Arrow,
   Atom,
+  Behavior,
   Cardinality,
   ComputationNode,
   Conj,
@@ -80,7 +81,11 @@ import v2.std.node {
   well_formed,
   SyntheticOccurrence
 }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query {
+  coproduct_nullary_inhabitants,
+  find_named_child,
+  node_positional_child_targets
+}
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
@@ -3888,10 +3893,15 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
 //   coproduct and `_from_symbol` silently returns Absent.
 //   dissolve-on: `Diagnostic.reason` is retyped from `Symbol` to `TranslateDiagnosticReason` (the
 //   emission sites construct the variant directly, serialize projects to the wire symbol via
-//   `_symbol`, and `_from_symbol`/`_roster` collapse) — OR a roster-vs-emission lens lands that
+//   `_symbol`, and the hand `_symbol` match collapses) — OR a roster-vs-emission lens lands that
 //   fails closed when a `^translate_*` reason literal is raised with no matching variant. Whichever
 //   lands first removes this scaffold; this marker is the §6 dissolution trigger that keeps the
 //   staged migration from ossifying as parallel representation.
+//   Partial (#5180 follow-on): `_from_symbol` and `_roster` are derived by inverting `_symbol` over
+//   `coproduct_nullary_inhabitants` (§4 one-grammar-both-directions); only `_symbol` retains the
+//   wire-symbol projection table until emission sites migrate off bare `^translate_*` literals.
+data reflect_translate_diagnostic_reason_type: Symbol = ^TranslateDiagnosticReason
+
 type TranslateDiagnosticReason
   = TargetBundleMalformed
   | TargetBundleDuplicateEdge
@@ -3933,66 +3943,46 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
   }
 }
 
+fn translate_diagnostic_reason_from_symbol_go(
+  sym: Symbol,
+  inhabitants: List<Behavior>
+) -> Optional<TranslateDiagnosticReason> {
+  fold(inhabitants, init: optional_absent(), f: fn(acc, inhabitant) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sym == translate_diagnostic_reason_symbol(reason: inhabitant) {
+          optional_present(value: inhabitant)
+        } else {
+          acc
+        }
+    }
+  })
+}
+
 fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
-  if sym == ^translate_target_bundle_malformed {
-    optional_present(value: TargetBundleMalformed)
-  } else if sym == ^translate_target_bundle_duplicate_edge {
-    optional_present(value: TargetBundleDuplicateEdge)
-  } else if sym == ^translate_sg_rc_bundle_partial {
-    optional_present(value: SgRcBundlePartial)
-  } else if sym == ^translate_grammar_inverse_not_realized {
-    optional_present(value: GrammarInverseNotRealized)
-  } else if sym == ^translate_grammar_relation_row_not_found {
-    optional_present(value: GrammarRelationRowNotFound)
-  } else if sym == ^translate_conj_invalid_edge {
-    optional_present(value: ConjInvalidEdge)
-  } else if sym == ^translate_conj_named_child_missing {
-    optional_present(value: ConjNamedChildMissing)
-  } else if sym == ^translate_concrete_token_class_missing {
-    optional_present(value: ConcreteTokenClassMissing)
-  } else if sym == ^translate_concrete_token_kind_invalid {
-    optional_present(value: ConcreteTokenKindInvalid)
-  } else if sym == ^translate_serialize_recursion_limit_exhausted {
-    optional_present(value: SerializeRecursionLimitExhausted)
-  } else if sym == ^translate_lex_rule_literal_not_found {
-    optional_present(value: LexRuleLiteralNotFound)
-  } else if sym == ^translate_binding_spelling_not_found {
-    optional_present(value: BindingSpellingNotFound)
-  } else if sym == ^translate_type_expression_shape_missing {
-    optional_present(value: TypeExpressionShapeMissing)
-  } else if sym == ^translate_type_expr_kind_authority_invalid {
-    optional_present(value: TypeExprKindAuthorityInvalid)
-  } else if sym == ^target_atom_realization_lookup_miss {
-    optional_present(value: TargetAtomRealizationLookupMiss)
-  } else if sym == ^target_function_signature_realization_lookup_miss {
-    optional_present(value: TargetFunctionSignatureRealizationLookupMiss)
-  } else if sym == ^target_type_expr_emitted_shape_malformed {
-    optional_present(value: TargetTypeExprEmittedShapeMalformed)
-  } else {
-    optional_absent()
+  match coproduct_nullary_inhabitants(type_name: reflect_translate_diagnostic_reason_type) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      translate_diagnostic_reason_from_symbol_go(sym: sym, inhabitants: inhabitants)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
+fn translate_diagnostic_reason_roster_from_inhabitants(inhabitants: List<Behavior>) -> List<Symbol> {
+  fold(inhabitants, init: Empty, f: fn(acc, inhabitant) {
+    list_snoc_item(
+      xs: acc,
+      item: translate_diagnostic_reason_symbol(reason: inhabitant)
+    )
+  })
+}
+
 fn translate_diagnostic_reason_roster() -> List<Symbol> {
-  [
-    translate_diagnostic_reason_symbol(reason: TargetBundleMalformed),
-    translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge),
-    translate_diagnostic_reason_symbol(reason: SgRcBundlePartial),
-    translate_diagnostic_reason_symbol(reason: GrammarInverseNotRealized),
-    translate_diagnostic_reason_symbol(reason: GrammarRelationRowNotFound),
-    translate_diagnostic_reason_symbol(reason: ConjInvalidEdge),
-    translate_diagnostic_reason_symbol(reason: ConjNamedChildMissing),
-    translate_diagnostic_reason_symbol(reason: ConcreteTokenClassMissing),
-    translate_diagnostic_reason_symbol(reason: ConcreteTokenKindInvalid),
-    translate_diagnostic_reason_symbol(reason: SerializeRecursionLimitExhausted),
-    translate_diagnostic_reason_symbol(reason: LexRuleLiteralNotFound),
-    translate_diagnostic_reason_symbol(reason: BindingSpellingNotFound),
-    translate_diagnostic_reason_symbol(reason: TypeExpressionShapeMissing),
-    translate_diagnostic_reason_symbol(reason: TypeExprKindAuthorityInvalid),
-    translate_diagnostic_reason_symbol(reason: TargetAtomRealizationLookupMiss),
-    translate_diagnostic_reason_symbol(reason: TargetFunctionSignatureRealizationLookupMiss),
-    translate_diagnostic_reason_symbol(reason: TargetTypeExprEmittedShapeMalformed)
-  ]
+  match coproduct_nullary_inhabitants(type_name: reflect_translate_diagnostic_reason_type) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      translate_diagnostic_reason_roster_from_inhabitants(inhabitants: inhabitants)
+    Rejected { diagnostics: _ } => Empty
+  }
 }
 
 fn translate_diagnostic_reason_head(
