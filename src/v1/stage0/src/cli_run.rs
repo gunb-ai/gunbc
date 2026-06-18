@@ -1921,6 +1921,9 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "host_source_root_ingest_manifest.dag",
     // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
+    // Manual-lane: unified_claim transport only — enrolled via claim_witness_corpus_ci_runner,
+    // not the auto-discovery floor (collateral when src/v2/compiler/manual is a scan-dir).
+    "sg2_type_expression_projection.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
