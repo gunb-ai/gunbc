@@ -1,0 +1,87 @@
+// Scope: N_v2 substrate measurement — emit_compiler_import_closure_from_ingest on scoped
+//   53-module host manifest overlay (v2 own emitter via emit_for_target).
+// Status: #[ignore]-class heavy witness; run via scripts/v2-compiler-closure-emit-gate.sh.
+
+module v2.test.self_host.compiler_closure_emit_from_ingest
+
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject
+}
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QnCons, QnEmpty }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_ingest,
+  host_source_root_ingest_coverage_receipt
+}
+
+
+fn compiler_closure_compile_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: QnCons {
+        head: ^v2,
+        tail: QnCons {
+          head: ^compiler,
+          tail: QnCons { head: ^compile, tail: QnEmpty }
+        }
+      }
+    },
+    imports: Empty
+  }
+}
+
+
+fn compiler_closure_scoped_ingest_module_count_ok() -> Bool {
+  host_source_root_ingest_coverage_receipt.coverage_complete
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count == 53)
+    && (length(xs: host_source_root_ingest) == 53)
+}
+
+
+fn compiler_closure_scoped_ingest_parses() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: host_source_root_ingest,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 53
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+// N_v2 substrate path: v2 emit_for_target on scoped ingest (may reject/OOM — report outcome).
+fn compiler_closure_v2_emit_from_scoped_ingest_accepts() -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: host_source_root_ingest,
+    admission: compiler_closure_compile_admission(),
+    target: rust_mvp1_target_model()
+  ) {
+    Accepted { value: receipt, diagnostics: d } =>
+      (d == None) && (receipt.closure_size > 0) && (receipt.source != None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn compiler_closure_scoped_ingest_manifest_receipt_holds() -> Bool {
+  compiler_closure_scoped_ingest_module_count_ok()
+}
+
+
+test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
+  compiler_closure_scoped_ingest_parses()
+}
+
+
+test fn compiler_closure_v2_emit_from_scoped_ingest_holds() -> Bool {
+  compiler_closure_v2_emit_from_scoped_ingest_accepts()
+}
