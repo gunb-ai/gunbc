@@ -23,6 +23,8 @@ type BreakingShape
 
 
 // Breaking create carriers only — create-if-absent classifies to IdempotentShape, not here.
+// dissolve-on: increment-2 Share/dedup classifier — BreakingCreateCause ⊆ CreateCause via
+// refinement witness (or single CreateCause + router exhaustiveness over breaking subset).
 type BreakingCreateCause
   = PostAlways
   | KeylessFallback { method: Symbol }
@@ -176,6 +178,8 @@ fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
 
 
 // Double-init dedup (increment 1): collapse two content-identical idempotent creates (Share).
+// dissolve-on: increment-2 general idempotent dedup — predicates dissolve into Share/dedup
+// classifier surface; these exhaustive is_* matches are interim scaffold only.
 fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
     IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => true
