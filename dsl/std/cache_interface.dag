@@ -9,7 +9,7 @@ module std.cache_interface
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.measure { ByteSize }
-import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
 //
@@ -480,6 +480,52 @@ data resolved_graph_cache_facts: CacheInterfaceFacts = {
       field: "lookup_semantics"
       evidence: OperatorObserved {
         note: "subject_digest = closure content + resolve-logic version + intern-seed version"
+        observed_at: 0
+      }
+    },
+  ]
+}
+
+data parse_table_memo_id: CacheInterfaceId = "parse_table_memo"
+
+// In-process parse memo: content-addressed (grammar_digest × token_stream_digest × position × production).
+// Grammar scopes the in-process store; token_stream_digest prevents cross-source cell reuse.
+// (Realization carrier for v2.compiler.parse ParseTable — dissolves hand-rolled Map threading).
+data parse_table_memo_facts: CacheInterfaceFacts = {
+  identity: parse_table_memo_id
+  backing_surface: "gunbc-parse-table-in-process"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+    classification: ContentAddressedByValue
+    inputs_considered: [UpsertSubject]
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  lookup_semantics: ContentAddressLookup
+  write_semantics: OverwriteAllowed
+  miss_semantics: MissThenCreate
+  value_shape: StructuredArtifact
+  locality: InProcess
+  eviction: Never
+  atomicity: PerFile
+  auth: None
+  read_latency: InProcessNs
+  consistency: Strong
+  evidence: [
+    {
+      field: "locality"
+      evidence: OperatorObserved {
+        note: "scoped to InterpContext; drops with evaluation — within-run memo (design-recompute-memoization §4.1)"
+        observed_at: 0
+      }
+    },
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "ParseTableSubject = grammar_digest + token_stream_digest (full stream content-address incl. lexemes) + position + production"
         observed_at: 0
       }
     },
