@@ -352,16 +352,22 @@ fn resolve_surface_operator_atom(
 fn resolve_transform_operator_child(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel
+  lm: DagLanguageModel,
+  under_module_root: Bool
 ) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_surface_operator_atom(n: n, scope: scope, lm: lm, identity: id)
-    _ => resolve_node(n: n, scope: scope, lm: lm)
+    _ => resolve_node(n: n, scope: scope, lm: lm, under_module_root: under_module_root)
   }
 }
 
-fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
+fn resolve_transform_children(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel,
+  under_module_root: Bool
+) -> Outcome<Node> {
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
@@ -371,7 +377,12 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
           Positional =>
             // Wave-1: operator is positional-0; later positions resolve as ordinary nodes.
             if length(xs: done) == 0 {
-              match resolve_transform_operator_child(n: e.target, scope: scope, lm: lm) {
+              match resolve_transform_operator_child(
+                n: e.target,
+                scope: scope,
+                lm: lm,
+                under_module_root: under_module_root
+              ) {
                 Rejected { diagnostics: r } =>
                   Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -386,7 +397,12 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
                   }
               }
             } else {
-              match resolve_node(n: e.target, scope: scope, lm: lm) {
+              match resolve_node(
+                n: e.target,
+                scope: scope,
+                lm: lm,
+                under_module_root: under_module_root
+              ) {
                 Rejected { diagnostics: r } =>
                   Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
