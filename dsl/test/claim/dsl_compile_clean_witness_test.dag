@@ -20,6 +20,6 @@ fn witness_perturb_optional_skew_goes_red() -> Bool {
   run_perturb_optional_skew_red_receipt()
 }
 
-fn dsl_compile_clean_witnesses() -> Bool {
+test fn dsl_compile_clean_witnesses() -> Bool {
   witness_clean_tree_compile_holds() && witness_perturb_optional_skew_goes_red()
 }
