@@ -1,0 +1,52 @@
+// src/v2/lens/application_serializer.dag
+// Scope: Re-emit half of the read/edit pipeline — apply_diff ∘ grammar-inverse serialize.
+// Status: DagSourcePatch + serialize_diff_as_source_patch for patch-in-error / auto-fix.
+// Anchor: apply_diff lives in v2.lens.application; canonical serialize in translate.
+// Layer note: NOT in source_authority — program_assembly imports source_authority on the
+// hot ingest path; pulling lens.application into that module inverts the layer DAG.
+
+module v2.lens.application_serializer
+
+import v2.compiler.source_authority { DagSource }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.lens.application { apply_diff }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Outcome,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.node { Diff, Node }
+
+// Patch-in-error carrier: canonical .dag source before/after a structural Diff.
+type DagSourcePatch {
+  before: DagSource
+  after: DagSource
+}
+
+// apply_diff ∘ target_serialize_source_from_model — before/after DagSource patch carrier.
+fn serialize_diff_as_source_patch(
+  root: Node,
+  diff: Diff,
+  canonical_source_target: TargetModel
+) -> Outcome<DagSourcePatch> {
+  bind_outcome(
+    o: target_serialize_source_from_model(target: canonical_source_target, emitted: root),
+    f: fn(before) {
+      bind_outcome(
+        o: apply_diff(root: root, d: diff),
+        f: fn(patched) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: canonical_source_target,
+              emitted: patched
+            ),
+            f: fn(after) {
+              outcome_accepted(value: DagSourcePatch { before: before, after: after })
+            }
+          )
+        }
+      )
+    }
+  )
+}
