@@ -212,6 +212,25 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
+pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
+    m.is_empty()
+}
+
+// Sound identity hint (see 04_infer.dag substitute_generics): returns true =>
+// the two are structurally equal. The compiled realization answers with pointer
+// identity (conservative: may say false when equal); never true-when-unequal, so
+// callers that return the original on true preserve output structure. Owned Rc
+// args (cheap refcount bump) keep the inner element pointers, so ptr_eq on the
+// clones equals ptr_eq on the originals -- lets the .dag pass args by value and
+// emit through the normal clone path (no all-args-by-ref emit rule needed).
+pub fn rc_ptr_eq<T>(a: Rc<T>, b: Rc<T>) -> bool {
+    Rc::ptr_eq(&a, &b)
+}
+
+pub fn rc_vec_ptr_eq<T>(a: Rc<Vec<Rc<T>>>, b: Rc<Vec<Rc<T>>>) -> bool {
+    a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| Rc::ptr_eq(x, y))
+}
+
 pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
