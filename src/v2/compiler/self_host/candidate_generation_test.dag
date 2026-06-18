@@ -75,17 +75,13 @@ fn translate_error_profile_mvp1_malformed_bundle_known() -> Bool {
 }
 
 
-fn translate_error_profile_sg2_measured_reject_known() -> Bool {
+fn translate_error_profile_sg2_projected_arrow_serialize_known() -> Bool {
   match target_serialize_source_from_model(
     target: sg2_type_expr_target,
     emitted: sg2_project_arrow_emitted()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } =>
-      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        Present { value: _ } => true
-        Absent => false
-      }
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -147,8 +143,8 @@ test fn translate_error_profile_mvp1_malformed_bundle_classified() -> Bool {
 }
 
 
-test fn translate_error_profile_sg2_measured_reject_classified() -> Bool {
-  translate_error_profile_sg2_measured_reject_known()
+test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool {
+  translate_error_profile_sg2_projected_arrow_serialize_known()
 }
 
 
