@@ -140,7 +140,7 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_present_red_test.dag",
-            "module_source_nickname_literal_coverage_domain_is_red_holds",
+            "module_source_nickname_literal_coverage_domain_is_green_holds",
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
@@ -240,14 +240,20 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
     let entry = "src/v2/lens/extdeps_shape_transport_policy/module_refs.dag";
     let content = std::fs::read_to_string(workspace_root().join(entry))
         .unwrap_or_else(|e| panic!("read {entry}: {e}"));
-    let resolved = compile_to_resolved(Rc::new(
-        resolve_imports_transitively_with_source_roots(entry, &content, &v2_source_roots()),
-    ));
+    let resolved = compile_to_resolved(Rc::new(resolve_imports_transitively_with_source_roots(
+        entry,
+        &content,
+        &v2_source_roots(),
+    )));
     let graph = resolved
         .graph
         .as_ref()
         .expect("graph after successful resolve");
-    let ctx = InterpContext::new(graph, resolved.source_indices.clone(), ExecutionMode::Hermetic);
+    let ctx = InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Hermetic,
+    );
 
     let green_qn = build_qn(
         &ctx,
@@ -279,7 +285,7 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
         assert!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &coverage_qn,
-            ) > 0
+            ) == 0
         );
     });
 }

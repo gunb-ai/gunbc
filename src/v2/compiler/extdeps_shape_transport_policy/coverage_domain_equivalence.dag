@@ -9,7 +9,7 @@ import v2.std.logic { Bool }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs {
-witness_clean_gist_create_lens_unit_module,
+  witness_clean_gist_create_lens_unit_module,
   witness_clean_git_diff_lens_unit_module,
   witness_dead_param_cargo_build_lens_unit_module,
   witness_dead_param_cargo_clippy_corpus_module,
