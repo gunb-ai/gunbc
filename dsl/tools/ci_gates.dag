@@ -1,16 +1,10 @@
 // tools/ci_gates.dag — composed effectful CI gates (one resolve, one process).
 //
 // Gate list authority: `gunbc_ci_spec.gates` (not a parallel hardcoded sequence).
-// Production CI runs gates individually via floor_effect_gate_witness adapters;
-// this module remains for direct invocation.
-//
-// dissolve-on: v1 interpreter terminates effectful `fold` over ProcessExit (same
-// class as #5138 floor batch-2 loop). Until then, `main` sequences gates manually
-// (short-circuit on first failure) instead of `fold(spec.gates, …)`.
 
 module tools.ci_gates
 
-import std.process { ProcessExit, ExitSuccess }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate,
@@ -38,16 +32,20 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
   }
 }
 
-// Sequential short-circuit — order mirrors `gunbc_ci_spec.gates` until dissolve-on.
-func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
-  let g0 = run_spec_gate(g: RustMonolithGate)
-  let g1 = if exit_ok(g0) { run_spec_gate(g: EmitHostGate) } else { g0 }
-  let g2 = if exit_ok(g1) { run_spec_gate(g: LayeringImportsGate) } else { g1 }
-  let g3 = if exit_ok(g2) { run_spec_gate(g: DslCompileCleanGate) } else { g2 }
-  let g4 = if exit_ok(g3) { run_spec_gate(g: CiYamlGate) } else { g3 }
-  if exit_ok(g4) { run_spec_gate(g: SourceRootIngestGate) } else { g4 }
+func run_ci_gates(spec: CiSpec) -> ProcessExit {
+  let all_ok = fold(spec.gates, init: true, f: (acc, g) => {
+    let result = run_spec_gate(g: g)
+    acc && exit_ok(result)
+  })
+  return if all_ok {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "ci gates failed: one or more gates in gunbc_ci_spec.gates"
+    )
+  }
 }
 
 func main() -> ProcessExit {
-  run_ci_gates_sequential(spec: gunbc_ci_spec)
+  run_ci_gates(spec: gunbc_ci_spec)
 }

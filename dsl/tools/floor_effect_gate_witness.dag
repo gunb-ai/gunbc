@@ -2,45 +2,40 @@
 // CI gates, so the dependency-ordered scheduler (claim_executor) can run each gate
 // as a plan node (`RunnableSingleClaim` is nullary — one `(entry, function)`).
 //
-// REUSE, not re-coin (DESIGN §2/§3): each adapter pins one closed `Gate` variant and
-// calls that gate's composed CI entry (`run_*_ci_gate`). Do NOT import
-// `tools.ci_gates` here — its composed `main`/`run_ci_gates` fold loops under the
-// v1 interpreter (#5138); production CI runs one gate per witness adapter.
+// REUSE, not re-coin (DESIGN §2/§3): the Gate→effect mapping stays the single
+// authority `tools.ci_gates.run_spec_gate` (itself driven by `gunbc_ci_spec.gates`).
+// Each adapter just pins one closed `Gate` variant and maps its ProcessExit to the
+// Bool the scheduler's per-node verdict needs. These are `func` (effectful) — the
+// host runs them in Wet mode so the transports fire.
 
 module tools.floor_effect_gate_witness
 
-import std.process { ProcessExit, ExitSuccess }
-import tools.rust_gates_ci { run_rust_monolith_gate }
-import tools.emit_host_gate { run_emit_host_ci_gate }
-import tools.layering_imports_gate { run_layering_imports_ci_gate }
-import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
-import tools.ci_yaml_gate { run_ci_yaml_gate }
-import tools.source_root_ingest_gate { run_source_root_ingest_ci_gate }
-
-fn exit_ok(e: ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
+import gunbc.ci_spec {
+  RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate,
+  SourceRootIngestGate
 }
+import tools.ci_gates { exit_ok, run_spec_gate }
 
 func rust_monolith_gate_passes() -> Bool {
-  exit_ok(e: run_rust_monolith_gate())
+  exit_ok(e: run_spec_gate(g: RustMonolithGate))
 }
 
 func emit_host_gate_passes() -> Bool {
-  exit_ok(e: run_emit_host_ci_gate())
+  exit_ok(e: run_spec_gate(g: EmitHostGate))
 }
 
 func layering_imports_gate_passes() -> Bool {
-  exit_ok(e: run_layering_imports_ci_gate())
+  exit_ok(e: run_spec_gate(g: LayeringImportsGate))
 }
 
 func dsl_compile_clean_gate_passes() -> Bool {
-  exit_ok(e: run_dsl_compile_clean_gate())
+  exit_ok(e: run_spec_gate(g: DslCompileCleanGate))
 }
 
 func ci_yaml_gate_passes() -> Bool {
-  exit_ok(e: run_ci_yaml_gate())
+  exit_ok(e: run_spec_gate(g: CiYamlGate))
 }
 
 func source_root_ingest_gate_passes() -> Bool {
-  exit_ok(e: run_source_root_ingest_ci_gate())
+  exit_ok(e: run_spec_gate(g: SourceRootIngestGate))
 }

@@ -1,15 +1,10 @@
-// gunbc/ci_spec.dag — CI intent as data (witness roots, gates, diff policy).
+// gunbc/ci_spec.dag — CI intent as data (gates, diff policy, transport scripts).
 
 module gunbc.ci_spec
 
-type WitnessRoot {
-  root: String
-  scan_subtrees: List<String>
-}
-
-type WitnessEntry {
-  entry: String
-  function: String
+import gunbc.ci_layer_roots {
+  witness_layer_roots,
+  witness_layer_source_flags
 }
 
 type Gate
@@ -29,42 +24,25 @@ type DiffPolicy {
 }
 
 type CiSpec {
-  witness_roots: List<WitnessRoot>
-  witness_entries: List<WitnessEntry>
   gates: List<Gate>
   diff_policy: DiffPolicy
   notice_title: String
 }
 
+// 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
+// dissolve-on-arrival: generic Symbol→inhabitant replaces exhaustive match roster;
+// roster completeness is witness-checked in src/v2/test/claim/ci_spec_witness_test.dag.
+data gunbc_ci_gates: List<Gate> = [
+  RustMonolithGate,
+  EmitHostGate,
+  LayeringImportsGate,
+  DslCompileCleanGate,
+  CiYamlGate,
+  SourceRootIngestGate
+]
+
 data gunbc_ci_spec: CiSpec = {
-  witness_roots: [
-    { root: "src/v2", scan_subtrees: [] },
-    { root: "dsl", scan_subtrees: [] }
-  ],
-  witness_entries: [
-    { entry: "dsl/test/claim/rust_stage0_gates_witness.dag", function: "rust_stage0_gates_witnesses" },
-    { entry: "dsl/test/claim/emit_host_gate_witness.dag", function: "emit_host_gate_witnesses" },
-    { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
-    { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
-    { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
-    { entry: "dsl/test/claim/cargo_target_path_witness.dag", function: "cargo_target_path_witnesses" },
-    { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
-    { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
-    { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
-    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
-    { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
-    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" },
-    { entry: "dsl/test/claim/realization_witness.dag", function: "realization_witnesses" },
-    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" }
-  ],
-  gates: [
-    RustMonolithGate,
-    EmitHostGate,
-    LayeringImportsGate,
-    DslCompileCleanGate,
-    CiYamlGate,
-    SourceRootIngestGate
-  ],
+  gates: gunbc_ci_gates,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
@@ -164,23 +142,18 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
   )
 }
 
-fn witness_root_source_flag(wr: WitnessRoot) -> String {
-  concat(" --source-root ", wr.root)
-}
-
 // `claim_executor` takes ONLY `--source-root` (to resolve the plan) — it has no
 // `--scan-dir` flag and hard-errors on any unknown argument. Scan dirs are carried
 // SOLELY by the plan (`ci_floor_plan.corpus_scan_dirs` → `RunnableDiscoveryBatch.
 // scan_dirs`), the single authority for that derivation (DESIGN §3); emitting them
 // on the argv too would be a redundant, fail-closed mis-wire (DESIGN §5).
-fn witness_roots_source_flags(roots: List<WitnessRoot>) -> String {
-  fold(roots, init: "", f: (acc, wr) => concat(acc, witness_root_source_flag(wr: wr)))
-}
+//
+// Layer roots: `gunbc.ci_layer_roots.witness_layer_roots` (§3 single authority).
 
 // The dependency-ordered scheduler plan (the single floor topology, DESIGN §3) and
 // the host entry the executor evaluates. The scheduler — NOT a flat claim_batch +
 // gates pair — is the default CI runtime: both the discovery corpus and the gates
-// are scheduler plan nodes (`dsl/gunbc/ci_floor_plan.dag`), run dependency-ordered
+// are scheduler plan nodes (`src/v2/workflow/ci_floor_plan.dag`), run dependency-ordered
 // and parallel-where-independent, fail-closed (DESIGN §4/§5).
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
@@ -189,7 +162,7 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
-        concat(concat(claim_executor_bin_shell(), witness_roots_source_flags(roots: spec.witness_roots)), concat(" --plan-entry ", floor_plan_entry)),
+        concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
         concat(" --plan-function ", floor_plan_function)
       ),
       concat(concat(" --notice-title \"", spec.notice_title), "\"")

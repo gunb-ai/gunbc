@@ -24,13 +24,7 @@ jobs:
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-          if sccache --show-stats >/dev/null 2>&1; then
-            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-            echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
-            echo "CARGO_BUILD_JOBS=1" >> "$GITHUB_ENV"
-          else
-            echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-          fi
+          echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v5
         with:
