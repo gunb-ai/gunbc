@@ -77,3 +77,17 @@ fn layering_imports_clean_holds(facts: List<LayerImportFact>) -> Bool {
 fn layering_imports_violation_count(facts: List<LayerImportFact>) -> Int {
   length(xs: scan_facts_for_violations(facts: facts))
 }
+
+// Parse-bridge: structural projection of import facts over the live `.dag` tree. REUSES
+// the resolver's own `extract_import_paths` + `collect_dag_files_tolerant` (single
+// authority) — the replacement for the deleted `scripts/layering-imports-scan.sh`
+// enumerator. Layer<->root tagging is workflow POLICY: the caller passes the std-layer
+// roots and the extdeps-layer roots separately (DESIGN §3 (c)), not baked here.
+// dissolve-on: emit(intent, Bash) / v2 self-host folds this projection over its own
+//   parsed module Node-set (the v1 handler is layering_imports_project.rs).
+fn layer_import_facts_live(
+  std_roots: List<String>,
+  extdeps_roots: List<String>
+) -> List<LayerImportFact> {
+  layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
+}

@@ -71,7 +71,7 @@ fn extract_module_path(content: &str) -> Option<String> {
 }
 
 /// Extract import module paths from a .dag file.
-fn extract_import_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
@@ -1968,9 +1968,6 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "host_source_root_ingest_manifest.dag",
     // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
-    // Manual-lane: unified_claim transport only — enrolled via claim_witness_corpus_ci_runner,
-    // not the auto-discovery floor (collateral when src/v2/compiler/manual is a scan-dir).
-    "sg2_type_expression_projection.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
@@ -1986,7 +1983,7 @@ pub fn floor_discovery_path_excluded(path: &str) -> bool {
 /// Tolerant `.dag` walk (silently skips unreadable dirs — a gate must not panic
 /// on a transient read error). The eager `collect_dag_files` above panics, which
 /// is wrong for the floor scan.
-fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,

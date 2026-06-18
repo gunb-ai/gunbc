@@ -1,0 +1,7 @@
+// FIXTURE — planted std-layer module mixing a forbidden upward import (v2.compiler.*) with an
+// UNRESOLVABLE import. Proves the projection scans at the text/parse level (pre-resolve), exactly
+// like the deleted enumerator: the broken import does not hide the v2.compiler violation, and the
+// violation count is still 1. Read as TEXT (never module-resolved). DO NOT import.
+module v2.test.fixture.layering_scan.parse_level_pre_resolve_plant
+import v2.compiler.tokenize
+import totally.broken.unresolved.module
