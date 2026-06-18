@@ -463,8 +463,10 @@ pub fn render_rust_fn_sig_type(
             && !is_container_type(name.clone()))
         {
             match lookup_type_by_name(env.clone(), name.clone()) {
-                Some(binding) => {
-                    if is_type_alias_item(binding, source_indices.clone()) {
+                Some(resolved) => {
+                    let resolved_name =
+                        authored_name_at(source_indices.clone(), resolved.clone());
+                    if resolved_name != name {
                         render_rust_shared_type_if_needed(
                             name.clone(),
                             name,

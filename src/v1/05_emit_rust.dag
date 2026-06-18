@@ -290,8 +290,9 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     let name = authored_name_at(source_indices: source_indices, node: n)
     if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) {
       match lookup_type_by_name(env: env, name: name) {
-        Present { value: binding } =>
-          if is_type_alias_item(item: binding, source_indices: source_indices) {
+        Present { value: resolved } =>
+          let resolved_name = authored_name_at(source_indices: source_indices, node: resolved)
+          if resolved_name != name {
             render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
           } else {
             render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
