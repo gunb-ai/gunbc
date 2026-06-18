@@ -557,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn coverage_domain_module_source_nickname_literal_count_is_zero_after_qn_migration() {
+    fn coverage_domain_module_source_nickname_literal_count_is_positive() {
         let path = crate::module_path_index::source_path_for_module_path(
             "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence".to_string(),
         );
@@ -568,7 +568,7 @@ mod tests {
         for item in items.iter() {
             total += module_source_nickname_literal_count_in_node(item, &real_paths);
         }
-        assert_eq!(total, 0);
+        assert!(total > 0, "expected nickname literals, got {total}");
     }
 
     #[test]
