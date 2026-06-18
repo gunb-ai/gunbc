@@ -42,6 +42,7 @@ import v2.std.compilers.target_model {
   TargetTypeExpressionProjection,
   target_type_expr_emitted_wire_decode,
   type_expr_projection_bundle_shape_for_connective,
+  type_expr_projection_row_closedness_from_target,
   type_expr_projection_row_shape_witness_gate
 }
 import v2.std.node { Arrow }
@@ -482,6 +483,17 @@ data claim_sg2_mvp1_translate_fallback: TestClaim = CompilesClaim {
   input: sg2_claim_input(ok: sg2_mvp1_translate_fallback_accepts()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn sg2_arrow_row_closedness_accepts() -> Bool {
+  match type_expr_projection_row_closedness_from_target(
+    target: sg2_type_expr_target,
+    projection: rust_type_expression_projection(),
+    connective: Arrow
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn witness_sg2_arrow_holds() -> Bool {
