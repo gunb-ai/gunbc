@@ -7850,6 +7850,13 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
     let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let module_count = v1_compiler::cli_run::load_sources_for_entry(
+        &roots,
+        entry,
+    )
+    .expect("load compiler entry closure")
+    .len();
     let out_dir = unique_temp_dir("v2-compiler-closure-out");
 
     let result = crate::helpers::compile_dag_named_with_source_roots(
@@ -7894,7 +7901,7 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
         result.files.len()
     );
     eprintln!(
-        "N_v1 headline: v1-emits-v2 scoped 00_compile closure (53 modules) → {error_count} cargo-check errors; top codes: E0308≈2776 E0282≈271 E0425≈203 E0277≈166 E0599≈100"
+        "N_v1 headline: v1-emits-v2 scoped 00_compile closure ({module_count} modules) → {error_count} cargo-check errors; top codes: E0308≈2776 E0282≈271 E0425≈203 E0277≈166 E0599≈100"
     );
     if !check.status.success() {
         eprintln!("--- cargo check stdout ---\n{stdout}");
