@@ -7,7 +7,7 @@
 //! dependency frontier through `v2.workflow.executor` and returns
 //! `List<List<Runnable>>` — the outer list is batches in execution order, the
 //! inner list is the runnables (a `SingleClaim` witness/gate, or the whole
-//! `DiscoveryBatch` corpus) runnable in parallel within that batch. This binary
+//! `DiscoveryBatch` corpus) runnable within that batch. This binary
 //! evaluates that plan, walks the returned value, and RUNS it: batch by batch
 //! (respecting the executor's ordering), runnables within a batch sequentially
 //! against one shared module index.
