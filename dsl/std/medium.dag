@@ -1,61 +1,60 @@
-// std/medium.dag — Medium-axis foundation for representational carriers.
+// std/medium.dag — Medium-axis foundation (idea→idea machine Cut 2).
 //
-// Authority: idea→idea machine Cut 2 — how semantic content R is carried in an
-// external medium and whether decode back to semantic values preserves information.
+// Single un-forked authority: an idea can be carried in any medium (text, value,
+// decision, binary, music, …) with a declared decode-fidelity. Pure model only —
+// no pipeline fold, no Node/RuntimeValue (dsl/std has neither).
 //
 // Layer split (§3):
-//   dsl/std/medium.dag      — Medium<R> + DecodeFidelity (this file)
-//   dsl/std/encoding.dag  — byte-sequence character interpretation lattice
-//   std/fidelity.dag      — transport cost/hermetic classification (unrelated axis)
-//   v2/std/text.dag       — Unicode text carriers (dissolve-on: import Medium when
-//                           cross-tree std import lands; HostStringText is a text-side
-//                           projection, not a forked medium name)
+//   dsl/std/medium.dag           — Medium<R> + DecodeFidelity (this file)
+//   dsl/std/encoding.dag         — byte-sequence character interpretation lattice
+//   dsl/std/fidelity.dag         — TransportClass cost/hermetic axis (unrelated)
+//   v2/extdeps/languages/fidelity.dag — per-feature FidelityDisposition<Feature>
+//   v2/std/text.dag              — Unicode text carriers (dissolve-on: import Medium
+//                                  when cross-tree std import lands)
 //
-// Un-forked naming (§3): `Medium<R>` and `DecodeFidelity` are the substrate
-// authority here. Do not nickname as TextMedium / ByteMedium / StorageMedium —
-// `product.compute_fabric.StorageMedium`, `behavioral.Severity.Medium`, and
-// `LatencyClass.Medium` are unrelated axes on other types.
+// NAME DISCIPLINE (§3 — operator sign-off pending on final pick):
+//   Candidates considered:
+//     - Medium<R>  — matches "medium axis" brief; general carrier for any representation.
+//     - Surface<R> — emphasizes external encoding layer; risks collision with language-
+//                    surface / UI "surface" vocabulary elsewhere in the compiler.
+//     - Vehicle<R> — carries payload; less standard in type-theoretic substrate naming.
+//   RECOMMENDATION: Medium<R> (proceeding under this name; FLAG for parent sign-off).
 //
-// NOT in scope (follow-on cuts):
-//   - encode/decode operations
-//   - representation payload rows (bytes, AST, file body)
-//   - transport handlers in extdeps/
+//   Do NOT use `Carrier` (overloaded: collection backing, text, classification axis,
+//   fact-bearing Node). Do NOT use bare `Fidelity` — collides with
+//   extdeps FidelityDisposition<Feature> AND dsl/std/fidelity.dag TransportClass axis.
+//
+// FidelityDisposition compose-up (NOT a re-coin): per-feature
+// `FidelityDisposition<Feature>` rows (v2/extdeps/languages/fidelity.dag) dispositions
+// COMPOSE UP into medium-level `DecodeFidelity` via a future reduce at the
+// medium-decode boundary. This module owns the reduced medium-axis verdict
+// (Lossless | Lossy); feature-level dispositions remain in extdeps until that reduce lands.
+//
+// Un-forked naming: do not nickname as TextMedium / ByteMedium / StorageMedium —
+// `product.compute_fabric.StorageMedium` is an unrelated product axis.
 
 module std.medium
 
 // Whether decoding from a medium back to semantic values loses information.
-// Lossless: decode preserves all medium-side facts needed for round-trip.
-// Lossy: decode collapses distinctions — no bijection to the semantic domain.
 //
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Two mutually exclusive decode policies — not dimensional axes of one space,
-// not reducible to a Bool without losing the named policy vocabulary.
-// Distinct from std.fidelity.TransportClass (transport cost / hermetic axis).
-// Consumers match on the variant; no `is_*` Bool lift (predicate dissolution).
+// Two mutually exclusive decode policies. Consumers `match` on the variant — no
+// substrate `is_*` Bool lift (predicate dissolution).
 type DecodeFidelity = Lossless | Lossy
 
-// Semantic value of type R as carried in an external medium.
+// An idea carried in an external medium.
+//
+// Field ledger (§2 decompress — each field must be genuinely atomic):
+//   representation: R — the carried idea in this medium instance. Typed by `<R>` so
+//     text (R=String), verdicts (R=ProbeVerdict), values, binaries, … share one
+//     carrier without a text-flavored `form: String` discriminator (that would be
+//     redundant when R=String and would bias non-text media toward stringly encoding).
+//   fidelity: DecodeFidelity — whether decode from this medium back to semantic
+//     values preserves information for this instance.
 //
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Type-parameter carrier for the medium axis — same epistemic-stacking pattern as
-// ReferenceModel<T> (types.dag) and MachineWidth<bits> (machine_constraints.dag).
-// `<R>` is the semantic/reference type the medium represents; concrete representation
-// shapes (bytes, text surface, AST) land as projections/handlers in extdeps/, not as
-// substrate coproduct variants here.
-//
-// Cut 2 inhabitance: `fidelity` tags decode policy for this medium instance; `<R>`
-// is phantom until representation payload lands (Cut 3).
-//
-// HARD BOUNDARIES:
-//   - Do not fork as ByteMedium / StorageMedium — those are either downstream
-//     projections or unrelated product axes (compute_fabric.StorageMedium).
-//
-// 🟡 gated — feature:medium-representation-payload — dissolve-on: first `representation`
-// field (or handler row) lands so decode/encode can round-trip the medium body.
+// Two atomic axes (payload + decode policy); no third "kind" field at this layer.
 type Medium<R> {
+  representation: R
   fidelity: DecodeFidelity
 }
-
-// First named projection: text semantic R = String (v2.std.text.HostStringText
-// dissolves onto this axis in Cut 3 when cross-tree import lands).
-type TextMedium = Medium<String>

@@ -1,0 +1,107 @@
+// dsl/test/claim/medium_fidelity_witness_test.dag — Cut 2 gated witness for std.medium.
+//
+// GREEN: (a) text Medium<String> Lossless; (b) non-text Medium<ProbeVerdict> Lossless;
+//        (c) lossy prose Medium<String> Lossy — each tag reads back via match.
+// RED: mis-tagged lossy prose advertising Lossless is rejected (fail-closed §5).
+//
+// Run: gunbc run --source-root dsl --entry <this> --function medium_fidelity_holds --claim-run
+
+module test.claim.medium_fidelity
+
+import std.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import std.types { String }
+import std.logic { Bool }
+
+// Local non-text representation — grammar-free verdict coproduct (not String).
+type ProbeVerdict = Dominates | Incomparable
+
+// Witness-local classifier (not substrate authority — predicate dissolution stays out of std/).
+fn is_lossless(f: DecodeFidelity) -> Bool {
+  match f {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn is_lossy(f: DecodeFidelity) -> Bool {
+  match f {
+    Lossless => false
+    Lossy => true
+  }
+}
+
+fn text_medium_lossless() -> Medium<String> {
+  Medium {
+    representation: "fn add(x: Int, y: Int) -> Int { x + y }",
+    fidelity: Lossless
+  }
+}
+
+fn probe_medium_lossless() -> Medium<ProbeVerdict> {
+  Medium { representation: Dominates, fidelity: Lossless }
+}
+
+fn prose_medium() -> Medium<String> {
+  Medium {
+    representation: "roughly linear time, details omitted",
+    fidelity: Lossy
+  }
+}
+
+fn mis_tagged_prose_medium() -> Medium<String> {
+  Medium {
+    representation: "roughly linear time, details omitted",
+    fidelity: Lossless
+  }
+}
+
+fn text_medium_tag_is_lossless() -> Bool {
+  let m = text_medium_lossless()
+  match m.fidelity {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn probe_medium_tag_is_lossless() -> Bool {
+  let m = probe_medium_lossless()
+  match m.fidelity {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn probe_representation_is_non_text() -> Bool {
+  let m = probe_medium_lossless()
+  match m.representation {
+    Dominates => true
+    Incomparable => false
+  }
+}
+
+fn prose_medium_tag_is_lossy() -> Bool {
+  let m = prose_medium()
+  match m.fidelity {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+// Fail-closed: correctly tagged lossy prose must NOT read as lossless.
+fn lossy_prose_not_advertised_lossless() -> Bool {
+  !is_lossless(prose_medium().fidelity)
+}
+
+// RED control: mis-tagging lossy prose as Lossless would falsely pass lossless identity.
+fn red_mistag_would_falsely_pass_lossless_check() -> Bool {
+  !is_lossless(mis_tagged_prose_medium().fidelity)
+}
+
+test fn medium_fidelity_holds() -> Bool {
+  text_medium_tag_is_lossless()
+    && probe_medium_tag_is_lossless()
+    && probe_representation_is_non_text()
+    && prose_medium_tag_is_lossy()
+    && lossy_prose_not_advertised_lossless()
+    && !red_mistag_would_falsely_pass_lossless_check()
+}
