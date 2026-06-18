@@ -8,9 +8,9 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
-    discover_source_root_reads_for_entry, emit_source_root_ingest_manifest,
-    make_eval_context, parse_source_root_entry_admission, resolve_entry_graph, run_claim,
-    ClaimOutcome,
+    discover_floor_corpus_rows, discover_source_root_reads_for_entry,
+    emit_source_root_ingest_manifest, make_eval_context, parse_source_root_entry_admission,
+    resolve_entry_graph, run_claim, ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
@@ -141,8 +141,8 @@ fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, 
 }
 
 #[test]
-#[ignore] // Boundary: N_v2 substrate — v2 emit_for_target on scoped closure via interpreter.
-fn v2_compiler_import_closure_nv2_substrate_cargo_check_records_error_count() {
+#[ignore] // Boundary: N_v2 — v2 emit_for_target via interpreter on scoped closure + cargo check.
+fn v2_emits_v2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     let temp = unique_temp_dir("nv2-substrate");
     fs::create_dir_all(&temp).expect("temp dir");
     let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
@@ -173,10 +173,12 @@ fn v2_compiler_import_closure_nv2_substrate_cargo_check_records_error_count() {
     let check_dir = temp.join("emit-crate");
     let (success, error_count, combined) = cargo_check_single_file_crate(&source, &check_dir);
     eprintln!(
-        "N_v2 (v2-emits-v2 substrate): emit_for_target accepted; cargo check success={success} error_count={error_count} source_bytes={}",
+        "N_v2 (v2-emits-v2 scoped substrate): emit_for_target accepted; cargo check success={success} error_count={error_count} source_bytes={}",
         source.len()
     );
-    eprintln!("N_v2 headline: 00_compile scoped closure (53 modules) → {error_count} cargo-check errors on v2-emitted TargetSource");
+    eprintln!(
+        "N_v2 headline: v2-emits-v2 scoped 00_compile closure (53 modules) → {error_count} cargo-check errors on v2-emitted TargetSource"
+    );
     if !success {
         eprintln!("--- N_v2 cargo check output (tail) ---\n{}", tail_lines(&combined, 40));
     }
@@ -205,6 +207,44 @@ fn source_root_ingest_symbol_leading_digit_gets_sr_prefix() {
         ),
         "^sr_00_compile"
     );
+}
+
+#[test]
+fn floor_discovery_enrollment_has_no_test_fn_hygiene_violations() {
+    let ws = workspace_root();
+    let roots = vec![
+        ws.join("src/v2").to_string_lossy().to_string(),
+        ws.join("dsl").to_string_lossy().to_string(),
+    ];
+    let scan_dirs = vec!["dsl/test/claim".to_string()];
+    discover_floor_corpus_rows(&roots, &scan_dirs)
+        .expect("floor discovery must not find test fn outside *_test.dag");
+}
+
+#[test]
+fn manifest_entry_admission_qualified_name_is_well_formed() {
+    let ws = workspace_root();
+    let temp = unique_temp_dir("manifest-qn");
+    fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("manifest.dag");
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission = parse_source_root_entry_admission(&entry_source).expect("parse admission");
+    let records = discover_source_root_reads_for_entry(
+        &[ws.join("src/v2").to_string_lossy().to_string()],
+        ws.join(COMPILER_ENTRY).to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover reads");
+    emit_source_root_ingest_manifest(&manifest_path, &records[..1], Some(&admission))
+        .expect("emit manifest");
+    let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
+    assert!(
+        manifest.contains(
+            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+        ),
+        "manifest admission subject QN malformed:\n{manifest}"
+    );
+    let _ = fs::remove_dir_all(&temp);
 }
 
 #[test]

@@ -2023,6 +2023,11 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "host_source_root_ingest_manifest.dag",
     // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
+    // Gate-only: N_v2 substrate witnesses (scripts/v2-compiler-closure-nv2-gate.sh).
+    "compiler_closure_emit_from_ingest_gate.dag",
+    // Manual-lane: unified_claim transport only — enrolled via claim_witness_corpus_ci_runner,
+    // not the auto-discovery floor (collateral when src/v2/compiler/manual is a scan-dir).
+    "sg2_type_expression_projection.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
@@ -2402,6 +2407,24 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
         out = format!("QnCons {{ head: ^{seg}, tail: {out} }}");
     }
     out
+}
+
+#[cfg(test)]
+mod manifest_emit_tests {
+    use super::emit_qualified_name_dag;
+
+    #[test]
+    fn emit_qualified_name_dag_three_segment_path() {
+        assert_eq!(
+            emit_qualified_name_dag(&["v2".into(), "compiler".into(), "compile".into()]),
+            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+        );
+    }
+
+    #[test]
+    fn emit_qualified_name_dag_empty_is_qn_empty() {
+        assert_eq!(emit_qualified_name_dag(&[]), "QnEmpty");
+    }
 }
 
 fn emit_import_admission_list(imports: &[Vec<String>]) -> String {

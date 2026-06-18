@@ -1,14 +1,14 @@
 // src/v2/compiler/self_host/compiler_closure_emit_test.dag
-// Scope: v2-emits-v2 keystone — scoped compiler import-closure scoping receipt (fast claim-run).
+// Scope: scoped compiler import-closure scoping receipt (fast claim-run; emitter-agnostic).
 // Status: mvp1 call-path smoke deferred; real scoping proof is the fixture receipt + Rust cargo-check.
 
 module v2.test.self_host.compiler_closure_emit
 
 import v2.test.fixture.compiler_closure_scope_receipt {
-  compiler_closure_scoping_excludes_lens_module
+  scoped_closure_excludes_lens_module
 }
 
 
-test fn v2_emits_v2_scoping_excludes_lens_module_holds() -> Bool {
-  compiler_closure_scoping_excludes_lens_module()
+test fn scoped_closure_excludes_lens_module_holds() -> Bool {
+  scoped_closure_excludes_lens_module()
 }

@@ -69,14 +69,14 @@ fn compiler_closure_path_in_manifest(path: String) -> Bool {
   any(xs: compiler_closure_included_module_paths, predicate: fn(p) { p == path })
 }
 
-fn compiler_closure_scoping_excludes_lens_module() -> Bool {
-  (compiler_closure_path_in_manifest(path: "src/v2/compiler/00_compile.dag"))
-    && (compiler_closure_scoping_excludes_known_non_closure_module())
-}
-
-fn compiler_closure_scoping_excludes_known_non_closure_module() -> Bool {
+fn scoped_closure_excludes_known_non_closure_module() -> Bool {
   any(
     xs: compiler_closure_included_module_paths,
     predicate: fn(p) { p == compiler_closure_excluded_module_path }
   ) == false
+}
+
+fn scoped_closure_excludes_lens_module() -> Bool {
+  (compiler_closure_path_in_manifest(path: "src/v2/compiler/00_compile.dag"))
+    && (scoped_closure_excludes_known_non_closure_module())
 }
