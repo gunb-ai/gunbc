@@ -11,13 +11,13 @@ module gunbc.ci_workflow
 
 import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
+import gunbc.ci_runner { gunbc_ci_runner_spec }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
-  RunnerSpec, SelfHosted,
   checkout_action, setup_rust_action, cache_action,
   default_job_timeout_minutes
 }
@@ -56,7 +56,7 @@ data ci_workflow: Workflow = {
   jobs: [{
     id: "ci",
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+    runner: gunbc_ci_runner_spec(),
     steps: [
       RunStep {
         name: Present { value: "Isolate toolchain dirs" },

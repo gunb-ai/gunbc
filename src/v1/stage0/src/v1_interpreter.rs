@@ -226,6 +226,50 @@ fn resolve_sym(sym: Symbol) -> String {
         .unwrap_or_else(|| format!("#{}", sym.0))
 }
 
+/// Serialize a runtime `QualifiedName` value to dotted module path (no filepath).
+pub fn qualified_name_value_to_module_path(value: &Value) -> String {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let variant = resolve_sym(*variant_name);
+            if variant == "QnEmpty" {
+                return String::new();
+            }
+            if variant == "QnCons" {
+                let head = fields
+                    .iter()
+                    .find(|(k, _)| resolve_sym(**k) == "head")
+                    .and_then(|(_, v)| match v {
+                        Value::Str(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("qualified_name_to_module_path: QnCons.head not Str")
+                    });
+                let tail = fields
+                    .iter()
+                    .find(|(k, _)| resolve_sym(**k) == "tail")
+                    .map(|(_, v)| v)
+                    .expect("qualified_name_to_module_path: QnCons.tail missing");
+                let rest = qualified_name_value_to_module_path(tail);
+                if rest.is_empty() {
+                    head
+                } else {
+                    format!("{head}.{rest}")
+                }
+            } else {
+                panic!("qualified_name_to_module_path: unexpected variant '{variant}'");
+            }
+        }
+        other => {
+            panic!("qualified_name_to_module_path: expected QualifiedName variant, got {other:?}")
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // CanonKey — finite-map key keyed by the single Value-equality authority
 // ---------------------------------------------------------------------------
@@ -4959,6 +5003,39 @@ fn eval_builtin(
             Ok(Some(Value::Int(count)))
         }
 
+        "extdeps_qualified_name_resolves_in_derived_module_set" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg:
+                    "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
+                        .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::qualified_name_resolves_in_derived_module_set(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_dead_param_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_dead_param_count_for_qualified_name requires module, service, operation"
+                    .to_string(),
+            })?;
+            let service = expect_str(
+                positional.get(1).copied(),
+                "extdeps_dead_param_count_for_qualified_name",
+            )?;
+            let operation = expect_str(
+                positional.get(2).copied(),
+                "extdeps_dead_param_count_for_qualified_name",
+            )?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::dead_param_count_for_qualified_name(
+                    module, service, operation,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
         "transport_script_literal_violation_count_for_path" => {
             let path = expect_str(
                 positional.first().copied(),
@@ -4969,6 +5046,64 @@ fn eval_builtin(
                     path,
                 );
             Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_embedded_policy_literal_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_embedded_policy_literal_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count = crate::extdeps_shape_transport_policy_project::embedded_policy_literal_count_for_qualified_name(
+                module,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_policy_leak_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_policy_leak_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::policy_leak_count_for_qualified_name(
+                    module,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_transport_fusion_fork_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_transport_fusion_fork_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count = crate::extdeps_shape_transport_policy_project::transport_fusion_fork_count_for_qualified_name(
+                module,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_gist_create_declares_filename_input_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_gist_create_declares_filename_input_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::gist_create_declares_filename_input_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_gist_create_files_keyed_by_filename_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_gist_create_files_keyed_by_filename_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
+                    module,
+                ),
+            )))
         }
 
         // Not a built-in — fall through to user-defined function lookup

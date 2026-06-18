@@ -86,6 +86,53 @@ fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+/// Workspace root (parent of `src/`).
+pub fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("workspace root")
+        .to_path_buf()
+}
+
+/// `module_path` → repo-relative `.dag` path; fail-closed on duplicate module paths.
+pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    let ws = workspace_root();
+    let mut index = HashMap::new();
+    for root in source_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files = Vec::new();
+        collect_dag_files(root_path, &mut dag_files);
+        for path in dag_files {
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("build_module_path_index: failed to read {:?}: {}", path, e)
+            });
+            if let Some(module_path) = extract_module_path(&content) {
+                let rel = path
+                    .strip_prefix(&ws)
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "build_module_path_index: path {} is not under workspace {}",
+                            path.display(),
+                            ws.display()
+                        )
+                    })
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if let Some(existing) = index.insert(module_path.clone(), rel.clone()) {
+                    panic!(
+                        "build_module_path_index: duplicate module path '{module_path}': {existing} vs {rel}"
+                    );
+                }
+            }
+        }
+    }
+    index
+}
+
 /// module_path → pre-read source (built once; shared across per-entry resolves).
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
