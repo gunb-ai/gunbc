@@ -92,8 +92,9 @@ fn ci_release_build_line() -> String {
   )
 }
 
-// One cold retry at CARGO_BUILD_JOBS=1 on fleet EAGAIN (#4978 / #5138); keep sccache so
-// successful compiles still populate the fleet daemon. Then print stats.
+// Two-tier cold retry on fleet EAGAIN (#4978 / #5138): first CARGO_BUILD_JOBS=1 with
+// sccache (populate daemon when it works); if sccache still cannot spawn rustc, drop
+// RUSTC_WRAPPER and compile direct. Then print stats.
 fn ci_release_build_script() -> String {
   let build = ci_release_build_line()
   concat(
@@ -110,19 +111,37 @@ fn ci_release_build_script() -> String {
     concat(
       concat(
         concat(
-          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn' \"$BUILD_LOG\"; then\n",
+          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' \"$BUILD_LOG\"; then\n",
           "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
         ),
-        concat("    CARGO_BUILD_JOBS=1 ", concat(build, " || exit 1\n"))
+        concat(
+          concat("    RETRY_LOG=$(mktemp)\n", "    if ! CARGO_BUILD_JOBS=1 ("),
+          concat(build, ") 2>&1 | tee \"$RETRY_LOG\"; then\n")
+        )
       ),
       concat(
-        concat("  else\n", "    exit 1\n"),
-        concat("  fi\n", "fi\n")
+        concat(
+          concat(
+            "      if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$RETRY_LOG\"; then\n",
+            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
+          ),
+          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(build, " || exit 1\n"))
+        ),
+        concat(
+          concat("      else\n", "        exit 1\n"),
+          concat("      fi\n", "    fi\n")
+        )
       )
     ),
     concat(
-      concat("rm -f \"$BUILD_LOG\"\n", "sccache --show-stats 2>/dev/null || true"),
-      ""
+      concat(
+        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
+        concat("    exit 1\n", "  fi\n")
+      ),
+      concat(
+        concat("fi\n", "rm -f \"$BUILD_LOG\"\n"),
+        concat("sccache --show-stats 2>/dev/null || true", "")
+      )
     )
   )
 }
