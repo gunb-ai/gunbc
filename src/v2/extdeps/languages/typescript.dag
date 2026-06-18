@@ -11,7 +11,6 @@ module v2.extdeps.languages.typescript
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.grammar {
   StampClass,
-  StampBinding,
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_formal_nonterminal_occurrence,

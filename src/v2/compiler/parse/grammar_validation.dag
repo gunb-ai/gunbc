@@ -8,7 +8,6 @@ module v2.test.parse.grammar_validation
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar {
   StampClass,
-  StampBinding,
   GrammarProduction,
   GrammarRoot,
   Nonterminal,

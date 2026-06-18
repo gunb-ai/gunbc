@@ -2262,6 +2262,7 @@ pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &[
     "syntactic_coproduct_arm_pairs",
 ];
 
+// v2.std.compilers.lexing bootstrap bridge — dissolve-on: substrate Lexeme→Symbol intern carrier.
 pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
 
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
