@@ -44,6 +44,8 @@ enum Commands {
         #[arg(long, default_value = "rust")]
         target: String,
     },
+    /// Run repo CI from CiSpec (delegates to dsl/tools/gunbc_ci.dag)
+    Ci,
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -284,11 +286,17 @@ fn main() {
                             content: content.clone(),
                         });
                         seen.insert(mod_path, source);
-                        entry_for_queue.push((path.clone(), content.clone()));
                     }
+                    entry_for_queue.push((path.clone(), content.clone()));
                 }
 
-                let resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
+                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
+                for (path, content) in entry_files {
+                    let already_there = resolved.iter().any(|s| s.path == path);
+                    if !already_there {
+                        resolved.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+                    }
+                }
                 eprintln!(
                     "resolved {} sources (transitive import closure)",
                     resolved.len()
@@ -376,6 +384,10 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+
+        Commands::Ci {} => {
+            cli_run::handle_ci();
         }
 
         Commands::Run {

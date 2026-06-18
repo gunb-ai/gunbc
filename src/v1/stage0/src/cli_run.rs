@@ -86,6 +86,53 @@ fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+/// Workspace root (parent of `src/`).
+pub fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("workspace root")
+        .to_path_buf()
+}
+
+/// `module_path` → repo-relative `.dag` path; fail-closed on duplicate module paths.
+pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    let ws = workspace_root();
+    let mut index = HashMap::new();
+    for root in source_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_files = Vec::new();
+        collect_dag_files(root_path, &mut dag_files);
+        for path in dag_files {
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("build_module_path_index: failed to read {:?}: {}", path, e)
+            });
+            if let Some(module_path) = extract_module_path(&content) {
+                let rel = path
+                    .strip_prefix(&ws)
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "build_module_path_index: path {} is not under workspace {}",
+                            path.display(),
+                            ws.display()
+                        )
+                    })
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if let Some(existing) = index.insert(module_path.clone(), rel.clone()) {
+                    panic!(
+                        "build_module_path_index: duplicate module path '{module_path}': {existing} vs {rel}"
+                    );
+                }
+            }
+        }
+    }
+    index
+}
+
 /// module_path → pre-read source (built once; shared across per-entry resolves).
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
@@ -214,17 +261,22 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
+        let source = Rc::new(v1_compiler_compile::SourceFile {
+            path: path.clone(),
+            content: content.clone(),
+        });
         if let Some(mod_path) = extract_module_path(content) {
-            let source = Rc::new(v1_compiler_compile::SourceFile {
-                path: path.clone(),
-                content: content.clone(),
-            });
             seen.insert(mod_path, source.clone());
-            entry_for_queue.push(source);
         }
+        entry_for_queue.push(source);
     }
 
-    let sources = resolve_transitively(entry_for_queue, &index, seen);
+    let mut sources = resolve_transitively(entry_for_queue, &index, seen);
+    for (path, content) in entry_files {
+        if !sources.iter().any(|s| s.path == path) {
+            sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+        }
+    }
     sources
 }
 
@@ -1916,6 +1968,9 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "host_source_root_ingest_manifest.dag",
     // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
+    // Manual-lane: unified_claim transport only — enrolled via claim_witness_corpus_ci_runner,
+    // not the auto-discovery floor (collateral when src/v2/compiler/manual is a scan-dir).
+    "sg2_type_expression_projection.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
