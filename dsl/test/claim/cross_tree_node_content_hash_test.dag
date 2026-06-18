@@ -1,0 +1,27 @@
+// Scope: Route C witness — dsl tree imports v2.std.node content_hash cross-tree.
+// Requires both --source-root dsl and --source-root src/v2 at run/compile time.
+// NOT in dsl-only compile-clean closure until Route C gate widens source roots.
+
+module test.claim.cross_tree_node_content_hash
+
+import v2.std.node { Node, Atom, TypeNode, content_hash, Hash }
+
+data probe_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^cross_tree_probe } },
+  children: []
+}
+
+// Stable probe: content_hash of a fixed empty-leaf Node is deterministic.
+data expected_probe_hash: Hash = content_hash(n: probe_node)
+
+test fn cross_tree_content_hash_deterministic_holds() -> Bool {
+  content_hash(n: probe_node) == expected_probe_hash
+}
+
+test fn cross_tree_content_hash_differs_across_nodes_holds() -> Bool {
+  let other = Node {
+    kind: TypeNode { connective: Atom { identity: ^other_probe } },
+    children: []
+  }
+  content_hash(n: probe_node) != content_hash(n: other)
+}
