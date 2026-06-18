@@ -1,0 +1,118 @@
+// src/v2/lens/host_language_transport_script.dag
+// Scope: interim structural guard — shell.Exec.Run `script:` position must not be a
+//   compile-time-known string-literal / concat-of-literals / let-bound-literal node.
+// Reads SHAPE (Expr kind), never string contents. Subsumes transport-position
+// coverage from v2.lens.command_literal_reducibility (#5150 script arm).
+// Dissolve-on: emit(intent, Bash) makes raw String literals unrepresentable in
+//   script position (bash-as-19th-target terminal).
+//
+// Peer: std.lens_verdict for gate outcomes; Node-tree facts via parse projection
+//   builtin (structural classification only — violation logic lives here).
+
+module v2.lens.host_language_transport_script
+
+import std.lens_verdict {
+  Holds,
+  LensVerdict,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
+  Violation,
+}
+import v2.std.algebra { fold_list, is_empty, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// Structural shape of the `script:` argument at shell.Exec.Run (parse-tree kind).
+type TransportScriptArgShape
+  = ComputedApplication
+  | BareStringLiteral
+  | LetBoundStringLiteral
+  | StringInterpLiteralsOnly
+
+type TransportScriptPositionFact {
+  path: String
+  function: String
+  shape: TransportScriptArgShape
+}
+
+type TransportScriptPositionViolation {
+  path: String
+  function: String
+  shape: TransportScriptArgShape
+}
+
+data empty_transport_script_violations: List<TransportScriptPositionViolation> = []
+
+fn transport_script_arg_shape_is_literal_blob(shape: TransportScriptArgShape) -> Bool {
+  match shape {
+    ComputedApplication => false
+    BareStringLiteral => true
+    LetBoundStringLiteral => true
+    StringInterpLiteralsOnly => true
+  }
+}
+
+fn transport_script_fact_violation(
+  fact: TransportScriptPositionFact
+) -> List<TransportScriptPositionViolation> {
+  if transport_script_arg_shape_is_literal_blob(shape: fact.shape) {
+    [
+      TransportScriptPositionViolation {
+        path: fact.path,
+        function: fact.function,
+        shape: fact.shape
+      }
+    ]
+  } else {
+    empty_transport_script_violations
+  }
+}
+
+fn scan_transport_script_facts(
+  facts: List<TransportScriptPositionFact>
+) -> List<TransportScriptPositionViolation> {
+  fold_list(
+    xs: facts,
+    empty: empty_transport_script_violations,
+    cons: fn(acc, fact) {
+      fold_list(
+        xs: transport_script_fact_violation(fact: fact),
+        empty: acc,
+        cons: fn(inner, v) { list_snoc_item(xs: inner, item: v) }
+      )
+    }
+  )
+}
+
+fn transport_script_literal_violation_count(
+  facts: List<TransportScriptPositionFact>
+) -> Int {
+  length(xs: scan_transport_script_facts(facts: facts))
+}
+
+fn transport_script_literal_ban_holds(
+  facts: List<TransportScriptPositionFact>
+) -> Bool {
+  is_empty(xs: scan_transport_script_facts(facts: facts))
+}
+
+fn transport_script_lens_verdict(
+  facts: List<TransportScriptPositionFact>
+) -> LensVerdict {
+  if transport_script_literal_ban_holds(facts: facts) {
+    Holds
+  } else {
+    Violation {
+      diagnostic: LensVerdictDiagnostic {
+        reason: "transport_script_literal_blob_in_script_position",
+        at: ModuleWholeFile { module_name: "v2.lens.host_language_transport_script" }
+      }
+    }
+  }
+}
+
+// Parse-bridge: structural projection over a live .dag file (no content scan).
+fn transport_script_live_literal_violation_count_for_path(path: String) -> Int {
+  transport_script_literal_violation_count_for_path(path: path)
+}

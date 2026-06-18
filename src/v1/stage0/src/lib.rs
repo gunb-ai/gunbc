@@ -46,6 +46,7 @@ pub mod std_node;
 pub mod std_syntax;
 pub mod std_termination;
 pub mod std_types;
+pub mod transport_script_position_project;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;
