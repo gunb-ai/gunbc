@@ -14,7 +14,6 @@ module std.fidelity
 
 import std.types { FermiDepth }
 import std.fermi { fermi_max_of }
-import std.hermetic_replay { HermeticRealization, InlineMockScaffold, RecordedFixtureReplay }
 
 // Transport classification (mirrors ServiceTransportClass in compiler)
 type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
@@ -35,8 +34,8 @@ fn transport_depth(tc: TransportClass) -> FermiDepth {
 }
 
 // Transport -> hermetic flag (legacy coarse classifier for classify_transports).
-// RestNetwork stays fail-closed here — per-op hermetic capability with proven
-// RecordedFixture coverage lives in std.hermetic_replay (transport_hermetic_with_recorded_coverage).
+// RestNetwork stays fail-closed here — per-op hermetic replay is proven by execution
+// (record→replay witnesses), not this coarse classifier.
 fn transport_hermetic(tc: TransportClass) -> Bool {
   match tc {
     LocalDirect    => true
@@ -45,39 +44,6 @@ fn transport_hermetic(tc: TransportClass) -> Bool {
     FileBoundary   => true
     RestNetwork    => false
     Unknown        => false
-  }
-}
-
-// Per-op hermetic capability: fail-closed unless proven fixture coverage exists.
-// RestNetwork is NOT blanket-hermetic — coverage must be demonstrated by execution
-// (record→replay witness) before any consumer treats the op as hermetic-capable.
-fn transport_hermetic_with_recorded_coverage(
-  tc: TransportClass,
-  has_recorded_fixture_coverage: Bool
-) -> Bool {
-  transport_hermetic(tc: tc)
-    || (tc == RestNetwork && has_recorded_fixture_coverage)
-}
-
-// M0 substrate-target: per-op hermetic realization truth table (not yet folded by
-// production eval_service_call — see std.hermetic_replay.HermeticRealization).
-// 🟡 gated — feature:m4-eval-service-call-folds-hermetic-realization — dissolve-on-arrival:
-// M4 migrates eval_service_call to fold this coproduct instead of deciding from
-// ExecutionMode+fixture_store alone.
-fn operation_hermetic_realization(
-  tc: TransportClass,
-  in_published_corpus: Bool,
-  has_recorded_fixture_coverage: Bool
-) -> HermeticRealization {
-  if in_published_corpus
-    && has_recorded_fixture_coverage
-    && transport_hermetic_with_recorded_coverage(
-      tc: tc,
-      has_recorded_fixture_coverage: true
-    ) {
-    RecordedFixtureReplay
-  } else {
-    InlineMockScaffold
   }
 }
 

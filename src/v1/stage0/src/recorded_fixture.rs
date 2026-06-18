@@ -25,14 +25,6 @@ use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
 /// Default freshness window for replay: fixtures older than this are stale (fail-closed).
 pub const FIXTURE_FRESHNESS_SECS: u64 = 30 * 24 * 60 * 60;
 
-/// Wall-clock age cap for committed content-contract seeds (no expiry).
-pub const FIXTURE_NO_EXPIRY_SECS: u64 = u64::MAX;
-
-/// Effective max age for replay lookup: default wet-capture drift guard unless overridden.
-pub fn fixture_replay_max_age_secs(override_max_age_secs: Option<u64>) -> u64 {
-    override_max_age_secs.unwrap_or(FIXTURE_FRESHNESS_SECS)
-}
-
 /// On-disk fixture row: one wet-captured service response keyed by input_hash.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordedFixture {
@@ -207,16 +199,15 @@ impl RecordedFixtureStore {
         operation: &str,
         input_hash: &str,
         now_secs: u64,
-        max_age_secs: u64,
     ) -> Result<(), FixtureError> {
         let age = now_secs.saturating_sub(fixture.recorded_at);
-        if age > max_age_secs {
+        if age > FIXTURE_FRESHNESS_SECS {
             return Err(FixtureError::Expired {
                 operation: operation.to_string(),
                 input_hash: input_hash.to_string(),
                 recorded_at: fixture.recorded_at,
                 age_secs: age,
-                max_age_secs,
+                max_age_secs: FIXTURE_FRESHNESS_SECS,
             });
         }
         Ok(())
@@ -228,7 +219,6 @@ impl RecordedFixtureStore {
         input_hash: &str,
         inputs: &serde_json::Value,
         now_secs: u64,
-        max_age_secs: u64,
     ) -> Result<RecordedFixture, FixtureError> {
         expect_hash_digest(input_hash)?;
         let path = self.fixture_path(operation, input_hash);
@@ -259,7 +249,7 @@ impl RecordedFixtureStore {
                 input_hash: input_hash.to_string(),
             });
         }
-        Self::assert_fresh(&fixture, operation, input_hash, now_secs, max_age_secs)?;
+        Self::assert_fresh(&fixture, operation, input_hash, now_secs)?;
         Ok(fixture)
     }
 

@@ -1,6 +1,7 @@
 // dsl/test/claim/http_pilot_rest_witness.dag
 //
-// By-execution witnesses for REST hermetic pilot (extdeps/test/http_pilot.dag).
+// Local-dev / wet-record recipe for REST hermetic pilot (extdeps/test/http_pilot.dag).
+// NOT discovery-roster enrolled (`http_pilot_rest_keystone_holds` is a plain fn).
 //
 // End-state hermetic behaviors (pilot op has dissolved inline mock_response):
 //   1. --record --fixture-store     → wet capture (fixture born by execution)
@@ -8,21 +9,17 @@
 //   3. --hermetic (no store)        → eval_mock_response finds no mock_response →
 //      FAIL CLOSED ("no mock_response ... refusing to fabricate") — NOT a stub value
 //
-// Hermetic replay (Phase 2):
-//   CI floor: v1-compiler-tests `interp_recorded_fixture_test` (rust monolith gate) +
-//     `hermetic_replay_fidelity_witness_test` (discovery roster model witnesses).
-//   Committed fixture seed: dsl/extdeps/test/fixtures/http_pilot (no live host in CI).
-//   Wet record (opt-in, not every-push floor):
-//     claim_batch --source-root . --source-root dsl \
-//       --entry dsl/test/claim/http_pilot_rest_witness.dag \
-//       --function http_pilot_rest_keystone_holds --record --fixture-store /tmp/http-pilot-fixtures
-//   Copy captured files into dsl/extdeps/test/fixtures/http_pilot/ to refresh the seed.
-//   Also: v1-compiler-tests interp_recorded_fixture_test::http_pilot_rest_record_then_hermetic_replay_holds
+// CI floor (execution-backed, v1-compiler-tests / rust gate when wired):
+//   * hermetic_http_pilot_without_fixture_store_fails_closed
+//   * hermetic_http_pilot_fixture_staleness_fails_closed
 //
-// Discriminators (v1-compiler-tests `interp_recorded_fixture_test`):
-//   * http_pilot_rest_record_then_hermetic_replay_holds — behaviors 1+2
-//   * hermetic_http_pilot_without_fixture_store_fails_closed — behavior 3 (strongest stub-gone proof)
-//   * hermetic_http_pilot_fixture_staleness_fails_closed — staleness fail-closed
+// Wet-only (#[ignore] in interp_recorded_fixture_test):
+//   * http_pilot_rest_record_then_hermetic_replay_holds — live jsonplaceholder record→replay
+//
+// Local wet recapture:
+//   claim_batch --source-root . --source-root dsl \
+//     --entry dsl/test/claim/http_pilot_rest_witness.dag \
+//     --function http_pilot_rest_keystone_holds --record --fixture-store /tmp/http-pilot-fixtures
 
 module test.claim.http_pilot_rest_witness
 
