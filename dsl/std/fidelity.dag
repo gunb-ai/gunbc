@@ -33,7 +33,9 @@ fn transport_depth(tc: TransportClass) -> FermiDepth {
   }
 }
 
-// Transport -> hermetic flag (can it be mocked in DryRun?)
+// Transport -> hermetic flag (legacy coarse classifier for classify_transports).
+// RestNetwork stays fail-closed here — per-op hermetic replay is proven by execution
+// (record→replay witnesses), not this coarse classifier.
 fn transport_hermetic(tc: TransportClass) -> Bool {
   match tc {
     LocalDirect    => true

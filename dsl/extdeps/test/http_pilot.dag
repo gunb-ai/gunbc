@@ -1,0 +1,41 @@
+// extdeps/test/http_pilot.dag -- REST hermetic pilot (P4b M1).
+//
+// Spec: JSONPlaceholder posts API (public test HTTP, no auth)
+//       https://jsonplaceholder.typicode.com/posts
+//
+// Wet path: live GET via dispatch_rest (ureq). Hermetic path: RecordedFixture
+// replay only — inline mock_response dissolved (forbidden to reintroduce).
+
+module extdeps.test.http_pilot
+
+type HttpPilotPost {
+  userId: Int
+  id: Int
+  title: String
+  body: String
+}
+
+service test.HttpPilot {
+  config {
+    endpoint: "https://jsonplaceholder.typicode.com"
+  }
+
+  operation GetPost {
+    input { post_id: Int }
+    output {
+      title: String from "title"
+      post_id: Int from "id"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/posts/{post_id}"
+    }
+    response {
+      200 => HttpPilotPost
+    }
+    // 🟡 dissolved — feature:http-pilot-mock-response — dissolve-on-arrival: Phase-2-hermetic
+    // RecordedFixture replay from claim_batch --fixture-store (recorded wet via --record);
+    // forbidden: reintroducing mock_response for Hermetic dispatch on this shape.
+  }
+}
