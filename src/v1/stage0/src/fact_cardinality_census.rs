@@ -16,9 +16,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Must match `fact_cardinality_cross_tree_fork_baseline` in `src/v2/lens/fact_cardinality.dag`.
-pub const FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE: i64 = 33;
-
 const ITEM_KEYWORDS: [&str; 8] = [
     "data ",
     "fn ",
@@ -235,15 +232,5 @@ mod tests {
     #[test]
     fn lattice_is_not_cross_tree_fork() {
         assert!(!cross_tree_is_fork("std/algebra.dag:Lattice".to_string()));
-    }
-
-    #[test]
-    fn cross_tree_fork_count_satisfies_ratchet_baseline() {
-        let count = cross_tree_fork_count();
-        assert!(
-            count <= FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE,
-            "fork count {count} exceeds lens ratchet baseline {}; debt grew — retune baseline down only after fork unification",
-            FACT_CARDINALITY_CROSS_TREE_FORK_BASELINE
-        );
     }
 }
