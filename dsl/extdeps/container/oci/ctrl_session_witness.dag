@@ -70,17 +70,21 @@ import extdeps.container.oci.types {
   ContainerExposedPort,
   ImageConfigGoarchKnown,
   ImageConfigGoarchUnknown,
+  ImageConfigGoarchUnrepresentable,
+  ImageConfigGoarchWireLabel,
   ImageConfigGoosKnown,
   ImageConfigGoosUnknown,
+  ImageConfigGoosUnrepresentable,
   MountSymbolicSource,
   OciMediaTypeOther,
   RuntimeMountTmpfs,
   Tcp,
+  image_config_goarch_label,
   parse_image_config_goarch,
   parse_image_config_goos,
   parse_oci_media_type,
 }
-import std.types { Aarch64, Bool, ContentHash, Linux }
+import std.types { Aarch64, Armv7, Bool, ContentHash, Linux }
 
 data ctrl_session_config_digest: ContentHash = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
 
@@ -255,6 +259,20 @@ fn witness_goos_rejects_unknown_wire() -> Bool {
   }
 }
 
+fn witness_goarch_label_roundtrips_known() -> Bool {
+  match image_config_goarch_label(Aarch64) {
+    ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
+    ImageConfigGoarchUnrepresentable => false
+  }
+}
+
+fn witness_goarch_label_unrepresentable_armv7() -> Bool {
+  match image_config_goarch_label(Armv7) {
+    ImageConfigGoarchUnrepresentable => true
+    ImageConfigGoarchWireLabel { wire: _ } => false
+  }
+}
+
 fn witness_media_type_other_accepts_extension() -> Bool {
   match parse_oci_media_type("application/vnd.custom.example+json") {
     OciMediaTypeOther { raw: r } => r == "application/vnd.custom.example+json"
@@ -315,6 +333,8 @@ fn main() -> Bool {
     && witness_goarch_parses_arm64_wire()
     && witness_goarch_rejects_unknown_wire()
     && witness_goos_rejects_unknown_wire()
+    && witness_goarch_label_roundtrips_known()
+    && witness_goarch_label_unrepresentable_armv7()
     && witness_media_type_other_accepts_extension()
     && witness_runtime_config_accepts()
     && witness_linux_namespaces_count()
