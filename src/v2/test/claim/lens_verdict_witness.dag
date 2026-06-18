@@ -1,0 +1,72 @@
+// src/v2/test/claim/lens_verdict_witness.dag
+//
+// By-execution witnesses for the tier-0 unified lens verdict carrier.
+
+module test.claim.lens_verdict_witness
+
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.lens_verdict {
+  Holds,
+  LensVerdict,
+  NotApplicable,
+  Unrealized,
+  Violation,
+  lens_verdict_is_fail_closed,
+  lens_verdict_is_violation,
+  lens_verdict_locus
+}
+
+fn sample_violation() -> LensVerdict {
+  Violation {
+    diagnostic: Diagnostic {
+      reason: ^lens_verdict_witness_violation,
+      at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
+      correction: Unavailable { reason: AmbiguousIntent }
+    }
+  }
+}
+
+fn witness_holds_not_fail_closed() -> Bool {
+  !lens_verdict_is_fail_closed(verdict: Holds)
+}
+
+fn witness_holds_not_violation() -> Bool {
+  !lens_verdict_is_violation(verdict: Holds)
+}
+
+fn witness_unrealized_is_fail_closed() -> Bool {
+  lens_verdict_is_fail_closed(verdict: Unrealized {
+    diagnostic: Diagnostic {
+      reason: ^lens_verdict_witness_unrealized,
+      at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
+      correction: Unavailable { reason: AmbiguousIntent }
+    }
+  })
+}
+
+fn witness_violation_is_violation() -> Bool {
+  lens_verdict_is_violation(verdict: sample_violation())
+}
+
+fn witness_violation_locus_round_trips() -> Bool {
+  match lens_verdict_locus(verdict: sample_violation()) {
+    Textual { file: f, extent: WholeFile } => f == ^lens_verdict_witness
+    _ => false
+  }
+}
+
+fn witness_not_applicable_not_violation() -> Bool {
+  !lens_verdict_is_violation(verdict: NotApplicable {
+    diagnostic: Diagnostic {
+      reason: ^lens_verdict_witness_not_applicable,
+      at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
+      correction: Unavailable { reason: AmbiguousIntent }
+    }
+  })
+}

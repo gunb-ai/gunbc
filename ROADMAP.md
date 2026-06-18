@@ -19,9 +19,10 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
   - P3 — resolver resolve blowup (15%) — self-host blocker; merry-crab pulling fix forward
     - comprep closure ~250s cold, content-specific super-linear (machine-independent)
     - root-cause: H1 missing resolve memo (maybe bypassed `resolved_graph_cache`) vs H2 generic-instantiation
-- Lens universalization + host-language ban — new lane
-  - ban shell/python: modeled CI gate, fail-closed, shrink-only allowlist; back out the 2 existing `.sh` (urgent, first)
-  - tier 0: unify lens verdict (`Holds | Violation | NotApplicable`, `Unrealized` fail-closed)
+- Lens universalization + host-language ban — in flight (quiet-swift-814)
+  - host-language ban: enforcement via `shell.Exec.Run.script` String→ShellProgram typecheck (#5147 landed; type-flip capstone warm-badger); #5132 substring lens retired TERMINAL
+  - retire 2 `.sh` transports: blocked on parameterized-argv modeling (source_root_ingest, layering_imports_scan)
+  - tier 0: `v2.std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landing
   - tier 1: cost / complexity / synthesis → always-required, structural budget (enrolls resolve → catches P3 class)
   - tier 2: `InferredTree`+deps lenses → adapters, then enroll
 
