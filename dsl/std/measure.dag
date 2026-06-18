@@ -225,6 +225,16 @@ type Measure<Q, S, M> {
   count: M
 }
 
+// Generic magnitude projection: read any `Measure` alias's `count` at its declared
+// magnitude `<M>`. The per-alias `*_count` fns below (byte_size_count, watt_count, …) are
+// the named ergonomic surface, but a CONSUMER outside std.measure cannot peel a cross-module
+// alias's `.count` itself (the peel resolves where `Measure` is local — here). This is the
+// one generic reader those consumers call (e.g. a product-layer Bandwidth reader), so the
+// projection is single-authority, not re-coined per alias (DESIGN §2).
+fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
+  m.count
+}
+
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 
@@ -257,6 +267,22 @@ fn watt(count: Nat) -> Watt {
 }
 
 fn watt_count(w: Watt) -> Nat {
+  w.count
+}
+
+// Power magnitude at MILLI scale — the milliwatt (10^-3 W). Same Power dimension as `Watt`,
+// denominated at a sub-watt SI `Scale` exactly as `MoneyMicros` denominates `Currency` at
+// `Micro` (the storage-scale pattern, NOT a new dimension or scale). The demand: a single
+// component drawing a fraction of a watt (a DRAM device ~0.4 W) rounds to nothing as an Int
+// watt, so the per-device coefficient is carried at milli scale and the aggregate folds up to
+// whole `Watt`s. Consumer: product.hardware_selection MemoryConfig.power_per_chip.
+type Milliwatt = Measure<Power, Milli, Nat>
+
+fn milliwatt(count: Nat) -> Milliwatt {
+  Milliwatt { count: count }
+}
+
+fn milliwatt_count(w: Milliwatt) -> Nat {
   w.count
 }
 

@@ -29,8 +29,11 @@ import v2.std.collection {
 }
 import v2.std.grammar {
   ParseTree,
+  grammar_relation_emitted_rebuild_from_token_spine,
+  grammar_relation_rules_formal_productions,
   node_atom_identity_optional
 }
+import v2.std.witness { Holds, Violates }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -288,6 +291,44 @@ fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -
         at: node_locus(node: rules),
         correction: Unavailable { reason: ExternalContractUnknown }
       })
+  }
+}
+
+fn concrete_syntax_token_spine_classes(tokens: List<ConcreteSyntaxToken>) -> List<Symbol> {
+  fold(
+    tokens,
+    init: Empty,
+    f: fn(acc, t) {
+      list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
+    }
+  )
+}
+
+// Forward-select from a bound token spine: fixture rows first (class frontier), then structural
+// rebuild from the production catalog when no fixture rows exist (derive-only rules).
+fn grammar_relation_row_forward_token_selection(
+  tokens: List<ConcreteSyntaxToken>,
+  rules: Node,
+  start_lhs: Symbol
+) -> Outcome<Node> {
+  let frontier = concrete_syntax_token_spine_classes(tokens: tokens)
+  match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
+    Accepted { value: emitted, diagnostics: d } =>
+      Accepted { value: emitted, diagnostics: d }
+    Rejected { diagnostics: _ } =>
+      bind_outcome(
+        o: grammar_relation_rules_formal_productions(rules: rules),
+        f: fn(productions) {
+          match grammar_relation_emitted_rebuild_from_token_spine(
+            productions: productions,
+            lhs: start_lhs,
+            tokens: tokens
+          ) {
+            Holds { value: emitted } => outcome_accepted(value: emitted)
+            Violates { diagnostic: d } => outcome_rejected(d)
+          }
+        }
+      )
   }
 }
 
