@@ -49,6 +49,12 @@ import std.realization_measurement {
   RealizationMeasureEffect,
   cost_account_measured_from_time,
 }
+import std.realization_width {
+  bounded_host_spawn_width,
+  hardware_threads_int,
+  shard_count_positive,
+  witness_spawn_width_capped_by_hardware,
+}
 
 // --- Independence classifier (fail-closed) ------------------------------------
 

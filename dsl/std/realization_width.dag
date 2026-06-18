@@ -1,0 +1,54 @@
+// std/realization_width.dag — Peripheral host spawn-width fold (Phase 1).
+//
+// Schedule topology stays pure (std.realization_schedule); sharding width is a
+// PERIPHERAL host realization folded against placement supply (§3). Width =
+// min(shard_count, hardware_threads) — demand parallelism capped by what the
+// host provisions (PlacementSupplyRow), not a scheduler-local authority.
+//
+// IndependentShards.shard_count lives in product.compute_fabric; this module takes
+// the grounded Int demand projection so std stays product-free (layer DAG).
+//
+// Dissolution trigger: claim_executor spawner reads bounded_host_spawn_width;
+// width witnesses enroll when corpus shards ≥2.
+
+module std.realization_width
+
+import std.types { Int }
+import std.measure {
+  HardwareThreadCount,
+  hardware_thread_count,
+  hardware_thread_count_value,
+}
+import std.placement_supply { PlacementSupplyRow }
+
+fn int_min(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+// Ground IndependentShards demand: non-positive shard_count is degenerate — fail-closed to 1.
+fn shard_count_positive(shard_count: Int) -> Int {
+  if shard_count <= 0 { 1 } else { shard_count }
+}
+
+fn hardware_threads_int(supply: PlacementSupplyRow) -> Int {
+  hardware_thread_count_value(supply.hardware_threads)
+}
+
+// Peripheral width fold: min(IndependentShards.shard_count, PlacementSupplyRow.hardware_threads).
+fn bounded_host_spawn_width(shard_count: Int, supply: PlacementSupplyRow) -> HardwareThreadCount {
+  let demand = shard_count_positive(shard_count: shard_count)
+  let cores = hardware_threads_int(supply: supply)
+  let width = int_min(a: demand, b: cores)
+  hardware_thread_count(count: width)
+}
+
+// Discriminating lens: width must equal min(shard_count, cores), not the uncapped demand.
+fn witness_spawn_width_capped_by_hardware(
+  shard_count: Int,
+  supply: PlacementSupplyRow,
+  expected: Int
+) -> Bool {
+  hardware_thread_count_value(
+    t: bounded_host_spawn_width(shard_count: shard_count, supply: supply)
+  ) == expected
+}

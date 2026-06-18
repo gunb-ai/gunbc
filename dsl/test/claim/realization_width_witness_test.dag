@@ -1,0 +1,70 @@
+// dsl/test/claim/realization_width_witness_test.dag
+//
+// §5 discriminating proof for std.realization_width — peripheral host spawn width
+// is min(IndependentShards.shard_count, PlacementSupplyRow.hardware_threads).
+//
+// Run: gunbc run --source-root dsl --entry <this> --function realization_width_witnesses --claim-run
+
+module test.claim.realization_width_witness
+
+import std.types { NonEmptyStr }
+import std.measure { hardware_thread_count, hardware_thread_count_value, hertz, byte_size }
+import std.placement_supply { HostIdentity, PlacementSupplyRow }
+import std.realization_width {
+  bounded_host_spawn_width,
+  witness_spawn_width_capped_by_hardware,
+}
+
+data test_host: HostIdentity = "width-witness-host"
+
+fn witness_supply_64_threads() -> PlacementSupplyRow {
+  PlacementSupplyRow {
+    identity: test_host
+    hardware_threads: hardware_thread_count(64)
+    clock_hz: hertz(3000000000)
+    ram_bytes: byte_size(68719476736)
+  }
+}
+
+fn witness_under_cap_uses_shard_count() -> Bool {
+  witness_spawn_width_capped_by_hardware(
+    shard_count: 8,
+    supply: witness_supply_64_threads(),
+    expected: 8
+  )
+}
+
+fn witness_over_cap_uses_hardware_threads() -> Bool {
+  witness_spawn_width_capped_by_hardware(
+    shard_count: 128,
+    supply: witness_supply_64_threads(),
+    expected: 64
+  )
+}
+
+fn witness_degenerate_shard_count_fail_closed_serial() -> Bool {
+  hardware_thread_count_value(
+    t: bounded_host_spawn_width(
+      shard_count: 0,
+      supply: witness_supply_64_threads()
+    )
+  ) == 1
+}
+
+// Discriminating RED guard: uncapped demand (128) must not pass as the bounded width.
+fn witness_uncapped_demand_is_not_spawn_width() -> Bool {
+  let width = hardware_thread_count_value(
+    t: bounded_host_spawn_width(
+      shard_count: 128,
+      supply: witness_supply_64_threads()
+    )
+  )
+  width != 128
+}
+
+test fn realization_width_witnesses() -> Bool {
+  witness_under_cap_uses_shard_count()
+    && witness_over_cap_uses_hardware_threads()
+    && witness_degenerate_shard_count_fail_closed_serial()
+    && witness_uncapped_demand_is_not_spawn_width()
+}
