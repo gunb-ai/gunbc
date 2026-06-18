@@ -30,6 +30,46 @@ type ReviewProvider
   | HumanReviewer
   | ProviderOther { name: NonEmptyStr }
 
+// Coproduct receipt: terminal. Semantic source-kind axis for who authored a
+// review. Distinct from ReviewProvider (transport/provider coordinate) and
+// Reviewer (structured identity including policy-backed reviewers).
+// Unattributed is the fail-closed open case: unknown provider coordinates map
+// here instead of silently inheriting a guessed kind.
+type ReviewSource
+  = Llm
+  | Human
+  | Policy
+  | Unattributed
+
+type PolicyRef {
+  id: NonEmptyStr
+  version: NonEmptyStr
+}
+
+// Coproduct receipt: terminal. Structured reviewer identity for verdict
+// carriers. Agent-backed reviews name a ReviewProvider; policy-backed reviews
+// name a versioned policy reference instead of conflating policy with a
+// provider enum row.
+type Reviewer
+  = AgentReviewer { provider: ReviewProvider }
+  | PolicyReviewer { policy: PolicyRef }
+
+// Total projection: every Reviewer maps to exactly one ReviewSource kind.
+// ProviderOther resolves to Unattributed (fail-closed) rather than Llm.
+fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
+  match reviewer {
+    AgentReviewer { provider: p } => match p {
+      HumanReviewer => Human
+      OpenaiPro => Llm
+      Codex => Llm
+      Claude => Llm
+      Cursor => Llm
+      ProviderOther { name: _ } => Unattributed
+    }
+    PolicyReviewer { policy: _ } => Policy
+  }
+}
+
 // Coproduct receipt: staged. GitHub review/comment transport is the first
 // consumer; dashboard-only artifacts remain modeled so extraction can preserve
 // source identity instead of flattening every artifact to raw Markdown.
