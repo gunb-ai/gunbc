@@ -3156,6 +3156,42 @@ fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
     || (name == ^dag_surface_module_header_qualified_name)
 }
 
+// Parse-shaped module roots carry QN segments as StampLexeme atoms inside production
+// captures (^dag_surface_module_header / ^dag_surface_qualified_name). Resolve must
+// preserve these subtrees unread (same role as emit-shaped metadata Named edges).
+fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      (id == ^dag_surface_module_header) || (id == ^dag_surface_qualified_name)
+    Absent => false
+  }
+}
+
+fn dag_node_is_module_root_conj(n: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => id == ^dag_surface_module
+    Absent =>
+      match n.kind {
+        TypeNode { connective: Conj } =>
+          fold(
+            n.children,
+            init: false,
+            f: fn(found, e) {
+              if found {
+                true
+              } else {
+                match e.label {
+                  Named { name: sym } => sym == ^dag_surface_module_header
+                  Positional => false
+                }
+              }
+            }
+          )
+        _ => false
+      }
+  }
+}
+
 // Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
 // the declared QualifiedName by walking ^dag_surface_module_header_qualified_name to the fold_list_node
 // sub-node (emit-shaped roots), or the ^dag_surface_qualified_name parse capture (operational parse

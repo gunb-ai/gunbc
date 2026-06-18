@@ -11,6 +11,8 @@ import v2.compiler.normalize { NormalizedTree }
 import v2.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols,
+  dag_node_is_module_root_conj,
+  dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
@@ -459,28 +461,6 @@ fn resolve_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
 }
 
 
-fn node_is_module_root_conj(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        n.children,
-        init: false,
-        f: fn(found, e) {
-          if found {
-            true
-          } else {
-            match e.label {
-              Named { name: sym } => sym == ^dag_surface_module_header
-              Positional => false
-            }
-          }
-        }
-      )
-    _ => false
-  }
-}
-
-
 fn resolve_child_edge(
   e: Edge,
   scope: Scope,
@@ -489,7 +469,10 @@ fn resolve_child_edge(
 ) -> Outcome<Edge> {
   match e.label {
     Named { name: sym } =>
-      if preserve_module_metadata && dag_surface_module_header_metadata_edge(name: sym) {
+      if preserve_module_metadata && (
+        dag_surface_module_header_metadata_edge(name: sym)
+          || dag_resolve_preserve_module_metadata_subtree(node: e.target)
+      ) {
         Accepted { value: e, diagnostics: None }
       } else {
         match resolve_node(n: e.target, scope: scope, lm: lm) {
@@ -502,6 +485,10 @@ fn resolve_child_edge(
         }
       }
     Positional =>
+      if preserve_module_metadata
+        && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
+        Accepted { value: e, diagnostics: None }
+      } else {
       match resolve_node(n: e.target, scope: scope, lm: lm) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_target, diagnostics: d } =>
@@ -510,12 +497,13 @@ fn resolve_child_edge(
             diagnostics: d
           }
       }
+      }
   }
 }
 
 
 fn resolve_children_homogeneous_scope(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
-  let preserve_module_metadata = node_is_module_root_conj(n: n)
+  let preserve_module_metadata = dag_node_is_module_root_conj(n: n)
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
