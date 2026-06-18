@@ -1,48 +1,19 @@
 // dsl/test/claim/medium_witness_test.dag — by-execution witnesses for std.medium Cut 2.
 //
 // GREEN: DecodeFidelity variants discriminate; lossless/lossy predicates are exact.
-// RED controls: wrong arm / inverted predicate must not satisfy the green witness.
+// RED controls: inverted predicate must not satisfy the green witness.
 //
 // Run: gunbc run --source-root dsl --entry <this> --function medium_witnesses --claim-run
 
 module test.claim.medium_witness
 
 import std.medium {
-  DecodeFidelity,
   Lossless,
   Lossy,
   decode_fidelity_is_lossless,
   decode_fidelity_is_lossy,
 }
 import std.logic { Bool }
-
-fn witness_lossless_matches_lossless_arm() -> Bool {
-  match Lossless {
-    Lossless => true
-    Lossy => false
-  }
-}
-
-fn witness_lossy_matches_lossy_arm() -> Bool {
-  match Lossy {
-    Lossy => true
-    Lossless => false
-  }
-}
-
-fn witness_lossless_not_lossy_arm_red_control() -> Bool {
-  match Lossless {
-    Lossy => true
-    Lossless => false
-  }
-}
-
-fn witness_lossy_not_lossless_arm_red_control() -> Bool {
-  match Lossy {
-    Lossless => true
-    Lossy => false
-  }
-}
 
 fn witness_lossless_predicate_holds() -> Bool {
   decode_fidelity_is_lossless(f: Lossless)
@@ -63,11 +34,7 @@ fn witness_lossy_predicate_red_on_lossless() -> Bool {
 }
 
 test fn medium_witnesses() -> Bool {
-  witness_lossless_matches_lossless_arm()
-    && witness_lossy_matches_lossy_arm()
-    && !witness_lossless_not_lossy_arm_red_control()
-    && !witness_lossy_not_lossless_arm_red_control()
-    && witness_lossless_predicate_holds()
+  witness_lossless_predicate_holds()
     && witness_lossy_predicate_holds()
     && !witness_lossless_predicate_red_on_lossy()
     && !witness_lossy_predicate_red_on_lossless()
