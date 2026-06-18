@@ -14,7 +14,7 @@ module v2.test.manual.bash_emit_command
 //     --function bash_emit_command_accepts_holds --claim-run
 
 import v2.compiler.emit { emit }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.translate { target_serialize_source_from_model, translate }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetSource }
 import v2.std.compilers.target_model { TargetModel }
@@ -77,6 +77,50 @@ test fn bash_emit_command_accepts_holds() -> Bool {
   }
 }
 
+// TEMP DEBUG — surface the actual emit outcome (string on Accepted, marker on Rejected).
+fn bash_emit_debug_source() -> TargetSource {
+  match bash_emit_receipt {
+    Accepted { value: source, diagnostics: _ } => source
+    Rejected { diagnostics: _ } => "<<REJECTED>>"
+  }
+}
+
+test fn bash_translate_accepts_holds() -> Bool {
+  match translate(tree: bash_emit_inferred_tree, target: bash_mvp1_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_serialize_real_accepts_holds() -> Bool {
+  match target_serialize_source_from_model(
+    target: bash_mvp1_target_model(),
+    emitted: bash_mvp1_emitted_command
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_serialize_reason() -> Symbol {
+  match target_serialize_source_from_model(
+    target: bash_mvp1_target_model(),
+    emitted: bash_mvp1_emitted_command
+  ) {
+    Accepted { value: _, diagnostics: _ } => ^bash_serialize_accepted_unexpected
+    Rejected { diagnostics: ds } => ds.head.reason
+  }
+}
+
+test fn bash_reason_is_lex_not_found() -> Bool { bash_serialize_reason() == ^target_lex_rule_literal_not_found }
+test fn bash_reason_is_bundle_malformed() -> Bool { bash_serialize_reason() == ^translate_target_bundle_malformed }
+test fn bash_reason_is_row_not_found() -> Bool { bash_serialize_reason() == ^translate_grammar_relation_row_not_found }
+test fn bash_reason_is_recursion_limit() -> Bool { bash_serialize_reason() == ^translate_serialize_recursion_limit_exhausted }
+test fn bash_reason_is_token_kind_invalid() -> Bool { bash_serialize_reason() == ^translate_concrete_token_kind_invalid }
+test fn bash_reason_is_token_class_missing() -> Bool { bash_serialize_reason() == ^translate_concrete_token_class_missing }
+test fn bash_reason_is_grammar_inverse_not_realized() -> Bool { bash_serialize_reason() == ^translate_grammar_inverse_not_realized }
+test fn bash_reason_is_ambiguous() -> Bool { bash_serialize_reason() == ^grammar_relation_row_backward_selection_ambiguous }
+
 // Fail-closed control — a bundle whose Conj carries no `target_model_edge_translation_rules` edge
 // must be REJECTED by the serialize path (no fabricated empty/plausible output).
 data bash_empty_bundle: Node = Node {
@@ -90,12 +134,7 @@ data bash_missing_rules_target: TargetModel = TargetModel {
   lex: bash_mvp1_lex(),
   binding_spellings: empty_map(),
   authority_source_text: "",
-  runtime_row: bash_missing_rules_runtime_row()
-}
-
-fn bash_missing_rules_runtime_row() -> TargetModel {
-  // placeholder pin so the missing-rules target reuses the live runtime row authority
-  bash_mvp1_target_model()
+  runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
 fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<TargetSource> {

@@ -177,10 +177,40 @@ fn bash_mvp1_translation_rules_node() -> Node {
   }
 }
 
-// Emit-only bundle: just the translation-rules edge `emit` reads. No
-// `target_model_edge_type_expression_projection` edge — the bundle must read as ProjectionAbsent so
-// `translate_node` takes the mvp1 grammar-match path (06_translate.dag). Coercion/ingest edges
-// (selection_policy, declared_inhabitants, serialize_source) are not exercised by emit and are
+// serialize_source — the grammar-inverse path (06_translate.dag grammar_inverse_source_validated)
+// reads this edge and asserts its token targets are byte-identical to the relation row's, so the
+// SAME `grammar_relation_tokens_node` builder feeds both (no second token authority). All-Named Conj
+// so `well_formed` passes (Conj-requires-named is strict). The source_text/source_grammar atoms are
+// liveness anchors pairing the emitted text with its production, mirroring rust's mvp1.
+fn bash_mvp1_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^serialize_source_field_source_text,
+        target: bash_word_atom(id: ^bash_mvp1_source_literal)
+      ),
+      bash_named_edge(
+        name: ^serialize_source_field_source_grammar,
+        target: bash_word_atom(id: ^bash_production_command)
+      ),
+      bash_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: bash_mvp1_concrete_tokens(),
+          token_to_node: bash_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Emit bundle. `translation_rules` (the row `emit` matches + serializes) + `serialize_source` (the
+// grammar-inverse validator). No `target_model_edge_type_expression_projection` edge — the bundle
+// reads as ProjectionAbsent so `translate_node` takes the mvp1 grammar-match path (06_translate.dag),
+// and the Arrow emitted node is `TypeExprKindNotEmitted` (the grammar-inverse serialize branch).
+// Coercion/ingest edges (selection_policy, declared_inhabitants) are not exercised by emit and are
 // deliberately omitted from slice 1.
 fn bash_mvp1_target_model_bundle() -> Node {
   Node {
@@ -189,6 +219,10 @@ fn bash_mvp1_target_model_bundle() -> Node {
       bash_named_edge(
         name: ^target_model_edge_translation_rules,
         target: bash_mvp1_translation_rules_node()
+      ),
+      bash_named_edge(
+        name: ^target_model_edge_serialize_source,
+        target: bash_mvp1_serialize_source_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
