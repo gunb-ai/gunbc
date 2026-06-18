@@ -1804,6 +1804,8 @@ pub fn verify_bool_witness_transport_projection_complete(
 fn dag_string_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
+        .replace('{', "\\{")
+        .replace('}', "\\}")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
