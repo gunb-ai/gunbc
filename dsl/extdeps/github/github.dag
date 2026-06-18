@@ -15,7 +15,7 @@
 module extdeps.github.github
 
 import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
-import std.types { Timestamp }
+import std.types { Timestamp, Url }
 
 // Wire contract: GitHub API returns enum values as plain strings ("User", "Bot").
 data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
@@ -70,7 +70,7 @@ type GitHubPermission = PermRead | PermWrite | PermAdmin
 
 // -- Constants -----------------------------------------------------
 
-data default_api_base: String = "https://api.github.com"
+data default_api_base: Url = "https://api.github.com"
 
 data default_per_page: Int = 30
 
