@@ -35,6 +35,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::thread;
 
 use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus, run_value,
@@ -404,7 +405,7 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
             .map(|runnable| {
                 let roots = source_roots.to_vec();
                 let runnable = runnable.clone();
-                std::thread::spawn(move || run_one_runnable(roots, runnable))
+                thread::spawn(move || run_one_runnable(roots, runnable))
             })
             .collect();
         for handle in handles {
