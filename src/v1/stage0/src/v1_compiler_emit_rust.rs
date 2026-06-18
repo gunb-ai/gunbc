@@ -82,6 +82,7 @@ pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_std_core::empty_intern_table;
 use crate::v1_std_core::AlgebraFieldKind::*;
 use crate::v1_std_core::BinOp::*;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -451,11 +452,33 @@ pub fn render_rust_fn_sig_type(
     generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     if ((generic_param_names.clone().len() as i64) > 0) {
         render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
     } else {
-        render_rust_type_with_applied_binding(n, shared_types, source_indices)
+        let name = authored_name_at(source_indices.clone(), n.clone());
+        if ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0)
+            && !is_container_type(name.clone()))
+        {
+            match lookup_type_by_name(env.clone(), name.clone()) {
+                Some(binding) => {
+                    if is_type_alias_item(binding, source_indices.clone()) {
+                        render_rust_shared_type_if_needed(
+                            name.clone(),
+                            name,
+                            shared_types.clone(),
+                        )
+                    } else {
+                        render_rust_type_with_applied_binding(n, shared_types, source_indices)
+                    }
+                }
+                None => render_rust_type_with_applied_binding(n, shared_types, source_indices),
+            }
+        } else {
+            render_rust_type_with_applied_binding(n, shared_types, source_indices)
+        }
     }
 }
 
@@ -7742,12 +7765,14 @@ pub fn emit_fn_def(
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
+            scope.type_env.clone(),
         );
         let ret_str = emit_inferred(
             inferred,
             generic_param_names.clone(),
             shared_types.clone(),
             si.clone(),
+            scope.type_env.clone(),
         );
         let body_scope = build_params_scope(scope.clone(), value_params.clone());
         let depth = 0;
@@ -7762,6 +7787,7 @@ pub fn emit_fn_def(
                     generic_param_names.clone(),
                     shared_types.clone(),
                     si.clone(),
+                    scope.type_env.clone(),
                 );
                 let body_str = emit_typed_tco_body(
                     body.clone(),
@@ -7990,6 +8016,7 @@ pub fn emit_func_def(
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
             emit_info.read_only_params.clone(),
+            scope.type_env.clone(),
         );
         let ret_str = emit_func_inferred(
             inferred,
@@ -8208,6 +8235,7 @@ pub fn emit_tco_params(
     generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -8218,6 +8246,7 @@ pub fn emit_tco_params(
                     generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
+                    env.clone(),
                 ));
             }
             __result
@@ -8231,6 +8260,7 @@ pub fn emit_tco_param(
     generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let authored = param_node_type_expr(param.clone());
@@ -8240,6 +8270,7 @@ pub fn emit_tco_param(
                 generic_param_names,
                 shared_types,
                 source_indices.clone(),
+                env.clone(),
             )
         } else {
             render_rust_param_sig_type(
@@ -8247,6 +8278,7 @@ pub fn emit_tco_param(
                 generic_param_names,
                 shared_types,
                 source_indices.clone(),
+                env,
             )
         };
         v1_rt::concat(
@@ -8272,6 +8304,7 @@ pub fn emit_func_params(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let param_strs = Rc::new({
@@ -8283,6 +8316,7 @@ pub fn emit_func_params(
                     shared_types.clone(),
                     source_indices.clone(),
                     read_only_params.clone(),
+                    env.clone(),
                 ));
             }
             __result
@@ -8342,6 +8376,7 @@ pub fn emit_params(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -8353,6 +8388,7 @@ pub fn emit_params(
                     shared_types.clone(),
                     source_indices.clone(),
                     read_only_params.clone(),
+                    env.clone(),
                 ));
             }
             __result
@@ -8366,6 +8402,7 @@ pub fn render_rust_param_sig_type(
     generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let type_node = resolved_type(param.clone());
@@ -8377,7 +8414,13 @@ pub fn render_rust_param_sig_type(
                 source_indices,
             )
         } else {
-            render_rust_field_type_with_applied_binding(param.clone(), shared_types, source_indices)
+            render_rust_fn_sig_type(
+                type_node,
+                generic_param_names,
+                shared_types,
+                source_indices,
+                env,
+            )
         }
     }
 }
@@ -8387,6 +8430,7 @@ pub fn emit_rust_param_type(
     generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
@@ -8398,6 +8442,7 @@ pub fn emit_rust_param_type(
                         generic_param_names.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
+                        env.clone(),
                     ));
                 }
                 __result
@@ -8409,6 +8454,7 @@ pub fn emit_rust_param_type(
                     generic_param_names.clone(),
                     shared_types.clone(),
                     source_indices.clone(),
+                    env.clone(),
                 ),
                 _ => "()".to_string(),
             };
@@ -8429,6 +8475,7 @@ pub fn emit_rust_param_type(
             generic_param_names.clone(),
             shared_types.clone(),
             source_indices.clone(),
+            env,
         )
     }
 }
@@ -8439,6 +8486,7 @@ pub fn emit_param(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let authored = param_node_type_expr(param.clone());
@@ -8448,6 +8496,7 @@ pub fn emit_param(
                 generic_param_names,
                 shared_types,
                 source_indices.clone(),
+                env.clone(),
             )
         } else {
             render_rust_param_sig_type(
@@ -8455,6 +8504,7 @@ pub fn emit_param(
                 generic_param_names,
                 shared_types,
                 source_indices.clone(),
+                env,
             )
         };
         let pname = param_node_name_at(param.clone(), source_indices.clone());
@@ -8473,10 +8523,17 @@ pub fn emit_inferred(
     generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     v1_rt::concat(
         rust_items().return_arrow.clone(),
-        render_rust_fn_sig_type(inferred, generic_param_names, shared_types, source_indices),
+        render_rust_fn_sig_type(
+            inferred,
+            generic_param_names,
+            shared_types,
+            source_indices,
+            env,
+        ),
     )
 }
 
@@ -17635,6 +17692,7 @@ pub fn emit_operation_method(
                         Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
+                        env.clone(),
                     ),
                 ));
             }
@@ -19666,6 +19724,7 @@ pub fn emit_capability_method(
                         Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
+                        env.clone(),
                     ),
                 ));
             }
@@ -20240,6 +20299,14 @@ pub fn emit_test_file(
 
 pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
+        let stub_env = Rc::new(TypeEnv {
+            bindings: Rc::new(HashMap::new()),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: Rc::new(HashMap::new()),
+            inductive_fields: Rc::new(HashMap::new()),
+            source_indices: projection.source_indices.clone(),
+            intern_table: empty_intern_table(),
+        });
         let params_str = Rc::new({
             let mut __result = Vec::new();
             for p in projection.params.clone().iter().cloned() {
@@ -20253,6 +20320,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
                         Rc::new(vec![]),
                         v1_rt::rc_empty_set::<String>(),
                         projection.source_indices.clone(),
+                        stub_env.clone(),
                     ),
                 ));
             }
