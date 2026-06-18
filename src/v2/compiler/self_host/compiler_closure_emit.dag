@@ -1,0 +1,140 @@
+// src/v2/compiler/self_host/compiler_closure_emit.dag
+// Scope: Keystone wrapper — dependency_lens + affected_set_closure + emit_for_target for scoped
+//   compiler import-closure emit (v2-emits-v2 measurability + acyclic gate).
+// Status: MVP whole-program emit scoped by closure receipt; per-frontier-node partition emit is
+//   stage-C follow-on once real multi-module compiler inferred trees land (Lane 3a.2).
+// Anchor: sibling to candidate_generation.dag; does NOT modify load-bearing self_host.dag.
+
+module v2.compiler.self_host.compiler_closure_emit
+
+import v2.compiler.infer { InferredTree }
+import v2.compiler.program_partition { emit_for_target }
+import v2.compiler.target_carriers { TargetSource }
+import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.dependency {
+  DependencyView,
+  dependency_lens,
+  ready_set,
+  topological_layers
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.node { Node }
+import v2.std.program_segment {
+  PartitionBoundaryPolicy,
+  program_segment_whole_program
+}
+
+
+type CompilerClosureEmitReceipt {
+  closure_size: Int
+  layer_count: Int
+  ready_size: Int
+  source: TargetSource
+}
+
+
+fn compiler_import_closure_reading(root: Node) -> List<DependencyView> {
+  dependency_lens(root: root)
+}
+
+
+fn compiler_import_closure(root: Node) -> AffectedSetClosureAcc {
+  affected_set_closure(
+    dependencies: compiler_import_closure_reading(root: root),
+    edit_locus: root
+  )
+}
+
+
+fn compiler_closure_layer_count(root: Node) -> Int {
+  length(xs: topological_layers(graph_node: root))
+}
+
+
+fn compiler_closure_ready_count(root: Node) -> Int {
+  length(xs: ready_set(graph_node: root))
+}
+
+
+fn compiler_closure_frontier_count(closure: AffectedSetClosureAcc) -> Int {
+  length(xs: closure.frontier)
+}
+
+
+fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
+  fold(nodes, init: false, f: fn(found, node) {
+    found || (node == needle)
+  })
+}
+
+
+fn compiler_closure_frontier_subset_of_ready(root: Node, closure: AffectedSetClosureAcc) -> Bool {
+  let ready = ready_set(graph_node: root)
+  fold(closure.frontier, init: true, f: fn(ok, node) {
+    ok && node_in_list(nodes: ready, needle: node)
+  })
+}
+
+
+// Acyclic gate: topological layering exists and closure frontier stays within ready_set.
+fn compiler_import_closure_is_acyclic(root: Node, closure: AffectedSetClosureAcc) -> Bool {
+  (compiler_closure_layer_count(root: root) > 0)
+    && (compiler_closure_frontier_count(closure: closure) > 0)
+    && (compiler_closure_frontier_count(closure: closure) <= compiler_closure_ready_count(root: root))
+    && compiler_closure_frontier_subset_of_ready(root: root, closure: closure)
+}
+
+
+fn compiler_closure_cyclic_diagnostic(root: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^compiler_import_closure_cyclic,
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// PRIMARY ENTRY — compose dependency_lens → affected_set_closure → acyclic gate → emit_for_target.
+fn emit_compiler_import_closure_for_target(
+  program: InferredTree,
+  edit_locus: Node,
+  target: TargetModel,
+  boundary: PartitionBoundaryPolicy
+) -> Outcome<CompilerClosureEmitReceipt> {
+  let closure = compiler_import_closure(root: edit_locus)
+  if compiler_import_closure_is_acyclic(root: program.root, closure: closure) {
+    bind_outcome(
+      o: emit_for_target(
+        program: program,
+        segment: program_segment_whole_program(),
+        target: target,
+        boundary: boundary
+      ),
+      f: fn(source) {
+        outcome_accepted(
+          value: CompilerClosureEmitReceipt {
+            closure_size: compiler_closure_frontier_count(closure: closure),
+            layer_count: compiler_closure_layer_count(root: program.root),
+            ready_size: compiler_closure_ready_count(root: program.root),
+            source: source
+          }
+        )
+      }
+    )
+  } else {
+    outcome_rejected(d: compiler_closure_cyclic_diagnostic(root: program.root))
+  }
+}
