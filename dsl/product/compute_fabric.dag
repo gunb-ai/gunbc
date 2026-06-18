@@ -118,10 +118,30 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
+// 🟢 GREEN (terminal). GPU vendors are a closed hardware-vendor surface; mirrors
+// std.cpu CpuVendor rigor (DESIGN.md §2 anemic-leaf trap).
+type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
+
+// NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
+// major/minor magnitudes, not a marketplace label string.
+type GpuComputeCapability {
+  vendor: GpuVendor
+  major: Int
+  minor: Int
+}
+
+fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> String {
+  match cap.vendor {
+    Nvidia => concat("sm_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
+    _ => concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+  }
+}
+
 type GpuFacts {
-  vendor: NonEmptyStr
+  vendor: GpuVendor
   model: NonEmptyStr
-  compute_capability: NonEmptyStr?
+  compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }

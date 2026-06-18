@@ -12,6 +12,59 @@ module extdeps.cloud.cloud
 
 import std.types { AuthScheme }
 
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
+// 🟢 GREEN (terminal). SigV4 signing names a closed AWS region identifier set.
+type AwsRegion
+  = UsEast1
+  | UsEast2
+  | UsWest1
+  | UsWest2
+  | EuWest1
+  | EuCentral1
+  | ApSoutheast1
+  | ApNortheast1
+
+// 🟢 GREEN (terminal). SigV4 signing names a closed AWS service identifier set.
+type AwsService
+  = S3
+  | Iam
+  | Sts
+  | Ec2
+  | Lambda
+  | Dynamodb
+  | Sqs
+  | Sns
+  | Kms
+  | Secretsmanager
+
+fn aws_region_wire_label(region: AwsRegion) -> String {
+  match region {
+    UsEast1 => "us-east-1"
+    UsEast2 => "us-east-2"
+    UsWest1 => "us-west-1"
+    UsWest2 => "us-west-2"
+    EuWest1 => "eu-west-1"
+    EuCentral1 => "eu-central-1"
+    ApSoutheast1 => "ap-southeast-1"
+    ApNortheast1 => "ap-northeast-1"
+  }
+}
+
+fn aws_service_wire_label(service: AwsService) -> String {
+  match service {
+    S3 => "s3"
+    Iam => "iam"
+    Sts => "sts"
+    Ec2 => "ec2"
+    Lambda => "lambda"
+    Dynamodb => "dynamodb"
+    Sqs => "sqs"
+    Sns => "sns"
+    Kms => "kms"
+    Secretsmanager => "secretsmanager"
+  }
+}
+
 // -- Service endpoints ---------------------------------------------
 
 type ServiceEndpoint {
@@ -35,7 +88,7 @@ type RateLimitPolicy {
 
 type CloudAuthScheme
   = Protocol { scheme: AuthScheme }
-  | SigV4 { region: String, service: String }
+  | SigV4 { region: AwsRegion, service: AwsService }
   | OidcToken { audience: String }
 
 // -- Credentials ---------------------------------------------------
