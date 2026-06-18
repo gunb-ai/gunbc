@@ -2274,6 +2274,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               }
             } else if type_node_is_unresolved_generic(n: exp, source_indices: scope.type_env.source_indices) {
               []
+            } else if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
+              // Method-arg inference may thread the whole Map<K, V> as the expected type for
+              // value args; empty [] is still valid for V.
+              []
             } else { [inference_error(message: "empty list literal: expected type is not a collection", span: span, module_name: scope.module_name)] }
           Absent => []
         }

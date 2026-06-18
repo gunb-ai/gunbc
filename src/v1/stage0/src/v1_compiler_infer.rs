@@ -4458,6 +4458,13 @@ match bare_s {
                                 scope.type_env.clone().source_indices.clone(),
                             ) {
                                 Rc::new(vec![])
+                            } else if node_is_keyed_collection(
+                                exp.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ) {
+                                // Method-arg inference may thread the whole Map<K, V> as the
+                                // expected type for value args; empty [] is still valid for V.
+                                Rc::new(vec![])
                             } else {
                                 Rc::new(vec![inference_error(
                                     "empty list literal: expected type is not a collection"
