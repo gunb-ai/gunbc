@@ -2,35 +2,39 @@
 // CI gates, so the dependency-ordered scheduler (claim_executor) can run each gate
 // as a plan node (`RunnableSingleClaim` is nullary — one `(entry, function)`).
 //
-// REUSE, not re-coin (DESIGN §2/§3): the Gate→effect mapping stays the single
-// authority `tools.ci_gates.run_spec_gate` (itself driven by `gunbc_ci_spec.gates`).
-// Each adapter just pins one closed `Gate` variant and maps its ProcessExit to the
-// Bool the scheduler's per-node verdict needs. These are `func` (effectful) — the
-// host runs them in Wet mode so the transports fire.
+// REUSE, not re-coin (DESIGN §2/§3): each adapter calls the same runner
+// `tools.ci_gates.run_spec_gate` would dispatch to (the composed gate modules).
+// Direct runner calls avoid a cross-module `run_spec_gate(g: Gate)` match bug where
+// every variant was routed to the ci_yaml runner when invoked from this entry.
 
 module tools.floor_effect_gate_witness
 
-import gunbc.ci_spec {
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate
+import tools.ci_gates { exit_ok }
+import tools.rust_gates_ci { run_rust_monolith_gate }
+import tools.emit_host_gate { run_emit_host_ci_gate }
+import tools.layering_imports_gate { run_layering_imports_ci_gate }
+import tools.dsl_compile_clean_transport {
+  run_clean_tree_compile,
+  run_perturb_optional_skew_red_receipt
 }
-import tools.ci_gates { exit_ok, run_spec_gate }
+import tools.ci_yaml_gate { run_ci_yaml_gate }
 
 func rust_monolith_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: RustMonolithGate))
+  exit_ok(e: run_rust_monolith_gate())
 }
 
 func emit_host_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: EmitHostGate))
+  exit_ok(e: run_emit_host_ci_gate())
 }
 
 func layering_imports_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: LayeringImportsGate))
+  exit_ok(e: run_layering_imports_ci_gate())
 }
 
 func dsl_compile_clean_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: DslCompileCleanGate))
+  run_clean_tree_compile() && run_perturb_optional_skew_red_receipt()
 }
 
 func ci_yaml_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: CiYamlGate))
+  exit_ok(e: run_ci_yaml_gate())
 }
