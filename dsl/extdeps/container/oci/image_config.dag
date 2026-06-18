@@ -90,14 +90,40 @@ fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPor
       match cfg.ExposedPorts {
         null => null
         ports =>
-          match ports |> first {
-            Present { value: port } => port
-            Absent => null
+          match ports |> get(0) {
+            null => null
+            port => port
           }
       }
   }
 }
 
 fn container_exposed_port_is(port: ContainerExposedPort, expected_port: Int, protocol: ContainerPortProtocol) -> Bool {
-  port.port == expected_port && port.protocol == protocol
+  if port.port != expected_port {
+    false
+  } else {
+    match port.protocol {
+      Tcp =>
+        match protocol {
+          Tcp => true
+          Udp => false
+        }
+      Udp =>
+        match protocol {
+          Tcp => false
+          Udp => true
+        }
+    }
+  }
+}
+
+fn image_config_has_exposed_port(
+  c: ImageConfiguration,
+  expected_port: Int,
+  protocol: ContainerPortProtocol,
+) -> Bool {
+  match image_config_first_exposed_port(c) {
+    null => false
+    port => container_exposed_port_is(port: port, expected_port: expected_port, protocol: protocol)
+  }
 }

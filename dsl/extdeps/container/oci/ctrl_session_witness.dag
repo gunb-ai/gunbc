@@ -21,6 +21,7 @@ import extdeps.container.oci.image_config {
   ImageRootfs,
   RootfsLayers,
   accept_image_configuration,
+  image_config_has_exposed_port,
   image_config_entrypoint,
   image_config_first_exposed_port,
   image_config_layer_count,
@@ -66,20 +67,29 @@ import extdeps.container.oci.runtime_config {
   accept_runtime_bundle_config,
   runtime_mount_count,
 }
+import extdeps.container.oci.types {
+  ContainerExposedPort,
+  ImageArchArm64,
+  ImageOsLinux,
+  ImageOsUnknown,
+  OciDigest,
+  RuntimeMountTmpfs,
+  Tcp,
+}
 import std.types { Bool }
 
-data ctrl_session_config_digest: String = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
+data ctrl_session_config_digest: OciDigest = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
 
 data ctrl_session_config_size: Int = 34025
 
-data ctrl_session_layer0_digest: String = "sha256:402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a"
+data ctrl_session_layer0_digest: OciDigest = "sha256:402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a"
 
 data ctrl_session_layer0_size: Int = 28122307
 
 // Slice-0 fixture encodes manifest layer[0] + matching rootfs diff_ids[0] only
 // (full ctrl-session export has 33 layers; not all inlined in this witness).
 
-data ctrl_session_first_diff_id: String = "sha256:5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299"
+data ctrl_session_first_diff_id: OciDigest = "sha256:5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299"
 
 data ctrl_session_manifest: ImageManifest = {
   schemaVersion: oci_image_schema_version,
@@ -99,8 +109,8 @@ data ctrl_session_manifest: ImageManifest = {
 }
 
 data ctrl_session_image_config: ImageConfiguration = {
-  architecture: "arm64",
-  os: "linux",
+  architecture: ImageArchArm64,
+  os: ImageOsLinux,
   config: {
     User: null,
     Env: [
@@ -115,7 +125,7 @@ data ctrl_session_image_config: ImageConfiguration = {
     ],
     Cmd: null,
     WorkingDir: null,
-    ExposedPorts: ["7681/tcp"],
+    ExposedPorts: [ContainerExposedPort { port: 7681, protocol: Tcp }],
   },
   rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
 }
@@ -143,7 +153,7 @@ data ctrl_session_runtime_config: RuntimeBundleConfig = {
     {
       destination: "/tmp",
       source: "tmpfs",
-      mount_type: "tmpfs",
+      mount_type: RuntimeMountTmpfs,
       options: ["nosuid", "strictatime", "mode=755", "size=65536k"],
     },
   ],
@@ -212,18 +222,18 @@ fn witness_descriptor_rejects_negative_size() -> Bool {
 fn witness_image_config_accepts() -> Bool {
   match accept_image_configuration(ctrl_session_image_config) {
     ImageConfigAccepted { value: c } =>
-      c.architecture == "arm64"
-        && c.os == "linux"
-        && image_config_first_exposed_port(c) == "7681/tcp"
+      c.architecture == ImageArchArm64
+        && c.os == ImageOsLinux
+        && image_config_has_exposed_port(c: c, expected_port: 7681, protocol: Tcp)
         && count(image_config_entrypoint(c)) == 4
     ImageConfigRejected { reason: _ } => false
   }
 }
 
-fn witness_image_config_rejects_empty_os() -> Bool {
+fn witness_image_config_rejects_unknown_os() -> Bool {
   let bad = {
-    architecture: "arm64",
-    os: "",
+    architecture: ImageArchArm64,
+    os: ImageOsUnknown { raw: "plan9" },
     config: null,
     rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
   }
@@ -283,7 +293,7 @@ fn main() -> Bool {
     && witness_manifest_rejects_bad_schema()
     && witness_descriptor_rejects_negative_size()
     && witness_image_config_accepts()
-    && witness_image_config_rejects_empty_os()
+    && witness_image_config_rejects_unknown_os()
     && witness_runtime_config_accepts()
     && witness_linux_namespaces_count()
     && witness_linux_memory_limit()
