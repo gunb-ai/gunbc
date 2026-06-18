@@ -1,0 +1,76 @@
+// dsl/test/claim/realization_measurement_keystone_test.dag
+//
+// Phase-0 keystone §5: durable .dag model (RealizationMeasureEffect + roll-up lens)
+// proven green-by-execution; v1 Rust is the proving handler only.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function realization_measurement_keystone_witnesses --claim-run
+
+module test.claim.realization_measurement_keystone
+
+import std.types { ContentHash }
+import std.realization_schedule {
+  CostAccount,
+  CostBasis,
+  cost_account_predicted_zero,
+  cost_account_time_nanos,
+}
+import std.realization_measurement {
+  RealizationMeasureEffect,
+  v1_eval_expr_measure_handler_id,
+  witness_measured_rollup_differs_from_predicted_zero,
+}
+import product.compute_fabric {
+  WorkUnitId,
+  performance_receipt_host_single_sample,
+  cost_account_from_performance_receipts,
+  performance_receipts_total_time,
+}
+import std.measure { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+
+data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
+data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
+data sample_wall_time: NanosecondDuration = nanosecond_duration(count: 5000000)
+
+data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
+  subject: sample_subject
+  work_shape: "realization_measurement_keystone_witnesses"
+}
+
+fn witness_predicted_zero_is_predicted_basis() -> Bool {
+  match cost_account_predicted_zero().basis {
+    Predicted => true
+    Measured => false
+  }
+}
+
+fn witness_measured_receipt_rollup_uses_lens() -> Bool {
+  let receipt = performance_receipt_host_single_sample(
+    work_shape: sample_work_shape,
+    wall_time: sample_wall_time,
+  )
+  let total = cost_account_from_performance_receipts(receipts: [receipt])
+  let rolled = cost_account_time_nanos(account: total)
+  let observed = nanosecond_duration_count(
+    d: performance_receipts_total_time(receipts: [receipt])
+  )
+  match total.basis {
+    Measured => rolled == observed
+    Predicted => false
+  }
+}
+
+fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
+  witness_measured_rollup_differs_from_predicted_zero(wall_time: sample_wall_time)
+}
+
+fn witness_v1_handler_id_declared() -> Bool {
+  let id = v1_eval_expr_measure_handler_id
+  id == "host:v1-interpreter.eval_expr_self_time"
+}
+
+test fn realization_measurement_keystone_witnesses() -> Bool {
+  witness_predicted_zero_is_predicted_basis()
+    && witness_measured_receipt_rollup_uses_lens()
+    && witness_measured_rollup_red_on_predicted_zero()
+    && witness_v1_handler_id_declared()
+}

@@ -48,7 +48,7 @@ data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"
 data ts_sg2_expected_arrow_labeled_text: String = "(X: X) => Y"
-data ts_sg2_expected_conj_text: String = " { X, Y }"
+data ts_sg2_expected_conj_text: String = " { X: X, Y: Y }"
 data ts_sg2_expected_disj_text: String = "X | Y"
 
 fn ts_sg2_pass_node() -> Node {
@@ -172,6 +172,22 @@ fn ts_sg2_serialize_matches_expected() -> Bool {
 
 fn ts_sg2_arrow_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_arrow_xy_emitted()) == ts_sg2_expected_arrow_text
+}
+
+fn ts_sg2_arrow_projected_serialize_matches_expected() -> Bool {
+  ts_sg2_serialized_text(emitted: ts_sg2_project_arrow_emitted()) == ts_sg2_expected_arrow_text
+}
+
+fn ts_sg2_conj_projected_serialize_matches_expected() -> Bool {
+  ts_sg2_serialized_text(emitted: ts_sg2_project_conj_emitted()) == ts_sg2_expected_conj_text
+}
+
+fn ts_sg2_instantiation_projected_serialize_matches_expected() -> Bool {
+  ts_sg2_serialized_text(emitted: ts_sg2_project_instantiation_emitted()) == ts_sg2_expected_instantiation_text
+}
+
+fn ts_sg2_disj_projected_serialize_matches_expected() -> Bool {
+  ts_sg2_serialized_text(emitted: ts_sg2_project_disj_emitted()) == ts_sg2_expected_disj_text
 }
 
 fn ts_sg2_arrow_labeled_serialize_matches_expected() -> Bool {
@@ -390,4 +406,12 @@ data claim_ts_sg2_wire_decode_instantiation: TestClaim = CompilesClaim {
   input: ts_sg2_claim_input(ok: ts_sg2_wire_decode_accepts(emitted: ts_sg2_foobar_xy_emitted())),
   expected_value: ts_sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn witness_ts_sg2_projected_serialize_holds() -> Bool {
+  ts_sg2_projection_matches_golden()
+    && ts_sg2_arrow_projected_serialize_matches_expected()
+    && ts_sg2_conj_projected_serialize_matches_expected()
+    && ts_sg2_instantiation_projected_serialize_matches_expected()
+    && ts_sg2_disj_projected_serialize_matches_expected()
 }

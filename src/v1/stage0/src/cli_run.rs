@@ -71,7 +71,7 @@ fn extract_module_path(content: &str) -> Option<String> {
 }
 
 /// Extract import module paths from a .dag file.
-fn extract_import_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
@@ -803,6 +803,11 @@ pub fn make_eval_context_with_fixture_store(
     )
 }
 
+pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
+    let sources = load_sources_for_entry_with_index(&index.source_files, entry)?;
+    Ok(subject_digest_for_closure(&sources))
+}
+
 /// Run one Bool witness function against an already-resolved graph, classifying
 /// the result the same way `handle_run_with_options`'s `--claim-run` branch
 /// does (Bool true → Pass, false → Fail, anything else → diagnostic), but
@@ -819,6 +824,32 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             message: format!("{}", e),
         },
     }
+}
+
+/// Run one Bool witness with cache-subject-keyed measurement. Sets the eval-tap
+/// subject, records wall + eval self-time into a `PerformanceReceipt`, and leaves
+/// verdict classification to the caller. Eval self-time accumulates only when
+/// `GUNBC_INTERP_PROFILE=1` (zero overhead on the default green path).
+///
+/// SCAFFOLD — v1 host wiring only. P5 receipt: CI floor `DiscoverySummary` Measured
+/// roll-up + keystone witness. dissolve-on: v2 witness runner Realization carrier
+/// (`docs/plans/realization-measurement-loop.md` Phase 0 table).
+pub fn run_claim_measured(
+    ctx: &v1_interpreter::InterpContext,
+    closure_subject_digest: &str,
+    function: &str,
+) -> (ClaimOutcome, v1_interpreter::PerformanceReceipt) {
+    let subject_key =
+        crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
+    v1_interpreter::eval_profile_reset();
+    v1_interpreter::eval_subject_set(subject_key.clone());
+    let started = std::time::Instant::now();
+    let outcome = run_claim(ctx, function);
+    let wall_nanos = started.elapsed().as_nanos();
+    v1_interpreter::eval_subject_clear();
+    let receipt =
+        v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
+    (outcome, receipt)
 }
 
 /// Run a function against an already-resolved graph and return its raw
@@ -1945,12 +1976,34 @@ pub struct DiscoveryRow {
     pub function: String,
 }
 
+/// Per-entry resolve timing (clock 1 of the audit's two-clock split).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryResolveReceipt {
+    pub entry: String,
+    pub closure_subject: String,
+    pub resolve_nanos: u128,
+}
+
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
 /// many passed, and a rendered failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub failures: Vec<String>,
+    /// Per-entry resolve wall time keyed by closure cache-subject.
+    pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
+    /// Aggregate resolve wall time across distinct entries (nanoseconds).
+    pub total_resolve_nanos: u128,
+    /// Per-witness PerformanceReceipt rows keyed by cache-subject (clock 2).
+    pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
+    /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
+    pub total_measured_nanos: u128,
+}
+
+/// CostAccount.time roll-up for a completed discovery run: Measured basis, nanoseconds
+/// from per-runnable PerformanceReceipt wall times (not resolve — resolve is separate).
+pub fn discovery_summary_cost_account_time_nanos(summary: &DiscoverySummary) -> u128 {
+    summary.total_measured_nanos
 }
 
 /// Default exclude set for floor discovery. Manifest/law files that import the
@@ -1968,9 +2021,6 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "host_source_root_ingest_manifest.dag",
     // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
-    // Manual-lane: unified_claim transport only — enrolled via claim_witness_corpus_ci_runner,
-    // not the auto-discovery floor (collateral when src/v2/compiler/manual is a scan-dir).
-    "sg2_type_expression_projection.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
@@ -1986,7 +2036,7 @@ pub fn floor_discovery_path_excluded(path: &str) -> bool {
 /// Tolerant `.dag` walk (silently skips unreadable dirs — a gate must not panic
 /// on a transient read error). The eager `collect_dag_files` above panics, which
 /// is wrong for the floor scan.
-fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -2192,18 +2242,41 @@ pub fn run_discovery_corpus(
         total: rows.len(),
         passed: 0,
         failures: Vec::new(),
+        entry_resolve_receipts: Vec::new(),
+        total_resolve_nanos: 0,
+        performance_receipts: Vec::new(),
+        total_measured_nanos: 0,
     };
     let mut current_entry: Option<String> = None;
+    let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
     for row in &rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
+            let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
+                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
+            let closure_subject = subject_digest_for_closure(&sources);
+            let resolve_started = std::time::Instant::now();
             let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
                 .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let resolve_nanos = resolve_started.elapsed().as_nanos();
+            summary.total_resolve_nanos += resolve_nanos;
+            summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                entry: row.entry.clone(),
+                closure_subject: closure_subject.clone(),
+                resolve_nanos,
+            });
+            current_closure_subject = Some(closure_subject);
             ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
             current_entry = Some(row.entry.clone());
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
-        match run_claim(ctx_ref, &row.function) {
+        let closure_subject = current_closure_subject
+            .as_deref()
+            .expect("closure subject set above");
+        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+        summary.total_measured_nanos += receipt.wall_nanos;
+        summary.performance_receipts.push(receipt);
+        match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => summary.failures.push(format!(
                 "{} ({}) returned Bool(false)",

@@ -35,7 +35,11 @@ import v2.test.manual.mvp1_rust_add_translate {
 }
 import v2.test.manual.sg2_type_expression_projection {
   sg2_expected_arrow_text,
+  sg2_expected_conj_text,
+  sg2_expected_type_text,
   sg2_project_arrow_emitted,
+  sg2_project_conj_emitted,
+  sg2_project_instantiation_emitted,
   sg2_type_expr_target
 }
 import v2.std.algebra { length }
@@ -82,6 +86,26 @@ fn translate_error_profile_sg2_projected_arrow_serialize_known() -> Bool {
     emitted: sg2_project_arrow_emitted()
   ) {
     Accepted { value: source, diagnostics: _ } => source == sg2_expected_arrow_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_error_profile_sg2_projected_conj_serialize_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: sg2_project_conj_emitted()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source == sg2_expected_conj_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_error_profile_sg2_projected_instantiation_serialize_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: sg2_project_instantiation_emitted()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source == sg2_expected_type_text
     Rejected { diagnostics: _ } => false
   }
 }
@@ -146,6 +170,14 @@ test fn translate_error_profile_mvp1_malformed_bundle_classified() -> Bool {
 
 test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool {
   translate_error_profile_sg2_projected_arrow_serialize_known()
+}
+
+test fn translate_error_profile_sg2_projected_conj_serialize_accepts() -> Bool {
+  translate_error_profile_sg2_projected_conj_serialize_known()
+}
+
+test fn translate_error_profile_sg2_projected_instantiation_serialize_accepts() -> Bool {
+  translate_error_profile_sg2_projected_instantiation_serialize_known()
 }
 
 
