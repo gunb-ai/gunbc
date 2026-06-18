@@ -39,6 +39,43 @@ fn cwc_probe_resolved() -> Outcome<Node> {
   )
 }
 
+data cwc_src_fn: String = "module probe\nfn add(x: Int, y: Int) -> Int { x }\n"
+data cwc_src_coproduct: String = "module probe\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\n"
+data cwc_src_data: String = "module probe\ndata foo: Int = 5\n"
+
+fn cwc_norm_of(src: String) -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
+    f: fn(toks) {
+      bind_outcome(o: parse(tokens: toks, grammar: lm.grammar), f: fn(ptree) {
+        normalize(parse_tree: ptree)
+      })
+    }
+  )
+}
+
+fn cwc_norm_accepts(src: String) -> Bool {
+  match cwc_norm_of(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data cwc_src_type_alias: String = "module probe\ntype T = Int\n"
+data cwc_src_type_single: String = "module probe\ntype T = A\n"
+data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
+data cwc_src_type_payload: String = "module probe\ntype T = A { x: Int } | B { y: Int }\n"
+
+test fn cwc_norm_type_alias() -> Bool { cwc_norm_accepts(src: cwc_src_type_alias) }
+test fn cwc_norm_type_single() -> Bool { cwc_norm_accepts(src: cwc_src_type_single) }
+test fn cwc_norm_type_two() -> Bool { cwc_norm_accepts(src: cwc_src_type_two) }
+test fn cwc_norm_type_payload() -> Bool { cwc_norm_accepts(src: cwc_src_type_payload) }
+
+test fn cwc_norm_fn_only() -> Bool { cwc_norm_accepts(src: cwc_src_fn) }
+test fn cwc_norm_coproduct_only() -> Bool { cwc_norm_accepts(src: cwc_src_coproduct) }
+test fn cwc_norm_data_only() -> Bool { cwc_norm_accepts(src: cwc_src_data) }
+
 fn cwc_probe_parsed() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
