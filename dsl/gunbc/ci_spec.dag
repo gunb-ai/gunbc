@@ -113,13 +113,17 @@ fn ci_release_build_script() -> String {
     ),
     concat(
       concat(
-        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
-        concat("    exit 1\n", "  fi\n")
+        concat(
+          "    echo \"::warning::sccache EAGAIN on seed build; disabling RUSTC_WRAPPER for claim_executor (rust monolith gate)\"\n",
+          "    echo \"RUSTC_WRAPPER=\" >> \"$GITHUB_ENV\"\n"
+        ),
+        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n")
       ),
-      concat(
-        concat("fi\n", "rm -f \"$BUILD_LOG\"\n"),
-        concat("sccache --show-stats 2>/dev/null || true", "")
-      )
+      concat("    exit 1\n", "  fi\n")
+    ),
+    concat(
+      concat("fi\n", "rm -f \"$BUILD_LOG\"\n"),
+      concat("sccache --show-stats 2>/dev/null || true", "")
     )
   )
 }

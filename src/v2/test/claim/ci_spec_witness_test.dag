@@ -141,6 +141,7 @@ fn witness_release_build_eagain_cold_retry() -> Bool {
     string_contains(s: script, pattern: "keep sccache") &&
     string_contains(s: script, pattern: "without RUSTC_WRAPPER") &&
     string_contains(s: script, pattern: "env -u RUSTC_WRAPPER") &&
+    string_contains(s: script, pattern: "disabling RUSTC_WRAPPER for claim_executor") &&
     string_contains(s: script, pattern: "sccache --show-stats")
 }
 
