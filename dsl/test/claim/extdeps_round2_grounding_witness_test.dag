@@ -48,6 +48,9 @@ import product.compute_fabric {
   Amd,
   Intel,
   GpuComputeCapability,
+  GpuCapabilityLabelOk,
+  GpuCapabilityLabelRejected,
+  UnsubstantiatedGpuCapabilityLabel,
   gpu_compute_capability_sm_label,
   MemoryFacts,
   MemoryKind,
@@ -123,17 +126,29 @@ fn w_gcp_api_endpoint_service_enum() -> Bool {
 
 fn w_gpu_compute_capability_sm_label() -> Bool {
   let cap = GpuComputeCapability { vendor: Nvidia, major: 8, minor: 9 }
-  gpu_compute_capability_sm_label(cap) == "sm_8_9"
+  match gpu_compute_capability_sm_label(cap) {
+    GpuCapabilityLabelOk { label: label } => label == "sm_8_9"
+    GpuCapabilityLabelRejected { reason: _ } => false
+  }
 }
 
 fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
   let cap = GpuComputeCapability { vendor: Amd, major: 11, minor: 0 }
-  gpu_compute_capability_sm_label(cap) == "gfx110"
+  match gpu_compute_capability_sm_label(cap) {
+    GpuCapabilityLabelOk { label: label } => label == "gfx110"
+    GpuCapabilityLabelRejected { reason: _ } => false
+  }
 }
 
-fn w_intel_label_not_gfx_catchall() -> Bool {
+fn w_intel_capability_label_refuses_fail_closed() -> Bool {
   let cap = GpuComputeCapability { vendor: Intel, major: 1, minor: 0 }
-  gpu_compute_capability_sm_label(cap) == "intel_1_0"
+  match gpu_compute_capability_sm_label(cap) {
+    GpuCapabilityLabelOk { label: _ } => false
+    GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Intel },
+    } => true
+    GpuCapabilityLabelRejected { reason: _ } => false
+  }
 }
 
 fn w_gpu_facts_structured_compute_capability() -> Bool {
@@ -148,9 +163,12 @@ fn w_gpu_facts_structured_compute_capability() -> Bool {
     supported_runtimes: [],
   }
   gpu.vendor == Nvidia
-    && gpu_compute_capability_sm_label(
+    && match gpu_compute_capability_sm_label(
       GpuComputeCapability { vendor: Nvidia, major: 9, minor: 0 }
-    ) == "sm_9_0"
+    ) {
+      GpuCapabilityLabelOk { label: label } => label == "sm_9_0"
+      GpuCapabilityLabelRejected { reason: _ } => false
+    }
 }
 
 test fn extdeps_round2_grounding_witnesses() -> Bool {
@@ -165,6 +183,6 @@ test fn extdeps_round2_grounding_witnesses() -> Bool {
     && w_gcp_api_endpoint_service_enum()
     && w_gpu_compute_capability_sm_label()
     && w_gpu_amd_label_distinct_from_nvidia()
-    && w_intel_label_not_gfx_catchall()
+    && w_intel_capability_label_refuses_fail_closed()
     && w_gpu_facts_structured_compute_capability()
 }
