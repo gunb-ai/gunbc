@@ -39,7 +39,6 @@ import std.realization_schedule {
   schedule_generates_identical_schedule,
   schedule_eq,
   ScheduleLensViolation,
-  ScheduleLensVerdict,
   runnable_step_label,
   schedule_batch_contains_label,
 }

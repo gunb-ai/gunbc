@@ -4948,6 +4948,18 @@ fn eval_builtin(
             Ok(Some(Value::Int(count)))
         }
 
+        "transport_script_literal_violation_count_for_path" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "transport_script_literal_violation_count_for_path",
+            )?;
+            let count =
+                crate::transport_script_position_project::transport_script_literal_violation_count_for_path(
+                    path,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

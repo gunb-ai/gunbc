@@ -9,6 +9,8 @@
 
 module tools.host_prelude
 
+import extdeps.shell
+import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord,
   Command, If, Subshell, AndOr, WithRedir, Exit,
@@ -50,4 +52,13 @@ fn ensure_gunbc_built() -> List<ShellStmt> {
       ]
     }
   ]
+}
+
+// 🟡 toolchain-provision carve-out — dissolve-on: model ToolchainProvision in std;
+//   interim structural allow for emit_host go/ts provisioning workarounds. Callers pass
+//   literal blobs here; the wrapper's shell.Exec.Run uses the parameter (computed), not
+//   a literal at the transport site.
+fn toolchain_provision_shell_exec(script: String) -> Bool {
+  let result = shell.Exec.Run(script: script)
+  result.success
 }
