@@ -73,6 +73,8 @@ jobs:
                   exit 1
                 fi
               fi
+              echo "::warning::sccache EAGAIN on seed build; disabling RUSTC_WRAPPER for claim_executor (rust monolith gate)"
+              echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
               rm -f "$RETRY_LOG"
             else
               exit 1

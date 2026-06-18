@@ -17,6 +17,7 @@ import v2.compiler.translate {
   translate_diagnostic_reason_symbol,
   TargetBundleDuplicateEdge,
   TargetBundleMalformed,
+  TargetTypeExprEmittedShapeMalformed,
   TranslateDiagnosticReason
 }
 import v2.std.collection { Absent, Optional, Present, optional_present }
@@ -32,6 +33,9 @@ import v2.test.manual.mvp1_dag_add_round_trip {
 import v2.test.manual.mvp1_rust_add_translate {
   mvp1_rust_emitted_root,
   mvp1_rust_missing_translation_rules_target
+}
+import v2.extdeps.languages.rust {
+  rust_sg2_malformed_atom_missing_surface_emitted
 }
 import v2.test.manual.sg2_type_expression_projection {
   sg2_expected_arrow_text,
@@ -83,6 +87,23 @@ fn translate_error_profile_sg2_projected_arrow_serialize_known() -> Bool {
   ) {
     Accepted { value: source, diagnostics: _ } => source == sg2_expected_arrow_text
     Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn translate_error_profile_sg2_measured_reject_known() -> Bool {
+  // Post-Cut-1b: arrow projection is green; measure serialize reject on malformed SG-2 emitted wire.
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: rust_sg2_malformed_atom_missing_surface_emitted()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+        Present { value: TargetTypeExprEmittedShapeMalformed } => true
+        Present { value: _ } => false
+        Absent => false
+      }
   }
 }
 
@@ -146,6 +167,11 @@ test fn translate_error_profile_mvp1_malformed_bundle_classified() -> Bool {
 
 test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool {
   translate_error_profile_sg2_projected_arrow_serialize_known()
+}
+
+
+test fn translate_error_profile_sg2_measured_reject_classified() -> Bool {
+  translate_error_profile_sg2_measured_reject_known()
 }
 
 
