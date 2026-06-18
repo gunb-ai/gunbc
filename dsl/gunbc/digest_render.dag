@@ -15,7 +15,7 @@
 
 module gunbc.digest_render
 
-import extdeps.github.pulls { PullRequest, PullReview }
+import extdeps.github.pulls { PullRequest, PullReview, PullRequestState, ReviewState, Open }
 import std.render { kv_pair, list_block }
 import std.types { Url }
 
@@ -25,7 +25,7 @@ type PullRequestDigestSubject {
   number: Int
   title: String
   url: Url
-  state: String
+  state: PullRequestState
   draft: Bool
   head_sha: String
   base_ref: String
@@ -73,8 +73,25 @@ fn digest_subject(pr: PullRequest) -> PullRequestDigestSubject {
   }
 }
 
+fn render_pull_request_state(state: PullRequestState) -> String {
+  match state {
+    Open => "open"
+    Closed => "closed"
+  }
+}
+
+fn render_review_state(state: ReviewState) -> String {
+  match state {
+    Pending => "pending"
+    Commented => "commented"
+    Approved => "approved"
+    ChangesRequested => "changes_requested"
+    Dismissed => "dismissed"
+  }
+}
+
 fn review_state_labels(reviews: List<PullReview>) -> List<String> {
-  map(reviews, r => r.state)
+  map(reviews, r => render_review_state(state: r.state))
 }
 
 fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
@@ -84,7 +101,7 @@ fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
     match pr.merged_at {
       Present { value: _ } => DigestNotReady { first_reason: "already merged", more_reasons: [] }
       Absent =>
-        if pr.state != "open" {
+        if pr.state != Open {
           DigestNotReady { first_reason: "not open", more_reasons: [] }
         } else {
           DigestOpenForReview
@@ -137,7 +154,7 @@ fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
     kv_pair(key: "URL", sep: ": ", value: view.subject.url as String),
     kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
     kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
-    kv_pair(key: "State", sep: ": ", value: view.subject.state),
+    kv_pair(key: "State", sep: ": ", value: render_pull_request_state(state: view.subject.state)),
     kv_pair(key: "Readiness", sep: ": ", value: render_readiness(readiness: view.readiness)),
     kv_pair(key: "Reviews", sep: ": ", value: render_review_states(states: view.review_states))
   ]
