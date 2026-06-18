@@ -285,4 +285,22 @@ mod fingerprint_tests {
             "Conj siblings are commutative — reorder must not false-split"
         );
     }
+
+    #[test]
+    fn recursive_fingerprint_disj_child_order_insensitive() {
+        let c_a = shell_node("a", Connective::NoConnective, vec![], vec![]);
+        let c_b = shell_node("b", Connective::NoConnective, vec![], vec![]);
+        let left = shell_node(
+            "bag",
+            Connective::Disj,
+            vec![c_a.clone(), c_b.clone()],
+            vec![],
+        );
+        let right = shell_node("bag", Connective::Disj, vec![c_b, c_a], vec![]);
+        assert_eq!(
+            dag_node_surface_fingerprint(left),
+            dag_node_surface_fingerprint(right),
+            "Disj siblings are commutative — reorder must not false-split"
+        );
+    }
 }
