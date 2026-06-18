@@ -435,12 +435,22 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
 data witness_create_if_absent_cause_is_idempotent: Bool = match effect_shape_for_create_cause(
   cause: CreateIfAbsent { key_source: sample_create_if_absent_key_source }
 ) {
-  IsIdempotent(CreateIfAbsentEffect { key_source: _ }) => true
-  IsBreaking(_) => false
+  IsIdempotent(CreateIfAbsentEffect { key_source: sample_create_if_absent_key_source }) => true
+  IsBreaking(CreateEffect { cause: PostAlways }) => false
+  IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
+  IsBreaking(AppendEffect) => false
+  IsIdempotent(ReadEffect) => false
+  IsIdempotent(UpsertEffect { key_source: key_source }) => false
+  IsIdempotent(DeleteEffect { key_source: key_source }) => false
 }
 
 
 data witness_post_always_cause_is_breaking: Bool = match effect_shape_for_create_cause(cause: PostAlways) {
   IsBreaking(CreateEffect { cause: PostAlways }) => true
-  IsIdempotent(_) => false
+  IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => false
+  IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
+  IsBreaking(AppendEffect) => false
+  IsIdempotent(ReadEffect) => false
+  IsIdempotent(UpsertEffect { key_source: key_source }) => false
+  IsIdempotent(DeleteEffect { key_source: key_source }) => false
 }
