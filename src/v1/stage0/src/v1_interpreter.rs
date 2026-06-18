@@ -3682,6 +3682,8 @@ struct ShellResult {
 
 /// Push one evaluated argv expression onto `argv`. List carriers splice
 /// element-wise; strings stay atomic (never exploded to codepoints).
+/// FreeMonoid<Char> chains whose heads are scalar char codes materialize to one
+/// host string (v2 emit → shell.Exec.Run script boundary).
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
@@ -3696,6 +3698,10 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
         }
         Value::Variant { .. } => {
             if let Some(items) = free_monoid_to_vec(&val) {
+                if let Some(s) = char_code_monoid_to_host_string(&items) {
+                    argv.push(s);
+                    return Ok(());
+                }
                 for item in items {
                     push_shell_argv_tokens(argv, item)?;
                 }
@@ -3710,6 +3716,21 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
     }
+}
+
+fn char_code_monoid_to_host_string(items: &[Value]) -> Option<String> {
+    if items.is_empty() {
+        return Some(String::new());
+    }
+    let mut out = String::with_capacity(items.len());
+    for item in items {
+        let Value::Int(code) = item else {
+            return None;
+        };
+        let ch = char::from_u32(*code as u32)?;
+        out.push(ch);
+    }
+    Some(out)
 }
 
 /// Execute a shell transport: evaluate argv template, run command, capture output.

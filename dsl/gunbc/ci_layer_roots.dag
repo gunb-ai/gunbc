@@ -6,7 +6,9 @@
 module gunbc.ci_layer_roots
 
 // Single authority for CI witness layer roots (replaces triple-fork in ci.yml / transport scripts).
-data witness_layer_roots: List<String> = ["src/v2", "dsl"]
+// Overlay order: dsl first, then src/v2 — v2 rows win on duplicate module paths
+// (e.g. extdeps.shell without dsl/std.types) while dsl-only modules remain available.
+data witness_layer_roots: List<String> = ["dsl", "src/v2"]
 
 // Satisfies claim_batch --roster-from-discovery scan-dir gate (unified_claim_* in dsl/test/claim;
 // find_witness homomorphism kernel anchors in src/v2/compiler/manual).
