@@ -47,6 +47,7 @@ data gunbc_ci_spec: CiSpec = {
     { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
     { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
     { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
+    { entry: "dsl/test/claim/cargo_target_path_witness.dag", function: "cargo_target_path_witnesses" },
     { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
     { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
     { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
