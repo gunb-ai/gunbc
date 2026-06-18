@@ -106,6 +106,9 @@ data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Seria
 data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
 // Ref: serde docs — #[serde(tag = "...")] for internally tagged enums
 data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
+// Ref: serde docs — #[serde(rename_all = "...")] for std.serialization.VariantNaming wire policies.
+data rust_serde_rename_all_snake_case: String = "#[serde(rename_all = \"snake_case\")]"
+data rust_serde_rename_all_screaming_snake_case: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"
 // {0} = field key name. Ref: serde docs — #[serde(rename = "...")]
 data rust_serde_rename_template: String = "#[serde(rename = \"\{0\}\")]"
 

@@ -1,0 +1,48 @@
+// gunbc/runner_spec_from_offer.dag — Phase 3a-generic: ComputeOffer → RunnerSpec projection.
+//
+// Fleet-agnostic GHA `runs-on:` realization for any self-hosted ComputeOffer — no concrete
+// SKU catalog import, no operator host names. OUR fleet rows live in gunbc.ci_fleet.
+
+module gunbc.runner_spec_from_offer
+
+import extdeps.github.actions { RunnerSpec, SelfHosted }
+import product.compute_fabric { ComputeOffer, compute_host_primary_cpu }
+import std.cpu { cpu_facts_architecture }
+import std.cpu.types { CpuArchitecture }
+import std.os.types { KernelFamily }
+
+fn kernel_runner_label(kernel: KernelFamily) -> String {
+  match kernel {
+    Linux => "linux"
+    Darwin => "macos"
+    WindowsNt => "windows"
+    LinuxGuestOnWindows => "linux"
+  }
+}
+
+fn cpu_architecture_runner_label(arch: CpuArchitecture) -> String {
+  match arch {
+    Aarch64 => "arm64"
+    X86_64 => "x64"
+    Armv7 => "arm"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+  }
+}
+
+// GHA `runs-on:` realization of a self-hosted fleet offer (hosted/cloud variants
+// dissolve when RunnerSpec gains their typed carriers).
+fn runner_spec_from_offer(offer: ComputeOffer) -> RunnerSpec {
+  let os = offer.supply.execution.os
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
+      SelfHosted { labels: concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]) }
+    Present { value: cpu } =>
+      SelfHosted {
+        labels: concat(
+          concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]),
+          [cpu_architecture_runner_label(arch: cpu_facts_architecture(cpu: cpu))],
+        ),
+      }
+  }
+}

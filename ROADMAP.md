@@ -14,6 +14,7 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
   - first witness: FreeMonoid fork (RED on cross-tree bridge today, GREEN after de-fork)
 - Fact-cardinality lens — one lens for the 4 problem-classes + ratchet; emits the fork census — #5124
 - CI wall-time (~27 min → minutes)
+  - **Plan: [Realization & Measurement loop + infra onto `.dag`](docs/plans/realization-measurement-loop.md)** — the deep reframe: profile P1–P3 are symptoms; the spine is `measure → CostAccount.Measured → Pareto width/cache, bounded by a deployment HardwareBudget`. Keystone = wire the eval tap to a content-hash key + `CostAccount` (corpus is one serial node; cost is `predicted_zero`; cache catalog has no consumer). Subsumes "Caching via Realization" + "CI floor as one `.dag` binary" below. Worker-dispatch tracker.
   - P1 — cargo cache broken + double build (49%) — **needs an owner**
   - P2 — `dsl_compile_clean` sound memo (23%) — declare `content_hash(tree)` input, then RecordedFixture
   - P3 — resolver resolve blowup (15%) — self-host blocker; merry-crab pulling fix forward
@@ -23,7 +24,7 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
   - host-language ban: enforcement via `shell.Exec.Run.script` String→ShellProgram typecheck (#5147 landed; type-flip capstone warm-badger); #5132 substring lens retired TERMINAL
   - GO B interim guard: `v2.lens.host_language_transport_script` + hand-Rust parse bridge `src/v1/stage0/src/transport_script_position_project.rs` (receipt: same `*_count_for_path` builtin lane as `extdeps_shape_transport_policy_project` — registered in `04_method.dag`, corpus `host_language_transport_script/corpus/migrated_transports_clean_test.dag`)
   - 🟡 carve-out: `toolchain_provision_shell_exec` routes emit_host go/ts literal blobs through a computed `script:` param so the transport site reads structural — not a corpus green for those rows; dissolve-on ToolchainProvision in std
-  - retire 2 `.sh` transports: blocked on parameterized-argv modeling (source_root_ingest, layering_imports_scan)
+  - retire 2 `.sh` transports — DONE: `git ls-files '*.sh'` is empty. source_root_ingest lifted to `cargo.Build.Run` + gunbc claim-runs (policy literals → workflow-tier params); layering enumeration collapsed onto the single-authority projection `v2.lens.layering_imports.layer_import_facts_live` (v1 handler `layering_imports_project.rs`, reusing `extract_import_paths` + `collect_dag_files_tolerant`). Perturb oracle: 4 committed fixtures under `src/v2/test/fixture/layering_scan`.
   - tier 0: `std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landed; ScheduleLensVerdict migrated; interim `reason: String` dissolve-on → `v2.std.diagnostic.Diagnostic` when cross-tree import lands
   - tier 1: cost / complexity / synthesis → always-required, structural budget (enrolls resolve → catches P3 class)
   - tier 2: `InferredTree`+deps lenses → adapters, then enroll
