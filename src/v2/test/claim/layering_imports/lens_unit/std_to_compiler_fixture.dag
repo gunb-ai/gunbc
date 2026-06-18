@@ -5,15 +5,15 @@ module v2.test.layering_imports.lens_unit.std_to_compiler_fixture
 
 import v2.lens.layering_imports {
   LayerImportFact,
-  LayerStd,
   layering_imports_violation_count
 }
 import v2.std.collection { List }
+import v2.std.cross_tree.import_model { LayerPrefixStd }
 import v2.std.logic { Bool }
 
 data std_to_compiler_fixture_facts: List<LayerImportFact> = [
   LayerImportFact {
-    layer: LayerStd,
+    layer: LayerPrefixStd,
     path: "src/v2/std/_perturb_layering_std_to_compiler.dag",
     import_module: "v2.compiler.tokenize"
   }

@@ -13,8 +13,14 @@
 //
 // SCAFFOLD — feature:route-c-cross-tree-import-model
 // bind node://adhoc-10a4dbed-059
-// dissolve-on: bold-bee 3a.2 QualifiedName landing — replace from_module/to_module String
+// dissolve-on (String): bold-bee 3a.2 QualifiedName landing — replace from_module/to_module String
 //   with QualifiedName; delete this scaffold note.
+// dissolve-on (§3 SourceRootRef tension): Phase B/C/D cross-tree import wiring.
+//   SourceRootRef is the intended single authority for source-tree identity. ci_layer_roots.dag
+//   re-states the same set as String paths because dsl/ cannot yet import from v2.std (the
+//   circular dependency: fixing the fork requires the very mechanism this PR models). Once
+//   cross-tree resolution lands, ci_layer_roots.dag should import SourceRootRef and list its
+//   variants; witness_layer_roots becomes a derivation from SourceRootRef, not a second ledger.
 
 module v2.std.cross_tree.import_model
 
@@ -118,6 +124,16 @@ fn cross_tree_layer_direction_holds(edge: CrossTreeImport) -> Bool {
   layer_prefix_ordinal(l: edge.to_layer) <= layer_prefix_ordinal(l: edge.from_layer)
 }
 
+// cross_tree_directional_admit — inner check shared by MoreFundamental and CoFundamental:
+// the import is admitted only when the layer-direction constraint holds.
+fn cross_tree_directional_admit(edge: CrossTreeImport) -> CrossTreeAdmissionVerdict {
+  if cross_tree_layer_direction_holds(edge: edge) {
+    CrossTreeAdmitted
+  } else {
+    CrossTreeDenied { reason: ^cross_tree_layer_direction_violated }
+  }
+}
+
 // cross_tree_import_admitted — derived admission rule; no ledger (§3 fail-closed).
 //
 // Admit iff all three conditions hold:
@@ -144,17 +160,9 @@ fn cross_tree_import_admitted(
       LessFundamental =>
         CrossTreeDenied { reason: ^cross_tree_to_tree_less_fundamental }
       MoreFundamental =>
-        if cross_tree_layer_direction_holds(edge: edge) {
-          CrossTreeAdmitted
-        } else {
-          CrossTreeDenied { reason: ^cross_tree_layer_direction_violated }
-        }
+        cross_tree_directional_admit(edge: edge)
       CoFundamental =>
-        if cross_tree_layer_direction_holds(edge: edge) {
-          CrossTreeAdmitted
-        } else {
-          CrossTreeDenied { reason: ^cross_tree_layer_direction_violated }
-        }
+        cross_tree_directional_admit(edge: edge)
     }
   }
 }
