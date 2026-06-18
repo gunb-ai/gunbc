@@ -29,16 +29,7 @@ import std.lens_verdict {
   ModuleWholeFile,
   Unrealized,
 }
-import v2.std.node { Node, Symbol }
-
-
-// 🟢 finding — per-fn classification when producer lands; projects to LensVerdict at gate.
-type TableDecisionTreeFinding
-  = NotATable
-  | TableDissolves {
-      key_vocabulary: Symbol
-      row_template_type: Symbol
-    }
+import v2.std.node { Node }
 
 
 data table_decision_tree_module: String = "v2.lens.table_decision_tree"

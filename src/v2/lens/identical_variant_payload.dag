@@ -23,7 +23,7 @@ import std.lens_verdict {
   ModuleWholeFile,
   Unrealized,
 }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node }
 
 
 // 🟢 family discriminator — shared by L1.4 parent, L1.4.b, and this sub-signature.
@@ -31,15 +31,6 @@ type CarrierCloneTrigger
   = WholeCarrierClone
   | VariantParameterClone
   | IdenticalVariantPayload
-
-
-// 🟢 finding — per-type classification when structural_similarity lands.
-type IdenticalVariantPayloadFinding
-  = NotDuplicatePayload
-  | DuplicatePayloadArms {
-      coproduct: Symbol
-      trigger: CarrierCloneTrigger
-    }
 
 
 data identical_variant_payload_module: String = "v2.lens.identical_variant_payload"

@@ -5,17 +5,19 @@
 module v2.test.lens_structural_similarity.sg_claims
 
 
-import std.lens_verdict { LensVerdict, Unrealized }
 import v2.lens.structural_similarity {
+  StructuralSimilarityVerdict,
+  Unrealized,
   structural_similarity_fact
 }
 import v2.std.logic { Bool }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
 
-fn ss_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
+// treating this as a permanent variant-discriminant authority.
+fn ss_verdict_is_unrealized(verdict: StructuralSimilarityVerdict) -> Bool {
   match verdict {
-    Unrealized { diagnostic: _ } => true
+    Unrealized => true
     _ => false
   }
 }

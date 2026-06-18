@@ -8,13 +8,7 @@
 
 module v2.lens.structural_similarity
 
-import std.lens_verdict {
-  LensVerdict,
-  LensVerdictDiagnostic,
-  ModuleWholeFile,
-  Unrealized,
-}
-import v2.std.collection { List }
+import v2.std.collection { List, Map }
 import v2.std.nat { Nat, Zero }
 import v2.std.node { Symbol }
 
@@ -53,23 +47,14 @@ type StructuralShape
   = TypeDecl { shape: TypeShape }
   | FnDecl { shape: FnShapeUnrealized }
 
-data structural_similarity_module: String = "v2.lens.structural_similarity"
+// 🟢 verdict — fail-closed until parse/resolve walk lands (parallel to
+// table_decision_tree.dag `Unrealized`).
+type StructuralSimilarityVerdict
+  = Unrealized
+  | Produced { index: Map<DeclId, StructuralShape> }
 
-
-fn structural_similarity_unrealized_verdict() -> LensVerdict {
-  Unrealized {
-    diagnostic: LensVerdictDiagnostic {
-      reason: "structural_similarity_producer_unavailable",
-      at: ModuleWholeFile { module_name: structural_similarity_module }
-    }
-  }
-}
-
-
-// 🟢 lens fact — `index` populates when parse/resolve walk lands; verdict
-// projects Holds on success, Violation on structural-similarity defects.
 type StructuralSimilarityFact {
-  verdict: LensVerdict
+  verdict: StructuralSimilarityVerdict
 }
 
 // 🟢 empty type-shape witness — substrate authority for zero-variant closed sums.
@@ -83,6 +68,6 @@ data structural_similarity_empty_type_shape: TypeShape = {
 // decl and FnShape per fn decl; forbidden: returning Unrealized once walk lands.
 fn structural_similarity_fact() -> StructuralSimilarityFact {
   StructuralSimilarityFact {
-    verdict: structural_similarity_unrealized_verdict()
+    verdict: Unrealized
   }
 }

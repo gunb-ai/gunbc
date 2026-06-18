@@ -6,7 +6,13 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
 
-import std.lens_verdict { LensVerdict, Unrealized }
+import std.lens_verdict {
+  Holds,
+  LensVerdict,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
+  Unrealized,
+}
 import v2.lens.table_decision_tree {
   table_decision_tree_fact_for_fn
 }
@@ -17,6 +23,7 @@ import v2.test.lens_common.infer_fixture { claim_atom_node }
 
 
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
+data tdt_witness_module: String = "v2.lens.table_decision_tree"
 
 
 fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
@@ -27,9 +34,44 @@ fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
 }
 
 
-test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
+fn witness_tdt_unrealized_green_on_fact() -> Bool {
   tdt_verdict_is_unrealized(
     verdict: table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict
   )
 }
 
+
+fn witness_tdt_unrealized_red_on_holds() -> Bool {
+  match Holds {
+    Unrealized { diagnostic: _ } => false
+    _ => true
+  }
+}
+
+
+fn witness_tdt_unrealized_red_on_perturbed_diagnostic() -> Bool {
+  let perturbed = Unrealized {
+    diagnostic: LensVerdictDiagnostic {
+      reason: "table_decision_tree_perturbed",
+      at: ModuleWholeFile { module_name: "v2.lens.table_decision_tree_wrong_module" }
+    }
+  }
+  match table_decision_tree_fact_for_fn(fn_node: tdt_witness_fn_node).verdict {
+    Unrealized { diagnostic: d } => match d.at {
+      ModuleWholeFile { module_name: m } => m == tdt_witness_module
+        && match perturbed {
+          Unrealized { diagnostic: pd } => match pd.at {
+            ModuleWholeFile { module_name: pm } => pm != tdt_witness_module
+          }
+        }
+    }
+    _ => false
+  }
+}
+
+
+test fn lens_table_decision_tree_unrealized_scaffold_holds() -> Bool {
+  witness_tdt_unrealized_green_on_fact()
+    && witness_tdt_unrealized_red_on_holds()
+    && witness_tdt_unrealized_red_on_perturbed_diagnostic()
+}

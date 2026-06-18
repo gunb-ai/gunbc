@@ -5,7 +5,13 @@
 module v2.test.lens_identical_variant_payload.sg_claims
 
 
-import std.lens_verdict { LensVerdict, Unrealized }
+import std.lens_verdict {
+  Holds,
+  LensVerdict,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
+  Unrealized,
+}
 import v2.lens.identical_variant_payload {
   identical_variant_payload_fact_for_type
 }
@@ -19,6 +25,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
+data ivp_witness_module: String = "v2.lens.identical_variant_payload"
 
 
 fn ivp_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
@@ -29,8 +36,44 @@ fn ivp_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
 }
 
 
-test fn lens_identical_variant_payload_unrealized_scaffold_holds() -> Bool {
+fn witness_ivp_unrealized_green_on_fact() -> Bool {
   ivp_verdict_is_unrealized(
     verdict: identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict
   )
+}
+
+
+fn witness_ivp_unrealized_red_on_holds() -> Bool {
+  match Holds {
+    Unrealized { diagnostic: _ } => false
+    _ => true
+  }
+}
+
+
+fn witness_ivp_unrealized_red_on_perturbed_diagnostic() -> Bool {
+  let perturbed = Unrealized {
+    diagnostic: LensVerdictDiagnostic {
+      reason: "identical_variant_payload_perturbed",
+      at: ModuleWholeFile { module_name: "v2.lens.identical_variant_payload_wrong_module" }
+    }
+  }
+  match identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict {
+    Unrealized { diagnostic: d } => match d.at {
+      ModuleWholeFile { module_name: m } => m == ivp_witness_module
+        && match perturbed {
+          Unrealized { diagnostic: pd } => match pd.at {
+            ModuleWholeFile { module_name: pm } => pm != ivp_witness_module
+          }
+        }
+    }
+    _ => false
+  }
+}
+
+
+test fn lens_identical_variant_payload_unrealized_scaffold_holds() -> Bool {
+  witness_ivp_unrealized_green_on_fact()
+    && witness_ivp_unrealized_red_on_holds()
+    && witness_ivp_unrealized_red_on_perturbed_diagnostic()
 }
