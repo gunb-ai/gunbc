@@ -96,6 +96,7 @@ fn dag_node_seq_hash(digests: Vec<String>) -> String {
 }
 
 fn child_subtree_hash(connective: Connective, digests: Vec<String>) -> String {
+    // Conj/Disj: commutative bag; Arrow/NoConnective: positional sequence.
     match connective {
         Connective::Conj | Connective::Disj => dag_node_bag_hash(digests),
         Connective::Arrow | Connective::NoConnective => dag_node_seq_hash(digests),
