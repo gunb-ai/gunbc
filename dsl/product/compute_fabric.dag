@@ -42,7 +42,7 @@ import std.measure {
 }
 import std.currency { CurrencyCode }
 import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_wall_nanos }
+import std.realization_measurement { cost_account_measured_from_time }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuFacts,
@@ -590,16 +590,19 @@ type PerformanceReceipt {
   cache_state_summary: NonEmptyStr?
 }
 
-// Phase-0 host measurement: wall_duration.count carries nanoseconds observed by the
-// v1 interpreter tap (interim until scale-aware Duration conversion lands in extdeps/realization).
+// SCAFFOLD 🟡 — host-bridge: bare Nat from v1 Duration.count (scale not modeled yet).
+// dissolve-on: extdeps/realization scale-aware Duration conversion; prefer
+// performance_receipts_total_time / cost_account_measured_from_time.
 fn duration_wall_nanos(duration: Duration) -> Nat {
   duration.count
 }
 
+// SCAFFOLD 🟡 — see duration_wall_nanos; dissolve-on with carrier-preserving roll-up.
 fn performance_receipt_wall_nanos(receipt: PerformanceReceipt) -> Nat {
   duration_wall_nanos(duration: receipt.wall_duration)
 }
 
+// SCAFFOLD 🟡 — see duration_wall_nanos; dissolve-on with performance_receipts_total_time.
 fn performance_receipts_total_wall_nanos(receipts: List<PerformanceReceipt>) -> Nat {
   fold(receipts, init: 0, f: (acc, receipt) => acc + performance_receipt_wall_nanos(receipt: receipt))
 }
@@ -611,9 +614,7 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 // Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
 // → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
-  cost_account_measured_from_wall_nanos(
-    wall_nanos: performance_receipts_total_wall_nanos(receipts: receipts)
-  )
+  cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
 }
 
 // Host-side v1 interpreter provider row for SingleSample witness measurements.

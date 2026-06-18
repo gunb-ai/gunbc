@@ -14,7 +14,7 @@ module std.realization_measurement
 
 import std.types { ContentHash, Bool, String, List }
 import std.nat { Nat }
-import std.measure { nanosecond_duration }
+import std.measure { nanosecond_duration, NanosecondDuration }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
@@ -37,9 +37,17 @@ type RealizationMeasureEffect
 data v1_eval_expr_measure_handler_id: String = "host:v1-interpreter.eval_expr_self_time"
 
 // --- Pure roll-up lens: observations → CostAccount.time --------------------
+//
+// SCAFFOLD 🟡 — host-bridge Nat nanoseconds (v1 proving handler only).
+// dissolve-on: delete *_wall_nanos / *_from_wall_nanos when extdeps/realization
+// supplies scale-aware Duration→NanosecondDuration conversion; use carrier path below.
+
+fn cost_account_measured_from_time(time: NanosecondDuration) -> CostAccount {
+  cost_account_measured(time: time)
+}
 
 fn cost_account_measured_from_wall_nanos(wall_nanos: Nat) -> CostAccount {
-  cost_account_measured(time: nanosecond_duration(count: wall_nanos))
+  cost_account_measured_from_time(time: nanosecond_duration(count: wall_nanos))
 }
 
 fn wall_nanos_list_total(nanos_list: List<Nat>) -> Nat {

@@ -48,6 +48,7 @@ import std.realization_schedule {
 import std.realization_measurement {
   RealizationMeasureEffect,
   cost_account_measured_from_wall_nanos,
+  cost_account_measured_from_time,
 }
 
 // --- Independence classifier (fail-closed) ------------------------------------

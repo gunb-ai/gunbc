@@ -24,8 +24,9 @@ import product.compute_fabric {
   WorkUnitId,
   performance_receipt_host_single_sample,
   cost_account_from_performance_receipts,
-  performance_receipts_total_wall_nanos,
+  performance_receipts_total_time,
 }
+import std.measure { nanosecond_duration_count }
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
@@ -49,7 +50,9 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
   let rolled = cost_account_time_nanos(account: total)
-  let observed = performance_receipts_total_wall_nanos(receipts: [receipt])
+  let observed = nanosecond_duration_count(
+    d: performance_receipts_total_time(receipts: [receipt])
+  )
   match total.basis {
     Measured => rolled == observed
     Predicted => false
