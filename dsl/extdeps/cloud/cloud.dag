@@ -13,7 +13,9 @@ module extdeps.cloud.cloud
 import std.types { AuthScheme }
 
 // Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). SigV4 signing names a closed AWS region identifier set.
+// 🟡 partial enumeration — kills the anemic String leaf for cited in-repo SigV4 signers.
+// AWS publishes more regions/services than modeled here; extend variants when a cited row
+// needs one outside this set (dissolution-trigger: grow on first cited out-of-set need).
 type AwsRegion
   = UsEast1
   | UsEast2
@@ -24,7 +26,8 @@ type AwsRegion
   | ApSoutheast1
   | ApNortheast1
 
-// 🟢 GREEN (terminal). SigV4 signing names a closed AWS service identifier set.
+// 🟡 partial enumeration — kills the anemic String leaf for cited in-repo SigV4 signers.
+// dissolution-trigger: extend variants when a cited row needs a service outside this set.
 type AwsService
   = S3
   | Iam
