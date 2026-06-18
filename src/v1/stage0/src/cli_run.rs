@@ -2025,12 +2025,6 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "program_assembly/real_ingest_test.dag",
     // Gate-only: N_v2 substrate witnesses (scripts/v2-compiler-closure-nv2-gate.sh).
     "compiler_closure_emit_from_ingest_gate.dag",
-<<<<<<< HEAD
-    // Manual-lane: unified_claim transport only — enrolled via claim_witness_corpus_ci_runner,
-    // not the auto-discovery floor (collateral when src/v2/compiler/manual is a scan-dir).
-    "sg2_type_expression_projection.dag",
-=======
->>>>>>> 8c2411fe1 (Fix CI: remove merge conflict markers from cli_run.rs.)
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
