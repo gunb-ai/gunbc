@@ -1,7 +1,7 @@
 // Scope: §5 discriminating execution witnesses for CreateEffect create-if-absent double-init (increment 1).
 // GREEN: same proven identity → dedupable. RED inputs: create-always or different identity → not dedupable.
 
-module v2.test.claim.create_if_absent_double_init_witness
+module v2.test.claim.create_if_absent_double_init_witness_test
 
 import v2.std.effects {
   create_always_shape,
