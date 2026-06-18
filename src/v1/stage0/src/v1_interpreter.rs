@@ -4586,12 +4586,27 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
+/// True iff a type-annotation node tree names `target` anywhere (the type itself or a type
+/// argument, e.g. the `PublishedMockCase` element of `List<PublishedMockCase>`). Reads SHAPE
+/// over the small type expression — cheap, no evaluation.
+fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
+    if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names(ctx, c, target))
+        || ty.params.iter().any(|c| type_annotation_names(ctx, c, target))
+}
+
 /// Resolve the PUBLISHED mock corpus (the §2 Realization pure-spec) into its operation-key set.
-/// Reads SHAPE, not contents (DESIGN.md lens law): every `data` item whose value is a `List` of
-/// `PublishedMockCase` records contributes its rows' `operation_key`s. This is the SAME corpus the
-/// M2 mock_totality_lens reads — the v1 runtime and the compile-time lens now decide hermetic
-/// realizability from ONE model. Evaluated against `Env::empty()` like other `data` constants;
-/// data items are pure (no service calls), so this never re-enters `eval_service_call`.
+/// Reads SHAPE, not contents (DESIGN.md lens law): every `data` item DECLARED over
+/// `PublishedMockCase` contributes its rows' `operation_key`s. This is the SAME corpus the M2
+/// mock_totality_lens reads — the v1 runtime and the compile-time lens now decide hermetic
+/// realizability from ONE model. The declared-type pre-filter keeps this cheap: only corpus data
+/// items are evaluated, not every `data` constant in the loaded tree. Evaluated against
+/// `Env::empty()` like other `data` constants; data items are pure (no service calls), so this
+/// never re-enters `eval_service_call`.
 fn resolve_published_mock_keys(
     ctx: &InterpContext,
 ) -> InterpResult<std::collections::HashSet<String>> {
@@ -4603,6 +4618,14 @@ fn resolve_published_mock_keys(
         let Some(node) = ctx.lookup_fn(name) else {
             continue;
         };
+        // Declared-type gate: skip (without evaluating) any data item not declared over
+        // PublishedMockCase. Corpus data items always carry the explicit annotation.
+        let Some(ty) = node.type_annotation.as_ref() else {
+            continue;
+        };
+        if !type_annotation_names(ctx, ty, "PublishedMockCase") {
+            continue;
+        }
         let Some(body) = node.body.as_ref() else {
             continue;
         };
