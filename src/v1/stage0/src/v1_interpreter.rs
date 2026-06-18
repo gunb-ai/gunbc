@@ -4992,14 +4992,9 @@ fn eval_builtin(
 
         "extdeps_qualified_name_resolves_in_derived_module_set" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
-<<<<<<< HEAD
                 msg:
                     "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
                         .to_string(),
-=======
-                msg: "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
-                    .to_string(),
->>>>>>> 564f4bc28 (WIP: Dissolve filepath literals → QualifiedName over the derived module set ()
             })?;
             Ok(Some(Value::Bool(
                 crate::extdeps_shape_transport_policy_project::qualified_name_resolves_in_derived_module_set(
