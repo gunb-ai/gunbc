@@ -3,6 +3,7 @@
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
 import v2.compiler.source_authority {
+  DagSource,
   deterministic_dag_source_serializer_witness
 }
 import v2.lens.application_serializer {
@@ -19,7 +20,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.lens.application { apply_diff }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Diff, Edit, Path }
 import v2.std.witness { Holds, Violates }
@@ -120,6 +121,20 @@ fn serialize_loop_apply_diff_structurally_matches() -> Bool {
   }
 }
 
+fn serialize_loop_authority_before_source() -> Outcome<DagSource> {
+  target_serialize_source_from_model(
+    target: serialize_loop_target,
+    emitted: dag_mvp1_fixture_emitted_loop_fn
+  )
+}
+
+fn serialize_loop_authority_after_source() -> Outcome<DagSource> {
+  target_serialize_source_from_model(
+    target: serialize_loop_target,
+    emitted: dag_mvp1_loop_arrow_with_body_wrong_value_fixture
+  )
+}
+
 fn serialize_loop_patch_carrier_holds() -> Bool {
   match serialize_diff_as_source_patch(
     root: dag_mvp1_fixture_emitted_loop_fn,
@@ -127,10 +142,16 @@ fn serialize_loop_patch_carrier_holds() -> Bool {
     canonical_source_target: serialize_loop_target
   ) {
     Accepted { value: patch, diagnostics: _ } =>
-      if patch.after == patch.before {
-        false
-      } else {
-        serialize_loop_applied_diff_matches_authority_after()
+      match serialize_loop_authority_before_source() {
+        Accepted { value: authority_before, diagnostics: _ } =>
+          match serialize_loop_authority_after_source() {
+            Accepted { value: authority_after, diagnostics: _ } =>
+              patch.before == authority_before
+                && patch.after == authority_after
+                && patch.before != patch.after
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
