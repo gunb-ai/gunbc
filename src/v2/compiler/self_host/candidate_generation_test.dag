@@ -1,0 +1,99 @@
+// src/v2/compiler/self_host/candidate_generation_test.dag
+// Scope: Route B live coverage — candidate-generation entry + 06_translate error-profile probes.
+// Status: executed by claim_batch test-fn discovery over --source-root src/v2.
+//   GREEN: dag-mvp1 resolved slice emits a Node by execution (infer ∘ translate pre-serialize).
+//   MEASURED: translate reject head reasons classify through translate_outcome_head_reason_is_known.
+//   DEFERRED: full SourceRootIngest→translate on real modules (interpreted path OOMs at ~130s in container).
+
+module v2.test.self_host.candidate_generation
+
+import v2.compiler.self_host.candidate_generation {
+  generate_translate_self_emit_candidate
+}
+import v2.compiler.translate {
+  target_serialize_source_from_model,
+  translate_diagnostic_reason_roster,
+  translate_outcome_head_reason_is_known,
+  translate_outcome_is_target_bundle_malformed
+}
+import v2.extdeps.languages.dag {
+  dag_mvp1_emitted_add_fn_node,
+  dag_mvp1_target_model
+}
+import v2.test.manual.mvp1_dag_add_round_trip {
+  mvp1_dag_emitted_root,
+  mvp1_dag_target_model
+}
+import v2.test.manual.mvp1_rust_add_translate {
+  mvp1_rust_emitted_root,
+  mvp1_rust_missing_translation_rules_target
+}
+import v2.test.manual.sg2_type_expression_projection {
+  sg2_project_arrow_emitted,
+  sg2_type_expr_target
+}
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+
+fn candidate_generation_mvp1_dag_slice_accepts() -> Bool {
+  match generate_translate_self_emit_candidate(
+    resolved_module: mvp1_dag_emitted_root,
+    dag_target: mvp1_dag_target_model
+  ) {
+    Accepted { value: candidate, diagnostics: d } =>
+      (candidate.emitted == dag_mvp1_emitted_add_fn_node()) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn translate_error_profile_roster_nonempty() -> Bool {
+  length(xs: translate_diagnostic_reason_roster()) > 0
+}
+
+
+fn translate_error_profile_mvp1_malformed_bundle_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: mvp1_rust_missing_translation_rules_target,
+    emitted: mvp1_rust_emitted_root
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      translate_outcome_is_target_bundle_malformed(diagnostics: r)
+        && translate_outcome_head_reason_is_known(diagnostics: r)
+  }
+}
+
+
+fn translate_error_profile_sg2_measured_reject_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: sg2_project_arrow_emitted()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      translate_outcome_head_reason_is_known(diagnostics: r)
+  }
+}
+
+
+test fn candidate_generation_translate_self_emit_mvp1_slice_holds() -> Bool {
+  candidate_generation_mvp1_dag_slice_accepts()
+}
+
+
+test fn translate_error_profile_roster_nonempty_holds() -> Bool {
+  translate_error_profile_roster_nonempty()
+}
+
+
+test fn translate_error_profile_mvp1_malformed_bundle_classified() -> Bool {
+  translate_error_profile_mvp1_malformed_bundle_known()
+}
+
+
+test fn translate_error_profile_sg2_measured_reject_classified() -> Bool {
+  translate_error_profile_sg2_measured_reject_known()
+}

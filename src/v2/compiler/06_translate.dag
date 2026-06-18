@@ -182,6 +182,7 @@ import v2.std.algebra {
   Empty,
   TailAbsent,
   TailFound,
+  contains,
   fold_list,
   is_empty,
   length,
@@ -3899,5 +3900,128 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
     f: fn(emitted) {
       outcome_accepted(emitted)
     }
+  )
+}
+
+// Route B — owned translate diagnostic roster (06_translate error profile; sg2/manual probes consume).
+fn translate_diagnostic_reason_roster() -> List<Symbol> {
+  [
+    ^translate_target_bundle_malformed,
+    ^translate_target_bundle_duplicate_edge,
+    ^translate_sg_rc_bundle_partial,
+    ^translate_grammar_inverse_not_realized,
+    ^translate_grammar_relation_row_not_found,
+    ^translate_conj_invalid_edge,
+    ^translate_conj_named_child_missing,
+    ^translate_concrete_token_class_missing,
+    ^translate_concrete_token_kind_invalid,
+    ^translate_serialize_recursion_limit_exhausted,
+    ^translate_lex_rule_literal_not_found,
+    ^translate_binding_spelling_not_found,
+    ^translate_type_expression_shape_missing,
+    ^translate_type_expr_kind_authority_invalid,
+    ^target_atom_realization_lookup_miss,
+    ^target_function_signature_realization_lookup_miss,
+    ^target_type_expr_emitted_shape_malformed
+  ]
+}
+
+fn translate_outcome_is_target_bundle_malformed(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_target_bundle_malformed
+}
+
+fn translate_outcome_is_target_bundle_duplicate_edge(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_target_bundle_duplicate_edge
+}
+
+fn translate_outcome_is_sg_rc_bundle_partial(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_sg_rc_bundle_partial
+}
+
+fn translate_outcome_is_grammar_inverse_not_realized(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_grammar_inverse_not_realized
+}
+
+fn translate_outcome_is_grammar_relation_row_not_found(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_grammar_relation_row_not_found
+}
+
+fn translate_outcome_is_conj_invalid_edge(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_conj_invalid_edge
+}
+
+fn translate_outcome_is_conj_named_child_missing(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_conj_named_child_missing
+}
+
+fn translate_outcome_is_concrete_token_class_missing(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_concrete_token_class_missing
+}
+
+fn translate_outcome_is_concrete_token_kind_invalid(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_concrete_token_kind_invalid
+}
+
+fn translate_outcome_is_serialize_recursion_limit_exhausted(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_serialize_recursion_limit_exhausted
+}
+
+fn translate_outcome_is_lex_rule_literal_not_found(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_lex_rule_literal_not_found
+}
+
+fn translate_outcome_is_binding_spelling_not_found(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_binding_spelling_not_found
+}
+
+fn translate_outcome_is_type_expression_shape_missing(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_type_expression_shape_missing
+}
+
+fn translate_outcome_is_type_expr_kind_authority_invalid(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^translate_type_expr_kind_authority_invalid
+}
+
+fn translate_outcome_is_type_expr_emitted_shape_malformed(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  diagnostics.head.reason == ^target_type_expr_emitted_shape_malformed
+}
+
+fn translate_outcome_head_reason_is_known(
+  diagnostics: NonEmptyDiagnostics
+) -> Bool {
+  contains(
+    xs: translate_diagnostic_reason_roster(),
+    item: diagnostics.head.reason,
+    eq: fn(left, right) { left == right }
   )
 }
