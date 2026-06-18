@@ -3,7 +3,7 @@
 // Anchor: DESIGN.md §4 (pure reader, stores nothing) / §5 (fail-closed) / §6 (gate, not illusion).
 //
 // The operator's layering contract has three parts: a layer PUBLISHES a mock corpus as a
-// closed structural fact (`v2.extdeps.filesystem.mock_corpus`), an adjacent layer's CONSUMER
+// closed structural fact (`v2.extdeps.filesystem.mock_corpus` / `v2.extdeps.test.mock_corpus`), an adjacent layer's CONSUMER
 // materializes ANY published case impl-blind, and THIS lens enforces the consumer is TOTAL —
 // it fail-closes (§5) the moment a published member is left unhandled.
 //
@@ -14,10 +14,9 @@
 // case but not its handler" a LOUD error instead of a silent fall-through.
 //
 // §3 reuse, not fork: the missing-member set is computed by `missing_coverage` / `Coverage<C>`
-// from `v2.lens.coverage` — the SAME expected-vs-actual machinery that already underlies the
-// (zero-consumer) `coverage_lens`. This lens is its first CI-GATING consumer (see the
+// from `v2.lens.coverage`. mock_totality_lens is the CI-gating consumer (see the
 // discriminating RED-on-omission witness under src/v2/test/lens_mock_totality/), dissolving the
-// §6 "machinery exists but nothing gates on it" illusion for that machinery rather than minting
+// §6 "machinery exists but nothing gates on it" illusion for that kernel rather than minting
 // a third missing-set implementation beside it.
 
 module v2.lens.mock_totality
@@ -59,8 +58,8 @@ fn mock_unhandled_rejection<M>() -> Outcome<M> {
 }
 
 // The lens reading: every published member the consumer FAILED to materialize (expected − handled),
-// computed by the SAME missing-set machinery (`missing_coverage` / `Coverage<C>`) that underlies
-// `coverage_lens` — reused, not forked (§3). `handled` is the subset of `published` the consumer
+// computed by the SAME missing-set machinery (`missing_coverage` / `Coverage<C>`) from
+// `v2.lens.coverage` — reused, not forked (§3). `handled` is the subset of `published` the consumer
 // accepted; the witness produces it by running the consumer over the corpus.
 fn mock_totality_missing<C>(
   published: List<C>,

@@ -41,8 +41,10 @@ type ShellWord
   | VarRef { name: String }
   | Concat { parts: List<ShellWord> }
   | CmdSubst { body: ShellStmt }
-  // 🟡 escape hatch — dissolves WITH this whole module into the v2 bash TargetModel (rows).
-  // No caller uses Raw; do not add one.
+  // 🟡 escape hatch — dissolves WITH this whole module into the v2 bash TargetModel (rows,
+  // src/v2/extdeps/languages/bash.dag, slice 1 in PR #5155). The transport-script-position
+  // enforcement (lens / `shell.Exec.Run.script` String→ShellProgram flip) then makes a `Raw`
+  // in transport position a typecheck/lens error. No caller uses Raw; do not add one.
   | Raw { text: String }
 
 // =========================================================================
@@ -78,7 +80,8 @@ type ShellStmt
   // not smuggled policy. Always a quoted delimiter (no expansion in the body).
   | Heredoc { path: ShellWord, delimiter: String, body: String }
   | Exit { code: Int }
-  // 🟡 escape hatch — dissolves WITH this whole module into the v2 bash TargetModel (rows).
+  // 🟡 escape hatch — dissolves WITH this whole module into the v2 bash TargetModel (rows);
+  // same trigger as ShellWord.Raw (transport-script-position typecheck/lens ban).
   | RawLine { text: String }
 
 type ShellProgram {

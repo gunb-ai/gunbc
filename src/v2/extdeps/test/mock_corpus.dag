@@ -1,0 +1,28 @@
+// src/v2/extdeps/test/mock_corpus.dag
+// Scope: the REST http_pilot layer's PUBLISHED mock corpus as a closed structural fact.
+// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
+//
+// Rows inhabit v2.std.hermetic_replay.PublishedMockCase (same shape as dsl/std/hermetic_replay).
+// The operation set authority remains dsl/extdeps/test/http_pilot.dag (`service test.HttpPilot`);
+// per-case payloads live in the Phase-2 RecordedFixture store only — rows carry structural keys.
+
+module v2.extdeps.test.mock_corpus
+
+import v2.std.hermetic_replay { PublishedMockCase }
+import v2.std.collection { List }
+
+data http_pilot_mock_case_get_post: PublishedMockCase = PublishedMockCase {
+  operation_key: "test.HttpPilot.GetPost",
+  case_id: 0
+}
+
+// 🟡 gated — feature:http-pilot-mock-corpus-from-service-decl — bind node://adhoc-3dfa917b-5f9
+// dissolve-on-arrival: project this corpus directly from the `service test.HttpPilot` operation set
+// in dsl/extdeps/test/http_pilot.dag, joined with the Phase-2 RecordedFixture store (the authority
+// for WHICH recorded cases exist per operation), once a v2 lens can read a service decl's operation
+// nodes and the fixture store's keys; this declared list then deletes in the same PR. forbidden: a
+// row carrying a response VALUE — that would fork the payload authority, now owned by the fixture
+// store (§3); rows mirror the (operation_key, case_id) structural key ONLY.
+data http_pilot_published_mock_corpus: List<PublishedMockCase> = [
+  http_pilot_mock_case_get_post
+]
