@@ -97,12 +97,6 @@ fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
             depth += next.chars().filter(|c| *c == '{').count() as i32;
             depth -= next.chars().filter(|c| *c == '}').count() as i32;
             i += 1;
-            // SCAFFOLD fragility: exits when depth==0 and no `{` seen yet — correct for
-            // same-line brace bodies in the current corpus; a `data foo: Bar =\n{ ... }`
-            // split would terminate early. Dissolves with Node-tree decl projection.
-            if depth <= 0 && !body.contains('{') {
-                break;
-            }
         }
         out.push((name, decl_body_hash(&body)));
     }
@@ -232,5 +226,22 @@ mod tests {
     #[test]
     fn lattice_is_not_cross_tree_fork() {
         assert!(!cross_tree_is_fork("std/algebra.dag:Lattice".to_string()));
+    }
+
+    #[test]
+    fn extract_top_level_decls_captures_split_brace_body() {
+        let source = include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
+        let decls = extract_top_level_decls(source);
+        let sample = decls
+            .iter()
+            .find(|(name, _)| name == "split_brace_sample")
+            .expect("split-brace decl must be captured");
+        let expected = decl_body_hash(
+            "data split_brace_sample: SplitBraceSample =\nSplitBraceSample {\n  field: \"x\"\n}\n",
+        );
+        assert_eq!(
+            sample.1, expected,
+            "split-brace body hash must include lines after the opener"
+        );
     }
 }
