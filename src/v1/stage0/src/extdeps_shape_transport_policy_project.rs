@@ -190,24 +190,30 @@ fn literal_string_value(node: &Rc<Node>) -> Option<String> {
     }
 }
 
+// dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_argv_token_is_consumer_policy_literal
+fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
+    if token.contains('{') && token.contains('}') {
+        return false;
+    }
+    if token == "diff" || token == "--name-only" || token == "git" {
+        return false;
+    }
+    token == "--all-targets"
+        || token == "--workspace"
+        || token == "--no-deps"
+        || token == "-D"
+        || token == "warnings"
+        || token.contains("origin/")
+        || token.contains("...")
+}
+
 // dissolve-on: v2.lens.extdeps_shape_transport_policy.extdeps_data_literal_is_embedded_policy_literal
 fn data_literal_is_embedded_policy_literal(value: &str) -> bool {
     if value.contains(' ') {
-        return true;
+        true
+    } else {
+        argv_token_is_consumer_policy_literal(value)
     }
-    if value.contains('{') && value.contains('}') {
-        return false;
-    }
-    if value == "diff" || value == "--name-only" || value == "git" {
-        return false;
-    }
-    value == "--all-targets"
-        || value == "--workspace"
-        || value == "--no-deps"
-        || value == "-D"
-        || value == "warnings"
-        || value.contains("origin/")
-        || value.contains("...")
 }
 
 fn embedded_policy_literal_count_for_data_node(
