@@ -21,8 +21,10 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
     - root-cause: H1 missing resolve memo (maybe bypassed `resolved_graph_cache`) vs H2 generic-instantiation
 - Lens universalization + host-language ban — in flight (quiet-swift-814)
   - host-language ban: enforcement via `shell.Exec.Run.script` String→ShellProgram typecheck (#5147 landed; type-flip capstone warm-badger); #5132 substring lens retired TERMINAL
+  - GO B interim guard: `v2.lens.host_language_transport_script` + hand-Rust parse bridge `src/v1/stage0/src/transport_script_position_project.rs` (receipt: same `*_count_for_path` builtin lane as `extdeps_shape_transport_policy_project` — registered in `04_method.dag`, corpus `host_language_transport_script/corpus/migrated_transports_clean_test.dag`)
+  - 🟡 carve-out: `toolchain_provision_shell_exec` routes emit_host go/ts literal blobs through a computed `script:` param so the transport site reads structural — not a corpus green for those rows; dissolve-on ToolchainProvision in std
   - retire 2 `.sh` transports: blocked on parameterized-argv modeling (source_root_ingest, layering_imports_scan)
-  - tier 0: `std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landed; ScheduleLensVerdict migrated
+  - tier 0: `std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landed; ScheduleLensVerdict migrated; interim `reason: String` dissolve-on → `v2.std.diagnostic.Diagnostic` when cross-tree import lands
   - tier 1: cost / complexity / synthesis → always-required, structural budget (enrolls resolve → catches P3 class)
   - tier 2: `InferredTree`+deps lenses → adapters, then enroll
 
