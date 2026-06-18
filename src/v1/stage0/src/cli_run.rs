@@ -2545,9 +2545,8 @@ pub fn discover_source_root_reads_for_entry(
         }
     }
 
-    let closure = load_sources_for_entry(source_roots, entry_path).map_err(|msg| {
-        format!("discover_source_root_ingest: entry closure load failed: {msg}")
-    })?;
+    let closure = load_sources_for_entry(source_roots, entry_path)
+        .map_err(|msg| format!("discover_source_root_ingest: entry closure load failed: {msg}"))?;
 
     let mut records: Vec<SourceRootReadRecord> = Vec::new();
     for source in closure {

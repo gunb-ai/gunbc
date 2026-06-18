@@ -7810,7 +7810,9 @@ fn scoped_closure_excludes_known_non_closure_module() {
         "excluded module {excluded} must not appear in scoped closure: {paths:?}"
     );
     assert!(
-        paths.iter().any(|p| p.ends_with("src/v2/compiler/00_compile.dag")),
+        paths
+            .iter()
+            .any(|p| p.ends_with("src/v2/compiler/00_compile.dag")),
         "compiler entry must be in scoped closure: {paths:?}"
     );
 }
@@ -7854,7 +7856,7 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
         entry,
         &entry_content,
         v1_compiler::v1_compiler_compile::RenderTarget::Rust,
-        &[v2_root.clone()],
+        std::slice::from_ref(&v2_root),
     );
 
     let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&result)

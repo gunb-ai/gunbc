@@ -86,7 +86,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     let records = match entry_path.as_deref() {
-        Some(entry) => discover_source_root_reads_for_entry(&source_roots, entry, &exclude_subpaths),
+        Some(entry) => {
+            discover_source_root_reads_for_entry(&source_roots, entry, &exclude_subpaths)
+        }
         None => discover_source_root_reads(&source_roots, &scan_dir, &exclude_subpaths),
     };
     let records = match records {
@@ -112,14 +114,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                     );
                     ExitCode::from(1)
                 })?;
-                Some(parse_source_root_entry_admission(&entry_source).map_err(|msg| {
-                    eprintln!("discover_source_root_ingest: {}", msg);
-                    ExitCode::from(1)
-                })?)
+                Some(
+                    parse_source_root_entry_admission(&entry_source).map_err(|msg| {
+                        eprintln!("discover_source_root_ingest: {}", msg);
+                        ExitCode::from(1)
+                    })?,
+                )
             }
             None => None,
         };
-        if let Err(msg) = emit_source_root_ingest_manifest(&path, &records, entry_admission.as_ref())
+        if let Err(msg) =
+            emit_source_root_ingest_manifest(&path, &records, entry_admission.as_ref())
         {
             eprintln!("discover_source_root_ingest: {}", msg);
             return Err(ExitCode::from(1));

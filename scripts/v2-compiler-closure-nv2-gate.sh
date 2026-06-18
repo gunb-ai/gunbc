@@ -32,8 +32,8 @@ run_claim() {
     --claim-run
 }
 
-run_claim compiler_closure_scoped_ingest_manifest_receipt_holds
-run_claim compiler_closure_scoped_ingest_parses_holds
-run_claim compiler_closure_v2_emit_from_scoped_ingest_holds
+run_claim compiler_closure_scoped_ingest_module_count_ok
+run_claim compiler_closure_scoped_ingest_parses
+run_claim compiler_closure_v2_emit_from_scoped_ingest_accepts
 
 echo "N_v2 substrate claim-run witnesses: PASS"

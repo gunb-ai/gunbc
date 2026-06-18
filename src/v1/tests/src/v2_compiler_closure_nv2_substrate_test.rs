@@ -113,10 +113,9 @@ fn nv2_eval_context(manifest_dir: &Path) -> InterpContext {
         ws.join("src/v2").to_string_lossy().to_string(),
         manifest_dir.to_string_lossy().to_string(),
     ];
-    let (graph, source_indices) =
-        resolve_entry_graph(&roots, entry.to_str().expect("entry utf8")).expect("resolve N_v2 test entry");
-    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-    ctx
+    let (graph, source_indices) = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))
+        .expect("resolve N_v2 test entry");
+    make_eval_context(&graph, source_indices, ExecutionMode::Wet)
 }
 
 fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, String) {
@@ -142,7 +141,7 @@ fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, 
 
 #[test]
 #[ignore] // Boundary: N_v2 — v2 emit_for_target via interpreter on scoped closure + cargo check.
-fn v2_emits_v2_scoped_compiler_closure_substrate_cargo_check_error_count() {
+fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     let temp = unique_temp_dir("nv2-substrate");
     fs::create_dir_all(&temp).expect("temp dir");
     let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
@@ -173,14 +172,17 @@ fn v2_emits_v2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     let check_dir = temp.join("emit-crate");
     let (success, error_count, combined) = cargo_check_single_file_crate(&source, &check_dir);
     eprintln!(
-        "N_v2 (v2-emits-v2 scoped substrate): emit_for_target accepted; cargo check success={success} error_count={error_count} source_bytes={}",
+        "N_v2 (v2 emit_for_target substrate): emit_for_target accepted; cargo check success={success} error_count={error_count} source_bytes={}",
         source.len()
     );
     eprintln!(
-        "N_v2 headline: v2-emits-v2 scoped 00_compile closure (53 modules) → {error_count} cargo-check errors on v2-emitted TargetSource"
+        "N_v2 headline: v2 emit_for_target on scoped 00_compile closure (53 modules) → {error_count} cargo-check errors on emitted TargetSource"
     );
     if !success {
-        eprintln!("--- N_v2 cargo check output (tail) ---\n{}", tail_lines(&combined, 40));
+        eprintln!(
+            "--- N_v2 cargo check output (tail) ---\n{}",
+            tail_lines(&combined, 40)
+        );
     }
 
     let _ = fs::remove_dir_all(&temp);
@@ -216,7 +218,12 @@ fn floor_discovery_enrollment_has_no_test_fn_hygiene_violations() {
         ws.join("src/v2").to_string_lossy().to_string(),
         ws.join("dsl").to_string_lossy().to_string(),
     ];
-    let scan_dirs = vec!["dsl/test/claim".to_string()];
+    let scan_dirs = vec![
+        ws.join("dsl/test/claim").to_string_lossy().to_string(),
+        ws.join("src/v2/compiler/manual")
+            .to_string_lossy()
+            .to_string(),
+    ];
     discover_floor_corpus_rows(&roots, &scan_dirs)
         .expect("floor discovery must not find test fn outside *_test.dag");
 }
@@ -254,7 +261,10 @@ fn parse_compiler_entry_admission_imports_compile_module() {
     let admission = parse_source_root_entry_admission(&source).expect("parse admission");
     assert_eq!(admission.subject, vec!["v2", "compiler", "compile"]);
     assert!(
-        admission.imports.iter().any(|p| p == &["v2", "compiler", "emit"]),
+        admission
+            .imports
+            .iter()
+            .any(|p| p == &["v2", "compiler", "emit"]),
         "expected compile module imports to include v2.compiler.emit: {:?}",
         admission.imports
     );
