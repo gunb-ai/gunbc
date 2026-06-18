@@ -14,9 +14,13 @@ import v2.compiler.translate {
   target_serialize_source_from_model,
   translate_diagnostic_reason_from_symbol,
   translate_diagnostic_reason_roster,
-  TargetBundleMalformed
+  translate_diagnostic_reason_symbol,
+  TargetBundleDuplicateEdge,
+  TargetBundleMalformed,
+  TranslateDiagnosticReason
 }
-import v2.std.collection { Absent, Present }
+import v2.std.collection { Absent, Optional, Present, optional_present }
+import v2.std.node { Symbol }
 import v2.extdeps.languages.dag {
   dag_mvp1_emitted_add_fn_node,
   dag_mvp1_target_model
@@ -86,6 +90,37 @@ fn translate_error_profile_sg2_measured_reject_known() -> Bool {
 }
 
 
+// §5 discriminating RED control — swap two coproduct arms; perturbed classifier must disagree.
+fn translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(
+  sym: Symbol
+) -> Optional<TranslateDiagnosticReason> {
+  let malformed_sym = translate_diagnostic_reason_symbol(reason: TargetBundleMalformed)
+  let duplicate_sym = translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge)
+  if sym == malformed_sym {
+    optional_present(value: TargetBundleDuplicateEdge)
+  } else if sym == duplicate_sym {
+    optional_present(value: TargetBundleMalformed)
+  } else {
+    translate_diagnostic_reason_from_symbol(sym: sym)
+  }
+}
+
+
+fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
+  let malformed_sym = translate_diagnostic_reason_symbol(reason: TargetBundleMalformed)
+  match translate_diagnostic_reason_from_symbol(sym: malformed_sym) {
+    Present { value: TargetBundleMalformed } =>
+      match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: malformed_sym) {
+        Present { value: TargetBundleDuplicateEdge } => true
+        Present { value: TargetBundleMalformed } => false
+        Absent => false
+      }
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+
 test fn candidate_generation_translate_self_emit_mvp1_slice_holds() -> Bool {
   candidate_generation_mvp1_dag_slice_accepts()
 }
@@ -103,4 +138,9 @@ test fn translate_error_profile_mvp1_malformed_bundle_classified() -> Bool {
 
 test fn translate_error_profile_sg2_measured_reject_classified() -> Bool {
   translate_error_profile_sg2_measured_reject_known()
+}
+
+
+test fn translate_error_profile_coproduct_mapping_perturb_red_holds() -> Bool {
+  translate_error_profile_coproduct_swap_perturb_discriminates()
 }
