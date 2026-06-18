@@ -18,8 +18,9 @@
 //!
 //! Like `claim_batch`/`regen_stage0`, this is a hand-written CLI bin — NOT routed
 //! through the generated `main.rs`/emit stage — reusing the same resolve/run
-//! primitives as `gunbc run` (`cli_run::resolve_entry_graph`,
-//! `cli_run::run_value`, `cli_run::run_claim`).
+//! primitives as `gunbc run` (`cli_run::build_multi_entry_index`,
+//! `cli_run::resolve_entry_with_index`, `cli_run::run_value`,
+//! `cli_run::run_claim`).
 //!
 //! Usage:
 //!   claim_executor --source-root <dir> [--source-root <dir> ...] \
@@ -35,11 +36,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus, run_value,
-    ClaimOutcome,
+    build_multi_entry_index, discovery_corpus_rows, make_eval_context, resolve_entry_with_index,
+    run_claim, run_discovery_rows_resolved, run_value, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
@@ -253,20 +255,22 @@ struct ClaimResult {
     detail: String,
 }
 
-fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResult {
+fn run_one_runnable(index: Arc<Mutex<MultiEntryIndex>>, runnable: Runnable) -> ClaimResult {
     match runnable {
-        Runnable::SingleClaim { entry, function } => {
-            run_single_claim(&source_roots, entry, function)
-        }
+        Runnable::SingleClaim { entry, function } => run_single_claim(index, entry, function),
         Runnable::DiscoveryBatch {
             source_roots: roots,
             scan_dirs,
             explicit_entries,
-        } => run_discovery_batch_node(roots, scan_dirs, explicit_entries),
+        } => run_discovery_batch_node(index, roots, scan_dirs, explicit_entries),
     }
 }
 
-fn run_single_claim(source_roots: &[String], entry: String, function: String) -> ClaimResult {
+fn run_single_claim(
+    index: Arc<Mutex<MultiEntryIndex>>,
+    entry: String,
+    function: String,
+) -> ClaimResult {
     // Fail-closed sentinel: the plan projects an empty-`entry` ClaimRef for any
     // unmapped suite node or non-complete executor plan (see batch_runner.dag).
     // It carries no resolvable witness, so it is a hard error — never a vacuous
@@ -279,13 +283,25 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
                 .to_string(),
         };
     }
-    let (graph, source_indices) = match resolve_entry_graph(source_roots, &entry) {
-        Ok(pair) => pair,
-        Err(msg) => {
-            return ClaimResult {
-                function,
-                ok: false,
-                detail: format!("resolve failed for {}: {}", entry, msg),
+    let (graph, source_indices) = {
+        let index_guard = match index.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return ClaimResult {
+                    function,
+                    ok: false,
+                    detail: "shared module index lock poisoned".to_string(),
+                };
+            }
+        };
+        match resolve_entry_with_index(&index_guard, &entry) {
+            Ok(pair) => pair,
+            Err(msg) => {
+                return ClaimResult {
+                    function,
+                    ok: false,
+                    detail: format!("resolve failed for {}: {}", entry, msg),
+                };
             }
         }
     };
@@ -319,6 +335,7 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
 /// run loop (`cli_run::run_discovery_corpus`). Fail-closed: an empty roster, a
 /// resolve failure, or any failing witness fails the node.
 fn run_discovery_batch_node(
+    index: Arc<Mutex<MultiEntryIndex>>,
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
@@ -328,10 +345,25 @@ fn run_discovery_batch_node(
         source_roots.len(),
         explicit_entries.len()
     );
-    match run_discovery_corpus(
-        &source_roots,
-        &scan_dirs,
-        &explicit_entries,
+    let rows = match discovery_corpus_rows(&source_roots, &scan_dirs, &explicit_entries) {
+        Ok(rows) => rows,
+        Err(msg) => {
+            return ClaimResult {
+                function: label,
+                ok: false,
+                detail: format!("discovery corpus failed: {msg}"),
+            };
+        }
+    };
+    let index_for_resolve = Arc::clone(&index);
+    match run_discovery_rows_resolved(
+        move |entry| {
+            let guard = index_for_resolve
+                .lock()
+                .map_err(|_| "shared module index lock poisoned".to_string())?;
+            resolve_entry_with_index(&guard, entry)
+        },
+        &rows,
         ExecutionMode::Wet,
     ) {
         Ok(summary) if summary.failures.is_empty() => ClaimResult {
@@ -361,11 +393,11 @@ fn run_discovery_batch_node(
 /// batching authority: this reads the `List<List<Runnable>>` the plan function
 /// returns and parses it — it never groups or orders anything itself.
 fn eval_plan(
-    source_roots: &[String],
+    index: &MultiEntryIndex,
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<Vec<Vec<Runnable>>, String> {
-    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
+    let (plan_graph, plan_indices) = resolve_entry_with_index(index, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
@@ -394,7 +426,10 @@ struct WalkOutcome {
 /// batch boundary is a barrier: batch N+1 starts only after every claim in batch N
 /// has reported. A failed batch halts the walk before its dependents. The batch
 /// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
-fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
+fn run_walk(
+    index: Arc<Mutex<MultiEntryIndex>>,
+    batches: &[Vec<Runnable>],
+) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
@@ -403,9 +438,9 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
         let handles: Vec<_> = batch
             .iter()
             .map(|runnable| {
-                let roots = source_roots.to_vec();
+                let index = Arc::clone(&index);
                 let runnable = runnable.clone();
-                thread::spawn(move || run_one_runnable(roots, runnable))
+                thread::spawn(move || run_one_runnable(index, runnable))
             })
             .collect();
         for handle in handles {
@@ -531,7 +566,8 @@ fn run_perturb_check(
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<ExitCode, ExitCode> {
-    let batches = match eval_plan(source_roots, plan_entry, plan_function) {
+    let index = build_multi_entry_index(source_roots);
+    let batches = match eval_plan(&index, plan_entry, plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: --perturb-check: {msg}");
@@ -626,7 +662,9 @@ fn run_perturb_check(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
         gating_function
     );
-    let outcome = run_walk(&[temp_root], &remapped);
+    // Perturb runs against a temp source tree — a fresh index is required.
+    let temp_index = Arc::new(Mutex::new(build_multi_entry_index(&[temp_root.clone()])));
+    let outcome = run_walk(temp_index, &remapped);
     let _ = fs::remove_dir_all(&tmp);
 
     // Receipt: the planted gating failure must fail the run closed AND halt the
@@ -704,8 +742,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
 
-    // 1. Evaluate the executor-decided plan (the `.dag` is the batching authority).
-    let batches = match eval_plan(&source_roots, &plan_entry, &plan_function) {
+    // 1. Build the module index once for the whole executor walk (plan eval +
+    // every batch node share parse/typed-module caches).
+    let index = Arc::new(Mutex::new(build_multi_entry_index(&source_roots)));
+    eprintln!("claim_executor: building shared module index...");
+
+    // 2. Evaluate the executor-decided plan (the `.dag` is the batching authority).
+    let batches = match eval_plan(
+        &index
+            .lock()
+            .map_err(|_| ExitCode::from(1))?,
+        &plan_entry,
+        &plan_function,
+    ) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: {msg}");
@@ -729,8 +778,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
-    // 2. Run batch by batch (executor ordering), claims within a batch in parallel.
-    let outcome = run_walk(&source_roots, &batches);
+    // 3. Run batch by batch (executor ordering), claims within a batch in parallel.
+    let outcome = run_walk(index, &batches);
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
