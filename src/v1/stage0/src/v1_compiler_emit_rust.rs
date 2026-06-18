@@ -492,7 +492,11 @@ pub fn render_rust_alias_rhs_type(
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
         {
-            rust_qualify_type_leaf_name(name.clone(), variant_to_enum.clone())
+            rust_render_type_leaf_name(
+                name.clone(),
+                variant_to_enum.clone(),
+                scope.type_env.clone(),
+            )
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
             {
@@ -6342,12 +6346,25 @@ pub fn emit_type_def_from_connective(
                     serde_policy.clone(),
                     emit_info,
                 );
-                if (validations.clone().as_str() == "".to_string().as_str()) {
+                let phantom_markers = if all_unit_variants.clone() {
+                    emit_phantom_zst_markers_for_enum(item.children.clone(), env.clone())
+                } else {
+                    "".to_string()
+                };
+                let type_body = if phantom_markers.as_str() == "" {
                     enum_text
                 } else {
                     v1_rt::concat(
+                        v1_rt::concat(enum_text, "\n".to_string()),
+                        phantom_markers,
+                    )
+                };
+                if (validations.clone().as_str() == "".to_string().as_str()) {
+                    type_body
+                } else {
+                    v1_rt::concat(
                         v1_rt::concat(validations.clone(), "\n".to_string()),
-                        enum_text,
+                        type_body,
                     )
                 }
             }
@@ -10200,6 +10217,41 @@ pub fn rust_qualify_type_leaf_name(
         }
         None => name.clone(),
     }
+}
+
+pub fn rust_render_type_leaf_name(
+    name: String,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    if is_phantom_unit_variant_type_arg(env, name.clone()) {
+        name
+    } else {
+        rust_qualify_type_leaf_name(name, variant_to_enum)
+    }
+}
+
+pub fn emit_phantom_zst_markers_for_enum(
+    children: Rc<Vec<Rc<Node>>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for child in children.iter().cloned() {
+            if (child.children.clone().len() as i64) == 0 {
+                let vname = authored_name(env.clone(), child.clone());
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(rust_visibility_prefix(), rust_items().struct_keyword.clone()),
+                        " ".to_string(),
+                    ),
+                    v1_rt::concat(vname, ";".to_string()),
+                ));
+            }
+        }
+        __result
+    })
+    .join("\n")
 }
 
 pub fn effective_variant_parent(

@@ -269,7 +269,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         name
       } else if n.connective == NoConnective && n.children |> count == 0 {
-        rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+        rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
       } else if n.connective == NoConnective && n.children |> count > 0 {
         let base = rust_named_type_base(name: name)
         let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
@@ -298,7 +298,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let local_mod = module_to_filename(name: module_name)
     let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
@@ -1056,6 +1056,25 @@ fn rust_qualify_type_leaf_name(name: String, variant_to_enum: Map<String, String
       if parent != "" { concat(parent, "::", name) } else { name }
     Absent => name
   }
+}
+
+fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_phantom_unit_variant_type_arg(env: env, variant_name: name) {
+    name
+  } else {
+    rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+  }
+}
+
+fn emit_phantom_zst_markers_for_enum(children: List<Node>, env: TypeEnv) -> String {
+  let markers = children
+    |> filter(child => child.children |> count == 0)
+    |> map(child =>
+      let vname = authored_name(env: env, node: child)
+      concat(rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, ";")
+    )
+    |> join(separator: "\n")
+  markers
 }
 
 fn has_complex_variants(item: Node) -> Bool {
@@ -2818,10 +2837,12 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     }
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
+    let phantom_markers = if all_unit_variants { emit_phantom_zst_markers_for_enum(children: item.children, env: env) } else { "" }
+    let type_body = if phantom_markers == "" { enum_text } else { concat(enum_text, "\n", phantom_markers) }
     if validations == "" {
-      enum_text
+      type_body
     } else {
-      concat(validations, "\n", enum_text)
+      concat(validations, "\n", type_body)
     }
   }
 }
