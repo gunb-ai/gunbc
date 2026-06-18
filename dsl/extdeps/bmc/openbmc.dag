@@ -16,24 +16,26 @@
 module extdeps.bmc.openbmc
 
 import std.bmc { BmcFirmwareFamily, OpenBmc, BmcProtocol, Redfish, Ipmi }
-import std.credentials { AccountLogin }
-import std.types { List, Secret }
+import std.credentials { FactoryLogin }
+import std.types { List }
 
-// The published OpenBMC factory login (see anchor above).
-data openbmc_factory_credential: AccountLogin = AccountLogin {
+// The published OpenBMC factory login (see anchor above). Public, world-known value —
+// cited as a source literal precisely because it is NOT a secret; it is rotated on first
+// contact (rotation is a workflow policy, not modeled here).
+data openbmc_factory_login: FactoryLogin = FactoryLogin {
   username: "root",
-  secret: "0penBmc" as Secret,
+  published_password: "0penBmc",
 }
 
 // OpenBMC exposes BOTH a DMTF Redfish service and a legacy IPMI/RMCP+ service. These
 // are distinct, separately-cited interfaces (DESIGN §3 — exclusive, not aliases).
 data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
 
-// firmware → published factory credential. Closed match; fail-closed on a new family
+// firmware → published factory login. Closed match; fail-closed on a new family
 // until its own cited file lands.
-fn bmc_firmware_factory_credential(family: BmcFirmwareFamily) -> AccountLogin {
+fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
   match family {
-    OpenBmc => openbmc_factory_credential
+    OpenBmc => openbmc_factory_login
   }
 }
 
