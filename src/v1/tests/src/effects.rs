@@ -57,7 +57,17 @@ fn is_read(shape: &EffectShape) -> bool {
 }
 
 fn is_create(shape: &EffectShape) -> bool {
-    matches!(shape, EffectShape::CreateEffect)
+    matches!(shape, EffectShape::CreateEffect { .. })
+}
+
+fn is_create_always(shape: &EffectShape) -> bool {
+    matches!(
+        shape,
+        EffectShape::CreateEffect {
+            cause,
+            ..
+        } if matches!(cause.as_ref(), CreateCause::PostAlways)
+    )
 }
 
 fn is_upsert(shape: &EffectShape) -> bool {
@@ -374,11 +384,14 @@ fn op_lattice_read(name: &str) -> Rc<OperationEffect> {
 }
 
 fn op_non_idempotent(name: &str) -> Rc<OperationEffect> {
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::PostAlways),
+    });
     Rc::new(OperationEffect {
         operation_name: name.to_string(),
-        shape: Rc::new(EffectShape::CreateEffect),
+        shape: shape.clone(),
         evidence: Rc::new(IdempotencyEvidence::NonIdempotent {
-            shape: Rc::new(EffectShape::CreateEffect),
+            shape,
             reason: "test".to_string(),
         }),
     })
@@ -627,6 +640,117 @@ fn create_comment_rest_path_matches_github_issues_comments_api() {
         "expected issue_number path param in {}, got {}",
         "CreateComment",
         cc.path
+    );
+}
+
+#[test]
+fn create_if_absent_with_same_key_is_dedupable() {
+    let key = Rc::new(KeySource::InputField {
+        field: "id".to_string(),
+    });
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent { key_source: key }),
+    });
+    assert!(is_idempotent_effect(shape.clone()));
+    assert!(create_effect_is_dedupable(shape.clone()));
+    assert!(create_double_init_collapsible(shape.clone(), shape));
+}
+
+#[test]
+fn create_if_absent_with_different_keys_not_collapsible() {
+    let a = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent {
+            key_source: Rc::new(KeySource::InputField {
+                field: "a".to_string(),
+            }),
+        }),
+    });
+    let b = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent {
+            key_source: Rc::new(KeySource::InputField {
+                field: "b".to_string(),
+            }),
+        }),
+    });
+    assert!(create_effect_is_dedupable(a.clone()));
+    assert!(create_effect_is_dedupable(b.clone()));
+    assert!(!create_double_init_collapsible(a, b));
+}
+
+#[test]
+fn create_always_is_not_dedupable() {
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::PostAlways),
+    });
+    assert!(!is_idempotent_effect(shape.clone()));
+    assert!(!create_effect_is_dedupable(shape.clone()));
+    assert!(!create_double_init_collapsible(shape.clone(), shape));
+}
+
+#[test]
+fn create_if_absent_declared_idempotent_agrees_with_derivation() {
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent {
+            key_source: Rc::new(KeySource::InputField {
+                field: "id".to_string(),
+            }),
+        }),
+    });
+    let op = Rc::new(DerivedOpEffect {
+        operation_name: "create_secret".to_string(),
+        method: HttpMethod::POST,
+        path_template: parse_ok("/secrets"),
+        shape: shape.clone(),
+    });
+    let result = check_modifier_vs_derivation(op, true, false);
+    assert!(
+        matches!(*result.agreement, ModifierAgreement::Agrees),
+        "create-if-absent with declared idempotent should agree with derivation, got {:?}",
+        result.agreement
+    );
+}
+
+#[test]
+fn create_if_absent_declared_non_idempotent_disagrees_with_derivation() {
+    let shape = Rc::new(EffectShape::CreateEffect {
+        cause: Rc::new(CreateCause::CreateIfAbsent {
+            key_source: Rc::new(KeySource::InputField {
+                field: "id".to_string(),
+            }),
+        }),
+    });
+    let op = Rc::new(DerivedOpEffect {
+        operation_name: "create_secret".to_string(),
+        method: HttpMethod::POST,
+        path_template: parse_ok("/secrets"),
+        shape: shape.clone(),
+    });
+    let result = check_modifier_vs_derivation(op, false, false);
+    assert!(
+        matches!(*result.agreement, ModifierAgreement::Disagrees { .. }),
+        "create-if-absent with declared non-idempotent should disagree with derivation, got {:?}",
+        result.agreement
+    );
+}
+
+#[test]
+fn create_always_declared_idempotent_is_derivation_unknown() {
+    let op = Rc::new(DerivedOpEffect {
+        operation_name: "add_version".to_string(),
+        method: HttpMethod::POST,
+        path_template: parse_ok("/versions"),
+        shape: Rc::new(EffectShape::CreateEffect {
+            cause: Rc::new(CreateCause::PostAlways),
+        }),
+    });
+    let result = check_modifier_vs_derivation(op, true, false);
+    assert!(
+        matches!(
+            *result.agreement,
+            ModifierAgreement::DerivationUnknown { .. }
+        ),
+        "PostAlways create with declared idempotent should be DerivationUnknown, got {:?}",
+        result.agreement
     );
 }
 
