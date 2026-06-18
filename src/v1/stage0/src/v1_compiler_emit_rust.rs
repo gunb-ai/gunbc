@@ -988,6 +988,7 @@ pub fn rust_string_policy_for_naming(
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -1022,6 +1023,17 @@ pub fn rust_internal_policy_for_naming(
                     None,
                 )
             } else {
+                if (naming_name.clone().as_str() == "ScreamingSnakeCase".to_string().as_str()) {
+                    rust_serde_policy(
+                        v1_rt::concat(
+                            v1_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                            "\", rename_all = \"SCREAMING_SNAKE_CASE\")]".to_string(),
+                        ),
+                        None,
+                        None,
+                        None,
+                    )
+                } else {
                 if (naming_name.clone().as_str() == "StripPrefixAndSnakeCase".to_string().as_str())
                 {
                     match required_literal_string_policy_field(
@@ -1107,6 +1119,7 @@ pub fn rust_internal_policy_for_naming(
                             ))
                         }
                     }
+                }
                 }
             }
         }

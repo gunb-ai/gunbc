@@ -1,0 +1,60 @@
+// Scope: v2 emit naming-policy parity witness (post-#5163).
+// Status: modeled serde attribute authority for std.serialization.VariantNaming
+//   string-variant wire policies — single extdeps fact surface until v2 emit
+//   consumes CoproductWireContract rows directly.
+// Authority: dsl/extdeps/languages/rust/emit.dag (rust_serde_rename_all_* rows).
+
+module v2.test.manual.rust_wire_serde_naming_policy_test
+
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.std.text { String }
+import v2.std.verification {
+  Boundary,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  manual_claim_anchor
+}
+
+// Mirror of extdeps.languages.rust.emit authority — keep in lockstep with emit.dag.
+data rust_serde_rename_all_snake_case_authority: String = "#[serde(rename_all = \"snake_case\")]"
+data rust_serde_rename_all_screaming_snake_case_authority: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"
+
+fn naming_policy_claim_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node {
+      kind: TypeNode { connective: Atom { identity: ^rust_wire_serde_naming_policy_claim_true } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+    false => Node {
+      kind: TypeNode { connective: Atom { identity: ^rust_wire_serde_naming_policy_claim_false } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+data claim_rust_wire_serde_snake_case_attr: TestClaim = EqualsClaim {
+  label: "manual/rust_wire_serde_naming_policy: snake_case string-variant serde attr matches extdeps emit authority",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: naming_policy_claim_bool_atom(b: true),
+  rhs: naming_policy_claim_bool_atom(
+    b: rust_serde_rename_all_snake_case_authority == "#[serde(rename_all = \"snake_case\")]"
+  ),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
+
+data claim_rust_wire_serde_screaming_snake_case_attr: TestClaim = EqualsClaim {
+  label: "manual/rust_wire_serde_naming_policy: ScreamingSnakeCase string-variant serde attr matches extdeps emit authority (post-#5163)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: naming_policy_claim_bool_atom(b: true),
+  rhs: naming_policy_claim_bool_atom(
+    b: rust_serde_rename_all_screaming_snake_case_authority
+      == "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"
+  ),
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}
