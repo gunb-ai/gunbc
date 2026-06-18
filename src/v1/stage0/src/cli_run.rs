@@ -122,11 +122,9 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-                if let Some(existing) = index.insert(module_path.clone(), rel.clone()) {
-                    panic!(
-                        "build_module_path_index: duplicate module path '{module_path}': {existing} vs {rel}"
-                    );
-                }
+                // Co-root overlay: later `source_roots` win on duplicate module paths
+                // (same last-wins policy as `build_module_index`).
+                index.insert(module_path.clone(), rel);
             }
         }
     }
