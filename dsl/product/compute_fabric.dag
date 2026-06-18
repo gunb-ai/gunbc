@@ -132,10 +132,16 @@ type GpuComputeCapability {
   minor: Int
 }
 
+// Vendor-specific capability label projection. NVIDIA sm_X_Y and AMD gfxXY are
+// grounded naming conventions; other vendors get explicit distinct prefixes (not
+// collapsed through AMD's gfx arm) until cited wire-label authorities land.
 fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> String {
   match cap.vendor {
     Nvidia => concat("sm_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
-    _ => concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+    Amd => concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+    Intel => concat("intel_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
+    Apple => concat("apple_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
+    Qualcomm => concat("adreno_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
   }
 }
 

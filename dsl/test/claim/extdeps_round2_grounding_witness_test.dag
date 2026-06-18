@@ -45,6 +45,8 @@ import product.compute_fabric {
   GpuFacts,
   GpuVendor,
   Nvidia,
+  Amd,
+  Intel,
   GpuComputeCapability,
   gpu_compute_capability_sm_label,
   MemoryFacts,
@@ -124,6 +126,16 @@ fn w_gpu_compute_capability_sm_label() -> Bool {
   gpu_compute_capability_sm_label(cap) == "sm_8_9"
 }
 
+fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
+  let cap = GpuComputeCapability { vendor: Amd, major: 11, minor: 0 }
+  gpu_compute_capability_sm_label(cap) == "gfx110"
+}
+
+fn w_intel_label_not_gfx_catchall() -> Bool {
+  let cap = GpuComputeCapability { vendor: Intel, major: 1, minor: 0 }
+  gpu_compute_capability_sm_label(cap) == "intel_1_0"
+}
+
 fn w_gpu_facts_structured_compute_capability() -> Bool {
   let gpu = GpuFacts {
     vendor: Nvidia,
@@ -152,5 +164,7 @@ test fn extdeps_round2_grounding_witnesses() -> Bool {
     && w_sigv4_auth_scheme_carries_enums()
     && w_gcp_api_endpoint_service_enum()
     && w_gpu_compute_capability_sm_label()
+    && w_gpu_amd_label_distinct_from_nvidia()
+    && w_intel_label_not_gfx_catchall()
     && w_gpu_facts_structured_compute_capability()
 }
