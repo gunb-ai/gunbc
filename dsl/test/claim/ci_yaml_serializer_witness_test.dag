@@ -169,8 +169,6 @@ fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
     !string_contains(s: yaml, pattern: "SCCACHE_DIR=$RUNNER_TEMP/sccache")
 }
 
-// Full-file drift gate (`ci_yml_drifted` == byte-identical to `expected_ci_yml()`); these
-// pin distinctive `gunbc_ci_workflow_run` projections in the committed step body.
 fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let yaml = expected_ci_yml()
   let script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
@@ -179,7 +177,7 @@ fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
     string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
 }
 
-fn ci_yaml_serializer_keystone_holds() -> Bool {
+test fn ci_yaml_serializer_keystone_holds() -> Bool {
   witness_fetch_depth_is_int_not_string() &&
     witness_rustflags_empty_string_quoted() &&
     witness_steps_sequence_elements_are_yaml_values() &&

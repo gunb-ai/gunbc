@@ -88,7 +88,7 @@ fn undominated_candidate_stays_on_front() -> Bool {
   on_pareto_front(verdicts: pool) && !any_dominates(verdicts: pool)
 }
 
-fn pareto_dominance_holds() -> Bool {
+test fn pareto_dominance_holds() -> Bool {
   dominates_when_better_on_all_axes()
     && dominated_is_the_mirror()
     && equivalent_when_identical()

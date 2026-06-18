@@ -3,6 +3,9 @@
 // Single authority for `.github/workflows/ci.yml` (DESIGN §3). The committed file
 // is the literal byte output of `serialize_yaml(project_workflow_to_yaml(ci_workflow))`
 // — no hash pin, no dual representation.
+//
+// Job timeout uses `default_job_timeout_minutes` (360): the claim_executor CI floor
+// (#5122) exceeds the prior 240m limit on self-hosted runners; not lens-specific cost.
 
 module gunbc.ci_workflow
 
@@ -15,7 +18,8 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
   RunnerSpec, SelfHosted,
-  checkout_action, setup_rust_action, cache_action
+  checkout_action, setup_rust_action, cache_action,
+  default_job_timeout_minutes
 }
 
 data ci_workflow: Workflow = {
@@ -194,7 +198,7 @@ data ci_workflow: Workflow = {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: 240 },
+    timeout_minutes: Present { value: default_job_timeout_minutes },
     continue_on_error: none,
     concurrency: none
   }, {

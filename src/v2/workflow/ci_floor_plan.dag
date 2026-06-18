@@ -4,8 +4,8 @@
 // This is the default CI runtime: `gunbc ci` (via `gunbc.ci_spec.gunbc_ci_run_script`)
 // invokes `claim_executor --plan-entry … --plan-function gunbc_ci_floor_batches`, and
 // the v2.workflow scheduler decides the batches. There is NO parallel hardcoded floor
-// list — the gates come from `gunbc_ci_spec.gates`, the corpus roots/witnesses from
-// `gunbc_ci_spec.witness_roots`/`witness_entries`. The ONLY fact added here is the
+// list — the gates come from `gunbc_ci_spec.gates`, the corpus roots/scan dirs from
+// `gunbc.ci_layer_roots` (discovery roster is marker-driven, not hand-listed). The ONLY fact added here is the
 // dependency TOPOLOGY: `DslCompileCleanGate` (whole-tree compile) is the fail-fast
 // root, and every other gate + the discovery corpus sit in a later readiness layer
 // behind it, so they run dependency-ordered and parallelize where independent
@@ -26,8 +26,9 @@
 
 module v2.workflow.ci_floor_plan
 
+import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
-  gunbc_ci_spec, CiSpec, WitnessRoot, WitnessEntry,
+  gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate,
   SourceRootIngestGate
 }
@@ -43,7 +44,6 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
-  ScheduleWitnessEntry,
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor
 }
@@ -98,37 +98,16 @@ fn floor_compile_root_node() -> Node {
   gate_node(g: DslCompileCleanGate)
 }
 
-// ── corpus runnable fields, derived from the spec witness roots/entries ──────
-fn corpus_source_roots(spec: CiSpec) -> List<String> {
-  fold(spec.witness_roots, init: [], f: fn(acc, wr) {
-    list_snoc_item(xs: acc, item: wr.root)
-  })
+// ── corpus runnable fields, derived from ci_layer_roots (§3 single authority) ─
+fn corpus_source_roots() -> List<String> {
+  witness_layer_roots
 }
 
-fn corpus_scan_dirs(spec: CiSpec) -> List<String> {
-  fold(spec.witness_roots, init: [], f: fn(acc, wr) {
-    fold(wr.scan_subtrees, init: acc, f: fn(inner, sub) {
-      let dir = if starts_with(s: sub, prefix: wr.root) { sub } else { concat(concat(wr.root, "/"), sub) }
-      list_snoc_item(xs: inner, item: dir)
-    })
-  })
-}
-
-fn schedule_witness_from_entry(e: WitnessEntry) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: e.entry, function: e.function }
-}
-
-fn corpus_explicit_schedule_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
-  fold(spec.witness_entries, init: [], f: fn(acc, we) {
-    list_snoc_item(xs: acc, item: schedule_witness_from_entry(e: we))
-  })
-}
-
-fn corpus_runnable(spec: CiSpec) -> Runnable {
+fn corpus_runnable() -> Runnable {
   RunnableDiscoveryBatch {
-    source_roots: corpus_source_roots(spec: spec),
-    scan_dirs: corpus_scan_dirs(spec: spec),
-    explicit_entries: corpus_explicit_schedule_entries(spec: spec)
+    source_roots: corpus_source_roots(),
+    scan_dirs: witness_discovery_scan_dirs,
+    explicit_entries: []
   }
 }
 
@@ -167,7 +146,7 @@ fn floor_unrunnable_sentinel() -> Runnable {
 
 fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
   if node == floor_corpus_node {
-    corpus_runnable(spec: spec)
+    corpus_runnable()
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }

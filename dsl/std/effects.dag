@@ -38,7 +38,8 @@
 
 module std.effects
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, String, List }
+import std.realization_schedule { string_list_eq }
 import std.http_path {
   PathTemplate,
   PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
@@ -58,8 +59,8 @@ import std.http_path {
 //                    meet(state, {k: v}) applied twice = applied once
 //   DeleteEffect:    lattice meet with bottom on key — removes key
 //                    meet(state, {k: ⊥}) applied twice = applied once
-//   CreateEffect:    monoid append — adds new entry without key guard
-//                    NOT idempotent (creates duplicates)
+//   CreateEffect:    monoid append when create-always (PostAlways) — NOT idempotent
+//                    create-if-absent (proven KeySource) — lattice meet, idempotent
 //   AppendEffect:    monoid append on ordered collection
 //                    NOT idempotent (appends duplicates)
 //
@@ -72,8 +73,14 @@ type EffectShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }
   | DeleteEffect { key_source: KeySource }
-  | CreateEffect
+  | CreateEffect { cause: CreateCause }
   | AppendEffect
+
+// Why a create-shaped effect was derived. PostAlways = fail-closed create-always
+// (no proven resource identity). CreateIfAbsent = guarded create with proven KeySource.
+type CreateCause
+  = PostAlways
+  | CreateIfAbsent { key_source: KeySource }
 
 // Where the idempotency key comes from.
 //
@@ -111,8 +118,66 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
     ReadEffect => true
     UpsertEffect => true
     DeleteEffect => true
-    CreateEffect => false
+    CreateEffect { cause: cause } =>
+      match cause {
+        CreateIfAbsent { key_source: key_source } => true
+        PostAlways => false
+      }
     AppendEffect => false
+  }
+}
+
+// dissolve-on: derived structural == on KeySource (closed coproduct equality) replaces this
+// hand-rolled predicate; interim owner: increment-1 create_double_init_collapsible identity.
+fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
+  match left {
+    PathParam { param: pa } => match right {
+      PathParam { param: pb } => pa == pb
+      _ => false
+    }
+    InputField { field: fa } => match right {
+      InputField { field: fb } => fa == fb
+      _ => false
+    }
+    CompositeKey { fields: fa } => match right {
+      CompositeKey { fields: fb } => string_list_eq(left: fa, right: fb)
+      _ => false
+    }
+  }
+}
+
+// Increment-1 membership: is this shape in the create-if-absent dedup-eligible class?
+// Pairwise Share collapse (same identity) is create_double_init_collapsible, not this predicate.
+// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
+fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
+  match shape {
+    CreateEffect { cause: cause } =>
+      match cause {
+        CreateIfAbsent { key_source: key_source } => true
+        PostAlways => false
+      }
+    _ => false
+  }
+}
+
+// Pairwise Share collapse for increment-1 create-if-absent double-init dedup.
+// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
+fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
+  match a {
+    CreateEffect { cause: cause_a } =>
+      match cause_a {
+        CreateIfAbsent { key_source: ka } =>
+          match b {
+            CreateEffect { cause: cause_b } =>
+              match cause_b {
+                CreateIfAbsent { key_source: kb } => key_source_eq(a: ka, b: kb)
+                PostAlways => false
+              }
+            _ => false
+          }
+        PostAlways => false
+      }
+    _ => false
   }
 }
 
@@ -250,21 +315,21 @@ fn derive_effect_shape(
     GET     => ReadEffect
     HEAD    => ReadEffect
     OPTIONS => ReadEffect
-    POST    => CreateEffect
+    POST    => CreateEffect { cause: PostAlways }
     DELETE =>
       match last_path_param(template: path) {
         Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect
+        Absent => CreateEffect { cause: PostAlways }
       }
     PUT =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect
+        Absent => CreateEffect { cause: PostAlways }
       }
     PATCH =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect
+        Absent => CreateEffect { cause: PostAlways }
       }
   }
 }
@@ -310,10 +375,17 @@ fn check_modifier_vs_derivation(
     Agrees
   } else if declared_idempotent && !derived_idempotent {
     match op.shape {
-      CreateEffect =>
+      CreateEffect { cause: PostAlways } =>
         DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
       _ =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+    }
+  } else if !declared_idempotent && derived_idempotent {
+    match op.shape {
+      CreateEffect { cause: CreateIfAbsent { key_source: key_source } } =>
+        Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
+      _ =>
+        Agrees
     }
   } else if !declared_idempotent && declared_readonly {
     match op.method {

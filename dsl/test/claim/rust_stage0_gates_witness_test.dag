@@ -47,8 +47,8 @@ fn w_git_fail_fires() -> Bool {
   should_run_gates(paths: [], git_success: false) == true
 }
 
-// Conjunction keystone — the single fn the CI corpus runs (--claim-run; false → exit 1).
-fn rust_stage0_gates_witnesses() -> Bool {
+// Conjunction keystone — the single test fn the CI corpus runs (--claim-run; false → exit 1).
+test fn rust_stage0_gates_witnesses() -> Bool {
   w_rs_selects() &&
   w_cargo_toml_selects() &&
   w_toolchain_selects() &&
