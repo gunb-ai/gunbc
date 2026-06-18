@@ -4759,6 +4759,22 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        "map_is_empty" => match positional.as_slice() {
+            [Value::Map(m)] => Ok(Some(Value::Bool(m.is_empty()))),
+            _ => Ok(None),
+        },
+
+        // Sound identity hint (substitute_generics short-circuit): true => the two are
+        // structurally equal. The compiled seed answers with Rc pointer identity
+        // (conservative); the interpreter has no Rc-of-Node identity, so it answers
+        // with exact value equality -- still never true-when-unequal, so a caller that
+        // returns the original on true preserves output structure under either
+        // realization (content_hash / self-host fixed point unaffected).
+        "rc_ptr_eq" | "rc_vec_ptr_eq" => match positional.as_slice() {
+            [a, b] => Ok(Some(Value::Bool(a == b))),
+            _ => Ok(None),
+        },
+
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
                 // Persistent merge (ctrl#1533 phase 2): structural union, no
@@ -4807,6 +4823,34 @@ fn eval_builtin(
                 type_name: ctx.sym("FilesystemReadResult"),
                 fields: Rc::new(fields),
             }))
+        }
+
+        "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_coexistence_count(),
+        ))),
+
+        "fact_cardinality_cross_tree_diverged_fork_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_diverged_fork_count(),
+        ))),
+
+        "fact_cardinality_cross_tree_is_coexistence" => {
+            let key = expect_str(
+                positional.first().copied(),
+                "fact_cardinality_cross_tree_is_coexistence",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::fact_cardinality_census::cross_tree_is_coexistence(key),
+            )))
+        }
+
+        "fact_cardinality_cross_tree_is_diverged_fork" => {
+            let key = expect_str(
+                positional.first().copied(),
+                "fact_cardinality_cross_tree_is_diverged_fork",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::fact_cardinality_census::cross_tree_is_diverged_fork(key),
+            )))
         }
 
         "extdeps_dead_param_count_for_operation" => {
