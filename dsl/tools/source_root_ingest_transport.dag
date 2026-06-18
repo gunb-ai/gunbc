@@ -1,27 +1,86 @@
-// tools/source_root_ingest_transport.dag — shell transport for Lane 3a real ingest gate.
+// tools/source_root_ingest_transport.dag — host transport for Lane 3a real ingest gate.
 //
-// SCAFFOLD (§3 transport-fusion): inline shell is the host-effect transport realization.
-// dissolve-on: modeled ProcessExit/Realization host effects with PARAMETERIZED argv —
-//   de-fuse transport from the leaked business-policy literals (--source-root, --scan-dir,
-//   --entry path, --function names) so the gate is a Node tree, not a bash string.
+// The deleted scripts/source-root-ingest-gate.sh wrapper is retired: its two legs are
+// modeled directly.
+//   (1) emit the host manifest via the EXISTING `discover_source_root_ingest` v1 bin,
+//       invoked through the single cargo-run authority `cargo.Build.Run` (§3 — the bin is
+//       the legit host realization of the FS walk; only the bash wrapper dies);
+//   (2) run the three real_ingest witnesses (manifest overlay) via gunbc claim-runs.
+// All business-policy literals the .sh hardcoded (--source-root / --scan-dir / the entry
+// path / the witness function names) are lifted to workflow-tier `data` below — they are
+// PARAMETERS passed at the call site, not baked into a transport argv (§3 (c)).
 //
-// Transport authority: scripts/source-root-ingest-gate.sh (host realization).
-// This module only binds the script path — no embedded shell templating.
+// dissolve-on: emit(intent, Bash) makes the gunbc-claim shell program a Node tree the
+//   emitter serializes, retiring the inline ShellProgram (matches
+//   v2.lens.host_language_transport_script).
 
 module tools.source_root_ingest_transport
 
+import extdeps.cargo_build
 import extdeps.shell
 import std.logic { Bool }
-import extdeps.languages.bash.program { ShellProgram, Command, Lit, lit, command, serialize_bash }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
 
-// `bash scripts/source-root-ingest-gate.sh` as a structured Command (not a String blob).
-// The .sh itself stays the host realization for now — retiring it (parameterized argv per
-// the header's dissolve-on) is the next step in this lane.
-fn run_real_ingest_gate() -> Bool {
+// ── business policy (workflow tier): the literals the deleted .sh hardcoded ──
+data ingest_source_root: String = "src/v2"
+data ingest_scan_dir: String = "src/v2/test/fixture/program_assembly"
+data ingest_manifest_path: String = "target/v2-source-root-ingest-manifest.dag"
+data ingest_manifest_dir: String = "target"
+data ingest_entry: String = "src/v2/test/claim/program_assembly/real_ingest_test.dag"
+data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_module_roots_parse_holds"
+data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
+// Discriminating witness: validate_module_roots must accept the host-parsed roots; if the
+// validator regresses this goes Bool(false) and the gate fails (the sh:46 red oracle).
+data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
+
+// "$GUNBC" run --source-root src/v2 --source-root target --entry <e> --function <f> --claim-run
+fn gunbc_claim_run(function: String) -> ShellStmt {
+  command(words: [
+    var_ref(name: "GUNBC"), lit(text: "run"),
+    lit(text: "--source-root"), lit(text: ingest_source_root),
+    lit(text: "--source-root"), lit(text: ingest_manifest_dir),
+    lit(text: "--entry"), lit(text: ingest_entry),
+    lit(text: "--function"), lit(text: function),
+    lit(text: "--claim-run")
+  ])
+}
+
+// Leg 1: cargo run -p v1-compiler --bin discover_source_root_ingest --release -- <policy argv>
+//   emits the ephemeral host manifest the witnesses overlay-read (DO NOT COMMIT).
+fn emit_ingest_manifest() -> Bool {
+  let result = cargo.Build.Run(
+    package: "v1-compiler",
+    bin: "discover_source_root_ingest",
+    args: [
+      "--release", "--",
+      "--source-root", ingest_source_root,
+      "--scan-dir", ingest_scan_dir,
+      "--emit-dag-manifest", ingest_manifest_path
+    ]
+  )
+  result.success
+}
+
+// Leg 2: gate-only real_ingest witnesses (set -e — any claim failing fails the gate).
+fn run_gunbc_claims() -> Bool {
   let prog = ShellProgram {
-    set_e: false,
-    statements: [command(words: [lit(text: "bash"), lit(text: "scripts/source-root-ingest-gate.sh")])]
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+      gunbc_claim_run(function: ingest_witness_module_roots_parse),
+      gunbc_claim_run(function: ingest_witness_host_manifest_receipt),
+      gunbc_claim_run(function: ingest_witness_validate_red)
+    ])
   }
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
   result.success
+}
+
+fn run_real_ingest_gate() -> Bool {
+  emit_ingest_manifest() && run_gunbc_claims()
 }
