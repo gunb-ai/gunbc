@@ -170,7 +170,7 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
           match b {
             CreateEffect { cause: cause_b } =>
               match cause_b {
-                CreateIfAbsent { key_source: kb } => key_source_eq(a: ka, b: kb)
+                CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
                 PostAlways => false
               }
             _ => false
