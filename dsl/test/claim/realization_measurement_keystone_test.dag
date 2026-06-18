@@ -25,7 +25,7 @@ import product.compute_fabric {
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
 }
-import std.measure { nanosecond_duration, nanosecond_duration_count }
+import std.measure { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
