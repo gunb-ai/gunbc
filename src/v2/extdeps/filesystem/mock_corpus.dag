@@ -2,43 +2,22 @@
 // Scope: the filesystem layer's PUBLISHED mock corpus as a closed, declared structural fact.
 // Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
 //
-// The operator's layering contract: each layer PUBLISHES an extensive mock corpus as a
-// structural fact, an adjacent layer materializes ANY case impl-blind, and a lens enforces
-// the consumer is TOTAL over the published corpus (`v2.lens.mock_totality`). This file is the
-// published-corpus half for ONE proven layer — filesystem — whose live I/O contract
-// (dsl/extdeps/filesystem/filesystem_io.dag) declares the operations `Write` and `Read`. A
-// corpus ROW mirrors only that contract's operation key (plus a `case_id` ordinal) and NOTHING
-// of the response payload, so there is no second copy of a mock value to drift (§3).
-//
-// NOTE (post-#5090): Phase-2 RecordedFixture dissolved the inline `mock_response` clauses that
-// once carried the per-case payloads — those now live in the hermetic fixture store (recorded
-// wet via claim_batch --record, replayed via --fixture-store), and filesystem_io.dag forbids
-// reintroducing them. The corpus's authority for WHICH cases exist therefore splits cleanly:
-// the operation set stays in the `service Filesystem` decl; the per-case payloads (which this
-// corpus deliberately does NOT carry) are the fixture store's. The dissolution trigger below
-// is re-pointed accordingly.
+// Rows inhabit v2.std.hermetic_replay.PublishedMockCase (same shape as dsl/std/hermetic_replay).
+// The operation set authority remains dsl/extdeps/filesystem/filesystem_io.dag (`service Filesystem`);
+// per-case payloads live in the Phase-2 RecordedFixture store only — rows carry structural keys.
 
 module v2.extdeps.filesystem.mock_corpus
 
+import v2.std.hermetic_replay { PublishedMockCase }
 import v2.std.collection { List }
-import v2.std.node { Symbol }
 
-// One published mock case of the filesystem I/O contract: the structural key
-// (which operation, which case ordinal) an adjacent layer must be able to
-// materialize impl-blind. Carries NO response payload — post-#5090 those live
-// in the Phase-2 RecordedFixture store, not here.
-type FilesystemMockCase {
-  operation: Symbol
-  case_id: Int
-}
-
-data filesystem_mock_case_write_committed: FilesystemMockCase = FilesystemMockCase {
-  operation: ^Write,
+data filesystem_mock_case_write_committed: PublishedMockCase = PublishedMockCase {
+  operation_key: "Filesystem.Write",
   case_id: 0
 }
 
-data filesystem_mock_case_read_contents: FilesystemMockCase = FilesystemMockCase {
-  operation: ^Read,
+data filesystem_mock_case_read_contents: PublishedMockCase = PublishedMockCase {
+  operation_key: "Filesystem.Read",
   case_id: 0
 }
 
@@ -49,9 +28,9 @@ data filesystem_mock_case_read_contents: FilesystemMockCase = FilesystemMockCase
 // per operation), once a v2 lens can read a service decl's operation nodes and the fixture
 // store's keys; this declared list then deletes in the same PR. forbidden: a row carrying a
 // response VALUE (success/bytes_written/content/error) — that would fork the payload authority,
-// now owned by the fixture store (§3); rows mirror the (operation, case ordinal) structural key
+// now owned by the fixture store (§3); rows mirror the (operation_key, case_id) structural key
 // ONLY, and grow when a published operation/case is added upstream.
-data filesystem_published_mock_corpus: List<FilesystemMockCase> = [
+data filesystem_published_mock_corpus: List<PublishedMockCase> = [
   filesystem_mock_case_write_committed,
   filesystem_mock_case_read_contents
 ]

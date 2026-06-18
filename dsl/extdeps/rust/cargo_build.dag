@@ -4,28 +4,28 @@
 // imported by compiler modules / the bootstrap seed without pulling a
 // shell-transport service into the compiled set. Consumers that actually run
 // cargo (e.g. tools/build.dag) import this module.
+//
+// §3 shape/transport/policy: argv is a faithful list-of-strings; policy flags are
+// caller-supplied `List<String>` parameters (workflow), not hardcoded literals.
 
 module extdeps.cargo_build
 
-// Default input values for the cargo ops below. These were referenced by the op defaults
-// (`env = cargo_compile_env`, `deny_args = clippy_deny_args`) but never defined — so Build/
-// Test/Clippy errored at runtime (`undefined variable`) and had no by-execution consumer until
-// tools.rust_gates_ci ran them (DESIGN §5: spec-without-execution). `clippy_deny_args` mirrors
-// the deny flags already hardcoded in the Clippy argv.
+// Default input values for the cargo ops below. Build/Test reference `env` in their input
+// blocks (not yet wired into shell argv). Clippy is invoked from rust_gates_ci and must
+// not carry a Map input — RecordedFixture cannot serialize Map (fail-closed §5).
 data cargo_compile_env: Map<String, String> = empty_map()
-data clippy_deny_args: List<String> = ["-D", "warnings"]
 
 // -- Service: shell transport wiring -----------------------------
 
 service cargo.Build {
   operation Build {
-    input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
+    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "build", "--all-targets"] }
+    transport shell { argv: ["cargo", "build", extra_args] }
     exit {
       0 => Unit
       101 => String "Compilation failed"
@@ -33,13 +33,13 @@ service cargo.Build {
   }
 
   operation Test {
-    input { env: Map<String, String> = cargo_compile_env }
+    input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "test", "--workspace"] }
+    transport shell { argv: ["cargo", "test", extra_args] }
     exit {
       0 => Unit
       101 => String "Tests failed"
@@ -47,13 +47,16 @@ service cargo.Build {
   }
 
   operation Clippy {
-    input { all_targets: Bool = true, deny_args: List<String> = clippy_deny_args }
+    input {
+      extra_args: List<String> = []
+      lint_args: List<String> = []
+    }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"] }
+    transport shell { argv: ["cargo", "clippy", extra_args, "--", lint_args] }
     exit {
       0 => Unit
       101 => String "Clippy warnings or errors"
@@ -97,7 +100,7 @@ service cargo.Build {
       stderr: String from "stderr"
     }
     // Note: args are appended to the command by the transport layer.
-    transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}"] }
+    transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}", args] }
     exit {
       0 => Unit
       101 => String "Run failed"

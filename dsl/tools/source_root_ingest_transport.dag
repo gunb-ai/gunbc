@@ -12,8 +12,16 @@ module tools.source_root_ingest_transport
 
 import extdeps.shell
 import std.logic { Bool }
+import extdeps.languages.bash.program { ShellProgram, Command, Lit, lit, command, serialize_bash }
 
+// `bash scripts/source-root-ingest-gate.sh` as a structured Command (not a String blob).
+// The .sh itself stays the host realization for now — retiring it (parameterized argv per
+// the header's dissolve-on) is the next step in this lane.
 fn run_real_ingest_gate() -> Bool {
-  let result = shell.Exec.Run(script: "bash scripts/source-root-ingest-gate.sh")
+  let prog = ShellProgram {
+    set_e: false,
+    statements: [command(words: [lit(text: "bash"), lit(text: "scripts/source-root-ingest-gate.sh")])]
+  }
+  let result = shell.Exec.Run(script: serialize_bash(p: prog))
   result.success
 }

@@ -7,6 +7,8 @@ module v2.extdeps.languages.java
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -631,7 +633,7 @@ fn java_mvp1_serialize_source_node() -> Node {
 }
 
 fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 fn java_grammar_nonterminal(production: Symbol) -> GrammarExpr {

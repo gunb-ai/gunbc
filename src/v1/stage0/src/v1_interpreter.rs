@@ -2262,6 +2262,9 @@ pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &[
     "syntactic_coproduct_arm_pairs",
 ];
 
+// v2.std.compilers.lexing bootstrap bridge — dissolve-on: substrate Lexeme→Symbol intern carrier.
+pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
+
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
 /// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
@@ -2289,6 +2292,15 @@ fn is_v4_std_node_query_bridge_call(ctx: &InterpContext, func_name: &str) -> boo
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.std.node_query")
+}
+
+fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_LEXING_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.std.compilers.lexing")
 }
 
 // ---------------------------------------------------------------------------
@@ -2320,6 +2332,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_syntactic_coproduct_arm_pairs(ctx, &args)
             }
             _ => unreachable!("bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_lexing_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "symbol_intern_lexeme" => {
+                crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
+            }
+            _ => unreachable!("lexing bridge fn set mismatch"),
         };
     }
 
@@ -3615,6 +3636,38 @@ struct ShellResult {
     stderr: String,
 }
 
+/// Push one evaluated argv expression onto `argv`. List carriers splice
+/// element-wise; strings stay atomic (never exploded to codepoints).
+fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
+    match &val {
+        Value::Str(s) => {
+            argv.push(s.clone());
+            Ok(())
+        }
+        Value::List(items) => {
+            for item in items.iter() {
+                push_shell_argv_tokens(argv, item.clone())?;
+            }
+            Ok(())
+        }
+        Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(&val) {
+                for item in items {
+                    push_shell_argv_tokens(argv, item)?;
+                }
+                Ok(())
+            } else {
+                argv.push(format!("{}", val));
+                Ok(())
+            }
+        }
+        _ => {
+            argv.push(format!("{}", val));
+            Ok(())
+        }
+    }
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3626,7 +3679,7 @@ fn dispatch_shell(
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
         let val = eval_expr(node, param_env, ctx)?;
-        argv.push(format!("{}", val));
+        push_shell_argv_tokens(&mut argv, val)?;
     }
 
     if argv.is_empty() {
@@ -4825,6 +4878,34 @@ fn eval_builtin(
             }))
         }
 
+        "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_coexistence_count(),
+        ))),
+
+        "fact_cardinality_cross_tree_diverged_fork_count" => Ok(Some(Value::Int(
+            crate::fact_cardinality_census::cross_tree_diverged_fork_count(),
+        ))),
+
+        "fact_cardinality_cross_tree_is_coexistence" => {
+            let key = expect_str(
+                positional.first().copied(),
+                "fact_cardinality_cross_tree_is_coexistence",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::fact_cardinality_census::cross_tree_is_coexistence(key),
+            )))
+        }
+
+        "fact_cardinality_cross_tree_is_diverged_fork" => {
+            let key = expect_str(
+                positional.first().copied(),
+                "fact_cardinality_cross_tree_is_diverged_fork",
+            )?;
+            Ok(Some(Value::Bool(
+                crate::fact_cardinality_census::cross_tree_is_diverged_fork(key),
+            )))
+        }
+
         "extdeps_dead_param_count_for_operation" => {
             let path = expect_str(
                 positional.first().copied(),
@@ -4852,6 +4933,18 @@ fn eval_builtin(
             )?;
             let count =
                 crate::extdeps_shape_transport_policy_project::dead_param_count_for_path(path);
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_embedded_policy_literal_count_for_path" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "extdeps_embedded_policy_literal_count_for_path",
+            )?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::embedded_policy_literal_count_for_path(
+                    path,
+                );
             Ok(Some(Value::Int(count)))
         }
 

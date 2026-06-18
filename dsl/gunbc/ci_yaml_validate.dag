@@ -7,36 +7,62 @@
 module gunbc.ci_yaml_validate
 
 import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Subshell, AndOr, WithRedir,
+  Lit, OrElse, AndThen, StderrToNull,
+  lit, command, serialize_bash
+}
 
-data yaml_parse_python: String = "python3 -c \"import yaml,sys; yaml.safe_load(open(sys.argv[1]))\""
 data yaml_check_release_bin: String = "target/release/yaml_check"
 
+// python3 -c '...' <path> 2>/dev/null
+//   || actionlint <path> 2>/dev/null
+//   || (test -x <bin> && <bin> <path>)
+//   || cargo run -q -p v1-compiler --release --bin yaml_check -- <path>
+fn ci_yml_parse_program(path: String) -> ShellProgram {
+  let p = lit(text: path)
+  let bin = lit(text: yaml_check_release_bin)
+  let python = WithRedir {
+    stmt: command(words: [
+      lit(text: "python3"), lit(text: "-c"),
+      lit(text: "import yaml,sys; yaml.safe_load(open(sys.argv[1]))"), p
+    ]),
+    redir: StderrToNull
+  }
+  let actionlint = WithRedir {
+    stmt: command(words: [lit(text: "actionlint"), p]),
+    redir: StderrToNull
+  }
+  let yaml_check_bin = Subshell { body: [
+    AndOr {
+      left: command(words: [lit(text: "test"), lit(text: "-x"), bin]),
+      op: AndThen,
+      right: command(words: [bin, p])
+    }
+  ] }
+  let cargo_fallback = command(words: [
+    lit(text: "cargo"), lit(text: "run"), lit(text: "-q"), lit(text: "-p"), lit(text: "v1-compiler"),
+    lit(text: "--release"), lit(text: "--bin"), lit(text: "yaml_check"), lit(text: "--"), p
+  ])
+  ShellProgram {
+    set_e: false,
+    statements: [
+      AndOr {
+        left: AndOr {
+          left: AndOr { left: python, op: OrElse, right: actionlint },
+          op: OrElse,
+          right: yaml_check_bin
+        },
+        op: OrElse,
+        right: cargo_fallback
+      }
+    ]
+  }
+}
+
 fn ci_yml_parse_script(path: String) -> String {
-  concat(
-    concat(yaml_parse_python, " "),
-    concat(
-      path,
-      concat(
-        " 2>/dev/null || actionlint ",
-        concat(
-          path,
-          concat(
-            " 2>/dev/null || (test -x ",
-            concat(
-              yaml_check_release_bin,
-              concat(
-                " && ",
-                concat(
-                  yaml_check_release_bin,
-                  concat(" ", concat(path, " ) || cargo run -q -p v1-compiler --release --bin yaml_check -- ", path))
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+  serialize_bash(p: ci_yml_parse_program(path: path))
 }
 
 fn ci_yml_parses(path: String) -> Bool {

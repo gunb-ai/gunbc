@@ -25,6 +25,46 @@ fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a s
     }
 }
 
+fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<String> {
+    let val = value.ok_or_else(|| InterpError::TypeError {
+        msg: format!("{what} requires a lexeme argument"),
+    })?;
+    match val {
+        Value::Str(s) => Ok(s.clone()),
+        _ => {
+            let items = crate::v1_interpreter::free_monoid_to_vec(val).ok_or_else(|| {
+                InterpError::TypeError {
+                    msg: format!("{what} requires a String lexeme"),
+                }
+            })?;
+            let mut spelling = String::new();
+            for item in items {
+                match item {
+                    Value::Int(c) => {
+                        if let Some(ch) = char::from_u32(c as u32) {
+                            spelling.push(ch);
+                        }
+                    }
+                    _ => {
+                        return Err(InterpError::TypeError {
+                            msg: format!("{what} lexeme contains non-Char element"),
+                        });
+                    }
+                }
+            }
+            Ok(spelling)
+        }
+    }
+}
+
+pub fn eval_symbol_intern_lexeme(
+    _ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let spelling = expect_string_lexeme(args.first().map(|(_, v)| v), "symbol_intern_lexeme")?;
+    Ok(Value::Str(spelling))
+}
+
 pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
@@ -743,7 +783,7 @@ fn nullary_coproduct_variant_value(
 // unavoidable. Fabrication-safe via: (1) labels from resolved-graph variant children only,
 // (2) fail-closed Rejected on ANY payload arm, (3) dissolve-mark above, (4) set-completeness
 // witness — fabricated/extra/dropped inhabitants break both-directions bag_eq against the
-// already-signed coproduct_arm_keys(T) (see coproduct_reflection_conformance.dag).
+// already-signed coproduct_arm_keys(T) (see coproduct_reflection_conformance_test.dag).
 pub fn eval_coproduct_nullary_inhabitants(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],

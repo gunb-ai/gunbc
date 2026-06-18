@@ -22,6 +22,8 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   GrammarProduction,
   GrammarRoot,
   Sequence,
@@ -85,7 +87,7 @@ fn parse_stamp_terminal_root() -> GrammarRoot {
     productions: Cons {
       head: GrammarProduction {
         name: ^parse_stamp_start,
-        expression: Terminal { token_class: ^parse_stamp_tok, binding: Absent },
+        expression: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },
       tail: Empty
@@ -101,8 +103,8 @@ fn parse_stamp_sequence_root() -> GrammarRoot {
       head: GrammarProduction {
         name: ^parse_stamp_start,
         expression: Sequence {
-          left: Terminal { token_class: ^parse_stamp_tok, binding: Absent },
-          right: Terminal { token_class: ^parse_stamp_tok, binding: Absent }
+          left: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
+          right: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass }
         },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },

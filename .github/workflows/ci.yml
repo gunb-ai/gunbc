@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 240
+    timeout-minutes: 360
     steps:
       - name: Isolate toolchain dirs
         run: |

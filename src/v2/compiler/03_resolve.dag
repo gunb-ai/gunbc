@@ -11,6 +11,8 @@ import v2.compiler.normalize { NormalizedTree }
 import v2.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols,
+  dag_node_is_module_root_conj,
+  dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup
 }
@@ -350,16 +352,22 @@ fn resolve_surface_operator_atom(
 fn resolve_transform_operator_child(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel
+  lm: DagLanguageModel,
+  under_module_root: Bool
 ) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_surface_operator_atom(n: n, scope: scope, lm: lm, identity: id)
-    _ => resolve_node(n: n, scope: scope, lm: lm)
+    _ => resolve_node(n: n, scope: scope, lm: lm, under_module_root: under_module_root)
   }
 }
 
-fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
+fn resolve_transform_children(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel,
+  under_module_root: Bool
+) -> Outcome<Node> {
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
@@ -369,7 +377,12 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
           Positional =>
             // Wave-1: operator is positional-0; later positions resolve as ordinary nodes.
             if length(xs: done) == 0 {
-              match resolve_transform_operator_child(n: e.target, scope: scope, lm: lm) {
+              match resolve_transform_operator_child(
+                n: e.target,
+                scope: scope,
+                lm: lm,
+                under_module_root: under_module_root
+              ) {
                 Rejected { diagnostics: r } =>
                   Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -384,7 +397,12 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
                   }
               }
             } else {
-              match resolve_node(n: e.target, scope: scope, lm: lm) {
+              match resolve_node(
+                n: e.target,
+                scope: scope,
+                lm: lm,
+                under_module_root: under_module_root
+              ) {
                 Rejected { diagnostics: r } =>
                   Rejected {
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -400,7 +418,12 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
               }
             }
           _ =>
-            match resolve_node(n: e.target, scope: scope, lm: lm) {
+            match resolve_node(
+              n: e.target,
+              scope: scope,
+              lm: lm,
+              under_module_root: under_module_root
+            ) {
               Rejected { diagnostics: r } =>
                 Rejected {
                   diagnostics: rejected_with_pending(pending: ad, rejected: r)
@@ -426,7 +449,12 @@ fn resolve_transform_children(n: Node, scope: Scope, lm: DagLanguageModel) -> Ou
   }
 }
 
-fn resolve_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
+fn resolve_node(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel,
+  under_module_root: Bool
+) -> Outcome<Node> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       resolve_atom(n: n, scope: scope, identity: id)
@@ -438,7 +466,8 @@ fn resolve_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
           locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
           outer: scope
         },
-        lm: lm
+        lm: lm,
+        under_module_root: under_module_root
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: resolved_children, diagnostics: d } =>
@@ -448,35 +477,33 @@ fn resolve_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
           }
       }
     ComputationNode { behavior: Bind } =>
-      resolve_bind_node(n: n, scope: scope, lm: lm)
-    ComputationNode { behavior: Transform } =>
-      resolve_transform_children(n: n, scope: scope, lm: lm)
-    TypeNode { connective: _ } =>
-      resolve_children_homogeneous_scope(n: n, scope: scope, lm: lm)
-    ComputationNode { behavior: _ } =>
-      resolve_children_homogeneous_scope(n: n, scope: scope, lm: lm)
-  }
-}
-
-
-fn node_is_module_root_conj(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Conj } =>
-      fold(
-        n.children,
-        init: false,
-        f: fn(found, e) {
-          if found {
-            true
-          } else {
-            match e.label {
-              Named { name: sym } => sym == ^dag_surface_module_header
-              Positional => false
-            }
-          }
-        }
+      resolve_bind_node(
+        n: n,
+        scope: scope,
+        lm: lm,
+        under_module_root: under_module_root
       )
-    _ => false
+    ComputationNode { behavior: Transform } =>
+      resolve_transform_children(
+        n: n,
+        scope: scope,
+        lm: lm,
+        under_module_root: under_module_root
+      )
+    TypeNode { connective: _ } =>
+      resolve_children_homogeneous_scope(
+        n: n,
+        scope: scope,
+        lm: lm,
+        under_module_root: under_module_root
+      )
+    ComputationNode { behavior: _ } =>
+      resolve_children_homogeneous_scope(
+        n: n,
+        scope: scope,
+        lm: lm,
+        under_module_root: under_module_root
+      )
   }
 }
 
@@ -485,14 +512,22 @@ fn resolve_child_edge(
   e: Edge,
   scope: Scope,
   lm: DagLanguageModel,
-  preserve_module_metadata: Bool
+  under_module_root: Bool
 ) -> Outcome<Edge> {
   match e.label {
     Named { name: sym } =>
-      if preserve_module_metadata && dag_surface_module_header_metadata_edge(name: sym) {
+      if under_module_root && (
+        dag_surface_module_header_metadata_edge(name: sym)
+          || dag_resolve_preserve_module_metadata_subtree(node: e.target)
+      ) {
         Accepted { value: e, diagnostics: None }
       } else {
-        match resolve_node(n: e.target, scope: scope, lm: lm) {
+        match resolve_node(
+          n: e.target,
+          scope: scope,
+          lm: lm,
+          under_module_root: under_module_root
+        ) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
             Accepted {
@@ -502,20 +537,35 @@ fn resolve_child_edge(
         }
       }
     Positional =>
-      match resolve_node(n: e.target, scope: scope, lm: lm) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: resolved_target, diagnostics: d } =>
-          Accepted {
-            value: Edge { label: e.label, target: resolved_target },
-            diagnostics: d
-          }
+      if under_module_root
+        && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
+        Accepted { value: e, diagnostics: None }
+      } else {
+        match resolve_node(
+          n: e.target,
+          scope: scope,
+          lm: lm,
+          under_module_root: under_module_root
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: resolved_target, diagnostics: d } =>
+            Accepted {
+              value: Edge { label: e.label, target: resolved_target },
+              diagnostics: d
+            }
+        }
       }
   }
 }
 
 
-fn resolve_children_homogeneous_scope(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
-  let preserve_module_metadata = node_is_module_root_conj(n: n)
+fn resolve_children_homogeneous_scope(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel,
+  under_module_root: Bool
+) -> Outcome<Node> {
+  let ctx = under_module_root || dag_node_is_module_root_conj(n: n)
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
@@ -525,7 +575,7 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope, lm: DagLanguageMode
           e: e,
           scope: scope,
           lm: lm,
-          preserve_module_metadata: preserve_module_metadata
+          under_module_root: ctx
         ) {
           Rejected { diagnostics: r } =>
             Rejected {
@@ -553,7 +603,8 @@ fn resolve_edges_first_outer_then_inner(
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope,
-  lm: DagLanguageModel
+  lm: DagLanguageModel,
+  under_module_root: Bool
 ) -> Outcome<List<Edge>> {
   match fold(
     edges,
@@ -572,7 +623,12 @@ fn resolve_edges_first_outer_then_inner(
               }
             Accepted { value: done, diagnostics: ad } =>
               if seen {
-                match resolve_node(n: e.target, scope: scope_inner, lm: lm) {
+                match resolve_node(
+                  n: e.target,
+                  scope: scope_inner,
+                  lm: lm,
+                  under_module_root: under_module_root
+                ) {
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
@@ -593,7 +649,12 @@ fn resolve_edges_first_outer_then_inner(
                     }
                 }
               } else {
-                match resolve_node(n: e.target, scope: scope_outer, lm: lm) {
+                match resolve_node(
+                  n: e.target,
+                  scope: scope_outer,
+                  lm: lm,
+                  under_module_root: under_module_root
+                ) {
                   Rejected { diagnostics: r } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
@@ -638,7 +699,8 @@ fn resolve_bind_edges(
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope,
-  lm: DagLanguageModel
+  lm: DagLanguageModel,
+  under_module_root: Bool
 ) -> Outcome<List<Edge>> {
   match fold(
     edges,
@@ -679,7 +741,12 @@ fn resolve_bind_edges(
                 }
               } else {
                 if i == 1 {
-                  match resolve_node(n: e.target, scope: scope_outer, lm: lm) {
+                  match resolve_node(
+                  n: e.target,
+                  scope: scope_outer,
+                  lm: lm,
+                  under_module_root: under_module_root
+                ) {
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
@@ -700,7 +767,12 @@ fn resolve_bind_edges(
                       }
                   }
                 } else {
-                  match resolve_node(n: e.target, scope: scope_inner, lm: lm) {
+                  match resolve_node(
+                  n: e.target,
+                  scope: scope_inner,
+                  lm: lm,
+                  under_module_root: under_module_root
+                ) {
                     Rejected { diagnostics: r } =>
                       BindEdgeAccMk {
                         idx: i + 1,
@@ -731,7 +803,12 @@ fn resolve_bind_edges(
 }
 
 
-fn resolve_bind_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Node> {
+fn resolve_bind_node(
+  n: Node,
+  scope: Scope,
+  lm: DagLanguageModel,
+  under_module_root: Bool
+) -> Outcome<Node> {
   if count(n.children) == 3 {
     match resolve_bind_edges(
       edges: n.children,
@@ -740,7 +817,8 @@ fn resolve_bind_node(n: Node, scope: Scope, lm: DagLanguageModel) -> Outcome<Nod
         locals: add_bind_atom_binder(n: n, acc: empty_map()),
         outer: scope
       },
-      lm: lm
+      lm: lm,
+      under_module_root: under_module_root
     ) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: resolved_children, diagnostics: d } =>
@@ -770,7 +848,12 @@ fn resolve_with_namespace(
   lm: DagLanguageModel
 ) -> Outcome<ResolvedTree> {
   if well_formed(n: tree) {
-    resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace), lm: lm)
+    resolve_node(
+      n: tree,
+      scope: scope_from_namespace(namespace: namespace),
+      lm: lm,
+      under_module_root: false
+    )
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }
   }

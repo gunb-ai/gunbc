@@ -7,6 +7,7 @@
 
 
 module v2.std.node
+
 type Symbol
 type Hash
 // PROV A-pivot:

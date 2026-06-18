@@ -1,0 +1,79 @@
+// Scope: B1 unit-modeling lens — COORDINATE exemption witness. A bare `Int`
+//        field named `index` is a COORDINATE — addition is meaningless (index 2 +
+//        index 3 is not position 5) — so it is NOT a unit-bearing quantity and is
+//        exempt under the inverted predicate. Proves the categorical exemption
+//        (one of the two closed non-additive kinds) does not over-flag a
+//        legitimate bare Int.
+// Note: exact-Symbol exemption recognizes the BARE marker `index` — the correct
+//        fail-closed primitive (substring would unsoundly exempt reindex_count).
+//        COMPOUND forms (matrix_index) safely false-positive-flag and clear in
+//        phase-2 by acquiring the Index brand-type — see name_is_exempt.
+
+module v2.test.lens_unit_modeling.coordinate_index_not_flagged
+
+import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data int_leaf_target_coord: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data coordinate_field_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^index },
+      target: int_leaf_target_coord
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn coordinate_index_not_flagged_holds() -> Bool {
+  match unit_modeling_gate(node: coordinate_field_input) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn coordinate_index_not_flagged_rhs() -> Node {
+  if coordinate_index_not_flagged_holds() {
+    coordinate_field_input
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+data claim_coordinate_index_not_flagged: TestClaim = EqualsClaim {
+  label: "lens_unit_modeling/coordinate: index:Int (coordinate) is not flagged",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: coordinate_field_input,
+  rhs: coordinate_index_not_flagged_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
