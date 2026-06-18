@@ -13,7 +13,8 @@
 
 module product.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import std.nat { Nat }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, List }
 import std.os.types {
   FileSystemSemantics,
   Linux,
@@ -30,6 +31,9 @@ import std.measure {
   One,
   ByteSize,
   MoneyMicros,
+  NanosecondDuration,
+  nanosecond_duration,
+  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -38,6 +42,8 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+import std.realization_schedule { CostAccount }
+import std.realization_measurement { cost_account_measured_from_time }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuFacts,
@@ -618,12 +624,62 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  wall_duration: Duration
+  wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence
   cache_state_summary: NonEmptyStr?
+}
+
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
+  nanosecond_duration(
+    count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + nanosecond_duration_count(d: receipt.wall_duration)
+    )
+  )
+}
+
+// Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
+// → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
+  cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
+}
+
+// Host-side v1 interpreter provider row for SingleSample witness measurements.
+data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
+
+data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: OperatingSystemSurface {
+    kernel: Linux,
+    distro_or_product: none,
+    version: none,
+    filesystem_semantics: Posix,
+    process_semantics: PosixProcess,
+  },
+  isolation: SharedHostHome,
+  container_runtime: none,
+  toolchains: [],
+  mounted_storage: [],
+  network: [],
+}
+
+fn performance_receipt_host_single_sample(
+  work_shape: WorkUnitId,
+  wall_time: NanosecondDuration,
+) -> PerformanceReceipt {
+  PerformanceReceipt {
+    provider: host_v1_interpreter_provider,
+    work_shape: work_shape,
+    wall_duration: wall_time,
+    cpu_seconds: none,
+    sample_count: 1,
+    measurement_context: host_v1_interpreter_execution_surface,
+    confidence: SingleSample,
+    cache_state_summary: none,
+  }
 }
 
 type PricingSource
