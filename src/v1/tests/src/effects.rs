@@ -727,10 +727,7 @@ fn create_if_absent_declared_non_idempotent_disagrees_with_derivation() {
     });
     let result = check_modifier_vs_derivation(op, false, false);
     assert!(
-        matches!(
-            *result.agreement,
-            ModifierAgreement::Disagrees { .. }
-        ),
+        matches!(*result.agreement, ModifierAgreement::Disagrees { .. }),
         "create-if-absent with declared non-idempotent should disagree with derivation, got {:?}",
         result.agreement
     );
