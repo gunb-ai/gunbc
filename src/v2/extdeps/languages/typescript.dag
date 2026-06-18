@@ -105,7 +105,7 @@ import v2.std.grounding {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -1353,6 +1353,7 @@ fn ts_pr3_identity_target_model_witness() -> Witness<TargetModel> {
           bundle: bundle,
           lex: ts_wave2a_lex(),
           binding_spellings: ts_pr3_identity_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
           authority_source_text: ts_pr3_identity_source_text,
           runtime_row: target_emit_host_runtime_row_unconfigured
         }
@@ -1499,6 +1500,7 @@ fn ts_mvp1_target_model() -> TargetModel {
     bundle: ts_mvp1_target_model_node(),
     lex: ts_wave1_lex(),
     binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_mvp1_source_text_authority(),
     runtime_row: ts_mvp1_runtime_row()
   }
@@ -1743,6 +1745,7 @@ fn ts_sg2_type_expr_target_model() -> TargetModel {
     bundle: ts_sg2_type_expr_target_model_node(),
     lex: ts_sg2_type_expr_lex(),
     binding_spellings: ts_sg2_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_mvp1_source_text_authority(),
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -2010,6 +2013,7 @@ fn ts_wave2a_task_target_model_witness() -> Witness<TargetModel> {
           bundle: bundle,
           lex: ts_wave2a_lex(),
           binding_spellings: ts_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
           authority_source_text: ts_task_type_alias_source_text,
           runtime_row: target_emit_host_runtime_row_unconfigured
         }
