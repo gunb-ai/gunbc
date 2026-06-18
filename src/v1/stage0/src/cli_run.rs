@@ -830,6 +830,10 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
 /// subject, records wall + eval self-time into a `PerformanceReceipt`, and leaves
 /// verdict classification to the caller. Eval self-time accumulates only when
 /// `GUNBC_INTERP_PROFILE=1` (zero overhead on the default green path).
+///
+/// SCAFFOLD — v1 host wiring only. P5 receipt: CI floor `DiscoverySummary` Measured
+/// roll-up + keystone witness. dissolve-on: v2 witness runner Realization carrier
+/// (`docs/plans/realization-measurement-loop.md` Phase 0 table).
 pub fn run_claim_measured(
     ctx: &v1_interpreter::InterpContext,
     closure_subject_digest: &str,
