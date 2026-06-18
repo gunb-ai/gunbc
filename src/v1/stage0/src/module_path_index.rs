@@ -93,41 +93,7 @@ pub fn source_path_for_module_path(module_path: String) -> String {
 }
 
 pub fn qualified_name_value_to_module_path(value: &crate::v1_interpreter::Value) -> String {
-    use crate::v1_interpreter::Value;
-    match value {
-        Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } => {
-            if variant_name == "QnEmpty" {
-                return String::new();
-            }
-            if variant_name == "QnCons" {
-                let head = fields
-                    .get("head")
-                    .and_then(|v| match v {
-                        Value::Str(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| panic!("qualified_name_to_module_path: QnCons.head not Str"));
-                let tail = fields
-                    .get("tail")
-                    .expect("qualified_name_to_module_path: QnCons.tail missing");
-                let rest = qualified_name_value_to_module_path(tail);
-                if rest.is_empty() {
-                    head
-                } else {
-                    format!("{head}.{rest}")
-                }
-            } else {
-                panic!(
-                    "qualified_name_to_module_path: unexpected variant '{variant_name}'"
-                );
-            }
-        }
-        other => panic!("qualified_name_to_module_path: expected QualifiedName variant, got {other:?}"),
-    }
+    crate::v1_interpreter::qualified_name_value_to_module_path(value)
 }
 
 #[cfg(test)]

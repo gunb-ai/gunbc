@@ -111,14 +111,13 @@ fn extdeps_argv_token_is_parameterized_placeholder(token: String) -> Bool {
 fn extdeps_argv_token_is_consumer_policy_literal(token: String) -> Bool {
   if extdeps_argv_token_is_parameterized_placeholder(token: token) {
     false
-  } else if token == "diff" || token == "--name-only" || token == "git" {
+  } else if token == "diff" || token == "--name-only" || token == "git" || token == "--no-deps" {
     false
   } else {
     token == "--all-targets"
       || token == "--all"
       || token == "--check"
       || token == "--workspace"
-      || token == "--no-deps"
       || token == "-D"
       || token == "warnings"
       || string_contains(token, "origin/")

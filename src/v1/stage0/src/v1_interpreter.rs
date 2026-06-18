@@ -226,6 +226,48 @@ fn resolve_sym(sym: Symbol) -> String {
         .unwrap_or_else(|| format!("#{}", sym.0))
 }
 
+/// Serialize a runtime `QualifiedName` value to dotted module path (no filepath).
+pub fn qualified_name_value_to_module_path(value: &Value) -> String {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let variant = resolve_sym(*variant_name);
+            if variant == "QnEmpty" {
+                return String::new();
+            }
+            if variant == "QnCons" {
+                let head = fields
+                    .iter()
+                    .find(|(k, _)| resolve_sym(**k) == "head")
+                    .and_then(|(_, v)| match v {
+                        Value::Str(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("qualified_name_to_module_path: QnCons.head not Str"));
+                let tail = fields
+                    .iter()
+                    .find(|(k, _)| resolve_sym(**k) == "tail")
+                    .map(|(_, v)| v)
+                    .expect("qualified_name_to_module_path: QnCons.tail missing");
+                let rest = qualified_name_value_to_module_path(tail);
+                if rest.is_empty() {
+                    head
+                } else {
+                    format!("{head}.{rest}")
+                }
+            } else {
+                panic!("qualified_name_to_module_path: unexpected variant '{variant}'");
+            }
+        }
+        other => panic!(
+            "qualified_name_to_module_path: expected QualifiedName variant, got {other:?}"
+        ),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // CanonKey — finite-map key keyed by the single Value-equality authority
 // ---------------------------------------------------------------------------
@@ -4950,9 +4992,14 @@ fn eval_builtin(
 
         "extdeps_qualified_name_resolves_in_derived_module_set" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
+<<<<<<< HEAD
                 msg:
                     "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
                         .to_string(),
+=======
+                msg: "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
+                    .to_string(),
+>>>>>>> 564f4bc28 (WIP: Dissolve filepath literals → QualifiedName over the derived module set ()
             })?;
             Ok(Some(Value::Bool(
                 crate::extdeps_shape_transport_policy_project::qualified_name_resolves_in_derived_module_set(
