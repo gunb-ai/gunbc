@@ -1,0 +1,24 @@
+// v2/std/cross_tree/node_content_hash.dag — Route C bridge: v2 Node substrate
+// content_hash projected into dsl-tree ContentHash carriers.
+//
+// Lives in the v2 tree (imports v2.std.node) so dsl-only compile-clean is
+// unaffected. dsl consumers dissolve-on: import this module when
+// dsl_compile_clean widens to dual source roots (§7 self-compile-clean).
+//
+// Dissolve-on: delete this bridge once dsl/ can import v2.std.node directly and
+// RealizationPlan.target uses content_hash(subgraph) without a cross-tree shim.
+
+module v2.std.cross_tree.node_content_hash
+
+import v2.std.node { Node, Hash, content_hash }
+import std.types { ContentHash }
+
+// Structural coercion: v2 Hash digest string → branded dsl ContentHash.
+fn hash_as_content_hash(h: Hash) -> ContentHash {
+  h
+}
+
+// Canonical cross-tree entry: merkle digest of a substrate Node as ContentHash.
+fn node_content_hash(n: Node) -> ContentHash {
+  hash_as_content_hash(h: content_hash(n: n))
+}

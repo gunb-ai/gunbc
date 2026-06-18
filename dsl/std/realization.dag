@@ -16,7 +16,8 @@
 //   - cache_interface.dag → Materialization rows become extdeps/realization handlers
 //   - RealizedStep / Placement / Materialization re-introduced (increment 3: reconcile→Share);
 //     their ContentHash intent + licensed_by return in increment 4 (cross-tree content-hash)
-//   - target digest → content_hash(subgraph) when dsl/v2 cross-tree Node import lands
+//   - target digest → content_hash(subgraph) via v2.std.cross_tree.node_content_hash
+//     (Route C bridge; dissolve when dsl/ imports v2.std.node directly)
 
 module std.realization
 
@@ -85,8 +86,9 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
 //
 // A RealizedStep is one node's realization: WHERE it runs (placement), HOW its
 // result is materialized (recompute / memoize / share), and its cost. The intent
-// digest (ContentHash) + licensed_by return in increment 4 when cross-tree Node
-// content-hashing lands (trim marker above); for now the step carries its source
+// digest (ContentHash) + licensed_by return in increment 4 via
+// v2.std.cross_tree.node_content_hash (Route C bridge landed); for now the step
+// carries its source
 // EffectShape so reconcile can key the Share collapse on KeySource identity.
 
 type Placement = LocalInProcess | LocalFilesystem | RemoteNetwork

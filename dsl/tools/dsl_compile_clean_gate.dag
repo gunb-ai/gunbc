@@ -13,17 +13,19 @@ module tools.dsl_compile_clean_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.dsl_compile_clean_transport {
   run_clean_tree_compile,
+  run_perturb_cross_tree_import_green_receipt,
   run_perturb_optional_skew_red_receipt
 }
 
 func run_gate() -> ProcessExit {
   let clean = run_clean_tree_compile()
   let perturb = run_perturb_optional_skew_red_receipt()
-  return if clean && perturb {
+  let cross_tree = run_perturb_cross_tree_import_green_receipt()
+  return if clean && perturb && cross_tree {
     ExitSuccess
   } else {
     exit_failure(
-      reason: "dsl compile-clean gate failed: clean-tree compile and/or perturb red receipt"
+      reason: "dsl compile-clean gate failed: clean-tree compile, cross-tree import receipt, and/or perturb red receipt"
     )
   }
 }

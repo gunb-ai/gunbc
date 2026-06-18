@@ -1,0 +1,44 @@
+// Scope: Route C witness — cross-tree Node import + content_hash bridge.
+// GREEN: node_content_hash is deterministic and discriminates distinct Nodes.
+// RED:   perturbed Node carrier yields a different digest (not aliased to probe).
+
+module v2.test.claim.cross_tree_node_content_hash
+
+import std.types { ContentHash }
+import v2.std.cross_tree.node_content_hash { node_content_hash }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode }
+
+data probe_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^cross_tree_probe } },
+  children: []
+}
+
+data expected_probe_digest: ContentHash = node_content_hash(n: probe_node)
+
+fn witness_node_content_hash_deterministic_holds() -> Bool {
+  node_content_hash(n: probe_node) == expected_probe_digest
+}
+
+fn witness_node_content_hash_discriminates_distinct_nodes_holds() -> Bool {
+  let other = Node {
+    kind: TypeNode { connective: Atom { identity: ^cross_tree_other_probe } },
+    children: []
+  }
+  node_content_hash(n: probe_node) != node_content_hash(n: other)
+}
+
+// Discriminating RED control: a perturbed connective must not match the probe digest.
+fn witness_perturbed_node_digest_differs_from_probe_holds() -> Bool {
+  let perturbed = Node {
+    kind: TypeNode { connective: Atom { identity: ^cross_tree_perturbed_probe } },
+    children: []
+  }
+  node_content_hash(n: perturbed) != expected_probe_digest
+}
+
+test fn cross_tree_node_content_hash_witnesses() -> Bool {
+  witness_node_content_hash_deterministic_holds()
+    && witness_node_content_hash_discriminates_distinct_nodes_holds()
+    && witness_perturbed_node_digest_differs_from_probe_holds()
+}

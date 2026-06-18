@@ -97,3 +97,40 @@ fn run_perturb_optional_skew_red_receipt() -> Bool {
   let result = shell.Exec.Run(script: serialize_bash(p: perturb_program()))
   result.success
 }
+
+// Route C GREEN receipt: a dsl-syntax module may import v2.std.node when both trees
+// are in the compile source-root set. Ephemeral plant — not committed under dsl/.
+data cross_tree_import_perturb_module_source: String = "module test.perturb_cross_tree_node_import\nimport v2.std.node { Node, Atom, TypeNode, content_hash }\ndata probe: Node = Node {\n  kind: TypeNode { connective: Atom { identity: ^cross_tree_import_probe } },\n  children: []\n}\nfn probe_digest_ok() -> Bool {\n  let h = content_hash(n: probe)\n  h == h\n}"
+
+// GREEN receipt: plant cross-tree import module; compile with dsl + src/v2 roots.
+// set -e: compile failure fails the receipt.
+fn cross_tree_import_perturb_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_cross_tree_node_import.dag")] },
+        delimiter: "PERTURB",
+        body: cross_tree_import_perturb_module_source
+      },
+      command(words: [
+        gunbc, lit(text: "compile"),
+        lit(text: "--source-root"), tmp,
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2")] },
+        lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+        lit(text: "--target"), lit(text: "rust")
+      ]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+    ])
+  }
+}
+
+fn run_perturb_cross_tree_import_green_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: cross_tree_import_perturb_program()))
+  result.success
+}
