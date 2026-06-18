@@ -9288,26 +9288,6 @@ fn type_expr_projection_row_shape_envelope(
   )
 }
 
-// SG-2 fold — substrate child slots as named coordinate (substrate TypeNode authority; not flat Conj mix).
-fn type_expr_projection_graft_child_slots_coordinate(
-  envelope: Node,
-  facts: Node
-) -> Node {
-  node_rebuild(
-    n: envelope,
-    children: list_append(
-      left: envelope.children,
-      right: Cons {
-        head: target_model_named_edge(
-          name: ^target_type_expr_field_child_slots,
-          target: facts
-        ),
-        tail: Empty
-      }
-    )
-  )
-}
-
 // Row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
 fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
   Node {
@@ -9433,59 +9413,6 @@ fn type_expr_projection_candidate_for_connective(
   )
 }
 
-// SG-2 fold — anchored substrate TypeNode with projected positional children (checkpoint 3).
-// Labeled Conj/Disj substrates keep node.children; positional connectives pass projected list.
-fn type_expr_projection_substrate_facts(
-  node: Node,
-  projected_positional: List<Node>
-) -> Node {
-  match node.kind {
-    TypeNode { connective: Conj } => node
-    TypeNode { connective: Disj } => node
-    _ =>
-      node_rebuild(
-        n: node,
-        children: fold_list(
-          xs: projected_positional,
-          empty: Empty,
-          cons: fn(acc, child) {
-            list_snoc_item(
-              xs: acc,
-              item: Edge { label: Positional, target: child }
-            )
-          }
-        )
-      )
-  }
-}
-
-// SG-2 fold — graft substrate child slots into row envelope (discipline + delimiter metadata).
-fn type_expr_projection_graft_substrate_in_row_slot(
-  projection: TargetTypeExpressionProjection,
-  connective: Connective,
-  node: Node,
-  projected_positional: List<Node>
-) -> Outcome<Node> {
-  let facts = type_expr_projection_substrate_facts(
-    node: node,
-    projected_positional: projected_positional
-  )
-  bind_outcome(
-    o: type_expr_projection_shape_for_connective(
-      projection: projection,
-      connective: connective
-    ),
-    f: fn(envelope) {
-      outcome_accepted(
-        type_expr_projection_graft_child_slots_coordinate(
-          envelope: envelope,
-          facts: facts
-        )
-      )
-    }
-  )
-}
-
 fn type_expr_projection_row_witness_gate_with_rule(
   source_facts: Node,
   projection: TargetTypeExpressionProjection,
@@ -9529,21 +9456,7 @@ fn type_expr_projection_row_shape_witness_gate(
   )
 }
 
-// SG-2 fold — grafted substrate witness gate (requires child_slots coordinate; discipline zip-fold).
-fn type_expr_projection_graft_witness_gate(
-  source_facts: Node,
-  projection: TargetTypeExpressionProjection,
-  connective: Connective
-) -> Outcome<Node> {
-  type_expr_projection_row_witness_gate_with_rule(
-    source_facts: source_facts,
-    projection: projection,
-    connective: connective,
-    preservation_rule: ^preservation_rule_type_expr_projection_discipline_zip_fold
-  )
-}
-
-// SG-2 fold — connective → step_algebra row slot field (uniform key for graft + bundle decode).
+// SG-2 fold — connective → step_algebra row slot field (uniform key for bundle decode).
 fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
   match connective {
     Atom { identity: _ } => ^target_type_expr_field_atom
