@@ -33,15 +33,18 @@ service cargo.Build {
   }
 
   operation Test {
-    input { extra_args: List<String> = [], features: String = "" }
+    input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    // features="" omits no flags (cargo accepts --features ""); workflow passes
-    // ci_release_features for rust_gates_ci (§3 policy — not a hardwired literal).
-    transport shell { argv: ["cargo", "test", "--features", features, extra_args] }
+    // No `--features` here: the `text_lookup_work_counter` feature is a property of the
+    // `v1-compiler` dependency, declared in v1-compiler-tests/Cargo.toml and applied via
+    // cargo workspace feature-unification. Passing it on the command line at
+    // `-p v1-compiler-tests` scope errors ("package does not contain this feature"), so the
+    // gate carries only `extra_args` policy flags (same shape as Build).
+    transport shell { argv: ["cargo", "test", extra_args] }
     exit {
       0 => Unit
       101 => String "Tests failed"

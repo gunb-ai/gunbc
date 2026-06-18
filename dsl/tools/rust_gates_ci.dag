@@ -16,7 +16,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git
 import extdeps.cargo_build
 import tools.rust_stage0_gates { should_run_gates }
-import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffTwoDot, ci_release_features }
+import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffTwoDot }
 
 // Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
 // pass iff all three succeed.
@@ -30,8 +30,7 @@ func run_gates() -> ProcessExit {
     lint_args: ["-D", "warnings"]
   )
   test = cargo.Build.Test(
-    features: ci_release_features,
-    extra_args: ["--workspace", "-p", "v1-compiler-tests", "interp_recorded_fixture"]
+    extra_args: ["-p", "v1-compiler-tests", "interp_recorded_fixture"]
   )
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
