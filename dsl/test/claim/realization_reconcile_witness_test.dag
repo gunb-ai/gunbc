@@ -9,11 +9,10 @@
 
 module test.claim.realization_reconcile_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, List }
 import std.effects { CreateEffect, CreateIfAbsent, PostAlways, InputField }
 import std.realization {
-  RealizedStep, Placement, LocalInProcess,
-  Materialization, Recompute, Share,
+  RealizedStep, LocalInProcess, Recompute,
   reconcile, is_share,
 }
 import std.realization_schedule { cost_account_predicted_zero }
