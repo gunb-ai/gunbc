@@ -10,7 +10,7 @@ import extdeps.gitignore { GitignoreCategory, GitignoreFile }
 
 fn render_category_header(cat: GitignoreCategory) -> String {
   match cat.source {
-    None => "# --- {cat.name} ---"
+    Absent => "# --- {cat.name} ---"
     _ => "# --- {cat.name} (from {cat.source}) ---"
   }
 }
@@ -18,7 +18,7 @@ fn render_category_header(cat: GitignoreCategory) -> String {
 fn render_category(cat: GitignoreCategory) -> String {
   let header = render_category_header(cat: cat)
   let rationale_line = match cat.rationale {
-    None => ""
+    Absent => ""
     _ => "# {cat.rationale}\n"
   }
   let items = join(cat.items, "\n")
