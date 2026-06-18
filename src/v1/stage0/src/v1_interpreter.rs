@@ -4759,6 +4759,11 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        "map_is_empty" => match positional.as_slice() {
+            [Value::Map(m)] => Ok(Some(Value::Bool(m.is_empty()))),
+            _ => Ok(None),
+        },
+
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
                 // Persistent merge (ctrl#1533 phase 2): structural union, no

@@ -138,6 +138,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty.clone());
         let m = v1_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "map_is_empty".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "emit_map_has".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "set_contains".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(
