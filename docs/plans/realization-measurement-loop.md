@@ -51,6 +51,37 @@ inputs*. This is exactly what the `CostAccount` dissolve-on comment anticipates
 (`realization_schedule.dag:25-26`). Most `.dag` programs are stateless/short-lived: they declare
 dependency structure and never mention hardware; the width-fold degenerates to "just run it."
 
+### Realization has THREE dimensions (schedule · cache · compute-fabric)
+
+"Realization" is one concept with three orthogonal-but-composed dimensions, **all keyed on the same
+content-addressed `ExecutionReceipt`**, all **peripheral** (§3), all governed by the **same measured cost
++ Pareto objective**:
+
+| Dimension | Carrier | Asks | §1 axis |
+|---|---|---|---|
+| **schedule** | `std.realization_schedule` | *when / how parallel* | parallel |
+| **cache** | `std.cache_interface` | *whether it needs to run at all* | §2 minimal work |
+| **compute fabric** | `product.compute_fabric` | *where / on what it runs* (provision) | placement / $ |
+
+The proof they are dimensions of *one* concept rather than three separate models is **structural and
+already in the tree**: cache `MUST NOT import compute_fabric` (`cache_interface.dag:4`) and compute_fabric
+`MUST NOT import cache_interface` (`compute_fabric.dag:9`); **both compose only over `ExecutionReceipt`**.
+They meet *only* at the content-addressed receipt — never by direct coupling (§3/§4).
+
+**The `compute_fabric()` zero-arg interface is the same §3 move as the whole plan.** `compute_fabric` is a
+**demand → placement → supply** market: an execution emits a `WorkDemand` (isolation, memory, GPU) and
+`satisfies(offer, demand)` (`compute_fabric.dag:377`) places it on a satisfying `ComputeOffer`. "Provision
+compute for this execution" with **empty args** = the `WorkDemand` is *inferred from the .dag-modeled
+execution*, and placement is *resolved from the deployment's offers* — **neither is a caller argument**.
+Identical to the cache planner auto-wiring and the scheduler's hardware-budget fold: *caller declares
+intent; the realization is resolved from modeled deployment facts.* All three dimensions share this.
+
+**Layering discipline (§3):** `compute_fabric` is **product**; schedule/cache are **std** (imports point
+toward std). Split: std owns the *budget shape* (`std.placement_supply` ✓) and the `{time,space,power}`
+cost axis; product `compute_fabric` owns the **$/billing axis** (`CostClass`, `MoneyMicros`) and *projects*
+fleet rows into the std shape (`placement_supply_row`, `compute_fabric.dag:220`); the **peripheral host
+realizer** bridges product→std and runs the Pareto pick. std stays product-free.
+
 ---
 
 ## Verified ground truth (file:line — do not re-derive)
@@ -68,7 +99,9 @@ dependency structure and never mention hardware; the width-fold degenerates to "
 | Carrier for hardware budget **already exists** | `HardwareThreadCount = Measure<Count,One,Nat>` `measure.dag:254`; `PlacementSupplyRow.hardware_threads` `placement_supply.dag:29-31`; `CpuDeploymentFacts` `cpu/types.dag:42` |
 | Pareto kernel + objective vocabulary already shared | `std.pareto` dominance + `AxisGoal`; `RealizationObjective.goals: List<AxisGoal>` `realization_schedule.dag:41` |
 | Runner model + ci.yml generation already exist | `RunnerSpec = HostedRunner | SelfHosted{labels}` `extdeps/github/actions.dag:233`; ci.yml generated from `CiFloorSpec` (`dsl/tools/gunbc_ci.dag`, `extdeps/github/ci.dag`) |
-| srv1/srv2 concrete facts are **ctrl-tier (private), not public gunbc** | `hardware_selection.dag:8` |
+| srv1/srv2 concrete facts are **ctrl-tier (private), not public gunbc** | `hardware_selection.dag:8`; `compute_fabric.dag:5` ("ctrl `plans.fabric.operator_fleet`") |
+| compute fabric = demand→placement→supply market; provisioning is `satisfies(offer, demand)`; composes over `ExecutionReceipt` | `product.compute_fabric` — `WorkDemand` `:268`, `ComputeOffer`/`satisfies` `:377`, `ExecutionReceipt<T>` `:449`, projects `PlacementSupplyRow` `:220`; `satisfies` checks **isolation only** today (no thread-count/Pareto dim) |
+| map→reduce execution decomposition is forward-stubbed (`= Node`) — anticipates sharding | `WorkGraph`/`Partitioner`/`Reducer`/`SymbolicCost`/`EffectBoundary` `compute_fabric.dag:48-58` |
 
 ---
 
@@ -114,12 +147,14 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
 - **Explode the corpus node** (`ci_floor_plan.dag:107`) into per-entry-group `Runnable`s — **rows, not
   Rust**. Shard *by whole entry-group* to preserve the warm `typed_module_cache` (splitting an entry's
   witnesses re-incurs its cold resolve). This is the keystone both background audits independently named.
-- **Hardware budget as a PERIPHERAL input — DFS before minting (§2/§3).** Do **not** coin a fresh
-  `DeploymentFacts`: `PlacementSupplyRow` already carries `hardware_threads` (`placement_supply.dag:29-31`)
-  and `CpuDeploymentFacts` exists (`cpu/types.dag:42`). The runner's `HardwareBudget` (cores as
-  `HardwareThreadCount`, RAM as `ByteSize`) is plausibly a peer/extension of `PlacementSupplyRow`. **This
-  carrier is shared with Phase 3** (the runner config *declares* it; the scheduler *consumes* it — one
-  carrier, two readers).
+- **The hardware budget is what `compute_fabric` PROVISIONS — do not coin a fresh carrier (§2/§3).** The
+  width-fold reads the `PlacementSupplyRow` that `compute_fabric` already projects (`placement_supply_row`,
+  `compute_fabric.dag:220`; `PlacementSupplyRow.hardware_threads` `placement_supply.dag:29-31`). **The
+  width decision *is* a placement decision:** today `satisfies(offer, demand)` (`compute_fabric.dag:377`)
+  checks *isolation only* — Phase 1 is "add the thread-count / Pareto dimension to placement." So this
+  phase is co-designed with Phase 3 (compute_fabric is the provisioning interface; the runner *declares*
+  the offer, the scheduler *consumes* the placement — one market, two readers). DFS `PlacementSupplyRow` +
+  `CpuDeploymentFacts` (`cpu/types.dag:42`) before extending; do **not** invent `DeploymentFacts`.
 - **The width-fold.** Schedule stays the pure partial order; a peripheral realizer folds it against the
   `HardwareBudget` → actual width, a Pareto pick over `{wall-time↓, peak-memory↓}` bounded by `width ≤
   cores` — reusing `std.pareto` + `RealizationObjective.goals` (already `List<AxisGoal>` — wiring carriers
@@ -178,24 +213,29 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
 ## Phase 3 — Infra / deployment onto `.dag` (srv1 / srv2)  ·  the second ask
 
 **Goal:** model the actual infra/deployment — runner config, access, host config — as **data**, dissolving
-bespoke `ci.yml` shell + manual runner setup. **This meets note 1 at the `HardwareBudget` carrier:** the
-runner config *declares* the budget that Phase 1's scheduler *consumes*.
+bespoke `ci.yml` shell + manual runner setup. **"Get CI onto `.dag`" = instantiate `compute_fabric` for
+srv1/srv2:** a self-hosted runner is one `ComputeOffer`; GHA-hosted, `Ubicloud`, `GcloudRun` are others
+(already enumerated, `compute_fabric.dag:71`). This meets note 1 at the placement carrier — the offer the
+runner *declares* is the budget Phase 1's scheduler *consumes*.
 
-**§3 boundary (decisive — get this right first):**
+**§3 boundary (decisive — and already declared by `compute_fabric`'s own header):**
 
-- **3a — public gunbc substrate (this repo).** The *schema/vocabulary* is public. Extend `RunnerSpec`
-  (`actions.dag:233` — `SelfHosted{labels}` is stringly today; its dissolution note already calls for a
-  "typed runner-label substrate … where the compiler owns runner topology"). Model the runner/job/host
-  config and the `HardwareBudget` the runner declares (shared with Phase 1). ci.yml is *already* generated
-  from `CiFloorSpec` (`dsl/tools/gunbc_ci.dag`, `extdeps/github/ci.dag`) — **extend that generation** to
-  cover runner + job + provisioning config rather than hand-authoring `.github/workflows/ci.yml`. DFS the
-  existing substrate before minting: `extdeps/github/actions.dag`, `extdeps/os/{ubuntu,…}`,
-  `extdeps/container`, `extdeps/docker`, `extdeps/cloud`, `dsl/std/os.dag`.
+- **3a — public gunbc substrate (this repo).** The *provisioning schema* is `product.compute_fabric`
+  (already exists: `ComputeOffer`/`WorkDemand`/`satisfies`/`ExecutionReceipt`). Extend `RunnerSpec`
+  (`actions.dag:233` — `SelfHosted{labels}` is stringly today; its dissolution note calls for a "typed
+  runner-label substrate … where the compiler owns runner topology") so a runner spec is the GHA
+  *realization* of a `compute_fabric` offer/demand (runner labels ≈ the demand's isolation/locality). ci.yml
+  is *already* generated from `CiFloorSpec` (`dsl/tools/gunbc_ci.dag`, `extdeps/github/ci.dag`) — **extend
+  that generation** to emit runner + job + provisioning config from the fabric model rather than
+  hand-authoring `.github/workflows/ci.yml`. DFS before minting: `compute_fabric` first, then
+  `extdeps/github/actions.dag`, `extdeps/os/{ubuntu,…}`, `extdeps/container`, `extdeps/docker`,
+  `extdeps/cloud`, `dsl/std/os.dag`.
 - **3b — private ctrl instantiation (separate, NOT this PR).** The *concrete* srv1/srv2 facts — access
   creds, runner registration tokens, the exact SKUs each host runs, host provisioning — are **ctrl-tier
-  private deployment facts** (`hardware_selection.dag:8`; memory `idea-pr-compiler-ctrl-boundary`). They
-  are modeled in `~/ctrl` *using* the 3a public schema. Tracked as the ctrl-side lane; out of scope for
-  the public plan except to fix the seam 3a must expose.
+  private**, in **ctrl `plans.fabric.operator_fleet`** (named by `compute_fabric.dag:5`;
+  `hardware_selection.dag:8`; memory `idea-pr-compiler-ctrl-boundary`). They are concrete `ComputeOffer`
+  rows instantiated *against* the 3a public fabric schema. Out of scope for the public plan except to fix
+  the seam 3a must expose.
 
 **Dissolution trigger:** `.github/workflows/ci.yml` is emitted from a `.dag` runner+floor spec (no
 hand-authored runner block); the `HardwareBudget` the scheduler reads is the one the runner spec declares.
@@ -255,9 +295,17 @@ groundwork. **Critical path:** Phase 0 → 1 / 2.
 
 ## Open decisions to confirm before scoping the affected phase
 
-1. **Budget carrier** — extend `PlacementSupplyRow` vs a sibling `RunnerDeploymentFacts`? (DFS task in
-   Phase 1 / 3a.)
-2. **Cache planner timing** — the *plan* (which layers, what order) can be compile-time data; only the
+1. **Placement/budget carrier** — extend `compute_fabric`'s `satisfies` + `PlacementSupplyRow` with the
+   thread-count/Pareto dimension (the width decision = a placement decision), vs a sibling carrier? (DFS
+   task in Phase 1 / 3a.) Do not invent `DeploymentFacts`.
+2. **The $/billing cost axis crosses the std↔product line.** std `CostAccount` carries `{time,space,power}`;
+   the $ axis (`CostClass`, `MoneyMicros`) lives in product `compute_fabric`. Confirm: the std schedule's
+   objective stays `{time,space,power}`; the **peripheral host realizer** combines it with the product $
+   axis for the full Pareto pick. (Keeps std product-free.)
+3. **Cache planner timing** — the *plan* (which layers, what order) can be compile-time data; only the
    *availability probe* is runtime/peripheral. Confirm the split when scoping Phase 2.
-3. **Runner-label vocabulary** — how far to close `SelfHosted{labels: List<String>}` toward a typed
-   topology (3a) without over-fitting to srv1/srv2 (which live in ctrl).
+4. **Runner-label vocabulary** — how far to close `SelfHosted{labels: List<String>}` toward a typed
+   topology / a `compute_fabric` offer (3a) without over-fitting to srv1/srv2 (which live in ctrl).
+5. **Sharding ↔ `compute_fabric` `Partitioner`/`Reducer` stubs** (`compute_fabric.dag:48-58`, `= Node`
+   forward) — does Phase 1's corpus-sharding dissolve those stubs (partition work → place → reduce
+   verdicts), or stay scheduler-local? Decide whether the work-graph partition is a fabric concern.
