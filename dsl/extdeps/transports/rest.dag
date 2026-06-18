@@ -13,14 +13,14 @@
 
 module extdeps.transports.rest
 
-import std.types { HttpMethod }
+import std.types { HttpMethod, Url }
 import std.serialization { WireFormat }
 
 // Configuration type for REST transport bindings.
 // The parser validates transport blocks labeled "rest" against this schema.
 // Fields match HTTP semantics from RFC 9110 and RFC 7235.
 type RestTransportConfig {
-  base_url: String              // RFC 3986 absolute-URI
+  base_url: Url
   auth_token: String?           // RFC 7235 Section 4.2: credentials
   auth_header: String?          // Header field name; default "Authorization" per RFC 7235
   headers: Map<String, String>  // Custom request headers (RFC 9110 Section 6.3)
