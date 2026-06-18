@@ -14,7 +14,8 @@
 //   - v2/test/claim/realization_schedule_witness.dag enrolls in CI discovery when
 //     v2 self-compile-clean closes the Empty-in-generic sequence_outcome gap.
 //   - cache_interface.dag → Materialization rows become extdeps/realization handlers
-//   - RealizedStep / Placement / Materialization return in the feature follow-on
+//   - RealizedStep / Placement / Materialization re-introduced (increment 3: reconcile→Share);
+//     their ContentHash intent + licensed_by return in increment 4 (cross-tree content-hash)
 //   - target digest → content_hash(subgraph) when dsl/v2 cross-tree Node import lands
 
 module std.realization
@@ -22,7 +23,7 @@ module std.realization
 import std.types { Bool, String, List }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
-  key_source_eq
+  key_source_eq, create_double_init_collapsible
 }
 import std.realization_schedule {
   RealizationPlan,
@@ -78,4 +79,61 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
     CreateEffect { cause: _ } => Unknown
     AppendEffect => Unknown
   }
+}
+
+// --- Materialization arm (increment 3: reconcile → Share) ----------------------
+//
+// A RealizedStep is one node's realization: WHERE it runs (placement), HOW its
+// result is materialized (recompute / memoize / share), and its cost. The intent
+// digest (ContentHash) + licensed_by return in increment 4 when cross-tree Node
+// content-hashing lands (trim marker above); for now the step carries its source
+// EffectShape so reconcile can key the Share collapse on KeySource identity.
+
+type Placement = LocalInProcess | LocalFilesystem | RemoteNetwork
+
+type Materialization = Recompute | Memoize | Share
+
+type RealizedStep {
+  shape: EffectShape
+  placement: Placement
+  materialization: Materialization
+  cost: CostAccount
+}
+
+// Mark every accumulator step whose effect is the same-KeySource create-if-absent
+// twin of `s` as Share (s collapses INTO the shared materialization; not appended).
+fn mark_collapsible_share(acc: List<RealizedStep>, s: RealizedStep) -> List<RealizedStep> {
+  acc |> map(e =>
+    if create_double_init_collapsible(a: e.shape, b: s.shape) {
+      RealizedStep {
+        shape: e.shape,
+        placement: e.placement,
+        materialization: Share,
+        cost: e.cost
+      }
+    } else {
+      e
+    }
+  )
+}
+
+// Does `s` have a same-KeySource create-if-absent twin already in `acc`?
+fn has_collapsible_peer(acc: List<RealizedStep>, s: RealizedStep) -> Bool {
+  let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
+  !((peers |> length) == 0)
+}
+
+// Collapse same-KeySource create-if-absent steps into one shared materialization.
+// Two steps with KeySource-equal CreateIfAbsent effects reconcile to ONE step whose
+// materialization is Share; distinct identities (or non-create effects) stay separate.
+// The collapse decision is create_double_init_collapsible (std.effects, KeySource-keyed) —
+// reconcile only consumes it, never re-derives KeySource equality (§3 single authority).
+fn reconcile(steps: List<RealizedStep>) -> List<RealizedStep> {
+  steps |> fold(init: [], f: (acc, s) =>
+    if has_collapsible_peer(acc: acc, s: s) {
+      mark_collapsible_share(acc: acc, s: s)
+    } else {
+      concat(acc, [s])
+    }
+  )
 }
