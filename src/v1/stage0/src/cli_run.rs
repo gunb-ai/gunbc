@@ -1975,16 +1975,34 @@ pub struct DiscoveryRow {
     pub function: String,
 }
 
+/// Per-entry resolve timing (clock 1 of the audit's two-clock split).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryResolveReceipt {
+    pub entry: String,
+    pub closure_subject: String,
+    pub resolve_nanos: u128,
+}
+
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
 /// many passed, and a rendered failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub failures: Vec<String>,
-    /// Per-witness PerformanceReceipt rows keyed by cache-subject (Phase-0 observability).
+    /// Per-entry resolve wall time keyed by closure cache-subject.
+    pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
+    /// Aggregate resolve wall time across distinct entries (nanoseconds).
+    pub total_resolve_nanos: u128,
+    /// Per-witness PerformanceReceipt rows keyed by cache-subject (clock 2).
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
-    /// Aggregate measured time across all witness receipts (nanoseconds).
+    /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
     pub total_measured_nanos: u128,
+}
+
+/// CostAccount.time roll-up for a completed discovery run: Measured basis, nanoseconds
+/// from per-runnable PerformanceReceipt wall times (not resolve — resolve is separate).
+pub fn discovery_summary_cost_account_time_nanos(summary: &DiscoverySummary) -> u128 {
+    summary.total_measured_nanos
 }
 
 /// Default exclude set for floor discovery. Manifest/law files that import the
