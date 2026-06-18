@@ -1165,6 +1165,13 @@ pub struct InterpContext {
     mutation_counters: std::cell::RefCell<MutationCounters>,
     /// Single name intern table for runtime identity carriers (ctrl#1533 phase 3).
     symbols: RefCell<SymbolInterner>,
+    /// Memoized membership set of the PUBLISHED mock corpus — the §2 Realization pure-spec
+    /// the M2 mock_totality_lens also reads (the operation keys that are hermetically
+    /// realizable). The M4 hermetic-realization fold makes eval_service_call decide replay
+    /// from this ONE model rather than a parallel ledger. Computed once on first hermetic
+    /// service call via `resolve_published_mock_keys`; the corpus is an immutable global
+    /// constant for this context, with the same scoping as `data_cache`.
+    published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
 impl InterpContext {
