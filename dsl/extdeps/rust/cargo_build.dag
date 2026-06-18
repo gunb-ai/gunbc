@@ -64,13 +64,13 @@ service cargo.Build {
   }
 
   operation Fmt {
-    input {}
+    input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "fmt", "--all", "--check"] }
+    transport shell { argv: ["cargo", "fmt", extra_args] }
     exit {
       0 => Unit
       1 => String "Formatting check failed"
@@ -78,14 +78,14 @@ service cargo.Build {
   }
 
   operation Doc {
-    input {}
+    input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["cargo", "doc", "--no-deps"] }
+    transport shell { argv: ["cargo", "doc", extra_args] }
     exit {
       0 => Unit
       101 => String "Documentation generation failed"

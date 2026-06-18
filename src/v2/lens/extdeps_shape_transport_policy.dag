@@ -117,6 +117,8 @@ fn extdeps_argv_token_is_consumer_policy_literal(token: String) -> Bool {
     false
   } else {
     token == "--all-targets"
+      || token == "--all"
+      || token == "--check"
       || token == "--workspace"
       || token == "--no-deps"
       || token == "-D"
