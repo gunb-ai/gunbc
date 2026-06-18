@@ -16,7 +16,6 @@ module product.compute_fabric
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.os.types {
   FileSystemSemantics,
-  KernelFamily,
   Linux,
   OperatingSystemSurface,
   Posix,
@@ -36,6 +35,7 @@ import std.measure {
   byte_size_count,
   hardware_thread_count,
   hardware_thread_count_value,
+  hertz,
 }
 import std.currency { CurrencyCode }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
@@ -53,10 +53,6 @@ import std.cpu.types {
   CpuVendor,
   SocketPackage,
   Aarch64,
-  X86_64,
-  Armv7,
-  Riscv64,
-  Wasm32,
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
 
@@ -287,12 +283,15 @@ fn offer_placement_supply_row(offer: ComputeOffer) -> PlacementSupplyRow? {
   }
 }
 
+fn hardware_threads_honor_demand(supply: HardwareThreadCount, demand: HardwareThreadCount) -> Bool {
+  hardware_thread_count_value(supply) >= hardware_thread_count_value(demand)
+}
+
 fn cpu_threads_satisfies(supply: PlacementSupplyRow, demand: CpuRequirement?) -> Bool {
   match demand {
     Absent => true
     Present { value: req } =>
-      hardware_thread_count_value(supply.hardware_threads)
-        >= hardware_thread_count_value(req.min_threads)
+      hardware_threads_honor_demand(supply: supply.hardware_threads, demand: req.min_threads)
   }
 }
 
@@ -311,11 +310,26 @@ fn cpu_architecture_satisfies(host: ComputeHost, demand: CpuRequirement?) -> Boo
   }
 }
 
+fn memory_bytes_honor_demand(supply: ByteSize, demand: ByteSize) -> Bool {
+  byte_size_count(supply) >= byte_size_count(demand)
+}
+
 fn memory_requirement_satisfies(supply: PlacementSupplyRow, demand: MemoryRequirement?) -> Bool {
   match demand {
     Absent => true
     Present { value: req } =>
-      byte_size_count(supply.ram_bytes) >= byte_size_count(req.min_bytes)
+      memory_bytes_honor_demand(supply: supply.ram_bytes, demand: req.min_bytes)
+  }
+}
+
+fn requires_placement_facts(demand: WorkDemand) -> Bool {
+  match demand.resources.cpu {
+    Present { value: _ } => true
+    Absent =>
+      match demand.resources.memory {
+        Present { value: _ } => true
+        Absent => false
+      }
   }
 }
 
@@ -489,6 +503,13 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
       reason: MissingDemandFact {
         dimension: DemandIsolation,
         required: isolation_boundary_label(boundary: demand.isolation.boundary),
+      },
+    }
+  } else if !requires_placement_facts(demand: demand) {
+    Eligible {
+      witness: ComputeLeaseWitness {
+        provider: offer.provider,
+        satisfied: [DemandIsolation],
       },
     }
   } else {
@@ -723,6 +744,129 @@ fn witness_shared_host_offer_rejects_vm_demand() -> Bool {
 fn witness_vm_offer_admits_vm_demand() -> Bool {
   match satisfies(offer: example_vm_offer, demand: vm_isolation_work_demand) {
     Eligible { witness: _ } => true
+    Rejected { reason: _ } => false
+  }
+}
+
+// --- §7b resource-feasibility witnesses (thread-count + memory; measurement-free) ---
+
+data example_resource_cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "GENERIC-ARM-64C",
+  oem_listing_id: none,
+  vendor: Ampere,
+  architecture: Aarch64,
+  cores: 64,
+  threads: hardware_thread_count(64),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  tdp_watts: 250,
+}
+
+data example_resource_cpu: CpuFacts = CpuFacts {
+  catalog: example_resource_cpu_catalog,
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+}
+
+data example_resource_host: ComputeHost = ComputeHost {
+  identity: "example-resource-host",
+  processors: [CpuProcessor { cpu: example_resource_cpu }],
+  memory: [MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none }],
+  storage: [],
+  network_interfaces: [],
+}
+
+data example_resource_offer: ComputeOffer = ComputeOffer {
+  provider: "example-resource-offer",
+  supply: ComputeSupplyFacts {
+    physical: example_resource_host,
+    execution: example_shared_host_execution_surface,
+    cost: Present { value: example_owned_cost },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: example_availability_open, close: none },
+  cost_quote: none,
+  constraints: [],
+}
+
+data example_thread_work_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: Present {
+      value: CpuRequirement {
+        min_threads: hardware_thread_count(128),
+        architecture: Present { value: Aarch64 },
+      },
+    },
+    gpu: none,
+    memory: none,
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+data example_memory_work_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: none,
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: byte_size(137438953472) } },
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+data example_feasible_resource_work_demand: WorkDemand = WorkDemand {
+  resources: ResourceEnvelope {
+    cpu: Present {
+      value: CpuRequirement {
+        min_threads: hardware_thread_count(2),
+        architecture: Present { value: Aarch64 },
+      },
+    },
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: byte_size(1073741824) } },
+    storage: none,
+    network: none,
+  },
+  os: none,
+  isolation: IsolationRequirement { boundary: SharedHostHome },
+  toolchains: [],
+  parallelism: SingleWorkItem,
+  data_locality: [],
+  effects: [],
+}
+
+fn witness_resource_offer_rejects_insufficient_threads() -> Bool {
+  match satisfies(offer: example_resource_offer, demand: example_thread_work_demand) {
+    Rejected { reason: r } => r.dimension == DemandCpu
+    Eligible { witness: _ } => false
+  }
+}
+
+fn witness_resource_offer_rejects_insufficient_memory() -> Bool {
+  match satisfies(offer: example_resource_offer, demand: example_memory_work_demand) {
+    Rejected { reason: r } => r.dimension == DemandMemory
+    Eligible { witness: _ } => false
+  }
+}
+
+fn witness_resource_offer_admits_feasible_demand() -> Bool {
+  match satisfies(offer: example_resource_offer, demand: example_feasible_resource_work_demand) {
+    Eligible { witness: w } =>
+      w.satisfied.length() == 3
+        && w.satisfied.first() == DemandIsolation
+        && w.satisfied.skip(n: 1).first() == DemandCpu
+        && w.satisfied.skip(n: 2).first() == DemandMemory
     Rejected { reason: _ } => false
   }
 }

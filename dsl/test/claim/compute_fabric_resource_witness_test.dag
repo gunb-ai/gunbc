@@ -1,0 +1,17 @@
+// dsl/test/claim/compute_fabric_resource_witness_test.dag
+//
+// By-execution witnesses for thread-count + memory feasibility in satisfies().
+
+module test.claim.compute_fabric_resource_witness
+
+import product.compute_fabric {
+  witness_resource_offer_rejects_insufficient_threads,
+  witness_resource_offer_rejects_insufficient_memory,
+  witness_resource_offer_admits_feasible_demand,
+}
+
+test fn compute_fabric_resource_feasibility_holds() -> Bool {
+  witness_resource_offer_rejects_insufficient_threads()
+    && witness_resource_offer_rejects_insufficient_memory()
+    && witness_resource_offer_admits_feasible_demand()
+}
