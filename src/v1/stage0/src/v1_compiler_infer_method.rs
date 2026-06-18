@@ -198,6 +198,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "extdeps_embedded_policy_literal_count_for_path".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "fact_cardinality_cross_tree_coexistence_count".to_string(),
             int_type(),
         );

@@ -52,7 +52,7 @@ data flat_scalar_unit_leaf_input: Node = Node {
 
 // ram_bytes has a KNOWN carrier (ByteSize) in the hint map, so the flag is the
 // FIXABLE-NOW class — assert both the flag AND the class.
-fn flat_scalar_unit_leaf_flagged_holds() -> Bool {
+test fn flat_scalar_unit_leaf_flagged_holds() -> Bool {
   match unit_modeling_gate(node: flat_scalar_unit_leaf_input) {
     Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
     Accepted { value: _, diagnostics: _ } => false
