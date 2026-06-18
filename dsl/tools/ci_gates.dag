@@ -21,7 +21,7 @@ import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
 import tools.ci_yaml_gate { run_ci_yaml_gate }
-import tools.source_root_ingest_gate { run_source_root_ingest_ci_gate }
+import v2.workflow.source_root_ingest_gate { run_source_root_ingest_ci_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }

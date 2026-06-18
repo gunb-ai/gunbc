@@ -3,7 +3,7 @@
 //   assemble_program_from_ingest end-to-end awaits validate_module_roots on wave1-parsed
 //   module QN projection (follow-on to hand-built-root lane 3b tests).
 // Anchor: DESIGN.md §5 — host manifest overlay required at runtime (see
-//   tools.source_root_ingest_transport).
+//   v2.workflow.source_root_ingest_transport).
 
 module v2.test.program_assembly.real_ingest
 

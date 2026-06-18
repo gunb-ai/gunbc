@@ -1,0 +1,33 @@
+// src/v2/workflow/source_root_ingest_gate.dag — Lane 3a real SourceRootIngest producer gate.
+//
+// Run in CI (co-rooted, same posture as ci_floor_plan):
+//   gunbc run --source-root src/v2 --source-root dsl \
+//     --entry src/v2/workflow/source_root_ingest_gate.dag \
+//     --function source_root_ingest_gate_passes --claim-run
+
+module v2.workflow.source_root_ingest_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.workflow.source_root_ingest_transport { run_real_ingest_gate }
+import v2.std.logic { Bool }
+
+func run_gate() -> ProcessExit {
+  if run_real_ingest_gate() {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "source root ingest gate failed: host manifest overlay + real_ingest_test receipts"
+    )
+  }
+}
+
+func run_source_root_ingest_ci_gate() -> ProcessExit {
+  run_gate()
+}
+
+func source_root_ingest_gate_passes() -> Bool {
+  match run_gate() {
+    ExitSuccess => true
+    _ => false
+  }
+}

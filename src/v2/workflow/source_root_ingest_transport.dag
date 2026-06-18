@@ -1,22 +1,17 @@
-// src/v2/workflow/source_root_ingest_transport.dag — Lane 3a SourceRootIngest gate shell intent.
+// src/v2/workflow/source_root_ingest_transport.dag — Lane 3a SourceRootIngest gate shell transport.
 //
 // MIGRATION SLICE 3 — trivial fixed-token Command (`bash scripts/source-root-ingest-gate.sh`)
 // authored as emit(intent, Bash) instead of serialize_bash (extdeps.languages.bash.program).
 // Host realization: scripts/source-root-ingest-gate.sh (parameterized argv is dissolve-on).
-//
-// Effectful shell.Exec.Run stays in dsl/tools/source_root_ingest_transport.dag until
-// dsl-only `gunbc compile` can resolve v2 imports (see ci_spec_witness_test.dag:
-// compile-clean gate stays v2-import-free). The dsl shim must stay byte-aligned with
-// emit_source_root_ingest_gate_script() until that bridge deletes.
 
 module v2.workflow.source_root_ingest_transport
 
+import extdeps.shell
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_carriers { TargetSource }
 import v2.extdeps.languages.bash {
   bash_source_root_ingest_gate_emitted_command,
-  bash_source_root_ingest_gate_source_text,
   bash_source_root_ingest_gate_target_model
 }
 import v2.std.collection { Map, empty_map }
@@ -30,6 +25,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
+import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 
@@ -55,4 +51,14 @@ fn emit_source_root_ingest_gate_script() -> Outcome<TargetSource> {
     tree: source_root_ingest_gate_inferred_tree,
     target: bash_source_root_ingest_gate_target_model()
   )
+}
+
+func run_real_ingest_gate() -> Bool {
+  match emit_source_root_ingest_gate_script() {
+    Accepted { value: script, diagnostics: _ } => {
+      let result = shell.Exec.Run(script: script)
+      result.success
+    }
+    Rejected { diagnostics: _ } => false
+  }
 }

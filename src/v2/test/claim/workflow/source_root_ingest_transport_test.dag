@@ -1,0 +1,16 @@
+// Scope: slice 3 — v2.workflow.source_root_ingest_transport emit authority matches bash.dag fixture.
+
+module v2.test.workflow.source_root_ingest_transport
+
+import v2.extdeps.languages.bash { bash_source_root_ingest_gate_source_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.workflow.source_root_ingest_transport { emit_source_root_ingest_gate_script }
+
+test fn source_root_ingest_transport_emit_script_holds() -> Bool {
+  match emit_source_root_ingest_gate_script() {
+    Accepted { value: source, diagnostics: d } =>
+      (source == bash_source_root_ingest_gate_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}

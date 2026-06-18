@@ -331,8 +331,7 @@ data bash_source_root_ingest_gate_emitted_command: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data bash_source_root_ingest_gate_source_text: String =
-  "'bash' 'scripts/source-root-ingest-gate.sh'"
+data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
 
 fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -393,48 +392,6 @@ fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
     ],
     occurrence_id: SyntheticOccurrence
   }
-}
-
-fn bash_source_root_ingest_gate_serialize_source_node() -> Node {
-  bash_serialize_source_node(
-    source_text_binding: ^bash_source_root_ingest_gate_source_literal,
-    production_binding: ^bash_production_source_root_ingest_gate,
-    tokens: bash_source_root_ingest_gate_concrete_tokens()
-  )
-}
-
-fn bash_source_root_ingest_gate_target_model_bundle() -> Node {
-  bash_target_model_bundle(
-    rules: bash_source_root_ingest_gate_translation_rules_node(),
-    serialize_source: bash_source_root_ingest_gate_serialize_source_node()
-  )
-}
-
-fn bash_source_root_ingest_gate_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      bash_lex_rule(token_class: ^bash_token_word_bash, text: "'bash'"),
-      bash_lex_rule(
-        token_class: ^bash_token_word_source_root_ingest_gate_sh,
-        text: " 'scripts/source-root-ingest-gate.sh'"
-      )
-    ]
-  }
-}
-
-fn bash_source_root_ingest_gate_lex() -> LexRules {
-  ModeledLexRules { root: bash_source_root_ingest_gate_lex_rules() }
-}
-
-fn bash_source_root_ingest_gate_target_model() -> TargetModel {
-  target_model_make_with_emit_transforms(
-    bundle: bash_source_root_ingest_gate_target_model_bundle(),
-    lex: bash_source_root_ingest_gate_lex(),
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: bash_source_root_ingest_gate_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  )
 }
 
 fn bash_binding_spellings() -> Map<Symbol, String> {
@@ -609,6 +566,48 @@ fn bash_embedded_quote_target_model() -> TargetModel {
     binding_spellings: bash_binding_spellings(),
     token_class_emit_transforms: bash_token_class_emit_transforms(),
     authority_source_text: bash_embedded_quote_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
+}
+
+fn bash_source_root_ingest_gate_serialize_source_node() -> Node {
+  bash_serialize_source_node(
+    source_text_binding: ^bash_source_root_ingest_gate_source_literal,
+    production_binding: ^bash_production_source_root_ingest_gate,
+    tokens: bash_source_root_ingest_gate_concrete_tokens()
+  )
+}
+
+fn bash_source_root_ingest_gate_target_model_bundle() -> Node {
+  bash_target_model_bundle(
+    rules: bash_source_root_ingest_gate_translation_rules_node(),
+    serialize_source: bash_source_root_ingest_gate_serialize_source_node()
+  )
+}
+
+fn bash_source_root_ingest_gate_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      bash_lex_rule(token_class: ^bash_token_word_bash, text: "'bash'"),
+      bash_lex_rule(
+        token_class: ^bash_token_word_source_root_ingest_gate_sh,
+        text: " 'scripts/source-root-ingest-gate.sh'"
+      )
+    ]
+  }
+}
+
+fn bash_source_root_ingest_gate_lex() -> LexRules {
+  ModeledLexRules { root: bash_source_root_ingest_gate_lex_rules() }
+}
+
+fn bash_source_root_ingest_gate_target_model() -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: bash_source_root_ingest_gate_target_model_bundle(),
+    lex: bash_source_root_ingest_gate_lex(),
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: bash_source_root_ingest_gate_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
 }
