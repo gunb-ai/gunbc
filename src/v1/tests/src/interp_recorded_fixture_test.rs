@@ -336,12 +336,7 @@ fn witness() -> Bool {
         .expect("record");
     let now = v1_interpreter::fixture_now_secs(&ctx).expect("clock");
     let fixture = store
-        .lookup(
-            "Filesystem.Write",
-            "0123456789abcdef",
-            &empty_inputs,
-            now,
-        )
+        .lookup("Filesystem.Write", "0123456789abcdef", &empty_inputs, now)
         .expect("lookup");
     let back = v1_compiler::recorded_fixture::value_from_fixture_json(&fixture.response, &ctx)
         .expect("deserialize");

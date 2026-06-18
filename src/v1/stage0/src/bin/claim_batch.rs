@@ -483,12 +483,8 @@ fn run_witnesses(
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
-    let ctx = make_eval_context_with_fixture_store(
-        &graph,
-        source_indices,
-        execution_mode,
-        fixture_store,
-    );
+    let ctx =
+        make_eval_context_with_fixture_store(&graph, source_indices, execution_mode, fixture_store);
     for function in &group.functions {
         run_claim_timed(&ctx, function, any_failed, timings);
     }
