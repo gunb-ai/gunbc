@@ -1,0 +1,94 @@
+// extdeps/languages/rust/imports.dag -- "How does the Rust module system work?"
+//
+// Module declarations, use statements, visibility, crate structure,
+// and path resolution as specified in The Rust Reference.
+//
+// Ref: The Rust Reference 6.3 "Use declarations"
+//      The Rust Reference 6.5 "Modules"
+//      Cargo Reference (doc.rust-lang.org/cargo)
+//
+// Consumers:
+//   v2/05_emit_rust.dag -- import emission, module file generation, lib.rs
+
+module extdeps.languages.rust.imports
+
+import extdeps.cargo { CargoDependency, RegistryDep }
+
+// -- Module declaration ----------------------------------------------
+// Ref: Rust Reference 6.5 "Modules"
+
+// "How does Rust declare a module?"
+data mod_declaration_template: String = "mod \{name\};"
+data pub_mod_declaration_template: String = "pub mod \{name\};"
+
+// "How does Rust organize module files?"
+// Each module maps to either {name}.rs or {name}/mod.rs.
+data module_file_extension: String = ".rs"
+data module_dir_entry: String = "mod.rs"
+
+// -- Use declarations ------------------------------------------------
+// Ref: Rust Reference 6.3 "Use declarations"
+
+// "How does Rust import items?"
+data use_single_template: String = "use \{path\};"
+data use_glob_template: String = "use \{path\}::*;"
+data use_specific_template: String = "use \{module\}::\{names\};"
+data use_alias_template: String = "use \{path\} as \{alias\};"
+data use_nested_template: String = "use \{prefix\}::\{items\};"
+
+// "How does Rust reference crate-local items?"
+data crate_prefix: String = "crate"
+data crate_use_template: String = "use crate::\{module\}::\{names\};"
+
+// -- Visibility ------------------------------------------------------
+// Ref: Rust Reference 6.7 "Visibility and privacy"
+
+type RustVisibility
+  = VisPub                             // pub -- visible everywhere
+  | VisPubCrate                        // pub(crate) -- visible within crate
+  | VisPubSuper                        // pub(super) -- visible to parent module
+  | VisPrivate                         // (default) -- visible within module
+
+data pub_keyword: String = "pub"
+data pub_crate_keyword: String = "pub(crate)"
+
+// -- Path separator --------------------------------------------------
+data path_separator: String = "::"
+
+// -- Reserved module names -------------------------------------------
+// Module names that collide with Rust/Cargo conventions.
+data reserved_module_names: List<String> = ["main", "lib", "mod", "self", "super", "crate"]
+
+// -- Cargo project structure -----------------------------------------
+// Ref: Cargo Reference "Package Layout"
+
+data cargo_manifest: String = "Cargo.toml"
+data src_dir: String = "src"
+data lib_entry: String = "src/lib.rs"
+data bin_entry: String = "src/main.rs"
+
+// -- Cargo.toml templates --------------------------------------------
+// Ref: Cargo Reference "The Manifest Format"
+
+data cargo_package_template: String = "[package]\nname = \"\{name\}\"\nversion = \"\{version\}\"\nedition = \"\{edition\}\"\n"
+data cargo_deps_header: String = "\n[dependencies]\n"
+// The old `default_edition: String = "2021"` here was the §3 fork — removed. The single
+// authority is now `extdeps.cargo.default_rust_edition` (a closed `RustEdition`), rendered to
+// the manifest token via `rust_edition_str`. NOTE: the `\{edition\}` substitution into
+// `cargo_package_template` is performed by the emit consumer, which should read the edition
+// through that authority — rewiring that consumer is a named follow-up, out of scope for this
+// fork-collapse step (this file no longer re-coins the literal, which is the violation removed).
+
+// "What crate dependencies does a generated Rust project need?"
+data base_deps: List<CargoDependency> = [
+  { name: "serde", source: RegistryDep { version: "1", features: ["derive"] } },
+  { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
+  { name: "clap", source: RegistryDep { version: "4", features: ["derive"] } },
+  { name: "lazy_static", source: RegistryDep { version: "1", features: [] } }
+]
+
+data async_deps: List<CargoDependency> = [
+  { name: "tokio", source: RegistryDep { version: "1", features: ["full"] } },
+  { name: "reqwest", source: RegistryDep { version: "0.12", features: ["json"] } },
+  { name: "async-trait", source: RegistryDep { version: "0.1", features: [] } }
+]

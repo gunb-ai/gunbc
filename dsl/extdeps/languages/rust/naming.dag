@@ -1,0 +1,44 @@
+// extdeps/languages/rust/naming.dag -- "How does Rust name and format things?"
+//
+// Naming conventions and source formatting model for Rust,
+// as specified by rustfmt defaults and community convention.
+//
+// Ref: Rust API Guidelines (rust-lang.github.io/api-guidelines)
+//      rustfmt default configuration (rust-lang.github.io/rustfmt)
+//
+// Consumers:
+//   v2/05_emit.dag       -- identifier casing, source formatting
+
+module extdeps.languages.rust.naming
+
+import std.languages {
+  NamingConvention, PascalCase, SnakeCase, ScreamingSnakeCase,
+  FormatModel, SpaceIndent, StdExternalLocal
+}
+
+// -- Naming convention --------------------------------------------------
+// Ref: Rust API Guidelines C-CASE
+//   types:          PascalCase
+//   functions:      snake_case
+//   variables:      snake_case
+//   constants:      SCREAMING_SNAKE_CASE
+//   modules:        snake_case
+
+data rust_naming: NamingConvention = {
+  type_case: PascalCase,
+  function_case: SnakeCase,
+  variable_case: SnakeCase,
+  constant_case: ScreamingSnakeCase,
+  module_case: SnakeCase
+}
+
+// -- Formatting model ---------------------------------------------------
+// Ref: rustfmt defaults (max_width=100, hard_tabs=false, tab_spaces=4)
+//      Import grouping: std, external crates, local modules.
+
+data rust_formatting: FormatModel = {
+  indent: SpaceIndent { width: 4 },
+  max_line_width: 100,
+  import_grouping: StdExternalLocal,
+  trailing_newline: true
+}

@@ -1,0 +1,111 @@
+// extdeps/languages/rust/runtime.dag -- "How does Rust operate on values at runtime?"
+//
+// Collection operations, string operations, map operations, iterator
+// pipeline methods, and null coalescing -- all from the Rust standard library.
+//
+// Ref: Rust Standard Library docs (doc.rust-lang.org/std)
+//
+// Consumers:
+//   v2/05_emit_rust.dag -- method call emission, pipe operator translation
+
+module extdeps.languages.rust.runtime
+
+import std.languages {
+  NamingConvention, NamingCase
+}
+
+// -- String operations -----------------------------------------------
+// Ref: std::string::String, std::str
+
+// "How does Rust create a string literal?"
+// Rust string literals are &str; .to_string() converts to owned String.
+data string_literal_suffix: String = ".to_string()"
+
+// "How does Rust do string interpolation?"
+// Rust has no native interpolation; uses format! macro.
+// Ref: std::fmt module
+data format_macro: String = "format!(\"\{fmt\}\", \{args\})"
+data format_placeholder: String = "{}"
+data format_brace_escape_open: String = "{{"
+data format_brace_escape_close: String = "}}"
+
+// "How does Rust index into a string?"
+// String indexing is not supported directly (UTF-8 safety).
+// The v1_rt helper wraps .chars().nth(n).
+data string_char_at_template: String = "v1_rt::char_at(&\{base\}, \{index\})"
+
+// "How does Rust slice a string?"
+// String slicing by char offset (not byte offset) requires a helper.
+data string_substring_template: String = "v1_rt::substring(&\{base\}, \{start\}, \{end\})"
+
+// "How does Rust split a string?"
+// Returns an iterator of &str slices; collect to Vec<String>.
+data string_split_template: String = "\{recv\}.split(&\{delim\}).map(|s| s.to_string()).collect::<Vec<_>>()"
+
+// "How does Rust join strings?"
+// join is a method on slices of strings.
+data string_join_template: String = "\{recv\}.join(&\{sep\})"
+
+// "How does Rust get characters from a string?"
+// Authority: Char = Int (std/types.dag). chars() returns Vec<i64> of
+// Unicode codepoints. Mirrors emit.dag and algebra.dag's chars return type.
+data string_chars_template: String = "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()"
+
+// "How does Rust escape strings?"
+data string_escape_chars: List<String> = ["\\", "\""]
+
+// -- Collection operations -------------------------------------------
+// Ref: std::vec::Vec, std::iter::Iterator
+
+// `MethodTranslation` + `collection_method_translations` retired in
+// T-Ground-LanguageSpec scope E Phase 2 (#1196 follow-up): zero v2
+// consumers, zero stage0 references, fully dead. The per-target flat
+// method-template authority is `rust_simple_method_specs` in `emit.dag`
+// (read by the emitter via `rust_method_templates()`); migrating it onto
+// the registry-backed `MethodTemplateContract` rows
+// (`dsl/std/emit_model.dag`) is the open #1133 follow-on.
+
+// "How does Rust iterate?"
+// Ref: std::iter::IntoIterator trait
+data for_each_template: String = "for \{var\} in \{collection\}.into_iter() \{\n    \{body\};\n\}"
+data iterator_method: String = ".into_iter()"
+
+// -- Map operations --------------------------------------------------
+// Ref: std::collections::HashMap
+data map_type: String = "HashMap"
+data map_import: String = "use std::collections::HashMap;"
+data map_get_template: String = "(\{map\}).get(&\{key\}).cloned()"
+data map_insert_template: String = "(\{map\}).insert(\{key\}, \{value\})"
+
+// -- Null coalescing -------------------------------------------------
+// Ref: std::option::Option methods
+
+// DAG ?? operator -> Rust Option::unwrap_or_else
+data null_coalesce_template: String = "\{lhs\}.unwrap_or_else(|| \{rhs\})"
+
+// Optional wrapping/unwrapping.
+data some_constructor: String = "Some(\{value\})"
+data none_literal: String = "None"
+
+// -- Prelude imports -------------------------------------------------
+// Standard imports emitted at the top of every generated module.
+
+data prelude_imports: List<String> = [
+  "use std::collections::HashMap;",
+  "use serde::\{Serialize, Deserialize\};"
+]
+
+// -- Serialization framework -----------------------------------------
+// Ref: serde.rs -- serde 1.x
+
+data serialization_crate: String = "serde"
+data serialization_version: String = "1"
+data json_crate: String = "serde_json"
+data json_value_type: String = "serde_json::Value"
+data json_macro: String = "serde_json::json!(\{value\})"
+
+// -- Lazy initialization --------------------------------------------
+// Ref: crate lazy_static 1.x
+
+data lazy_static_crate: String = "lazy_static"
+data lazy_static_template: String = "lazy_static::lazy_static! \{\n    static ref \{name\}: \{type\} = \{value\};\n\}"

@@ -1,0 +1,27 @@
+// extdeps/languages/python/lint.dag -- "What imports does Python usage require?"
+//
+// Import derivation rules: maps type/container usage to the
+// corresponding Python import statements the emitter must produce.
+//
+// Ref: Python typing module (docs.python.org/3/library/typing.html)
+//      Python dataclasses (docs.python.org/3/library/dataclasses.html)
+//      Python asyncio (docs.python.org/3/library/asyncio.html)
+//
+// Consumers:
+//   v2/05_emit_python.dag -- import collection pass
+
+module extdeps.languages.python.lint
+
+import std.languages {
+  ImportRule, ImportTrigger,
+  TypeUsageTrigger, ContainerUsageTrigger, AsyncUsageTrigger
+}
+
+data python_import_rules: List<ImportRule> = [
+  { trigger: TypeUsageTrigger { type_name: "Optional" }, import_path: "from typing import Optional" },
+  { trigger: TypeUsageTrigger { type_name: "Dict" }, import_path: "from typing import Dict" },
+  { trigger: TypeUsageTrigger { type_name: "List" }, import_path: "from typing import List" },
+  { trigger: TypeUsageTrigger { type_name: "Callable" }, import_path: "from typing import Callable" },
+  { trigger: ContainerUsageTrigger { container: "dataclass" }, import_path: "from dataclasses import dataclass" },
+  { trigger: AsyncUsageTrigger, import_path: "import asyncio" }
+]
