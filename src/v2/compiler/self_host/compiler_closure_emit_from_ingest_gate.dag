@@ -1,8 +1,8 @@
-// Scope: N_v2 substrate measurement — emit_compiler_import_closure_from_ingest on scoped
+// Scope: N_v2 substrate gate — emit_compiler_import_closure_from_ingest on scoped
 //   53-module host manifest overlay (v2 own emitter via emit_for_target).
-// Status: heavy witness; run via scripts/v2-compiler-closure-nv2-gate.sh or #[ignore] Rust test.
+// Status: NOT auto-enrolled (no test fn); run via scripts/v2-compiler-closure-nv2-gate.sh only.
 
-module v2.test.self_host.compiler_closure_emit_from_ingest
+module v2.test.self_host.compiler_closure_emit_from_ingest_gate
 
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.self_host.compiler_closure_emit {
@@ -39,7 +39,6 @@ fn compiler_closure_scoped_ingest_parses() -> Bool {
 }
 
 
-// N_v2 substrate path: v2 emit_for_target on scoped ingest (may reject/OOM — report outcome).
 fn compiler_closure_v2_emit_from_scoped_ingest_accepts() -> Bool {
   match emit_compiler_import_closure_from_ingest(
     ingest: host_source_root_ingest,
@@ -53,7 +52,6 @@ fn compiler_closure_v2_emit_from_scoped_ingest_accepts() -> Bool {
 }
 
 
-// Host transport for #[ignore] Rust test: decode emitted TargetSource for cargo-check receipt.
 fn compiler_closure_v2_emit_source_for_cargo_check() -> String {
   match emit_compiler_import_closure_from_ingest(
     ingest: host_source_root_ingest,
@@ -63,19 +61,4 @@ fn compiler_closure_v2_emit_source_for_cargo_check() -> String {
     Accepted { value: receipt, diagnostics: _ } => receipt.source
     Rejected { diagnostics: _ } => ""
   }
-}
-
-
-test fn compiler_closure_scoped_ingest_manifest_receipt_holds() -> Bool {
-  compiler_closure_scoped_ingest_module_count_ok()
-}
-
-
-test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
-  compiler_closure_scoped_ingest_parses()
-}
-
-
-test fn compiler_closure_v2_emit_from_scoped_ingest_holds() -> Bool {
-  compiler_closure_v2_emit_from_scoped_ingest_accepts()
 }
