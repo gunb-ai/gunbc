@@ -3590,9 +3590,11 @@ fn eval_service_call(
         // least one case; for such a service the published model — NOT inline mock_* props —
         // decides realizability. One decision procedure, shared by the runtime and the lens.
         let published = ctx.published_mock_keys()?;
-        let service_is_governed = published
-            .iter()
-            .any(|k| k.rsplit_once('.').map(|(svc, _)| svc == service_name).unwrap_or(false));
+        let service_is_governed = published.iter().any(|k| {
+            k.rsplit_once('.')
+                .map(|(svc, _)| svc == service_name)
+                .unwrap_or(false)
+        });
         if service_is_governed && !published.contains(&key) {
             // §5 fail-closed on disagreement: the service publishes a corpus but THIS operation
             // is not a published case. Refuse loudly — even if a fixture or an inline mock_*
