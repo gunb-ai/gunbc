@@ -768,6 +768,167 @@ fn env_hermetic_without_fixture_store_fails_closed() {
     );
 }
 
+#[test]
+#[ignore = "wet-only: live jsonplaceholder record→replay — not hermetic CI floor"]
+fn http_pilot_rest_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("http-pilot-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
+    assert!(
+        entry.is_file(),
+        "witness dag must exist at {}",
+        entry.display()
+    );
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "http_pilot_rest_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(
+        record.status.success(),
+        "REST wet record capture must pass (live jsonplaceholder); stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+    assert!(
+        store_dir.join("test__HttpPilot__GetPost").is_dir()
+            || !fixture_files(&store_dir).is_empty(),
+        "record must write REST fixture files under {:?}",
+        store_dir
+    );
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "http_pilot_rest_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic REST replay must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
+#[test]
+fn hermetic_http_pilot_fixture_staleness_fails_closed() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("http-pilot-stale");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    write_http_pilot_fixture(&store_dir, 0);
+    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "http_pilot_rest_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        !hermetic.status.success(),
+        "stale REST fixture must fail closed"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("expired recorded fixture")
+            || combined.contains("refusing to replay stale value"),
+        "expected REST staleness diagnostic, got:\n{combined}"
+    );
+}
+
+#[test]
+fn hermetic_http_pilot_without_fixture_store_fails_closed() {
+    let ws = workspace_root();
+    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "http_pilot_rest_keystone_holds",
+        "--hermetic",
+    ]);
+    assert!(
+        !hermetic.status.success(),
+        "REST pilot in Hermetic without fixture store must fail closed (no inline mock)"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("no mock_response") || combined.contains("refusing to fabricate"),
+        "expected fail-closed diagnostic for REST without fixtures, got:\n{combined}"
+    );
+    assert!(
+        !combined.contains("PASS http_pilot_rest_keystone_holds"),
+        "hermetic without store must not pass — proves inline stub is gone, got:\n{combined}"
+    );
+}
+
+fn write_http_pilot_fixture(store_dir: &Path, recorded_at: u64) {
+    let op_dir = store_dir.join("test__HttpPilot__GetPost");
+    fs::create_dir_all(&op_dir).expect("fixture op dir");
+    let fixture = serde_json::json!({
+        "operation": "test.HttpPilot.GetPost",
+        "input_hash": "b63a4282295b68bd",
+        "inputs": [{
+            "name": "post_id",
+            "value": { "__tag": "Int", "value": 1 }
+        }],
+        "response": {
+            "__tag": "Record",
+            "__type": "GetPost",
+            "fields": {
+                "post_id": { "__tag": "Int", "value": 1 },
+                "title": {
+                    "__tag": "Str",
+                    "value": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit"
+                }
+            }
+        },
+        "recorded_at": recorded_at
+    });
+    fs::write(
+        op_dir.join("b63a4282295b68bd.json"),
+        serde_json::to_vec_pretty(&fixture).expect("serialize"),
+    )
+    .expect("write fixture");
+}
+
 fn collect_json_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).expect("read fixture dir");
     for entry in entries {

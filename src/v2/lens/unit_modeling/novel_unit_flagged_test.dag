@@ -50,7 +50,7 @@ data novel_unit_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn novel_unit_flagged_holds() -> Bool {
+test fn novel_unit_flagged_holds() -> Bool {
   match unit_modeling_gate(node: novel_unit_input) {
     Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
     Accepted { value: _, diagnostics: _ } => false

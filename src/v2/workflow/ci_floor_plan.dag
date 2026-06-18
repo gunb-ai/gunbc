@@ -198,7 +198,8 @@ fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
     compile_gate_fn: ci_floor_compile_gate_fn
   ) {
     Holds => true
-    Violation { kind: _ } => false
-    NotApplicable => false
+    Violation { diagnostic: _ } => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
   }
 }

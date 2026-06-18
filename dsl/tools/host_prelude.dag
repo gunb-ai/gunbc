@@ -1,0 +1,64 @@
+// tools/host_prelude.dag — shared shell-program prelude for host gates that need a built gunbc.
+//
+// One authority for the ROOT/GUNBC/ensure-built sequence that every compile-or-run host gate
+// repeats (§2 DRY): de-duplicated out of dsl_compile_clean_transport + layering_imports_transport.
+//
+//   ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+//   GUNBC="$ROOT"/target/release/gunbc
+//   if [ ! -x "$GUNBC" ]; then (cd "$ROOT" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi
+
+module tools.host_prelude
+
+import extdeps.shell
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellStmt, ShellWord,
+  Command, If, Subshell, AndOr, WithRedir, Exit,
+  Lit, VarRef, Concat, CmdSubst,
+  AndThen, OrElse, StderrToNull,
+  lit, var_ref, command, assign, test_not_executable
+}
+
+fn ensure_gunbc_built() -> List<ShellStmt> {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  [
+    assign(name: "ROOT", value: CmdSubst { body: AndOr {
+      left: WithRedir {
+        stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
+        redir: StderrToNull
+      },
+      op: OrElse,
+      right: command(words: [lit(text: "pwd")])
+    } }),
+    assign(name: "GUNBC", value: Concat { parts: [root, lit(text: "/target/release/gunbc")] }),
+    If {
+      cond: test_not_executable(path: gunbc),
+      then: [
+        AndOr {
+          left: Subshell { body: [
+            AndOr {
+              left: command(words: [lit(text: "cd"), root]),
+              op: AndThen,
+              right: command(words: [
+                lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
+                lit(text: "--release"), lit(text: "--bin"), lit(text: "gunbc")
+              ])
+            }
+          ] },
+          op: OrElse,
+          right: Exit { code: 1 }
+        }
+      ]
+    }
+  ]
+}
+
+// 🟡 toolchain-provision carve-out — dissolve-on: model ToolchainProvision in std;
+//   interim structural allow for emit_host go/ts provisioning workarounds. Callers pass
+//   literal blobs here; the wrapper's shell.Exec.Run uses the parameter (computed), not
+//   a literal at the transport site.
+fn toolchain_provision_shell_exec(script: String) -> Bool {
+  let result = shell.Exec.Run(script: script)
+  result.success
+}

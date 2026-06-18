@@ -11,6 +11,8 @@ module v2.extdeps.languages.llvm_ir
 
 import v2.extdeps.languages.fidelity { FidelityDisposition }
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   FormalProduction,
   ParseGrammar,
   GrammarExpr,
@@ -854,7 +856,7 @@ fn llvm_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
 
 
 fn llvm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 

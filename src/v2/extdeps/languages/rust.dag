@@ -6,6 +6,8 @@
 module v2.extdeps.languages.rust
 
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -1143,7 +1145,7 @@ fn rust_mvp1_serialize_source_node() -> Node {
 }
 
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 type RustGramBuild1State
