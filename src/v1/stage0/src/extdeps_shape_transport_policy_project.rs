@@ -207,7 +207,7 @@ fn argv_token_is_consumer_policy_literal(token: &str) -> bool {
     if token.contains('{') && token.contains('}') {
         return false;
     }
-    if token == "diff" || token == "--name-only" || token == "git" || token == "--no-deps" {
+    if token == "diff" || token == "--name-only" || token == "git" || token == "--no-deps" || token == "..." {
         return false;
     }
     token == "--all-targets"
@@ -431,6 +431,7 @@ mod tests {
     }
 
     #[test]
+<<<<<<< HEAD
     fn cargo_fmt_dead_param_defused_on_live_tree() {
         assert_eq!(
             dead_param_count_for_module_path(
@@ -450,6 +451,11 @@ mod tests {
                 "cargo.Build".to_string(),
                 "Doc".to_string(),
             ),
+=======
+    fn git_policy_leak_defused_by_module_path() {
+        assert_eq!(
+            policy_leak_count_for_module_path("extdeps.git".to_string()),
+>>>>>>> 67591ca46 (WIP: Dissolve filepath literals → QualifiedName over the derived module set ()
             0
         );
     }
