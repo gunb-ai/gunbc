@@ -19,6 +19,7 @@ import std.lens_verdict {
   LensVerdictDiagnostic,
   Holds,
   Violation,
+  ModuleWholeFile,
 }
 
 // dissolve-on: extdeps/realization measured cost handlers — add `basis: CostBasis`

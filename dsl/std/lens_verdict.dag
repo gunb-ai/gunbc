@@ -24,32 +24,3 @@ type LensVerdict
   | Violation { diagnostic: LensVerdictDiagnostic }
   | NotApplicable { diagnostic: LensVerdictDiagnostic }
   | Unrealized { diagnostic: LensVerdictDiagnostic }
-
-fn lens_verdict_diagnostic_module(d: LensVerdictDiagnostic) -> String {
-  match d.at {
-    ModuleWholeFile { module_name: m } => m
-  }
-}
-
-fn lens_verdict_is_fail_closed(verdict: LensVerdict) -> Bool {
-  match verdict {
-    Unrealized { diagnostic: _ } => true
-    _ => false
-  }
-}
-
-fn lens_verdict_is_violation(verdict: LensVerdict) -> Bool {
-  match verdict {
-    Violation { diagnostic: _ } => true
-    _ => false
-  }
-}
-
-fn lens_verdict_locus_module(verdict: LensVerdict) -> String {
-  match verdict {
-    Holds => "std.lens_verdict"
-    Violation { diagnostic: d } => lens_verdict_diagnostic_module(d: d)
-    NotApplicable { diagnostic: d } => lens_verdict_diagnostic_module(d: d)
-    Unrealized { diagnostic: d } => lens_verdict_diagnostic_module(d: d)
-  }
-}
