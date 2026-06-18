@@ -260,31 +260,42 @@ srv1/srv2:** a self-hosted runner is one `ComputeOffer`; GHA-hosted, `Ubicloud`,
 (already enumerated, `compute_fabric.dag:71`). This meets note 1 at the placement carrier — the offer the
 runner *declares* is the budget Phase 1's scheduler *consumes*.
 
-**§3 boundary (decisive — and already declared by `compute_fabric`'s own header):**
+**§3 boundary — THREE tiers, not two (refined after the #5177 review).** The operator's rule: keep the
+*generic* "CI runner" cleanly apart from *our* CI runner; CI does not need to know our fleet. So:
 
-- **3a — public gunbc substrate (this repo).** The *provisioning schema* is `product.compute_fabric`
-  (already exists: `ComputeOffer`/`WorkDemand`/`satisfies`/`ExecutionReceipt`). Extend `RunnerSpec`
-  (`actions.dag:233` — `SelfHosted{labels}` is stringly today; its dissolution note calls for a "typed
-  runner-label substrate … where the compiler owns runner topology") so a runner spec is the GHA
-  *realization* of a `compute_fabric` offer/demand (runner labels ≈ the demand's isolation/locality). ci.yml
-  **is already generated and byte-drift-gated** — generator `expected_ci_yml()`
-  (`dsl/gunbc/ci_yaml_emit.dag:9`), gate `dsl/tools/ci_yaml_gate.dag`, validate
-  `dsl/gunbc/ci_yaml_validate.dag` — so this is **extend existing generation, not build new**. The concrete
-  seam (start-now, measurement-free): `ci_yaml_emit.dag` emits `runs-on: [self-hosted,linux,arm64]` as a
-  **literal** today; route it through `RunnerSpec` derived from a `compute_fabric` `ComputeOffer` (the
-  carrier's own dissolution trigger, `actions.dag:226-232`, names "gunbc/ci_emission.dag projection for
-  emitted workflow YAML"). DFS before minting: `compute_fabric` first, then `extdeps/github/actions.dag`,
-  `extdeps/os/{ubuntu,…}`, `extdeps/container`, `extdeps/docker`, `extdeps/cloud`, `dsl/std/os.dag`.
-  ⚠️ Ignore the stale `extdeps/github/ci.dag:7` "hand-edited, not generated" comment (track for deletion).
-- **3b — private ctrl instantiation (separate, NOT this PR).** The *concrete* srv1/srv2 facts — access
-  creds, runner registration tokens, the exact SKUs each host runs, host provisioning — are **ctrl-tier
-  private**, in **ctrl `plans.fabric.operator_fleet`** (named by `compute_fabric.dag:5`;
-  `hardware_selection.dag:8`; memory `idea-pr-compiler-ctrl-boundary`). They are concrete `ComputeOffer`
-  rows instantiated *against* the 3a public fabric schema. Out of scope for the public plan except to fix
-  the seam 3a must expose.
+- **3a-generic — "CI runner" in the abstract (any project).** What we expect *any* CI runner to do,
+  project-agnostic: **a workflow triggered by an event** (`trigger → workflow`), realized per platform.
+  The GHA realization already exists — `Workflow{ on: List<WorkflowTrigger>, jobs }` + `WorkflowTrigger`
+  (`actions.dag:56,79`) and `RunnerSpec` (`:233`). The **generic `offer → RunnerSpec` projection**
+  (`runner_spec_from_offer`, kernel/arch → labels) belongs HERE, next to `RunnerSpec` in the generalized
+  layer — it works for *any* fleet offer. **This tier MUST NOT import a concrete SKU
+  (`extdeps.cpu.ampere`) or name srv1/srv2.** (GitLab/Buildkite/etc. would be sibling platform handlers —
+  one generic interface, N realizations, §2/§4.)
+- **3a-ours — OUR gunbc CI runner (our repo's META-modeling).** OUR workflow instance + OUR fleet: the
+  srv1/srv2 *instantiation* (the Ampere-Altra `ComputeOffer`, the `gunbc-ci-fleet` identity, the
+  per-thread Hz). This **must live in a file that is gunbc's own meta-model** (`dsl/gunbc/ci_*`), and it
+  *consumes* the 3a-generic interface — it is where the concrete SKU import is legitimate. The srv1/srv2
+  instantiation meta-model is public-in-our-repo; only secrets cross into ctrl.
+- **3b — ctrl concrete fleet (private).** Access creds, runner registration tokens, truly-secret per-host
+  config — **ctrl `plans.fabric.operator_fleet`** (`compute_fabric.dag:5`; `hardware_selection.dag:8`;
+  memory `idea-pr-compiler-ctrl-boundary`). Concrete rows instantiated against the 3a-ours meta-model.
 
-**Dissolution trigger:** `.github/workflows/ci.yml` is emitted from a `.dag` runner+floor spec (no
-hand-authored runner block); the `HardwareBudget` the scheduler reads is the one the runner spec declares.
+**⚠️ #5177 needs this rework (do right after it merges).** `dsl/gunbc/ci_runner.dag` as merged **fuses
+3a-generic with 3a-ours**: the generic `runner_spec_from_offer` projection + kernel/arch label tables sit
+in the *same module* as our concrete fleet (`gunbc_ci_cpu = altra_q6430_catalog`, `gunbc_ci_host_identity
+= "gunbc-ci-fleet"`), and it `import extdeps.cpu.ampere` — a concrete SKU — into what should be the
+generic interface. Split it: **generic projection → the generalized layer beside `RunnerSpec`** (no SKU
+import, no fleet rows); **our fleet offer → a `dsl/gunbc/` meta-model file** that consumes the generic
+projection. Keep the generic interface MINIMAL (trigger→workflow + offer→RunnerSpec) — "CI doesn't need
+to know everything." ci.yml stays generated + byte-drift-gated (`expected_ci_yml()`
+`dsl/gunbc/ci_yaml_emit.dag:9`, gate `dsl/tools/ci_yaml_gate.dag`); the emit consumes *our* runner spec,
+which is *our* fleet offer projected through the *generic* seam. ⚠️ also delete the stale
+`extdeps/github/ci.dag:7` "hand-edited, not generated" comment.
+
+**Dissolution trigger:** `.github/workflows/ci.yml` is emitted from a `.dag` spec whose runner block is
+*our* fleet offer projected through the *generic* `offer → RunnerSpec` seam (no hand-authored runner
+block, no fleet SKU in the generic tier); the `HardwareBudget` the scheduler reads is the one *our* offer
+declares.
 
 ---
 
