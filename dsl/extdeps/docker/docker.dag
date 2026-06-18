@@ -16,15 +16,14 @@
 
 module extdeps.docker
 
-import std.types { FilePath, NonEmptyStr }
-import extdeps.container.oci.types { OciDigest }
+import std.types { FilePath, NonEmptyStr, ContentHash }
 
 // -- Images ----------------------------------------------------------
 
 type DockerImage {
   repository: NonEmptyStr   // e.g. "ctrl-session"
   tag: NonEmptyStr          // e.g. "latest"
-  digest: OciDigest?           // Some("sha256:...") when pinned; None when by-tag only
+  digest: ContentHash?           // Some("sha256:...") when pinned; None when by-tag only
 }
 
 // -- Mounts ----------------------------------------------------------

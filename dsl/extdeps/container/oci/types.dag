@@ -1,80 +1,84 @@
 // extdeps/container/oci/types.dag — shared OCI grounded types (image-spec + runtime-spec).
 //
-// Wire strings from JSON ingress are parsed into these facts at the boundary;
-// egress re-encodes via the paired label functions.
+// Wire strings from JSON ingress are parsed into std facts at the boundary;
+// egress re-encodes via the paired label functions. Reuse std types — do not re-mint.
 
 module extdeps.container.oci.types
 
-import std.types { NonEmptyStr, Port, SemVer, FilePath }
-
-// OCI content digest: algorithm-prefixed hash (image-spec descriptor.md).
-// Wire form: "sha256:<64 lowercase hex chars>".
-type OciDigest = NonEmptyStr where brand("OciDigest")
-
-// Image platform architecture (image-spec config.md `architecture` field).
-// Closed on the GOARCH values the spec names; unknown wire tokens stay explicit.
-type ImagePlatformArchitecture
-  = ImageArchAmd64
-  | ImageArchArm64
-  | ImageArch386
-  | ImageArchArm
-  | ImageArchRiscv64
-  | ImageArchWasm
-  | ImageArchUnknown { raw: String }
-
-// Image platform OS (image-spec config.md `os` field).
-type ImagePlatformOs
-  = ImageOsLinux
-  | ImageOsWindows
-  | ImageOsDarwin
-  | ImageOsUnknown { raw: String }
-
-data image_arch_amd64_wire: String = "amd64"
-data image_arch_arm64_wire: String = "arm64"
-data image_arch_386_wire: String = "386"
-data image_arch_arm_wire: String = "arm"
-data image_arch_riscv64_wire: String = "riscv64"
-data image_arch_wasm_wire: String = "wasm"
-
-data image_os_linux_wire: String = "linux"
-data image_os_windows_wire: String = "windows"
-data image_os_darwin_wire: String = "darwin"
-
-fn parse_image_platform_architecture(raw: String) -> ImagePlatformArchitecture {
-  if raw == image_arch_amd64_wire { ImageArchAmd64 }
-  else if raw == image_arch_arm64_wire { ImageArchArm64 }
-  else if raw == image_arch_386_wire { ImageArch386 }
-  else if raw == image_arch_arm_wire { ImageArchArm }
-  else if raw == image_arch_riscv64_wire { ImageArchRiscv64 }
-  else if raw == image_arch_wasm_wire { ImageArchWasm }
-  else { ImageArchUnknown { raw: raw } }
+import std.types {
+  Aarch64,
+  Arch,
+  Arm,
+  ContentHash,
+  FilePath,
+  Linux,
+  Macos,
+  NonEmptyStr,
+  Os,
+  Port,
+  Riscv64,
+  SemVer,
+  Wasm32,
+  Windows,
+  X86,
+  X86_64,
 }
 
-fn image_platform_architecture_label(arch: ImagePlatformArchitecture) -> String {
+// GOARCH/GOOS boundary decode (image-spec config.md) → std Arch/Os.
+data goarch_amd64_wire: String = "amd64"
+data goarch_arm64_wire: String = "arm64"
+data goarch_386_wire: String = "386"
+data goarch_arm_wire: String = "arm"
+data goarch_riscv64_wire: String = "riscv64"
+data goarch_wasm_wire: String = "wasm"
+
+data goos_linux_wire: String = "linux"
+data goos_windows_wire: String = "windows"
+data goos_darwin_wire: String = "darwin"
+
+type ImageConfigGoarchParse
+  = ImageConfigGoarchKnown { value: Arch }
+  | ImageConfigGoarchUnknown { wire: String }
+
+type ImageConfigGoosParse
+  = ImageConfigGoosKnown { value: Os }
+  | ImageConfigGoosUnknown { wire: String }
+
+fn parse_image_config_goarch(raw: String) -> ImageConfigGoarchParse {
+  if raw == goarch_amd64_wire { ImageConfigGoarchKnown { value: X86_64 } }
+  else if raw == goarch_arm64_wire { ImageConfigGoarchKnown { value: Aarch64 } }
+  else if raw == goarch_386_wire { ImageConfigGoarchKnown { value: X86 } }
+  else if raw == goarch_arm_wire { ImageConfigGoarchKnown { value: Arm } }
+  else if raw == goarch_riscv64_wire { ImageConfigGoarchKnown { value: Riscv64 } }
+  else if raw == goarch_wasm_wire { ImageConfigGoarchKnown { value: Wasm32 } }
+  else { ImageConfigGoarchUnknown { wire: raw } }
+}
+
+fn image_config_goarch_label(arch: Arch) -> String {
   match arch {
-    ImageArchAmd64 => image_arch_amd64_wire
-    ImageArchArm64 => image_arch_arm64_wire
-    ImageArch386 => image_arch_386_wire
-    ImageArchArm => image_arch_arm_wire
-    ImageArchRiscv64 => image_arch_riscv64_wire
-    ImageArchWasm => image_arch_wasm_wire
-    ImageArchUnknown { raw: r } => r
+    X86_64 => goarch_amd64_wire
+    Aarch64 => goarch_arm64_wire
+    X86 => goarch_386_wire
+    Arm => goarch_arm_wire
+    Riscv64 => goarch_riscv64_wire
+    Wasm32 => goarch_wasm_wire
+    _ => ""
   }
 }
 
-fn parse_image_platform_os(raw: String) -> ImagePlatformOs {
-  if raw == image_os_linux_wire { ImageOsLinux }
-  else if raw == image_os_windows_wire { ImageOsWindows }
-  else if raw == image_os_darwin_wire { ImageOsDarwin }
-  else { ImageOsUnknown { raw: raw } }
+fn parse_image_config_goos(raw: String) -> ImageConfigGoosParse {
+  if raw == goos_linux_wire { ImageConfigGoosKnown { value: Linux } }
+  else if raw == goos_windows_wire { ImageConfigGoosKnown { value: Windows } }
+  else if raw == goos_darwin_wire { ImageConfigGoosKnown { value: Macos } }
+  else { ImageConfigGoosUnknown { wire: raw } }
 }
 
-fn image_platform_os_label(os: ImagePlatformOs) -> String {
+fn image_config_goos_label(os: Os) -> String {
   match os {
-    ImageOsLinux => image_os_linux_wire
-    ImageOsWindows => image_os_windows_wire
-    ImageOsDarwin => image_os_darwin_wire
-    ImageOsUnknown { raw: r } => r
+    Linux => goos_linux_wire
+    Windows => goos_windows_wire
+    Macos => goos_darwin_wire
+    _ => ""
   }
 }
 
@@ -133,14 +137,14 @@ fn runtime_mount_source_label(source: RuntimeMountSource) -> String {
 // OCI runtime bundle version (runtime-spec config.md `ociVersion`).
 type OciRuntimeVersion = SemVer
 
-// OCI media type (image-spec media-types.md). Closed on the v1 types we cite.
+// OCI media type (image-spec media-types.md). Known registry rows + open escape for extensions.
 type OciMediaType
   = OciImageManifestV1
   | OciImageConfigV1
   | OciImageLayerV1TarGzip
   | OciImageIndexV1
   | OciDescriptorV1
-  | OciMediaTypeUnknown { raw: String }
+  | OciMediaTypeOther { raw: NonEmptyStr }
 
 data oci_media_type_manifest_v1_wire: String = "application/vnd.oci.image.manifest.v1+json"
 data oci_media_type_config_v1_wire: String = "application/vnd.oci.image.config.v1+json"
@@ -154,7 +158,7 @@ fn parse_oci_media_type(raw: String) -> OciMediaType {
   else if raw == oci_media_type_layer_v1_tar_gzip_wire { OciImageLayerV1TarGzip }
   else if raw == oci_media_type_index_v1_wire { OciImageIndexV1 }
   else if raw == oci_media_type_descriptor_v1_wire { OciDescriptorV1 }
-  else { OciMediaTypeUnknown { raw: raw } }
+  else { OciMediaTypeOther { raw: raw } }
 }
 
 fn oci_media_type_label(media_type: OciMediaType) -> String {
@@ -164,6 +168,6 @@ fn oci_media_type_label(media_type: OciMediaType) -> String {
     OciImageLayerV1TarGzip => oci_media_type_layer_v1_tar_gzip_wire
     OciImageIndexV1 => oci_media_type_index_v1_wire
     OciDescriptorV1 => oci_media_type_descriptor_v1_wire
-    OciMediaTypeUnknown { raw: r } => r
+    OciMediaTypeOther { raw: r } => r
   }
 }

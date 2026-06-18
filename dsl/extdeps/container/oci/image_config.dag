@@ -8,14 +8,9 @@ module extdeps.container.oci.image_config
 import extdeps.container.oci.types {
   ContainerExposedPort,
   ContainerPortProtocol,
-  ImagePlatformArchitecture,
-  ImagePlatformOs,
-  ImageArchUnknown,
-  ImageOsUnknown,
-  OciDigest,
   Tcp,
 }
-import std.types { Bool, FilePath, NonEmptyStr }
+import std.types { Arch, Bool, ContentHash, FilePath, NonEmptyStr, Os }
 
 type ContainerImageConfig {
   User: NonEmptyStr?
@@ -27,41 +22,31 @@ type ContainerImageConfig {
 }
 
 type ImageRootfs
-  = RootfsLayers { diff_ids: List<OciDigest> }
+  = RootfsLayers { diff_ids: List<ContentHash> }
 
 type ImageConfiguration {
-  architecture: ImagePlatformArchitecture
-  os: ImagePlatformOs
+  architecture: Arch
+  os: Os
   config: ContainerImageConfig?
   rootfs: ImageRootfs
 }
 
+// dissolve-on: delete ImageConfigRejectUnspecified when a second real reject reason lands.
 type ImageConfigRejectReason
-  = UnknownArchitecture { raw: String }
-  | UnknownOs { raw: String }
-  | EmptyDiffIds
+  = EmptyDiffIds
+  | ImageConfigRejectUnspecified
 
 type ImageConfigOutcome
   = ImageConfigAccepted { value: ImageConfiguration }
   | ImageConfigRejected { reason: ImageConfigRejectReason }
 
 fn accept_image_configuration(c: ImageConfiguration) -> ImageConfigOutcome {
-  match c.architecture {
-    ImageArchUnknown { raw: r } =>
-      ImageConfigRejected { reason: UnknownArchitecture { raw: r } }
-    _ =>
-      match c.os {
-        ImageOsUnknown { raw: r } =>
-          ImageConfigRejected { reason: UnknownOs { raw: r } }
-        _ =>
-          match c.rootfs {
-            RootfsLayers { diff_ids: ids } =>
-              if count(ids) == 0 {
-                ImageConfigRejected { reason: EmptyDiffIds }
-              } else {
-                ImageConfigAccepted { value: c }
-              }
-          }
+  match c.rootfs {
+    RootfsLayers { diff_ids: ids } =>
+      if count(ids) == 0 {
+        ImageConfigRejected { reason: EmptyDiffIds }
+      } else {
+        ImageConfigAccepted { value: c }
       }
   }
 }

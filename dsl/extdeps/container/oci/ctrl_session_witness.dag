@@ -23,7 +23,6 @@ import extdeps.container.oci.image_config {
   accept_image_configuration,
   image_config_has_exposed_port,
   image_config_entrypoint,
-  image_config_first_exposed_port,
   image_config_layer_count,
 }
 import extdeps.container.oci.linux {
@@ -69,28 +68,32 @@ import extdeps.container.oci.runtime_config {
 }
 import extdeps.container.oci.types {
   ContainerExposedPort,
-  ImageArchArm64,
-  ImageOsLinux,
-  ImageOsUnknown,
+  ImageConfigGoarchKnown,
+  ImageConfigGoarchUnknown,
+  ImageConfigGoosKnown,
+  ImageConfigGoosUnknown,
   MountSymbolicSource,
-  OciDigest,
+  OciMediaTypeOther,
   RuntimeMountTmpfs,
   Tcp,
+  parse_image_config_goarch,
+  parse_image_config_goos,
+  parse_oci_media_type,
 }
-import std.types { Bool }
+import std.types { Aarch64, Bool, ContentHash, Linux }
 
-data ctrl_session_config_digest: OciDigest = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
+data ctrl_session_config_digest: ContentHash = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
 
 data ctrl_session_config_size: Int = 34025
 
-data ctrl_session_layer0_digest: OciDigest = "sha256:402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a"
+data ctrl_session_layer0_digest: ContentHash = "sha256:402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a"
 
 data ctrl_session_layer0_size: Int = 28122307
 
 // Slice-0 fixture encodes manifest layer[0] + matching rootfs diff_ids[0] only
 // (full ctrl-session export has 33 layers; not all inlined in this witness).
 
-data ctrl_session_first_diff_id: OciDigest = "sha256:5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299"
+data ctrl_session_first_diff_id: ContentHash = "sha256:5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299"
 
 data ctrl_session_manifest: ImageManifest = {
   schemaVersion: oci_image_schema_version,
@@ -110,8 +113,8 @@ data ctrl_session_manifest: ImageManifest = {
 }
 
 data ctrl_session_image_config: ImageConfiguration = {
-  architecture: ImageArchArm64,
-  os: ImageOsLinux,
+  architecture: Aarch64,
+  os: Linux,
   config: {
     User: null,
     Env: [
@@ -223,24 +226,39 @@ fn witness_descriptor_rejects_negative_size() -> Bool {
 fn witness_image_config_accepts() -> Bool {
   match accept_image_configuration(ctrl_session_image_config) {
     ImageConfigAccepted { value: c } =>
-      c.architecture == ImageArchArm64
-        && c.os == ImageOsLinux
+      c.architecture == Aarch64
+        && c.os == Linux
         && image_config_has_exposed_port(c: c, expected_port: 7681, protocol: Tcp)
         && count(image_config_entrypoint(c)) == 4
     ImageConfigRejected { reason: _ } => false
   }
 }
 
-fn witness_image_config_rejects_unknown_os() -> Bool {
-  let bad = {
-    architecture: ImageArchArm64,
-    os: ImageOsUnknown { raw: "plan9" },
-    config: null,
-    rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
+fn witness_goarch_parses_arm64_wire() -> Bool {
+  match parse_image_config_goarch("arm64") {
+    ImageConfigGoarchKnown { value: arch } => arch == Aarch64
+    ImageConfigGoarchUnknown { wire: _ } => false
   }
-  match accept_image_configuration(bad) {
-    ImageConfigRejected { reason: _ } => true
-    ImageConfigAccepted { value: _ } => false
+}
+
+fn witness_goarch_rejects_unknown_wire() -> Bool {
+  match parse_image_config_goarch("plan9") {
+    ImageConfigGoarchUnknown { wire: _ } => true
+    ImageConfigGoarchKnown { value: _ } => false
+  }
+}
+
+fn witness_goos_rejects_unknown_wire() -> Bool {
+  match parse_image_config_goos("plan9") {
+    ImageConfigGoosUnknown { wire: _ } => true
+    ImageConfigGoosKnown { value: _ } => false
+  }
+}
+
+fn witness_media_type_other_accepts_extension() -> Bool {
+  match parse_oci_media_type("application/vnd.custom.example+json") {
+    OciMediaTypeOther { raw: r } => r == "application/vnd.custom.example+json"
+    _ => false
   }
 }
 
@@ -294,7 +312,10 @@ fn main() -> Bool {
     && witness_manifest_rejects_bad_schema()
     && witness_descriptor_rejects_negative_size()
     && witness_image_config_accepts()
-    && witness_image_config_rejects_unknown_os()
+    && witness_goarch_parses_arm64_wire()
+    && witness_goarch_rejects_unknown_wire()
+    && witness_goos_rejects_unknown_wire()
+    && witness_media_type_other_accepts_extension()
     && witness_runtime_config_accepts()
     && witness_linux_namespaces_count()
     && witness_linux_memory_limit()
