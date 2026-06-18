@@ -1,0 +1,49 @@
+// Scope: lens-unit DISCRIMINATING witness — the inline-shell reducibility lens reds a
+//   fused `shell.Exec.Run(script:)` program and passes a decomposed modeled argv.
+// The fused program is the real run_clean_tree_gate blob from
+//   dsl/tools/layering_imports_transport.dag (git rev-parse + cargo build + gunbc run + an
+//   `if` — multiple modeled effects and control flow fused into one String).
+// Status: 🟡 DRAFT-until-signed.
+
+module v2.test.shell_program_reducibility.lens_unit.inline_shell_reducible
+
+import v2.lens.shell_program_reducibility {
+  FusedScript,
+  ModeledArgv,
+  ShellInvocationFact,
+  shell_program_reducibility_clean_holds,
+  shell_program_reducibility_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data layering_path: String = "dsl/tools/layering_imports_transport.dag"
+
+// The good form: shell.Find.ListDirs argv tokens are decomposed — Irreducible.
+data modeled_facts: List<ShellInvocationFact> = [
+  ShellInvocationFact {
+    path: "dsl/extdeps/shell/shell.dag",
+    caller: "shell.Find.ListDirs",
+    shape: ModeledArgv { token_count: 7 }
+  }
+]
+
+// The anti-form: an entire shell program in one String.
+data fused_facts: List<ShellInvocationFact> = [
+  ShellInvocationFact {
+    path: layering_path,
+    caller: "run_clean_tree_gate",
+    shape: FusedScript {
+      program: "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$ROOT\"\nbash scripts/layering-imports-scan.sh \"$ROOT\" \"$MANIFEST\"\nif [ ! -x \"$GUNBC\" ]; then cargo build -p v1-compiler --release --bin gunbc || exit 1; fi\n\"$GUNBC\" run --source-root src/v2 --entry clean_tree.dag --claim-run"
+    }
+  }
+]
+
+// Discriminating: modeled form is clean; the fused blob is NOT. If the lens were
+// tautological (always-clean), the `== false` conjunct reds; if always-dirty, the
+// `== true` conjunct reds.
+test fn inline_shell_reducibility_discriminates_holds() -> Bool {
+  shell_program_reducibility_clean_holds(facts: modeled_facts) == true
+    && shell_program_reducibility_clean_holds(facts: fused_facts) == false
+    && shell_program_reducibility_violation_count(facts: fused_facts) == 1
+}
