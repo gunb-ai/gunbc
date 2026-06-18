@@ -48,6 +48,31 @@ fn assert_witness_true(entry: &str, witness_fn: &str) {
 }
 
 #[test]
+fn extdeps_argv_projection_cargo_fmt_doc_defused_on_live_tree() {
+    let root = workspace_root();
+    let path = root
+        .join("dsl/extdeps/rust/cargo_build.dag")
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(
+        extdeps_shape_transport_policy_project::dead_param_count_for_operation(
+            path.clone(),
+            "cargo.Build".to_string(),
+            "Fmt".to_string(),
+        ),
+        0
+    );
+    assert_eq!(
+        extdeps_shape_transport_policy_project::dead_param_count_for_operation(
+            path,
+            "cargo.Build".to_string(),
+            "Doc".to_string(),
+        ),
+        0
+    );
+}
+
+#[test]
 fn extdeps_argv_projection_cargo_clippy_defused_on_live_tree() {
     let root = workspace_root();
     assert_eq!(
@@ -81,6 +106,14 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "policy_leak_cargo_build_is_red_holds",
         ),
         (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_fmt_test.dag",
+            "policy_leak_cargo_fmt_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/policy_leak_cargo_doc_test.dag",
+            "policy_leak_cargo_doc_is_red_holds",
+        ),
+        (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
             "clean_git_diff_is_green_holds",
         ),
@@ -99,6 +132,22 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
         (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
             "corpus_cargo_clippy_dead_param_defused_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_fmt_dead_param_test.dag",
+            "corpus_cargo_fmt_dead_param_defused_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_doc_dead_param_test.dag",
+            "corpus_cargo_doc_dead_param_defused_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_fmt_policy_leak_test.dag",
+            "corpus_cargo_fmt_defused_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_doc_policy_leak_test.dag",
+            "corpus_cargo_doc_defused_holds",
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/gcp_login_dead_param_test.dag",

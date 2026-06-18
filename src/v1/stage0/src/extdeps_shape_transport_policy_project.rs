@@ -280,4 +280,28 @@ mod tests {
             0
         );
     }
+
+    #[test]
+    fn cargo_fmt_dead_param_defused_on_live_tree() {
+        assert_eq!(
+            dead_param_count_for_operation(
+                "dsl/extdeps/rust/cargo_build.dag".to_string(),
+                "cargo.Build".to_string(),
+                "Fmt".to_string(),
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn cargo_doc_dead_param_defused_on_live_tree() {
+        assert_eq!(
+            dead_param_count_for_operation(
+                "dsl/extdeps/rust/cargo_build.dag".to_string(),
+                "cargo.Build".to_string(),
+                "Doc".to_string(),
+            ),
+            0
+        );
+    }
 }
