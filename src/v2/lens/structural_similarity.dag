@@ -14,7 +14,7 @@ import std.lens_verdict {
   ModuleWholeFile,
   Unrealized,
 }
-import v2.std.collection { List, Map }
+import v2.std.collection { List }
 import v2.std.nat { Nat, Zero }
 import v2.std.node { Symbol }
 

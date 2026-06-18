@@ -5,9 +5,8 @@
 module v2.test.lens_identical_variant_payload.sg_claims
 
 
+import std.lens_verdict { LensVerdict, Unrealized }
 import v2.lens.identical_variant_payload {
-  IdenticalVariantPayloadVerdict,
-  Unrealized,
   identical_variant_payload_fact_for_type
 }
 import v2.std.logic { Bool }
@@ -22,9 +21,9 @@ import v2.std.verification {
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 
 
-fn ivp_verdict_is_unrealized(verdict: IdenticalVariantPayloadVerdict) -> Bool {
+fn ivp_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   match verdict {
-    Unrealized => true
+    Unrealized { diagnostic: _ } => true
     _ => false
   }
 }

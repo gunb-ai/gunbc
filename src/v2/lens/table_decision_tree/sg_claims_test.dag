@@ -6,9 +6,8 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
 
+import std.lens_verdict { LensVerdict, Unrealized }
 import v2.lens.table_decision_tree {
-  TableDecisionTreeVerdict,
-  Unrealized,
   table_decision_tree_fact_for_fn
 }
 import v2.std.logic { Bool }
@@ -20,10 +19,9 @@ import v2.test.lens_common.infer_fixture { claim_atom_node }
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
 
 
-// treating this as a permanent variant-discriminant authority.
-fn tdt_verdict_is_unrealized(verdict: TableDecisionTreeVerdict) -> Bool {
+fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   match verdict {
-    Unrealized => true
+    Unrealized { diagnostic: _ } => true
     _ => false
   }
 }
