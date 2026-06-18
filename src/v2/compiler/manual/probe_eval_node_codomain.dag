@@ -1,0 +1,38 @@
+// PROBE SCRATCH — eval_node codomain over a known-green eval tree.
+module v2.test.manual.probe_eval_node_codomain
+
+import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
+import v2.test.manual.eval_runtime_mvp { eval_mvp2_inferred_tree, eval_mvp2_add_subgraph, eval_mvp2_interpretation_algebra }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Node }
+import v2.std.runtime { RuntimeValue }
+
+fn probe_eval_node_actual() -> Outcome<Node> {
+  eval_node(
+    tree: eval_mvp2_inferred_tree(),
+    inputs: inputs_root_only(root: eval_mvp2_add_subgraph())
+  )
+}
+
+fn probe_eval_value_actual() -> Outcome<RuntimeValue> {
+  eval(
+    tree: eval_mvp2_inferred_tree(),
+    interpretation: eval_mvp2_interpretation_algebra(),
+    inputs: inputs_root_only(root: eval_mvp2_add_subgraph())
+  )
+}
+
+// eval itself is green (Accepted RuntimeValue) — isolates the failure to the Node projection.
+test fn probe_eval_value_returns_accepted() -> Bool {
+  match probe_eval_value_actual() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn probe_eval_node_returns_accepted() -> Bool {
+  match probe_eval_node_actual() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
