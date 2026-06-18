@@ -9,7 +9,7 @@ module tools.source_root_ingest_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.source_root_ingest_transport { run_real_ingest_gate }
 
-func main() -> ProcessExit {
+func run_gate() -> ProcessExit {
   if run_real_ingest_gate() {
     ExitSuccess
   } else {
@@ -19,13 +19,13 @@ func main() -> ProcessExit {
   }
 }
 
-// Composed CI gate entry point (tools.ci_gates imports this name).
+func main() -> ProcessExit {
+  run_gate()
+}
+
+// Composed CI entry point (tools.ci_gates imports this name).
+// Must call run_gate — unqualified main() resolves to tools.ci_gates.main
+// (run_ci_gates over every gate) when invoked from run_spec_gate.
 func run_source_root_ingest_ci_gate() -> ProcessExit {
-  if run_real_ingest_gate() {
-    ExitSuccess
-  } else {
-    exit_failure(
-      reason: "source root ingest gate failed: host manifest overlay + real_ingest_test receipts"
-    )
-  }
+  run_gate()
 }
