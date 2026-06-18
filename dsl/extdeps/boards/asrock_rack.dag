@@ -1,0 +1,24 @@
+// extdeps/boards/asrock_rack.dag — ASRock Rack baseboard catalog (cited facts).
+//
+// Anchor: ASRock Rack ALTRAD8UD-1L2T User Manual
+//   https://download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf
+// Single-socket Ampera Altra/Altra Max (LGA4926) server board. Its BMC runs OpenBMC
+// (manual p.47), so the board does NOT restate any default login — it points at the
+// OpenBmc firmware family, whose cited factory credential lives in extdeps/bmc/openbmc.dag
+// (DESIGN §3 single authority; the board derives, never duplicates).
+
+module extdeps.boards.asrock_rack
+
+import std.baseboard {
+  BaseboardCatalogRow,
+  AsrockRack,
+  AsrockRackAltrad8ud1l2t,
+}
+import std.bmc { OpenBmc }
+
+data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
+  model: AsrockRackAltrad8ud1l2t,
+  manufacturer: AsrockRack,
+  model_label: "ASRock Rack ALTRAD8UD-1L2T",
+  bmc_firmware: OpenBmc,
+}
