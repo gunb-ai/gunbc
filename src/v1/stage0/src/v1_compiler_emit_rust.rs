@@ -5,7 +5,8 @@ pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     rt_bridge_function_names, rt_functions, rt_ref_map_functions, rt_wraps_result,
     rust_container_templates, rust_enum_derives, rust_enum_derives_copy, rust_higher_order_methods,
-    rust_method_templates, rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy,
+    rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
+    rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -880,8 +881,12 @@ pub fn rust_string_as_authored_policy() -> Rc<RustEnumWireSerde> {
 }
 
 pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
+    rust_serde_policy(rust_serde_rename_all_snake_case(), None, None, None)
+}
+
+pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
     rust_serde_policy(
-        "#[serde(rename_all = \"snake_case\")]".to_string(),
+        rust_serde_rename_all_screaming_snake_case(),
         None,
         None,
         None,
@@ -974,47 +979,51 @@ pub fn rust_string_policy_for_naming(
             if (naming_name.clone().as_str() == "SnakeCase".to_string().as_str()) {
                 rust_snake_string_policy()
             } else {
-                if (naming_name.clone().as_str() == "StripPrefixAndSnakeCase".to_string().as_str())
-                {
-                    match required_literal_string_policy_field(
-                        naming.clone(),
-                        "prefix".to_string(),
-                        source_indices.clone(),
-                    ) {
-                        Some(prefix) => rust_serde_policy(
-                            "".to_string(),
-                            Some(prefix.clone()),
-                            None,
-                            Some("StripAffixAndSnakeCase".to_string()),
-                        ),
-                        None => rust_serde_error_policy(
-                            "StripPrefixAndSnakeCase requires a literal prefix".to_string(),
-                        ),
-                    }
+                if (naming_name.clone().as_str() == "ScreamingSnakeCase".to_string().as_str()) {
+                    rust_screaming_snake_string_policy()
                 } else {
                     if (naming_name.clone().as_str()
-                        == "StripSuffixAndSnakeCase".to_string().as_str())
+                        == "StripPrefixAndSnakeCase".to_string().as_str())
                     {
                         match required_literal_string_policy_field(
                             naming.clone(),
-                            "suffix".to_string(),
+                            "prefix".to_string(),
                             source_indices.clone(),
                         ) {
-                            Some(suffix) => rust_serde_policy(
+                            Some(prefix) => rust_serde_policy(
                                 "".to_string(),
+                                Some(prefix.clone()),
                                 None,
-                                Some(suffix.clone()),
                                 Some("StripAffixAndSnakeCase".to_string()),
                             ),
                             None => rust_serde_error_policy(
-                                "StripSuffixAndSnakeCase requires a literal suffix".to_string(),
+                                "StripPrefixAndSnakeCase requires a literal prefix".to_string(),
                             ),
                         }
                     } else {
                         if (naming_name.clone().as_str()
-                            == "StripPrefixSuffixAndSnakeCase".to_string().as_str())
+                            == "StripSuffixAndSnakeCase".to_string().as_str())
                         {
                             match required_literal_string_policy_field(
+                                naming.clone(),
+                                "suffix".to_string(),
+                                source_indices.clone(),
+                            ) {
+                                Some(suffix) => rust_serde_policy(
+                                    "".to_string(),
+                                    None,
+                                    Some(suffix.clone()),
+                                    Some("StripAffixAndSnakeCase".to_string()),
+                                ),
+                                None => rust_serde_error_policy(
+                                    "StripSuffixAndSnakeCase requires a literal suffix".to_string(),
+                                ),
+                            }
+                        } else {
+                            if (naming_name.clone().as_str()
+                                == "StripPrefixSuffixAndSnakeCase".to_string().as_str())
+                            {
+                                match required_literal_string_policy_field(
                                 naming.clone(),
                                 "prefix".to_string(),
                                 source_indices.clone(),
@@ -1040,11 +1049,12 @@ pub fn rust_string_policy_for_naming(
                                         .to_string(),
                                 ),
                             }
-                        } else {
-                            rust_serde_error_policy(v1_rt::concat(
-                                "unsupported VariantNaming: ".to_string(),
-                                naming_name.clone(),
-                            ))
+                            } else {
+                                rust_serde_error_policy(v1_rt::concat(
+                                    "unsupported VariantNaming: ".to_string(),
+                                    naming_name.clone(),
+                                ))
+                            }
                         }
                     }
                 }
@@ -1082,53 +1092,65 @@ pub fn rust_internal_policy_for_naming(
                     None,
                 )
             } else {
-                if (naming_name.clone().as_str() == "StripPrefixAndSnakeCase".to_string().as_str())
-                {
-                    match required_literal_string_policy_field(
-                        naming.clone(),
-                        "prefix".to_string(),
-                        source_indices.clone(),
-                    ) {
-                        Some(prefix) => rust_serde_policy(
-                            v1_rt::concat(
-                                v1_rt::concat("#[serde(tag = \"".to_string(), tag_field),
-                                "\")]".to_string(),
-                            ),
-                            Some(prefix.clone()),
-                            None,
-                            Some("StripAffixAndSnakeCase".to_string()),
+                if (naming_name.clone().as_str() == "ScreamingSnakeCase".to_string().as_str()) {
+                    rust_serde_policy(
+                        v1_rt::concat(
+                            v1_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                            "\", rename_all = \"SCREAMING_SNAKE_CASE\")]".to_string(),
                         ),
-                        None => rust_serde_error_policy(
-                            "StripPrefixAndSnakeCase requires a literal prefix".to_string(),
-                        ),
-                    }
+                        None,
+                        None,
+                        None,
+                    )
                 } else {
                     if (naming_name.clone().as_str()
-                        == "StripSuffixAndSnakeCase".to_string().as_str())
+                        == "StripPrefixAndSnakeCase".to_string().as_str())
                     {
                         match required_literal_string_policy_field(
                             naming.clone(),
-                            "suffix".to_string(),
+                            "prefix".to_string(),
                             source_indices.clone(),
                         ) {
-                            Some(suffix) => rust_serde_policy(
+                            Some(prefix) => rust_serde_policy(
                                 v1_rt::concat(
                                     v1_rt::concat("#[serde(tag = \"".to_string(), tag_field),
                                     "\")]".to_string(),
                                 ),
+                                Some(prefix.clone()),
                                 None,
-                                Some(suffix.clone()),
                                 Some("StripAffixAndSnakeCase".to_string()),
                             ),
                             None => rust_serde_error_policy(
-                                "StripSuffixAndSnakeCase requires a literal suffix".to_string(),
+                                "StripPrefixAndSnakeCase requires a literal prefix".to_string(),
                             ),
                         }
                     } else {
                         if (naming_name.clone().as_str()
-                            == "StripPrefixSuffixAndSnakeCase".to_string().as_str())
+                            == "StripSuffixAndSnakeCase".to_string().as_str())
                         {
                             match required_literal_string_policy_field(
+                                naming.clone(),
+                                "suffix".to_string(),
+                                source_indices.clone(),
+                            ) {
+                                Some(suffix) => rust_serde_policy(
+                                    v1_rt::concat(
+                                        v1_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                                        "\")]".to_string(),
+                                    ),
+                                    None,
+                                    Some(suffix.clone()),
+                                    Some("StripAffixAndSnakeCase".to_string()),
+                                ),
+                                None => rust_serde_error_policy(
+                                    "StripSuffixAndSnakeCase requires a literal suffix".to_string(),
+                                ),
+                            }
+                        } else {
+                            if (naming_name.clone().as_str()
+                                == "StripPrefixSuffixAndSnakeCase".to_string().as_str())
+                            {
+                                match required_literal_string_policy_field(
                                 naming.clone(),
                                 "prefix".to_string(),
                                 source_indices.clone(),
@@ -1160,11 +1182,12 @@ pub fn rust_internal_policy_for_naming(
                                         .to_string(),
                                 ),
                             }
-                        } else {
-                            rust_serde_error_policy(v1_rt::concat(
-                                "unsupported VariantNaming: ".to_string(),
-                                naming_name.clone(),
-                            ))
+                            } else {
+                                rust_serde_error_policy(v1_rt::concat(
+                                    "unsupported VariantNaming: ".to_string(),
+                                    naming_name.clone(),
+                                ))
+                            }
                         }
                     }
                 }
