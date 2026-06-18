@@ -4930,7 +4930,7 @@ fn eval_builtin(
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
-                    type_name: ctx.sym("LayerLabel"),
+                    type_name: ctx.sym("LayerPrefix"),
                     variant_name: ctx.sym(f.layer),
                     fields: Rc::new(HashMap::new()),
                 };

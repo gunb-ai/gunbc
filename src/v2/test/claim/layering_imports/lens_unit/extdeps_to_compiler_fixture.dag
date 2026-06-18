@@ -3,17 +3,14 @@
 
 module v2.test.layering_imports.lens_unit.extdeps_to_compiler_fixture
 
-import v2.lens.layering_imports {
-  LayerExtdeps,
-  LayerImportFact,
-  layering_imports_violation_count
-}
+import v2.lens.layering_imports { LayerImportFact, layering_imports_violation_count }
 import v2.std.collection { List }
+import v2.std.cross_tree.import_model { LayerPrefixExtdeps }
 import v2.std.logic { Bool }
 
 data extdeps_to_compiler_fixture_facts: List<LayerImportFact> = [
   LayerImportFact {
-    layer: LayerExtdeps,
+    layer: LayerPrefixExtdeps,
     path: "src/v2/extdeps/_perturb_layering_extdeps_to_compiler.dag",
     import_module: "v2.compiler.parse"
   }
