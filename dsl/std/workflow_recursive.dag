@@ -1,182 +1,44 @@
 // std/workflow_recursive.dag — recursive Workflow fold (catamorphism + located latch).
 //
-// Relocated from ctrl plans.workflow_recursive (gunb-ai/ctrl #1716). The flat
-// idea→PR spine (gunbc.idea_pr_spine) is the LINEAR INSTANCE:
-//   settle_workflow(linearize(spine)) == settle(spine)
+// Pure std layer: imports only std.reducible + std.types. Application witnesses
+// and spine subsumption proofs live in dsl/test/claim/.
 //
-// CONSUME-BY-CORRESPONDENCE of compute_fabric.PartitionedReduce — the act that
-// produced `children` IS the Partitioner; the located fold IS the Reducer +
-// fail-closed ReducerLaws. No compute_fabric import (dissolution trigger).
+// Workflow = Leaf | Decomposed is the recursive carrier. settle_workflow recurses
+// depth-first; sibling verdicts fold via reduce_verdicts_located (Semigroup over
+// List = FreeMonoid<ReduceVerdict>). CONSUME-BY-CORRESPONDENCE of
+// compute_fabric.PartitionedReduce — no compute_fabric import (dissolution trigger).
 
 module std.workflow_recursive
 
-import std.types { NonEmptyStr, Bool, List }
-import std.reducible {
-  ReduceVerdict, Reduced, Unknown,
-  verdict_is_unknown, verdict_eq,
-}
-import gunbc.idea_pr_spine {
-  StageStep, IdeaInput, DagModel, Review, review_step,
-  settle, demo_spine_green, demo_spine_unknown,
-}
-import ctrl.review_verdict { Claude, RequestChanges }
+import std.types { List }
+import std.reducible { ReduceVerdict, reduce_verdicts_located }
 
 type Workflow
-  = Leaf { step: StageStep }
+  = Leaf { verdict: ReduceVerdict }
   | Decomposed { children: List<Workflow> }
-
-type TreeFoldAcc {
-  started: Bool
-  verdict: ReduceVerdict
-}
 
 fn settle_workflow(w: Workflow) -> ReduceVerdict {
   match w {
-    Leaf { step: s } => s.verdict
+    Leaf { verdict: v } => v
     Decomposed { children: cs } => settle_children(cs)
   }
 }
 
-fn fold_child(acc: TreeFoldAcc, w: Workflow) -> TreeFoldAcc {
-  if acc.started {
-    if verdict_is_unknown(acc.verdict) {
-      acc
-    } else {
-      TreeFoldAcc { started: true, verdict: settle_workflow(w) }
-    }
-  } else {
-    TreeFoldAcc { started: true, verdict: settle_workflow(w) }
-  }
-}
-
 fn settle_children(cs: List<Workflow>) -> ReduceVerdict {
-  let acc = fold(
-    cs,
-    init: TreeFoldAcc {
-      started: false,
-      verdict: Unknown { missing: "workflow:empty-decomposition" }
-    },
-    f: fn(a, w) { fold_child(acc: a, w: w) }
+  reduce_verdicts_located(
+    verdicts: map(
+      collection: cs,
+      f: fn(w) { settle_workflow(w: w) }
+    ),
+    empty_missing: "workflow:empty-decomposition"
   )
-  acc.verdict
 }
 
-fn linearize(steps: List<StageStep>) -> Workflow {
+fn linearize_verdicts(verdicts: List<ReduceVerdict>) -> Workflow {
   Decomposed {
-    children: map(collection: steps, f: fn(s) { Leaf { step: s } })
+    children: map(
+      collection: verdicts,
+      f: fn(v) { Leaf { verdict: v } }
+    )
   }
-}
-
-fn deep_unknown_tree() -> Workflow {
-  Decomposed { children: [
-    Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 1 } } },
-    Decomposed { children: [
-      Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 2 } } },
-      Leaf { step: StageStep { stage: IdeaInput, verdict: Unknown { missing: "deep-axis" } } },
-    ] },
-    Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 3 } } },
-  ] }
-}
-
-fn all_green_tree() -> Workflow {
-  Decomposed { children: [
-    Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 1 } } },
-    Decomposed { children: [
-      Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 2 } } },
-      Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 3 } } },
-    ] },
-  ] }
-}
-
-fn review_tree_blocks() -> Workflow {
-  Decomposed { children: [
-    Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 1 } } },
-    Leaf { step: review_step(Review { subject: DagModel, reviewer: Claude, verdict: RequestChanges }) },
-    Leaf { step: StageStep { stage: IdeaInput, verdict: Reduced { parts: 9 } } },
-  ] }
-}
-
-type WorkflowLawWitness {
-  law_tag: NonEmptyStr
-  verified: Bool
-}
-
-type WorkflowKernelWitnessed {
-  deep_unknown_latches_located: WorkflowLawWitness
-  green_tree_settles_decisive: WorkflowLawWitness
-  review_blocks_located_in_tree: WorkflowLawWitness
-  linear_instance_green: WorkflowLawWitness
-  linear_instance_unknown: WorkflowLawWitness
-}
-
-fn witness_deep_unknown_latches_located() -> WorkflowLawWitness {
-  WorkflowLawWitness {
-    law_tag: "workflow:deep_unknown_latches_located",
-    verified: verdict_eq(
-      a: settle_workflow(deep_unknown_tree()),
-      b: Unknown { missing: "deep-axis" }
-    ),
-  }
-}
-
-fn witness_green_tree_settles_decisive() -> WorkflowLawWitness {
-  WorkflowLawWitness {
-    law_tag: "workflow:green_tree_settles_decisive",
-    verified: verdict_eq(
-      a: settle_workflow(all_green_tree()),
-      b: Reduced { parts: 3 }
-    ),
-  }
-}
-
-fn witness_review_blocks_located_in_tree() -> WorkflowLawWitness {
-  WorkflowLawWitness {
-    law_tag: "workflow:review_blocks_located_in_tree",
-    verified: verdict_eq(
-      a: settle_workflow(review_tree_blocks()),
-      b: Unknown { missing: "idea-pr:review:dag-model:request-changes" }
-    ),
-  }
-}
-
-fn witness_linear_instance_green() -> WorkflowLawWitness {
-  WorkflowLawWitness {
-    law_tag: "workflow:linear_instance_equals_flat_settle_green",
-    verified: verdict_eq(
-      a: settle_workflow(linearize(demo_spine_green())),
-      b: settle(demo_spine_green())
-    ),
-  }
-}
-
-fn witness_linear_instance_unknown() -> WorkflowLawWitness {
-  WorkflowLawWitness {
-    law_tag: "workflow:linear_instance_equals_flat_settle_unknown",
-    verified: verdict_eq(
-      a: settle_workflow(linearize(demo_spine_unknown())),
-      b: settle(demo_spine_unknown())
-    ),
-  }
-}
-
-fn workflow_kernel_witnessed() -> WorkflowKernelWitnessed {
-  WorkflowKernelWitnessed {
-    deep_unknown_latches_located: witness_deep_unknown_latches_located(),
-    green_tree_settles_decisive: witness_green_tree_settles_decisive(),
-    review_blocks_located_in_tree: witness_review_blocks_located_in_tree(),
-    linear_instance_green: witness_linear_instance_green(),
-    linear_instance_unknown: witness_linear_instance_unknown(),
-  }
-}
-
-fn workflow_kernel_all_verified(w: WorkflowKernelWitnessed) -> Bool {
-  if w.deep_unknown_latches_located.verified {
-    if w.green_tree_settles_decisive.verified {
-      if w.review_blocks_located_in_tree.verified {
-        if w.linear_instance_green.verified {
-          w.linear_instance_unknown.verified
-        } else { false }
-      } else { false }
-    } else { false }
-  } else { false }
 }

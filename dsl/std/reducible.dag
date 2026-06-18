@@ -1,6 +1,6 @@
 // std/reducible.dag — fail-closed three-valued reduction verdict (objective primitive).
 //
-// Promoted from ctrl plans.reducible (gunb-ai/ctrl PR #1716 relocation target).
+// Promoted from ctrl plans.reducible (gunb-ai/ctrl #1716 relocation target).
 // CONSUMES compute_fabric.PartitionedReduce by correspondence only — declares
 // NO map/reduce types; binding literal PartitionedReduce fields is a dissolution
 // trigger (snappy-stag: Option-in-v2 + Measure G1).
@@ -10,23 +10,24 @@
 //   Irreducible { witness } — grounded atom, decisively not further reducible
 //   Unknown { missing }     — fail-closed; located axis names what is missing
 //
-// ALGEBRA: (ReduceVerdict, reduce_verdict_combine, _) forms a join with Unknown
-// as absorbing element (first located axis preserved — the latch). The fold init
-// uses started-flag discipline: init Unknown is NOT absorbing; empty fold stays
-// decisively Unknown, never fabricated-green.
+// ALGEBRA: (ReduceVerdict, reduce_verdict_combine) is a Semigroup with absorbing
+// element Unknown (leftmost located axis preserved). No Monoid identity — empty
+// fold uses a located Unknown sentinel (started-flag / non-empty-only reduce).
+// reduce_verdicts_located folds List<ReduceVerdict> (= FreeMonoid carrier per
+// std.types) with this op — the horizontal catamorphism for sibling verdicts.
 
 module std.reducible
 
-import std.algebra { Monoid }
-import std.types { NonEmptyStr, Int, Bool, List }
+import std.algebra { Semigroup }
+import std.types { Int, Bool, List }
 
 type ReduceVerdict
   = Reduced { parts: Int }
   | Irreducible { witness: String }
   | Unknown { missing: String }
 
-// Join with located latch: Unknown absorbs; first located axis wins; decisive
-// siblings otherwise adopt the right-hand verdict (last green child wins).
+// Semigroup join: Unknown absorbs (leftmost axis wins); decisive siblings take
+// the right-hand verdict (last green child wins).
 fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   match a {
     Unknown { missing: ma } => Unknown { missing: ma }
@@ -37,11 +38,8 @@ fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   }
 }
 
-fn reduce_verdict_monoid() -> Monoid<ReduceVerdict> {
-  Monoid {
-    op: reduce_verdict_combine,
-    identity: Reduced { parts: 0 }
-  }
+fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
+  Semigroup { op: reduce_verdict_combine }
 }
 
 fn verdict_is_unknown(v: ReduceVerdict) -> Bool {
@@ -88,8 +86,8 @@ fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
   }
 }
 
-// Located fold accumulator — started/in-progress discipline so init Unknown is
-// NOT absorbing (the spine / workflow gate guards this).
+// Non-empty fold without identity: first element replaces the empty sentinel;
+// subsequent steps use reduce_verdict_combine (Unknown latch = left unknown kept).
 type LocatedVerdictFoldAcc {
   started: Bool
   verdict: ReduceVerdict
@@ -100,14 +98,17 @@ fn fold_located_verdict(acc: LocatedVerdictFoldAcc, next: ReduceVerdict) -> Loca
     if verdict_is_unknown(acc.verdict) {
       acc
     } else {
-      LocatedVerdictFoldAcc { started: true, verdict: next }
+      LocatedVerdictFoldAcc {
+        started: true,
+        verdict: reduce_verdict_combine(a: acc.verdict, b: next)
+      }
     }
   } else {
     LocatedVerdictFoldAcc { started: true, verdict: next }
   }
 }
 
-fn fold_located_verdicts(verdicts: List<ReduceVerdict>, empty_missing: String) -> ReduceVerdict {
+fn reduce_verdicts_located(verdicts: List<ReduceVerdict>, empty_missing: String) -> ReduceVerdict {
   let acc = fold(
     verdicts,
     init: LocatedVerdictFoldAcc {
