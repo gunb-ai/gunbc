@@ -11037,7 +11037,6 @@ pub fn unify_generics(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    crate::generic_instantiation_instrument::record_unify_generics();
     loop {
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
@@ -11271,7 +11270,6 @@ pub fn substitute_generics(
     subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    crate::generic_instantiation_instrument::record_substitute_generics(&n, subst.len());
     if v1_rt::map_is_empty(&subst) {
         n
     } else {
@@ -11421,9 +11419,6 @@ pub fn build_type_env(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
-    let _env_guard = crate::interface_elaboration_instrument::build_env_guard(
-        &authored_name_at(source_indices.clone(), module.module.clone()),
-    );
     {
         let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
@@ -11730,8 +11725,7 @@ pub fn build_type_env(
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
-                let merge_start = std::time::Instant::now();
-                let next = match v1_rt::map_get(
+                match v1_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
@@ -11774,13 +11768,7 @@ pub fn build_type_env(
                     }
                 }
                 None => acc.clone(),
-            };
-                crate::interface_elaboration_instrument::record_import_merge(
-                    &module_name_str,
-                    &imp.module_path,
-                    merge_start.elapsed(),
-                );
-                next
+            }
             },
         );
         let import_recursive = parent_envs
@@ -12356,8 +12344,7 @@ pub fn build_type_env_unresolved(
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
-                let merge_start = std::time::Instant::now();
-                let next = match v1_rt::map_get(
+                match v1_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
@@ -12400,13 +12387,7 @@ pub fn build_type_env_unresolved(
                     }
                 }
                 None => acc.clone(),
-            };
-                crate::interface_elaboration_instrument::record_import_merge(
-                    &module_name_str,
-                    &imp.module_path,
-                    merge_start.elapsed(),
-                );
-                next
+            }
             },
         );
         let import_recursive = parent_envs
@@ -13018,9 +12999,6 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckModuleResult> {
-    let _tc_guard = crate::interface_elaboration_instrument::typecheck_guard(
-        &authored_name_at(source_indices.clone(), resolved.module.clone()),
-    );
     {
         let env_result = build_type_env(
             resolved.clone(),
