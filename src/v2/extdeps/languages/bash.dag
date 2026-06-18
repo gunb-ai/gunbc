@@ -13,7 +13,10 @@
 // MIGRATION SLICE 2 — bound-word emit-time quoting via `token_class_emit_transforms` on
 // TargetModel (target_model.dag). Dynamic words (VarRef, Lit payloads) use BoundToken rows;
 // POSIX single-quote / double-quoted var-ref wrapping runs at emit time keyed by token class.
-// Next slices: ShellStmt vocab rows → migrate 7 sidecar consumers → delete program.dag.
+//
+// MIGRATION SLICE 3 — first live transport migration: fixed-token
+// `'bash' 'scripts/source-root-ingest-gate.sh'` (v2.workflow.source_root_ingest_transport).
+// Next slices: ShellStmt vocab rows → migrate remaining sidecar consumers → delete program.dag.
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
 
@@ -308,6 +311,130 @@ fn bash_embedded_quote_grammar_relation_row_node() -> Node {
     ],
     occurrence_id: SyntheticOccurrence
   }
+}
+
+// =========================================================================
+// Slice 3 — source-root-ingest gate: fixed two-word Command.
+// Byte-identical to serialize_bash(command([lit("bash"), lit("scripts/source-root-ingest-gate.sh")]))
+// modulo the sidecar's trailing newline (immaterial to `sh -c`).
+// =========================================================================
+
+data bash_source_root_ingest_gate_emitted_command: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_bash) },
+    Edge {
+      label: Positional,
+      target: bash_word_atom(id: ^bash_word_source_root_ingest_gate_sh)
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data bash_source_root_ingest_gate_source_text: String =
+  "'bash' 'scripts/source-root-ingest-gate.sh'"
+
+fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_word_bash },
+    FixedToken { token_class: ^bash_token_word_source_root_ingest_gate_sh }
+  ]
+}
+
+fn bash_source_root_ingest_gate_grammar_expression() -> GrammarExpr {
+  Sequence {
+    left: grammar_expr_terminal(token_class: ^bash_token_word_bash),
+    right: grammar_expr_terminal(token_class: ^bash_token_word_source_root_ingest_gate_sh)
+  }
+}
+
+fn bash_source_root_ingest_gate_grammar_production() -> GrammarProduction {
+  GrammarProduction {
+    name: ^bash_production_source_root_ingest_gate,
+    expression: bash_source_root_ingest_gate_grammar_expression(),
+    emitted: bash_word_atom(id: ^bash_surface_source_root_ingest_gate)
+  }
+}
+
+fn bash_source_root_ingest_gate_grammar_relation_row_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^grammar_relation_field_production,
+        target: grammar_production_to_node(
+          production: bash_source_root_ingest_gate_grammar_production()
+        )
+      ),
+      bash_named_edge(
+        name: ^grammar_relation_field_emitted,
+        target: bash_source_root_ingest_gate_emitted_command
+      ),
+      bash_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: bash_source_root_ingest_gate_concrete_tokens(),
+          token_to_node: bash_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      bash_named_edge(
+        name: ^bash_relation_rule_source_root_ingest_gate,
+        target: bash_source_root_ingest_gate_grammar_relation_row_node()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_source_root_ingest_gate_serialize_source_node() -> Node {
+  bash_serialize_source_node(
+    source_text_binding: ^bash_source_root_ingest_gate_source_literal,
+    production_binding: ^bash_production_source_root_ingest_gate,
+    tokens: bash_source_root_ingest_gate_concrete_tokens()
+  )
+}
+
+fn bash_source_root_ingest_gate_target_model_bundle() -> Node {
+  bash_target_model_bundle(
+    rules: bash_source_root_ingest_gate_translation_rules_node(),
+    serialize_source: bash_source_root_ingest_gate_serialize_source_node()
+  )
+}
+
+fn bash_source_root_ingest_gate_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      bash_lex_rule(token_class: ^bash_token_word_bash, text: "'bash'"),
+      bash_lex_rule(
+        token_class: ^bash_token_word_source_root_ingest_gate_sh,
+        text: " 'scripts/source-root-ingest-gate.sh'"
+      )
+    ]
+  }
+}
+
+fn bash_source_root_ingest_gate_lex() -> LexRules {
+  ModeledLexRules { root: bash_source_root_ingest_gate_lex_rules() }
+}
+
+fn bash_source_root_ingest_gate_target_model() -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: bash_source_root_ingest_gate_target_model_bundle(),
+    lex: bash_source_root_ingest_gate_lex(),
+    binding_spellings: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: bash_source_root_ingest_gate_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
 }
 
 fn bash_binding_spellings() -> Map<Symbol, String> {
