@@ -710,13 +710,12 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     let compile_path = src_dir.join("v1_compiler_compile.rs");
     let text = fs::read_to_string(&compile_path)
         .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
-    let patch = patch_bootstrap_dag_collect_text(&text)?;
-    fs::write(&compile_path, patch.compile_text)
+    let DagCollectPatch { compile_text, .. } = patch_bootstrap_dag_collect_text(&text)?;
+    fs::write(&compile_path, compile_text)
         .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
     // `v1_compiler_dag_collect_support.rs` is hand-maintained bootstrap seed
     // (recursive fingerprint ahead of compile.dag); copy_hand_maintained_support
     // already placed the committed module — do not overwrite with codegen.
-    let _ = patch.support_text;
     Ok(())
 }
 

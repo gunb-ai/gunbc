@@ -99,10 +99,7 @@ fn dag_node_surface_leaf_mix(node: &Node) -> String {
             ),
             inferred_fingerprint(node.inferred.clone()),
         ),
-        v1_rt::concat(
-            "|".to_string(),
-            expr_data_variant(node.expr_data.clone()),
-        ),
+        v1_rt::concat("|".to_string(), expr_data_variant(node.expr_data.clone())),
     ))
 }
 

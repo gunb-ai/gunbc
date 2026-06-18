@@ -78,10 +78,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
     // Synthetic scaffold nodes share a 0..0 span — key by recursive structure so
     // distinct subtrees do not alias (span-bearing nodes stay span-keyed).
     if anchor.span.start == 0 && anchor.span.end == 0 {
-        return v1_rt::concat(
-            ":0..0:".to_string(),
-            dag_node_fingerprint(anchor.clone()),
-        );
+        return v1_rt::concat(":0..0:".to_string(), dag_node_fingerprint(anchor.clone()));
     }
     v1_rt::concat(
         v1_rt::concat(
