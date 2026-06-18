@@ -235,7 +235,7 @@ func review_cycle(
     auth_token: github_auth,
     owner: cycle_owner,
     repo: cycle_repo,
-    state: "open"
+    state: Open
   )
 
   // Review each (review_pr handles dedup internally)

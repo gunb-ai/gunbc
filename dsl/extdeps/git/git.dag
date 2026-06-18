@@ -14,7 +14,7 @@
 
 module extdeps.git
 
-import std.types { CommitSha, FilePath, GitRef, Timestamp }
+import std.types { CommitSha, FilePath, GitRef, Timestamp, Url }
 
 // -- Object model --------------------------------------------------
 
@@ -47,7 +47,7 @@ type GitBranch {
 
 type GitRemote {
   name: String
-  url: String
+  url: Url
   fetch_refspec: String
 }
 

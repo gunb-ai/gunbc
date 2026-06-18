@@ -16,14 +16,14 @@
 
 module extdeps.docker
 
-import std.types { FilePath, NonEmptyStr }
+import std.types { FilePath, NonEmptyStr, ContentHash }
 
 // -- Images ----------------------------------------------------------
 
 type DockerImage {
   repository: NonEmptyStr   // e.g. "ctrl-session"
   tag: NonEmptyStr          // e.g. "latest"
-  digest: String?           // Some("sha256:...") when pinned; None when by-tag only
+  digest: ContentHash?           // Some("sha256:...") when pinned; None when by-tag only
 }
 
 // -- Mounts ----------------------------------------------------------

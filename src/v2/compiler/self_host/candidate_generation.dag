@@ -1,0 +1,78 @@
+// src/v2/compiler/self_host/candidate_generation.dag
+// Scope: Route B — candidate-generation entry for self-host Stage B/C (§7-CLEAN path).
+//   Drives assemble_program_from_ingest → infer → translate (06_translate) and captures the
+//   emitted Node BEFORE serialize_target — the missing piece self_host_fixed_point_validate needs.
+// Status: generate_stage_candidate_from_ingest is live; comparison substrate (emitted Node vs
+//   emitted Rust bytes) is operator-pending — this module captures the Node (content_hash world).
+// Anchor: sibling to self_host.dag (single authority for fixed-point relation); NOT in self_host.dag
+//   until operator reviews the function shape (merry-crab-687 brief).
+
+module v2.compiler.self_host.candidate_generation
+
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.translate { translate }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Outcome,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.node { Node }
+
+
+type StageEmissionCandidate {
+  emitted: Node
+}
+
+
+// PRIMARY ENTRY — SourceRootIngest → resolved program → infer → translate; Node captured pre-serialize.
+fn generate_stage_candidate_from_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel
+) -> Outcome<StageEmissionCandidate> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    f: fn(resolved) {
+      bind_outcome(
+        o: infer(tree: resolved),
+        f: fn(inferred) {
+          bind_outcome(
+            o: translate(tree: inferred, target: target),
+            f: fn(emitted) {
+              outcome_accepted(
+                value: StageEmissionCandidate { emitted: emitted }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
+// Thin wrapper when the resolved Node is already assembled (fixture / unit slices).
+fn generate_translate_self_emit_candidate(
+  resolved_module: Node,
+  dag_target: TargetModel
+) -> Outcome<StageEmissionCandidate> {
+  bind_outcome(
+    o: infer(tree: resolved_module),
+    f: fn(inferred) {
+      bind_outcome(
+        o: translate(tree: inferred, target: dag_target),
+        f: fn(emitted) {
+          outcome_accepted(
+            value: StageEmissionCandidate { emitted: emitted }
+          )
+        }
+      )
+    }
+  )
+}
