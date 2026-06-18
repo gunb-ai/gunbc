@@ -70,52 +70,56 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    {
-        let child_names = Rc::new({
-            let mut __result = Vec::new();
-            for c in node.children.clone().iter().cloned() {
-                __result.push(c.name.clone());
-            }
-            __result
-        })
-        .join(&",".to_string());
-        let param_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in node.params.clone().iter().cloned() {
-                __result.push(p.name.clone());
-            }
-            __result
-        })
-        .join(&",".to_string());
+    dag_node_surface_fingerprint_rec(node)
+}
+
+/// Multiset digest for child/param subtrees: order-independent combine so
+/// Conj/Disj-shaped siblings do not false-split on list order.
+fn dag_node_bag_hash(digests: Vec<String>) -> String {
+    let mut sorted = digests;
+    sorted.sort();
+    let mut acc = v1_rt::atom_identity_hash("^dag_collect_bag_empty".to_string());
+    for digest in sorted {
+        acc = v1_rt::hash_combine(acc, digest);
+    }
+    acc
+}
+
+fn dag_node_surface_leaf_mix(node: &Node) -> String {
+    v1_rt::atom_identity_hash(v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(node.name.clone(), "|".to_string()),
-                                            connective_name(node.connective.clone()),
-                                        ),
-                                        "|".to_string(),
-                                    ),
-                                    inferred_fingerprint(node.inferred.clone()),
-                                ),
-                                "|".to_string(),
-                            ),
-                            expr_data_variant(node.expr_data.clone()),
-                        ),
-                        "|".to_string(),
-                    ),
-                    child_names,
+                    v1_rt::concat(node.name.clone(), "|".to_string()),
+                    connective_name(node.connective.clone()),
                 ),
                 "|".to_string(),
             ),
-            param_names,
-        )
-    }
+            inferred_fingerprint(node.inferred.clone()),
+        ),
+        v1_rt::concat(
+            "|".to_string(),
+            expr_data_variant(node.expr_data.clone()),
+        ),
+    ))
+}
+
+fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
+    let child_hashes: Vec<String> = node
+        .children
+        .iter()
+        .map(|c| dag_node_surface_fingerprint_rec(c.clone()))
+        .collect();
+    let param_hashes: Vec<String> = node
+        .params
+        .iter()
+        .map(|p| dag_node_surface_fingerprint_rec(p.clone()))
+        .collect();
+    let with_children = v1_rt::hash_combine(
+        dag_node_surface_leaf_mix(&node),
+        dag_node_bag_hash(child_hashes),
+    );
+    v1_rt::hash_combine(with_children, dag_node_bag_hash(param_hashes))
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {

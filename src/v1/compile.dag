@@ -214,14 +214,20 @@ type DagCollectPending {
 
 // Provisional location key until v2 content_hash (see DagNodeId 🟡 gate). Collection
 // fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
+// Synthetic 0..0 scaffold nodes key by recursive fingerprint; span-bearing nodes
+// stay span-keyed so distinct same-shape occurrences remain distinct.
 fn dag_node_key(node: Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
-  concat(
-    anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
-    match anchor.ident {
-      Present { value: id } => concat(":", to_string(i: id))
-      Absent => ""
-    })
+  if anchor.span.start == 0 && anchor.span.end == 0 {
+    concat(":0..0:", dag_node_fingerprint(node: anchor))
+  } else {
+    concat(
+      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+      match anchor.ident {
+        Present { value: id } => concat(":", to_string(i: id))
+        Absent => ""
+      })
+  }
 }
 
 // Resolved on expression nodes is ordinary type inference (ExprVar, calls, etc.).
@@ -291,16 +297,33 @@ fn expr_data_variant(data: ExprData) -> String {
   }
 }
 
-fn dag_node_surface_fingerprint(node: Node) -> String {
-  let child_names = node.children |> map(c => c.name) |> join(separator: ",")
-  let param_names = node.params |> map(p => p.name) |> join(separator: ",")
-  concat(
+fn dag_node_bag_hash(digests: List<String>) -> String {
+  fold(
+    sort_by(digests, d => d),
+    init: atom_identity_hash(s: "^dag_collect_bag_empty"),
+    f: fn(acc, digest) { hash_combine(a: acc, b: digest) }
+  )
+}
+
+fn dag_node_surface_leaf_mix(node: Node) -> String {
+  atom_identity_hash(s: concat(
     node.name, "|",
     connective_name(value: node.connective), "|",
     inferred_fingerprint(value: node.inferred), "|",
-    expr_data_variant(data: node.expr_data), "|",
-    child_names, "|",
-    param_names)
+    expr_data_variant(data: node.expr_data)))
+}
+
+fn dag_node_surface_fingerprint_rec(node: Node) -> String {
+  let child_hashes = node.children |> map(c => dag_node_surface_fingerprint_rec(node: c))
+  let param_hashes = node.params |> map(p => dag_node_surface_fingerprint_rec(node: p))
+  let with_children = hash_combine(
+    a: dag_node_surface_leaf_mix(node: node),
+    b: dag_node_bag_hash(digests: child_hashes))
+  hash_combine(a: with_children, b: dag_node_bag_hash(digests: param_hashes))
+}
+
+fn dag_node_surface_fingerprint(node: Node) -> String {
+  dag_node_surface_fingerprint_rec(node: node)
 }
 
 fn dag_node_fingerprint(node: Node) -> String {
