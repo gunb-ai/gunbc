@@ -559,67 +559,67 @@ pub fn render_rust_alias_rhs_type(
             )
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
+        {
             {
-                {
-                    let local_mod = module_to_filename(module_name.clone());
-                    let def_mod = alias_rhs_rust_qualify_module_filename(
-                        name.clone(),
-                        module_name.clone(),
-                        imports.clone(),
-                        scope.clone(),
-                        registry.clone(),
-                        export_sets.clone(),
-                        typed_modules.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    );
-                    let base = if (def_mod.clone().as_str() != local_mod.as_str()) {
+                let local_mod = module_to_filename(module_name.clone());
+                let def_mod = alias_rhs_rust_qualify_module_filename(
+                    name.clone(),
+                    module_name.clone(),
+                    imports.clone(),
+                    scope.clone(),
+                    registry.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                );
+                let base = if (def_mod.clone().as_str() != local_mod.as_str()) {
+                    v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("crate::".to_string(), def_mod.clone()),
-                                "::".to_string(),
-                            ),
-                            name.clone(),
-                        )
-                    } else {
-                        name.clone()
-                    };
-                    let args = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in n.children.clone().iter().cloned() {
-                            __result.push(render_rust_alias_rhs_type(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                                scope.clone(),
-                                imports.clone(),
-                                registry.clone(),
-                                module_name.clone(),
-                                export_sets.clone(),
-                                typed_modules.clone(),
-                                module_index.clone(),
-                                variant_to_enum.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .join(&", ".to_string());
-                    let applied_ty = v1_rt::concat(
-                        v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
-                        ">".to_string(),
-                    );
-                    if (v1_rt::set_contains(&shared_types, name.clone())
-                        && !rust_type_is_rc_wrapped(applied_ty.clone()))
-                    {
-                        wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
-                    } else {
-                        applied_ty.clone()
+                            v1_rt::concat("crate::".to_string(), def_mod.clone()),
+                            "::".to_string(),
+                        ),
+                        name.clone(),
+                    )
+                } else {
+                    name.clone()
+                };
+                let args = Rc::new({
+                    let mut __result = Vec::new();
+                    for arg in n.children.clone().iter().cloned() {
+                        __result.push(render_rust_alias_rhs_type(
+                            arg.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            scope.clone(),
+                            imports.clone(),
+                            registry.clone(),
+                            module_name.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            module_index.clone(),
+                            variant_to_enum.clone(),
+                        ));
                     }
+                    __result
+                })
+                .join(&", ".to_string());
+                let applied_ty = v1_rt::concat(
+                    v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
+                    ">".to_string(),
+                );
+                if (v1_rt::set_contains(&shared_types, name.clone())
+                    && !rust_type_is_rc_wrapped(applied_ty.clone()))
+                {
+                    wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
+                } else {
+                    applied_ty.clone()
                 }
-            } else {
-                render_rust_type(n.clone(), shared_types.clone(), source_indices.clone())
             }
+        } else {
+            render_rust_type(n.clone(), shared_types.clone(), source_indices.clone())
+        }
     })
 }
 
@@ -10333,10 +10333,7 @@ pub fn rust_render_type_leaf_name(
     }
 }
 
-pub fn emit_phantom_zst_markers_for_enum(
-    children: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> String {
+pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for child in children.iter().cloned() {
@@ -10345,7 +10342,10 @@ pub fn emit_phantom_zst_markers_for_enum(
                 if is_phantom_unit_variant_type_arg(env.clone(), vname.clone()) {
                     __result.push(v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(rust_visibility_prefix(), rust_items().struct_keyword.clone()),
+                            v1_rt::concat(
+                                rust_visibility_prefix(),
+                                rust_items().struct_keyword.clone(),
+                            ),
                             " ".to_string(),
                         ),
                         v1_rt::concat(vname, ";".to_string()),
@@ -10366,7 +10366,11 @@ pub fn collect_phantom_zst_marker_names(
         let mut names: Vec<String> = Vec::new();
         for item in items.iter().cloned() {
             if is_type_def_item(item.clone())
-                && item.children.clone().iter().all(|c| c.children.clone().len() as i64 == 0)
+                && item
+                    .children
+                    .clone()
+                    .iter()
+                    .all(|c| c.children.clone().len() as i64 == 0)
             {
                 for child in item.children.clone().iter().cloned() {
                     if (child.children.clone().len() as i64) == 0 {
@@ -10384,16 +10388,19 @@ pub fn collect_phantom_zst_marker_names(
     })
 }
 
-pub fn emit_module_phantom_zst_markers(
-    items: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> String {
+pub fn emit_module_phantom_zst_markers(items: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     Rc::new({
         let mut __result = Vec::new();
-        for vname in collect_phantom_zst_marker_names(items, env.clone()).iter().cloned() {
+        for vname in collect_phantom_zst_marker_names(items, env.clone())
+            .iter()
+            .cloned()
+        {
             __result.push(v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(rust_visibility_prefix(), rust_items().struct_keyword.clone()),
+                    v1_rt::concat(
+                        rust_visibility_prefix(),
+                        rust_items().struct_keyword.clone(),
+                    ),
                     " ".to_string(),
                 ),
                 v1_rt::concat(vname, ";".to_string()),
