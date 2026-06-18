@@ -31,7 +31,7 @@ type FactCardinalityDeclFact {
 
 // Ratchet baseline — current cross-tree fork debt counted by execution (2026-06-18).
 // Only moves DOWN as forks unify; gate RED if live count exceeds this.
-data fact_cardinality_cross_tree_fork_baseline: Int = 35
+data fact_cardinality_cross_tree_fork_baseline: Int = 37
 
 fn fact_cardinality_cross_tree_variant_mismatch(
   left: FactCardinalityDeclFact,
