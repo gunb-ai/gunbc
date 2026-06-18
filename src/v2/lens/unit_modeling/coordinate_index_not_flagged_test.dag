@@ -51,7 +51,7 @@ data coordinate_field_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn coordinate_index_not_flagged_holds() -> Bool {
+test fn coordinate_index_not_flagged_holds() -> Bool {
   match unit_modeling_gate(node: coordinate_field_input) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

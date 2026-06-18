@@ -74,7 +74,7 @@ fn unit_ar_pass_tree() -> InferredTree {
   )
 }
 
-fn modeled_unit_field_admitted_via_always_required_lenses_holds() -> Bool {
+test fn modeled_unit_field_admitted_via_always_required_lenses_holds() -> Bool {
   match run_required_lens_gates(
     inferred: unit_ar_pass_tree(),
     lenses: always_required_lenses()
