@@ -1,14 +1,14 @@
-// gunbc/ci_runner.dag — CI fleet runner: ComputeOffer → RunnerSpec seam (Phase 3a).
+// gunbc/ci_fleet.dag — Phase 3a-ours: gunbc CI fleet ComputeOffer meta-model.
 //
-// The committed `.github/workflows/ci.yml` `runs-on:` block is the GHA realization of
-// `gunbc_ci_fleet_offer` via `runner_spec_from_offer` — not a hand-authored literal.
-// Concrete srv1/srv2 SKU rows remain operator-private (ctrl); this module owns the
-// public schema + generic fleet projection only.
+// OUR self-hosted runner fleet instantiated as compute_fabric data. Concrete srv1/srv2
+// operator inventory remains private (ctrl); this module is public-in-repo meta-modeling
+// consumed by ci_workflow / ci_yaml_emit via gunbc_ci_runner_spec().
 
-module gunbc.ci_runner
+module gunbc.ci_fleet
 
-import extdeps.github.actions { RunnerSpec, SelfHosted }
 import extdeps.cpu.ampere { altra_q6430_catalog }
+import extdeps.github.actions { RunnerSpec }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import product.compute_fabric {
   ComputeOffer,
   ComputeSupplyFacts,
@@ -22,55 +22,16 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
-  compute_host_primary_cpu,
 }
-import std.cpu.types { CpuFacts, CpuDeploymentFacts, CpuArchitecture, Aarch64 }
-import std.cpu { cpu_facts_architecture }
+import std.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure { byte_size, hertz }
 import std.os.types {
   OperatingSystemSurface,
-  KernelFamily,
   Linux,
   Posix,
   PosixProcess,
 }
 import std.placement_supply { HostIdentity }
-
-fn kernel_runner_label(kernel: KernelFamily) -> String {
-  match kernel {
-    Linux => "linux"
-    Darwin => "macos"
-    WindowsNt => "windows"
-    LinuxGuestOnWindows => "linux"
-  }
-}
-
-fn cpu_architecture_runner_label(arch: CpuArchitecture) -> String {
-  match arch {
-    Aarch64 => "arm64"
-    X86_64 => "x64"
-    Armv7 => "arm"
-    Riscv64 => "riscv64"
-    Wasm32 => "wasm32"
-  }
-}
-
-// GHA `runs-on:` realization of a self-hosted fleet offer (hosted/cloud variants
-// dissolve when RunnerSpec gains their typed carriers).
-fn runner_spec_from_offer(offer: ComputeOffer) -> RunnerSpec {
-  let os = offer.supply.execution.os
-  match compute_host_primary_cpu(host: offer.supply.physical) {
-    Absent =>
-      SelfHosted { labels: concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]) }
-    Present { value: cpu } =>
-      SelfHosted {
-        labels: concat(
-          concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]),
-          [cpu_architecture_runner_label(arch: cpu_facts_architecture(cpu: cpu))],
-        ),
-      }
-  }
-}
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
