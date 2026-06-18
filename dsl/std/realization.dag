@@ -20,10 +20,7 @@ import std.cache_identity {
   resolved_graph_artifact_kind,
 }
 import std.cache_interface {
-  ArtifactIdentity,
   CacheInterfaceFacts,
-  CacheKeyProjection,
-  cache_key_projection,
   parse_table_memo_facts,
   parse_table_memo_id,
   resolved_graph_cache_facts,
@@ -60,17 +57,6 @@ data resolved_graph_realization_plan: RealizationPlan = {
 
 // --- Interface facts lookup (closed to cache_interface rows) ------------------
 
-fn realization_plan_interface_facts(plan: RealizationPlan) -> CacheInterfaceFacts {
-  if plan.interface == parse_table_memo_id {
-    parse_table_memo_facts
-  } else if plan.interface == resolved_graph_cache_id {
-    resolved_graph_cache_facts
-  } else {
-    // fail-closed sentinel — lens rejects via identity mismatch on unknown id
-    parse_table_memo_facts
-  }
-}
-
 fn realization_plan_interface_known(plan: RealizationPlan) -> Bool {
   plan.interface == parse_table_memo_id
     || plan.interface == resolved_graph_cache_id
@@ -78,20 +64,6 @@ fn realization_plan_interface_known(plan: RealizationPlan) -> Bool {
 
 fn realization_artifact_kind_registered(kind: ArtifactKindId) -> Bool {
   kind == parse_table_artifact_kind || kind == resolved_graph_artifact_kind
-}
-
-fn realization_artifact_identity<T>(carrier: RealizationCarrier<T>) -> ArtifactIdentity<T> {
-  ArtifactIdentity {
-    subject_digest: carrier.subject_digest
-    artifact_kind: carrier.plan.artifact_kind
-  }
-}
-
-fn realization_cache_key_projection<T>(carrier: RealizationCarrier<T>) -> CacheKeyProjection<T> {
-  cache_key_projection(
-    artifact: realization_artifact_identity(carrier: carrier),
-    backend: realization_plan_interface_facts(plan: carrier.plan)
-  )
 }
 
 // --- Lens (pure reader; ROADMAP tier-0 verdict) -------------------------------
@@ -109,9 +81,17 @@ type RealizationLensVerdict
   | Violation { kind: RealizationViolation }
   | NotApplicable
 
+fn realization_plan_interface_facts_for_known(plan: RealizationPlan) -> CacheInterfaceFacts {
+  if plan.interface == parse_table_memo_id {
+    parse_table_memo_facts
+  } else {
+    resolved_graph_cache_facts
+  }
+}
+
 fn realization_plan_verdict(plan: RealizationPlan) -> RealizationLensVerdict {
   if realization_plan_interface_known(plan: plan) {
-    let facts = realization_plan_interface_facts(plan: plan)
+    let facts = realization_plan_interface_facts_for_known(plan: plan)
     if facts.identity == plan.interface {
       if realization_artifact_kind_registered(kind: plan.artifact_kind) {
         Holds
