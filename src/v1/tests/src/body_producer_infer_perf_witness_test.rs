@@ -1,6 +1,5 @@
 //! §5 execution witnesses: body_producer closure resolves cleanly AND inference stays fail-closed.
-//! Structural guards (map_is_empty / VEP shard) are in infer_perf_structural_guard_test.{dag,rs}
-//! — NOT wall-clock (flakes under CI contention).
+//! Structural complexity-lens guards are in follow-on #5139 (not this fix-only PR).
 //!
 //! Run: cargo test -p v1-compiler-tests body_producer_infer_perf_witness -- --nocapture
 
