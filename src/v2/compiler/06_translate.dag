@@ -182,7 +182,6 @@ import v2.std.algebra {
   Empty,
   TailAbsent,
   TailFound,
-  contains,
   fold_list,
   is_empty,
   length,
@@ -3904,6 +3903,19 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
 }
 
 // Route B — declared translate diagnostic reason sum (§3/§4: coproduct authority, not Symbol roster + predicate fan-out).
+//
+// SCAFFOLD (parallel-representation, §3 single-authority / §6 named dissolution):
+//   This coproduct is the *authority* for translate reasons, but emission sites below still mint
+//   bare `^translate_*` symbols into `Diagnostic.reason: Symbol`, and `_symbol`/`_from_symbol`/
+//   `_roster` form a hand-maintained bridge holding the sum and the wire symbols in sync. That bridge
+//   is the duplicated representation. Until it dissolves, a new emission reason can drift out of the
+//   coproduct and `_from_symbol` silently returns Absent.
+//   dissolve-on: `Diagnostic.reason` is retyped from `Symbol` to `TranslateDiagnosticReason` (the
+//   emission sites construct the variant directly, serialize projects to the wire symbol via
+//   `_symbol`, and `_from_symbol`/`_roster` collapse) — OR a roster-vs-emission lens lands that
+//   fails closed when a `^translate_*` reason literal is raised with no matching variant. Whichever
+//   lands first removes this scaffold; this marker is the §6 dissolution trigger that keeps the
+//   staged migration from ossifying as parallel representation.
 type TranslateDiagnosticReason
   = TargetBundleMalformed
   | TargetBundleDuplicateEdge

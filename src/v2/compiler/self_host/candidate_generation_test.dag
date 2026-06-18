@@ -106,17 +106,28 @@ fn translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(
 }
 
 
+// §5 discriminating oracle over a REAL emission (not a self-consistency check on the bridge): drive
+// a genuine translate rejection, take its actual head reason symbol off the wire, and show the
+// correct classifier reads it as TargetBundleMalformed while the arm-swapped classifier misreads the
+// SAME real symbol as TargetBundleDuplicateEdge. The disagreement is observable on the emitted
+// diagnostic, so the mapping is load-bearing, not merely internally consistent.
 fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
-  let malformed_sym = translate_diagnostic_reason_symbol(reason: TargetBundleMalformed)
-  match translate_diagnostic_reason_from_symbol(sym: malformed_sym) {
-    Present { value: TargetBundleMalformed } =>
-      match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: malformed_sym) {
-        Present { value: TargetBundleDuplicateEdge } => true
-        Present { value: TargetBundleMalformed } => false
+  match target_serialize_source_from_model(
+    target: mvp1_rust_missing_translation_rules_target,
+    emitted: mvp1_rust_emitted_root
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+        Present { value: TargetBundleMalformed } =>
+          match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: r.head.reason) {
+            Present { value: TargetBundleDuplicateEdge } => true
+            Present { value: _ } => false
+            Absent => false
+          }
+        Present { value: _ } => false
         Absent => false
       }
-    Present { value: _ } => false
-    Absent => false
   }
 }
 
