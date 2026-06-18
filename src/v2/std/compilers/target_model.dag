@@ -152,23 +152,6 @@ type TargetModelBundle = TargetModel
 // Default-empty emit transforms for non-shell targets (identity on absent lookup).
 data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
 
-fn target_model_make(
-  bundle: Node,
-  lex: LexRules,
-  binding_spellings: Map<Symbol, String>,
-  authority_source_text: String,
-  runtime_row: TargetEmitHostRuntimeRow
-) -> TargetModel {
-  TargetModel {
-    bundle: bundle,
-    lex: lex,
-    binding_spellings: binding_spellings,
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: authority_source_text,
-    runtime_row: runtime_row
-  }
-}
-
 fn target_model_make_with_emit_transforms(
   bundle: Node,
   lex: LexRules,
