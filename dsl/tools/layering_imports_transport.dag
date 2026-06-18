@@ -8,12 +8,13 @@
 // (extdeps.languages.bash.program). The 4 scanner-perturb receipts share one
 // `perturb_program(...)` builder parameterized by plant dir/file/source + scanner entry/fn
 // (§2 DRY — was 4 copy-pasted 15-line blobs). The build prelude is the shared
-// `host_prelude.ensure_gunbc_built()`.
+// `host_prelude.ensure_gunbc_built()`. Source-root flags come from `witness_layer_roots`
+// (§3 single authority — same roots as the rest of CI, NOT a hardcoded "src/v2").
 
 module tools.layering_imports_transport
 
 import extdeps.shell
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
@@ -27,16 +28,20 @@ import tools.host_prelude { ensure_gunbc_built }
 data clean_tree_entry: String = "src/v2/test/claim/layering_imports/clean_tree.dag"
 data clean_tree_function: String = "clean_tree_no_wrong_direction_imports_holds"
 
-// "$GUNBC" run --source-root src/v2 --source-root "$MANIFEST_DIR" --entry <e> --function <f> --claim-run
+// --source-root <r> for every witness_layer_root, then --source-root "$MANIFEST_DIR".
+fn source_root_flags() -> List<ShellWord> {
+  concat(
+    fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)])),
+    [lit(text: "--source-root"), var_ref(name: "MANIFEST_DIR")]
+  )
+}
+
+// "$GUNBC" run <source-root flags> --entry <e> --function <f> --claim-run
 fn gunbc_claim_run(entry: String, function: String) -> ShellStmt {
-  command(words: [
-    var_ref(name: "GUNBC"), lit(text: "run"),
-    lit(text: "--source-root"), lit(text: "src/v2"),
-    lit(text: "--source-root"), var_ref(name: "MANIFEST_DIR"),
-    lit(text: "--entry"), lit(text: entry),
-    lit(text: "--function"), lit(text: function),
-    lit(text: "--claim-run")
-  ])
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], source_root_flags()),
+    [lit(text: "--entry"), lit(text: entry), lit(text: "--function"), lit(text: function), lit(text: "--claim-run")]
+  ))
 }
 
 // bash "$ROOT"/scripts/layering-imports-scan.sh "$TMP" "$MANIFEST"
@@ -47,13 +52,6 @@ fn perturb_scan() -> ShellStmt {
     var_ref(name: "TMP"),
     var_ref(name: "MANIFEST")
   ])
-}
-
-fn gunbc_run_with_manifest_overlay() -> String {
-  concat(
-    concat("\"$GUNBC\" run", witness_layer_source_flags(roots: witness_layer_roots)),
-    " --source-root \"$MANIFEST_DIR\""
-  )
 }
 
 // Green pass: scan live repo, assert clean_tree witness holds.
@@ -100,21 +98,7 @@ fn clean_tree_program() -> ShellProgram {
 }
 
 fn run_clean_tree_gate() -> Bool {
-<<<<<<< HEAD
   let result = shell.Exec.Run(script: serialize_bash(p: clean_tree_program()))
-=======
-  let script = concat(
-    concat(
-      concat(
-        "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$ROOT\"\nMANIFEST=\"$ROOT/target/v2-layering-imports-manifest.dag\"\nMANIFEST_DIR=\"$(dirname \"$MANIFEST\")\"\nbash scripts/layering-imports-scan.sh \"$ROOT\" \"$MANIFEST\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then cargo build -p v1-compiler --release --bin gunbc || exit 1; fi\n",
-        gunbc_run_with_manifest_overlay()
-      ),
-      " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run"
-    ),
-    ""
-  )
-  let result = shell.Exec.Run(script: script)
->>>>>>> origin/main
   result.success
 }
 
@@ -167,7 +151,6 @@ fn perturb_program(
 }
 
 fn run_perturb_std_v4_prefix() -> Bool {
-<<<<<<< HEAD
   let prog = perturb_program(
     plant_dir: "/src/v2/std",
     plant_file: "/src/v2/std/_perturb_scanner_std_v4_prefix.dag",
@@ -176,34 +159,10 @@ fn run_perturb_std_v4_prefix() -> Bool {
     scanner_function: "scanner_std_v4_prefix_detects_holds"
   )
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
-=======
-  let run = gunbc_run_with_manifest_overlay()
-  let script = concat(
-    concat(
-      concat(
-        concat(
-          "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nTMP=$(mktemp -d)\nMANIFEST=\"$TMP/v2-layering-imports-manifest.dag\"\nMANIFEST_DIR=\"$TMP\"\nmkdir -p \"$TMP/src/v2/std\"\ncat >\"$TMP/src/v2/std/_perturb_scanner_std_v4_prefix.dag\" <<'PLANT'\nmodule v2.std._perturb_scanner_std_v4_prefix\nimport v2.compiler.tokenize\ndata perturb: Bool = true\nPLANT\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/scanner/std_v4_prefix.dag --function scanner_std_v4_prefix_detects_holds --claim-run\n")
-        ),
-        concat("if ", run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run 2>/dev/null; then echo 'clean_tree should be red' >&2; rm -rf \"$TMP\"; exit 1; fi\n")
-      ),
-      concat(
-        concat(
-          "rm -f \"$TMP/src/v2/std/_perturb_scanner_std_v4_prefix.dag\"\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run\nrm -rf \"$TMP\"")
-        ),
-        ""
-      )
-    ),
-    ""
-  )
-  let result = shell.Exec.Run(script: script)
->>>>>>> origin/main
   result.success
 }
 
 fn run_perturb_extdeps_v4_prefix() -> Bool {
-<<<<<<< HEAD
   let prog = perturb_program(
     plant_dir: "/src/v2/extdeps",
     plant_file: "/src/v2/extdeps/_perturb_scanner_extdeps_v4_prefix.dag",
@@ -212,34 +171,10 @@ fn run_perturb_extdeps_v4_prefix() -> Bool {
     scanner_function: "scanner_extdeps_v4_prefix_detects_holds"
   )
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
-=======
-  let run = gunbc_run_with_manifest_overlay()
-  let script = concat(
-    concat(
-      concat(
-        concat(
-          "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nTMP=$(mktemp -d)\nMANIFEST=\"$TMP/v2-layering-imports-manifest.dag\"\nMANIFEST_DIR=\"$TMP\"\nmkdir -p \"$TMP/src/v2/extdeps\"\ncat >\"$TMP/src/v2/extdeps/_perturb_scanner_extdeps_v4_prefix.dag\" <<'PLANT'\nmodule v2.extdeps._perturb_scanner_extdeps_v4_prefix\nimport v2.compiler.parse\ndata perturb: Bool = true\nPLANT\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/scanner/extdeps_v4_prefix.dag --function scanner_extdeps_v4_prefix_detects_holds --claim-run\n")
-        ),
-        concat("if ", run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run 2>/dev/null; then echo 'clean_tree should be red' >&2; rm -rf \"$TMP\"; exit 1; fi\n")
-      ),
-      concat(
-        concat(
-          "rm -f \"$TMP/src/v2/extdeps/_perturb_scanner_extdeps_v4_prefix.dag\"\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run\nrm -rf \"$TMP\"")
-        ),
-        ""
-      )
-    ),
-    ""
-  )
-  let result = shell.Exec.Run(script: script)
->>>>>>> origin/main
   result.success
 }
 
 fn run_perturb_dsl_extdeps_v4_exact() -> Bool {
-<<<<<<< HEAD
   let prog = perturb_program(
     plant_dir: "/dsl/extdeps",
     plant_file: "/dsl/extdeps/_perturb_scanner_dsl_extdeps_v4_exact.dag",
@@ -248,34 +183,10 @@ fn run_perturb_dsl_extdeps_v4_exact() -> Bool {
     scanner_function: "scanner_dsl_extdeps_v4_exact_detects_holds"
   )
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
-=======
-  let run = gunbc_run_with_manifest_overlay()
-  let script = concat(
-    concat(
-      concat(
-        concat(
-          "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nTMP=$(mktemp -d)\nMANIFEST=\"$TMP/v2-layering-imports-manifest.dag\"\nMANIFEST_DIR=\"$TMP\"\nmkdir -p \"$TMP/dsl/extdeps\"\ncat >\"$TMP/dsl/extdeps/_perturb_scanner_dsl_extdeps_v4_exact.dag\" <<'PLANT'\nmodule dsl.extdeps._perturb_scanner_dsl_extdeps_v4_exact\nimport v2.compiler\ndata perturb: Bool = true\nPLANT\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/scanner/dsl_extdeps_v4_exact.dag --function scanner_dsl_extdeps_v4_exact_detects_holds --claim-run\n")
-        ),
-        concat("if ", run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run 2>/dev/null; then echo 'clean_tree should be red' >&2; rm -rf \"$TMP\"; exit 1; fi\n")
-      ),
-      concat(
-        concat(
-          "rm -f \"$TMP/dsl/extdeps/_perturb_scanner_dsl_extdeps_v4_exact.dag\"\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run\nrm -rf \"$TMP\"")
-        ),
-        ""
-      )
-    ),
-    ""
-  )
-  let result = shell.Exec.Run(script: script)
->>>>>>> origin/main
   result.success
 }
 
 fn run_perturb_parse_level_pre_resolve() -> Bool {
-<<<<<<< HEAD
   let prog = perturb_program(
     plant_dir: "/src/v2/std",
     plant_file: "/src/v2/std/_perturb_scanner_parse_level_pre_resolve.dag",
@@ -284,29 +195,6 @@ fn run_perturb_parse_level_pre_resolve() -> Bool {
     scanner_function: "scanner_parse_level_pre_resolve_detects_holds"
   )
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
-=======
-  let run = gunbc_run_with_manifest_overlay()
-  let script = concat(
-    concat(
-      concat(
-        concat(
-          "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nTMP=$(mktemp -d)\nMANIFEST=\"$TMP/v2-layering-imports-manifest.dag\"\nMANIFEST_DIR=\"$TMP\"\nmkdir -p \"$TMP/src/v2/std\"\ncat >\"$TMP/src/v2/std/_perturb_scanner_parse_level_pre_resolve.dag\" <<'PLANT'\nmodule v2.std._perturb_scanner_parse_level_pre_resolve\nimport v2.compiler.tokenize\nimport totally.broken.unresolved.module\ndata x: String = \"unresolved\"\nPLANT\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/scanner/parse_level_pre_resolve.dag --function scanner_parse_level_pre_resolve_detects_holds --claim-run\n")
-        ),
-        concat("if ", run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run 2>/dev/null; then echo 'clean_tree should be red' >&2; rm -rf \"$TMP\"; exit 1; fi\n")
-      ),
-      concat(
-        concat(
-          "rm -f \"$TMP/src/v2/std/_perturb_scanner_parse_level_pre_resolve.dag\"\nbash \"$ROOT/scripts/layering-imports-scan.sh\" \"$TMP\" \"$MANIFEST\"\n",
-          concat(run, " --entry src/v2/test/claim/layering_imports/clean_tree.dag --function clean_tree_no_wrong_direction_imports_holds --claim-run\nrm -rf \"$TMP\"")
-        ),
-        ""
-      )
-    ),
-    ""
-  )
-  let result = shell.Exec.Run(script: script)
->>>>>>> origin/main
   result.success
 }
 
