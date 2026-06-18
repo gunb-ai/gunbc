@@ -56,7 +56,6 @@ import std.cpu.types {
   CpuDeploymentFacts,
   CpuModelCatalogRow,
   CpuSocket,
-  CpuVendor,
   SocketPackage,
   Aarch64,
 }
@@ -124,10 +123,52 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
+// 🟡 grounded, NOT terminal. Closed GPU-vendor surface — kills the stringly anemia. Overlaps
+// std.cpu.CpuVendor on shared entities (AMD/Intel/Apple/Qualcomm).
+// dissolution-trigger: fold into a single shared Vendor authority with std.cpu.CpuVendor pending
+// the parked, operator-gated std-conflation vendor-unification decision.
+type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
+
+// NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
+// major/minor magnitudes, not a marketplace label string.
+type GpuComputeCapability {
+  vendor: GpuVendor
+  major: Int
+  minor: Int
+}
+
+type UnsubstantiatedGpuCapabilityLabel { vendor: GpuVendor }
+
+type GpuCapabilityLabelOutcome
+  = GpuCapabilityLabelOk { label: String }
+  | GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel }
+
+// Fail-closed capability label projection: only NVIDIA sm_X_Y and AMD gfxXY are
+// substantiated wire conventions; Intel/Apple/Qualcomm refuse rather than fabricate.
+fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
+  match cap.vendor {
+    Nvidia => GpuCapabilityLabelOk {
+      label: concat("sm_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
+    }
+    Amd => GpuCapabilityLabelOk {
+      label: concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+    }
+    Intel => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Intel }
+    }
+    Apple => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Apple }
+    }
+    Qualcomm => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Qualcomm }
+    }
+  }
+}
+
 type GpuFacts {
-  vendor: NonEmptyStr
+  vendor: GpuVendor
   model: NonEmptyStr
-  compute_capability: NonEmptyStr?
+  compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }

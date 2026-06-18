@@ -1,15 +1,19 @@
-// tools/layering_imports_transport.dag — shell transports for layering-imports gate.
+// tools/layering_imports_transport.dag — host transport for the layering-imports gate.
 //
-// Replaces the deleted `tools/layering_imports_scan` Rust host (#5048): calls
-// scripts/layering-imports-scan.sh for enumeration, then runs gunbc Bool witnesses
-// with manifest overlay.
+// The deleted scripts/layering-imports-scan.sh enumerator is retired. Import enumeration
+// now lives in the single-authority projection v2.lens.layering_imports.layer_import_facts_live
+// (v1 handler: src/v1/stage0/src/layering_imports_project.rs, REUSING the resolver's own
+// extract_import_paths + collect_dag_files_tolerant). So this transport no longer scans —
+// it only runs the gunbc Bool witnesses that call that projection:
+//   * clean_tree (over the live std/extdeps roots) must hold;
+//   * the four scanner-execution receipts (over committed fixtures under
+//     src/v2/test/fixture/layering_scan) must detect their planted violation — the
+//     by-execution oracle that the projection == the deleted shell enumerator.
+// Source roots come from witness_layer_roots (§3 single authority); there is no manifest
+// overlay, no mktemp, no bash <script> any more.
 //
-// Migrated off hand-written `let script = "..."` blobs onto structured `ShellProgram`s
-// (extdeps.languages.bash.program). The 4 scanner-perturb receipts share one
-// `perturb_program(...)` builder parameterized by plant dir/file/source + scanner entry/fn
-// (§2 DRY — was 4 copy-pasted 15-line blobs). The build prelude is the shared
-// `host_prelude.ensure_gunbc_built()`. Source-root flags come from `witness_layer_roots`
-// (§3 single authority — same roots as the rest of CI, NOT a hardcoded "src/v2").
+// dissolve-on: emit(intent, Bash) makes this gunbc-claim shell program a Node tree the
+//   emitter serializes (matches v2.lens.host_language_transport_script).
 
 module tools.layering_imports_transport
 
@@ -18,22 +22,19 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
-  Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
-  Lit, VarRef, Concat, CmdSubst,
-  AndThen, OrElse, StderrToNull, StdoutToStderr,
-  lit, var_ref, command, assign, test_not_executable, serialize_bash
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
 }
 import tools.host_prelude { ensure_gunbc_built }
 
+data scanner_dir: String = "src/v2/test/claim/layering_imports/scanner/"
 data clean_tree_entry: String = "src/v2/test/claim/layering_imports/clean_tree_test.dag"
 data clean_tree_function: String = "clean_tree_no_wrong_direction_imports_holds"
 
-// --source-root <r> for every witness_layer_root, then --source-root "$MANIFEST_DIR".
+// --source-root <r> for every witness_layer_root (§3 single authority — same roots as the
+// rest of CI, NOT a hardcoded "src/v2").
 fn source_root_flags() -> List<ShellWord> {
-  concat(
-    fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)])),
-    [lit(text: "--source-root"), var_ref(name: "MANIFEST_DIR")]
-  )
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
 
 // "$GUNBC" run <source-root flags> --entry <e> --function <f> --claim-run
@@ -44,164 +45,36 @@ fn gunbc_claim_run(entry: String, function: String) -> ShellStmt {
   ))
 }
 
-// bash "$ROOT"/scripts/layering-imports-scan.sh "$TMP" "$MANIFEST"
-fn perturb_scan() -> ShellStmt {
-  command(words: [
-    lit(text: "bash"),
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/scripts/layering-imports-scan.sh")] },
-    var_ref(name: "TMP"),
-    var_ref(name: "MANIFEST")
-  ])
-}
-
-// Green pass: scan live repo, assert clean_tree witness holds.
-//   set -e; ROOT=$(...); cd "$ROOT"; MANIFEST="$ROOT"/target/...; MANIFEST_DIR=$(dirname "$MANIFEST")
-//   bash scripts/layering-imports-scan.sh "$ROOT" "$MANIFEST"
-//   GUNBC="$ROOT"/target/release/gunbc; if [ ! -x "$GUNBC" ]; then cargo build ... || exit 1; fi
-//   "$GUNBC" run ... clean_tree ...
-fn clean_tree_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
-  let gunbc = var_ref(name: "GUNBC")
-  let manifest = var_ref(name: "MANIFEST")
-  ShellProgram {
+// One ShellProgram: ensure gunbc built, then the given claim-runs (set -e — any failing
+// claim fails the gate). The script: argument is a computed serialize_bash application, so
+// v2.lens.host_language_transport_script reads it as ComputedApplication (no literal blob).
+fn run_claims(stmts: List<ShellStmt>) -> Bool {
+  let prog = ShellProgram {
     set_e: true,
-    statements: [
-      assign(name: "ROOT", value: CmdSubst { body: AndOr {
-        left: WithRedir {
-          stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
-          redir: StderrToNull
-        },
-        op: OrElse,
-        right: command(words: [lit(text: "pwd")])
-      } }),
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "MANIFEST", value: Concat { parts: [root, lit(text: "/target/v2-layering-imports-manifest.dag")] }),
-      assign(name: "MANIFEST_DIR", value: CmdSubst { body: command(words: [lit(text: "dirname"), manifest]) }),
-      command(words: [lit(text: "bash"), lit(text: "scripts/layering-imports-scan.sh"), root, manifest]),
-      assign(name: "GUNBC", value: Concat { parts: [root, lit(text: "/target/release/gunbc")] }),
-      If {
-        cond: test_not_executable(path: gunbc),
-        then: [
-          AndOr {
-            left: command(words: [
-              lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-              lit(text: "--release"), lit(text: "--bin"), lit(text: "gunbc")
-            ]),
-            op: OrElse,
-            right: Exit { code: 1 }
-          }
-        ]
-      },
-      gunbc_claim_run(entry: clean_tree_entry, function: clean_tree_function)
-    ]
+    statements: concat(ensure_gunbc_built(), stmts)
   }
+  let result = shell.Exec.Run(script: serialize_bash(p: prog))
+  result.success
 }
 
+// Green pass: the live import projection over std/extdeps must hold.
 fn run_clean_tree_gate() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: clean_tree_program()))
-  result.success
+  run_claims(stmts: [gunbc_claim_run(entry: clean_tree_entry, function: clean_tree_function)])
 }
 
-// Shared scanner-perturb receipt: plant a bad module, scan, assert the scanner DETECTS it AND
-// clean_tree goes RED; then remove the plant, re-scan, assert clean_tree GREEN again.
-//   set -e; <ensure_gunbc_built>; TMP=$(mktemp -d); MANIFEST="$TMP"/...; MANIFEST_DIR="$TMP"
-//   mkdir -p "$TMP"/<plant_dir>; cat > "$TMP"/<plant_file> <<'PLANT' <plant_src> PLANT
-//   <perturb_scan>; <scanner detect run>
-//   if <clean_tree run> 2>/dev/null; then echo 'clean_tree should be red' >&2; rm -rf "$TMP"; exit 1; fi
-//   rm -f "$TMP"/<plant_file>; <perturb_scan>; <clean_tree run>; rm -rf "$TMP"
-fn perturb_program(
-  plant_dir: String,
-  plant_file: String,
-  plant_source: String,
-  scanner_entry: String,
-  scanner_function: String
-) -> ShellProgram {
-  let tmp = var_ref(name: "TMP")
-  let plant_path = Concat { parts: [tmp, lit(text: plant_file)] }
-  ShellProgram {
-    set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      assign(name: "MANIFEST", value: Concat { parts: [tmp, lit(text: "/v2-layering-imports-manifest.dag")] }),
-      assign(name: "MANIFEST_DIR", value: tmp),
-      command(words: [lit(text: "mkdir"), lit(text: "-p"), Concat { parts: [tmp, lit(text: plant_dir)] }]),
-      Heredoc { path: plant_path, delimiter: "PLANT", body: plant_source },
-      perturb_scan(),
-      gunbc_claim_run(entry: scanner_entry, function: scanner_function),
-      If {
-        cond: WithRedir {
-          stmt: gunbc_claim_run(entry: clean_tree_entry, function: clean_tree_function),
-          redir: StderrToNull
-        },
-        then: [
-          WithRedir {
-            stmt: command(words: [lit(text: "echo"), lit(text: "clean_tree should be red")]),
-            redir: StdoutToStderr
-          },
-          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
-          Exit { code: 1 }
-        ]
-      },
-      command(words: [lit(text: "rm"), lit(text: "-f"), plant_path]),
-      perturb_scan(),
-      gunbc_claim_run(entry: clean_tree_entry, function: clean_tree_function),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
-    ])
-  }
+// Scanner-execution receipt entry+function for one fixture scenario.
+fn scanner_claim(scenario: String, function: String) -> ShellStmt {
+  gunbc_claim_run(entry: concat(scanner_dir, concat(scenario, ".dag")), function: function)
 }
 
-fn run_perturb_std_v4_prefix() -> Bool {
-  let prog = perturb_program(
-    plant_dir: "/src/v2/std",
-    plant_file: "/src/v2/std/_perturb_scanner_std_v4_prefix.dag",
-    plant_source: "module v2.std._perturb_scanner_std_v4_prefix\nimport v2.compiler.tokenize\ndata perturb: Bool = true",
-    scanner_entry: "src/v2/test/claim/layering_imports/scanner/std_v4_prefix.dag",
-    scanner_function: "scanner_std_v4_prefix_detects_holds"
-  )
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
-}
-
-fn run_perturb_extdeps_v4_prefix() -> Bool {
-  let prog = perturb_program(
-    plant_dir: "/src/v2/extdeps",
-    plant_file: "/src/v2/extdeps/_perturb_scanner_extdeps_v4_prefix.dag",
-    plant_source: "module v2.extdeps._perturb_scanner_extdeps_v4_prefix\nimport v2.compiler.parse\ndata perturb: Bool = true",
-    scanner_entry: "src/v2/test/claim/layering_imports/scanner/extdeps_v4_prefix.dag",
-    scanner_function: "scanner_extdeps_v4_prefix_detects_holds"
-  )
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
-}
-
-fn run_perturb_dsl_extdeps_v4_exact() -> Bool {
-  let prog = perturb_program(
-    plant_dir: "/dsl/extdeps",
-    plant_file: "/dsl/extdeps/_perturb_scanner_dsl_extdeps_v4_exact.dag",
-    plant_source: "module dsl.extdeps._perturb_scanner_dsl_extdeps_v4_exact\nimport v2.compiler\ndata perturb: Bool = true",
-    scanner_entry: "src/v2/test/claim/layering_imports/scanner/dsl_extdeps_v4_exact.dag",
-    scanner_function: "scanner_dsl_extdeps_v4_exact_detects_holds"
-  )
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
-}
-
-fn run_perturb_parse_level_pre_resolve() -> Bool {
-  let prog = perturb_program(
-    plant_dir: "/src/v2/std",
-    plant_file: "/src/v2/std/_perturb_scanner_parse_level_pre_resolve.dag",
-    plant_source: "module v2.std._perturb_scanner_parse_level_pre_resolve\nimport v2.compiler.tokenize\nimport totally.broken.unresolved.module\ndata x: String = \"unresolved\"",
-    scanner_entry: "src/v2/test/claim/layering_imports/scanner/parse_level_pre_resolve.dag",
-    scanner_function: "scanner_parse_level_pre_resolve_detects_holds"
-  )
-  let result = shell.Exec.Run(script: serialize_bash(p: prog))
-  result.success
-}
-
-// All four scanner-execution perturb receipts (coverage_domain_equivalence roster).
+// All four scanner-execution detection receipts (coverage_domain_equivalence roster) —
+// each asserts the projection flags exactly one violation AND clean_tree goes RED on that
+// fixture set. This is the equivalence-by-execution oracle for the deleted enumerator.
 fn run_scanner_perturb_receipts() -> Bool {
-  run_perturb_std_v4_prefix()
-    && run_perturb_extdeps_v4_prefix()
-    && run_perturb_dsl_extdeps_v4_exact()
-    && run_perturb_parse_level_pre_resolve()
+  run_claims(stmts: [
+    scanner_claim(scenario: "std_v4_prefix", function: "scanner_std_v4_prefix_detects_holds"),
+    scanner_claim(scenario: "extdeps_v4_prefix", function: "scanner_extdeps_v4_prefix_detects_holds"),
+    scanner_claim(scenario: "dsl_extdeps_v4_exact", function: "scanner_dsl_extdeps_v4_exact_detects_holds"),
+    scanner_claim(scenario: "parse_level_pre_resolve", function: "scanner_parse_level_pre_resolve_detects_holds")
+  ])
 }

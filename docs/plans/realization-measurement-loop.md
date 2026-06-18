@@ -82,6 +82,27 @@ cost axis; product `compute_fabric` owns the **$/billing axis** (`CostClass`, `M
 fleet rows into the std shape (`placement_supply_row`, `compute_fabric.dag:220`); the **peripheral host
 realizer** bridges product→std and runs the Pareto pick. std stays product-free.
 
+### v2 is the target; v1 is the proving ground (DESIGN §7)
+
+v1 (the Rust seed) is shrinking to zero; v2 (the self-hosted `.dag` compiler) is what must benefit.
+**Every phase's durable artifact is `.dag` that v2 inherits; the Rust seed is only the proving *handler*
+— where a host-effect attaches today, while v2 is mid-bootstrap and the v1 interpreter is still the only
+evaluator that actually runs.** You MAY edit v1 (it's a proving ground), but:
+
+> **The v2-benefit test:** if a phase's deliverable is a Rust patch with *no `.dag` model*, it failed.
+> The carrier / lens / kernel / effect-shape is the artifact; the Rust code is one handler of it
+> (§2 one-shape-N-handlers; §3 measured⇒peripheral; §7 Rust→zero).
+
+This is *why* the keystone's measurement is modeled as an **effect-shape + `PerformanceReceipt` carrier +
+a roll-up lens over the Node fold** (the same `fold_node` v2's own evaluator uses) — so when v2 self-hosts,
+the instrumentation, the cache kernel, the scheduler, and the fabric all come along for free. The Rust tap
+in `v1_interpreter.rs` *proves* the model green-by-execution today; it is the realization, not the
+authority. Per-phase split: **Phase 0** durable = the `.dag` measure model/lens, proving = the Rust eval
+tap; **Phase 1** durable = the `.dag` width-fold (`scheduler.dag` is already v2), proving = the
+`claim_executor` spawn cap; **Phase 1.5a/2/3** are already `.dag`-native (`v2.lens.affected_set`, the
+cache catalog/kernel, `compute_fabric`/`ci_yaml_emit`) — v2-inheriting by construction; only the cache
+*backends* (`resolved_graph_cache.rs`, `ParseTableMemo`) stay v1 handlers of the one `.dag` kernel.
+
 ---
 
 ## Verified ground truth (file:line — do not re-derive)
@@ -148,15 +169,6 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
   vs aggregate-per-witness split) — which is *itself* the profiling the operator was about to do by hand,
   made first-class.
 - **§5 gate:** purity oracle — witness verdicts byte-identical instrumented vs not.
-- **P5 hand-Rust receipt (v1 seed only — dissolve-on v2 RealizationMeasureEffect fold):**
-
-  | Hand-Rust artifact | Location | Checkable receipt (green today) | Dissolve-on |
-  |---|---|---|---|
-  | eval tap + host `PerformanceReceipt` mirror | `v1_interpreter.rs` (`ACTIVE_SUBJECT`, `SUBJECT_SELF_NANOS`, `performance_receipt_from_witness`) | `eval_measurement_purity_test.rs` — witness verdict byte-identical with/without measurement | v2 eval fold binds `RealizationMeasureEffect::ObserveElapsedAtSubject`; delete thread-local tap + host struct |
-  | `run_claim_measured` / `DiscoverySummary` two-clock path | `cli_run.rs` | CI floor logs `CostAccount.time basis=Measured`; keystone witness `realization_measurement_keystone_test.dag` | v2 witness runner emits receipts via Realization carrier |
-  | `witness_work_subject_key` | `resolved_graph_cache.rs` | content-hash of closure digest + function matches cache-subject grain | subsumed by v2 resolved-graph subject projection |
-
-  ROADMAP: v1 rows delete when Phase 0 merges; v2 handler row opens Phase 1 width dispatch.
 - **Dissolution trigger:** `cost_account_predicted_zero()` has no callers on the floor path; `measured_ms`
   deleted.
 
@@ -248,31 +260,42 @@ srv1/srv2:** a self-hosted runner is one `ComputeOffer`; GHA-hosted, `Ubicloud`,
 (already enumerated, `compute_fabric.dag:71`). This meets note 1 at the placement carrier — the offer the
 runner *declares* is the budget Phase 1's scheduler *consumes*.
 
-**§3 boundary (decisive — and already declared by `compute_fabric`'s own header):**
+**§3 boundary — THREE tiers, not two (refined after the #5177 review).** The operator's rule: keep the
+*generic* "CI runner" cleanly apart from *our* CI runner; CI does not need to know our fleet. So:
 
-- **3a — public gunbc substrate (this repo).** The *provisioning schema* is `product.compute_fabric`
-  (already exists: `ComputeOffer`/`WorkDemand`/`satisfies`/`ExecutionReceipt`). Extend `RunnerSpec`
-  (`actions.dag:233` — `SelfHosted{labels}` is stringly today; its dissolution note calls for a "typed
-  runner-label substrate … where the compiler owns runner topology") so a runner spec is the GHA
-  *realization* of a `compute_fabric` offer/demand (runner labels ≈ the demand's isolation/locality). ci.yml
-  **is already generated and byte-drift-gated** — generator `expected_ci_yml()`
-  (`dsl/gunbc/ci_yaml_emit.dag:9`), gate `dsl/tools/ci_yaml_gate.dag`, validate
-  `dsl/gunbc/ci_yaml_validate.dag` — so this is **extend existing generation, not build new**. The concrete
-  seam (start-now, measurement-free): `ci_yaml_emit.dag` emits `runs-on: [self-hosted,linux,arm64]` as a
-  **literal** today; route it through `RunnerSpec` derived from a `compute_fabric` `ComputeOffer` (the
-  carrier's own dissolution trigger, `actions.dag:226-232`, names "gunbc/ci_emission.dag projection for
-  emitted workflow YAML"). DFS before minting: `compute_fabric` first, then `extdeps/github/actions.dag`,
-  `extdeps/os/{ubuntu,…}`, `extdeps/container`, `extdeps/docker`, `extdeps/cloud`, `dsl/std/os.dag`.
-  ⚠️ Ignore the stale `extdeps/github/ci.dag:7` "hand-edited, not generated" comment (track for deletion).
-- **3b — private ctrl instantiation (separate, NOT this PR).** The *concrete* srv1/srv2 facts — access
-  creds, runner registration tokens, the exact SKUs each host runs, host provisioning — are **ctrl-tier
-  private**, in **ctrl `plans.fabric.operator_fleet`** (named by `compute_fabric.dag:5`;
-  `hardware_selection.dag:8`; memory `idea-pr-compiler-ctrl-boundary`). They are concrete `ComputeOffer`
-  rows instantiated *against* the 3a public fabric schema. Out of scope for the public plan except to fix
-  the seam 3a must expose.
+- **3a-generic — "CI runner" in the abstract (any project).** What we expect *any* CI runner to do,
+  project-agnostic: **a workflow triggered by an event** (`trigger → workflow`), realized per platform.
+  The GHA realization already exists — `Workflow{ on: List<WorkflowTrigger>, jobs }` + `WorkflowTrigger`
+  (`actions.dag:56,79`) and `RunnerSpec` (`:233`). The **generic `offer → RunnerSpec` projection**
+  (`runner_spec_from_offer`, kernel/arch → labels) belongs HERE, next to `RunnerSpec` in the generalized
+  layer — it works for *any* fleet offer. **This tier MUST NOT import a concrete SKU
+  (`extdeps.cpu.ampere`) or name srv1/srv2.** (GitLab/Buildkite/etc. would be sibling platform handlers —
+  one generic interface, N realizations, §2/§4.)
+- **3a-ours — OUR gunbc CI runner (our repo's META-modeling).** OUR workflow instance + OUR fleet: the
+  srv1/srv2 *instantiation* (the Ampere-Altra `ComputeOffer`, the `gunbc-ci-fleet` identity, the
+  per-thread Hz). This **must live in a file that is gunbc's own meta-model** (`dsl/gunbc/ci_*`), and it
+  *consumes* the 3a-generic interface — it is where the concrete SKU import is legitimate. The srv1/srv2
+  instantiation meta-model is public-in-our-repo; only secrets cross into ctrl.
+- **3b — ctrl concrete fleet (private).** Access creds, runner registration tokens, truly-secret per-host
+  config — **ctrl `plans.fabric.operator_fleet`** (`compute_fabric.dag:5`; `hardware_selection.dag:8`;
+  memory `idea-pr-compiler-ctrl-boundary`). Concrete rows instantiated against the 3a-ours meta-model.
 
-**Dissolution trigger:** `.github/workflows/ci.yml` is emitted from a `.dag` runner+floor spec (no
-hand-authored runner block); the `HardwareBudget` the scheduler reads is the one the runner spec declares.
+**⚠️ #5177 needs this rework (do right after it merges).** `dsl/gunbc/ci_runner.dag` as merged **fuses
+3a-generic with 3a-ours**: the generic `runner_spec_from_offer` projection + kernel/arch label tables sit
+in the *same module* as our concrete fleet (`gunbc_ci_cpu = altra_q6430_catalog`, `gunbc_ci_host_identity
+= "gunbc-ci-fleet"`), and it `import extdeps.cpu.ampere` — a concrete SKU — into what should be the
+generic interface. Split it: **generic projection → the generalized layer beside `RunnerSpec`** (no SKU
+import, no fleet rows); **our fleet offer → a `dsl/gunbc/` meta-model file** that consumes the generic
+projection. Keep the generic interface MINIMAL (trigger→workflow + offer→RunnerSpec) — "CI doesn't need
+to know everything." ci.yml stays generated + byte-drift-gated (`expected_ci_yml()`
+`dsl/gunbc/ci_yaml_emit.dag:9`, gate `dsl/tools/ci_yaml_gate.dag`); the emit consumes *our* runner spec,
+which is *our* fleet offer projected through the *generic* seam. ⚠️ also delete the stale
+`extdeps/github/ci.dag:7` "hand-edited, not generated" comment.
+
+**Dissolution trigger:** `.github/workflows/ci.yml` is emitted from a `.dag` spec whose runner block is
+*our* fleet offer projected through the *generic* `offer → RunnerSpec` seam (no hand-authored runner
+block, no fleet SKU in the generic tier); the `HardwareBudget` the scheduler reads is the one *our* offer
+declares.
 
 ---
 
@@ -317,6 +340,9 @@ groundwork. **Critical path:** Phase 0 → 1 / 2.
   `DeploymentFacts`.)
 - **Rows, not Rust** — express new schedule/cache/runner facts as data; do not cement the seed to satisfy
   a ratchet (the ratchet is downstream of substrate migration).
+- **v2-benefit test (§7)** — the durable artifact is `.dag` that v2 inherits; the Rust seed is only the
+  proving *handler*. A deliverable that is a Rust patch with no `.dag` model failed. (See the §0 "v2 is the
+  target" principle.)
 - **Fail-closed (§5)** + **purity oracle** on every memo/measurement (byte-identical warm-vs-cold; verdict
   identical instrumented-vs-not). A bounded "forever" ≠ an "unknown" error.
 - **Green by execution, not spec-without-execution.** A real consumer runs green + a discriminating input
