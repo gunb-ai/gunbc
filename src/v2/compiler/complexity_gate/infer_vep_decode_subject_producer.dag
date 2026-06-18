@@ -1,0 +1,26 @@
+// Scope: complexity-gate tier-1 — target_model VEP bundle-entry structural subject.
+//        Post-fix: constant delegate body; pre-fix semantic red uses mega-closure fixture.
+
+module v2.test.complexity_gate.infer_vep_decode_subject_producer
+
+import v2.std.diagnostic { Accepted, Outcome }
+import v2.std.node { Node }
+import v2.test.complexity_gate.infer_perf_lens_fixture {
+  infer_perf_arrow_with_body,
+  infer_vep_bundle_delegate_body,
+  infer_vep_mega_closure_body
+}
+
+fn infer_vep_bundle_entry_arrow_with_body() -> Outcome<Node> {
+  Accepted {
+    value: infer_perf_arrow_with_body(body: infer_vep_bundle_delegate_body),
+    diagnostics: []
+  }
+}
+
+fn infer_vep_mega_closure_arrow_with_body() -> Outcome<Node> {
+  Accepted {
+    value: infer_perf_arrow_with_body(body: infer_vep_mega_closure_body),
+    diagnostics: []
+  }
+}

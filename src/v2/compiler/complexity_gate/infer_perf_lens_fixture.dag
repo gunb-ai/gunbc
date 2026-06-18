@@ -1,0 +1,103 @@
+// Scope: complexity-gate infer-perf tier-1 — synthetic Node bodies modeling decode/substitute
+//        structural pathology (map_id / nested isomorphism). Shared by subject producers
+//        and semantic-red controls; NOT a second cost authority.
+// Anchor: v2.lens.complexity map_id_test + nested_test patterns.
+
+module v2.test.complexity_gate.infer_perf_lens_fixture
+
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+
+data infer_perf_arrow_domain_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^infer_perf_arrow_domain } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn infer_perf_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: infer_perf_arrow_domain_atom },
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Post-fix substitute_generics: O(tree nodes) — single Cardinality walk (map_id isomorphism).
+data infer_substitute_tree_walk_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^infer_substitute_tree_walk_leaf } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data infer_substitute_tree_walk_step: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: infer_substitute_tree_walk_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data infer_substitute_tree_walk_body: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: infer_substitute_tree_walk_step }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+// Pre-fix substitute_generics pathology: per-node map_keys — tree × subst product
+// (nested Cardinality isomorphism; nested_test receipt).
+data infer_substitute_tree_x_subst_inner: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: infer_substitute_tree_walk_step }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data infer_substitute_tree_x_subst_body: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: infer_substitute_tree_x_subst_inner }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+// Post-fix VEP bundle entry: constant delegate (match → chain; no inline bind tower).
+data infer_vep_bundle_delegate_body: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^infer_vep_bundle_delegate_body } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+// Pre-fix VEP mega-closure pathology: inline nested bind tower (nested Cardinality model).
+data infer_vep_mega_closure_inner: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: infer_substitute_tree_walk_step }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data infer_vep_mega_closure_body: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: infer_vep_mega_closure_inner }
+  ],
+  occurrence_id: SyntheticOccurrence
+}

@@ -7,6 +7,7 @@
 //        Do not declare a bound thinking it covers a whole-arrow fold.
 // Coverage: subject reach = COMPREP grammar coverage (design-lens-subject-supply.md §3).
 //        Wave-1 today: source-bridged add / bind / branch / loop (COMPREP wave-1 producers).
+//        Tier-1 infer-perf seed (#5135): substitute_generics tree-walk + VEP bundle entry.
 //        02_parse compiler-stage bodies arrive with COMPREP waves 2+ / self-host breadth;
 //        until a producer lands, do not add name-keyed placeholder rows — new rows attach
 //        when the §2 subject-producer composition exists. Rate every producer before the
@@ -23,6 +24,12 @@ import v2.lens.complexity {
   unknown_complexity
 }
 import v2.lens.cost { SizeVariable }
+import v2.test.complexity_gate.infer_substitute_subject_producer {
+  infer_substitute_generics_arrow_with_body
+}
+import v2.test.complexity_gate.infer_vep_decode_subject_producer {
+  infer_vep_bundle_entry_arrow_with_body
+}
 import v2.std.cardinality { loop_bound_measure, loop_bound_witness_for_node }
 import v2.std.collection { List }
 import v2.std.diagnostic { Outcome }
@@ -67,6 +74,16 @@ fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityBound {
   }
 }
 
+// substitute_generics: O(tree nodes), not O(tree nodes × subst keys).
+fn complexity_declared_budget_infer_substitute_linear(body: Node) -> ComplexityBound {
+  linear_complexity(size_var: SizeVariable { source: body })
+}
+
+// VEP bundle entry post-shard: constant delegate (no inline mega-closure).
+fn complexity_declared_budget_infer_vep_bundle_constant(_body: Node) -> ComplexityBound {
+  ConstantComplexity
+}
+
 // Wave-1 COMPREP keystone: tokenize→parse→normalize→resolve→body_producer over dag_mvp1_source_text.
 data complexity_budget_row_comprep_source_bridged_add: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
   subject_producer: comprep_source_bridged_add_arrow_with_body,
@@ -88,9 +105,21 @@ data complexity_budget_row_comprep_source_bridged_loop: LensSubjectComplexityBud
   declared_budget: complexity_declared_budget_loop_linear
 }
 
+data complexity_budget_row_infer_substitute_generics: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: infer_substitute_generics_arrow_with_body,
+  declared_budget: complexity_declared_budget_infer_substitute_linear
+}
+
+data complexity_budget_row_infer_vep_bundle_entry: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: infer_vep_bundle_entry_arrow_with_body,
+  declared_budget: complexity_declared_budget_infer_vep_bundle_constant
+}
+
 data complexity_subject_budget_rows: List<LensSubjectComplexityBudgetRow> = [
   complexity_budget_row_comprep_source_bridged_add,
   complexity_budget_row_comprep_source_bridged_bind,
   complexity_budget_row_comprep_source_bridged_branch,
-  complexity_budget_row_comprep_source_bridged_loop
+  complexity_budget_row_comprep_source_bridged_loop,
+  complexity_budget_row_infer_substitute_generics,
+  complexity_budget_row_infer_vep_bundle_entry
 ]

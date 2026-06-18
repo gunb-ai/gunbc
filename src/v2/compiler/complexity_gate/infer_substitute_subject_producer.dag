@@ -1,0 +1,26 @@
+// Scope: complexity-gate tier-1 — substitute_generics structural subject (04_infer tree-walk).
+//        Post-fix: O(nodes) Cardinality body; pre-fix semantic red uses tree×subst fixture.
+
+module v2.test.complexity_gate.infer_substitute_subject_producer
+
+import v2.std.diagnostic { Accepted, Outcome }
+import v2.std.node { Node }
+import v2.test.complexity_gate.infer_perf_lens_fixture {
+  infer_perf_arrow_with_body,
+  infer_substitute_tree_walk_body,
+  infer_substitute_tree_x_subst_body
+}
+
+fn infer_substitute_generics_arrow_with_body() -> Outcome<Node> {
+  Accepted {
+    value: infer_perf_arrow_with_body(body: infer_substitute_tree_walk_body),
+    diagnostics: []
+  }
+}
+
+fn infer_substitute_tree_x_subst_arrow_with_body() -> Outcome<Node> {
+  Accepted {
+    value: infer_perf_arrow_with_body(body: infer_substitute_tree_x_subst_body),
+    diagnostics: []
+  }
+}
