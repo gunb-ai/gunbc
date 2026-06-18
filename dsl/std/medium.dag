@@ -12,13 +12,9 @@
 //   v2/std/text.dag              — Unicode text carriers (dissolve-on: import Medium
 //                                  when cross-tree std import lands)
 //
-// NAME DISCIPLINE (§3 — operator sign-off pending on final pick):
-//   Candidates considered:
-//     - Medium<R>  — matches "medium axis" brief; general carrier for any representation.
-//     - Surface<R> — emphasizes external encoding layer; risks collision with language-
-//                    surface / UI "surface" vocabulary elsewhere in the compiler.
-//     - Vehicle<R> — carries payload; less standard in type-theoretic substrate naming.
-//   RECOMMENDATION: Medium<R> (proceeding under this name; FLAG for parent sign-off).
+// NAME DISCIPLINE (§3 — SIGNED OFF eager-boar-790 2026-06-18):
+//   Proceed under Medium<R> + DecodeFidelity. Surface<Vehicle rejected (collision /
+//   non-standard naming). Operator retains pre-merge veto.
 //
 //   Do NOT use `Carrier` (overloaded: collection backing, text, classification axis,
 //   fact-bearing Node). Do NOT use bare `Fidelity` — collides with
