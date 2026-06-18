@@ -41,9 +41,8 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import v2.lens.application { apply_diff }
 import v2.std.grammar { ParseTree }
-import v2.std.node { Diff, Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
 import v2.compiler.target_carriers { TargetSource }
@@ -126,12 +125,6 @@ type SourceAuthorityRoundTripLaw {
   source_law: SourceAstEqual
   semantic_law: SemanticIrEqual
   canonical_source_law: CanonicalDagSourceEmissionLaw
-}
-
-// Patch-in-error carrier: canonical .dag source before/after a structural Diff (read/edit §4 re-emit).
-type DagSourcePatch {
-  before: DagSource
-  after: DagSource
 }
 
 
@@ -713,33 +706,5 @@ fn source_authority_round_trip(
     source: source,
     canonical_source_target: canonical_source_target,
     lm: dag_language_model_wave1_modeled()
-  )
-}
-
-// apply_diff ∘ grammar-inverse serialize — before/after DagSource patch carrier for patch-in-error.
-// Calls target_serialize_source_from_model directly (no hollow TargetSource→DagSource relabel wrapper).
-fn serialize_diff_as_source_patch(
-  root: Node,
-  diff: Diff,
-  canonical_source_target: TargetModel
-) -> Outcome<DagSourcePatch> {
-  bind_outcome(
-    o: target_serialize_source_from_model(target: canonical_source_target, emitted: root),
-    f: fn(before) {
-      bind_outcome(
-        o: apply_diff(root: root, d: diff),
-        f: fn(patched) {
-          bind_outcome(
-            o: target_serialize_source_from_model(
-              target: canonical_source_target,
-              emitted: patched
-            ),
-            f: fn(after) {
-              outcome_accepted(value: DagSourcePatch { before: before, after: after })
-            }
-          )
-        }
-      )
-    }
   )
 }

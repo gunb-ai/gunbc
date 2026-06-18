@@ -3,7 +3,9 @@
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
 import v2.compiler.source_authority {
-  deterministic_dag_source_serializer_witness,
+  deterministic_dag_source_serializer_witness
+}
+import v2.lens.application_serializer {
   serialize_diff_as_source_patch
 }
 import v2.compiler.translate { target_serialize_source_from_model }
@@ -147,7 +149,7 @@ fn serialize_applied_diff_loop_body_claim_rhs() -> Bool {
 }
 
 data claim_serialize_applied_diff_loop_body: TestClaim = EqualsClaim {
-  label: "source_authority/serialize_diff_as_source_patch: loop body edit re-emits distinct canonical source",
+  label: "lens.application_serializer/serialize_diff_as_source_patch: loop body edit re-emits distinct canonical source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: true,
   rhs: serialize_applied_diff_loop_body_claim_rhs(),
