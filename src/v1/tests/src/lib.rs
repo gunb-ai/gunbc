@@ -75,6 +75,8 @@ mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
+mod parse_table_memo_amortization_test;
+#[cfg(test)]
 mod pd3_adversarial;
 #[cfg(test)]
 mod peano_materialization_cap_test;
