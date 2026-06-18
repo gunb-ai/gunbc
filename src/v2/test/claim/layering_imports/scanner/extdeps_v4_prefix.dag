@@ -1,13 +1,26 @@
-// Scope: scanner-execution receipt — host manifest must flag src/v2/extdeps planted
-//        v2.compiler.* prefix import.
+// Scope: scanner-execution receipt — the live import projection must flag a planted
+//        extdeps-layer v2.compiler.* prefix import (committed fixture, read by execution).
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.layering_imports.scanner.extdeps_v4_prefix
 
-import v2.lens.layering_imports { layering_imports_violation_count }
+import v2.lens.layering_imports {
+  layering_imports_violation_count,
+  layering_imports_clean_holds,
+  layer_import_facts_live
+}
+import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.test.workflow.host_layering_import_manifest { host_layer_import_facts }
+
+data extdeps_v4_prefix_std_roots: List<String> = []
+data extdeps_v4_prefix_extdeps_roots: List<String> =
+  ["src/v2/test/fixture/layering_scan/extdeps_v4_prefix/extdeps"]
 
 fn scanner_extdeps_v4_prefix_detects_holds() -> Bool {
-  layering_imports_violation_count(facts: host_layer_import_facts) == 1
+  let facts = layer_import_facts_live(
+    std_roots: extdeps_v4_prefix_std_roots,
+    extdeps_roots: extdeps_v4_prefix_extdeps_roots
+  )
+  (layering_imports_violation_count(facts: facts) == 1)
+    && (layering_imports_clean_holds(facts: facts) == false)
 }

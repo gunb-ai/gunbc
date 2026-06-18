@@ -1,11 +1,29 @@
-// Scope: clean-tree witness — host-enumerated import facts must have zero violations.
+// Scope: clean-tree witness — the live import-direction projection over std/ and extdeps/
+//        must have zero violations. Scans the real tree directly via the
+//        v2.lens.layering_imports.layer_import_facts_live projection (the single-authority
+//        replacement for the deleted scripts/layering-imports-scan.sh enumerator).
 
 module v2.test.layering_imports.clean_tree
 
-import v2.lens.layering_imports { layering_imports_clean_holds }
+import v2.lens.layering_imports { layering_imports_clean_holds, layer_import_facts_live }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.test.workflow.host_layering_import_manifest { host_layer_import_facts }
+import v2.std.text { String }
+
+// witness_layer_roots ([src/v2, dsl]) × layer subdir → the per-layer scan roots.
+// The layer<->root assignment is workflow POLICY (DESIGN §3 (c)); witness_layer_roots is the
+// single authority for the base roots, this only appends the std/extdeps discriminator.
+fn layer_roots_with_subdir(sub: String) -> List<String> {
+  fold(witness_layer_roots, init: [], f: fn(acc, r) {
+    list_snoc_item(xs: acc, item: concat(r, sub))
+  })
+}
 
 test fn clean_tree_no_wrong_direction_imports_holds() -> Bool {
-  layering_imports_clean_holds(facts: host_layer_import_facts)
+  layering_imports_clean_holds(facts: layer_import_facts_live(
+    std_roots: layer_roots_with_subdir(sub: "/std"),
+    extdeps_roots: layer_roots_with_subdir(sub: "/extdeps")
+  ))
 }
