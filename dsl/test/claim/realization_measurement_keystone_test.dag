@@ -1,52 +1,69 @@
 // dsl/test/claim/realization_measurement_keystone_test.dag
 //
-// Phase-0 keystone: PerformanceReceipt wall nanos roll up into CostAccount.time
-// with basis Measured (not predicted_zero). Discriminating: predicted_zero stays
-// Predicted; measured receipt path is Measured.
+// Phase-0 keystone §5: durable .dag model (RealizationMeasureEffect + roll-up lens)
+// proven green-by-execution; v1 Rust is the proving handler only.
 //
 // Run: gunbc run --source-root dsl --entry <this> --function realization_measurement_keystone_witnesses --claim-run
 
 module test.claim.realization_measurement_keystone
 
+import std.types { ContentHash }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
-  cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_nanos,
+}
+import std.realization_measurement {
+  RealizationMeasureEffect,
+  v1_eval_expr_measure_handler_id,
+  cost_account_measured_from_wall_nanos,
+  cost_account_has_measured_basis,
+  cost_account_has_predicted_basis,
+  witness_measured_rollup_differs_from_predicted_zero,
 }
 import product.compute_fabric {
   WorkUnitId,
   performance_receipt_host_single_sample,
-  performance_receipts_total_time,
+  cost_account_from_performance_receipts,
   performance_receipts_total_wall_nanos,
 }
 
+data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
 
-fn witness_predicted_zero_is_predicted_basis() -> Bool {
-  match cost_account_predicted_zero() {
-    CostAccount { basis: Predicted, time: _, space: _, power: _ } => true
-    CostAccount { basis: Measured, time: _, space: _, power: _ } => false
-  }
+data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
+  subject: sample_subject
+  work_shape: "realization_measurement_keystone_witnesses"
 }
 
-fn witness_measured_receipt_rollup_is_measured_basis() -> Bool {
+fn witness_predicted_zero_is_predicted_basis() -> Bool {
+  cost_account_has_predicted_basis(account: cost_account_predicted_zero())
+}
+
+fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   let receipt = performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
     wall_nanos: 5000000,
   )
-  let total = cost_account_measured(
-    time: performance_receipts_total_time(receipts: [receipt]),
-  )
-  match total {
-    CostAccount { basis: Measured, time: _, space: _, power: _ } =>
-      cost_account_time_nanos(account: total) == performance_receipts_total_wall_nanos(receipts: [receipt])
-    CostAccount { basis: Predicted, time: _, space: _, power: _ } => false
-  }
+  let total = cost_account_from_performance_receipts(receipts: [receipt])
+  let rolled = cost_account_time_nanos(account: total)
+  let observed = performance_receipts_total_wall_nanos(receipts: [receipt])
+  cost_account_has_measured_basis(account: total) && (rolled == observed)
+}
+
+fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
+  witness_measured_rollup_differs_from_predicted_zero(wall_nanos: 5000000)
+}
+
+fn witness_v1_handler_id_declared() -> Bool {
+  let id = v1_eval_expr_measure_handler_id
+  id == "host:v1-interpreter.eval_expr_self_time"
 }
 
 test fn realization_measurement_keystone_witnesses() -> Bool {
   witness_predicted_zero_is_predicted_basis()
-    && witness_measured_receipt_rollup_is_measured_basis()
+    && witness_measured_receipt_rollup_uses_lens()
+    && witness_measured_rollup_red_on_predicted_zero()
+    && witness_v1_handler_id_declared()
 }

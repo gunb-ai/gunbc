@@ -41,6 +41,8 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+import std.realization_schedule { CostAccount }
+import std.realization_measurement { cost_account_measured_from_wall_nanos }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuFacts,
@@ -604,6 +606,14 @@ fn performance_receipts_total_wall_nanos(receipts: List<PerformanceReceipt>) -> 
 
 fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
   nanosecond_duration(count: performance_receipts_total_wall_nanos(receipts: receipts))
+}
+
+// Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
+// → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
+  cost_account_measured_from_wall_nanos(
+    wall_nanos: performance_receipts_total_wall_nanos(receipts: receipts)
+  )
 }
 
 // Host-side v1 interpreter provider row for SingleSample witness measurements.

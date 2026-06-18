@@ -1,0 +1,75 @@
+// std/realization_measurement.dag — Measured-cost model (Phase-0 keystone, v2-inheritable).
+//
+// Authority split (§3 / §7):
+//   THIS MODULE — durable model + pure roll-up lens (what v2 inherits).
+//   extdeps/realization/* — peripheral host handlers (v1 eval_expr tap today).
+//   product.compute_fabric — PerformanceReceipt observation carrier.
+//
+// Instrumentation is the dual of cache (realization-measurement-loop.md Phase 0):
+// both wrap the same fold boundary keyed by content-hash subject; cache stores
+// node→value, measurement stores node→duration. The handler is host-effect;
+// the analysis is this lens.
+
+module std.realization_measurement
+
+import std.types { ContentHash, Bool, String, List }
+import std.nat { Nat }
+import std.measure { nanosecond_duration }
+import std.realization_schedule {
+  CostAccount,
+  CostBasis,
+  cost_account_measured,
+  cost_account_predicted_zero,
+  cost_account_time_nanos,
+}
+
+// Host-effect shape: observe elapsed wall time at a cache-subject boundary.
+// NOT a state-mutation EffectShape (std.effects) — measurement is peripheral
+// realization (§3 measured⇒peripheral), keyed like cache UpsertSubject.
+type RealizationMeasureEffect
+  = ObserveElapsedAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+
+// v1 proving handler id (dissolve-on: v2 self-host eval handler subsumes).
+data v1_eval_expr_measure_handler_id: String = "host:v1-interpreter.eval_expr_self_time"
+
+// --- Pure roll-up lens: observations → CostAccount.time --------------------
+
+fn cost_account_measured_from_wall_nanos(wall_nanos: Nat) -> CostAccount {
+  cost_account_measured(time: nanosecond_duration(count: wall_nanos))
+}
+
+fn wall_nanos_list_total(nanos_list: List<Nat>) -> Nat {
+  fold(nanos_list, init: 0, f: (acc, n) => acc + n)
+}
+
+fn cost_account_measured_from_wall_nanos_list(nanos_list: List<Nat>) -> CostAccount {
+  cost_account_measured_from_wall_nanos(wall_nanos: wall_nanos_list_total(nanos_list: nanos_list))
+}
+
+fn cost_account_has_measured_basis(account: CostAccount) -> Bool {
+  match account.basis {
+    Measured => true
+    Predicted => false
+  }
+}
+
+fn cost_account_has_predicted_basis(account: CostAccount) -> Bool {
+  match account.basis {
+    Predicted => true
+    Measured => false
+  }
+}
+
+// Discriminating lens: non-zero measured roll-up MUST NOT alias predicted_zero.
+fn witness_measured_rollup_differs_from_predicted_zero(wall_nanos: Nat) -> Bool {
+  if wall_nanos == 0 {
+    false
+  } else {
+    cost_account_has_measured_basis(
+      account: cost_account_measured_from_wall_nanos(wall_nanos: wall_nanos)
+    ) && cost_account_has_predicted_basis(account: cost_account_predicted_zero())
+  }
+}

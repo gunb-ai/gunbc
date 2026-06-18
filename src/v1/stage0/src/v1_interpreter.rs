@@ -1522,6 +1522,9 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let gross = start.elapsed().as_nanos();
     let children = CHILD_NANOS.get();
     let self_time = gross.saturating_sub(children);
+    // Phase-0 keystone: v1 proving handler for std.realization_measurement
+    // RealizationMeasureEffect::ObserveElapsedAtSubject (see v1_eval_expr_measure_handler_id).
+    // Durable model + roll-up lens live in .dag; this tap is host-effect realization only.
     if let Some(subject) = ACTIVE_SUBJECT.with(|s| s.borrow().clone()) {
         SUBJECT_SELF_NANOS.with(|m| {
             *m.borrow_mut().entry(subject).or_insert(0) += self_time;
@@ -5316,7 +5319,8 @@ fn eval_profile_enabled() -> bool {
 }
 
 /// A host-side observation matching `compute_fabric.PerformanceReceipt` at the
-/// cache-subject grain (wall clock + eval self-time from the interpreter tap).
+/// cache-subject grain (wall clock + eval self-time from the v1 proving handler
+/// of `std.realization_measurement.RealizationMeasureEffect`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerformanceReceipt {
     pub subject_key: String,

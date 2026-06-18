@@ -45,6 +45,11 @@ import std.realization_schedule {
   runnable_step_label,
   schedule_batch_contains_label,
 }
+import std.realization_measurement {
+  RealizationMeasureEffect,
+  cost_account_measured_from_wall_nanos,
+  cost_account_has_measured_basis,
+}
 
 // --- Independence classifier (fail-closed) ------------------------------------
 
