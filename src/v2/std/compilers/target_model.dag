@@ -1520,181 +1520,354 @@ fn decode_effect_apply_shape_bundle(bundle: Node) -> Outcome<TargetEffectApplySh
   )
 }
 
+// Infer perf: decode_value_expression_projection_bundle was one 15-deep bind_outcome
+// tower (~287s analyze_item). Shard into parent-field helpers + one bind per
+// top-level chain step so infer never walks a single mega-closure.
+fn decode_vep_parent_binding_ref(bundle: Node) -> Outcome<TargetBindingRefShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_binding_ref),
+    f: decode_binding_ref_shape_bundle
+  )
+}
+
+fn decode_vep_parent_primitive_apply(bundle: Node) -> Outcome<TargetPrimitiveApplyShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_primitive_apply),
+    f: decode_primitive_apply_shape_bundle
+  )
+}
+
+fn decode_vep_parent_callable_apply(bundle: Node) -> Outcome<TargetCallApplyShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_callable_apply),
+    f: decode_callable_apply_shape_bundle
+  )
+}
+
+fn decode_vep_parent_closure(bundle: Node) -> Outcome<TargetClosureShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_closure),
+    f: decode_closure_shape_bundle
+  )
+}
+
+fn decode_vep_parent_effect_apply(bundle: Node) -> Outcome<TargetEffectApplyShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_effect_apply),
+    f: decode_effect_apply_shape_bundle
+  )
+}
+
+fn decode_vep_parent_conditional(bundle: Node) -> Outcome<TargetConditionalShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_conditional),
+    f: decode_conditional_shape_bundle
+  )
+}
+
+fn decode_vep_parent_bind_let(bundle: Node) -> Outcome<TargetBindLetShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_bind_let),
+    f: decode_bind_let_shape_bundle
+  )
+}
+
+fn decode_vep_parent_loop(bundle: Node) -> Outcome<TargetLoopShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_loop),
+    f: decode_loop_shape_bundle
+  )
+}
+
+fn decode_vep_parent_record_construct(bundle: Node) -> Outcome<TargetRecordConstructShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_record_construct),
+    f: decode_record_construct_shape_bundle
+  )
+}
+
+fn decode_vep_parent_field_access(bundle: Node) -> Outcome<TargetFieldAccessShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_field_access),
+    f: decode_field_access_shape_bundle
+  )
+}
+
+fn decode_vep_parent_match(bundle: Node) -> Outcome<TargetMatchShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_match),
+    f: decode_match_shape_bundle
+  )
+}
+
+fn decode_vep_chain_match(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape,
+  loop_form: TargetLoopShape,
+  record_construct_form: TargetRecordConstructShape,
+  field_access_form: TargetFieldAccessShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_match(bundle: bundle),
+    f: fn(match_form) {
+      outcome_accepted(
+        TargetValueExpressionProjection {
+          binding_ref_form: binding_ref_form,
+          primitive_apply_form: primitive_apply_form,
+          callable_apply_form: callable_apply_form,
+          closure_form: closure_form,
+          effect_apply_form: effect_apply_form,
+          conditional_form: conditional_form,
+          let_form: let_form,
+          loop_form: loop_form,
+          record_construct_form: record_construct_form,
+          field_access_form: field_access_form,
+          match_form: match_form
+        }
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_field_access(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape,
+  loop_form: TargetLoopShape,
+  record_construct_form: TargetRecordConstructShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_field_access(bundle: bundle),
+    f: fn(field_access_form) {
+      decode_vep_chain_match(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form,
+        loop_form: loop_form,
+        record_construct_form: record_construct_form,
+        field_access_form: field_access_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_record_construct(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape,
+  loop_form: TargetLoopShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_record_construct(bundle: bundle),
+    f: fn(record_construct_form) {
+      decode_vep_chain_field_access(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form,
+        loop_form: loop_form,
+        record_construct_form: record_construct_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_loop(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_loop(bundle: bundle),
+    f: fn(loop_form) {
+      decode_vep_chain_record_construct(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form,
+        loop_form: loop_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_bind_let(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_bind_let(bundle: bundle),
+    f: fn(let_form) {
+      decode_vep_chain_loop(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_conditional(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_conditional(bundle: bundle),
+    f: fn(conditional_form) {
+      decode_vep_chain_bind_let(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_effect_apply(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_effect_apply(bundle: bundle),
+    f: fn(effect_apply_form) {
+      decode_vep_chain_conditional(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_closure(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_closure(bundle: bundle),
+    f: fn(closure_form) {
+      decode_vep_chain_effect_apply(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_callable_apply(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_callable_apply(bundle: bundle),
+    f: fn(callable_apply_form) {
+      decode_vep_chain_closure(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_primitive_apply(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_primitive_apply(bundle: bundle),
+    f: fn(primitive_apply_form) {
+      decode_vep_chain_callable_apply(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form
+      )
+    }
+  )
+}
+
+fn decode_vep_chain_binding_ref(bundle: Node) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_binding_ref(bundle: bundle),
+    f: fn(binding_ref_form) {
+      decode_vep_chain_primitive_apply(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form
+      )
+    }
+  )
+}
+
 fn decode_value_expression_projection_bundle(
   bundle: Node
 ) -> Outcome<TargetValueExpressionProjection> {
   match bundle.kind {
-    TypeNode { connective: Conj } =>
-      bind_outcome(
-        o: projection_bundle_child(
-          bundle: bundle,
-          name: ^target_value_expr_field_binding_ref
-        ),
-        f: fn(binding_ref_bundle) {
-          bind_outcome(
-            o: decode_binding_ref_shape_bundle(bundle: binding_ref_bundle),
-            f: fn(binding_ref_form) {
-              bind_outcome(
-                o: projection_bundle_child(
-                  bundle: bundle,
-                  name: ^target_value_expr_field_primitive_apply
-                ),
-                f: fn(primitive_bundle) {
-                  bind_outcome(
-                    o: decode_primitive_apply_shape_bundle(bundle: primitive_bundle),
-                    f: fn(primitive_apply_form) {
-                      bind_outcome(
-                        o: projection_bundle_child(
-                          bundle: bundle,
-                          name: ^target_value_expr_field_callable_apply
-                        ),
-                        f: fn(callable_bundle) {
-                          bind_outcome(
-                            o: decode_callable_apply_shape_bundle(bundle: callable_bundle),
-                            f: fn(callable_apply_form) {
-                              bind_outcome(
-                                o: projection_bundle_child(
-                                  bundle: bundle,
-                                  name: ^target_value_expr_field_closure
-                                ),
-                                f: fn(closure_bundle) {
-                              bind_outcome(
-                                o: decode_closure_shape_bundle(bundle: closure_bundle),
-                                f: fn(closure_form) {
-                              bind_outcome(
-                                o: projection_bundle_child(
-                                  bundle: bundle,
-                                  name: ^target_value_expr_field_effect_apply
-                                ),
-                                f: fn(effect_bundle) {
-                                  bind_outcome(
-                                    o: decode_effect_apply_shape_bundle(bundle: effect_bundle),
-                                    f: fn(effect_apply_form) {
-                                      bind_outcome(
-                                        o: projection_bundle_child(
-                                          bundle: bundle,
-                                          name: ^target_value_expr_field_conditional
-                                        ),
-                                        f: fn(conditional_bundle) {
-                                          bind_outcome(
-                                            o: decode_conditional_shape_bundle(
-                                              bundle: conditional_bundle
-                                            ),
-                                            f: fn(conditional_form) {
-                                              bind_outcome(
-                                                o: projection_bundle_child(
-                                                  bundle: bundle,
-                                                  name: ^target_value_expr_field_bind_let
-                                                ),
-                                                f: fn(bind_let_bundle) {
-                                                  bind_outcome(
-                                                    o: decode_bind_let_shape_bundle(
-                                                      bundle: bind_let_bundle
-                                                    ),
-                                                    f: fn(let_form) {
-                                                      bind_outcome(
-                                                        o: projection_bundle_child(
-                                                          bundle: bundle,
-                                                          name: ^target_value_expr_field_loop
-                                                        ),
-                                                        f: fn(loop_bundle) {
-                                                          bind_outcome(
-                                                            o: decode_loop_shape_bundle(
-                                                              bundle: loop_bundle
-                                                            ),
-                                                            f: fn(loop_form) {
-                                                              bind_outcome(
-                                                                o: projection_bundle_child(
-                                                                  bundle: bundle,
-                                                                  name: ^target_value_expr_field_record_construct
-                                                                ),
-                                                                f: fn(record_bundle) {
-                                                                  bind_outcome(
-                                                                    o: decode_record_construct_shape_bundle(
-                                                                      bundle: record_bundle
-                                                                    ),
-                                                                    f: fn(record_construct_form) {
-                                                                      bind_outcome(
-                                                                        o: projection_bundle_child(
-                                                                          bundle: bundle,
-                                                                          name: ^target_value_expr_field_field_access
-                                                                        ),
-                                                                        f: fn(field_access_bundle) {
-                                                                          bind_outcome(
-                                                                            o: decode_field_access_shape_bundle(
-                                                                              bundle: field_access_bundle
-                                                                            ),
-                                                                            f: fn(field_access_form) {
-                                                                              bind_outcome(
-                                                                                o: projection_bundle_child(
-                                                                                  bundle: bundle,
-                                                                                  name: ^target_value_expr_field_match
-                                                                                ),
-                                                                                f: fn(match_bundle) {
-                                                                                  bind_outcome(
-                                                                                    o: decode_match_shape_bundle(
-                                                                                      bundle: match_bundle
-                                                                                    ),
-                                                                                    f: fn(match_form) {
-                                                                                      outcome_accepted(
-                                                                                        TargetValueExpressionProjection {
-                                                                                          binding_ref_form: binding_ref_form,
-                                                                                          primitive_apply_form: primitive_apply_form,
-                                                                                          callable_apply_form: callable_apply_form,
-                                                                                          closure_form: closure_form,
-                                                                                          effect_apply_form: effect_apply_form,
-                                                                                          conditional_form: conditional_form,
-                                                                                          let_form: let_form,
-                                                                                          loop_form: loop_form,
-                                                                                          record_construct_form: record_construct_form,
-                                                                                          field_access_form: field_access_form,
-                                                                                          match_form: match_form
-                                                                                        }
-                                                                                      )
-                                                                                    }
-                                                                                  )
-                                                                                }
-                                                                              )
-                                                                            }
-                                                                          )
-                                                                        }
-                                                                      )
-                                                                    }
-                                                                  )
-                                                                }
-                                                              )
-                                                            }
-                                                          )
-                                                        }
-                                                      )
-                                                    }
-                                                  )
-                                                }
-                                              )
-                                            }
-                                          )
-                                        }
-                                      )
-                                    }
-                                  )
-                                }
-                              )
-                            }
-                          )
-                                }
-                              )
-                            }
-                          )
-                        }
-                      )
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
+    TypeNode { connective: Conj } => decode_vep_chain_binding_ref(bundle: bundle)
     _ =>
       outcome_rejected(
         target_value_projection_bundle_malformed_diagnostic(bundle: bundle)

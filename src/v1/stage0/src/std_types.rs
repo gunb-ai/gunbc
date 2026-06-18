@@ -8,13 +8,11 @@ use self::Bool::*;
 use self::CodegenBackend::*;
 use self::CredentialFlow::*;
 use self::DocSourceKind::*;
-use self::EntryKind::*;
 use self::ExecutionEnv::*;
 use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::Os::*;
 use self::Platform::*;
-use self::SymlinkTarget::*;
 use self::TopologyNodeKind::*;
 use self::Vendor::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
@@ -460,28 +458,6 @@ pub struct TargetTriple {
 pub struct RuntimePlatform {
     pub host: Rc<TargetTriple>,
     pub env: ExecutionEnv,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum EntryKind {
-    RegularFile,
-    Directory,
-    Symlink,
-    Missing,
-    Other,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum SymlinkTarget {
-    TargetFile,
-    TargetDir,
-    Broken,
 }
 
 pub type TextFilePath = String;
