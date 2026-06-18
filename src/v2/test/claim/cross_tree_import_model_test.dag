@@ -112,7 +112,7 @@ fn witness_v2_workflow_to_dsl_std_more_fundamental_admitted_holds() -> Bool {
 
 // Closure of two admitted edges admitted end-to-end.
 fn witness_import_closure_all_admitted_holds() -> Bool {
-  let closure: ImportClosure = [dsl_std_to_v2_std_edge, v2_workflow_to_dsl_std_edge]
+  let closure = [dsl_std_to_v2_std_edge, v2_workflow_to_dsl_std_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
     roots: both_roots,
@@ -176,7 +176,7 @@ fn witness_less_fundamental_denied_holds() -> Bool {
 
 // Closure short-circuits on first denied edge (one bad edge taints the whole closure).
 fn witness_closure_denied_on_bad_edge_holds() -> Bool {
-  let closure: ImportClosure = [dsl_std_to_v2_std_edge, dsl_std_to_v2_compiler_edge]
+  let closure = [dsl_std_to_v2_std_edge, dsl_std_to_v2_compiler_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
     roots: both_roots,
