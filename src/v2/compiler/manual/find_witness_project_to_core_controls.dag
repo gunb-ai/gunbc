@@ -139,7 +139,7 @@ fn surface_only_node(surface: Symbol) -> Node {
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -167,13 +167,14 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
           children: [
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [] }
+              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: SyntheticOccurrence }
             },
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [] }
+              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
             }
-          ]
+          ],
+          occurrence_id: SyntheticOccurrence
         }
       }
     ],
@@ -205,13 +206,14 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
           children: [
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [] }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: SyntheticOccurrence }
             },
             Edge {
               label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [] }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: SyntheticOccurrence }
             }
-          ]
+          ],
+          occurrence_id: SyntheticOccurrence
         }
       }
     ],
@@ -252,7 +254,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
       }
     ],
     occurrence_id: SyntheticOccurrence
@@ -264,7 +266,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         children: [
           Edge {
             label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
           }
         ],
         occurrence_id: SyntheticOccurrence
@@ -275,7 +277,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
       children: [
         Edge {
           label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
         }
       ],
       occurrence_id: SyntheticOccurrence
@@ -286,7 +288,7 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [] }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
       }
     ],
     occurrence_id: SyntheticOccurrence

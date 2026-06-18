@@ -1,0 +1,25 @@
+// Scope: corpus regression GUARD — reads live dsl/extdeps/rust/cargo_build.dag via filesystem_read.
+// Asserts consumer-policy literal (--no-deps) is ABSENT from Doc argv:
+// de-fused to caller-supplied extra_args parameters.
+// Detection teeth proven by lens_unit policy_leak_cargo_doc synthetic witness.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_policy_leak
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data cargo_doc_path: String = "dsl/extdeps/rust/cargo_build.dag"
+data cargo_doc_policy_leak_token: String = "\"doc\", \"--no-deps\""
+
+fn extdeps_live_file_lacks_token(path: String, token: String) -> Bool {
+  let source = filesystem_read(path: path)
+  !string_contains(source.content, token)
+}
+
+test fn corpus_cargo_doc_defused_holds() -> Bool {
+  extdeps_live_file_lacks_token(
+    path: cargo_doc_path,
+    token: cargo_doc_policy_leak_token
+  )
+}

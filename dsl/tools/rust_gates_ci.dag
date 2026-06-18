@@ -21,7 +21,7 @@ import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffTwoDot }
 // Run cargo fmt AND clippy (both evaluated — no short-circuit, so both failures surface),
 // pass iff both succeed.
 func run_gates() -> ProcessExit {
-  fmt = cargo.Build.Fmt()
+  fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   clippy = cargo.Build.Clippy(
     extra_args: ["--all-targets"],
     lint_args: ["-D", "warnings"]

@@ -1,0 +1,25 @@
+// Scope: corpus regression GUARD — reads live dsl/extdeps/rust/cargo_build.dag via filesystem_read.
+// Asserts consumer-policy literals (--all, --check) are ABSENT from Fmt argv:
+// de-fused to caller-supplied extra_args parameters.
+// Detection teeth proven by lens_unit policy_leak_cargo_fmt synthetic witness.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_policy_leak
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data cargo_fmt_path: String = "dsl/extdeps/rust/cargo_build.dag"
+data cargo_fmt_policy_leak_token: String = "\"fmt\", \"--all\", \"--check\""
+
+fn extdeps_live_file_lacks_token(path: String, token: String) -> Bool {
+  let source = filesystem_read(path: path)
+  !string_contains(source.content, token)
+}
+
+test fn corpus_cargo_fmt_defused_holds() -> Bool {
+  extdeps_live_file_lacks_token(
+    path: cargo_fmt_path,
+    token: cargo_fmt_policy_leak_token
+  )
+}
