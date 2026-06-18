@@ -1,7 +1,7 @@
 // Scope: the coarse "Rust stage0 monolith" CI dependency — the entire Rust seed
 //   (every `*.rs` and Cargo/toolchain manifest) treated as ONE dependency with two
-//   gate-dependents (clippy, fmt). A diff touching the monolith fires both; a non-Rust
-//   diff fires neither.
+//   gate-dependents (fmt, clippy, test). A diff touching the monolith fires all three; a non-Rust
+//   diff fires none.
 //
 // This is the dsl-tree home of the selector (was src/v2/workflow/rust_stage0_gates.dag).
 // It lives here because its consumer — `tools.rust_gates_ci`, run by `gunbc` — needs the
@@ -12,7 +12,7 @@
 // SCAFFOLD — dissolution trigger: delete when the Rust seed reaches zero. The proper model
 // is per-file Rust dependence (which .rs affects which gate), DELIBERATELY skipped: the Rust
 // bootstrap is the seed that shrinks toward zero (DESIGN §7), so fine-graining a dependency
-// graph over code that is being deleted is redundant work (§2). One blob, two dependents is
+// graph over code that is being deleted is redundant work (§2). One blob, three dependents is
 // the correct because-it-is-temporary call.
 
 module tools.rust_stage0_gates
