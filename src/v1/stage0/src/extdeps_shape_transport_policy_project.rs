@@ -565,4 +565,57 @@ mod tests {
             "extdeps.github.gists".to_string(),
         ));
     }
+
+    /// §5 perturbation: hardcoded `snapshot.md` body key must fail placeholder projection.
+    #[test]
+    fn gist_create_hardcoded_snapshot_md_red_under_perturbation() {
+        let ws = crate::module_path_index::workspace_root();
+        let path = ws.join("target/test_gist_perturb_snapshot_md.dag");
+        let content = r#"module extdeps.github.gists
+
+service github.Gist {
+  operation Create {
+    input { description: String, filename: String, content: String, auth_token: Secret }
+    transport rest {
+      method: POST,
+      path: "/gists",
+      body: {
+        description: description,
+        public: false,
+        files: { "snapshot.md": { content: content } }
+      }
+    }
+  }
+}
+"#;
+        std::fs::create_dir_all(ws.join("target")).ok();
+        std::fs::write(&path, content).expect("write perturb fixture");
+        let rel = path
+            .strip_prefix(&ws)
+            .expect("under workspace")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let (items, source_indices) = parse_module_items(&rel);
+        assert!(
+            !gist_create_files_keyed_by_filename_placeholder_for_parsed_module(
+                &items,
+                &source_indices
+            ),
+            "hardcoded snapshot.md must not pass files_keyed_by_filename projection"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// §5 perturbation: benign no-space env-var name must not flag; shell command must.
+    #[test]
+    fn embedded_policy_predicate_discriminates_benign_env_var() {
+        assert!(
+            !data_literal_is_embedded_policy_literal("GOOGLE_APPLICATION_CREDENTIALS"),
+            "adc_env_var benign control must not flag"
+        );
+        assert!(
+            data_literal_is_embedded_policy_literal("gcloud auth print-access-token"),
+            "fallback_auth_command policy literal must flag"
+        );
+    }
 }
