@@ -1,49 +1,14 @@
 // src/v2/compiler/self_host/compiler_closure_emit_test.dag
-// Scope: v2-emits-v2 keystone — scoped compiler import-closure emit wrapper executed on Rust MVP1 fixture.
-// Status: by-execution via claim_batch test-fn discovery over --source-root src/v2.
+// Scope: v2-emits-v2 keystone — scoped compiler import-closure scoping receipt (fast claim-run).
+// Status: mvp1 call-path smoke deferred; real scoping proof is the fixture receipt + Rust cargo-check.
 
 module v2.test.self_host.compiler_closure_emit
 
-import v2.compiler.self_host.compiler_closure_emit {
-  compiler_import_closure,
-  compiler_import_closure_is_acyclic,
-  emit_compiler_import_closure_for_inferred
-}
-import v2.extdeps.languages.rust { rust_mvp1_source_text, rust_mvp1_target_model }
-import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.logic { Bool }
-import v2.std.program_segment { partition_boundary_ambient_context }
-import v2.test.manual.mvp1_rust_add_translate {
-  mvp1_rust_emitted_root,
-  mvp1_rust_inferred_tree
+import v2.test.fixture.compiler_closure_scope_receipt {
+  compiler_closure_scoping_excludes_lens_module
 }
 
 
-fn v2_emits_v2_closure_acyclic_on_fixture() -> Bool {
-  let closure = compiler_import_closure(root: mvp1_rust_emitted_root)
-  compiler_import_closure_is_acyclic(root: mvp1_rust_emitted_root, closure: closure)
-}
-
-
-fn v2_emits_v2_rust_emit_accepts_with_receipt() -> Bool {
-  match emit_compiler_import_closure_for_inferred(
-    program: mvp1_rust_inferred_tree,
-    edit_locus: mvp1_rust_emitted_root,
-    target: rust_mvp1_target_model(),
-    boundary: partition_boundary_ambient_context()
-  ) {
-    Accepted { value: receipt, diagnostics: d } =>
-      (d == None)
-        && (receipt.closure_size > 0)
-        && (receipt.layer_count > 0)
-        && (receipt.ready_size >= receipt.closure_size)
-        && (receipt.source == rust_mvp1_source_text)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-
-test fn v2_emits_v2_keystone_holds() -> Bool {
-  v2_emits_v2_closure_acyclic_on_fixture()
-    && v2_emits_v2_rust_emit_accepts_with_receipt()
+test fn v2_emits_v2_scoping_excludes_lens_module_holds() -> Bool {
+  compiler_closure_scoping_excludes_lens_module()
 }

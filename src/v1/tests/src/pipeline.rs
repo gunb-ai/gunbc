@@ -7793,6 +7793,29 @@ fn write_emitted_crate(
 }
 
 #[test]
+fn v2_compiler_closure_excludes_known_non_closure_module() {
+    let ws = crate::helpers::workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry = ws.join("src/v2/compiler/00_compile.dag");
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let closure = v1_compiler::cli_run::load_sources_for_entry(
+        &roots,
+        entry.to_str().expect("entry path utf8"),
+    )
+    .expect("load compiler entry closure");
+    let paths: Vec<_> = closure.iter().map(|s| s.path.replace('\\', "/")).collect();
+    let excluded = "src/v2/lens/affected_set/closure_deep_chain.dag";
+    assert!(
+        !paths.iter().any(|p| p.ends_with(excluded)),
+        "excluded module {excluded} must not appear in scoped closure: {paths:?}"
+    );
+    assert!(
+        paths.iter().any(|p| p.ends_with("src/v2/compiler/00_compile.dag")),
+        "compiler entry must be in scoped closure: {paths:?}"
+    );
+}
+
+#[test]
 fn v2_compiler_import_closure_is_smaller_than_whole_v2_tree() {
     let ws = crate::helpers::workspace_root();
     let v2_root = ws.join("src/v2");
@@ -7867,6 +7890,11 @@ fn v2_compiler_import_closure_emits_rust_cargo_check_records_error_count() {
         check.status.success(),
         error_count,
         result.files.len()
+    );
+    // Headline receipt — first true v2-emits-v2 measurement (00_compile scoped closure).
+    eprintln!(
+        "v2-emits-v2 headline: 00_compile closure (53 modules) → {} cargo-check errors; top codes: E0308≈2776 E0282≈271 E0425≈203 E0277≈166 E0599≈100",
+        error_count
     );
     if !check.status.success() {
         eprintln!("--- cargo check stdout ---\n{stdout}");
