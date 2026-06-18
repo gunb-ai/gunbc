@@ -24,11 +24,8 @@ import v2.std.diagnostic {
 import v2.std.node { Node }
 
 
-type CoreNode = Node
-
-
 type StageEmissionCandidate {
-  emitted: CoreNode
+  emitted: Node
 }
 
 
@@ -60,9 +57,9 @@ fn generate_stage_candidate_from_ingest(
 }
 
 
-// Thin wrapper when the resolved CoreNode is already assembled (fixture / unit slices).
+// Thin wrapper when the resolved Node is already assembled (fixture / unit slices).
 fn generate_translate_self_emit_candidate(
-  resolved_module: CoreNode,
+  resolved_module: Node,
   dag_target: TargetModel
 ) -> Outcome<StageEmissionCandidate> {
   bind_outcome(
