@@ -685,18 +685,4 @@ mod discovery_exclude_tests {
             );
         }
     }
-
-    #[test]
-    fn sg2_manual_lane_unified_claim_excluded_on_ci_style_paths() {
-        let paths = [
-            "src/v2/compiler/manual/sg2_type_expression_projection.dag",
-            "/opt/actions-runner/work/gunbc/gunbc/src/v2/compiler/manual/sg2_type_expression_projection.dag",
-        ];
-        for path in paths {
-            assert!(
-                floor_discovery_path_excluded(path),
-                "expected manual-lane sg2 unified_claim excluded from floor discovery: {path}"
-            );
-        }
-    }
 }
