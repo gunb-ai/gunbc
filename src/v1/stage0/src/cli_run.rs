@@ -803,10 +803,7 @@ pub fn make_eval_context_with_fixture_store(
     )
 }
 
-pub fn closure_subject_for_entry(
-    index: &MultiEntryIndex,
-    entry: &str,
-) -> Result<String, String> {
+pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
     let sources = load_sources_for_entry_with_index(&index.source_files, entry)?;
     Ok(subject_digest_for_closure(&sources))
 }
@@ -2275,8 +2272,7 @@ pub fn run_discovery_corpus(
         let closure_subject = current_closure_subject
             .as_deref()
             .expect("closure subject set above");
-        let (outcome, receipt) =
-            run_claim_measured(ctx_ref, closure_subject, &row.function);
+        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
         summary.total_measured_nanos += receipt.wall_nanos;
         summary.performance_receipts.push(receipt);
         match outcome {

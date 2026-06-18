@@ -2,8 +2,8 @@
 //! measurement enabled vs disabled (eval tap must not perturb outcomes).
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, closure_subject_for_entry, make_eval_context, resolve_entry_with_index,
-    run_claim, run_claim_measured, ClaimOutcome,
+    build_multi_entry_index, closure_subject_for_entry, make_eval_context,
+    resolve_entry_with_index, run_claim, run_claim_measured, ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
