@@ -1,0 +1,183 @@
+// v2/workflow/ci_floor_plan.dag — the CI floor as a dependency-ordered scheduler plan,
+// DERIVED FROM `gunbc_ci_spec` (the single floor authority, DESIGN §3).
+//
+// This is the default CI runtime: `gunbc ci` (via `gunbc.ci_spec.gunbc_ci_run_script`)
+// invokes `claim_executor --plan-entry … --plan-function gunbc_ci_floor_batches`, and
+// the v2.workflow scheduler decides the batches. There is NO parallel hardcoded floor
+// list — the gates come from `gunbc_ci_spec.gates`, the corpus roots/witnesses from
+// `gunbc_ci_spec.witness_roots`/`witness_entries`. The ONLY fact added here is the
+// dependency TOPOLOGY: `DslCompileCleanGate` (whole-tree compile) is the fail-fast
+// root, and every other gate + the discovery corpus sit in a later readiness layer
+// behind it, so they run dependency-ordered and parallelize where independent
+// (DESIGN §4/§5). Add a gate to the spec → it re-batches here with zero host change.
+//
+// HOME + bridge note (DESIGN §3/§6/§7). This file lives in the v2 tree because it
+// REUSES the v2.workflow scheduler model (parallel_executor_plan_from_dependencies,
+// over v2.std Node/DependencyView) — forking that scheduler into dsl would violate §3.
+// The plan must also read the single-authority spec, which lives in dsl
+// (`gunbc.ci_spec`); hence the `import gunbc.ci_spec` below is a v2→dsl bridge. It is
+// safe today (no gate gunbc-compiles the v2 tree standalone — v2 is mid-§7 bootstrap
+// and not yet self-compile-clean; the host always co-resolves `--source-root dsl
+// --source-root src/v2` at run time). It canNOT live in dsl: a dsl file importing the
+// v2 scheduler drags the not-yet-self-clean v2 tree into the `DslCompileCleanGate`,
+// turning that load-bearing gate red. DISSOLUTION TRIGGER (§6): when v2 reaches
+// self-compile-clean (§7), this bridge moves to host-mediated — claim_executor evals
+// the dsl topology and the v2 scheduler separately, with no cross-tree module import.
+
+module v2.workflow.ci_floor_plan
+
+import gunbc.ci_spec {
+  gunbc_ci_spec, CiSpec, WitnessRoot, WitnessEntry,
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate,
+  SourceRootIngestGate
+}
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { List }
+import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.node { Atom, Node, TypeNode }
+import v2.std.text { String }
+import v2.workflow.executor {
+  ExecutorBatch,
+  ExecutorRunBlocked,
+  ExecutorRunComplete,
+  ExecutorRunRunnable,
+  parallel_executor_plan_from_dependencies
+}
+
+// Host-readable runnable (parsed by claim_executor). A `DiscoveryBatch` node is
+// the whole `claim_batch` floor step: discovery over `source_roots` (+ `scan_dirs`)
+// PLUS the appended `explicit_entries`.
+type Runnable
+  = RunnableSingleClaim { entry: String, function: String }
+  | RunnableDiscoveryBatch {
+      source_roots: List<String>,
+      scan_dirs: List<String>,
+      explicit_entries: List<WitnessEntry>
+    }
+
+data floor_gate_witness_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
+
+// The discovery-corpus node (one fixed identity).
+data floor_corpus_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
+  children: []
+}
+
+// Closed Gate enum → one fixed-identity Node each (no runtime symbol minting).
+fn gate_node(g: Gate) -> Node {
+  match g {
+    RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
+    EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
+    LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
+    DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
+    CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
+    SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
+  }
+}
+
+// Gate → nullary Bool adapter (the single Gate→effect authority is
+// tools.ci_gates.run_spec_gate, wrapped per gate in floor_effect_gate_witness).
+fn gate_runnable(g: Gate) -> Runnable {
+  match g {
+    RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes" }
+    EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
+    LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
+    DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
+    CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
+    SourceRootIngestGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "source_root_ingest_gate_passes" }
+  }
+}
+
+// The fail-fast root: the whole-tree compile-clean gate.
+fn floor_compile_root_node() -> Node {
+  gate_node(g: DslCompileCleanGate)
+}
+
+// ── corpus runnable fields, derived from the spec witness roots/entries ──────
+fn corpus_source_roots(spec: CiSpec) -> List<String> {
+  fold(spec.witness_roots, init: [], f: fn(acc, wr) {
+    list_snoc_item(xs: acc, item: wr.root)
+  })
+}
+
+fn corpus_scan_dirs(spec: CiSpec) -> List<String> {
+  fold(spec.witness_roots, init: [], f: fn(acc, wr) {
+    fold(wr.scan_subtrees, init: acc, f: fn(inner, sub) {
+      let dir = if starts_with(s: sub, prefix: wr.root) { sub } else { concat(concat(wr.root, "/"), sub) }
+      list_snoc_item(xs: inner, item: dir)
+    })
+  })
+}
+
+fn corpus_runnable(spec: CiSpec) -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(spec: spec),
+    scan_dirs: corpus_scan_dirs(spec: spec),
+    explicit_entries: spec.witness_entries
+  }
+}
+
+// ── nodes + dependency edges (the only NEW fact: compile-clean gates the rest) ─
+fn floor_nodes(spec: CiSpec) -> List<Node> {
+  fold(spec.gates, init: [floor_corpus_node], f: fn(acc, g) {
+    list_snoc_item(xs: acc, item: gate_node(g: g))
+  })
+}
+
+fn floor_depends_on_compile(dependent: Node) -> DependencyView {
+  DependencyView {
+    source: floor_compile_root_node(),
+    dependent: dependent,
+    kind: DataDependsOn,
+    usage_site: dependent
+  }
+}
+
+// Every gate except the compile-clean ROOT depends on it (the root gates nothing
+// before itself). Consume `Gate` structurally at the dependency site — the root
+// arm adds no self-edge, every other gate gets one.
+fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
+  fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
+    match g {
+      DslCompileCleanGate => acc
+      _ => list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: gate_node(g: g)))
+    }
+  })
+}
+
+// ── node -> Runnable (the single binding site; unmapped -> fail-closed sentinel) ─
+fn floor_unrunnable_sentinel() -> Runnable {
+  RunnableSingleClaim { entry: "", function: "__gunbc_ci_floor_unmapped__" }
+}
+
+fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
+  if node == floor_corpus_node {
+    corpus_runnable(spec: spec)
+  } else {
+    fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
+      if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }
+    })
+  }
+}
+
+fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
+  fold(batch.jobs, init: [], f: fn(acc, job) {
+    list_snoc_item(xs: acc, item: runnable_for_node(node: job.node, spec: spec))
+  })
+}
+
+// Top-level host entry: the scheduler-decided batches projected to runnables.
+fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
+  match parallel_executor_plan_from_dependencies(
+    nodes: floor_nodes(spec: gunbc_ci_spec),
+    dependencies: floor_dependencies(spec: gunbc_ci_spec),
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } =>
+      fold(batches, init: [], f: fn(acc, batch) {
+        list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: gunbc_ci_spec))
+      })
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
+  }
+}
