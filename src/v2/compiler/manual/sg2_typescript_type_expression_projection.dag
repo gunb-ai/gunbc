@@ -407,3 +407,11 @@ data claim_ts_sg2_wire_decode_instantiation: TestClaim = CompilesClaim {
   expected_value: ts_sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+fn witness_ts_sg2_projected_serialize_holds() -> Bool {
+  ts_sg2_projection_matches_golden()
+    && ts_sg2_arrow_projected_serialize_matches_expected()
+    && ts_sg2_conj_projected_serialize_matches_expected()
+    && ts_sg2_instantiation_projected_serialize_matches_expected()
+    && ts_sg2_disj_projected_serialize_matches_expected()
+}
