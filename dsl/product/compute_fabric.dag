@@ -50,7 +50,6 @@ import std.cpu.types {
   CpuDeploymentFacts,
   CpuModelCatalogRow,
   CpuSocket,
-  CpuVendor,
   SocketPackage,
   Aarch64,
 }
@@ -118,10 +117,10 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
-// 🟡 YELLOW (scaffold). GpuVendor overlaps std.cpu.CpuVendor on Intel|Amd|Apple|Qualcomm;
-// the closed enum kills the anemic NonEmptyStr leaf pending vendor-unification.
-// dissolution-trigger: fold into a shared Vendor authority with std.cpu.CpuVendor
-// pending the parked std-conflation vendor-unification decision (operator-gated).
+// 🟡 grounded, NOT terminal. Closed GPU-vendor surface — kills the stringly anemia. Overlaps
+// std.cpu.CpuVendor on shared entities (AMD/Intel/Apple/Qualcomm).
+// dissolution-trigger: fold into a single shared Vendor authority with std.cpu.CpuVendor pending
+// the parked, operator-gated std-conflation vendor-unification decision.
 type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
 
 // NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
