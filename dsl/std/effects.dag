@@ -117,8 +117,11 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
     ReadEffect => true
     UpsertEffect => true
     DeleteEffect => true
-    CreateEffect { cause: CreateIfAbsent { key_source: _ } } => true
-    CreateEffect => false
+    CreateEffect { cause: cause } =>
+      match cause {
+        CreateIfAbsent { key_source: _ } => true
+        PostAlways => false
+      }
     AppendEffect => false
   }
 }
@@ -143,19 +146,29 @@ fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
 // Double-init dedup (increment 1): two create-if-absent effects collapse iff they share identity.
 fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
-    CreateEffect { cause: CreateIfAbsent { key_source: _ } } => true
-    CreateEffect => false
+    CreateEffect { cause: cause } =>
+      match cause {
+        CreateIfAbsent { key_source: _ } => true
+        PostAlways => false
+      }
     _ => false
   }
 }
 
 fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
   match a {
-    CreateEffect { cause: CreateIfAbsent { key_source: ka } } =>
-      match b {
-        CreateEffect { cause: CreateIfAbsent { key_source: kb } } =>
-          key_source_eq(a: ka, b: kb)
-        _ => false
+    CreateEffect { cause: cause_a } =>
+      match cause_a {
+        CreateIfAbsent { key_source: ka } =>
+          match b {
+            CreateEffect { cause: cause_b } =>
+              match cause_b {
+                CreateIfAbsent { key_source: kb } => key_source_eq(a: ka, b: kb)
+                PostAlways => false
+              }
+            _ => false
+          }
+        PostAlways => false
       }
     _ => false
   }
