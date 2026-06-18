@@ -75,8 +75,7 @@ pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint_rec(node)
 }
 
-/// Multiset digest for child/param subtrees: order-independent combine so
-/// Conj/Disj-shaped siblings do not false-split on list order.
+/// Multiset digest for commutative child subtrees (Conj/Disj siblings).
 fn dag_node_bag_hash(digests: Vec<String>) -> String {
     let mut sorted = digests;
     sorted.sort();
@@ -85,6 +84,26 @@ fn dag_node_bag_hash(digests: Vec<String>) -> String {
         acc = v1_rt::hash_combine(acc, digest);
     }
     acc
+}
+
+/// Positional digest for ordered subtrees (params, Arrow operands, etc.).
+fn dag_node_seq_hash(digests: Vec<String>) -> String {
+    let mut acc = v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string());
+    for digest in digests {
+        acc = v1_rt::hash_combine(acc, digest);
+    }
+    acc
+}
+
+fn child_subtree_hash(connective: Connective, digests: Vec<String>) -> String {
+    match connective {
+        Connective::Conj | Connective::Disj => dag_node_bag_hash(digests),
+        Connective::Arrow | Connective::NoConnective => dag_node_seq_hash(digests),
+    }
+}
+
+pub fn is_synthetic_span(span: &SourceSpan) -> bool {
+    span.start == 0 && span.end == 0
 }
 
 fn dag_node_surface_leaf_mix(node: &Node) -> String {
@@ -116,14 +135,14 @@ fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
         .collect();
     let with_children = v1_rt::hash_combine(
         dag_node_surface_leaf_mix(&node),
-        dag_node_bag_hash(child_hashes),
+        child_subtree_hash(node.connective.clone(), child_hashes),
     );
-    v1_rt::hash_combine(with_children, dag_node_bag_hash(param_hashes))
+    v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
     {
-        let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
+        let synthetic = is_synthetic_span(&span);
         let detail = if synthetic {
             " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
                 .to_string()
@@ -209,6 +228,60 @@ mod fingerprint_tests {
         assert_ne!(
             left_fp, right_fp,
             "recursive fingerprint must distinguish structurally different 0..0 subtrees with identical child names"
+        );
+    }
+
+    #[test]
+    fn recursive_fingerprint_distinguishes_param_order() {
+        let p_x = shell_node("x", Connective::NoConnective, vec![], vec![]);
+        let p_y = shell_node("y", Connective::NoConnective, vec![], vec![]);
+        let left = shell_node(
+            "fn",
+            Connective::Arrow,
+            vec![],
+            vec![p_x.clone(), p_y.clone()],
+        );
+        let right = shell_node("fn", Connective::Arrow, vec![], vec![p_y, p_x]);
+        assert_ne!(
+            dag_node_surface_fingerprint(left),
+            dag_node_surface_fingerprint(right),
+            "params are positional — swapped order must not alias"
+        );
+    }
+
+    #[test]
+    fn recursive_fingerprint_distinguishes_arrow_child_order() {
+        let c_x = shell_node("x", Connective::NoConnective, vec![], vec![]);
+        let c_y = shell_node("y", Connective::NoConnective, vec![], vec![]);
+        let left = shell_node(
+            "arr",
+            Connective::Arrow,
+            vec![c_x.clone(), c_y.clone()],
+            vec![],
+        );
+        let right = shell_node("arr", Connective::Arrow, vec![c_y, c_x], vec![]);
+        assert_ne!(
+            dag_node_surface_fingerprint(left),
+            dag_node_surface_fingerprint(right),
+            "Arrow children are ordered — swapped operands must not alias"
+        );
+    }
+
+    #[test]
+    fn recursive_fingerprint_conj_child_order_insensitive() {
+        let c_a = shell_node("a", Connective::NoConnective, vec![], vec![]);
+        let c_b = shell_node("b", Connective::NoConnective, vec![], vec![]);
+        let left = shell_node(
+            "bag",
+            Connective::Conj,
+            vec![c_a.clone(), c_b.clone()],
+            vec![],
+        );
+        let right = shell_node("bag", Connective::Conj, vec![c_b, c_a], vec![]);
+        assert_eq!(
+            dag_node_surface_fingerprint(left),
+            dag_node_surface_fingerprint(right),
+            "Conj siblings are commutative — reorder must not false-split"
         );
     }
 }
