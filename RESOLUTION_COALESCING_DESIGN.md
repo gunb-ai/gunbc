@@ -7,12 +7,24 @@
 
 ---
 
+> **Status reconciliation (read first).** The "CI never finishes / 160m" hang was a
+> **different bug** — an infinite interpreter loop in `ci_gates` (commit `83867956ae`,
+> *"break ci_gates interpreter loop blocking #5138"*), now fixed by witty-stag. CI completes
+> GREEN at 23m44s. The per-claim re-resolve below is real and on the active CI path, but it is
+> a **bounded inefficiency + the recurrence pattern + a §5 hazard scope (a) would introduce** —
+> **not** a liveness emergency, and the *smallest* of the three CI wall-time prongs (compile
+> ~13m and dsl_compile_clean ~6m dominate). So this is a correctness-thesis / efficiency effort,
+> not a fire. Treat scope (c) — the cure — as the real payoff; scope (a)'s throwaway-seed
+> band-aid is no longer justified by urgency.
+
 ## TL;DR
 
-- **#5122 shipped dependency *ordering*, not *coalescing*.** The CI sweep resolves the full
-  module closure **once per claim**, in isolated `!Send` threads, and the one thing that
-  could share that work is gated off in CI. So a roster-discovery sweep re-derives the same
-  ~40-module closure hundreds of times. That is the 46-min-silence fire.
+- **#5122 shipped dependency *ordering*, not *coalescing*.** On the active CI path
+  (`claim_executor`, `ci_spec.dag:113`), each `SingleClaim` re-resolves its full closure in an
+  isolated `!Send` thread; the `DiscoveryBatch` runnable collapses the ~199 corpus rows into
+  one shared resolve (a SCAFFOLD that *admits* the problem by special-casing it away). So the
+  re-derivation waste is bounded to the `SingleClaim` entries — not "hundreds" — and is the
+  recurrence pattern, not the hang.
 - **The cure you named is the right one**: coalescing should be a property of the
   *representation* (hash-consing), not a runtime cache. The building block already exists —
   `content_hash(Node)` (`src/v2/std/node.dag:1541`, 271 uses, the self-host fixed-point
@@ -62,8 +74,11 @@ Three failure points, each verified in the tree:
    asserts that a shared resolve ran once.** The plan is correct as far as it goes; it stops
    one concept short of what was asked.
 
-**Net:** "resolved 7 sources," then ~46 min of silence, while `cargo` itself is <0.5 min.
-The compile isn't slow — the re-derivation is.
+**Net (corrected):** the headline "never finishes" symptom was the `ci_gates` interpreter loop
+(`83867956ae`), now fixed — CI is GREEN at 23m44s. The per-claim re-resolve is genuine waste on
+this path, but bounded (DiscoveryBatch shares the corpus) and the smallest of the three prongs.
+Its importance is as the **recurrence pattern** (§2) and the **§5 hazard a naive fix introduces**
+(§4), not wall-time.
 
 ### A measurement question, already discharged statically
 
