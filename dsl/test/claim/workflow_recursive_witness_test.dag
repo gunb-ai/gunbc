@@ -1,0 +1,16 @@
+// test/claim/workflow_recursive_witness_test.dag — by-execution witness for std.workflow_recursive.
+//
+// Re-proves ctrl plans.workflow_recursive gate on gunbc's harness (DESIGN §5).
+// Discriminating: dropping fold_child latch or blanking located axis flips witnesses red.
+
+module test.claim.workflow_recursive_witness
+
+import std.logic { Bool }
+import std.workflow_recursive {
+  workflow_kernel_witnessed,
+  workflow_kernel_all_verified,
+}
+
+test fn workflow_recursive_witnesses() -> Bool {
+  workflow_kernel_all_verified(w: workflow_kernel_witnessed())
+}
