@@ -27,7 +27,7 @@ run_claim() {
   "$GUNBC" run \
     --source-root src/v2 \
     --source-root "$MANIFEST_DIR" \
-    --entry src/v2/compiler/self_host/compiler_closure_emit_from_ingest_test.dag \
+    --entry src/v2/compiler/self_host/compiler_closure_emit_from_ingest_gate.dag \
     --function "$fn" \
     --claim-run
 }

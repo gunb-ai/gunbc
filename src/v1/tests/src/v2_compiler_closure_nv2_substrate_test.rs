@@ -21,7 +21,7 @@ fn cargo_binary() -> String {
 }
 
 const COMPILER_ENTRY: &str = "src/v2/compiler/00_compile.dag";
-const NV2_TEST_ENTRY: &str = "src/v2/compiler/self_host/compiler_closure_emit_from_ingest_test.dag";
+const NV2_GATE_ENTRY: &str = "src/v2/compiler/self_host/compiler_closure_emit_from_ingest_gate.dag";
 const EMIT_SOURCE_FN: &str = "compiler_closure_v2_emit_source_for_cargo_check";
 const ACCEPT_FN: &str = "compiler_closure_v2_emit_from_scoped_ingest_accepts";
 
@@ -108,7 +108,7 @@ fn write_nv2_manifest(manifest_path: &Path) {
 
 fn nv2_eval_context(manifest_dir: &Path) -> InterpContext {
     let ws = workspace_root();
-    let entry = ws.join(NV2_TEST_ENTRY);
+    let entry = ws.join(NV2_GATE_ENTRY);
     let roots = vec![
         ws.join("src/v2").to_string_lossy().to_string(),
         manifest_dir.to_string_lossy().to_string(),
