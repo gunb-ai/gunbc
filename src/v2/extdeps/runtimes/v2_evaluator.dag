@@ -17,7 +17,8 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_primitive_facts, bool_primitive_facts_node }
+import v2.std.machine { Byte }
 import v2.std.model_core {
   EffectSignature,
   ModelCore,
@@ -47,6 +48,10 @@ import v2.std.runtime {
   Raise,
   ResourceEffectBoundary,
   Return,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeUnit,
+  RuntimeUnitValue,
   RuntimeValue,
   Suspend,
   TransformInterpreter,
