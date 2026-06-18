@@ -434,9 +434,7 @@ fn performance_receipt_wall_nanos(receipt: PerformanceReceipt) -> Nat {
 }
 
 fn performance_receipts_total_wall_nanos(receipts: List<PerformanceReceipt>) -> Nat {
-  fold(receipts, init: 0, f: fn(acc, receipt) {
-    acc + performance_receipt_wall_nanos(receipt: receipt)
-  })
+  fold(receipts, init: 0, f: (acc, receipt) => acc + performance_receipt_wall_nanos(receipt: receipt))
 }
 
 fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
