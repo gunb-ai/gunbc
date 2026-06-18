@@ -14,6 +14,7 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
   - first witness: FreeMonoid fork (RED on cross-tree bridge today, GREEN after de-fork)
 - Fact-cardinality lens — one lens for the 4 problem-classes + ratchet; emits the fork census — #5124
 - CI wall-time (~27 min → minutes)
+  - **Plan: [Realization & Measurement loop + infra onto `.dag`](docs/plans/realization-measurement-loop.md)** — the deep reframe: profile P1–P3 are symptoms; the spine is `measure → CostAccount.Measured → Pareto width/cache, bounded by a deployment HardwareBudget`. Keystone = wire the eval tap to a content-hash key + `CostAccount` (corpus is one serial node; cost is `predicted_zero`; cache catalog has no consumer). Subsumes "Caching via Realization" + "CI floor as one `.dag` binary" below. Worker-dispatch tracker.
   - P1 — cargo cache broken + double build (49%) — **needs an owner**
   - P2 — `dsl_compile_clean` sound memo (23%) — declare `content_hash(tree)` input, then RecordedFixture
   - P3 — resolver resolve blowup (15%) — self-host blocker; merry-crab pulling fix forward
