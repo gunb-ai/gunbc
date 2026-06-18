@@ -2,20 +2,98 @@
 //
 // Host runs `gunbc compile --source-root <dsl> --target rust` over the live tree (GREEN) and
 // a temp-tree perturb receipt (RED: planted optional Some/None skew must fail typecheck).
+//
+// Both transports are modeled off hand-written `let script = "..."` blobs onto structured
+// `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
+// ROOT/GUNBC/ensure-built prelude is a single `ensure_gunbc_built()` (DRY, §2). Proven green by
+// execution (each gate runs the real compile).
 
 module tools.dsl_compile_clean_transport
 
 import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
+  Lit, VarRef, Concat, CmdSubst,
+  AndThen, OrElse, StderrToNull, StdoutAndStderrToNull,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+
+// set -e; <prelude>; OUT=$(mktemp -d); "$GUNBC" compile --source-root "$ROOT"/dsl ... ; rm -rf "$OUT"
+fn clean_tree_compile_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let out = var_ref(name: "OUT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      command(words: [
+        gunbc, lit(text: "compile"),
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
+        lit(text: "--output-dir"), out,
+        lit(text: "--target"), lit(text: "rust")
+      ]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), out])
+    ])
+  }
+}
 
 fn run_clean_tree_compile() -> Bool {
-  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nOUT=$(mktemp -d)\n\"$GUNBC\" compile --source-root \"$ROOT/dsl\" --output-dir \"$OUT\" --target rust\nrm -rf \"$OUT\""
-  let result = shell.Exec.Run(script: script)
+  let result = shell.Exec.Run(script: serialize_bash(p: clean_tree_compile_program()))
   result.success
 }
 
-// RED receipt: copy dsl/ + one module with legacy Some/None on builtin T?; compile must fail.
+// The planted module whose legacy Some/None on a builtin T? must fail typecheck.
+data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"
+
+// RED receipt: copy dsl/ + plant the bad module; compile MUST fail (if it succeeds → exit 1).
+//   set -e; <prelude>; TMP=$(mktemp -d); cp -r "$ROOT"/dsl "$TMP"/dsl
+//   cat > "$TMP"/dsl/test/_perturb_compile_clean_red.dag <<'PERTURB' ... PERTURB
+//   if "$GUNBC" compile --source-root "$TMP"/dsl --output-dir "$TMP"/out --target rust >/dev/null 2>&1
+//     then rm -rf "$TMP"; exit 1; fi
+//   rm -rf "$TMP"; exit 0
+fn perturb_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      command(words: [
+        lit(text: "cp"), lit(text: "-r"),
+        Concat { parts: [root, lit(text: "/dsl")] },
+        Concat { parts: [tmp, lit(text: "/dsl")] }
+      ]),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/dsl/test/_perturb_compile_clean_red.dag")] },
+        delimiter: "PERTURB",
+        body: perturb_module_source
+      },
+      If {
+        cond: WithRedir {
+          stmt: command(words: [
+            gunbc, lit(text: "compile"),
+            lit(text: "--source-root"), Concat { parts: [tmp, lit(text: "/dsl")] },
+            lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+            lit(text: "--target"), lit(text: "rust")
+          ]),
+          redir: StdoutAndStderrToNull
+        },
+        then: [
+          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+          Exit { code: 1 }
+        ]
+      },
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+      Exit { code: 0 }
+    ])
+  }
+}
+
 fn run_perturb_optional_skew_red_receipt() -> Bool {
-  let script = "set -e\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nGUNBC=\"$ROOT/target/release/gunbc\"\nif [ ! -x \"$GUNBC\" ]; then (cd \"$ROOT\" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi\nTMP=$(mktemp -d)\ncp -r \"$ROOT/dsl\" \"$TMP/dsl\"\ncat > \"$TMP/dsl/test/_perturb_compile_clean_red.dag\" <<'PERTURB'\nmodule test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}\nPERTURB\nif \"$GUNBC\" compile --source-root \"$TMP/dsl\" --output-dir \"$TMP/out\" --target rust >/dev/null 2>&1; then\n  rm -rf \"$TMP\"\n  exit 1\nfi\nrm -rf \"$TMP\"\nexit 0"
-  let result = shell.Exec.Run(script: script)
+  let result = shell.Exec.Run(script: serialize_bash(p: perturb_program()))
   result.success
 }
