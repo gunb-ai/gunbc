@@ -28,6 +28,7 @@ import tools.emit_host_fixtures {
   mvp2_stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
+import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
