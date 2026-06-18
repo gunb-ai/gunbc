@@ -1,0 +1,91 @@
+// tools/cross_tree_import_transport.dag — Route C cross-tree import receipts.
+//
+// NOT part of DslCompileCleanGate (dsl-only compile-clean stays single-root).
+// Standalone witness transport: ephemeral planted module imports v2.std.node;
+// GREEN under dual roots, RED when src/v2 root is dropped.
+
+module tools.cross_tree_import_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
+  Lit, VarRef, Concat, CmdSubst,
+  AndThen, OrElse, StderrToNull, StdoutAndStderrToNull,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+
+data cross_tree_import_perturb_module_source: String = "module test.perturb_cross_tree_node_import\nimport v2.std.node { Node, Atom, TypeNode, content_hash }\ndata probe: Node = Node {\n  kind: TypeNode { connective: Atom { identity: ^cross_tree_import_probe } },\n  children: []\n}\nfn probe_digest_ok() -> Bool {\n  let h = content_hash(n: probe)\n  h == h\n}"
+
+fn cross_tree_import_green_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_cross_tree_node_import.dag")] },
+        delimiter: "PERTURB",
+        body: cross_tree_import_perturb_module_source
+      },
+      command(words: [
+        gunbc, lit(text: "compile"),
+        lit(text: "--source-root"), tmp,
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2")] },
+        lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+        lit(text: "--target"), lit(text: "rust")
+      ]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+    ])
+  }
+}
+
+// RED: same plant but dsl-only roots — import v2.std.node MUST fail compile.
+fn cross_tree_import_red_single_root_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_cross_tree_node_import.dag")] },
+        delimiter: "PERTURB",
+        body: cross_tree_import_perturb_module_source
+      },
+      If {
+        cond: WithRedir {
+          stmt: command(words: [
+            gunbc, lit(text: "compile"),
+            lit(text: "--source-root"), tmp,
+            lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
+            lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+            lit(text: "--target"), lit(text: "rust")
+          ]),
+          redir: StdoutAndStderrToNull
+        },
+        then: [
+          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+          Exit { code: 1 }
+        ]
+      },
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+      Exit { code: 0 }
+    ])
+  }
+}
+
+fn run_cross_tree_import_green_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: cross_tree_import_green_program()))
+  result.success
+}
+
+fn run_cross_tree_import_red_single_root_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: cross_tree_import_red_single_root_program()))
+  result.success
+}

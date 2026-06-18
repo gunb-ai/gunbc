@@ -1,24 +1,23 @@
-// v2/std/cross_tree/node_content_hash.dag — Route C bridge: v2 Node substrate
-// content_hash projected into dsl-tree ContentHash carriers.
+// v2/std/cross_tree/node_content_hash.dag
 //
-// Lives in the v2 tree (imports v2.std.node) so dsl-only compile-clean is
-// unaffected. dsl consumers dissolve-on: import this module when
-// dsl_compile_clean widens to dual source roots (§7 self-compile-clean).
+// 🟡 §3-nickname-dissolution SCAFFOLD — feature:route-c-cross-tree-content-hash
+// bind node://adhoc-f2e8c7a6-459
+// dissolve-on-arrival: dsl/std/realization.dag imports v2.std.node directly;
+//   RealizationPlan.target = content_hash(subgraph); delete this module.
+// forbidden: treating hash_as_content_hash or node_content_hash as permanent API.
 //
-// Dissolve-on: delete this bridge once dsl/ can import v2.std.node directly and
-// RealizationPlan.target uses content_hash(subgraph) without a cross-tree shim.
+// DIGEST AUTHORITY (§3 single authority):
+//   - COMPUTATION: v2.std.node.content_hash(Node) -> Hash  (substrate merkle fold, TERMINAL)
+//   - dsl ContentHash: branded NonEmptyStr nominal at the dsl-tree boundary ONLY
+//   - This module is a boundary PROJECTION scaffold, not a second digest concept.
+//   - ContentHash dies as a separate digest nickname when dsl can name Hash directly.
 
 module v2.std.cross_tree.node_content_hash
 
-import v2.std.node { Node, Hash, content_hash }
+import v2.std.node { Node, content_hash }
 import std.types { ContentHash }
 
-// Structural coercion: v2 Hash digest string → branded dsl ContentHash.
-fn hash_as_content_hash(h: Hash) -> ContentHash {
-  h
-}
-
-// Canonical cross-tree entry: merkle digest of a substrate Node as ContentHash.
+// Project substrate merkle digest into dsl-tree ContentHash nominal (boundary only).
 fn node_content_hash(n: Node) -> ContentHash {
-  hash_as_content_hash(h: content_hash(n: n))
+  content_hash(n: n)
 }

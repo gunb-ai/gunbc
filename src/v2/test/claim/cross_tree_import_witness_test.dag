@@ -1,0 +1,16 @@
+// Scope: Route C standalone witness — cross-tree import compile receipts.
+// GREEN: ephemeral dsl-syntax module importing v2.std.node compiles under dual roots.
+// RED:   same plant fails compile when src/v2 root is omitted (discriminating).
+
+module v2.test.claim.cross_tree_import_witness
+
+import tools.cross_tree_import_transport {
+  run_cross_tree_import_green_receipt,
+  run_cross_tree_import_red_single_root_receipt
+}
+import v2.std.logic { Bool }
+
+test fn cross_tree_import_witnesses() -> Bool {
+  run_cross_tree_import_green_receipt()
+    && run_cross_tree_import_red_single_root_receipt()
+}
