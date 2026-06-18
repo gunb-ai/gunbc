@@ -459,14 +459,14 @@ pub fn render_rust_fn_sig_type(
     } else {
         let name = authored_name_at(source_indices.clone(), n.clone());
         if ((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) > 0)
+            && name.as_str() != ""
             && !is_container_type(name.clone()))
         {
             match lookup_type_by_name(env.clone(), name.clone()) {
-                Some(resolved) => {
-                    let resolved_name =
-                        authored_name_at(source_indices.clone(), resolved.clone());
-                    if resolved_name != name {
+                Some(binding_resolved) => {
+                    if (binding_resolved.children.clone().len() as i64) == 0
+                        && (binding_resolved.params.clone().len() as i64) == 0
+                    {
                         render_rust_shared_type_if_needed(
                             name.clone(),
                             name,

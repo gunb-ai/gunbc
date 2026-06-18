@@ -288,11 +288,10 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
     let name = authored_name_at(source_indices: source_indices, node: n)
-    if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) {
+    if n.connective == NoConnective && name != "" && !is_container_type(name: name) {
       match lookup_type_by_name(env: env, name: name) {
-        Present { value: resolved } =>
-          let resolved_name = authored_name_at(source_indices: source_indices, node: resolved)
-          if resolved_name != name {
+        Present { value: binding_resolved } =>
+          if (binding_resolved.children |> count) == 0 && (binding_resolved.params |> count) == 0 {
             render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
           } else {
             render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
