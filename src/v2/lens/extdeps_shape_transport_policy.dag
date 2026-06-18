@@ -9,6 +9,9 @@
 //       literal (e.g. runtime/local `fallback_auth_command` — #5109 class).
 // Status: 🟡 M3 — module identity is QualifiedName (not filepath literals); corpus witnesses
 //   resolve live modules via module-path-keyed projection builtins (build_module_index bridge).
+// Hand-Rust scaffold receipt (DESIGN.md §7 / P5): see `module_path_index.rs` header — wrong
+//   `filepath_literal.dag` text-scan withdrawn; lens `filesystem_read` bridge deleted; eight
+//   `*_for_qualified_name` seed builtins; dissolve-on ROADMAP Lane 3a SourceRootIngest (#5126).
 // Consumer: claim_batch discovery over src/v2/compiler/extdeps_shape_transport_policy.
 
 module v2.lens.extdeps_shape_transport_policy

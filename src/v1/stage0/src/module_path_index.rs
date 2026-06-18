@@ -1,7 +1,19 @@
 //! Qualified module path → source file path index (DESIGN.md §3 single authority).
 //!
-//! **SCAFFOLD (DESIGN.md §7)** — delegates walk to `cli_run::build_module_path_index`.
-//! Shrink target: delete when `SourceRootIngest` overlay owns lookup in `.dag`.
+//! **SCAFFOLD (DESIGN.md §7)** — thin adapter over `cli_run::build_module_path_index`.
+//!
+//! Hand-Rust scaffold receipt (P5 / §7):
+//! - **Deleted wrong scaffold:** `src/v2/lens/filepath_literal.dag` (text-scan census — contradicted
+//!   QN-in design; withdrawn in-branch before merge).
+//! - **Lens census shrink:** `extdeps_shape_transport_policy.dag` retired `filesystem_read`,
+//!   `FilesystemReadResult`, and every `path: String` fact/violation row; corpus witnesses now use
+//!   structural `*_for_qualified_name` projection (no filepath literals in witnesses).
+//! - **This module (+ seed bridge):** `module_path_index.rs` (adapter only); pub
+//!   `cli_run::build_module_path_index` (+47 lines, reuses existing walk); eight
+//!   `*_for_qualified_name` builtins in `v1_interpreter.rs` / `04_method.dag` /
+//!   `v1_compiler_infer_method.rs`; `source_path_for_module_path` is Rust-internal (undispatched).
+//! - **Dissolve-on (ROADMAP):** `ROADMAP.md` Now → Lane 3a `SourceRootIngest` (#5126) — delete this
+//!   module and the QN builtins when the overlay owns module-path lookup in `.dag`.
 
 use std::collections::HashMap;
 
