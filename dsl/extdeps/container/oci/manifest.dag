@@ -17,18 +17,19 @@ import extdeps.container.oci.media_types {
   media_type_oci_image_manifest_v1,
   oci_image_schema_version,
 }
+import extdeps.container.oci.types { OciMediaType }
 import std.types { Bool }
 
 type ImageManifest {
   schemaVersion: Int
-  mediaType: String
+  mediaType: OciMediaType
   config: OciDescriptor
   layers: List<OciDescriptor>
 }
 
 type ManifestRejectReason
   = WrongSchemaVersion { got: Int, expected: Int }
-  | WrongMediaType { got: String, expected: String }
+  | WrongMediaType { got: OciMediaType, expected: OciMediaType }
   | ConfigDescriptorRejected { detail: String }
   | LayerDescriptorRejected { index: Int, reason: DescriptorRejectReason }
   | LayerMissing { index: Int }

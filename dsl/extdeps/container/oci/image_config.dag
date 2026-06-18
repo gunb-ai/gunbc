@@ -1,34 +1,44 @@
 // extdeps/container/oci/image_config.dag — OCI Image Configuration (image-spec config.md).
 //
 // Spec: https://github.com/opencontainers/image-spec/blob/main/config.md
-// Version: image-spec v1.1.0
+// Version: image-spec 1.1.0
 
 module extdeps.container.oci.image_config
 
-import std.types { Bool }
+import extdeps.container.oci.types {
+  ContainerExposedPort,
+  ContainerPortProtocol,
+  ImagePlatformArchitecture,
+  ImagePlatformOs,
+  ImageArchUnknown,
+  ImageOsUnknown,
+  OciDigest,
+  Tcp,
+}
+import std.types { Bool, FilePath, NonEmptyStr }
 
 type ContainerImageConfig {
-  User: String?
+  User: NonEmptyStr?
   Env: List<String>?
   Entrypoint: List<String>?
   Cmd: List<String>?
-  WorkingDir: String?
-  ExposedPorts: List<String>?
+  WorkingDir: FilePath?
+  ExposedPorts: List<ContainerExposedPort>?
 }
 
 type ImageRootfs
-  = RootfsLayers { diff_ids: List<String> }
+  = RootfsLayers { diff_ids: List<OciDigest> }
 
 type ImageConfiguration {
-  architecture: String
-  os: String
+  architecture: ImagePlatformArchitecture
+  os: ImagePlatformOs
   config: ContainerImageConfig?
   rootfs: ImageRootfs
 }
 
 type ImageConfigRejectReason
-  = EmptyArchitecture
-  | EmptyOs
+  = UnknownArchitecture { raw: String }
+  | UnknownOs { raw: String }
   | EmptyDiffIds
 
 type ImageConfigOutcome
@@ -36,19 +46,23 @@ type ImageConfigOutcome
   | ImageConfigRejected { reason: ImageConfigRejectReason }
 
 fn accept_image_configuration(c: ImageConfiguration) -> ImageConfigOutcome {
-  if c.architecture == "" {
-    ImageConfigRejected { reason: EmptyArchitecture }
-  } else if c.os == "" {
-    ImageConfigRejected { reason: EmptyOs }
-  } else {
-    match c.rootfs {
-      RootfsLayers { diff_ids: ids } =>
-        if count(ids) == 0 {
-          ImageConfigRejected { reason: EmptyDiffIds }
-        } else {
-          ImageConfigAccepted { value: c }
-        }
-    }
+  match c.architecture {
+    ImageArchUnknown { raw: r } =>
+      ImageConfigRejected { reason: UnknownArchitecture { raw: r } }
+    _ =>
+      match c.os {
+        ImageOsUnknown { raw: r } =>
+          ImageConfigRejected { reason: UnknownOs { raw: r } }
+        _ =>
+          match c.rootfs {
+            RootfsLayers { diff_ids: ids } =>
+              if count(ids) == 0 {
+                ImageConfigRejected { reason: EmptyDiffIds }
+              } else {
+                ImageConfigAccepted { value: c }
+              }
+          }
+      }
   }
 }
 
@@ -69,7 +83,7 @@ fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   }
 }
 
-fn image_config_first_exposed_port(c: ImageConfiguration) -> String? {
+fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPort? {
   match c.config {
     null => null
     cfg =>
@@ -82,4 +96,8 @@ fn image_config_first_exposed_port(c: ImageConfiguration) -> String? {
           }
       }
   }
+}
+
+fn container_exposed_port_is(port: ContainerExposedPort, expected_port: Int, protocol: ContainerPortProtocol) -> Bool {
+  port.port == expected_port && port.protocol == protocol
 }

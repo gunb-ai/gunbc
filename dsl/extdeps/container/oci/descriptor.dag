@@ -5,11 +5,12 @@
 
 module extdeps.container.oci.descriptor
 
+import extdeps.container.oci.types { OciDigest, OciMediaType }
 import std.types { Bool }
 
 type OciDescriptor {
-  mediaType: String
-  digest: String
+  mediaType: OciMediaType
+  digest: OciDigest
   size: Int
 }
 

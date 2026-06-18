@@ -11,29 +11,33 @@ import extdeps.container.oci.linux {
   LinuxPlatformAccepted,
   LinuxPlatformRejected,
 }
-import std.types { Bool }
+import extdeps.container.oci.types {
+  OciRuntimeVersion,
+  RuntimeMountKind,
+}
+import std.types { Bool, FilePath, NonEmptyStr }
 
 type RuntimeProcess {
   terminal: Bool?
-  cwd: String
+  cwd: FilePath
   env: List<String>?
   args: List<String>?
 }
 
 type RuntimeRoot {
-  path: String
+  path: FilePath
   readonly: Bool?
 }
 
 type RuntimeMount {
-  destination: String
-  source: String?
-  mount_type: String?
+  destination: FilePath
+  source: FilePath?
+  mount_type: RuntimeMountKind?
   options: List<String>?
 }
 
 type RuntimeBundleConfig {
-  ociVersion: String
+  ociVersion: OciRuntimeVersion
   process: RuntimeProcess?
   root: RuntimeRoot?
   mounts: List<RuntimeMount>?

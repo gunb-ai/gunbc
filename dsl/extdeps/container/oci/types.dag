@@ -1,0 +1,156 @@
+// extdeps/container/oci/types.dag — shared OCI grounded types (image-spec + runtime-spec).
+//
+// Wire strings from JSON ingress are parsed into these facts at the boundary;
+// egress re-encodes via the paired label functions.
+
+module extdeps.container.oci.types
+
+import std.types { NonEmptyStr, Port, SemVer, FilePath }
+
+// OCI content digest: algorithm-prefixed hash (image-spec descriptor.md).
+// Wire form: "sha256:<64 lowercase hex chars>".
+type OciDigest = NonEmptyStr where brand("OciDigest")
+
+// Image platform architecture (image-spec config.md `architecture` field).
+// Closed on the GOARCH values the spec names; unknown wire tokens stay explicit.
+type ImagePlatformArchitecture
+  = ImageArchAmd64
+  | ImageArchArm64
+  | ImageArch386
+  | ImageArchArm
+  | ImageArchRiscv64
+  | ImageArchWasm
+  | ImageArchUnknown { raw: String }
+
+// Image platform OS (image-spec config.md `os` field).
+type ImagePlatformOs
+  = ImageOsLinux
+  | ImageOsWindows
+  | ImageOsDarwin
+  | ImageOsUnknown { raw: String }
+
+data image_arch_amd64_wire: String = "amd64"
+data image_arch_arm64_wire: String = "arm64"
+data image_arch_386_wire: String = "386"
+data image_arch_arm_wire: String = "arm"
+data image_arch_riscv64_wire: String = "riscv64"
+data image_arch_wasm_wire: String = "wasm"
+
+data image_os_linux_wire: String = "linux"
+data image_os_windows_wire: String = "windows"
+data image_os_darwin_wire: String = "darwin"
+
+fn parse_image_platform_architecture(raw: String) -> ImagePlatformArchitecture {
+  if raw == image_arch_amd64_wire { ImageArchAmd64 }
+  else if raw == image_arch_arm64_wire { ImageArchArm64 }
+  else if raw == image_arch_386_wire { ImageArch386 }
+  else if raw == image_arch_arm_wire { ImageArchArm }
+  else if raw == image_arch_riscv64_wire { ImageArchRiscv64 }
+  else if raw == image_arch_wasm_wire { ImageArchWasm }
+  else { ImageArchUnknown { raw: raw } }
+}
+
+fn image_platform_architecture_label(arch: ImagePlatformArchitecture) -> String {
+  match arch {
+    ImageArchAmd64 => image_arch_amd64_wire
+    ImageArchArm64 => image_arch_arm64_wire
+    ImageArch386 => image_arch_386_wire
+    ImageArchArm => image_arch_arm_wire
+    ImageArchRiscv64 => image_arch_riscv64_wire
+    ImageArchWasm => image_arch_wasm_wire
+    ImageArchUnknown { raw: r } => r
+  }
+}
+
+fn parse_image_platform_os(raw: String) -> ImagePlatformOs {
+  if raw == image_os_linux_wire { ImageOsLinux }
+  else if raw == image_os_windows_wire { ImageOsWindows }
+  else if raw == image_os_darwin_wire { ImageOsDarwin }
+  else { ImageOsUnknown { raw: raw } }
+}
+
+fn image_platform_os_label(os: ImagePlatformOs) -> String {
+  match os {
+    ImageOsLinux => image_os_linux_wire
+    ImageOsWindows => image_os_windows_wire
+    ImageOsDarwin => image_os_darwin_wire
+    ImageOsUnknown { raw: r } => r
+  }
+}
+
+// Container exposed port (image-spec config.md `ExposedPorts` map keys).
+type ContainerPortProtocol = Tcp | Udp
+
+type ContainerExposedPort {
+  port: Port
+  protocol: ContainerPortProtocol
+}
+
+// Runtime bundle mount kind (runtime-spec config.md `mounts[].type`).
+type RuntimeMountKind
+  = RuntimeMountBind
+  | RuntimeMountTmpfs
+  | RuntimeMountProc
+  | RuntimeMountSys
+  | RuntimeMountUnknown { raw: String }
+
+data runtime_mount_bind_wire: String = "bind"
+data runtime_mount_tmpfs_wire: String = "tmpfs"
+data runtime_mount_proc_wire: String = "proc"
+data runtime_mount_sys_wire: String = "sys"
+
+fn parse_runtime_mount_kind(raw: String) -> RuntimeMountKind {
+  if raw == runtime_mount_bind_wire { RuntimeMountBind }
+  else if raw == runtime_mount_tmpfs_wire { RuntimeMountTmpfs }
+  else if raw == runtime_mount_proc_wire { RuntimeMountProc }
+  else if raw == runtime_mount_sys_wire { RuntimeMountSys }
+  else { RuntimeMountUnknown { raw: raw } }
+}
+
+fn runtime_mount_kind_label(kind: RuntimeMountKind) -> String {
+  match kind {
+    RuntimeMountBind => runtime_mount_bind_wire
+    RuntimeMountTmpfs => runtime_mount_tmpfs_wire
+    RuntimeMountProc => runtime_mount_proc_wire
+    RuntimeMountSys => runtime_mount_sys_wire
+    RuntimeMountUnknown { raw: r } => r
+  }
+}
+
+// OCI runtime bundle version (runtime-spec config.md `ociVersion`).
+type OciRuntimeVersion = SemVer
+
+// OCI media type (image-spec media-types.md). Closed on the v1 types we cite.
+type OciMediaType
+  = OciImageManifestV1
+  | OciImageConfigV1
+  | OciImageLayerV1TarGzip
+  | OciImageIndexV1
+  | OciDescriptorV1
+  | OciMediaTypeUnknown { raw: String }
+
+data oci_media_type_manifest_v1_wire: String = "application/vnd.oci.image.manifest.v1+json"
+data oci_media_type_config_v1_wire: String = "application/vnd.oci.image.config.v1+json"
+data oci_media_type_layer_v1_tar_gzip_wire: String = "application/vnd.oci.image.layer.v1.tar+gzip"
+data oci_media_type_index_v1_wire: String = "application/vnd.oci.image.index.v1+json"
+data oci_media_type_descriptor_v1_wire: String = "application/vnd.oci.descriptor.v1+json"
+
+fn parse_oci_media_type(raw: String) -> OciMediaType {
+  if raw == oci_media_type_manifest_v1_wire { OciImageManifestV1 }
+  else if raw == oci_media_type_config_v1_wire { OciImageConfigV1 }
+  else if raw == oci_media_type_layer_v1_tar_gzip_wire { OciImageLayerV1TarGzip }
+  else if raw == oci_media_type_index_v1_wire { OciImageIndexV1 }
+  else if raw == oci_media_type_descriptor_v1_wire { OciDescriptorV1 }
+  else { OciMediaTypeUnknown { raw: raw } }
+}
+
+fn oci_media_type_label(media_type: OciMediaType) -> String {
+  match media_type {
+    OciImageManifestV1 => oci_media_type_manifest_v1_wire
+    OciImageConfigV1 => oci_media_type_config_v1_wire
+    OciImageLayerV1TarGzip => oci_media_type_layer_v1_tar_gzip_wire
+    OciImageIndexV1 => oci_media_type_index_v1_wire
+    OciDescriptorV1 => oci_media_type_descriptor_v1_wire
+    OciMediaTypeUnknown { raw: r } => r
+  }
+}
