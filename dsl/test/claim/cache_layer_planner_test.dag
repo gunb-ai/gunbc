@@ -1,0 +1,101 @@
+// dsl/test/claim/cache_layer_planner_test.dag
+//
+// Phase-2 cache-layer planner: first runtime consumer of cache_interface catalog.
+// Proves execution_receipt_digest is content-addressed and plan_cache_layers emits
+// locality-ordered layers from deployment.available backends.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function cache_layer_planner_witnesses --claim-run
+
+module test.claim.cache_layer_planner
+
+import std.types { Bool }
+import std.cache_interface {
+  CacheDeploymentBackends,
+  buildbuddy_cas_id,
+  cache_layer_plan_contains_id,
+  cache_layer_plan_fallback,
+  cache_layer_plan_primary,
+  cache_layer_plan_respects_locality_order,
+  cargo_target_dir_id,
+  gha_actions_cache_id,
+  parse_table_memo_id,
+  plan_cache_layers,
+  resolved_graph_cache_id,
+  rustup_toolchain_store_id,
+  sccache_local_id,
+}
+import product.compute_fabric {
+  WorkUnitId,
+  example_feasible_resource_work_demand,
+  example_memory_work_demand,
+  example_thread_work_demand,
+  witness_execution_receipt_digest_differs_by_demand,
+  witness_execution_receipt_digest_not_raw_work_id,
+}
+
+data sample_work_id: WorkUnitId = "witness:cache-layer-planner"
+
+data ci_runner_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
+  available: [
+    sccache_local_id,
+    resolved_graph_cache_id,
+    cargo_target_dir_id,
+    buildbuddy_cas_id,
+  ],
+}
+
+data gha_only_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
+  available: [gha_actions_cache_id],
+}
+
+fn witness_execution_receipt_digest_is_content_addressed() -> Bool {
+  witness_execution_receipt_digest_not_raw_work_id(
+    work_id: sample_work_id,
+    demand: example_feasible_resource_work_demand,
+  )
+    && witness_execution_receipt_digest_differs_by_demand(
+      work_id: sample_work_id,
+      left: example_feasible_resource_work_demand,
+      right: example_thread_work_demand,
+    )
+    && witness_execution_receipt_digest_differs_by_demand(
+      work_id: sample_work_id,
+      left: example_feasible_resource_work_demand,
+      right: example_memory_work_demand,
+    )
+}
+
+fn witness_plan_orders_locality_nearest_first() -> Bool {
+  let plan = plan_cache_layers(deployment: ci_runner_deployment)
+  cache_layer_plan_respects_locality_order(plan: plan)
+    && cache_layer_plan_contains_id(plan: plan, id: cargo_target_dir_id)
+    && cache_layer_plan_contains_id(plan: plan, id: sccache_local_id)
+    && cache_layer_plan_contains_id(plan: plan, id: buildbuddy_cas_id)
+}
+
+fn witness_plan_primary_and_fallback_projections() -> Bool {
+  let plan = plan_cache_layers(deployment: ci_runner_deployment)
+  match cache_layer_plan_primary(plan: plan) {
+    Absent => false
+    Present { value: primary } =>
+      primary == cargo_target_dir_id
+        && match cache_layer_plan_fallback(plan: plan) {
+          Absent => false
+          Present { value: fallback } => fallback == sccache_local_id
+        }
+  }
+}
+
+fn witness_unavailable_backends_omitted() -> Bool {
+  let plan = plan_cache_layers(deployment: gha_only_deployment)
+  cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
+    && !cache_layer_plan_contains_id(plan: plan, id: sccache_local_id)
+    && !cache_layer_plan_contains_id(plan: plan, id: rustup_toolchain_store_id)
+}
+
+test fn cache_layer_planner_witnesses() -> Bool {
+  witness_execution_receipt_digest_is_content_addressed()
+    && witness_plan_orders_locality_nearest_first()
+    && witness_plan_primary_and_fallback_projections()
+    && witness_unavailable_backends_omitted()
+}

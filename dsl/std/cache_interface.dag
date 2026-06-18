@@ -87,10 +87,15 @@ type CacheMissSemantics
   | MissIsDiagnostic
   | ProviderNativeFallback
 
-// Cross-store L1→L2 fallback is composition — not a field on CacheInterfaceFacts.
+// Cross-store L1→L2→L3 fallback is composition — not a field on CacheInterfaceFacts.
+// Ordered nearest→farthest (InProcess → runner/host filesystem → network CAS).
 type CacheLayerPlan {
-  primary: CacheInterfaceId
-  fallback: Option<CacheInterfaceId>
+  layers: List<CacheInterfaceId>
+}
+
+// Deployment declares which catalog backends are reachable; planner emits wiring.
+type CacheDeploymentBackends {
+  available: List<CacheInterfaceId>
 }
 
 // --- §1.4 KeyDerivationFacts -------------------------------------------------
@@ -486,7 +491,7 @@ data resolved_graph_cache_facts: CacheInterfaceFacts = {
   ]
 }
 
-data parse_table_memo_id: CacheInterfaceId = "parse_table_memo"
+data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
 
 // In-process parse memo: content-addressed (grammar_digest × token_stream_digest × position × production).
 // Grammar scopes the in-process store; token_stream_digest prevents cross-source cell reuse.
@@ -532,7 +537,128 @@ data parse_table_memo_facts: CacheInterfaceFacts = {
   ]
 }
 
-// --- §1.7 projection + view helpers ------------------------------------------
+// --- §1.7 cache-layer planner (first catalog consumer) -----------------------
+
+data cache_catalog_rows: List<CacheInterfaceFacts> = [
+  parse_table_memo_facts,
+  cargo_target_dir_facts,
+  sccache_local_facts,
+  resolved_graph_cache_facts,
+  rustup_toolchain_store_facts,
+  buildbuddy_cas_facts,
+  gha_actions_cache_facts,
+]
+
+// Locality rank — nearer stores probe first (L1 in-process → L2 host → L3 WAN).
+fn persistence_locality_rank(locality: PersistenceLocality) -> Int {
+  match locality {
+    InProcess => 0
+    PerRunnerFilesystem => 1
+    PerHostFilesystem => 2
+    CrossHostNetwork => 3
+  }
+}
+
+fn read_latency_rank(latency: ReadLatencyClass) -> Int {
+  match latency {
+    InProcessNs => 0
+    LocalDiskUs => 1
+    LanMs => 2
+    WanTensMs => 3
+  }
+}
+
+fn cache_interface_id_available(
+  id: CacheInterfaceId,
+  available: List<CacheInterfaceId>,
+) -> Bool {
+  available
+    |> fold(
+      init: false,
+      f: (acc, candidate) => acc || (candidate == id),
+    )
+}
+
+fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: CacheInterfaceId) -> Bool {
+  plan.layers
+    |> fold(
+      init: false,
+      f: (acc, layer) => acc || (layer == id),
+    )
+}
+
+// Default probe order: in-process memo → runner target dir → host sccache/resolved-graph
+// → toolchain store → remote CAS (BuildBuddy) → GHA actions cache.
+data cache_layer_default_order: List<CacheInterfaceId> = [
+  parse_table_memo_id,
+  cargo_target_dir_id,
+  sccache_local_id,
+  resolved_graph_cache_id,
+  rustup_toolchain_store_id,
+  buildbuddy_cas_id,
+  gha_actions_cache_id,
+]
+
+fn plan_cache_layers(deployment: CacheDeploymentBackends) -> CacheLayerPlan {
+  CacheLayerPlan {
+    layers: cache_layer_default_order
+      |> filter(id => cache_interface_id_available(id: id, available: deployment.available)),
+  }
+}
+
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId? {
+  match plan.layers.first() {
+    Absent => none
+    Present { value: id } => Present { value: id }
+  }
+}
+
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId? {
+  match plan.layers.skip(n: 1).first() {
+    Absent => none
+    Present { value: id } => Present { value: id }
+  }
+}
+
+fn cache_facts_for_id(id: CacheInterfaceId) -> CacheInterfaceFacts? {
+  match cache_catalog_rows
+    |> filter(facts => facts.identity == id)
+    |> first() {
+    Absent => none
+    Present { value: facts } => Present { value: facts }
+  }
+}
+
+fn cache_layer_ids_respect_locality(
+  layers: List<CacheInterfaceId>,
+  last_rank: Int,
+) -> Bool {
+  match layers.first() {
+    Absent => true
+    Present { value: id } =>
+      match cache_facts_for_id(id: id) {
+        Absent => false
+        Present { value: facts } =>
+          let rank = persistence_locality_rank(locality: facts.locality)
+          if rank < last_rank {
+            false
+          } else {
+            cache_layer_ids_respect_locality(
+              layers: layers.skip(n: 1),
+              last_rank: rank,
+            )
+          }
+      }
+  }
+}
+
+// Cost-aware reach scaffold: prefer nearer layers when both are available.
+// dissolve-on: Phase-0 measured recompute cost feeds min(recompute, lookup+p(miss)·recompute).
+fn cache_layer_plan_respects_locality_order(plan: CacheLayerPlan) -> Bool {
+  cache_layer_ids_respect_locality(layers: plan.layers, last_rank: -1)
+}
+
+// --- §1.8 projection + view helpers ------------------------------------------
 
 fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
   CacheStoreView { facts: facts }
