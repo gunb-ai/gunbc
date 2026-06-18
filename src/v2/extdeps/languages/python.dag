@@ -1305,7 +1305,7 @@ fn python_mvp1_target_model() -> TargetModel {
     bundle: python_mvp1_target_model_node(),
     lex: python_wave1_lex(),
     binding_spellings: python_mvp1_binding_spellings(),
-    token_class_emit_transforms: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: python_mvp1_source_text,
     runtime_row: python_mvp1_runtime_row()
   }

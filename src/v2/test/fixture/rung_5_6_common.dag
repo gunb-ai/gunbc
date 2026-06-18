@@ -28,7 +28,7 @@ data rung56_emit_host_python_target_model: TargetModel = TargetModel {
   bundle: rung34_emit_host_target_bundle,
   lex: VoidLexRules,
   binding_spellings: empty_map(),
-    token_class_emit_transforms: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: python_mvp1_source_text,
   runtime_row: python_mvp1_runtime_row()
 }
@@ -38,7 +38,7 @@ data rung56_emit_host_go_target_model: TargetModel = TargetModel {
   bundle: rung34_emit_host_target_bundle,
   lex: VoidLexRules,
   binding_spellings: empty_map(),
-    token_class_emit_transforms: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: go_mvp1_source_text,
   runtime_row: go_mvp1_runtime_row()
 }

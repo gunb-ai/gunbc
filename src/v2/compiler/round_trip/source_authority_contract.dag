@@ -43,7 +43,7 @@ data source_authority_contract_target_model: TargetModel = TargetModel {
   bundle: source_authority_contract_subject,
   lex: VoidLexRules,
   binding_spellings: empty_map(),
-    token_class_emit_transforms: empty_map(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
   authority_source_text: source_authority_contract_source,
   runtime_row: target_emit_host_runtime_row_unconfigured
 }

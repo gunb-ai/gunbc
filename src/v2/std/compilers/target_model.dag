@@ -136,29 +136,56 @@ import v2.std.host_transport {
 
 // Emit-time spelling transform keyed by BoundToken token_class. FixedToken spellings still
 // resolve from lex LiteralPattern.text verbatim; bound spellings resolve from binding_spellings
-// (or symbol interning) then pass through this transform when the class is present in the map.
-// Absent => verbatim (preserves every existing target). Bash slice 2 is the first consumer.
-type TokenClassEmitTransform
-  = EmitSpellingVerbatim
-  | EmitSpellingShellSingleQuoted
-  // 🟡 dissolution trigger — feature:T-6-token-layout-trivia-policy — layout whitespace is
-  // baked into the *Spaced arms (same interim layout-in-literal policy rust.dag flags for lex
-  // LiteralPattern.text; see rust.dag T-6 TokenLayout). Dissolves when T-6 TokenLayout/
-  // TriviaPolicy separates layout from quoting and token_sequence_to_source interleaves
-  // whitespace structurally — forbidden: growing more layout-encoded transform variants.
-  | EmitSpellingShellSingleQuotedSpaced
-  | EmitSpellingShellVarRef
-  | EmitSpellingShellVarRefSpaced
-
+// (or symbol interning) then pass through a per-class fn when the map holds one.
+// Absent => identity (preserves every existing target). Which transforms exist and what they do
+// live in extdeps/languages/* — std owns only the lookup hook (§3: no realization taxonomy).
 type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
-  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>
+  token_class_emit_transforms: Map<Symbol, fn(String) -> String>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
 }
 type TargetModelBundle = TargetModel
+
+// Default-empty emit transforms for non-shell targets (identity on absent lookup).
+data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
+
+fn target_model_make(
+  bundle: Node,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>,
+  authority_source_text: String,
+  runtime_row: TargetEmitHostRuntimeRow
+) -> TargetModel {
+  TargetModel {
+    bundle: bundle,
+    lex: lex,
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: authority_source_text,
+    runtime_row: runtime_row
+  }
+}
+
+fn target_model_make_with_emit_transforms(
+  bundle: Node,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>,
+  token_class_emit_transforms: Map<Symbol, fn(String) -> String>,
+  authority_source_text: String,
+  runtime_row: TargetEmitHostRuntimeRow
+) -> TargetModel {
+  TargetModel {
+    bundle: bundle,
+    lex: lex,
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: token_class_emit_transforms,
+    authority_source_text: authority_source_text,
+    runtime_row: runtime_row
+  }
+}
 
 fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
   configured_emit_host_runtime_row_from_target_row(row: target.runtime_row)
@@ -472,38 +499,11 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
-fn posix_shell_single_quote_literal(text: String) -> String {
-  concat("'", concat(replace(text, "'", "'\\''"), "'"))
-}
-
-fn apply_token_class_emit_transform(
-  transform: TokenClassEmitTransform,
+fn apply_emit_spelling_transform(
+  transform: fn(String) -> String,
   spelling: String
 ) -> String {
-  match transform {
-    EmitSpellingVerbatim => spelling
-    EmitSpellingShellSingleQuoted =>
-      posix_shell_single_quote_literal(text: spelling)
-    EmitSpellingShellSingleQuotedSpaced =>
-      concat(" ", posix_shell_single_quote_literal(text: spelling))
-    EmitSpellingShellVarRef =>
-      concat("\"$", concat(spelling, "\""))
-    EmitSpellingShellVarRefSpaced =>
-      concat(" ", concat("\"$", concat(spelling, "\"")))
-  }
-}
-
-fn token_class_emit_transform_lookup(
-  target: TargetModel,
-  token_class: Symbol
-) -> TokenClassEmitTransform {
-  match map_get(target.token_class_emit_transforms, token_class) {
-    Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: transform } => transform
-      Absent => EmitSpellingVerbatim
-    }
-    Rejected { diagnostics: _ } => EmitSpellingVerbatim
-  }
+  transform(spelling: spelling)
 }
 
 fn bound_token_spelling_from_model(
@@ -514,12 +514,16 @@ fn bound_token_spelling_from_model(
   bind_outcome(
     o: target_binding_spelling_lookup(target: target, binding: binding),
     f: fn(spelling) {
-      outcome_accepted(
-        apply_token_class_emit_transform(
-          transform: token_class_emit_transform_lookup(target: target, token_class: token_class),
-          spelling: spelling
-        )
-      )
+      match map_get(target.token_class_emit_transforms, token_class) {
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
+          outcome_accepted(
+            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
+            diagnostics: d
+          )
+        Accepted { value: Absent, diagnostics: d } =>
+          outcome_accepted(value: spelling, diagnostics: d)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
     }
   )
 }
