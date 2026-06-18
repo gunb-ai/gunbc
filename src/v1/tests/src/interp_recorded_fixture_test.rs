@@ -35,6 +35,31 @@ fn fixture_store_dir(name: &str) -> PathBuf {
     ))
 }
 
+/// Copy the filesystem witness dag into `scratch` with its hardcoded `/tmp` target paths
+/// rewritten under `scratch`, returning the rewritten entry to pass as `--entry`. The witnesses
+/// do REAL filesystem I/O; the shared `/tmp/gunbc_fs_write_witness.txt` path made parallel libtest
+/// threads — and concurrent CI jobs on a shared runner — race on the same live file (one test's
+/// mutation corrupts another's read-back). Per-invocation unique paths remove that race; `scratch`
+/// is itself unique (`fixture_store_dir`: pid + nanos), so cross-process runs never collide.
+fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
+    let src = fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_witness.dag"))
+        .expect("read filesystem witness dag");
+    let live = scratch.join("fs_witness");
+    let absent = scratch.join("fs_witness_absent_should_not_exist_42");
+    let rewritten = src
+        .replace(
+            "/tmp/gunbc_fs_witness_absent_should_not_exist_42",
+            absent.to_str().expect("utf8 scratch path"),
+        )
+        .replace(
+            "/tmp/gunbc_fs_write_witness",
+            live.to_str().expect("utf8 scratch path"),
+        );
+    let entry = scratch.join("filesystem_write_witness.dag");
+    fs::write(&entry, rewritten).expect("write rewritten filesystem witness dag");
+    entry
+}
+
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     let msgs: Vec<String> = result
         .diagnostics
@@ -70,12 +95,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fs-write-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    assert!(
-        entry.is_file(),
-        "witness dag must exist at {}",
-        entry.display()
-    );
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
 
     // Wet capture: record live Filesystem.Read/Write responses.
     let record = run_claim_batch(&[
@@ -129,7 +149,7 @@ fn hermetic_fixture_staleness_fails_closed() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fs-stale");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
 
     let record = run_claim_batch(&[
         "--source-root",
@@ -349,8 +369,8 @@ fn hermetic_replay_rejects_corrupted_fixture_response() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("corrupt-response");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    let target = "/tmp/gunbc_fs_write_witness.txt";
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
+    let target = store_dir.join("fs_witness.txt");
 
     let record = run_claim_batch(&[
         "--source-root",
