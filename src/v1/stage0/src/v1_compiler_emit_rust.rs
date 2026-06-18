@@ -52,7 +52,7 @@ pub use crate::v1_compiler_infer_emit_info::{
     variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeRepr, TypeSummary};
-pub use crate::v1_compiler_infer_env::{authored_name, lookup_type_by_name};
+pub use crate::v1_compiler_infer_env::{authored_name, lookup_type_by_name, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
@@ -447,6 +447,20 @@ pub fn render_rust_decl_type(
     })
 }
 
+pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
+    let binding = match lookup_type_for(env.clone(), n.clone()) {
+        Some(b) => b,
+        None => {
+            let name = authored_name_at(env.source_indices.clone(), n.clone());
+            match lookup_type_by_name(env.clone(), name) {
+                Some(b) => b,
+                None => return false,
+            }
+        }
+    };
+    (binding.children.clone().len() as i64) == 0 && (binding.params.clone().len() as i64) == 0
+}
+
 pub fn render_rust_fn_sig_type(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -459,28 +473,49 @@ pub fn render_rust_fn_sig_type(
     } else {
         let name = authored_name_at(source_indices.clone(), n.clone());
         if ((n.connective.clone() == Connective::NoConnective)
-            && name.as_str() != ""
-            && !is_container_type(name.clone()))
+            && ((n.children.clone().len() as i64) > 0)
+            && !is_container_type(name.clone())
+            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
         {
-            match lookup_type_by_name(env.clone(), name.clone()) {
-                Some(binding_resolved) => {
-                    if (binding_resolved.children.clone().len() as i64) == 0
-                        && (binding_resolved.params.clone().len() as i64) == 0
-                    {
-                        render_rust_shared_type_if_needed(
-                            name.clone(),
-                            name,
-                            shared_types.clone(),
-                        )
-                    } else {
-                        render_rust_type_with_applied_binding(n, shared_types, source_indices)
-                    }
-                }
-                None => render_rust_type_with_applied_binding(n, shared_types, source_indices),
-            }
+            render_rust_shared_type_if_needed(name.clone(), name, shared_types.clone())
         } else {
-            render_rust_type_with_applied_binding(n, shared_types, source_indices)
+            render_rust_fn_sig_type_applied_binding(n, shared_types, source_indices, env)
         }
+    }
+}
+
+pub fn render_rust_fn_sig_type_applied_binding(
+    n: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    match find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) => {
+            if ((applied.children.clone().len() as i64) > 0) {
+                let outer_name = authored_name_at(source_indices.clone(), n.clone());
+                if outer_name.as_str() != ""
+                    && n.connective.clone() == Connective::NoConnective
+                    && (n.children.clone().len() as i64) == 0
+                    && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
+                {
+                    render_rust_shared_type_if_needed(
+                        outer_name.clone(),
+                        outer_name,
+                        shared_types.clone(),
+                    )
+                } else {
+                    render_rust_type_with_applied_binding(n, shared_types, source_indices)
+                }
+            } else {
+                render_rust_type_with_applied_binding(n, shared_types, source_indices)
+            }
+        }
+        None => render_rust_type_with_applied_binding(n, shared_types, source_indices),
     }
 }
 
