@@ -135,6 +135,10 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "module_path_rename_resolves_by_qn_not_filepath_holds",
         ),
         (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_path_rename_test.dag",
+            "module_path_rename_unknown_qn_does_not_resolve_holds",
+        ),
+        (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
             "corpus_cargo_clippy_dead_param_defused_holds",
         ),

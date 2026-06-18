@@ -5083,6 +5083,18 @@ fn eval_builtin(
             )))
         }
 
+        "extdeps_gist_create_files_keyed_by_filename_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_gist_create_files_keyed_by_filename_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

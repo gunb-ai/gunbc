@@ -475,7 +475,8 @@ fn gist_create_files_keyed_by_filename_placeholder_for_parsed_module(
             if !is_rest_transport(transport.clone(), source_indices.clone()) {
                 return false;
             }
-            let Some(body) = transport_request_body(transport.clone(), source_indices.clone()) else {
+            let Some(body) = transport_request_body(transport.clone(), source_indices.clone())
+            else {
                 return false;
             };
             let Some(files) = record_field_value(&body, "files", source_indices) else {
