@@ -1,0 +1,182 @@
+// std/realization_schedule.dag — Schedule arm of std.realization (dsl-tree authority).
+//
+// Lives in the dsl tree so schedule-lens witnesses execute without pulling the v2
+// resolution closure. Live ci_floor_plan generative wiring is proven in
+// v2/test/claim/realization_schedule_witness.dag (dissolution: enroll when v2
+// self-compile-clean closes the Empty-in-generic sequence_outcome substrate gap).
+
+module std.realization_schedule
+
+import std.types { ContentHash, Bool, String, List, Int }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, Watt, NanosecondDuration,
+  byte_size, watt, nanosecond_duration
+}
+import std.pareto { AxisGoal }
+
+// dissolve-on: extdeps/realization measured cost handlers — add `basis: CostBasis`
+//   (Measured | Predicted) and cost_account_measured_* / cost_account_predicted_zero rows.
+type CostAccount {
+  time: NanosecondDuration
+  space: ByteSize
+  power: Watt
+}
+
+fn cost_account_predicted_zero() -> CostAccount {
+  CostAccount {
+    time: nanosecond_duration(count: 0)
+    space: byte_size(count: 0)
+    power: watt(count: 0)
+  }
+}
+
+type RealizationObjective {
+  goals: List<AxisGoal>
+}
+
+type ScheduleWitnessEntry {
+  entry: String
+  function: String
+}
+
+type Runnable
+  = RunnableSingleClaim { entry: String, function: String }
+  | RunnableDiscoveryBatch {
+      source_roots: List<String>
+      scan_dirs: List<String>
+      explicit_entries: List<ScheduleWitnessEntry>
+    }
+
+type Schedule = List<List<Runnable>>
+
+type RealizationPlan {
+  target: ContentHash
+  objective: RealizationObjective
+  schedule: Schedule
+  total: CostAccount
+}
+
+fn runnable_step_label(r: Runnable) -> String {
+  match r {
+    RunnableSingleClaim { entry: _, function: f } => f
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => "__discovery_corpus__"
+  }
+}
+
+fn schedule_batch_contains_label(batch: List<Runnable>, target: String) -> Bool {
+  fold(batch, init: false, f: fn(acc, r) {
+    acc || (runnable_step_label(r: r) == target)
+  })
+}
+
+type ScheduleLensViolation
+  = EmptySchedule
+  | CompileGateNotFirst { expected: String }
+  | CorpusBeforeCompile
+  | SingleBatchOnly
+
+type ScheduleLensVerdict
+  = Holds
+  | Violation { kind: ScheduleLensViolation }
+  | NotApplicable
+
+fn schedule_lens_verdict_for_ci_floor(plan: RealizationPlan, compile_gate_fn: String) -> ScheduleLensVerdict {
+  if plan.schedule.length() == 0 {
+    Violation { kind: EmptySchedule }
+  } else if plan.schedule.length() < 2 {
+    Violation { kind: SingleBatchOnly }
+  } else {
+    let batch0 = plan.schedule.first()
+    if batch0.length() != 1 {
+      Violation { kind: CompileGateNotFirst { expected: compile_gate_fn } }
+    } else if !schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
+      Violation { kind: CompileGateNotFirst { expected: compile_gate_fn } }
+    } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
+      Violation { kind: CorpusBeforeCompile }
+    } else {
+      let batch1 = plan.schedule.skip(n: 1).first()
+      if batch1.length() < 2 {
+        Violation { kind: SingleBatchOnly }
+      } else {
+        Holds
+      }
+    }
+  }
+}
+
+fn schedule_generates_same_batch_count(left: RealizationPlan, right: RealizationPlan) -> Bool {
+  left.schedule.length() == right.schedule.length()
+}
+
+fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -> Bool {
+  (a.entry == b.entry) && (a.function == b.function)
+}
+
+fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else if left.first() != right.first() {
+    false
+  } else {
+    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<ScheduleWitnessEntry>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else if !schedule_witness_entry_eq(a: left.first(), b: right.first()) {
+    false
+  } else {
+    schedule_witness_entry_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
+  match left {
+    RunnableSingleClaim { entry: le, function: lf } => match right {
+      RunnableSingleClaim { entry: re, function: rf } => (le == re) && (lf == rf)
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => false
+    }
+    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex } => match right {
+      RunnableSingleClaim { entry: _, function: _ } => false
+      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex } =>
+        string_list_eq(left: lsr, right: rsr)
+          && string_list_eq(left: lsd, right: rsd)
+          && schedule_witness_entry_list_eq(left: lex, right: rex)
+    }
+  }
+}
+
+fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else if !runnable_eq(left: left.first(), right: right.first()) {
+    false
+  } else {
+    runnable_batch_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else if !runnable_batch_eq(left: left.first(), right: right.first()) {
+    false
+  } else {
+    schedule_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn schedule_generates_identical_schedule(plan: RealizationPlan, schedule: Schedule) -> Bool {
+  schedule_eq(left: plan.schedule, right: schedule)
+}

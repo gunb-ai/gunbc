@@ -253,6 +253,18 @@ type Hertz = Measure<Frequency, One, Nat>
 // Schedulable hardware thread count (std.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One, Nat>
 
+// Time magnitude at nanosecond scale — realization `CostAccount.time` consumer
+// (Q-Unit-5 minted-with-consumer; aligns with comment reserve for Duration/Milliseconds).
+type NanosecondDuration = Measure<Time, Nano, Nat>
+
+fn nanosecond_duration(count: Nat) -> NanosecondDuration {
+  NanosecondDuration { count: count }
+}
+
+fn nanosecond_duration_count(d: NanosecondDuration) -> Nat {
+  d.count
+}
+
 // Power magnitude at unit scale — the plain watt (SI derived: W = J/s). The dimension
 // TDP specs, PSU ratings, and live draw are all quoted in. A power rating carries the
 // Power dimension rather than a bare Int (the anemic-leaf trap, DESIGN §2): a sum of
