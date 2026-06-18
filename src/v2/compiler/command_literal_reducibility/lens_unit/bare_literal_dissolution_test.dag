@@ -1,0 +1,69 @@
+// Scope: lens-unit DISCRIMINATING witness — bare string literals in command positions are
+//   reducible to closed coproducts; the dissolved (enum/parameter) form is clean; and a
+//   `shell.Exec.Run(script:)` blob reds under the SAME rule with no shell special-casing.
+//
+// The bare facts are the REAL shell.Find.ListDirs argv from dsl/extdeps/shell/shell.dag:
+//   ["find", "{path}", "-maxdepth", "{max_depth}", "-type", "d"]
+// — held up as the "clean decomposed" form, yet "find"/"-maxdepth"/"-type"/"d" are four
+//   unmodeled strings (each a nickname for a closed type). The lens makes that executable.
+// Status: 🟡 DRAFT-until-signed.
+
+module v2.test.command_literal_reducibility.lens_unit.bare_literal_dissolution
+
+import v2.lens.command_literal_reducibility {
+  BareLiteral,
+  ClosedTypeValue,
+  CommandTokenFact,
+  ReceivedParameter,
+  command_literal_reducibility_clean_holds,
+  command_literal_reducibility_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data shell_path: String = "dsl/extdeps/shell/shell.dag"
+data find_caller: String = "shell.Find.ListDirs"
+
+// The "decomposed argv" as it stands today: four bare literals + two parameters.
+data bare_find_facts: List<CommandTokenFact> = [
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[0]", token: BareLiteral { text: "find" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[1]", token: ReceivedParameter { name: "path" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[2]", token: BareLiteral { text: "-maxdepth" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[3]", token: ReceivedParameter { name: "max_depth" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[4]", token: BareLiteral { text: "-type" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[5]", token: BareLiteral { text: "d" } }
+]
+
+// The dissolved form: every control token is an enum variant projecting to its spelling;
+// the holes stay parameters. Zero bare literals.
+data dissolved_find_facts: List<CommandTokenFact> = [
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[0]", token: ClosedTypeValue { type_name: "PosixTool", variant: "Find" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[1]", token: ReceivedParameter { name: "path" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[2]", token: ClosedTypeValue { type_name: "FindOption", variant: "MaxDepth" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[3]", token: ReceivedParameter { name: "max_depth" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[4]", token: ClosedTypeValue { type_name: "FindOption", variant: "Type" } },
+  CommandTokenFact { path: shell_path, caller: find_caller, position: "argv[5]", token: ClosedTypeValue { type_name: "FileType", variant: "Directory" } }
+]
+
+// The bash blob: one giant bare literal in a transport position — same rule, no construct
+// counting, one violation.
+data bash_blob_facts: List<CommandTokenFact> = [
+  CommandTokenFact {
+    path: "dsl/tools/layering_imports_transport.dag",
+    caller: "run_clean_tree_gate",
+    position: "script",
+    token: BareLiteral {
+      text: "set -e\nROOT=\"$(git rev-parse --show-toplevel)\"\ncd \"$ROOT\"\nbash scripts/layering-imports-scan.sh\nif [ ! -x \"$GUNBC\" ]; then cargo build --release || exit 1; fi"
+    }
+  }
+]
+
+// Discriminating: dissolved form clean; the real argv reds with FOUR located literals
+// ("find","-maxdepth","-type","d"); the bash blob reds with ONE under the same rule.
+test fn command_literal_reducibility_discriminates_holds() -> Bool {
+  command_literal_reducibility_clean_holds(facts: dissolved_find_facts) == true
+    && command_literal_reducibility_clean_holds(facts: bare_find_facts) == false
+    && command_literal_reducibility_violation_count(facts: bare_find_facts) == 4
+    && command_literal_reducibility_clean_holds(facts: bash_blob_facts) == false
+    && command_literal_reducibility_violation_count(facts: bash_blob_facts) == 1
+}

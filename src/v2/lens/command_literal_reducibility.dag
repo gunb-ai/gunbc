@@ -1,0 +1,130 @@
+// src/v2/lens/command_literal_reducibility.dag
+// Scope: bare-literal reducibility in command/transport-construction positions —
+//   DESIGN.md §2 (coproduct dissolution). Peer to v2.lens.extdeps_shape_transport_policy.
+//
+// The principle: a bare string literal is an OPEN set standing where a CLOSED set (an enum
+//   / coproduct) belongs. This is the same move as `CpuVendor` (closed enum) vs stringly
+//   `GpuFacts.vendor`, and as splitting a sentinel into named variants (the state-space
+//   conflation failure mode). An argv token list of bare strings
+//   (`["find", "-maxdepth", "-type", "d"]`) is NOT decomposed — every non-parameter token
+//   is unmodeled; `"-maxdepth"` nicknames a FindOption, `"d"` nicknames FileType::Directory.
+//   A `shell.Exec.Run(script: "<bash>")` blob is the same sin at a coarser scale: one giant
+//   bare literal. ONE rule subsumes both.
+//
+// The test is structural and ungameable: a command-position token is a `String` literal, or
+//   it is a value of a closed type / a received parameter. The only way to pass is to
+//   actually mint the enum and project the spelling — no allowlist, no "is it a faithful
+//   upstream name" judgment (faithful names become enum *variants* that project to their
+//   spelling). Fail-closed: a bare literal is reducible, period. There is no Unknown — a
+//   string literal in a command position is definitively an open set, nothing to discover.
+//
+// Scope boundary (honesty): this targets COMMAND/TRANSPORT-construction positions (argv
+//   elements, an exec `script:` argument, a flag value) — a control choice the author
+//   makes. A free-text DATA payload (a file's content, a message body) is legitimately
+//   String and out of scope; the projection (M2) distinguishes by position, not by content.
+//
+// Status: 🟡 M1 — lens-unit over synthetic CommandTokenFact rows (pure, structural,
+//   discriminating). Dissolve-on: Node-tree projection over live transport/argv sites
+//   (classify each argv element node as literal / `{param}` / closed-type value) supersedes
+//   the synthetic shape, exactly as extdeps_shape_transport_policy's M2 parse bridge
+//   superseded its synthetic argv rows. NOT a `filesystem_read` text scan (grep, not a lens;
+//   see #5135). The §6 scaffold/dissolve-on marker on a call site is the migration valve so
+//   this does not red the whole tree before CLI surfaces are modeled.
+// Consumer: claim_batch discovery over src/v2/compiler/command_literal_reducibility.
+
+module v2.lens.command_literal_reducibility
+
+import v2.std.algebra {
+  fold_list,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// A token in a command/transport-construction position.
+//   BareLiteral       — an open `String` set; reducible to a coproduct.
+//   ReceivedParameter — a hole bound from outside; grounded.
+//   ClosedTypeValue   — a value of a closed type (enum variant), projected to its spelling;
+//                       grounded. This is the dissolution target for a BareLiteral.
+type CommandToken
+  = BareLiteral { text: String }
+  | ReceivedParameter { name: String }
+  | ClosedTypeValue { type_name: String, variant: String }
+
+// Binary, local, mechanical verdict. The diagnostic text rides the reducible case so the
+// violation can be located without re-matching the token (one match owns the classification).
+type LiteralReducibility
+  = ReducibleToCoproduct { text: String }
+  | Grounded
+
+type CommandTokenFact {
+  path: String
+  caller: String
+  position: String
+  token: CommandToken
+}
+
+type CommandLiteralViolation
+  = BareLiteralInCommandPosition {
+      path: String
+      caller: String
+      position: String
+      text: String
+    }
+
+data empty_command_literal_violations: List<CommandLiteralViolation> = []
+
+// reducible?(token) — the mechanical coproduct-dissolution judgment.
+fn command_token_reducibility(token: CommandToken) -> LiteralReducibility {
+  match token {
+    BareLiteral { text: t } => ReducibleToCoproduct { text: t }
+    ReceivedParameter { name: _ } => Grounded
+    ClosedTypeValue { type_name: _, variant: _ } => Grounded
+  }
+}
+
+fn command_token_fact_violation(
+  fact: CommandTokenFact
+) -> List<CommandLiteralViolation> {
+  match command_token_reducibility(token: fact.token) {
+    Grounded => empty_command_literal_violations
+    ReducibleToCoproduct { text: t } => [
+      BareLiteralInCommandPosition {
+        path: fact.path,
+        caller: fact.caller,
+        position: fact.position,
+        text: t
+      }
+    ]
+  }
+}
+
+fn scan_command_token_facts(
+  facts: List<CommandTokenFact>
+) -> List<CommandLiteralViolation> {
+  fold_list(
+    xs: facts,
+    empty: empty_command_literal_violations,
+    cons: fn(acc, fact) {
+      fold_list(
+        xs: command_token_fact_violation(fact: fact),
+        empty: acc,
+        cons: fn(inner, v) { list_snoc_item(xs: inner, item: v) }
+      )
+    }
+  )
+}
+
+fn command_literal_reducibility_violation_count(
+  facts: List<CommandTokenFact>
+) -> Int {
+  length(xs: scan_command_token_facts(facts: facts))
+}
+
+fn command_literal_reducibility_clean_holds(
+  facts: List<CommandTokenFact>
+) -> Bool {
+  command_literal_reducibility_violation_count(facts: facts) == 0
+}
