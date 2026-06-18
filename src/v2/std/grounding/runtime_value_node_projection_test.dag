@@ -1,0 +1,145 @@
+// Cut 3 gated witness — runtime_value_node_projection honest partial.
+// GREEN: RuntimePrimitive and RuntimeAggregate (nested primitive fields) project.
+// GREEN: RuntimeReference / RuntimeClosure / RuntimeUnit stay Unrepresentable.
+// GREEN: aggregate with nested Reference field fails-closed (whole aggregate Unrepresentable).
+
+module v2.test.std_grounding.runtime_value_node_projection
+
+import v2.std.collection { Empty }
+import v2.std.logic { Bool, True }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Node,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.runtime {
+  RuntimeAggregate,
+  RuntimeAggregateValue,
+  RuntimeClosure,
+  RuntimeClosureValue,
+  EvaluationEnvironment,
+  RuntimeFieldValue,
+  RuntimeIdentity,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeReference,
+  RuntimeReferenceValue,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  RuntimeValueNodeProjected,
+  RuntimeValueNodeUnrepresentable,
+  runtime_value_node_projection
+}
+
+fn rvnp_test_type_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rvnp_test_byte() -> Byte {
+  Byte { bits: [True] }
+}
+
+fn rvnp_test_primitive_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym),
+      bytes: [rvnp_test_byte()]
+    }
+  }
+}
+
+fn rvnp_test_aggregate_value() -> RuntimeValue {
+  RuntimeAggregate {
+    value: RuntimeAggregateValue {
+      aggregate_type: rvnp_test_type_node(sym: ^rvnp_test_pair_sym),
+      fields: [
+        RuntimeFieldValue {
+          field: ^rvnp_test_left_field,
+          value: rvnp_test_primitive_value()
+        },
+        RuntimeFieldValue {
+          field: ^rvnp_test_right_field,
+          value: rvnp_test_primitive_value()
+        }
+      ]
+    }
+  }
+}
+
+fn rvnp_test_aggregate_with_reference_field() -> RuntimeValue {
+  RuntimeAggregate {
+    value: RuntimeAggregateValue {
+      aggregate_type: rvnp_test_type_node(sym: ^rvnp_test_pair_sym),
+      fields: [
+        RuntimeFieldValue {
+          field: ^rvnp_test_left_field,
+          value: RuntimeReference {
+            value: RuntimeReferenceValue {
+              reference_type: rvnp_test_type_node(sym: ^rvnp_test_ref_sym),
+              identity: RuntimeIdentity { identity: ^rvnp_test_ref_id },
+              referent_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+fn rvnp_test_reference_value() -> RuntimeValue {
+  RuntimeReference {
+    value: RuntimeReferenceValue {
+      reference_type: rvnp_test_type_node(sym: ^rvnp_test_ref_sym),
+      identity: RuntimeIdentity { identity: ^rvnp_test_ref_id },
+      referent_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
+    }
+  }
+}
+
+fn rvnp_test_closure_value() -> RuntimeValue {
+  RuntimeClosure {
+    value: RuntimeClosureValue {
+      arrow_type: rvnp_test_type_node(sym: ^rvnp_test_arrow_sym),
+      arrow: rvnp_test_type_node(sym: ^rvnp_test_arrow_body_sym),
+      environment: EvaluationEnvironment { bindings: Empty }
+    }
+  }
+}
+
+fn rvnp_test_unit_value() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue {
+      unit_type: rvnp_test_type_node(sym: ^rvnp_test_unit_sym)
+    }
+  }
+}
+
+fn rvnp_test_is_projected(value: RuntimeValue) -> Bool {
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: _ } => true
+    RuntimeValueNodeUnrepresentable => false
+  }
+}
+
+fn rvnp_test_is_unrepresentable(value: RuntimeValue) -> Bool {
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: _ } => false
+    RuntimeValueNodeUnrepresentable => true
+  }
+}
+
+test fn runtime_value_node_projection_honest_partial_holds() -> Bool {
+  rvnp_test_is_projected(value: rvnp_test_primitive_value())
+    && rvnp_test_is_projected(value: rvnp_test_aggregate_value())
+    && rvnp_test_is_unrepresentable(value: rvnp_test_reference_value())
+    && rvnp_test_is_unrepresentable(value: rvnp_test_closure_value())
+    && rvnp_test_is_unrepresentable(value: rvnp_test_unit_value())
+    && rvnp_test_is_unrepresentable(value: rvnp_test_aggregate_with_reference_field())
+}

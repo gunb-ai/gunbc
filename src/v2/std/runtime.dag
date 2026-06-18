@@ -13,10 +13,21 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.logic { Bool }
+import v2.std.algebra { Cons, Empty, algebra_empty_conj }
+import v2.std.logic { Bool, False, True }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
-import v2.std.node { Behavior, Node, Symbol }
+import v2.std.node {
+  Atom,
+  Behavior,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
 
 type RuntimeIdentity {
   identity: Symbol
@@ -82,7 +93,10 @@ type RuntimeOutcome
   | CheckedReturn { wrapped_value: Node }
   | ExceptionRaise { exception_node: Node }
 
-// 🟡 coproduct dissolution — consumer:runtime-value-node-reification; fail-closed until RuntimeValue payloads have faithful Node representation.
+// 🟡 coproduct dissolution — consumer:runtime-value-node-reification — HONEST PARTIAL (Cut 3):
+// RuntimePrimitive (type+bytes) and RuntimeAggregate (recursive fields) project faithfully;
+// RuntimeReference / RuntimeClosure / RuntimeUnit remain Unrepresentable until their carriers
+// gain faithful Node encodings. Nested aggregates fail-closed when any field value is not projectable.
 type RuntimeValueNodeProjection
   = RuntimeValueNodeProjected { node: Node }
   | RuntimeValueNodeUnrepresentable
@@ -136,10 +150,166 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   }
 }
 
+fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn runtime_value_conj_node(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn runtime_value_symbol_atom(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn runtime_bit_node_projection(bit: Bool) -> Node {
+  match bit {
+    True => runtime_value_symbol_atom(sym: ^runtime_bit_true_tag)
+    False => runtime_value_symbol_atom(sym: ^runtime_bit_false_tag)
+  }
+}
+
+fn runtime_bits_list_node(bits: List<Bool>) -> Node {
+  match bits {
+    Empty => algebra_empty_conj()
+    Cons { head: h, tail: t } =>
+      runtime_value_conj_node(children: [
+        runtime_value_named_edge(
+          name: ^fold_list_node_head,
+          target: runtime_bit_node_projection(bit: h)
+        ),
+        runtime_value_named_edge(
+          name: ^fold_list_node_tail,
+          target: runtime_bits_list_node(bits: t)
+        )
+      ])
+  }
+}
+
+fn runtime_byte_node_projection(byte: Byte) -> Node {
+  runtime_value_conj_node(children: [
+    runtime_value_named_edge(
+      name: ^runtime_byte_bits_node_projection,
+      target: runtime_bits_list_node(bits: byte.bits)
+    )
+  ])
+}
+
+fn runtime_bytes_list_node(bytes: List<Byte>) -> Node {
+  match bytes {
+    Empty => algebra_empty_conj()
+    Cons { head: h, tail: t } =>
+      runtime_value_conj_node(children: [
+        runtime_value_named_edge(
+          name: ^fold_list_node_head,
+          target: runtime_byte_node_projection(byte: h)
+        ),
+        runtime_value_named_edge(
+          name: ^fold_list_node_tail,
+          target: runtime_bytes_list_node(bytes: t)
+        )
+      ])
+  }
+}
+
+fn runtime_primitive_value_node_projection(
+  primitive: RuntimePrimitiveValue
+) -> RuntimeValueNodeProjection {
+  RuntimeValueNodeProjected {
+    node: runtime_value_conj_node(children: [
+      runtime_value_named_edge(
+        name: ^runtime_primitive_type_node_projection,
+        target: primitive.primitive_type
+      ),
+      runtime_value_named_edge(
+        name: ^runtime_primitive_bytes_node_projection,
+        target: runtime_bytes_list_node(bytes: primitive.bytes)
+      )
+    ])
+  }
+}
+
+fn runtime_field_value_node_projection(
+  field_value: RuntimeFieldValue
+) -> RuntimeValueNodeProjection {
+  match runtime_value_node_projection(value: field_value.value) {
+    RuntimeValueNodeProjected { node: value_node } =>
+      RuntimeValueNodeProjected {
+        node: runtime_value_conj_node(children: [
+          runtime_value_named_edge(
+            name: ^runtime_field_value_field_node_projection,
+            target: runtime_value_symbol_atom(sym: field_value.field)
+          ),
+          runtime_value_named_edge(
+            name: ^runtime_field_value_value_node_projection,
+            target: value_node
+          )
+        ])
+      }
+    RuntimeValueNodeUnrepresentable => RuntimeValueNodeUnrepresentable
+  }
+}
+
+fn runtime_fields_list_node(fields: List<RuntimeFieldValue>) -> RuntimeValueNodeProjection {
+  match fields {
+    Empty => RuntimeValueNodeProjected { node: algebra_empty_conj() }
+    Cons { head: h, tail: t } =>
+      match runtime_field_value_node_projection(field_value: h) {
+        RuntimeValueNodeProjected { node: head_node } =>
+          match runtime_fields_list_node(fields: t) {
+            RuntimeValueNodeProjected { node: tail_node } =>
+              RuntimeValueNodeProjected {
+                node: runtime_value_conj_node(children: [
+                  runtime_value_named_edge(
+                    name: ^fold_list_node_head,
+                    target: head_node
+                  ),
+                  runtime_value_named_edge(
+                    name: ^fold_list_node_tail,
+                    target: tail_node
+                  )
+                ])
+              }
+            RuntimeValueNodeUnrepresentable => RuntimeValueNodeUnrepresentable
+          }
+        RuntimeValueNodeUnrepresentable => RuntimeValueNodeUnrepresentable
+      }
+  }
+}
+
+fn runtime_aggregate_value_node_projection(
+  aggregate: RuntimeAggregateValue
+) -> RuntimeValueNodeProjection {
+  match runtime_fields_list_node(fields: aggregate.fields) {
+    RuntimeValueNodeProjected { node: fields_node } =>
+      RuntimeValueNodeProjected {
+        node: runtime_value_conj_node(children: [
+          runtime_value_named_edge(
+            name: ^runtime_aggregate_type_node_projection,
+            target: aggregate.aggregate_type
+          ),
+          runtime_value_named_edge(
+            name: ^runtime_aggregate_fields_node_projection,
+            target: fields_node
+          )
+        ])
+      }
+    RuntimeValueNodeUnrepresentable => RuntimeValueNodeUnrepresentable
+  }
+}
+
 fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection {
   match value {
-    RuntimePrimitive { value: _ } => RuntimeValueNodeUnrepresentable
-    RuntimeAggregate { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimePrimitive { value: p } => runtime_primitive_value_node_projection(primitive: p)
+    RuntimeAggregate { value: a } => runtime_aggregate_value_node_projection(aggregate: a)
     RuntimeReference { value: _ } => RuntimeValueNodeUnrepresentable
     RuntimeClosure { value: _ } => RuntimeValueNodeUnrepresentable
     RuntimeUnit { value: _ } => RuntimeValueNodeUnrepresentable
