@@ -1100,9 +1100,6 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     /// Optional fixture store for hermetic replay and `--record` wet capture.
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-    /// Replay freshness cap in seconds. `None` = wet-capture default (`FIXTURE_FRESHNESS_SECS`).
-    /// `Some(FIXTURE_NO_EXPIRY_SECS)` = committed content-contract seeds (no wall-clock expiry).
-    pub fixture_max_age_secs: Option<u64>,
     /// Cache for evaluated `data` items (immutable global constants), keyed by
     /// the data item's node identity. Preserves structural sharing across
     /// references so a `data` referenced N times yields ONE Value, not N
@@ -1210,7 +1207,7 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
-        Self::with_fixture_store(graph, source_indices, execution_mode, None, None)
+        Self::with_fixture_store(graph, source_indices, execution_mode, None)
     }
 
     pub fn with_fixture_store(
@@ -1218,7 +1215,6 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-        fixture_max_age_secs: Option<u64>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
@@ -1262,7 +1258,6 @@ impl InterpContext {
             service_ops,
             execution_mode,
             fixture_store,
-            fixture_max_age_secs,
             data_cache: std::cell::RefCell::new(HashMap::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
@@ -3510,10 +3505,8 @@ fn eval_service_call(
             );
             let now_secs =
                 fixture_now_secs(ctx).map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
-            let max_age_secs =
-                crate::recorded_fixture::fixture_replay_max_age_secs(ctx.fixture_max_age_secs);
             let fixture = store
-                .lookup(&key, &inputs_hash, &inputs_json, now_secs, max_age_secs)
+                .lookup(&key, &inputs_hash, &inputs_json, now_secs)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });

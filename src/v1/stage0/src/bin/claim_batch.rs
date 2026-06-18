@@ -60,7 +60,6 @@
 //!               [--scan-dir <dir> ...] \
 //!               [--entry <file.dag> --function <fn> ...] \
 //!               [--notice-title <title>] [--wet] [--hermetic]
-//!               [--fixture-no-expiry] [--fixture-max-age <secs>]
 //!
 //! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
 //! returned non-Bool, raised a runtime error, or resolve failed; 2 = usage
@@ -94,7 +93,7 @@ use v1_compiler::cli_run::{
     make_eval_context_with_fixture_store, resolve_entry_with_index, run_claim, ClaimOutcome,
     DiscoveryRow, MultiEntryIndex,
 };
-use v1_compiler::recorded_fixture::{RecordedFixtureStore, FIXTURE_NO_EXPIRY_SECS};
+use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
@@ -227,8 +226,6 @@ struct ParsedArgs {
     execution_mode: ExecutionMode,
     /// Directory for recorded fixture JSON files (`--fixture-store <path>`).
     fixture_store: Option<PathBuf>,
-    /// Replay freshness cap override (`--fixture-max-age <secs>` or `--fixture-no-expiry`).
-    fixture_max_age_secs: Option<u64>,
 }
 
 /// Discovery-mode config (set when `--roster-from-discovery` is given).
@@ -247,8 +244,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
     let mut execution_mode = ExecutionMode::Wet;
     let mut fixture_store: Option<PathBuf> = None;
-    let mut fixture_max_age_secs: Option<u64> = None;
-    let mut fixture_no_expiry = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -311,32 +306,12 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 i += 1;
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
             }
-            "--fixture-no-expiry" => fixture_no_expiry = true,
-            "--fixture-max-age" => {
-                i += 1;
-                let raw = require_value(args, i, "--fixture-max-age")?;
-                match raw.parse::<u64>() {
-                    Ok(n) => fixture_max_age_secs = Some(n),
-                    Err(_) => {
-                        eprintln!("claim_batch: --fixture-max-age requires a non-negative integer");
-                        return Err(ExitCode::from(2));
-                    }
-                }
-            }
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
             }
         }
         i += 1;
-    }
-
-    if fixture_no_expiry && fixture_max_age_secs.is_some() {
-        eprintln!("claim_batch: --fixture-no-expiry and --fixture-max-age are mutually exclusive");
-        return Err(ExitCode::from(2));
-    }
-    if fixture_no_expiry {
-        fixture_max_age_secs = Some(FIXTURE_NO_EXPIRY_SECS);
     }
 
     let discovery = if roster_from_discovery {
@@ -360,7 +335,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         discovery,
         execution_mode,
         fixture_store,
-        fixture_max_age_secs,
     })
 }
 
@@ -505,7 +479,6 @@ fn run_witnesses(
     group: &EntryGroup,
     execution_mode: ExecutionMode,
     fixture_store: Option<Rc<RecordedFixtureStore>>,
-    fixture_max_age_secs: Option<u64>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
@@ -515,7 +488,6 @@ fn run_witnesses(
         source_indices,
         execution_mode,
         fixture_store,
-        fixture_max_age_secs,
     );
     for function in &group.functions {
         run_claim_timed(&ctx, function, any_failed, timings);
@@ -545,7 +517,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let source_roots = parsed.source_roots;
     let execution_mode = parsed.execution_mode;
     let fixture_store_path = parsed.fixture_store;
-    let fixture_max_age_secs = parsed.fixture_max_age_secs;
     validate_fixture_flags(execution_mode, &fixture_store_path)?;
     let fixture_store = fixture_store_rc(&fixture_store_path);
 
@@ -645,7 +616,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             source_indices,
             execution_mode,
             fixture_store.clone(),
-            fixture_max_age_secs,
         );
         for function in &group.functions {
             run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
@@ -666,7 +636,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group,
                 execution_mode,
                 fixture_store.clone(),
-                fixture_max_age_secs,
                 &mut any_failed,
                 &mut timings,
             )?;

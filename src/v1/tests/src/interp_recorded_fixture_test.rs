@@ -335,14 +335,12 @@ fn witness() -> Bool {
         )
         .expect("record");
     let now = v1_interpreter::fixture_now_secs(&ctx).expect("clock");
-    let max_age = v1_compiler::recorded_fixture::fixture_replay_max_age_secs(None);
     let fixture = store
         .lookup(
             "Filesystem.Write",
             "0123456789abcdef",
             &empty_inputs,
             now,
-            max_age,
         )
         .expect("lookup");
     let back = v1_compiler::recorded_fixture::value_from_fixture_json(&fixture.response, &ctx)
@@ -776,6 +774,7 @@ fn env_hermetic_without_fixture_store_fails_closed() {
 }
 
 #[test]
+#[ignore = "wet-only: live jsonplaceholder record→replay — not hermetic CI floor"]
 fn http_pilot_rest_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("http-pilot-record-replay");
@@ -838,35 +837,8 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("http-pilot-stale");
     fs::create_dir_all(&store_dir).expect("fixture dir");
+    write_http_pilot_fixture(&store_dir, 0);
     let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
-
-    let record = run_claim_batch(&[
-        "--source-root",
-        ws.to_str().expect("workspace"),
-        "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
-        "--entry",
-        entry.to_str().expect("entry"),
-        "--function",
-        "http_pilot_rest_keystone_holds",
-        "--record",
-        "--fixture-store",
-        store_dir.to_str().expect("store path"),
-    ]);
-    assert!(record.status.success(), "record must capture REST GetPost");
-
-    for path in fixture_files(&store_dir) {
-        let bytes = fs::read(&path).expect("read fixture");
-        let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
-        if let Some(obj) = fixture.as_object_mut() {
-            obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
-        }
-        fs::write(
-            &path,
-            serde_json::to_vec_pretty(&fixture).expect("serialize"),
-        )
-        .expect("write");
-    }
 
     let hermetic = run_claim_batch(&[
         "--source-root",
@@ -895,71 +867,6 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() {
         combined.contains("expired recorded fixture")
             || combined.contains("refusing to replay stale value"),
         "expected REST staleness diagnostic, got:\n{combined}"
-    );
-}
-
-#[test]
-fn committed_fixture_seed_wall_clock_exemption_discriminates() {
-    let ws = workspace_root();
-    let committed = ws.join("dsl/extdeps/test/fixtures/http_pilot");
-    let store_dir = fixture_store_dir("http-pilot-committed-expiry-exempt");
-    copy_dir_all(&committed, &store_dir);
-
-    // Age >> 30d: committed content-contract seed must not self-red on wall clock alone.
-    for path in fixture_files(&store_dir) {
-        let bytes = fs::read(&path).expect("read fixture");
-        let mut fixture: serde_json::Value = serde_json::from_slice(&bytes).expect("parse fixture");
-        if let Some(obj) = fixture.as_object_mut() {
-            obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
-        }
-        fs::write(
-            &path,
-            serde_json::to_vec_pretty(&fixture).expect("serialize"),
-        )
-        .expect("write");
-    }
-
-    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
-    let dsl_root = ws.join("dsl");
-    let store_path = store_dir.to_str().expect("store path");
-    let common = [
-        "--source-root",
-        ws.to_str().expect("workspace"),
-        "--source-root",
-        dsl_root.to_str().expect("dsl root"),
-        "--entry",
-        entry.to_str().expect("entry"),
-        "--function",
-        "http_pilot_rest_keystone_holds",
-        "--hermetic",
-        "--fixture-store",
-        store_path,
-    ];
-
-    let hermetic_default = run_claim_batch(&common);
-    let default_combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&hermetic_default.stdout),
-        String::from_utf8_lossy(&hermetic_default.stderr)
-    );
-    assert!(
-        !hermetic_default.status.success(),
-        "stale committed seed must fail closed under default 30d freshness; got:\n{default_combined}"
-    );
-    assert!(
-        default_combined.contains("expired recorded fixture")
-            || default_combined.contains("refusing to replay stale value"),
-        "expected expiry diagnostic under default freshness, got:\n{default_combined}"
-    );
-
-    let mut exempt_args: Vec<&str> = common.to_vec();
-    exempt_args.push("--fixture-no-expiry");
-    let hermetic_exempt = run_claim_batch(&exempt_args);
-    let _ = fs::remove_dir_all(&store_dir);
-    assert!(
-        hermetic_exempt.status.success(),
-        "committed seed with --fixture-no-expiry must replay green despite age >> 30d; stderr={}",
-        String::from_utf8_lossy(&hermetic_exempt.stderr)
     );
 }
 
@@ -997,18 +904,34 @@ fn hermetic_http_pilot_without_fixture_store_fails_closed() {
     );
 }
 
-fn copy_dir_all(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("mkdir dst");
-    for entry in fs::read_dir(src).expect("read src") {
-        let entry = entry.expect("dir entry");
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_all(&src_path, &dst_path);
-        } else {
-            fs::copy(&src_path, &dst_path).expect("copy file");
-        }
-    }
+fn write_http_pilot_fixture(store_dir: &Path, recorded_at: u64) {
+    let op_dir = store_dir.join("test__HttpPilot__GetPost");
+    fs::create_dir_all(&op_dir).expect("fixture op dir");
+    let fixture = serde_json::json!({
+        "operation": "test.HttpPilot.GetPost",
+        "input_hash": "b63a4282295b68bd",
+        "inputs": [{
+            "name": "post_id",
+            "value": { "__tag": "Int", "value": 1 }
+        }],
+        "response": {
+            "__tag": "Record",
+            "__type": "GetPost",
+            "fields": {
+                "post_id": { "__tag": "Int", "value": 1 },
+                "title": {
+                    "__tag": "Str",
+                    "value": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit"
+                }
+            }
+        },
+        "recorded_at": recorded_at
+    });
+    fs::write(
+        op_dir.join("b63a4282295b68bd.json"),
+        serde_json::to_vec_pretty(&fixture).expect("serialize"),
+    )
+    .expect("write fixture");
 }
 
 fn collect_json_files(dir: &Path, out: &mut Vec<PathBuf>) {

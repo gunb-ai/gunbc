@@ -739,7 +739,7 @@ pub fn make_eval_context(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     execution_mode: v1_interpreter::ExecutionMode,
 ) -> v1_interpreter::InterpContext {
-    make_eval_context_with_fixture_store(graph, source_indices, execution_mode, None, None)
+    make_eval_context_with_fixture_store(graph, source_indices, execution_mode, None)
 }
 
 pub fn make_eval_context_with_fixture_store(
@@ -747,14 +747,12 @@ pub fn make_eval_context_with_fixture_store(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     execution_mode: v1_interpreter::ExecutionMode,
     fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-    fixture_max_age_secs: Option<u64>,
 ) -> v1_interpreter::InterpContext {
     v1_interpreter::InterpContext::with_fixture_store(
         graph,
         source_indices,
         execution_mode,
         fixture_store,
-        fixture_max_age_secs,
     )
 }
 

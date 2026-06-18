@@ -82,35 +82,3 @@ jobs:
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
           "$ROOT/target/release/claim_executor" --source-root src/v2 --source-root dsl --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
-  http_pilot_wet_record:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
-    steps:
-      - name: Isolate toolchain dirs
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          cache: false
-          rustflags: ''
-        env:
-          HOME: ${{ runner.temp }}
-      - name: Pin rustup default
-        run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
-      - name: Wet record http_pilot (live jsonplaceholder — opt-in only)
-        run: |
-          HTTP_PILOT_FIXTURES="$(mktemp -d)"
-          cargo run -p v1-compiler --release --bin claim_batch -- \
-            --source-root . --source-root dsl \
-            --entry dsl/test/claim/http_pilot_rest_witness.dag \
-            --function http_pilot_rest_keystone_holds \
-            --record --fixture-store "$HTTP_PILOT_FIXTURES"
-          echo '(local recapture only — see http_pilot_rest_witness.dag header)'
-          find "$HTTP_PILOT_FIXTURES" -type f
-          rm -rf "$HTTP_PILOT_FIXTURES"
-    if: github.event_name == 'workflow_dispatch'
