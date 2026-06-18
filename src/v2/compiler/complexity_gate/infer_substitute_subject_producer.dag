@@ -3,7 +3,7 @@
 
 module v2.test.complexity_gate.infer_substitute_subject_producer
 
-import v2.std.diagnostic { Accepted, Outcome }
+import v2.std.diagnostic { Accepted, Outcome, outcome_accepted }
 import v2.std.node { Node }
 import v2.test.complexity_gate.infer_perf_lens_fixture {
   infer_perf_arrow_with_body,
@@ -12,15 +12,13 @@ import v2.test.complexity_gate.infer_perf_lens_fixture {
 }
 
 fn infer_substitute_generics_arrow_with_body() -> Outcome<Node> {
-  Accepted {
-    value: infer_perf_arrow_with_body(body: infer_substitute_tree_walk_body),
-    diagnostics: []
-  }
+  outcome_accepted(
+    value: infer_perf_arrow_with_body(body: infer_substitute_tree_walk_body)
+  )
 }
 
 fn infer_substitute_tree_x_subst_arrow_with_body() -> Outcome<Node> {
-  Accepted {
-    value: infer_perf_arrow_with_body(body: infer_substitute_tree_x_subst_body),
-    diagnostics: []
-  }
+  outcome_accepted(
+    value: infer_perf_arrow_with_body(body: infer_substitute_tree_x_subst_body)
+  )
 }
