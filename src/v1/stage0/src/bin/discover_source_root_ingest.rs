@@ -17,7 +17,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    discover_source_root_reads, emit_source_root_ingest_manifest, source_root_ingest_content_hash_fnv1a64,
+    discover_source_root_reads, emit_source_root_ingest_manifest,
+    source_root_ingest_content_hash_fnv1a64,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -34,9 +35,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut scan_dir = "src/v2/test/fixture/program_assembly".to_string();
-    let mut exclude_subpaths: Vec<String> = vec![
-        "host_source_root_ingest_manifest.dag".to_string(),
-    ];
+    let mut exclude_subpaths: Vec<String> =
+        vec!["host_source_root_ingest_manifest.dag".to_string()];
     let mut manifest_path: Option<PathBuf> = None;
 
     let mut i = 1;
