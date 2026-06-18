@@ -197,6 +197,14 @@ fn sg2_arrow_projected_serialize_matches_expected() -> Bool {
   sg2_arrow_projected_serialized_text() == sg2_expected_arrow_text
 }
 
+fn sg2_conj_projected_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_project_conj_emitted()) == sg2_expected_conj_text
+}
+
+fn sg2_instantiation_projected_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_project_instantiation_emitted()) == sg2_expected_type_text
+}
+
 // §5 discriminating RED — swap projected split inputs/output; wrong serialization must disagree.
 fn sg2_arrow_swapped_split_emitted() -> Node {
   let row = rust_type_expression_projection()
