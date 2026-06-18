@@ -18,11 +18,17 @@ type IdempotentShape
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BreakingShape
-  = CreateEffect { cause: CreateCause }
+  = CreateEffect { cause: BreakingCreateCause }
   | AppendEffect
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Breaking create carriers only — create-if-absent classifies to IdempotentShape, not here.
+type BreakingCreateCause
+  = PostAlways
+  | KeylessFallback { method: Symbol }
+
+
+// Derivation/classifier input — wider than BreakingCreateCause; routes via effect_shape_for_create_cause.
 type CreateCause
   = PostAlways
   | KeylessFallback { method: Symbol }
