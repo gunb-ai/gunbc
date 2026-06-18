@@ -275,15 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn _coexistence_count_probe() {
-        panic!(
-            "coexistence={} diverged={}",
-            cross_tree_coexistence_count(),
-            cross_tree_diverged_fork_count()
-        );
-    }
-
-    #[test]
     fn extract_top_level_decls_captures_split_brace_body() {
         let source = include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
         let decls = extract_top_level_decls(source);
