@@ -2272,6 +2272,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 Present { value: _ } => []
                 Absent => [inference_error(message: "empty list literal: expected type has no element type", span: span, module_name: scope.module_name)]
               }
+            } else if type_node_is_unresolved_generic(n: exp, source_indices: scope.type_env.source_indices) {
+              []
             } else { [inference_error(message: "empty list literal: expected type is not a collection", span: span, module_name: scope.module_name)] }
           Absent => []
         }
@@ -5348,6 +5350,15 @@ fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String
       Present { value: TypeVariable { id: tv_id } } => tv_id
       _ => n.name
     }
+  }
+}
+
+fn type_node_is_unresolved_generic(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match n.inferred {
+    Present { value: inf } => is_type_variable(inferred: inf)
+    Absent =>
+      (n.connective == NoConnective && count(n.children) == 0)
+        && is_type_variable_name(name: type_node_label(n: n, source_indices: source_indices))
   }
 }
 
