@@ -1,11 +1,17 @@
 // Cut 3 gated witness — runtime_value_node_projection honest partial.
-// GREEN: RuntimePrimitive and RuntimeAggregate (nested primitive fields) project.
-// GREEN: RuntimeReference / RuntimeClosure / RuntimeUnit stay Unrepresentable.
-// GREEN: aggregate with nested Reference field fails-closed (whole aggregate Unrepresentable).
+//
+// GREEN: RuntimePrimitive projects with BOTH type and bytes (structural round-trip);
+//        RuntimeAggregate of primitives projects; Reference/Closure/Unit stay
+//        Unrepresentable; aggregate with Reference field fails closed.
+// RED (discriminating): type-only tag check would certify without bytes edge;
+//        fabricated Reference projection would break aggregate fail-closed.
+//
+// Run: claim_batch --source-root src/v2 --entry src/v2/std/grounding/runtime_value_node_projection_test.dag --function runtime_value_node_projection_honest_partial_holds --claim-run
 
 module v2.test.std_grounding.runtime_value_node_projection
 
 import v2.std.algebra { Empty }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
@@ -15,6 +21,7 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
+import v2.std.node_query { find_named_child }
 import v2.std.runtime {
   RuntimeAggregate,
   RuntimeAggregateValue,
@@ -136,11 +143,59 @@ fn rvnp_test_is_unrepresentable(value: RuntimeValue) -> Bool {
   }
 }
 
+// GREEN: projected primitive Node carries BOTH type and bytes named edges (not lossy type-only).
+fn primitive_projection_type_and_bytes_round_trip(value: RuntimeValue) -> Bool {
+  let expected_type = rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: projected } =>
+      match find_named_child(root: projected, name: ^runtime_primitive_type_node_projection) {
+        Accepted { value: type_node, diagnostics: _ } =>
+          match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
+            Accepted { value: _, diagnostics: _ } => type_node == expected_type
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    RuntimeValueNodeUnrepresentable => false
+  }
+}
+
+// GREEN: bytes edge must be present — flips false under type-only projection perturbation.
+fn primitive_projection_bytes_edge_present(value: RuntimeValue) -> Bool {
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: projected } =>
+      match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    RuntimeValueNodeUnrepresentable => false
+  }
+}
+
+// RED (discriminating): type-only check certifies without verifying bytes — the gap this cut closes.
+fn red_type_only_projection_certifies_without_bytes_check(value: RuntimeValue) -> Bool {
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: projected } =>
+      match find_named_child(root: projected, name: ^runtime_primitive_type_node_projection) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    RuntimeValueNodeUnrepresentable => false
+  }
+}
+
+// RED (discriminating): fabricated Reference→Projected would break aggregate fail-closed.
+fn red_reference_fabrication_would_break_aggregate_fail_closed() -> Bool {
+  rvnp_test_is_unrepresentable(value: rvnp_test_aggregate_with_reference_field())
+}
+
 test fn runtime_value_node_projection_honest_partial_holds() -> Bool {
-  rvnp_test_is_projected(value: rvnp_test_primitive_value())
+  primitive_projection_type_and_bytes_round_trip(value: rvnp_test_primitive_value())
+    && primitive_projection_bytes_edge_present(value: rvnp_test_primitive_value())
     && rvnp_test_is_projected(value: rvnp_test_aggregate_value())
     && rvnp_test_is_unrepresentable(value: rvnp_test_reference_value())
     && rvnp_test_is_unrepresentable(value: rvnp_test_closure_value())
     && rvnp_test_is_unrepresentable(value: rvnp_test_unit_value())
-    && rvnp_test_is_unrepresentable(value: rvnp_test_aggregate_with_reference_field())
+    && red_reference_fabrication_would_break_aggregate_fail_closed()
+    && red_type_only_projection_certifies_without_bytes_check(value: rvnp_test_primitive_value())
 }

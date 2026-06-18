@@ -25,8 +25,8 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
+  node_synthetic
 }
 
 type RuntimeIdentity {
@@ -150,24 +150,23 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   }
 }
 
+// Cut 3 honest-partial projection helpers. DFS (§2): eval Value literals use
+// ComputationNode{Value} — a different axis than RuntimePrimitiveValue{type,bytes};
+// no existing faithful (type+bytes) Node encoding to reuse. Encoding follows
+// std integer/grammar named-edge Conj + fold_list_node list spines.
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
 fn runtime_value_conj_node(children: List<Edge>) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: children,
-    occurrence_id: SyntheticOccurrence
-  }
+  node_synthetic(kind: TypeNode { connective: Conj }, children: children)
 }
 
 fn runtime_value_symbol_atom(sym: Symbol) -> Node {
-  Node {
+  node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
-    children: [],
-    occurrence_id: SyntheticOccurrence
-  }
+    children: []
+  )
 }
 
 fn runtime_bit_node_projection(bit: Bool) -> Node {
