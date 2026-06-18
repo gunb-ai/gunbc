@@ -1,0 +1,38 @@
+// dsl/test/claim/realization_witness.dag — by-execution witnesses for std.realization lens.
+//
+// GREEN: canonical parse_table + resolved_graph plans pass realization_plan_holds.
+// RED:   bogus artifact/interface pair fails closed.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function realization_witnesses --claim-run
+
+module test.claim.realization_witness
+
+import std.realization {
+  RealizationPlan,
+  parse_table_realization_plan,
+  resolved_graph_realization_plan,
+  realization_plan_holds,
+}
+
+data bogus_realization_plan: RealizationPlan = {
+  artifact_kind: "bogus_artifact"
+  interface: "bogus_interface"
+}
+
+fn witness_parse_table_plan_holds() -> Bool {
+  realization_plan_holds(plan: parse_table_realization_plan)
+}
+
+fn witness_resolved_graph_plan_holds() -> Bool {
+  realization_plan_holds(plan: resolved_graph_realization_plan)
+}
+
+fn witness_bogus_plan_fails_closed() -> Bool {
+  realization_plan_holds(plan: bogus_realization_plan) == false
+}
+
+fn realization_witnesses() -> Bool {
+  witness_parse_table_plan_holds()
+    && witness_resolved_graph_plan_holds()
+    && witness_bogus_plan_fails_closed()
+}

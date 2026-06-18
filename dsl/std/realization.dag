@@ -1,0 +1,154 @@
+// std/realization.dag — Realization pattern (DESIGN.md §2 horizontal).
+//
+// Pure-spec → host-effect seam at the agnostic std layer. A RealizationPlan
+// binds an artifact kind to a cache interface (store facts in
+// std.cache_interface); handler dispatch and transport live in extdeps/ (§3).
+//
+// Lens: pure readers over plan/carrier facts — no parallel registry.
+//
+// Dissolution trigger: domain carriers (e.g. ParseTableRealization in
+// 02_parse.dag) rehome artifact_kind/interface onto RealizationPlan +
+// RealizationCarrier instead of hand-rolled Symbol pairs.
+
+module std.realization
+
+import std.types { ContentHash, Bool }
+import std.cache_identity {
+  ArtifactKindId,
+  CacheInterfaceId,
+  parse_table_artifact_kind,
+  resolved_graph_artifact_kind,
+}
+import std.cache_interface {
+  ArtifactIdentity,
+  CacheInterfaceFacts,
+  CacheKeyProjection,
+  cache_key_projection,
+  parse_table_memo_facts,
+  parse_table_memo_id,
+  resolved_graph_cache_facts,
+  resolved_graph_cache_id,
+}
+
+// --- Plan + carrier (agnostic shape) ----------------------------------------
+
+// Which artifact kind is realized through which cache interface.
+// No handler name — dispatch is extdeps realization (§3).
+type RealizationPlan {
+  artifact_kind: ArtifactKindId
+  interface: CacheInterfaceId
+}
+
+// Carrier head: plan + content-addressed subject + typed payload.
+// Domain-specific carriers extend with additional scope digests as needed.
+type RealizationCarrier<T> {
+  plan: RealizationPlan
+  subject_digest: ContentHash
+  value: T
+}
+
+// Canonical inhabited plans (dissolve hand-rolled Symbol pairs in v2 consumers).
+data parse_table_realization_plan: RealizationPlan = {
+  artifact_kind: parse_table_artifact_kind
+  interface: parse_table_memo_id
+}
+
+data resolved_graph_realization_plan: RealizationPlan = {
+  artifact_kind: resolved_graph_artifact_kind
+  interface: resolved_graph_cache_id
+}
+
+// --- Interface facts lookup (closed to cache_interface rows) ------------------
+
+fn realization_plan_interface_facts(plan: RealizationPlan) -> CacheInterfaceFacts {
+  if plan.interface == parse_table_memo_id {
+    parse_table_memo_facts
+  } else if plan.interface == resolved_graph_cache_id {
+    resolved_graph_cache_facts
+  } else {
+    // fail-closed sentinel — lens rejects via identity mismatch on unknown id
+    parse_table_memo_facts
+  }
+}
+
+fn realization_plan_interface_known(plan: RealizationPlan) -> Bool {
+  plan.interface == parse_table_memo_id
+    || plan.interface == resolved_graph_cache_id
+}
+
+fn realization_artifact_kind_registered(kind: ArtifactKindId) -> Bool {
+  kind == parse_table_artifact_kind || kind == resolved_graph_artifact_kind
+}
+
+fn realization_artifact_identity<T>(carrier: RealizationCarrier<T>) -> ArtifactIdentity<T> {
+  ArtifactIdentity {
+    subject_digest: carrier.subject_digest
+    artifact_kind: carrier.plan.artifact_kind
+  }
+}
+
+fn realization_cache_key_projection<T>(carrier: RealizationCarrier<T>) -> CacheKeyProjection<T> {
+  cache_key_projection(
+    artifact: realization_artifact_identity(carrier: carrier),
+    backend: realization_plan_interface_facts(plan: carrier.plan)
+  )
+}
+
+// --- Lens (pure reader; ROADMAP tier-0 verdict) -------------------------------
+
+type RealizationViolation
+  = UnknownInterface { interface: CacheInterfaceId }
+  | InterfaceFactsIdentityMismatch {
+      expected: CacheInterfaceId
+      actual: CacheInterfaceId
+    }
+  | UnregisteredArtifactKind { artifact_kind: ArtifactKindId }
+
+type RealizationLensVerdict
+  = Holds
+  | Violation { kind: RealizationViolation }
+  | NotApplicable
+
+fn realization_plan_verdict(plan: RealizationPlan) -> RealizationLensVerdict {
+  if realization_plan_interface_known(plan: plan) {
+    let facts = realization_plan_interface_facts(plan: plan)
+    if facts.identity == plan.interface {
+      if realization_artifact_kind_registered(kind: plan.artifact_kind) {
+        Holds
+      } else {
+        Violation {
+          kind: UnregisteredArtifactKind { artifact_kind: plan.artifact_kind }
+        }
+      }
+    } else {
+      Violation {
+        kind: InterfaceFactsIdentityMismatch {
+          expected: plan.interface
+          actual: facts.identity
+        }
+      }
+    }
+  } else {
+    Violation { kind: UnknownInterface { interface: plan.interface } }
+  }
+}
+
+fn realization_plan_holds(plan: RealizationPlan) -> Bool {
+  match realization_plan_verdict(plan: plan) {
+    Holds => true
+    Violation { kind: _ } => false
+    NotApplicable => false
+  }
+}
+
+fn realization_carrier_verdict<T>(carrier: RealizationCarrier<T>) -> RealizationLensVerdict {
+  realization_plan_verdict(plan: carrier.plan)
+}
+
+fn realization_carrier_holds<T>(carrier: RealizationCarrier<T>) -> Bool {
+  match realization_carrier_verdict(carrier: carrier) {
+    Holds => true
+    Violation { kind: _ } => false
+    NotApplicable => false
+  }
+}
