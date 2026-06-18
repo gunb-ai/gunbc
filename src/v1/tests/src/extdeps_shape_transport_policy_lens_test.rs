@@ -139,12 +139,8 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "module_path_rename_unknown_qn_does_not_resolve_holds",
         ),
         (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
-            "module_source_nickname_literal_local_red_is_red_holds",
-        ),
-        (
-            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_coverage_domain_green_test.dag",
-            "module_source_nickname_literal_coverage_domain_is_green_holds",
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_present_red_test.dag",
+            "module_source_nickname_literal_coverage_domain_is_red_holds",
         ),
         (
             "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
