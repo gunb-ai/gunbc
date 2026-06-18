@@ -1,8 +1,18 @@
 // src/v2/std/lens_verdict.dag
 // Scope: tier-0 unified lens verdict carrier (ROADMAP: Lens universalization).
+//
+// Single-authority (§3):
+//   - NOT `v2.std.verdict.Verdict<Subj,T>` — that is eval-claim algebra
+//     (Pass/Fail/Deferred over Outcome<T>); different concept, not inhabitable.
+//   - Generalizes `std.realization_schedule.ScheduleLensVerdict` (Holds |
+//     Violation | NotApplicable) by adding Unrealized fail-closed and locating
+//     violations via Diagnostic instead of per-lens violation enums.
+//   - Per-lens bespoke verdicts (TableDecisionTreeVerdict, IdempotencyVerdict,
+//     …) dissolve by projecting into this carrier; fact_cardinality has no
+//     verdict sum (Bool predicates) — not a fork target.
+//
 // Every lens projects its domain-specific fact into this closed sum; Unrealized
-// is fail-closed until the producer lands. Violation and NotApplicable carry
-// located diagnostics per DESIGN.md §5.
+// is fail-closed until the producer lands.
 
 module v2.std.lens_verdict
 

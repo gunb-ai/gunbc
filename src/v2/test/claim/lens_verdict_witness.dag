@@ -1,6 +1,7 @@
 // src/v2/test/claim/lens_verdict_witness.dag
 //
-// By-execution witnesses for the tier-0 unified lens verdict carrier.
+// §5 discriminating proof for v2.std.lens_verdict — each predicate has a GREEN
+// arm (correct verdict) and a RED control (wrong verdict must not satisfy it).
 
 module test.claim.lens_verdict_witness
 
@@ -22,51 +23,72 @@ import v2.std.lens_verdict {
   lens_verdict_locus
 }
 
-fn sample_violation() -> LensVerdict {
-  Violation {
-    diagnostic: Diagnostic {
-      reason: ^lens_verdict_witness_violation,
-      at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
-      correction: Unavailable { reason: AmbiguousIntent }
-    }
+fn sample_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
-fn witness_holds_not_fail_closed() -> Bool {
+fn sample_violation() -> LensVerdict {
+  Violation { diagnostic: sample_diagnostic(reason: ^lens_verdict_witness_violation) }
+}
+
+fn sample_unrealized() -> LensVerdict {
+  Unrealized { diagnostic: sample_diagnostic(reason: ^lens_verdict_witness_unrealized) }
+}
+
+fn sample_not_applicable() -> LensVerdict {
+  NotApplicable { diagnostic: sample_diagnostic(reason: ^lens_verdict_witness_not_applicable) }
+}
+
+// Pair 1 — fail_closed: only Unrealized is fail-closed.
+fn witness_fail_closed_green_on_unrealized() -> Bool {
+  lens_verdict_is_fail_closed(verdict: sample_unrealized())
+}
+
+fn witness_fail_closed_red_on_holds() -> Bool {
   !lens_verdict_is_fail_closed(verdict: Holds)
 }
 
-fn witness_holds_not_violation() -> Bool {
-  !lens_verdict_is_violation(verdict: Holds)
-}
-
-fn witness_unrealized_is_fail_closed() -> Bool {
-  lens_verdict_is_fail_closed(verdict: Unrealized {
-    diagnostic: Diagnostic {
-      reason: ^lens_verdict_witness_unrealized,
-      at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
-      correction: Unavailable { reason: AmbiguousIntent }
-    }
-  })
-}
-
-fn witness_violation_is_violation() -> Bool {
+// Pair 2 — is_violation: only Violation is a violation.
+fn witness_is_violation_green_on_violation() -> Bool {
   lens_verdict_is_violation(verdict: sample_violation())
 }
 
-fn witness_violation_locus_round_trips() -> Bool {
+fn witness_is_violation_red_on_holds() -> Bool {
+  !lens_verdict_is_violation(verdict: Holds)
+}
+
+// Pair 3 — locus: projects diagnostic.at; perturbed file discriminates.
+fn witness_locus_green_on_violation() -> Bool {
   match lens_verdict_locus(verdict: sample_violation()) {
     Textual { file: f, extent: WholeFile } => f == ^lens_verdict_witness
     _ => false
   }
 }
 
-fn witness_not_applicable_not_violation() -> Bool {
-  !lens_verdict_is_violation(verdict: NotApplicable {
+fn witness_locus_red_on_perturbed_file() -> Bool {
+  let perturbed = Violation {
     diagnostic: Diagnostic {
-      reason: ^lens_verdict_witness_not_applicable,
-      at: Textual { file: ^lens_verdict_witness, extent: WholeFile },
+      reason: ^lens_verdict_witness_perturbed,
+      at: Textual { file: ^lens_verdict_witness_wrong_file, extent: WholeFile },
       correction: Unavailable { reason: AmbiguousIntent }
     }
-  })
+  }
+  match lens_verdict_locus(verdict: perturbed) {
+    Textual { file: f, extent: WholeFile } => f != ^lens_verdict_witness
+    _ => false
+  }
+}
+
+// Keystone: all three +/- pairs must pass by execution.
+test fn lens_verdict_witnesses() -> Bool {
+  witness_fail_closed_green_on_unrealized()
+    && witness_fail_closed_red_on_holds()
+    && witness_is_violation_green_on_violation()
+    && witness_is_violation_red_on_holds()
+    && witness_locus_green_on_violation()
+    && witness_locus_red_on_perturbed_file()
 }
