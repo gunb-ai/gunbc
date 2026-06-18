@@ -22,9 +22,6 @@ import v2.std.text { String }
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
-  Boundary,
-  TestClassification,
-  Tier1,
   UnifiedTestClaim
 }
 
@@ -81,24 +78,21 @@ fn witness_rust_wire_serde_naming_discriminates() -> Bool {
 
 data unified_claim_rust_wire_serde_screaming_snake: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    label: "manual/rust_wire_serde: ScreamingSnakeCase enum serialize emits extdeps screaming rename_all attr",
+    entry: "src/v2/compiler/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_screaming_snake_holds
-  },
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  }
 }
 
 data unified_claim_rust_wire_serde_snake_case: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    label: "manual/rust_wire_serde: SnakeCase enum serialize emits extdeps snake_case rename_all attr",
+    entry: "src/v2/compiler/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_snake_case_holds
-  },
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  }
 }
 
 data unified_claim_rust_wire_serde_naming_discriminates: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
-    label: "manual/rust_wire_serde: VariantNaming policy discriminates serde attr emission",
+    entry: "src/v2/compiler/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_naming_discriminates
-  },
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  }
 }
