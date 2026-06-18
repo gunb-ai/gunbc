@@ -1,0 +1,56 @@
+// src/v2/lens/filepath_literal.dag
+// Scope: §3 single-authority — module identity must be QualifiedName over the derived
+//   module set, not a second filepath literal nickname (DESIGN.md §3; ModulePath→QN rename).
+// Flags string literals that resolve to a known `.dag` module path in the derived module
+//   set (build_module_index over `dsl/` + `src/v2/`) when the binding site is not an
+//   exempt host-transport field (`entry`, `entry_relpath`, `function`, `label`).
+// Status: 🟡 M1 — host census bridge + lens-unit synthetic facts + corpus witnesses.
+// Consumer: claim_batch discovery over src/v2/compiler/filepath_literal.
+// Hand-Rust scaffold receipt (DESIGN.md §7): `filepath_literal_census.rs` is bootstrap
+//   parse projection only — shrink target is delete that module once Node-tree literal
+//   projection + derived-module-set lookup own the census in this lens.
+// Dissolve-on: Node-tree data-literal projection replaces hand parse walk.
+
+module v2.lens.filepath_literal
+
+import v2.std.algebra { count_where, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type FilepathLiteralFact {
+  containing_path: String
+  field_name: String
+  literal_value: String
+  module_qualified_name: String
+}
+
+data empty_filepath_literal_facts: List<FilepathLiteralFact> = []
+
+// Host-transport fields — claim_batch entry paths and receipt metadata, not module identity.
+fn filepath_literal_field_is_host_transport_exempt(field_name: String) -> Bool {
+  field_name == "entry"
+    || field_name == "entry_relpath"
+    || field_name == "function"
+    || field_name == "label"
+}
+
+// Violation when the literal maps to a derived-module-set row and the field is not exempt.
+fn filepath_literal_is_violation(fact: FilepathLiteralFact) -> Bool {
+  !filepath_literal_field_is_host_transport_exempt(field_name: fact.field_name)
+    && !string_is_empty(s: fact.module_qualified_name)
+}
+
+fn filepath_literal_violation_count(facts: List<FilepathLiteralFact>) -> Int {
+  count_where(xs: facts, pred: fn(fact: FilepathLiteralFact) {
+    filepath_literal_is_violation(fact: fact)
+  })
+}
+
+fn filepath_literal_live_count_for_path(path: String) -> Int {
+  filepath_literal_count_for_path(path: path)
+}
+
+fn filepath_literal_live_total_violation_count() -> Int {
+  filepath_literal_total_violation_count()
+}
