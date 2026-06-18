@@ -1,0 +1,78 @@
+// THROWAWAY PROBE (C.i escalation gate) — do NOT commit.
+// Question: when the v2 pipeline ingests a standalone module carrying a coproduct
+// `type` decl + a `data CoproductWireContract` decl, does the resolved tree the
+// translate fold sees (tree.root) carry BOTH as sibling nodes — i.e. is the
+// CoproductWireContract reachable off tree.root for a minimal sibling-scan binding?
+
+module v2.test.manual.cwc_resolution_probe
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { resolve }
+import v2.compiler.infer { infer, InferredTree }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Edge, fold_node, NodeFold }
+import v2.std.algebra { length }
+
+data cwc_probe_source: String =
+  "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
+
+fn cwc_probe_resolved() -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(text: cwc_probe_source, file: ^cwc_probe_file, rules: lm.lex),
+    f: fn(toks) {
+      bind_outcome(
+        o: parse(tokens: toks, grammar: lm.grammar),
+        f: fn(ptree) {
+          bind_outcome(
+            o: normalize(parse_tree: ptree),
+            f: fn(ntree) {
+              resolve(tree: ntree, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// P1 — the full ingest chain accepts the standalone module.
+test fn cwc_probe_resolve_accepts() -> Bool {
+  match cwc_probe_resolved() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// P2 — tree.root is a module node carrying multiple sibling item decls
+// (so both the coproduct decl and the contract data decl are children).
+test fn cwc_probe_root_has_multiple_siblings() -> Bool {
+  match cwc_probe_resolved() {
+    Accepted { value: root, diagnostics: _ } => length(xs: root.children) > 3
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// P3 — the resolved tree carries the data-decl VALUE (record fields), not just
+// a name binding: total descendant-node count is large enough to include the
+// contract record + coproduct variants (sanity floor).
+fn cwc_probe_node_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+
+test fn cwc_probe_value_bodies_present() -> Bool {
+  match cwc_probe_resolved() {
+    Accepted { value: root, diagnostics: _ } => cwc_probe_node_count(n: root) > 12
+    Rejected { diagnostics: _ } => false
+  }
+}
