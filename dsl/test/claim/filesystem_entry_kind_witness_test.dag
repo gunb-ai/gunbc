@@ -54,7 +54,7 @@ fn w_ntfs_normal_is_regular() -> Bool {
 }
 
 // Conjunction keystone — CI runs with --claim-run (false → exit 1).
-fn filesystem_entry_kind_witnesses() -> Bool {
+test fn filesystem_entry_kind_witnesses() -> Bool {
   w_posix_socket_is_other() &&
   w_posix_regular_is_regular() &&
   w_posix_symlink_is_symlink() &&

@@ -107,7 +107,7 @@ fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() -> Bool
   }
 }
 
-fn diagnostic_sequence_outcome_witnesses() -> Bool {
+test fn diagnostic_sequence_outcome_witnesses() -> Bool {
   witness_sequence_outcome_empty_accepts()
     && witness_sequence_outcome_collects_values()
     && witness_sequence_outcome_short_circuits_on_reject()

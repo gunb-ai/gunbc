@@ -1,0 +1,20 @@
+// gunbc/ci_layer_roots.dag — single authority for CI witness layer roots (§3).
+//
+// Intentionally v2-import-free so dsl-only `gunbc compile` and transport scripts
+// can read roots without pulling the ci_workflow projection graph.
+
+module gunbc.ci_layer_roots
+
+// Single authority for CI witness layer roots (replaces triple-fork in ci.yml / transport scripts).
+data witness_layer_roots: List<String> = ["src/v2", "dsl"]
+
+// Satisfies claim_batch --roster-from-discovery scan-dir gate (test-fn discovery needs no unified_claim resolve).
+data witness_discovery_scan_dirs: List<String> = ["dsl/test/claim"]
+
+fn witness_layer_source_flags(roots: List<String>) -> String {
+  fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))
+}
+
+fn witness_layer_scan_flags() -> String {
+  fold(witness_discovery_scan_dirs, init: "", f: (acc, d) => concat(acc, concat(" --scan-dir ", d)))
+}

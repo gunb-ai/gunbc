@@ -104,7 +104,7 @@ fn rows_cover_form(form: String) -> Bool {
   )
 }
 
-fn coverage_domain_equivalence_argument_holds() -> Bool {
+test fn coverage_domain_equivalence_argument_holds() -> Bool {
   rows_cover_root(root: layer_root_src_v2_std)
     && rows_cover_root(root: layer_root_src_v2_extdeps)
     && rows_cover_root(root: layer_root_dsl_extdeps)
