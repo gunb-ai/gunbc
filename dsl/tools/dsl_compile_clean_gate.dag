@@ -16,7 +16,7 @@ import tools.dsl_compile_clean_transport {
   run_perturb_optional_skew_red_receipt
 }
 
-func run_gate() -> ProcessExit {
+func run_dsl_compile_clean_gate_body() -> ProcessExit {
   let clean = run_clean_tree_compile()
   let perturb = run_perturb_optional_skew_red_receipt()
   return if clean && perturb {
@@ -29,9 +29,9 @@ func run_gate() -> ProcessExit {
 }
 
 func run_dsl_compile_clean_gate() -> ProcessExit {
-  run_gate()
+  run_dsl_compile_clean_gate_body()
 }
 
 func main() -> ProcessExit {
-  run_gate()
+  run_dsl_compile_clean_gate_body()
 }

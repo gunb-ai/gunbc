@@ -19,7 +19,7 @@ import tools.layering_imports_transport {
 }
 
 // Green pass + scanner-execution perturb receipts (no short-circuit).
-func run_gate() -> ProcessExit {
+func run_layering_imports_gate_body() -> ProcessExit {
   let clean = run_clean_tree_gate()
   let perturb = run_scanner_perturb_receipts()
   return if clean && perturb {
@@ -32,10 +32,10 @@ func run_gate() -> ProcessExit {
 }
 
 func main() -> ProcessExit {
-  run_gate()
+  run_layering_imports_gate_body()
 }
 
 // Composed CI entry point (tools.ci_gates imports this name).
 func run_layering_imports_ci_gate() -> ProcessExit {
-  run_gate()
+  run_layering_imports_gate_body()
 }
