@@ -247,9 +247,21 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared
   } else { rendered }
 }
 
+// Minimal TypeEnv for type-render paths that lack inference scope (test comments, legacy render_rust_type).
+fn stub_empty_type_env(source_indices: Map<String, NewlineIndex>) -> TypeEnv {
+  TypeEnv {
+    bindings: empty_map(),
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: source_indices,
+    intern_table: empty_intern_table()
+  }
+}
+
 // Single authority: shared_types decides Rc<> on rendered Rust type shells.
-fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)
+fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   let type_name = authored_name_at(source_indices: source_indices, node: n)
   render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
