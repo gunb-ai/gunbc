@@ -115,8 +115,8 @@ fn ci_release_build_script() -> String {
           "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
         ),
         concat(
-          concat("    RETRY_LOG=$(mktemp)\n", "    if ! CARGO_BUILD_JOBS=1 ("),
-          concat(build, ") 2>&1 | tee \"$RETRY_LOG\"; then\n")
+          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
+          concat(build, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
         )
       ),
       concat(
