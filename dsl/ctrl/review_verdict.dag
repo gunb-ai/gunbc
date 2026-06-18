@@ -17,29 +17,17 @@
 
 module ctrl.review_verdict
 
+import gunbc.workflow.types { ReviewSource }
 import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp, Url }
 
-// Coproduct receipt: terminal for the current provider coordinate.
-// Adding a provider is a new declaration row or ProviderOther value, not a
-// rewrite of parser/tally logic.
-type ReviewProvider
+// Coproduct receipt: terminal. LLM agent provider coordinate only — human and
+// unknown-provider rows live on Reviewer, not here, so source kind is not
+// re-derived by projection over this axis.
+type LlmReviewProvider
   = OpenaiPro
   | Codex
   | Claude
   | Cursor
-  | HumanReviewer
-  | ProviderOther { name: NonEmptyStr }
-
-// Coproduct receipt: terminal. Semantic source-kind axis for who authored a
-// review. Distinct from ReviewProvider (transport/provider coordinate) and
-// Reviewer (structured identity including policy-backed reviewers).
-// Unattributed is the fail-closed open case: unknown provider coordinates map
-// here instead of silently inheriting a guessed kind.
-type ReviewSource
-  = Llm
-  | Human
-  | Policy
-  | Unattributed
 
 type PolicyRef {
   id: NonEmptyStr
@@ -47,26 +35,21 @@ type PolicyRef {
 }
 
 // Coproduct receipt: terminal. Structured reviewer identity for verdict
-// carriers. Agent-backed reviews name a ReviewProvider; policy-backed reviews
-// name a versioned policy reference instead of conflating policy with a
-// provider enum row.
+// carriers. Each arm is tagged with its ReviewSource kind structurally;
+// reviewer_source is tag projection only (no provider-variant predicate).
 type Reviewer
-  = AgentReviewer { provider: ReviewProvider }
+  = AgentReviewer { provider: LlmReviewProvider }
+  | HumanReviewer
   | PolicyReviewer { policy: PolicyRef }
+  | UnattributedReviewer { provider_name: NonEmptyStr }
 
-// Total projection: every Reviewer maps to exactly one ReviewSource kind.
-// ProviderOther resolves to Unattributed (fail-closed) rather than Llm.
+// Total tag projection: Reviewer arms align 1:1 with ReviewSource kinds.
 fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   match reviewer {
-    AgentReviewer { provider: p } => match p {
-      HumanReviewer => Human
-      OpenaiPro => Llm
-      Codex => Llm
-      Claude => Llm
-      Cursor => Llm
-      ProviderOther { name: _ } => Unattributed
-    }
+    AgentReviewer { provider: _ } => Llm
+    HumanReviewer => Human
     PolicyReviewer { policy: _ } => Policy
+    UnattributedReviewer { provider_name: _ } => Unattributed
   }
 }
 
@@ -153,7 +136,7 @@ type ParseDeferredState
 
 type ReviewArtifact {
   artifact_id: ArtifactId
-  provider: ReviewProvider
+  reviewer: Reviewer
   kind: ReviewArtifactKind
   repo: NonEmptyStr
   pr_number: Int
@@ -179,7 +162,7 @@ type ReviewFinding {
 }
 
 type ReviewVerdictReport {
-  provider: ReviewProvider
+  reviewer: Reviewer
   repo: NonEmptyStr
   pr_number: Int
   head_sha: CommitSha
