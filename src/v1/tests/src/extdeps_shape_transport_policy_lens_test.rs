@@ -107,4 +107,27 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
     ] {
         assert_witness_true(entry, witness_fn);
     }
+
+    for (entry, witness_fn) in [
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/embedded_policy_literal_local_test.dag",
+            "embedded_policy_literal_local_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/corpus/runtime_local_embedded_policy_test.dag",
+            "corpus_runtime_local_embedded_policy_defused_holds",
+        ),
+    ] {
+        assert_witness_true(entry, witness_fn);
+    }
+}
+
+#[test]
+fn extdeps_embedded_policy_projection_catches_pre_5109_class() {
+    assert_eq!(
+        extdeps_shape_transport_policy_project::embedded_policy_literal_count_for_path(
+            "dsl/extdeps/runtime/local.dag".to_string(),
+        ),
+        0
+    );
 }

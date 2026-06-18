@@ -79,7 +79,7 @@ fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
   }
 }
 
-fn realization_schedule_witnesses() -> Bool {
+test fn realization_schedule_witnesses() -> Bool {
   witness_schedule_lens_green_on_synthetic_plan()
     && witness_schedule_lens_red_when_corpus_runs_first_on_synthetic()
 }
