@@ -362,3 +362,17 @@ data claim_coercion_fold_identity_accepts: TestClaim = CompilesClaim {
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+test fn find_witness_identity_mvp_holds() -> Bool {
+  witness_find_witness_identity_accepts
+    && witness_find_witness_non_identity_rejects
+    && witness_find_witness_constraint_rule_accepts
+    && witness_find_witness_other_rule_rejects
+    && witness_find_witness_unique_only_ambiguous_rejects
+    && witness_find_witness_selected_invalid_rejects
+    && witness_find_witness_user_selected_invalid_rejects
+    && witness_verify_witness_accepts
+    && witness_verify_witness_property_mismatch_rejects
+    && witness_verify_witness_evidence_mismatch_rejects
+    && witness_coercion_fold_identity_accepts
+}

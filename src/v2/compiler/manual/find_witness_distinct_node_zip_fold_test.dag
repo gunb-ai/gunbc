@@ -331,3 +331,12 @@ data claim_coercion_fold_distinct_node_accepts: TestClaim = CompilesClaim {
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+test fn find_witness_distinct_node_zip_fold_holds() -> Bool {
+  witness_find_witness_distinct_node_accepts
+    && witness_verify_witness_distinct_node_accepts
+    && witness_find_witness_wrong_arity_rejects
+    && witness_find_witness_wrong_subtree_rejects
+    && witness_find_witness_nested_distinct_node_accepts
+    && witness_coercion_fold_distinct_node_accepts
+}
