@@ -25,13 +25,13 @@ data embedded_policy_local_facts: List<ExtdepsEmbeddedPolicyLiteralFact> = [
   ExtdepsEmbeddedPolicyLiteralFact {
     module: extdeps_runtime_local_module,
     data_name: embedded_policy_local_data_name,
-    field_name: embedded_policy_local_field_name,
-    literal_value: embedded_policy_local_literal
+    field_name: "adc_env_var",
+    literal_value: "GOOGLE_APPLICATION_CREDENTIALS"
   }
 ]
 
 test fn embedded_policy_literal_local_is_red_holds() -> Bool {
   extdeps_shape_transport_policy_embedded_policy_literal_count(
     facts: embedded_policy_local_facts
-  ) == 2
+  ) == 1
 }

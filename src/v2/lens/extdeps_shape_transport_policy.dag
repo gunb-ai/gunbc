@@ -150,6 +150,10 @@ fn extdeps_live_module_gist_create_declares_filename_input(module: QualifiedName
   extdeps_gist_create_declares_filename_input_for_qualified_name(module: module)
 }
 
+fn extdeps_live_module_gist_create_files_keyed_by_filename(module: QualifiedName) -> Bool {
+  extdeps_gist_create_files_keyed_by_filename_for_qualified_name(module: module)
+}
+
 fn extdeps_module_identity_resolves(module: QualifiedName) -> Bool {
   extdeps_qualified_name_resolves_in_derived_module_set(module: module)
 }

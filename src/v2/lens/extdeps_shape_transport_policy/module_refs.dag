@@ -32,3 +32,8 @@ data extdeps_runtime_local_module: QualifiedName = QnCons {
   head: ^extdeps,
   tail: QnCons { head: ^runtime, tail: QnCons { head: ^local, tail: QnEmpty } }
 }
+
+data bogus_extdeps_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^bogus_unknown_module_xyz, tail: QnEmpty }
+}

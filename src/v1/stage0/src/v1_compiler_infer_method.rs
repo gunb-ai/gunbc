@@ -233,6 +233,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "extdeps_gist_create_files_keyed_by_filename_for_qualified_name".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),
             int_type(),
         );
