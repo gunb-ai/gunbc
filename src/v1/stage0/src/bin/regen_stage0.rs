@@ -60,7 +60,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
     "v1_compiler_complexity.rs",
-    "v1_compiler_dag_collect_support.rs",
     "v1_compiler_effect_derivation.rs",
     "v1_compiler_emit.rs",
     "v1_compiler_emit_core_support.rs",
@@ -102,6 +101,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "rest_transport_facts.rs",
     "wire_value_serialize.rs",
     "v1_compiler_dag_collect.rs",
+    "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
 ];
 
@@ -713,11 +713,11 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     let patch = patch_bootstrap_dag_collect_text(&text)?;
     fs::write(&compile_path, patch.compile_text)
         .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
-    fs::write(
-        src_dir.join("v1_compiler_dag_collect_support.rs"),
-        patch.support_text,
-    )
-    .map_err(|e| format!("write dag collect support: {e}"))
+    // `v1_compiler_dag_collect_support.rs` is hand-maintained bootstrap seed
+    // (recursive fingerprint ahead of compile.dag); copy_hand_maintained_support
+    // already placed the committed module — do not overwrite with codegen.
+    let _ = patch.support_text;
+    Ok(())
 }
 
 fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
