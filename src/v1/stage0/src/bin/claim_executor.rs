@@ -7,10 +7,9 @@
 //! dependency frontier through `v2.workflow.executor` and returns
 //! `List<List<Runnable>>` — the outer list is batches in execution order, the
 //! inner list is the runnables (a `SingleClaim` witness/gate, or the whole
-//! `DiscoveryBatch` corpus) runnable within that batch. This binary
+//! `DiscoveryBatch` corpus) runnable in parallel within that batch. This binary
 //! evaluates that plan, walks the returned value, and RUNS it: batch by batch
-//! (respecting the executor's ordering), runnables within a batch sequentially
-//! against one shared module index.
+//! (respecting the executor's ordering), nodes within a batch concurrently.
 //!
 //! It does NOT decide grouping or ordering — add a node or a dependency in the
 //! `.dag` and the batches change with zero edit here. That is the dogfood: the
@@ -19,9 +18,8 @@
 //!
 //! Like `claim_batch`/`regen_stage0`, this is a hand-written CLI bin — NOT routed
 //! through the generated `main.rs`/emit stage — reusing the same resolve/run
-//! primitives as `gunbc run` (`cli_run::build_multi_entry_index`,
-//! `cli_run::resolve_entry_with_index`, `cli_run::run_value`,
-//! `cli_run::run_claim`).
+//! primitives as `gunbc run` (`cli_run::resolve_entry_graph`,
+//! `cli_run::run_value`, `cli_run::run_claim`).
 //!
 //! Usage:
 //!   claim_executor --source-root <dir> [--source-root <dir> ...] \
@@ -37,10 +35,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::thread;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, resolve_entry_with_index, run_claim,
-    run_discovery_corpus_with_index, run_value, ClaimOutcome, MultiEntryIndex,
+    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus, run_value,
+    ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
@@ -245,34 +244,29 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
-/// Result of running one claim. The resolved graph is `Rc`-based (`!Send`), so
-/// each runnable resolves and runs on the main thread against one shared
-/// `MultiEntryIndex` (parse/typed-module caches stay warm across the walk).
+/// Result of running one claim, in a thread-safe (Send) form. The resolved graph
+/// is `Rc`-based (`!Send`), so each claim resolves and runs entirely within its
+/// own thread and reports back only this plain summary.
 struct ClaimResult {
     function: String,
     ok: bool,
     detail: String,
 }
 
-fn run_one_runnable(index: &MultiEntryIndex, runnable: &Runnable) -> ClaimResult {
+fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResult {
     match runnable {
         Runnable::SingleClaim { entry, function } => {
-            run_single_claim(index, entry.clone(), function.clone())
+            run_single_claim(&source_roots, entry, function)
         }
         Runnable::DiscoveryBatch {
-            source_roots,
+            source_roots: roots,
             scan_dirs,
             explicit_entries,
-        } => run_discovery_batch_node(
-            index,
-            source_roots.clone(),
-            scan_dirs.clone(),
-            explicit_entries.clone(),
-        ),
+        } => run_discovery_batch_node(roots, scan_dirs, explicit_entries),
     }
 }
 
-fn run_single_claim(index: &MultiEntryIndex, entry: String, function: String) -> ClaimResult {
+fn run_single_claim(source_roots: &[String], entry: String, function: String) -> ClaimResult {
     // Fail-closed sentinel: the plan projects an empty-`entry` ClaimRef for any
     // unmapped suite node or non-complete executor plan (see batch_runner.dag).
     // It carries no resolvable witness, so it is a hard error — never a vacuous
@@ -285,14 +279,14 @@ fn run_single_claim(index: &MultiEntryIndex, entry: String, function: String) ->
                 .to_string(),
         };
     }
-    let (graph, source_indices) = match resolve_entry_with_index(index, &entry) {
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, &entry) {
         Ok(pair) => pair,
         Err(msg) => {
             return ClaimResult {
                 function,
                 ok: false,
                 detail: format!("resolve failed for {}: {}", entry, msg),
-            };
+            }
         }
     };
     // Context scoped to this claim's graph: its `data` cache drops with it.
@@ -322,10 +316,9 @@ fn run_single_claim(index: &MultiEntryIndex, entry: String, function: String) ->
 }
 
 /// Run the whole discovery corpus as one plan node, reusing the shared roster +
-/// run loop (`cli_run::run_discovery_corpus_with_index`). Fail-closed: an empty
-/// roster, a resolve failure, or any failing witness fails the node.
+/// run loop (`cli_run::run_discovery_corpus`). Fail-closed: an empty roster, a
+/// resolve failure, or any failing witness fails the node.
 fn run_discovery_batch_node(
-    index: &MultiEntryIndex,
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
@@ -335,8 +328,7 @@ fn run_discovery_batch_node(
         source_roots.len(),
         explicit_entries.len()
     );
-    match run_discovery_corpus_with_index(
-        index,
+    match run_discovery_corpus(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
@@ -369,11 +361,11 @@ fn run_discovery_batch_node(
 /// batching authority: this reads the `List<List<Runnable>>` the plan function
 /// returns and parses it — it never groups or orders anything itself.
 fn eval_plan(
-    index: &MultiEntryIndex,
+    source_roots: &[String],
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<Vec<Vec<Runnable>>, String> {
-    let (plan_graph, plan_indices) = resolve_entry_with_index(index, plan_entry)
+    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
@@ -384,6 +376,7 @@ fn eval_plan(
     })?;
     let batches = batches_from_plan(&plan_value, &plan_ctx)
         .map_err(|msg| format!("malformed plan value: {}", msg))?;
+    // Plan graph/value are `Rc`-based (`!Send`); drop before spawning claim threads.
     drop(plan_value);
     drop(plan_graph);
     Ok(batches)
@@ -397,29 +390,43 @@ struct WalkOutcome {
     batches_run: usize,
 }
 
-/// Run batch by batch (executor ordering); runnables within a batch sequentially
-/// against one shared module index. The batch boundary is a barrier: batch N+1
-/// starts only after every runnable in batch N has reported. A failed batch halts
-/// the walk before its dependents. Batch membership and order are the `.dag` plan's
-/// — this only walks them.
-fn run_walk(index: &MultiEntryIndex, batches: &[Vec<Runnable>]) -> WalkOutcome {
+/// Run batch by batch (executor ordering); claims within a batch in parallel. The
+/// batch boundary is a barrier: batch N+1 starts only after every claim in batch N
+/// has reported. A failed batch halts the walk before its dependents. The batch
+/// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
+fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         eprintln!("claim_executor: batch {} — {} node(s)", bi + 1, batch.len());
-        for runnable in batch {
-            let result = run_one_runnable(index, runnable);
-            if result.ok {
-                println!("PASS [batch {}] {}", bi + 1, result.function);
-            } else {
-                println!(
-                    "FAIL [batch {}] {} ({})",
-                    bi + 1,
-                    result.function,
-                    result.detail
-                );
-                any_failed = true;
+        let handles: Vec<_> = batch
+            .iter()
+            .map(|runnable| {
+                let roots = source_roots.to_vec();
+                let runnable = runnable.clone();
+                thread::spawn(move || run_one_runnable(roots, runnable))
+            })
+            .collect();
+        for handle in handles {
+            match handle.join() {
+                Ok(result) => {
+                    if result.ok {
+                        println!("PASS [batch {}] {}", bi + 1, result.function);
+                    } else {
+                        println!(
+                            "FAIL [batch {}] {} ({})",
+                            bi + 1,
+                            result.function,
+                            result.detail
+                        );
+                        any_failed = true;
+                    }
+                }
+                Err(_) => {
+                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+                    any_failed = true;
+                }
             }
         }
         // Fail closed at the barrier: if a gating batch failed, do not run the
@@ -524,8 +531,7 @@ fn run_perturb_check(
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<ExitCode, ExitCode> {
-    let index = build_multi_entry_index(source_roots);
-    let batches = match eval_plan(&index, plan_entry, plan_function) {
+    let batches = match eval_plan(source_roots, plan_entry, plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: --perturb-check: {msg}");
@@ -620,9 +626,7 @@ fn run_perturb_check(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
         gating_function
     );
-    // Perturb runs against a temp source tree — a fresh index is required.
-    let temp_index = build_multi_entry_index(&[temp_root.clone()]);
-    let outcome = run_walk(&temp_index, &remapped);
+    let outcome = run_walk(&[temp_root], &remapped);
     let _ = fs::remove_dir_all(&tmp);
 
     // Receipt: the planted gating failure must fail the run closed AND halt the
@@ -700,13 +704,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
 
-    // 1. Build the module index once for the whole executor walk (plan eval +
-    // every batch node share parse/typed-module caches).
-    eprintln!("claim_executor: building shared module index...");
-    let index = build_multi_entry_index(&source_roots);
-
-    // 2. Evaluate the executor-decided plan (the `.dag` is the batching authority).
-    let batches = match eval_plan(&index, &plan_entry, &plan_function) {
+    // 1. Evaluate the executor-decided plan (the `.dag` is the batching authority).
+    let batches = match eval_plan(&source_roots, &plan_entry, &plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: {msg}");
@@ -730,8 +729,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
-    // 3. Run batch by batch (executor ordering), runnables within a batch sequentially.
-    let outcome = run_walk(&index, &batches);
+    // 2. Run batch by batch (executor ordering), claims within a batch in parallel.
+    let outcome = run_walk(&source_roots, &batches);
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
