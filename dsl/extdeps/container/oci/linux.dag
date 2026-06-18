@@ -128,53 +128,7 @@ fn contains_namespace_type(seen: List<LinuxNamespaceType>, target: LinuxNamespac
 }
 
 fn namespace_types_equal(left: LinuxNamespaceType, right: LinuxNamespaceType) -> Bool {
-  match left {
-    LinuxNsPid =>
-      match right {
-        LinuxNsPid => true
-        _ => false
-      }
-    LinuxNsNetwork =>
-      match right {
-        LinuxNsNetwork => true
-        _ => false
-      }
-    LinuxNsMount =>
-      match right {
-        LinuxNsMount => true
-        _ => false
-      }
-    LinuxNsIpc =>
-      match right {
-        LinuxNsIpc => true
-        _ => false
-      }
-    LinuxNsUts =>
-      match right {
-        LinuxNsUts => true
-        _ => false
-      }
-    LinuxNsUser =>
-      match right {
-        LinuxNsUser => true
-        _ => false
-      }
-    LinuxNsCgroup =>
-      match right {
-        LinuxNsCgroup => true
-        _ => false
-      }
-    LinuxNsTime =>
-      match right {
-        LinuxNsTime => true
-        _ => false
-      }
-    LinuxNsUnknown { raw: left_raw } =>
-      match right {
-        LinuxNsUnknown { raw: right_raw } => left_raw == right_raw
-        _ => false
-      }
-  }
+  left == right
 }
 
 fn linux_namespace_count(p: LinuxPlatform) -> Int {

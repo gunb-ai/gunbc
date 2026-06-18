@@ -99,22 +99,7 @@ fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPor
 }
 
 fn container_exposed_port_is(port: ContainerExposedPort, expected_port: Int, protocol: ContainerPortProtocol) -> Bool {
-  if port.port != expected_port {
-    false
-  } else {
-    match port.protocol {
-      Tcp =>
-        match protocol {
-          Tcp => true
-          Udp => false
-        }
-      Udp =>
-        match protocol {
-          Tcp => false
-          Udp => true
-        }
-    }
-  }
+  port.port == expected_port && port.protocol == protocol
 }
 
 fn image_config_has_exposed_port(
