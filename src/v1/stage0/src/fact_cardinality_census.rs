@@ -100,6 +100,9 @@ fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
             depth += next.chars().filter(|c| *c == '{').count() as i32;
             depth -= next.chars().filter(|c| *c == '}').count() as i32;
             i += 1;
+            // SCAFFOLD fragility: exits when depth==0 and no `{` seen yet — correct for
+            // same-line brace bodies in the current corpus; a `data foo: Bar =\n{ ... }`
+            // split would terminate early. Dissolves with Node-tree decl projection.
             if depth <= 0 && !body.contains('{') {
                 break;
             }
