@@ -1,4 +1,4 @@
-// dsl/test/claim/hermetic_replay_fidelity_witness.dag
+// dsl/test/claim/hermetic_replay_fidelity_witness_test.dag
 //
 // Discriminating fidelity witnesses for per-op REST hermetic coverage (§5).
 // Folds HermeticRealization — covered ops produce RecordedFixtureReplay,
@@ -53,4 +53,11 @@ fn http_pilot_without_corpus_fails_closed_holds() -> Bool {
     InlineMockScaffold => true
     RecordedFixtureReplay => false
   }
+}
+
+test fn hermetic_replay_fidelity_witnesses() -> Bool {
+  rest_coverage_grants_hermetic_holds() &&
+    rest_without_coverage_fails_closed_holds() &&
+    operation_hermetic_realization_truth_table_covered_holds() &&
+    http_pilot_without_corpus_fails_closed_holds()
 }

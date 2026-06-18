@@ -42,42 +42,7 @@ data gunbc_ci_gates: List<Gate> = [
 ]
 
 data gunbc_ci_spec: CiSpec = {
-<<<<<<< HEAD
-  witness_roots: [
-    { root: "src/v2", scan_subtrees: [] },
-    { root: "dsl", scan_subtrees: [] }
-  ],
-  witness_entries: [
-    { entry: "dsl/test/claim/rust_stage0_gates_witness.dag", function: "rust_stage0_gates_witnesses" },
-    { entry: "dsl/test/claim/emit_host_gate_witness.dag", function: "emit_host_gate_witnesses" },
-    { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
-    { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
-    { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
-    { entry: "dsl/test/claim/cargo_target_path_witness.dag", function: "cargo_target_path_witnesses" },
-    { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
-    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "rest_coverage_grants_hermetic_holds" },
-    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "rest_without_coverage_fails_closed_holds" },
-    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "operation_hermetic_realization_truth_table_covered_holds" },
-    { entry: "dsl/test/claim/hermetic_replay_fidelity_witness.dag", function: "http_pilot_without_corpus_fails_closed_holds" },
-    { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
-    { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
-    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
-    { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
-    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" },
-    { entry: "dsl/test/claim/realization_witness.dag", function: "realization_witnesses" },
-    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" }
-  ],
-  gates: [
-    RustMonolithGate,
-    EmitHostGate,
-    LayeringImportsGate,
-    DslCompileCleanGate,
-    CiYamlGate,
-    SourceRootIngestGate
-  ],
-=======
   gates: gunbc_ci_gates,
->>>>>>> origin/main
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
