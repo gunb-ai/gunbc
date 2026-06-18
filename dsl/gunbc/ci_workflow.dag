@@ -15,7 +15,8 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
   RunnerSpec, SelfHosted,
-  checkout_action, setup_rust_action, cache_action
+  checkout_action, setup_rust_action, cache_action,
+  default_job_timeout_minutes
 }
 
 data ci_workflow: Workflow = {
@@ -163,7 +164,7 @@ data ci_workflow: Workflow = {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: 240 },
+    timeout_minutes: Present { value: default_job_timeout_minutes },
     continue_on_error: none,
     concurrency: none
   }]
