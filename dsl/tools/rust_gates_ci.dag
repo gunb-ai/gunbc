@@ -31,7 +31,7 @@ func run_gates() -> ProcessExit {
   )
   test = cargo.Build.Test(
     features: ci_release_features,
-    extra_args: ["-p", "v1-compiler-tests", "interp_recorded_fixture"]
+    extra_args: ["--workspace", "-p", "v1-compiler-tests", "interp_recorded_fixture"]
   )
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
