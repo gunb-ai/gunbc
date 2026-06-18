@@ -3726,6 +3726,33 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
     }
 }
 
+fn shell_output_is_transient_infra(stderr: &str, spawn_err: Option<&str>) -> bool {
+    let hay = format!("{} {}", stderr, spawn_err.unwrap_or_default()).to_lowercase();
+    hay.contains("resource temporarily unavailable")
+        || hay.contains("failed to spawn")
+        || hay.contains("sccache: encountered fatal error")
+        || hay.contains("sccache: error:")
+}
+
+fn run_shell_argv(argv: &[String]) -> Result<std::process::Output, String> {
+    std::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .output()
+        .map_err(|e| format!("failed to execute '{}': {}", argv[0], e))
+}
+
+fn log_shell_failure(exit_code: i32, stdout: &str, stderr: &str) {
+    if stderr.is_empty() && stdout.is_empty() {
+        return;
+    }
+    if !stderr.is_empty() {
+        eprintln!("[shell] exit {exit_code} stderr:\n{stderr}");
+    }
+    if !stdout.is_empty() {
+        eprintln!("[shell] exit {exit_code} stdout:\n{stdout}");
+    }
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3748,22 +3775,44 @@ fn dispatch_shell(
 
     eprintln!("[shell] {}", argv.join(" "));
 
-    let output = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .output()
-        .map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
-
-    Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
-    })
+    let mut attempt = 0u8;
+    loop {
+        match run_shell_argv(&argv) {
+            Ok(output) => {
+                let exit_code = output.status.code().unwrap_or(-1);
+                let stdout = String::from_utf8_lossy(&output.stdout)
+                    .trim_end()
+                    .to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr)
+                    .trim_end()
+                    .to_string();
+                if exit_code != 0 && attempt == 0 && shell_output_is_transient_infra(&stderr, None)
+                {
+                    eprintln!("[shell] transient infra error (exit {exit_code}), retrying once");
+                    log_shell_failure(exit_code, &stdout, &stderr);
+                    attempt = 1;
+                    continue;
+                }
+                if exit_code != 0 {
+                    log_shell_failure(exit_code, &stdout, &stderr);
+                }
+                return Ok(ShellResult {
+                    exit_code,
+                    stdout,
+                    stderr,
+                });
+            }
+            Err(spawn_err)
+                if attempt == 0 && shell_output_is_transient_infra("", Some(&spawn_err)) =>
+            {
+                eprintln!("[shell] transient spawn error, retrying once: {spawn_err}");
+                attempt = 1;
+            }
+            Err(spawn_err) => {
+                return Err(InterpError::TypeError { msg: spawn_err });
+            }
+        }
+    }
 }
 
 /// Map shell stdout/stderr/exit_code to the operation's return type fields.
