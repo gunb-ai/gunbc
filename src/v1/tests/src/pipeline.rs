@@ -8400,6 +8400,61 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     );
 }
 
+// ── GitHub pulls review enums — ScreamingSnakeCase wire ratchet (post-#5163) ─
+// `review_state_wire_contract` / `review_event_wire_contract` use
+// `StringVariant { naming: ScreamingSnakeCase }` so emitted serde carries
+// `rename_all = "SCREAMING_SNAKE_CASE"` (ChangesRequested → "CHANGES_REQUESTED").
+#[test]
+fn github_review_enums_wire_matches_screaming_snake_contract() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/github/pulls.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read pulls.dag");
+    let result = compile_dag_named("dsl/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_github_pulls.rs");
+
+    let review_state_attrs = attrs_immediately_above_enum(&content, "pub enum ReviewState");
+    assert!(
+        review_state_attrs.contains(&"#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"),
+        "expected ScreamingSnakeCase serde attr immediately above ReviewState; attrs: {:?}",
+        review_state_attrs
+    );
+    let review_state_body = enum_block(&content, "pub enum ReviewState");
+    for needle in [
+        "Pending,",
+        "Commented,",
+        "Approved,",
+        "ChangesRequested,",
+        "Dismissed,",
+    ] {
+        assert!(
+            review_state_body.contains(needle),
+            "expected variant {needle} in ReviewState; got:\n{review_state_body}"
+        );
+    }
+
+    let review_event_attrs = attrs_immediately_above_enum(&content, "pub enum ReviewEvent");
+    assert!(
+        review_event_attrs.contains(&"#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"),
+        "expected ScreamingSnakeCase serde attr immediately above ReviewEvent; attrs: {:?}",
+        review_event_attrs
+    );
+    let review_event_body = enum_block(&content, "pub enum ReviewEvent");
+    for needle in ["Approve,", "RequestChanges,", "Comment,", "Pending,"] {
+        assert!(
+            review_event_body.contains(needle),
+            "expected variant {needle} in ReviewEvent; got:\n{review_event_body}"
+        );
+    }
+
+    let pr_state_attrs = attrs_immediately_above_enum(&content, "pub enum PullRequestState");
+    assert!(
+        pr_state_attrs.contains(&"#[serde(rename_all = \"snake_case\")]"),
+        "PullRequestState should keep SnakeCase wire contract; attrs: {:?}",
+        pr_state_attrs
+    );
+}
+
 fn attrs_immediately_above_enum<'a>(content: &'a str, enum_decl: &str) -> Vec<&'a str> {
     let pos = content
         .find(enum_decl)

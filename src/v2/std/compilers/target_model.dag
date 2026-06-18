@@ -134,14 +134,41 @@ import v2.std.host_transport {
 // by ci_floor_emit + v2_lens witnesses (they went red on it; head eed2a7a). v2 fix is tracked
 // separately (work-item adhoc-708ea66d-bb3) — this absence assertion stands until that lands.
 
+// Emit-time spelling transform keyed by BoundToken token_class. FixedToken spellings still
+// resolve from lex LiteralPattern.text verbatim; bound spellings resolve from binding_spellings
+// (or symbol interning) then pass through a per-class fn when the map holds one.
+// Absent => identity (preserves every existing target). Which transforms exist and what they do
+// live in extdeps/languages/* — std owns only the lookup hook (§3: no realization taxonomy).
 type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
+  token_class_emit_transforms: Map<Symbol, fn(String) -> String>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
 }
 type TargetModelBundle = TargetModel
+
+// Default-empty emit transforms for non-shell targets (identity on absent lookup).
+data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
+
+fn target_model_make_with_emit_transforms(
+  bundle: Node,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>,
+  token_class_emit_transforms: Map<Symbol, fn(String) -> String>,
+  authority_source_text: String,
+  runtime_row: TargetEmitHostRuntimeRow
+) -> TargetModel {
+  TargetModel {
+    bundle: bundle,
+    lex: lex,
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: token_class_emit_transforms,
+    authority_source_text: authority_source_text,
+    runtime_row: runtime_row
+  }
+}
 
 fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
   configured_emit_host_runtime_row_from_target_row(row: target.runtime_row)
@@ -455,6 +482,35 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
+fn apply_emit_spelling_transform(
+  transform: fn(String) -> String,
+  spelling: String
+) -> String {
+  transform(spelling: spelling)
+}
+
+fn bound_token_spelling_from_model(
+  target: TargetModel,
+  token_class: Symbol,
+  binding: Symbol
+) -> Outcome<String> {
+  bind_outcome(
+    o: target_binding_spelling_lookup(target: target, binding: binding),
+    f: fn(spelling) {
+      match map_get(target.token_class_emit_transforms, token_class) {
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
+          outcome_accepted(
+            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
+            diagnostics: d
+          )
+        Accepted { value: Absent, diagnostics: d } =>
+          outcome_accepted(value: spelling, diagnostics: d)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
   bind_outcome(
     o: concrete_syntax_token_from_node(token: token),
@@ -462,8 +518,12 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
       match decoded {
         FixedToken { token_class: token_class } =>
           lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-        BoundToken { token_class: _, binding: binding } =>
-          target_binding_spelling_lookup(target: target, binding: binding)
+        BoundToken { token_class: token_class, binding: binding } =>
+          bound_token_spelling_from_model(
+            target: target,
+            token_class: token_class,
+            binding: binding
+          )
       }
     }
   )
@@ -9288,26 +9348,6 @@ fn type_expr_projection_row_shape_envelope(
   )
 }
 
-// SG-2 fold — substrate child slots as named coordinate (substrate TypeNode authority; not flat Conj mix).
-fn type_expr_projection_graft_child_slots_coordinate(
-  envelope: Node,
-  facts: Node
-) -> Node {
-  node_rebuild(
-    n: envelope,
-    children: list_append(
-      left: envelope.children,
-      right: Cons {
-        head: target_model_named_edge(
-          name: ^target_type_expr_field_child_slots,
-          target: facts
-        ),
-        tail: Empty
-      }
-    )
-  )
-}
-
 // Row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
 fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
   Node {
@@ -9433,59 +9473,6 @@ fn type_expr_projection_candidate_for_connective(
   )
 }
 
-// SG-2 fold — anchored substrate TypeNode with projected positional children (checkpoint 3).
-// Labeled Conj/Disj substrates keep node.children; positional connectives pass projected list.
-fn type_expr_projection_substrate_facts(
-  node: Node,
-  projected_positional: List<Node>
-) -> Node {
-  match node.kind {
-    TypeNode { connective: Conj } => node
-    TypeNode { connective: Disj } => node
-    _ =>
-      node_rebuild(
-        n: node,
-        children: fold_list(
-          xs: projected_positional,
-          empty: Empty,
-          cons: fn(acc, child) {
-            list_snoc_item(
-              xs: acc,
-              item: Edge { label: Positional, target: child }
-            )
-          }
-        )
-      )
-  }
-}
-
-// SG-2 fold — graft substrate child slots into row envelope (discipline + delimiter metadata).
-fn type_expr_projection_graft_substrate_in_row_slot(
-  projection: TargetTypeExpressionProjection,
-  connective: Connective,
-  node: Node,
-  projected_positional: List<Node>
-) -> Outcome<Node> {
-  let facts = type_expr_projection_substrate_facts(
-    node: node,
-    projected_positional: projected_positional
-  )
-  bind_outcome(
-    o: type_expr_projection_shape_for_connective(
-      projection: projection,
-      connective: connective
-    ),
-    f: fn(envelope) {
-      outcome_accepted(
-        type_expr_projection_graft_child_slots_coordinate(
-          envelope: envelope,
-          facts: facts
-        )
-      )
-    }
-  )
-}
-
 fn type_expr_projection_row_witness_gate_with_rule(
   source_facts: Node,
   projection: TargetTypeExpressionProjection,
@@ -9529,21 +9516,7 @@ fn type_expr_projection_row_shape_witness_gate(
   )
 }
 
-// SG-2 fold — grafted substrate witness gate (requires child_slots coordinate; discipline zip-fold).
-fn type_expr_projection_graft_witness_gate(
-  source_facts: Node,
-  projection: TargetTypeExpressionProjection,
-  connective: Connective
-) -> Outcome<Node> {
-  type_expr_projection_row_witness_gate_with_rule(
-    source_facts: source_facts,
-    projection: projection,
-    connective: connective,
-    preservation_rule: ^preservation_rule_type_expr_projection_discipline_zip_fold
-  )
-}
-
-// SG-2 fold — connective → step_algebra row slot field (uniform key for graft + bundle decode).
+// SG-2 fold — connective → step_algebra row slot field (uniform key for bundle decode).
 fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
   match connective {
     Atom { identity: _ } => ^target_type_expr_field_atom

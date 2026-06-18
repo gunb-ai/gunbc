@@ -57,7 +57,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.collection { List, Map, Set, empty_map, map_insert }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
@@ -1305,6 +1305,7 @@ fn python_mvp1_target_model() -> TargetModel {
     bundle: python_mvp1_target_model_node(),
     lex: python_wave1_lex(),
     binding_spellings: python_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: python_mvp1_source_text,
     runtime_row: python_mvp1_runtime_row()
   }
