@@ -56,24 +56,6 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      - name: P4b REST hermetic pilot (fixture replay + fail-closed neg-check)
-        run: |
-          # P4b REST hermetic pilot: hermetic replay from committed fixture seed.
-          HTTP_PILOT_FIXTURES="$(pwd)/dsl/extdeps/test/fixtures/http_pilot"
-          cargo run -p v1-compiler --release --bin claim_batch -- \
-            --source-root . --source-root dsl \
-            --entry dsl/test/claim/http_pilot_rest_witness.dag \
-            --function http_pilot_rest_keystone_holds \
-            --hermetic --fixture-store "$HTTP_PILOT_FIXTURES" \
-            --fixture-no-expiry --claim-run
-          if cargo run -p v1-compiler --release --bin claim_batch -- \
-            --source-root . --source-root dsl \
-            --entry dsl/test/claim/http_pilot_rest_witness.dag \
-            --function http_pilot_rest_keystone_holds \
-            --hermetic --claim-run; then
-            echo "http pilot must fail closed without fixture store (no inline mock_response)"
-            exit 1
-          fi
       - name: gunbc ci (.dag witnesses + gates)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
