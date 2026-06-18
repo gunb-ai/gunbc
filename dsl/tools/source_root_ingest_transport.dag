@@ -1,22 +1,26 @@
 // tools/source_root_ingest_transport.dag — host transport for Lane 3a real ingest gate.
 //
-// The deleted scripts/source-root-ingest-gate.sh wrapper is retired: its two legs are
-// modeled directly.
-//   (1) emit the host manifest via the EXISTING `discover_source_root_ingest` v1 bin,
-//       invoked through the single cargo-run authority `cargo.Build.Run` (§3 — the bin is
-//       the legit host realization of the FS walk; only the bash wrapper dies);
+// The deleted scripts/source-root-ingest-gate.sh wrapper is retired: its legs are modeled
+// directly as ONE computed ShellProgram (no bash <script> blob — the script: arg is a
+// serialize_bash application, so v2.lens.host_language_transport_script reads it as
+// ComputedApplication):
+//   (1) cargo run the EXISTING discover_source_root_ingest v1 bin to emit the host manifest
+//       (the bin is the legit host realization of the FS walk; only the bash wrapper dies);
 //   (2) run the three real_ingest witnesses (manifest overlay) via gunbc claim-runs.
-// All business-policy literals the .sh hardcoded (--source-root / --scan-dir / the entry
-// path / the witness function names) are lifted to workflow-tier `data` below — they are
-// PARAMETERS passed at the call site, not baked into a transport argv (§3 (c)).
+// All business-policy literals the .sh hardcoded (--source-root / --scan-dir / the entry path
+// / the witness function names) are lifted to workflow-tier `data` below — PARAMETERS passed
+// at the call site, not a transport argv leak (§3 (c)).
 //
-// dissolve-on: emit(intent, Bash) makes the gunbc-claim shell program a Node tree the
-//   emitter serializes, retiring the inline ShellProgram (matches
-//   v2.lens.host_language_transport_script).
+// NB: cargo.Build.Run.Run cannot model the cargo-run leg today — its argv escapes the param
+// markers (`\{package\}` / `\{bin\}`), so the {param} substitution never fires (the op is
+// unexercised). Fixing that load-bearing op is a separate follow-up; here the cargo-run leg is
+// a faithful argv ShellStmt sharing the gunbc-claim program.
+//
+// dissolve-on: emit(intent, Bash) serializes this gunbc/cargo program from a Node tree,
+//   retiring the inline ShellProgram (matches v2.lens.host_language_transport_script).
 
 module tools.source_root_ingest_transport
 
-import extdeps.cargo_build
 import extdeps.shell
 import std.logic { Bool }
 import extdeps.languages.bash.program {
@@ -38,6 +42,18 @@ data ingest_witness_host_manifest_receipt: String = "program_assembly_real_inges
 // validator regresses this goes Bool(false) and the gate fails (the sh:46 red oracle).
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
 
+// cargo run -p v1-compiler --bin discover_source_root_ingest --release -- <policy argv>
+//   emits the ephemeral host manifest the witnesses overlay-read (DO NOT COMMIT).
+fn emit_manifest_stmt() -> ShellStmt {
+  command(words: [
+    lit(text: "cargo"), lit(text: "run"), lit(text: "-p"), lit(text: "v1-compiler"),
+    lit(text: "--bin"), lit(text: "discover_source_root_ingest"), lit(text: "--release"), lit(text: "--"),
+    lit(text: "--source-root"), lit(text: ingest_source_root),
+    lit(text: "--scan-dir"), lit(text: ingest_scan_dir),
+    lit(text: "--emit-dag-manifest"), lit(text: ingest_manifest_path)
+  ])
+}
+
 // "$GUNBC" run --source-root src/v2 --source-root target --entry <e> --function <f> --claim-run
 fn gunbc_claim_run(function: String) -> ShellStmt {
   command(words: [
@@ -50,28 +66,13 @@ fn gunbc_claim_run(function: String) -> ShellStmt {
   ])
 }
 
-// Leg 1: cargo run -p v1-compiler --bin discover_source_root_ingest --release -- <policy argv>
-//   emits the ephemeral host manifest the witnesses overlay-read (DO NOT COMMIT).
-fn emit_ingest_manifest() -> Bool {
-  let result = cargo.Build.Run(
-    package: "v1-compiler",
-    bin: "discover_source_root_ingest",
-    args: [
-      "--release", "--",
-      "--source-root", ingest_source_root,
-      "--scan-dir", ingest_scan_dir,
-      "--emit-dag-manifest", ingest_manifest_path
-    ]
-  )
-  result.success
-}
-
-// Leg 2: gate-only real_ingest witnesses (set -e — any claim failing fails the gate).
-fn run_gunbc_claims() -> Bool {
+// set -e — emit then the three gate-only real_ingest witnesses; any leg failing fails the gate.
+fn run_real_ingest_gate() -> Bool {
   let prog = ShellProgram {
     set_e: true,
     statements: concat(ensure_gunbc_built(), [
       command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+      emit_manifest_stmt(),
       gunbc_claim_run(function: ingest_witness_module_roots_parse),
       gunbc_claim_run(function: ingest_witness_host_manifest_receipt),
       gunbc_claim_run(function: ingest_witness_validate_red)
@@ -79,8 +80,4 @@ fn run_gunbc_claims() -> Bool {
   }
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
   result.success
-}
-
-fn run_real_ingest_gate() -> Bool {
-  emit_ingest_manifest() && run_gunbc_claims()
 }

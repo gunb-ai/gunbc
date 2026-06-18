@@ -56,7 +56,10 @@ fn project_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRa
 }
 
 /// Project `LayerImportFact` rows for the given std-layer and extdeps-layer roots.
-pub fn layer_import_facts(std_roots: &[String], extdeps_roots: &[String]) -> Vec<LayerImportFactRaw> {
+pub fn layer_import_facts(
+    std_roots: &[String],
+    extdeps_roots: &[String],
+) -> Vec<LayerImportFactRaw> {
     let mut out = Vec::new();
     for root in std_roots {
         project_root(root, LAYER_STD, &mut out);
