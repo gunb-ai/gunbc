@@ -37,14 +37,12 @@ type ShellWord
   | Raw { text: String }
 
 // =========================================================================
-// Tests — the `[ ... ]` condition of an `if`. Minimal, grown on demand.
-// =========================================================================
-
-type ShellTest
-  = NotExecutable { path: ShellWord }       // [ ! -x word ]
-
-// =========================================================================
 // Statements + lists.
+//
+// A test (`[ ... ]`, `test -x …`) is NOT a separate kind — POSIX §2.9.1: the `if`
+// condition is a command list whose exit status is consulted, and `[`/`test` are
+// ordinary commands. So `If.cond` is a `ShellStmt` and a bracket test is a `Command`
+// (see `test_not_executable`), one concept not two (§2).
 // =========================================================================
 
 type AndOrOp
@@ -54,14 +52,19 @@ type AndOrOp
 type Redir
   = StderrToNull                            // 2>/dev/null
   | StdoutAndStderrToNull                   // >/dev/null 2>&1
+  | StdoutToStderr                          // >&2
 
 type ShellStmt
   = Command { words: List<ShellWord> }
   | Assign { name: String, value: ShellWord }
-  | If { cond: ShellTest, then: List<ShellStmt> }
+  | If { cond: ShellStmt, then: List<ShellStmt> }
   | Subshell { body: List<ShellStmt> }
   | AndOr { left: ShellStmt, op: AndOrOp, right: ShellStmt }
   | WithRedir { stmt: ShellStmt, redir: Redir }
+  // Heredoc: `cat > <path> <<'<delimiter>'\n<body>\n<delimiter>`. The body is literal
+  // file content (a fixture / a .dag source), not shell control flow — a String payload,
+  // not smuggled policy. Always a quoted delimiter (no expansion in the body).
+  | Heredoc { path: ShellWord, delimiter: String, body: String }
   | Exit { code: Int }
   // 🟡 dissolution trigger: same as ShellWord.Raw.
   | RawLine { text: String }
@@ -87,6 +90,11 @@ fn command(words: List<ShellWord>) -> ShellStmt {
 
 fn assign(name: String, value: ShellWord) -> ShellStmt {
   Assign { name: name, value: value }
+}
+
+// `[ ! -x <path> ]` — bracket test as the ordinary command it is.
+fn test_not_executable(path: ShellWord) -> ShellStmt {
+  Command { words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), path, lit(text: "]")] }
 }
 
 // -- quoting ----------------------------------------------------------
@@ -117,16 +125,11 @@ fn join_words(words: List<ShellWord>) -> String {
   })
 }
 
-fn serialize_test(t: ShellTest) -> String {
-  match t {
-    NotExecutable { path: p } => concat("[ ! -x ", concat(serialize_word(w: p), " ]"))
-  }
-}
-
 fn serialize_redir(r: Redir) -> String {
   match r {
     StderrToNull => "2>/dev/null"
     StdoutAndStderrToNull => ">/dev/null 2>&1"
+    StdoutToStderr => ">&2"
   }
 }
 
@@ -150,9 +153,12 @@ fn serialize_stmt(s: ShellStmt) -> String {
     Command { words: ws } => join_words(words: ws)
     Assign { name: n, value: v } => concat(n, concat("=", serialize_word(w: v)))
     If { cond: c, then: body } =>
-      concat("if ", concat(serialize_test(t: c),
+      concat("if ", concat(serialize_stmt(s: c),
         concat("; then ", concat(join_stmts_semi(stmts: body), "; fi"))))
     Subshell { body: b } => concat("(", concat(join_stmts_semi(stmts: b), ")"))
+    Heredoc { path: p, delimiter: d, body: b } =>
+      concat("cat > ", concat(serialize_word(w: p),
+        concat(" <<'", concat(d, concat("'\n", concat(b, concat("\n", d)))))))
     AndOr { left: l, op: o, right: r } =>
       concat(serialize_stmt(s: l),
         concat(" ", concat(serialize_and_or_op(op: o), concat(" ", serialize_stmt(s: r)))))
