@@ -4596,7 +4596,10 @@ fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bo
     ty.children
         .iter()
         .any(|c| type_annotation_names(ctx, c, target))
-        || ty.params.iter().any(|c| type_annotation_names(ctx, c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names(ctx, c, target))
 }
 
 /// Resolve the PUBLISHED mock corpus (the §2 Realization pure-spec) into its operation-key set.
