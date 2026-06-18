@@ -85,7 +85,10 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
         EffectShape::UpsertEffect { .. } => true,
         EffectShape::DeleteEffect { .. } => true,
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
-            CreateCause::CreateIfAbsent { key_source: _, .. } => true,
+            CreateCause::CreateIfAbsent {
+                key_source: key_source,
+                ..
+            } => true,
             CreateCause::PostAlways => false,
         },
         EffectShape::AppendEffect => false,
@@ -112,7 +115,10 @@ pub fn key_source_eq(a: Rc<KeySource>, b: Rc<KeySource>) -> bool {
 pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
     match (*shape).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
-            CreateCause::CreateIfAbsent { key_source: _, .. } => true,
+            CreateCause::CreateIfAbsent {
+                key_source: key_source,
+                ..
+            } => true,
             CreateCause::PostAlways => false,
         },
         _ => false,
@@ -310,7 +316,10 @@ pub fn check_modifier_vs_derivation(
 })
                     }
                     EffectShape::CreateEffect { ref cause, .. } => {
-                        let CreateCause::CreateIfAbsent { key_source: _, .. } = cause.as_ref()
+                        let CreateCause::CreateIfAbsent {
+                            key_source: key_source,
+                            ..
+                        } = cause.as_ref()
                         else {
                             unreachable!()
                         };

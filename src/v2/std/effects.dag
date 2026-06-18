@@ -172,10 +172,13 @@ fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
 // Double-init dedup (increment 1): collapse two content-identical idempotent creates (Share).
 fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
-    IsIdempotent(CreateIfAbsentEffect { key_source: _ }) => true
-    IsBreaking(CreateEffect { cause: _ }) => false
+    IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => true
+    IsIdempotent(ReadEffect) => false
+    IsIdempotent(UpsertEffect { key_source: key_source }) => false
+    IsIdempotent(DeleteEffect { key_source: key_source }) => false
+    IsBreaking(CreateEffect { cause: PostAlways }) => false
+    IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
     IsBreaking(AppendEffect) => false
-    IsIdempotent(_) => false
   }
 }
 
@@ -186,9 +189,19 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
       match b {
         IsIdempotent(CreateIfAbsentEffect { key_source: kb }) =>
           key_source_eq(a: ka, b: kb)
-        _ => false
+        IsIdempotent(ReadEffect) => false
+        IsIdempotent(UpsertEffect { key_source: key_source }) => false
+        IsIdempotent(DeleteEffect { key_source: key_source }) => false
+        IsBreaking(CreateEffect { cause: PostAlways }) => false
+        IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
+        IsBreaking(AppendEffect) => false
       }
-    _ => false
+    IsIdempotent(ReadEffect) => false
+    IsIdempotent(UpsertEffect { key_source: key_source }) => false
+    IsIdempotent(DeleteEffect { key_source: key_source }) => false
+    IsBreaking(CreateEffect { cause: PostAlways }) => false
+    IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false
+    IsBreaking(AppendEffect) => false
   }
 }
 

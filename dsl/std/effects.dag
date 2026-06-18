@@ -119,7 +119,7 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
     DeleteEffect => true
     CreateEffect { cause: cause } =>
       match cause {
-        CreateIfAbsent { key_source: _ } => true
+        CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
       }
     AppendEffect => false
@@ -148,7 +148,7 @@ fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
-        CreateIfAbsent { key_source: _ } => true
+        CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
       }
     _ => false
@@ -370,7 +370,7 @@ fn check_modifier_vs_derivation(
     match op.shape {
       CreateEffect { cause: PostAlways } =>
         DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
-      CreateEffect { cause: CreateIfAbsent { key_source: _ } } =>
+      CreateEffect { cause: CreateIfAbsent { key_source: key_source } } =>
         Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
       _ =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
