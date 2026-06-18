@@ -1,0 +1,34 @@
+// Scope: canonical QualifiedName module identities for extdeps_shape_transport_policy witnesses.
+// Single authority — module path from `module` declarations, not filepath nicknames.
+
+module v2.lens.extdeps_shape_transport_policy.module_refs
+
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+
+data extdeps_cargo_build_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^cargo_build, tail: QnEmpty }
+}
+
+data extdeps_git_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^git, tail: QnEmpty }
+}
+
+data extdeps_gcp_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^cloud,
+    tail: QnCons { head: ^gcp, tail: QnCons { head: ^gcp, tail: QnEmpty } }
+  }
+}
+
+data extdeps_github_gists_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^github, tail: QnCons { head: ^gists, tail: QnEmpty } }
+}
+
+data extdeps_runtime_local_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^runtime, tail: QnCons { head: ^local, tail: QnEmpty } }
+}

@@ -1,5 +1,4 @@
 // Scope: lens-unit GREEN witness — git Diff uses faithful primitives + parameters only.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.extdeps_shape_transport_policy.lens_unit.clean_git_diff
 
@@ -10,16 +9,16 @@ import v2.lens.extdeps_shape_transport_policy {
   extdeps_shape_transport_policy_dead_param_count_for_operation,
   extdeps_shape_transport_policy_violation_count_for_operation
 }
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_git_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-data clean_git_diff_path: String = "dsl/extdeps/git/git.dag"
 data clean_git_diff_service: String = "git.Core"
 data clean_git_diff_operation: String = "Diff"
 
 data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
   ExtdepsTransportArgvFact {
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     transport_kind: Shell,
@@ -27,7 +26,7 @@ data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "git"
   },
   ExtdepsTransportArgvFact {
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     transport_kind: Shell,
@@ -35,7 +34,7 @@ data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "diff"
   },
   ExtdepsTransportArgvFact {
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     transport_kind: Shell,
@@ -43,7 +42,7 @@ data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "\{base\}"
   },
   ExtdepsTransportArgvFact {
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     transport_kind: Shell,
@@ -54,13 +53,13 @@ data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
 
 data clean_git_diff_input_facts: List<ExtdepsOperationInputFact> = [
   ExtdepsOperationInputFact {
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     param_name: "base"
   },
   ExtdepsOperationInputFact {
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     param_name: "head"
@@ -73,14 +72,14 @@ test fn clean_git_diff_is_green_holds() -> Bool {
   extdeps_shape_transport_policy_violation_count_for_operation(
     argv_facts: clean_git_diff_argv_facts,
     fusion_facts: clean_git_diff_fusion_facts,
-    path: clean_git_diff_path,
+    module: extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation
   ) == 0
     && extdeps_shape_transport_policy_dead_param_count_for_operation(
       argv_facts: clean_git_diff_argv_facts,
       input_facts: clean_git_diff_input_facts,
-      path: clean_git_diff_path,
+      module: extdeps_git_module,
       service: clean_git_diff_service,
       operation: clean_git_diff_operation
     ) == 0

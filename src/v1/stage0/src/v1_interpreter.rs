@@ -4948,6 +4948,39 @@ fn eval_builtin(
             Ok(Some(Value::Int(count)))
         }
 
+        "extdeps_qualified_name_resolves_in_derived_module_set" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg:
+                    "extdeps_qualified_name_resolves_in_derived_module_set requires a QualifiedName"
+                        .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::qualified_name_resolves_in_derived_module_set(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_dead_param_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_dead_param_count_for_qualified_name requires module, service, operation"
+                    .to_string(),
+            })?;
+            let service = expect_str(
+                positional.get(1).copied(),
+                "extdeps_dead_param_count_for_qualified_name",
+            )?;
+            let operation = expect_str(
+                positional.get(2).copied(),
+                "extdeps_dead_param_count_for_qualified_name",
+            )?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::dead_param_count_for_qualified_name(
+                    module, service, operation,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
         "transport_script_literal_violation_count_for_path" => {
             let path = expect_str(
                 positional.first().copied(),
@@ -4958,6 +4991,52 @@ fn eval_builtin(
                     path,
                 );
             Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_embedded_policy_literal_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_embedded_policy_literal_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count = crate::extdeps_shape_transport_policy_project::embedded_policy_literal_count_for_qualified_name(
+                module,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_policy_leak_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_policy_leak_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::policy_leak_count_for_qualified_name(
+                    module,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_transport_fusion_fork_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_transport_fusion_fork_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count = crate::extdeps_shape_transport_policy_project::transport_fusion_fork_count_for_qualified_name(
+                module,
+            );
+            Ok(Some(Value::Int(count)))
+        }
+
+        "extdeps_gist_create_declares_filename_input_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_gist_create_declares_filename_input_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::gist_create_declares_filename_input_for_qualified_name(
+                    module,
+                ),
+            )))
         }
 
         // Not a built-in — fall through to user-defined function lookup

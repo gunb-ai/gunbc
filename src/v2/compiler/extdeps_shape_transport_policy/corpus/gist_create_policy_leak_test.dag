@@ -1,33 +1,17 @@
-// Scope: corpus GREEN witness — reads live dsl/extdeps/github/gists.dag via filesystem_read.
-// Asserts the Create op no longer hardcodes the gunbc workflow filename "snapshot.md" in the
-// REST body; filename is a declared input and keys the files map instead.
+// Scope: corpus GREEN witness — structural projection over extdeps.github.gists.
+// Asserts Create op declares filename input (not a hardcoded workflow filename).
 // Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
 
 module v2.test.extdeps_shape_transport_policy.corpus.gist_create_policy_leak
 
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_gist_create_declares_filename_input
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_github_gists_module }
 import v2.std.logic { Bool }
-import v2.std.text { String }
-
-data gist_create_path: String = "dsl/extdeps/github/gists.dag"
-data gist_create_policy_leak_token: String = "snapshot.md"
-
-fn extdeps_live_file_lacks_token(path: String, token: String) -> Bool {
-  let source = filesystem_read(path: path)
-  !string_contains(source.content, token)
-}
-
-fn extdeps_live_file_contains_token(path: String, token: String) -> Bool {
-  let source = filesystem_read(path: path)
-  string_contains(source.content, token)
-}
 
 test fn corpus_gist_create_defused_holds() -> Bool {
-  extdeps_live_file_lacks_token(
-    path: gist_create_path,
-    token: gist_create_policy_leak_token
+  extdeps_live_module_gist_create_declares_filename_input(
+    module: extdeps_github_gists_module
   )
-    && extdeps_live_file_contains_token(
-      path: gist_create_path,
-      token: "filename: String"
-    )
 }
