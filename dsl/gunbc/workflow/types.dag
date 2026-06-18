@@ -20,10 +20,6 @@ import std.types {
 
 type ArtifactKind = Design | Review | Plan | CiReport
 type AuthorSource = Llm | Human
-// Coproduct receipt: terminal. Semantic source-kind axis for review authorship.
-// Unattributed is the fail-closed open case for coordinates that do not map to
-// a known Llm/Human/Policy kind.
-type ReviewSource = Llm | Human | Policy | Unattributed
 type SeverityLevel = Blocking | Suggestion | Info
 
 type ReviewDimension = Coherence | Quality | Requirements | Aspirational
@@ -89,7 +85,6 @@ type DesignReviewOutput {
   findings: List<DesignFinding>
   approved: Bool
   summary: String
-  source: ReviewSource
 }
 
 type DesignFinding {
