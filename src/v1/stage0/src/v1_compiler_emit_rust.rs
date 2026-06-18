@@ -471,6 +471,7 @@ pub fn render_rust_alias_rhs_type(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -488,9 +489,12 @@ pub fn render_rust_alias_rhs_type(
             })
         {
             name.clone()
-        } else {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
+        } else if ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+        {
+            rust_qualify_type_leaf_name(name.clone(), variant_to_enum.clone())
+        } else if ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0))
             {
                 {
                     let local_mod = module_to_filename(module_name.clone());
@@ -531,6 +535,7 @@ pub fn render_rust_alias_rhs_type(
                                 export_sets.clone(),
                                 typed_modules.clone(),
                                 module_index.clone(),
+                                variant_to_enum.clone(),
                             ));
                         }
                         __result
@@ -551,7 +556,6 @@ pub fn render_rust_alias_rhs_type(
             } else {
                 render_rust_type(n.clone(), shared_types.clone(), source_indices.clone())
             }
-        }
     })
 }
 
@@ -5979,6 +5983,7 @@ pub fn emit_typed_item(
                                             export_sets.clone(),
                                             typed_modules.clone(),
                                             module_index.clone(),
+                                            emit_info.variant_to_enum.clone(),
                                         ),
                                     ),
                                     ";".to_string(),
@@ -10167,6 +10172,25 @@ pub fn apply_field_clone(expr: String, field: String) -> String {
 
 pub fn clone_iterator_suffix() -> String {
     sharing_for_target(RenderTarget::Rust).clone_suffix.clone()
+}
+
+pub fn rust_qualify_type_leaf_name(
+    name: String,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
+    match v1_rt::map_get(&variant_to_enum, name.clone()) {
+        Some(parent) => {
+            if parent.as_str() != "" {
+                v1_rt::concat(
+                    v1_rt::concat(parent.clone(), "::".to_string()),
+                    name.clone(),
+                )
+            } else {
+                name.clone()
+            }
+        }
+        None => name.clone(),
+    }
 }
 
 pub fn effective_variant_parent(

@@ -50,10 +50,6 @@ mod compiler_tests {
                         .unwrap()
                         .to_string_lossy()
                         .to_string();
-                    // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules.
-                    if rel.contains("/tests/") {
-                        continue;
-                    }
                     let content = std::fs::read_to_string(&path)
                         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
                     out.push((rel, content));
