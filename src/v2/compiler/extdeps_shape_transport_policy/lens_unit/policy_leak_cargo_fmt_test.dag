@@ -8,12 +8,13 @@ import v2.lens.extdeps_shape_transport_policy {
   ExtdepsTransportFusionFact,
   extdeps_shape_transport_policy_violation_count
 }
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
 data policy_leak_cargo_fmt_argv_facts: List<ExtdepsTransportArgvFact> = [
   ExtdepsTransportArgvFact {
-    path: "dsl/extdeps/rust/cargo_build.dag",
+    module: extdeps_cargo_build_module,
     service: "cargo.Build",
     operation: "Fmt",
     transport_kind: Shell,
@@ -21,7 +22,7 @@ data policy_leak_cargo_fmt_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_token: "--all"
   },
   ExtdepsTransportArgvFact {
-    path: "dsl/extdeps/rust/cargo_build.dag",
+    module: extdeps_cargo_build_module,
     service: "cargo.Build",
     operation: "Fmt",
     transport_kind: Shell,
