@@ -3,8 +3,8 @@
 // GREEN: RuntimePrimitive projects with BOTH type and bytes (structural round-trip);
 //        RuntimeAggregate of primitives projects; Reference/Closure/Unit stay
 //        Unrepresentable; aggregate with Reference field fails closed.
-// RED (discriminating): type-only tag check would certify without bytes edge;
-//        fabricated Reference projection would break aggregate fail-closed.
+// RED (discriminating): fabricated Reference projection would break aggregate fail-closed.
+// Type-only bytes RED: primitive_projection_bytes_edge_present (flips on bytes-drop perturbation).
 //
 // Run: claim_batch --source-root src/v2 --entry src/v2/std/grounding/runtime_value_node_projection_test.dag --function runtime_value_node_projection_honest_partial_holds --claim-run
 
@@ -172,18 +172,6 @@ fn primitive_projection_bytes_edge_present(value: RuntimeValue) -> Bool {
   }
 }
 
-// RED (discriminating): type-only check certifies without verifying bytes — the gap this cut closes.
-fn red_type_only_projection_certifies_without_bytes_check(value: RuntimeValue) -> Bool {
-  match runtime_value_node_projection(value: value) {
-    RuntimeValueNodeProjected { node: projected } =>
-      match find_named_child(root: projected, name: ^runtime_primitive_type_node_projection) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    RuntimeValueNodeUnrepresentable => false
-  }
-}
-
 // RED (discriminating): fabricated Reference→Projected would break aggregate fail-closed.
 fn red_reference_fabrication_would_break_aggregate_fail_closed() -> Bool {
   rvnp_test_is_unrepresentable(value: rvnp_test_aggregate_with_reference_field())
@@ -197,5 +185,4 @@ test fn runtime_value_node_projection_honest_partial_holds() -> Bool {
     && rvnp_test_is_unrepresentable(value: rvnp_test_closure_value())
     && rvnp_test_is_unrepresentable(value: rvnp_test_unit_value())
     && red_reference_fabrication_would_break_aggregate_fail_closed()
-    && red_type_only_projection_certifies_without_bytes_check(value: rvnp_test_primitive_value())
 }

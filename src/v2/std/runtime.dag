@@ -154,6 +154,9 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
 // ComputationNode{Value} — a different axis than RuntimePrimitiveValue{type,bytes};
 // no existing faithful (type+bytes) Node encoding to reuse. Encoding follows
 // std integer/grammar named-edge Conj + fold_list_node list spines.
+// Forward (Cut 4+): unify with the compiler's literal/value-node representation if
+// eval-output Nodes must interchange with source literal nodes — avoid silent
+// parallel-representation debt.
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
