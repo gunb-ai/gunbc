@@ -12,6 +12,7 @@ import extdeps.formats.yaml {
 import gunbc.workflow_yaml_project { project_workflow_to_yaml, steps_yaml, jobs_yaml, step_yaml }
 import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
 import gunbc.ci_workflow { ci_workflow }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -157,6 +158,27 @@ fn witness_restore_keys_content_deeper_than_key() -> Bool {
   )
 }
 
+fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "if sccache --show-stats >/dev/null 2>&1; then") &&
+    string_contains(s: yaml, pattern: "RUSTC_WRAPPER=sccache") &&
+    string_contains(s: yaml, pattern: "CARGO_INCREMENTAL=0") &&
+    string_contains(s: yaml, pattern: "CARGO_BUILD_JOBS=1") &&
+    !string_contains(s: yaml, pattern: "sccache --stop-server") &&
+    !string_contains(s: yaml, pattern: "sccache --start-server") &&
+    !string_contains(s: yaml, pattern: "SCCACHE_DIR=$RUNNER_TEMP/sccache")
+}
+
+// Full-file drift gate (`ci_yml_drifted` == byte-identical to `expected_ci_yml()`); these
+// pin distinctive `gunbc_ci_workflow_run` projections in the committed step body.
+fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
+  let yaml = expected_ci_yml()
+  let script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
+  string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
+    string_contains(s: yaml, pattern: "$ROOT/target/release/claim_executor") &&
+    string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
+}
+
 fn ci_yaml_serializer_keystone_holds() -> Bool {
   witness_fetch_depth_is_int_not_string() &&
     witness_rustflags_empty_string_quoted() &&
@@ -170,5 +192,7 @@ fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_cache_key_plain_not_quoted() &&
     witness_multiline_without_block_scalar_is_invalid() &&
     witness_cache_path_not_flat_multiline_sibling() &&
-    witness_restore_keys_content_deeper_than_key()
+    witness_restore_keys_content_deeper_than_key() &&
+    witness_sccache_wired_when_fleet_daemon_up() &&
+    witness_gunbc_ci_step_projects_run_script_markers()
 }

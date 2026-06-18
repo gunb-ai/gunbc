@@ -4,7 +4,7 @@
 // delegates the owned-fold collector here via pub use.
 
 use crate::v1_compiler_dag_collect_support::{
-    dag_node_key_collision_error, dag_node_surface_fingerprint, DagCollectAcc,
+    dag_node_key_collision_error, dag_node_surface_fingerprint, is_synthetic_span, DagCollectAcc,
 };
 use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
@@ -75,6 +75,11 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
     let anchor = dag_node_collection_anchor(node);
+    // Synthetic scaffold nodes share a 0..0 span — key by recursive structure so
+    // distinct subtrees do not alias (span-bearing nodes stay span-keyed).
+    if is_synthetic_span(&anchor.span) {
+        return v1_rt::concat(":0..0:".to_string(), dag_node_fingerprint(anchor.clone()));
+    }
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -175,7 +180,7 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
         Some(prior) => {
             if prior.as_str() == fp.as_str() {
                 acc
-            } else if anchor.span.start == 0 && anchor.span.end == 0 {
+            } else if is_synthetic_span(&anchor.span) {
                 Rc::new(DagCollectAcc {
                     seen: acc.seen.clone(),
                     order: acc.order.clone(),

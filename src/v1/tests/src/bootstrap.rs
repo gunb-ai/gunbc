@@ -111,6 +111,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "v1_compiler_dag_collect.rs",
+        "v1_compiler_dag_collect_support.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
@@ -172,6 +173,9 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=rest_transport_facts.rs")
         .arg("--exclude=wire_value_serialize.rs")
         .arg("--exclude=coproduct_reflection.rs")
+        .arg("--exclude=resolved_graph_cache.rs")
+        .arg("--exclude=v1_compiler_dag_collect.rs")
+        .arg("--exclude=v1_compiler_dag_collect_support.rs")
         .arg(dir_a)
         .arg(dir_b)
         .output()
