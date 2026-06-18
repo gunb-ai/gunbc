@@ -22,7 +22,7 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
 - Lens universalization + host-language ban — in flight (quiet-swift-814)
   - host-language ban: enforcement via `shell.Exec.Run.script` String→ShellProgram typecheck (#5147 landed; type-flip capstone warm-badger); #5132 substring lens retired TERMINAL
   - retire 2 `.sh` transports: blocked on parameterized-argv modeling (source_root_ingest, layering_imports_scan)
-  - tier 0: `v2.std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landing
+  - tier 0: `std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landed; ScheduleLensVerdict migrated
   - tier 1: cost / complexity / synthesis → always-required, structural budget (enrolls resolve → catches P3 class)
   - tier 2: `InferredTree`+deps lenses → adapters, then enroll
 
