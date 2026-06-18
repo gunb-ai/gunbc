@@ -13,8 +13,8 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.algebra { Cons, Empty, algebra_empty_conj }
-import v2.std.logic { Bool, False, True }
+import v2.std.algebra { fold_list, fold_list_node, algebra_empty_conj }
+import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
 import v2.std.node {
@@ -172,26 +172,16 @@ fn runtime_value_symbol_atom(sym: Symbol) -> Node {
 
 fn runtime_bit_node_projection(bit: Bool) -> Node {
   match bit {
-    True => runtime_value_symbol_atom(sym: ^runtime_bit_true_tag)
-    False => runtime_value_symbol_atom(sym: ^runtime_bit_false_tag)
+    true => runtime_value_symbol_atom(sym: ^runtime_bit_true_tag)
+    false => runtime_value_symbol_atom(sym: ^runtime_bit_false_tag)
   }
 }
 
 fn runtime_bits_list_node(bits: List<Bool>) -> Node {
-  match bits {
-    Empty => algebra_empty_conj()
-    Cons { head: h, tail: t } =>
-      runtime_value_conj_node(children: [
-        runtime_value_named_edge(
-          name: ^fold_list_node_head,
-          target: runtime_bit_node_projection(bit: h)
-        ),
-        runtime_value_named_edge(
-          name: ^fold_list_node_tail,
-          target: runtime_bits_list_node(bits: t)
-        )
-      ])
-  }
+  fold_list_node(
+    xs: bits,
+    item_node: fn(bit) { runtime_bit_node_projection(bit: bit) }
+  )
 }
 
 fn runtime_byte_node_projection(byte: Byte) -> Node {
@@ -204,20 +194,10 @@ fn runtime_byte_node_projection(byte: Byte) -> Node {
 }
 
 fn runtime_bytes_list_node(bytes: List<Byte>) -> Node {
-  match bytes {
-    Empty => algebra_empty_conj()
-    Cons { head: h, tail: t } =>
-      runtime_value_conj_node(children: [
-        runtime_value_named_edge(
-          name: ^fold_list_node_head,
-          target: runtime_byte_node_projection(byte: h)
-        ),
-        runtime_value_named_edge(
-          name: ^fold_list_node_tail,
-          target: runtime_bytes_list_node(bytes: t)
-        )
-      ])
-  }
+  fold_list_node(
+    xs: bytes,
+    item_node: fn(byte) { runtime_byte_node_projection(byte: byte) }
+  )
 }
 
 fn runtime_primitive_value_node_projection(
@@ -259,13 +239,14 @@ fn runtime_field_value_node_projection(
 }
 
 fn runtime_fields_list_node(fields: List<RuntimeFieldValue>) -> RuntimeValueNodeProjection {
-  match fields {
-    Empty => RuntimeValueNodeProjected { node: algebra_empty_conj() }
-    Cons { head: h, tail: t } =>
-      match runtime_field_value_node_projection(field_value: h) {
-        RuntimeValueNodeProjected { node: head_node } =>
-          match runtime_fields_list_node(fields: t) {
-            RuntimeValueNodeProjected { node: tail_node } =>
+  fold_list(
+    xs: fields,
+    empty: RuntimeValueNodeProjected { node: algebra_empty_conj() },
+    cons: fn(acc, field_value) {
+      match acc {
+        RuntimeValueNodeProjected { node: tail_node } =>
+          match runtime_field_value_node_projection(field_value: field_value) {
+            RuntimeValueNodeProjected { node: head_node } =>
               RuntimeValueNodeProjected {
                 node: runtime_value_conj_node(children: [
                   runtime_value_named_edge(
@@ -282,7 +263,8 @@ fn runtime_fields_list_node(fields: List<RuntimeFieldValue>) -> RuntimeValueNode
           }
         RuntimeValueNodeUnrepresentable => RuntimeValueNodeUnrepresentable
       }
-  }
+    }
+  )
 }
 
 fn runtime_aggregate_value_node_projection(

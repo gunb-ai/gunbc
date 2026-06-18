@@ -5,12 +5,13 @@
 
 module v2.test.std_grounding.runtime_value_node_projection
 
-import v2.std.collection { Empty }
-import v2.std.logic { Bool, True }
+import v2.std.algebra { Empty }
+import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
   Node,
+  Symbol,
   SyntheticOccurrence,
   TypeNode
 }
@@ -43,7 +44,7 @@ fn rvnp_test_type_node(sym: Symbol) -> Node {
 }
 
 fn rvnp_test_byte() -> Byte {
-  Byte { bits: [True] }
+  Byte { bits: [true] }
 }
 
 fn rvnp_test_primitive_value() -> RuntimeValue {
