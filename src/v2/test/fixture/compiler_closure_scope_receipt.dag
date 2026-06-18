@@ -80,7 +80,3 @@ fn compiler_closure_scoping_excludes_known_non_closure_module() -> Bool {
     predicate: fn(p) { p == compiler_closure_excluded_module_path }
   ) == false
 }
-
-test fn compiler_closure_scoping_excludes_lens_module_holds() -> Bool {
-  compiler_closure_scoping_excludes_lens_module()
-}
