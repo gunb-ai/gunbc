@@ -7,7 +7,7 @@
 module v2.std.diagnostic
 
 
-import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item }
+import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item, fold_list, freemonoid_empty }
 import v2.std.node { Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
@@ -313,7 +313,10 @@ fn sequence_outcome<T>(
   xs: List<Outcome<T>>,
   policy: StageDiagnosticPolicy
 ) -> Outcome<List<T>> {
-  fold(xs, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, o) {
+  fold_list(
+    xs: xs,
+    empty: outcome_accepted(value: freemonoid_empty()),
+    cons: fn(acc, o) {
     match policy.accumulation {
       ShortCircuit => match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
