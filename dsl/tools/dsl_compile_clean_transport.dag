@@ -5,7 +5,7 @@
 //
 // Both transports are modeled off hand-written `let script = "..."` blobs onto structured
 // `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
-// ROOT/GUNBC/ensure-built prelude is a single `compile_prelude()` (DRY, §2). Proven green by
+// ROOT/GUNBC/ensure-built prelude is a single `ensure_gunbc_built()` (DRY, §2). Proven green by
 // execution (each gate runs the real compile).
 
 module tools.dsl_compile_clean_transport
@@ -16,47 +16,9 @@ import extdeps.languages.bash.program {
   Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
   Lit, VarRef, Concat, CmdSubst,
   AndThen, OrElse, StderrToNull, StdoutAndStderrToNull,
-  lit, var_ref, command, assign, test_not_executable, serialize_bash
+  lit, var_ref, command, assign, serialize_bash
 }
-
-// Shared prelude:
-//   ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-//   GUNBC="$ROOT"/target/release/gunbc
-//   if [ ! -x "$GUNBC" ]; then (cd "$ROOT" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi
-fn compile_prelude() -> List<ShellStmt> {
-  let root = var_ref(name: "ROOT")
-  let gunbc = var_ref(name: "GUNBC")
-  [
-    assign(name: "ROOT", value: CmdSubst { body: AndOr {
-      left: WithRedir {
-        stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
-        redir: StderrToNull
-      },
-      op: OrElse,
-      right: command(words: [lit(text: "pwd")])
-    } }),
-    assign(name: "GUNBC", value: Concat { parts: [root, lit(text: "/target/release/gunbc")] }),
-    If {
-      cond: test_not_executable(path: gunbc),
-      then: [
-        AndOr {
-          left: Subshell { body: [
-            AndOr {
-              left: command(words: [lit(text: "cd"), root]),
-              op: AndThen,
-              right: command(words: [
-                lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-                lit(text: "--release"), lit(text: "--bin"), lit(text: "gunbc")
-              ])
-            }
-          ] },
-          op: OrElse,
-          right: Exit { code: 1 }
-        }
-      ]
-    }
-  ]
-}
+import tools.host_prelude { ensure_gunbc_built }
 
 // set -e; <prelude>; OUT=$(mktemp -d); "$GUNBC" compile --source-root "$ROOT"/dsl ... ; rm -rf "$OUT"
 fn clean_tree_compile_program() -> ShellProgram {
@@ -65,7 +27,7 @@ fn clean_tree_compile_program() -> ShellProgram {
   let out = var_ref(name: "OUT")
   ShellProgram {
     set_e: true,
-    statements: concat(compile_prelude(), [
+    statements: concat(ensure_gunbc_built(), [
       assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
       command(words: [
         gunbc, lit(text: "compile"),
@@ -98,7 +60,7 @@ fn perturb_program() -> ShellProgram {
   let tmp = var_ref(name: "TMP")
   ShellProgram {
     set_e: true,
-    statements: concat(compile_prelude(), [
+    statements: concat(ensure_gunbc_built(), [
       assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
       command(words: [
         lit(text: "cp"), lit(text: "-r"),
