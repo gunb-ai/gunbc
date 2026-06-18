@@ -545,6 +545,8 @@ fn rust_string_policy_for_naming(naming: Node, source_indices: Map<String, Newli
     rust_string_as_authored_policy()
   } else if naming_name == "SnakeCase" {
     rust_snake_string_policy()
+  } else if naming_name == "ScreamingSnakeCase" {
+    rust_serde_policy(enum_attr: "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]", rename_prefix: none, rename_suffix: none, rename_style: none)
   } else if naming_name == "StripPrefixAndSnakeCase" {
     match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
       Present { value: prefix } =>
