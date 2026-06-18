@@ -148,7 +148,7 @@ fn quality_is_identity(q: CoercionQuality) -> Bool {
     Widened => false
   }
 }
-data witness_find_witness_identity_accepts: Bool = match find_witness(
+test data witness_find_witness_identity_accepts: Bool = match find_witness(
   source_facts: identity_source_node(),
   candidates: candidate_set_identity_single(),
   predicate: exact_identity_predicate(),
@@ -157,7 +157,7 @@ data witness_find_witness_identity_accepts: Bool = match find_witness(
   Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   Rejected { diagnostics: _ } => false
 }
-data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_non_identity_single(),
@@ -165,7 +165,7 @@ data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_constraint_rule_accepts: Bool = match find_witness(
+test data witness_find_witness_constraint_rule_accepts: Bool = match find_witness(
   source_facts: identity_source_node(),
   candidates: candidate_set_identity_single(),
   predicate: constraint_predicate(),
@@ -174,7 +174,7 @@ data witness_find_witness_constraint_rule_accepts: Bool = match find_witness(
   Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
   Rejected { diagnostics: _ } => false
 }
-data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
+test data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_single(),
@@ -182,7 +182,7 @@ data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_for_ambiguous_candidate(
+test data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_for_ambiguous_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
@@ -190,7 +190,7 @@ data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_for_amb
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
@@ -200,7 +200,7 @@ data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candi
     }
   )
 )
-data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+test data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_for_no_candidate(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
@@ -210,7 +210,7 @@ data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_for_no_
     }
   )
 )
-data witness_verify_witness_accepts: Bool = match verify_witness(
+test data witness_verify_witness_accepts: Bool = match verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
   predicate: exact_identity_predicate(),
@@ -219,7 +219,7 @@ data witness_verify_witness_accepts: Bool = match verify_witness(
   Accepted { value: _, diagnostics: _ } => true
   Rejected { diagnostics: _ } => false
 }
-data witness_verify_witness_property_mismatch_rejects: Bool = match verify_witness(
+test data witness_verify_witness_property_mismatch_rejects: Bool = match verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
   predicate: exact_identity_predicate(),
@@ -228,7 +228,7 @@ data witness_verify_witness_property_mismatch_rejects: Bool = match verify_witne
   Accepted { value: _, diagnostics: _ } => false
   Rejected { diagnostics: _ } => true
 }
-data witness_verify_witness_evidence_mismatch_rejects: Bool = match verify_witness(
+test data witness_verify_witness_evidence_mismatch_rejects: Bool = match verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
   predicate: exact_identity_predicate(),
@@ -249,7 +249,7 @@ fn identity_grounding() -> CanonicalGrounding {
 fn coercion_identity_candidates() -> CoercionCandidateSet {
   CoercionCandidateSet { set: candidate_set_identity_single() }
 }
-data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
+test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
   source: identity_grounding(),
   candidates: coercion_identity_candidates(),
   policy: TargetDeclaredPriority { priority: identity_source_node() }

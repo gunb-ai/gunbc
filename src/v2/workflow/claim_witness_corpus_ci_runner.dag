@@ -229,7 +229,7 @@ data corpus_ci_gate_row_witness_sg2_arrow: ClaimWitnessCorpusClaimRunRow = Claim
   label: "self-gen arrow type-expression projection",
   entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
   function: "witness_sg2_arrow_holds",
-  expected: ExpectFail { bind_anchor: "#4801" }
+  expected: ExpectPass
 }
 
 data corpus_ci_gate_row_witness_sg2_projection_falsification: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {

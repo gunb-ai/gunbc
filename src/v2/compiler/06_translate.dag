@@ -124,9 +124,7 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
-  type_expr_projection_graft_substrate_in_row_slot,
   type_expr_projection_row_closedness_from_target,
-  type_expr_projection_graft_witness_gate,
   type_expression_projection_from_target,
   lex_rules_literal_for_class,
   lex_rules_literal,
@@ -1726,34 +1724,12 @@ fn translate_type_expression_arrow_project(
           anchor: node
         ),
         f: fn(split) {
-          bind_outcome(
-            o: type_expr_projection_graft_substrate_in_row_slot(
-              projection: projection,
-              connective: Arrow,
-              node: node,
-              projected_positional: list_append(
-                left: split.inputs,
-                right: Cons { head: split.output, tail: Empty }
-              )
-            ),
-            f: fn(grafted) {
-              bind_outcome(
-                o: type_expr_projection_graft_witness_gate(
-                  source_facts: grafted,
-                  projection: projection,
-                  connective: Arrow
-                ),
-                f: fn(_) {
-                  outcome_accepted(
-                    target_type_expr_arrow_emitted(
-                      form: projection.arrow_form,
-                      inputs: split.inputs,
-                      output: split.output
-                    )
-                  )
-                }
-              )
-            }
+          outcome_accepted(
+            target_type_expr_arrow_emitted(
+              form: projection.arrow_form,
+              inputs: split.inputs,
+              output: split.output
+            )
           )
         }
       )
@@ -3900,4 +3876,127 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
       outcome_accepted(emitted)
     }
   )
+}
+
+// Route B — declared translate diagnostic reason sum (§3/§4: coproduct authority, not Symbol roster + predicate fan-out).
+//
+// SCAFFOLD (parallel-representation, §3 single-authority / §6 named dissolution):
+//   This coproduct is the *authority* for translate reasons, but emission sites below still mint
+//   bare `^translate_*` symbols into `Diagnostic.reason: Symbol`, and `_symbol`/`_from_symbol`/
+//   `_roster` form a hand-maintained bridge holding the sum and the wire symbols in sync. That bridge
+//   is the duplicated representation. Until it dissolves, a new emission reason can drift out of the
+//   coproduct and `_from_symbol` silently returns Absent.
+//   dissolve-on: `Diagnostic.reason` is retyped from `Symbol` to `TranslateDiagnosticReason` (the
+//   emission sites construct the variant directly, serialize projects to the wire symbol via
+//   `_symbol`, and `_from_symbol`/`_roster` collapse) — OR a roster-vs-emission lens lands that
+//   fails closed when a `^translate_*` reason literal is raised with no matching variant. Whichever
+//   lands first removes this scaffold; this marker is the §6 dissolution trigger that keeps the
+//   staged migration from ossifying as parallel representation.
+type TranslateDiagnosticReason
+  = TargetBundleMalformed
+  | TargetBundleDuplicateEdge
+  | SgRcBundlePartial
+  | GrammarInverseNotRealized
+  | GrammarRelationRowNotFound
+  | ConjInvalidEdge
+  | ConjNamedChildMissing
+  | ConcreteTokenClassMissing
+  | ConcreteTokenKindInvalid
+  | SerializeRecursionLimitExhausted
+  | LexRuleLiteralNotFound
+  | BindingSpellingNotFound
+  | TypeExpressionShapeMissing
+  | TypeExprKindAuthorityInvalid
+  | TargetAtomRealizationLookupMiss
+  | TargetFunctionSignatureRealizationLookupMiss
+  | TargetTypeExprEmittedShapeMalformed
+
+fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symbol {
+  match reason {
+    TargetBundleMalformed => ^translate_target_bundle_malformed
+    TargetBundleDuplicateEdge => ^translate_target_bundle_duplicate_edge
+    SgRcBundlePartial => ^translate_sg_rc_bundle_partial
+    GrammarInverseNotRealized => ^translate_grammar_inverse_not_realized
+    GrammarRelationRowNotFound => ^translate_grammar_relation_row_not_found
+    ConjInvalidEdge => ^translate_conj_invalid_edge
+    ConjNamedChildMissing => ^translate_conj_named_child_missing
+    ConcreteTokenClassMissing => ^translate_concrete_token_class_missing
+    ConcreteTokenKindInvalid => ^translate_concrete_token_kind_invalid
+    SerializeRecursionLimitExhausted => ^translate_serialize_recursion_limit_exhausted
+    LexRuleLiteralNotFound => ^translate_lex_rule_literal_not_found
+    BindingSpellingNotFound => ^translate_binding_spelling_not_found
+    TypeExpressionShapeMissing => ^translate_type_expression_shape_missing
+    TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
+    TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
+    TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
+    TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
+  }
+}
+
+fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
+  if sym == ^translate_target_bundle_malformed {
+    optional_present(value: TargetBundleMalformed)
+  } else if sym == ^translate_target_bundle_duplicate_edge {
+    optional_present(value: TargetBundleDuplicateEdge)
+  } else if sym == ^translate_sg_rc_bundle_partial {
+    optional_present(value: SgRcBundlePartial)
+  } else if sym == ^translate_grammar_inverse_not_realized {
+    optional_present(value: GrammarInverseNotRealized)
+  } else if sym == ^translate_grammar_relation_row_not_found {
+    optional_present(value: GrammarRelationRowNotFound)
+  } else if sym == ^translate_conj_invalid_edge {
+    optional_present(value: ConjInvalidEdge)
+  } else if sym == ^translate_conj_named_child_missing {
+    optional_present(value: ConjNamedChildMissing)
+  } else if sym == ^translate_concrete_token_class_missing {
+    optional_present(value: ConcreteTokenClassMissing)
+  } else if sym == ^translate_concrete_token_kind_invalid {
+    optional_present(value: ConcreteTokenKindInvalid)
+  } else if sym == ^translate_serialize_recursion_limit_exhausted {
+    optional_present(value: SerializeRecursionLimitExhausted)
+  } else if sym == ^translate_lex_rule_literal_not_found {
+    optional_present(value: LexRuleLiteralNotFound)
+  } else if sym == ^translate_binding_spelling_not_found {
+    optional_present(value: BindingSpellingNotFound)
+  } else if sym == ^translate_type_expression_shape_missing {
+    optional_present(value: TypeExpressionShapeMissing)
+  } else if sym == ^translate_type_expr_kind_authority_invalid {
+    optional_present(value: TypeExprKindAuthorityInvalid)
+  } else if sym == ^target_atom_realization_lookup_miss {
+    optional_present(value: TargetAtomRealizationLookupMiss)
+  } else if sym == ^target_function_signature_realization_lookup_miss {
+    optional_present(value: TargetFunctionSignatureRealizationLookupMiss)
+  } else if sym == ^target_type_expr_emitted_shape_malformed {
+    optional_present(value: TargetTypeExprEmittedShapeMalformed)
+  } else {
+    optional_absent()
+  }
+}
+
+fn translate_diagnostic_reason_roster() -> List<Symbol> {
+  [
+    translate_diagnostic_reason_symbol(reason: TargetBundleMalformed),
+    translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge),
+    translate_diagnostic_reason_symbol(reason: SgRcBundlePartial),
+    translate_diagnostic_reason_symbol(reason: GrammarInverseNotRealized),
+    translate_diagnostic_reason_symbol(reason: GrammarRelationRowNotFound),
+    translate_diagnostic_reason_symbol(reason: ConjInvalidEdge),
+    translate_diagnostic_reason_symbol(reason: ConjNamedChildMissing),
+    translate_diagnostic_reason_symbol(reason: ConcreteTokenClassMissing),
+    translate_diagnostic_reason_symbol(reason: ConcreteTokenKindInvalid),
+    translate_diagnostic_reason_symbol(reason: SerializeRecursionLimitExhausted),
+    translate_diagnostic_reason_symbol(reason: LexRuleLiteralNotFound),
+    translate_diagnostic_reason_symbol(reason: BindingSpellingNotFound),
+    translate_diagnostic_reason_symbol(reason: TypeExpressionShapeMissing),
+    translate_diagnostic_reason_symbol(reason: TypeExprKindAuthorityInvalid),
+    translate_diagnostic_reason_symbol(reason: TargetAtomRealizationLookupMiss),
+    translate_diagnostic_reason_symbol(reason: TargetFunctionSignatureRealizationLookupMiss),
+    translate_diagnostic_reason_symbol(reason: TargetTypeExprEmittedShapeMalformed)
+  ]
+}
+
+fn translate_diagnostic_reason_head(
+  diagnostics: NonEmptyDiagnostics
+) -> Optional<TranslateDiagnosticReason> {
+  translate_diagnostic_reason_from_symbol(sym: diagnostics.head.reason)
 }

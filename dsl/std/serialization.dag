@@ -28,6 +28,7 @@ type DeclarationRef = String
 //   until then, this coproduct is the single source-level naming policy surface.
 // AsAuthored: variant name as-is (User → "User", Bot → "Bot").
 // SnakeCase: variant name lowercased with underscores (EndTurn → "end_turn").
+// ScreamingSnakeCase: variant name uppercased with underscores (ChangesRequested → "CHANGES_REQUESTED").
 // StripPrefixAndSnakeCase / StripSuffixAndSnakeCase /
 // StripPrefixSuffixAndSnakeCase: remove at least one authored affix, then
 // snake_case the result. These handle provider-domain variants whose source
@@ -35,6 +36,7 @@ type DeclarationRef = String
 type VariantNaming
   = AsAuthored
   | SnakeCase
+  | ScreamingSnakeCase
   | StripPrefixAndSnakeCase { prefix: String }
   | StripSuffixAndSnakeCase { suffix: String }
   | StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String }
