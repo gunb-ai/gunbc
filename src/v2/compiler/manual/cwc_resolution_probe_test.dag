@@ -1,47 +1,41 @@
-// THROWAWAY PROBE (C.i escalation gate) — do NOT commit.
-// Question: when the v2 pipeline ingests a standalone module carrying a coproduct
-// `type` decl + a `data CoproductWireContract` decl, does the resolved tree the
-// translate fold sees (tree.root) carry BOTH as sibling nodes — i.e. is the
-// CoproductWireContract reachable off tree.root for a minimal sibling-scan binding?
+// BOUNDARY-RECEIPT — v2 front-end n-ary-coproduct normalization gap (blocks C.i).
+//
+// WHAT THIS PROVES (green by execution today): the v2 front-end
+// (tokenize→parse→normalize) lowers a coproduct `type` decl with **≤2 variants** but
+// **rejects 3+ variants**. So no resolver-produced tree can carry a real multi-variant
+// enum (e.g. github ReviewEvent = Approve|RequestChanges|Comment|Pending) — which is the
+// input C.i ("v2 emit: module enum through fold into serde rename_all", node
+// adhoc-e6f251cb-02a) needs to flow a real enum + its CoproductWireContract through the
+// 06_translate fold into the rust_wire_serde serialize. C.i is therefore blocked UPSTREAM.
+//
+// THE GAP IS NOT a Disj well_formedness cap — Disj already accepts n-ary LabeledEdges with
+// no arity bound (src/v2/std/node.dag:466). The gap is the coproduct-RHS lowering of the
+// right-recursive `|` chain: dag_production_type_alias_rhs +
+// dag_production_type_alias_rhs_repeat_suffix (src/v2/extdeps/languages/dag.dag:1496-1517)
+// is NOT folded into a single n-ary Disj. Fix home: a normalize/sugar reduction in
+// 03_normalize.dag / std.compilers.sugar (sugar_rule_type's SugarUnwrapPositionalChild
+// unwraps the single RHS child and is NOT the arity gate).
+//
+// DISSOLUTION TRIGGER: when this witness flips RED, the chain→Disj fold has landed and 3+
+// variant coproducts now normalize => C.i is UNBLOCKED. That red is EXPECTED, not a
+// regression: go re-enable C.i (real enum + CoproductWireContract through the translate
+// fold arm), then delete this receipt. (Probe receipt for the gate-conclusion under PR
+// #5195; full method: drive tokenize→parse→normalize from a Source string via
+// dag_language_model_wave1().)
 
 module v2.test.manual.cwc_resolution_probe
 
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
-import v2.compiler.resolve { resolve }
-import v2.compiler.infer { infer, InferredTree }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Edge, fold_node, NodeFold }
-import v2.std.algebra { length }
+import v2.std.node { Node }
 
-data cwc_probe_source: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
-
-fn cwc_probe_resolved() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(text: cwc_probe_source, file: ^cwc_probe_file, rules: lm.lex),
-    f: fn(toks) {
-      bind_outcome(
-        o: parse(tokens: toks, grammar: lm.grammar),
-        f: fn(ptree) {
-          bind_outcome(
-            o: normalize(parse_tree: ptree),
-            f: fn(ntree) {
-              resolve(tree: ntree, lm: lm)
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-data cwc_src_fn: String = "module probe\nfn add(x: Int, y: Int) -> Int { x }\n"
-data cwc_src_coproduct: String = "module probe\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\n"
-data cwc_src_data: String = "module probe\ndata foo: Int = 5\n"
+// ≤2-variant coproducts normalize; 3+ do not (the boundary this receipt locks).
+data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
+data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -62,137 +56,8 @@ fn cwc_norm_accepts(src: String) -> Bool {
   }
 }
 
-data cwc_src_type_alias: String = "module probe\ntype T = Int\n"
-data cwc_src_type_single: String = "module probe\ntype T = A\n"
-data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
-data cwc_src_type_payload: String = "module probe\ntype T = A { x: Int } | B { y: Int }\n"
-
-test fn cwc_norm_type_alias() -> Bool { cwc_norm_accepts(src: cwc_src_type_alias) }
-test fn cwc_norm_type_single() -> Bool { cwc_norm_accepts(src: cwc_src_type_single) }
-test fn cwc_norm_type_two() -> Bool { cwc_norm_accepts(src: cwc_src_type_two) }
-test fn cwc_norm_type_payload() -> Bool { cwc_norm_accepts(src: cwc_src_type_payload) }
-
-data cwc_src_type_four_abcd: String = "module probe\ntype T = A | B | C | D\n"
-data cwc_src_type_review_T: String = "module probe\ntype T = Approve | RequestChanges | Comment | Pending\n"
-data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
-test fn cwc_norm_type_four_abcd() -> Bool { cwc_norm_accepts(src: cwc_src_type_four_abcd) }
-test fn cwc_norm_type_review_T() -> Bool { cwc_norm_accepts(src: cwc_src_type_review_T) }
-test fn cwc_norm_type_three() -> Bool { cwc_norm_accepts(src: cwc_src_type_three) }
-test fn cwc_norm_coproduct_recheck() -> Bool { cwc_norm_accepts(src: cwc_src_coproduct) }
-
-test fn cwc_norm_fn_only() -> Bool { cwc_norm_accepts(src: cwc_src_fn) }
-test fn cwc_norm_coproduct_only() -> Bool { cwc_norm_accepts(src: cwc_src_coproduct) }
-test fn cwc_norm_data_only() -> Bool { cwc_norm_accepts(src: cwc_src_data) }
-
-// 2-variant self-contained module (all coproducts <= 2 variants -> normalizes).
-data cwc_src_two_variant_full: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
-
-fn cwc_two_resolved() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(text: cwc_src_two_variant_full, file: ^cwc_probe_file, rules: lm.lex),
-    f: fn(toks) {
-      bind_outcome(o: parse(tokens: toks, grammar: lm.grammar), f: fn(ptree) {
-        bind_outcome(o: normalize(parse_tree: ptree), f: fn(ntree) {
-          resolve(tree: ntree, lm: lm)
-        })
-      })
-    }
-  )
-}
-
-test fn cwc_two_normalize_ok() -> Bool {
-  cwc_norm_accepts(src: cwc_src_two_variant_full)
-}
-
-test fn cwc_two_resolve_ok() -> Bool {
-  match cwc_two_resolved() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_two_infer_ok() -> Bool {
-  match cwc_two_resolved() {
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// Does the resolved 2-variant module carry both the coproduct decl and the
-// contract data decl as sibling children off tree.root?
-test fn cwc_two_root_sibling_count() -> Bool {
-  match cwc_two_resolved() {
-    Accepted { value: root, diagnostics: _ } => length(xs: root.children) > 3
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn cwc_probe_parsed() -> Outcome<Node> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(text: cwc_probe_source, file: ^cwc_probe_file, rules: lm.lex),
-    f: fn(toks) {
-      parse(tokens: toks, grammar: lm.grammar)
-    }
-  )
-}
-
-fn cwc_probe_normalized() -> Outcome<Node> {
-  bind_outcome(o: cwc_probe_parsed(), f: fn(ptree) { normalize(parse_tree: ptree) })
-}
-
-test fn cwc_probe_parse_ok() -> Bool {
-  match cwc_probe_parsed() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_probe_normalize_ok() -> Bool {
-  match cwc_probe_normalized() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// P1 — the full ingest chain accepts the standalone module.
-test fn cwc_probe_resolve_accepts() -> Bool {
-  match cwc_probe_resolved() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// P2 — tree.root is a module node carrying multiple sibling item decls
-// (so both the coproduct decl and the contract data decl are children).
-test fn cwc_probe_root_has_multiple_siblings() -> Bool {
-  match cwc_probe_resolved() {
-    Accepted { value: root, diagnostics: _ } => length(xs: root.children) > 3
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// P3 — the resolved tree carries the data-decl VALUE (record fields), not just
-// a name binding: total descendant-node count is large enough to include the
-// contract record + coproduct variants (sanity floor).
-fn cwc_probe_node_count(n: Node) -> Int {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(_) { 1 },
-      step: fn(acc, _edge, child_count) { acc + child_count }
-    }
-  )
-}
-
-test fn cwc_probe_value_bodies_present() -> Bool {
-  match cwc_probe_resolved() {
-    Accepted { value: root, diagnostics: _ } => cwc_probe_node_count(n: root) > 12
-    Rejected { diagnostics: _ } => false
-  }
+// GREEN today; flips RED the day the front-end chain→Disj fold lands (see header).
+test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_two)
+    && (cwc_norm_accepts(src: cwc_src_type_three) == false)
 }
