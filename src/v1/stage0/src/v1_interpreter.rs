@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // Persistent value carriers (ctrl#1533 phase 2), implementing the
 // v2.std.value_carrier declarations: HamtMap is a hash array mapped trie
@@ -3726,18 +3726,33 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
     }
 }
 
+const SHELL_TRANSIENT_RETRY_MAX: u8 = 3;
+
 fn shell_output_is_transient_infra(stderr: &str, spawn_err: Option<&str>) -> bool {
     let hay = format!("{} {}", stderr, spawn_err.unwrap_or_default()).to_lowercase();
     hay.contains("resource temporarily unavailable")
         || hay.contains("failed to spawn")
         || hay.contains("sccache: encountered fatal error")
-        || hay.contains("sccache: error:")
 }
 
-fn run_shell_argv(argv: &[String]) -> Result<std::process::Output, String> {
-    std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .output()
+fn shell_retry_note(next_attempt: u8) -> &'static str {
+    match next_attempt {
+        1 => "retry CARGO_BUILD_JOBS=1 (keep sccache)",
+        2 => "retry without RUSTC_WRAPPER",
+        _ => "retry",
+    }
+}
+
+fn run_shell_argv(argv: &[String], attempt: u8) -> Result<std::process::Output, String> {
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..]);
+    if attempt >= 1 {
+        cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+    if attempt >= 2 {
+        cmd.env_remove("RUSTC_WRAPPER");
+    }
+    cmd.output()
         .map_err(|e| format!("failed to execute '{}': {}", argv[0], e))
 }
 
@@ -3777,7 +3792,7 @@ fn dispatch_shell(
 
     let mut attempt = 0u8;
     loop {
-        match run_shell_argv(&argv) {
+        match run_shell_argv(&argv, attempt) {
             Ok(output) => {
                 let exit_code = output.status.code().unwrap_or(-1);
                 let stdout = String::from_utf8_lossy(&output.stdout)
@@ -3786,11 +3801,17 @@ fn dispatch_shell(
                 let stderr = String::from_utf8_lossy(&output.stderr)
                     .trim_end()
                     .to_string();
-                if exit_code != 0 && attempt == 0 && shell_output_is_transient_infra(&stderr, None)
+                if exit_code != 0
+                    && attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
+                    && shell_output_is_transient_infra(&stderr, None)
                 {
-                    eprintln!("[shell] transient infra error (exit {exit_code}), retrying once");
+                    eprintln!(
+                        "[shell] transient infra error (exit {exit_code}), {}",
+                        shell_retry_note(attempt + 1)
+                    );
                     log_shell_failure(exit_code, &stdout, &stderr);
-                    attempt = 1;
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_secs(1));
                     continue;
                 }
                 if exit_code != 0 {
@@ -3803,10 +3824,16 @@ fn dispatch_shell(
                 });
             }
             Err(spawn_err)
-                if attempt == 0 && shell_output_is_transient_infra("", Some(&spawn_err)) =>
+                if attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
+                    && shell_output_is_transient_infra("", Some(&spawn_err)) =>
             {
-                eprintln!("[shell] transient spawn error, retrying once: {spawn_err}");
-                attempt = 1;
+                eprintln!(
+                    "[shell] transient spawn error ({}), {}",
+                    spawn_err,
+                    shell_retry_note(attempt + 1)
+                );
+                attempt += 1;
+                std::thread::sleep(Duration::from_secs(1));
             }
             Err(spawn_err) => {
                 return Err(InterpError::TypeError { msg: spawn_err });
