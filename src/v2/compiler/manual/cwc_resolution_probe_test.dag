@@ -17,8 +17,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Edge, fold_node, NodeFold }
 import v2.std.algebra { length }
 
-data cwc_probe_source: String =
-  "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
+data cwc_probe_source: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
 fn cwc_probe_resolved() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -38,6 +37,34 @@ fn cwc_probe_resolved() -> Outcome<Node> {
       )
     }
   )
+}
+
+fn cwc_probe_parsed() -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(text: cwc_probe_source, file: ^cwc_probe_file, rules: lm.lex),
+    f: fn(toks) {
+      parse(tokens: toks, grammar: lm.grammar)
+    }
+  )
+}
+
+fn cwc_probe_normalized() -> Outcome<Node> {
+  bind_outcome(o: cwc_probe_parsed(), f: fn(ptree) { normalize(parse_tree: ptree) })
+}
+
+test fn cwc_probe_parse_ok() -> Bool {
+  match cwc_probe_parsed() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_probe_normalize_ok() -> Bool {
+  match cwc_probe_normalized() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // P1 — the full ingest chain accepts the standalone module.
