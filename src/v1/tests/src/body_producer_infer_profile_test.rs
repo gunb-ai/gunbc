@@ -6,11 +6,11 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::v1_compiler_infer;
-use v1_compiler::v1_std_core::module_items;
 use v1_compiler::v1_compiler_normalize;
 use v1_compiler::v1_compiler_resolve;
-use v1_compiler::v1_std_core::{authored_name_at, build_newline_index, Node, NewlineIndex};
 use v1_compiler::v1_rt;
+use v1_compiler::v1_std_core::module_items;
+use v1_compiler::v1_std_core::{authored_name_at, build_newline_index, NewlineIndex, Node};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
@@ -21,11 +21,8 @@ const ENTRY: &str = "src/v2/compiler/03_body_producer.dag";
 fn profile_body_producer_per_module_typecheck() {
     let ws = workspace_root();
     let entry_content = std::fs::read_to_string(ws.join(ENTRY)).expect("read entry");
-    let sources = resolve_imports_transitively_with_source_roots(
-        ENTRY,
-        &entry_content,
-        &[ws.join("src/v2")],
-    );
+    let sources =
+        resolve_imports_transitively_with_source_roots(ENTRY, &entry_content, &[ws.join("src/v2")]);
     eprintln!("\n=== body_producer closure: {} modules ===", sources.len());
 
     let mut modules = Vec::new();
@@ -34,16 +31,21 @@ fn profile_body_producer_per_module_typecheck() {
 
     let t_parse = Instant::now();
     for source in &sources {
-        let tokens =
-            v1_compiler::v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+            source.content.clone(),
+            source.path.clone(),
+        );
         let nl_index = build_newline_index(source.path.clone(), source.content.clone());
         let single_si = v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             nl_index.file.clone(),
             nl_index.clone(),
         );
-        let parsed =
-            v1_compiler::v1_compiler_parse::parse_with_table(tokens, single_si, intern_table.clone());
+        let parsed = v1_compiler::v1_compiler_parse::parse_with_table(
+            tokens,
+            single_si,
+            intern_table.clone(),
+        );
         intern_table = parsed.intern_table.clone();
         si_map.insert(nl_index.file.clone(), nl_index);
         let m = parsed
@@ -90,26 +92,28 @@ fn profile_target_model_per_item_analyze() {
     let ws = workspace_root();
     let entry = "src/v2/std/compilers/target_model.dag";
     let entry_content = std::fs::read_to_string(ws.join(entry)).expect("read entry");
-    let sources = resolve_imports_transitively_with_source_roots(
-        entry,
-        &entry_content,
-        &[ws.join("src/v2")],
-    );
+    let sources =
+        resolve_imports_transitively_with_source_roots(entry, &entry_content, &[ws.join("src/v2")]);
 
     let mut modules = Vec::new();
     let mut intern_table = v1_compiler::v1_std_core::empty_intern_table();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     for source in &sources {
-        let tokens =
-            v1_compiler::v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
+            source.content.clone(),
+            source.path.clone(),
+        );
         let nl_index = build_newline_index(source.path.clone(), source.content.clone());
         let single_si = v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             nl_index.file.clone(),
             nl_index.clone(),
         );
-        let parsed =
-            v1_compiler::v1_compiler_parse::parse_with_table(tokens, single_si, intern_table.clone());
+        let parsed = v1_compiler::v1_compiler_parse::parse_with_table(
+            tokens,
+            single_si,
+            intern_table.clone(),
+        );
         intern_table = parsed.intern_table.clone();
         si_map.insert(nl_index.file.clone(), nl_index);
         if let Some(m) = &parsed.result.module {
@@ -148,11 +152,7 @@ fn profile_target_model_per_item_analyze() {
             let item: Rc<Node> = item;
             let name = authored_name_at(source_indices.clone(), item.clone());
             let t0 = Instant::now();
-            let _ = v1_compiler_infer::analyze_item(
-                item.clone(),
-                env.clone(),
-                mod_name.clone(),
-            );
+            let _ = v1_compiler_infer::analyze_item(item.clone(), env.clone(), mod_name.clone());
             let elapsed = t0.elapsed();
             if elapsed.as_millis() > 500 {
                 slowest.push((name, elapsed));
@@ -168,7 +168,10 @@ fn profile_target_model_per_item_analyze() {
             let name = authored_name_at(source_indices.clone(), item.clone());
             if name == "decode_type_expression_projection_bundle" {
                 let _ = v1_compiler_infer::analyze_item(item, env.clone(), mod_name.clone());
-                eprintln!("  decode_type_expression_projection_bundle analyze: {:?}", t_type.elapsed());
+                eprintln!(
+                    "  decode_type_expression_projection_bundle analyze: {:?}",
+                    t_type.elapsed()
+                );
                 break;
             }
         }

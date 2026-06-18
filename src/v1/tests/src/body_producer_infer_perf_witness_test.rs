@@ -15,10 +15,16 @@ const WRONG_TYPE_ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_wrong_t
 fn sources_for(entry: &str) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let content = std::fs::read_to_string(ws.join(entry)).expect("read entry");
-    resolve_imports_transitively_with_source_roots(entry, &content, &[ws.join("src/v2"), ws.join("dsl")])
+    resolve_imports_transitively_with_source_roots(
+        entry,
+        &content,
+        &[ws.join("src/v2"), ws.join("dsl")],
+    )
 }
 
-fn non_complexity_errors(resolved: &v1_compiler::v1_compiler_compile::ResolvedPipelineResult) -> Vec<String> {
+fn non_complexity_errors(
+    resolved: &v1_compiler::v1_compiler_compile::ResolvedPipelineResult,
+) -> Vec<String> {
     resolved
         .diagnostics
         .iter()

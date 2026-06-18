@@ -5497,19 +5497,39 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
       Absent => n
     }
   } else {
-    Node {
-      name: n.name, span: n.span, ident_span: n.ident_span,
-      children: n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices)),
-      connective: n.connective,
-      params: n.params |> map(p => substitute_generics_apply(n: p, subst: subst, source_indices: source_indices)),
-      inferred: match n.inferred {
-        Present { value: Resolved { node: rt } } => Present { value: Resolved { node: substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices) } }
-        _ => n.inferred
-      },
-      return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
-      properties: n.properties, type_annotation: n.type_annotation,
-      is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
-      match_pattern: n.match_pattern, expr_data: n.expr_data
+    // Identity-preserving recursion. Recurse children/params/inferred first, then
+    // return the original n unchanged when nothing was substituted. rc_vec_ptr_eq /
+    // rc_ptr_eq are SOUND IDENTITY HINTS: a true result implies structural equality,
+    // so returning n is always structure-preserving. The compiled realization answers
+    // by pointer identity (conservative: may rebuild a structurally-equal node), the
+    // interpreter by value equality (exact) -- both honor the contract, so output
+    // structure (and thus content_hash / the self-host fixed point) is identical
+    // either way. Skipping the fresh-Node rebuild on the common no-op path is the
+    // perf win; the per-node child-vec pointer compare is a linear constant factor,
+    // not a return to the super-linear rebuild this guards against.
+    let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))
+    let new_params = n.params |> map(p => substitute_generics_apply(n: p, subst: subst, source_indices: source_indices))
+    let new_inferred = match n.inferred {
+      Present { value: Resolved { node: rt } } =>
+        let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
+        if rc_ptr_eq(new_rt, rt) { n.inferred }
+        else { Present { value: Resolved { node: new_rt } } }
+      _ => n.inferred
+    }
+    if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
+      n
+    } else {
+      Node {
+        name: n.name, span: n.span, ident_span: n.ident_span,
+        children: new_children,
+        connective: n.connective,
+        params: new_params,
+        inferred: new_inferred,
+        return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
+        properties: n.properties, type_annotation: n.type_annotation,
+        is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
+        match_pattern: n.match_pattern, expr_data: n.expr_data
+      }
     }
   }
   }

@@ -11301,69 +11301,73 @@ pub fn substitute_generics_apply(
                         None => n.clone(),
                     }
                 } else {
-                    let new_children: Rc<Vec<Rc<Node>>> = Rc::new({
-                        let mut __result = Vec::new();
-                        for c in n.children.clone().iter().cloned() {
-                            __result.push(substitute_generics_apply(
-                                c.clone(),
-                                subst.clone(),
-                                source_indices.clone(),
-                            ));
-                        }
-                        __result
-                    });
-                    let new_params: Rc<Vec<Rc<Node>>> = Rc::new({
-                        let mut __result = Vec::new();
-                        for p in n.params.clone().iter().cloned() {
-                            __result.push(substitute_generics_apply(
-                                p.clone(),
-                                subst.clone(),
-                                source_indices.clone(),
-                            ));
-                        }
-                        __result
-                    });
-                    let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => {
-                            let new_rt = substitute_generics_apply(
-                                rt.clone(),
-                                subst.clone(),
-                                source_indices.clone(),
-                            );
-                            if Rc::ptr_eq(&new_rt, &rt) {
-                                n.inferred.clone()
-                            } else {
-                                Some(Rc::new(InferredNode::Resolved { node: new_rt }))
-                            }
-                        }
-                        _ => n.inferred.clone(),
-                    };
-                    if v1_rt::rc_vec_ptr_eq(&new_children, &n.children)
-                        && v1_rt::rc_vec_ptr_eq(&new_params, &n.params)
-                        && new_inferred == n.inferred
                     {
-                        n.clone()
-                    } else {
-                        Rc::new(Node {
-                            name: n.name.clone(),
-                            span: n.span.clone(),
-                            ident_span: n.ident_span.clone(),
-                            children: new_children,
-                            connective: n.connective.clone(),
-                            params: new_params,
-                            inferred: new_inferred,
-                            return_cardinality: n.return_cardinality.clone(),
-                            uses: n.uses.clone(),
-                            body: n.body.clone(),
-                            transport: n.transport.clone(),
-                            properties: n.properties.clone(),
-                            type_annotation: n.type_annotation.clone(),
-                            is_self_recursive: n.is_self_recursive.clone(),
-                            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                            match_pattern: n.match_pattern.clone(),
-                            expr_data: n.expr_data.clone(),
-                            ident: None,
-                        })
+                        let new_children = Rc::new({
+                            let mut __result = Vec::new();
+                            for c in n.children.clone().iter().cloned() {
+                                __result.push(substitute_generics_apply(
+                                    c.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let new_params = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result.push(substitute_generics_apply(
+                                    p.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => {
+                                let new_rt = substitute_generics_apply(
+                                    rt.clone(),
+                                    subst.clone(),
+                                    source_indices.clone(),
+                                );
+                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                                    n.inferred.clone()
+                                } else {
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: new_rt.clone(),
+                                    }))
+                                }
+                            }
+                            _ => n.inferred.clone(),
+                        };
+                        if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
+                            && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
+                            && (new_inferred.clone() == n.inferred.clone()))
+                        {
+                            n.clone()
+                        } else {
+                            Rc::new(Node {
+                                name: n.name.clone(),
+                                span: n.span.clone(),
+                                ident_span: n.ident_span.clone(),
+                                children: new_children.clone(),
+                                connective: n.connective.clone(),
+                                params: new_params.clone(),
+                                inferred: new_inferred.clone(),
+                                return_cardinality: n.return_cardinality.clone(),
+                                uses: n.uses.clone(),
+                                body: n.body.clone(),
+                                transport: n.transport.clone(),
+                                properties: n.properties.clone(),
+                                type_annotation: n.type_annotation.clone(),
+                                is_self_recursive: n.is_self_recursive.clone(),
+                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                                match_pattern: n.match_pattern.clone(),
+                                expr_data: n.expr_data.clone(),
+                                ident: None,
+                            })
+                        }
                     }
                 }
             }
@@ -11724,8 +11728,7 @@ pub fn build_type_env(
         let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
-                match v1_rt::map_get(
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
@@ -11768,7 +11771,6 @@ pub fn build_type_env(
                     }
                 }
                 None => acc.clone(),
-            }
             },
         );
         let import_recursive = parent_envs
@@ -12343,8 +12345,7 @@ pub fn build_type_env_unresolved(
         let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
-                match v1_rt::map_get(
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
@@ -12387,7 +12388,6 @@ pub fn build_type_env_unresolved(
                     }
                 }
                 None => acc.clone(),
-            }
             },
         );
         let import_recursive = parent_envs

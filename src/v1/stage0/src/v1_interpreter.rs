@@ -4764,6 +4764,17 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        // Sound identity hint (substitute_generics short-circuit): true => the two are
+        // structurally equal. The compiled seed answers with Rc pointer identity
+        // (conservative); the interpreter has no Rc-of-Node identity, so it answers
+        // with exact value equality -- still never true-when-unequal, so a caller that
+        // returns the original on true preserves output structure under either
+        // realization (content_hash / self-host fixed point unaffected).
+        "rc_ptr_eq" | "rc_vec_ptr_eq" => match positional.as_slice() {
+            [a, b] => Ok(Some(Value::Bool(a == b))),
+            _ => Ok(None),
+        },
+
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
                 // Persistent merge (ctrl#1533 phase 2): structural union, no
