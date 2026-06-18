@@ -110,14 +110,17 @@ data floor_plan_function: String = "gunbc_ci_floor_batches"
 
 fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
+    "cargo build -q -p v1-compiler --release --bin claim_executor --bin yaml_check && ",
     concat(
       concat(
-        concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
-        concat(" --plan-entry ", floor_plan_entry)
+        concat(
+          concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
+          concat(" --plan-entry ", floor_plan_entry)
+        ),
+        concat(" --plan-function ", floor_plan_function)
       ),
-      concat(" --plan-function ", floor_plan_function)
-    ),
-    concat(concat(" --notice-title \"", spec.notice_title), "\"")
+      concat(concat(" --notice-title \"", spec.notice_title), "\"")
+    )
   )
 }
 
