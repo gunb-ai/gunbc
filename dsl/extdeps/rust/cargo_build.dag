@@ -4,28 +4,30 @@
 // imported by compiler modules / the bootstrap seed without pulling a
 // shell-transport service into the compiled set. Consumers that actually run
 // cargo (e.g. tools/build.dag) import this module.
+//
+// §3 shape/transport/policy: argv models faithful `cargo` primitives only;
+// scope/lint flags are caller-supplied parameters (workflow policy), not
+// hardcoded literals.
 
 module extdeps.cargo_build
 
 // Default input values for the cargo ops below. These were referenced by the op defaults
-// (`env = cargo_compile_env`, `deny_args = clippy_deny_args`) but never defined — so Build/
-// Test/Clippy errored at runtime (`undefined variable`) and had no by-execution consumer until
-// tools.rust_gates_ci ran them (DESIGN §5: spec-without-execution). `clippy_deny_args` mirrors
-// the deny flags already hardcoded in the Clippy argv.
+// (`env = cargo_compile_env`) but never defined — so Build/Test/Clippy errored at runtime
+// (`undefined variable`) and had no by-execution consumer until tools.rust_gates_ci ran them
+// (DESIGN §5: spec-without-execution).
 data cargo_compile_env: Map<String, String> = empty_map()
-data clippy_deny_args: List<String> = ["-D", "warnings"]
 
 // -- Service: shell transport wiring -----------------------------
 
 service cargo.Build {
   operation Build {
-    input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
+    input { scope_args: String = "", env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "build", "--all-targets"] }
+    transport shell { argv: ["sh", "-c", "cargo build {scope_args}"] }
     exit {
       0 => Unit
       101 => String "Compilation failed"
@@ -33,13 +35,13 @@ service cargo.Build {
   }
 
   operation Test {
-    input { env: Map<String, String> = cargo_compile_env }
+    input { scope_args: String = "", env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "test", "--workspace"] }
+    transport shell { argv: ["sh", "-c", "cargo test {scope_args}"] }
     exit {
       0 => Unit
       101 => String "Tests failed"
@@ -47,13 +49,13 @@ service cargo.Build {
   }
 
   operation Clippy {
-    input { all_targets: Bool = true, deny_args: List<String> = clippy_deny_args }
+    input { scope_args: String = "", lint_args: String = "", env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"] }
+    transport shell { argv: ["sh", "-c", "cargo clippy {scope_args} -- {lint_args}"] }
     exit {
       0 => Unit
       101 => String "Clippy warnings or errors"

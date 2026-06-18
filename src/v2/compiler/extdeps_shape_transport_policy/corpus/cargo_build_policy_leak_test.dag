@@ -1,0 +1,23 @@
+// Scope: corpus regression GUARD — reads live dsl/extdeps/rust/cargo_build.dag via filesystem_read.
+// Asserts consumer-policy literals (--all-targets, -D warnings, etc.) are ABSENT from argv:
+// #5059 follow-up de-fused them to caller-supplied scope_args/lint_args parameters.
+// Goes RED if anyone re-fuses policy into extdeps. The lens's DETECTION teeth are proven
+// separately by the synthetic lens_unit witness (policy_leak_cargo_build, violation_count == 1).
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.corpus.cargo_build_policy_leak
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_file_contains_consumer_policy_literal
+}
+import v2.std.logic { Bool }
+
+data cargo_build_path: String = "dsl/extdeps/rust/cargo_build.dag"
+data cargo_build_policy_leak_token: String = "--all-targets"
+
+test fn corpus_cargo_build_defused_holds() -> Bool {
+  !extdeps_live_file_contains_consumer_policy_literal(
+    path: cargo_build_path,
+    token: cargo_build_policy_leak_token
+  )
+}
