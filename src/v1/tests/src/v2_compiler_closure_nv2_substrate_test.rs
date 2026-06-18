@@ -1,0 +1,221 @@
+//! N_v2 substrate measurement — v2 own emitter (`emit_for_target` via
+//! `emit_compiler_import_closure_from_ingest`) on the scoped 53-module compiler closure,
+//! executed through the v1 interpreter with host manifest overlay.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use v1_compiler::cli_run::{
+    discover_source_root_reads_for_entry, emit_source_root_ingest_manifest,
+    make_eval_context, parse_source_root_entry_admission, resolve_entry_graph, run_claim,
+    ClaimOutcome,
+};
+use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
+
+use crate::helpers::workspace_root;
+
+fn cargo_binary() -> String {
+    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
+}
+
+const COMPILER_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+const NV2_TEST_ENTRY: &str = "src/v2/compiler/self_host/compiler_closure_emit_from_ingest_test.dag";
+const EMIT_SOURCE_FN: &str = "compiler_closure_v2_emit_source_for_cargo_check";
+const ACCEPT_FN: &str = "compiler_closure_v2_emit_from_scoped_ingest_accepts";
+
+fn unique_temp_dir(prefix: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    std::env::temp_dir().join(format!("gunbc-{prefix}-{}-{}", std::process::id(), nanos))
+}
+
+fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
+    fn codepoint(v: &Value) -> char {
+        match v {
+            Value::Int(n) => char::from_u32(*n as u32)
+                .unwrap_or_else(|| panic!("codepoint {n} is not a valid char")),
+            other => panic!("expected Int codepoint in String FreeMonoid, got {other:?}"),
+        }
+    }
+    match val {
+        Value::Str(s) => s.clone(),
+        Value::List(items) => items.iter().map(codepoint).collect(),
+        Value::Variant { .. } => {
+            let mut out = String::new();
+            let mut cur = val.clone();
+            loop {
+                match cur {
+                    Value::Variant {
+                        variant_name,
+                        fields,
+                        ..
+                    } => {
+                        if ctx.sym_eq(variant_name, "Empty") {
+                            break;
+                        }
+                        if ctx.sym_eq(variant_name, "Cons") {
+                            let head = ctx.field(&fields, "head").expect("Cons.head");
+                            out.push(codepoint(head));
+                            cur = ctx.field(&fields, "tail").expect("Cons.tail").clone();
+                            continue;
+                        }
+                        panic!(
+                            "unexpected FreeMonoid variant {}",
+                            ctx.resolve(variant_name)
+                        );
+                    }
+                    Value::Str(s) => {
+                        out.push_str(&s);
+                        break;
+                    }
+                    other => panic!("unexpected tail value {other:?}"),
+                }
+            }
+            out
+        }
+        other => panic!("not a String FreeMonoid: {other:?}"),
+    }
+}
+
+fn write_nv2_manifest(manifest_path: &Path) {
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry = ws.join(COMPILER_ENTRY);
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let records = discover_source_root_reads_for_entry(
+        &roots,
+        entry.to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover scoped compiler closure reads");
+    assert_eq!(
+        records.len(),
+        53,
+        "expected 53-module scoped closure, got {}",
+        records.len()
+    );
+    let entry_source =
+        fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read compiler entry source");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+    emit_source_root_ingest_manifest(manifest_path, &records, Some(&admission))
+        .expect("emit scoped ingest manifest");
+}
+
+fn nv2_eval_context(manifest_dir: &Path) -> InterpContext {
+    let ws = workspace_root();
+    let entry = ws.join(NV2_TEST_ENTRY);
+    let roots = vec![
+        ws.join("src/v2").to_string_lossy().to_string(),
+        manifest_dir.to_string_lossy().to_string(),
+    ];
+    let (graph, source_indices) =
+        resolve_entry_graph(&roots, entry.to_str().expect("entry utf8")).expect("resolve N_v2 test entry");
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    ctx
+}
+
+fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, String) {
+    fs::create_dir_all(out_dir.join("src")).expect("create src dir");
+    fs::write(out_dir.join("src/lib.rs"), source).expect("write emitted source");
+    fs::write(
+        out_dir.join("Cargo.toml"),
+        "[package]\nname = \"nv2_emit_receipt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write Cargo.toml");
+    let check = Command::new(cargo_binary())
+        .arg("check")
+        .arg("--manifest-path")
+        .arg(out_dir.join("Cargo.toml"))
+        .output()
+        .expect("cargo check");
+    let stdout = String::from_utf8_lossy(&check.stdout);
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    let combined = format!("{stdout}\n{stderr}");
+    let error_count = combined.matches("error[").count() + combined.matches("error:").count();
+    (check.status.success(), error_count, combined)
+}
+
+#[test]
+#[ignore] // Boundary: N_v2 substrate — v2 emit_for_target on scoped closure via interpreter.
+fn v2_compiler_import_closure_nv2_substrate_cargo_check_records_error_count() {
+    let temp = unique_temp_dir("nv2-substrate");
+    fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
+    write_nv2_manifest(&manifest_path);
+
+    let manifest_dir = manifest_path.parent().expect("manifest parent");
+    let ctx = nv2_eval_context(manifest_dir);
+
+    match run_claim(&ctx, ACCEPT_FN) {
+        ClaimOutcome::Pass => {}
+        ClaimOutcome::Fail => panic!("N_v2 substrate emit witness {ACCEPT_FN} returned false"),
+        ClaimOutcome::NotBool { got } => {
+            panic!("N_v2 substrate emit witness {ACCEPT_FN} returned non-Bool: {got}")
+        }
+        ClaimOutcome::RuntimeError { message } => {
+            panic!("N_v2 substrate emit witness {ACCEPT_FN} runtime error: {message}")
+        }
+    }
+
+    let value = v1_interpreter::run_in_context(&ctx, EMIT_SOURCE_FN, true)
+        .unwrap_or_else(|e| panic!("run {EMIT_SOURCE_FN}: {e:?}"));
+    let source = decode_freemonoid_string(&value, &ctx);
+    assert!(
+        !source.is_empty(),
+        "N_v2 substrate emit returned empty TargetSource"
+    );
+
+    let check_dir = temp.join("emit-crate");
+    let (success, error_count, combined) = cargo_check_single_file_crate(&source, &check_dir);
+    eprintln!(
+        "N_v2 (v2-emits-v2 substrate): emit_for_target accepted; cargo check success={success} error_count={error_count} source_bytes={}",
+        source.len()
+    );
+    eprintln!("N_v2 headline: 00_compile scoped closure (53 modules) → {error_count} cargo-check errors on v2-emitted TargetSource");
+    if !success {
+        eprintln!("--- N_v2 cargo check output (tail) ---\n{}", tail_lines(&combined, 40));
+    }
+
+    let _ = fs::remove_dir_all(&temp);
+    assert!(
+        error_count > 0 || success,
+        "cargo check produced no diagnostics and did not succeed"
+    );
+}
+
+fn tail_lines(text: &str, n: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    lines
+        .into_iter()
+        .skip(text.lines().count().saturating_sub(n))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn source_root_ingest_symbol_leading_digit_gets_sr_prefix() {
+    assert_eq!(
+        v1_compiler::cli_run::source_root_ingest_artifact_id_for_path(
+            "src/v2/compiler/00_compile.dag"
+        ),
+        "^sr_00_compile"
+    );
+}
+
+#[test]
+fn parse_compiler_entry_admission_imports_compile_module() {
+    let ws = workspace_root();
+    let source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission = parse_source_root_entry_admission(&source).expect("parse admission");
+    assert_eq!(admission.subject, vec!["v2", "compiler", "compile"]);
+    assert!(
+        admission.imports.iter().any(|p| p == &["v2", "compiler", "emit"]),
+        "expected compile module imports to include v2.compiler.emit: {:?}",
+        admission.imports
+    );
+}

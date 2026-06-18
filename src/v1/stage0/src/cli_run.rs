@@ -2326,7 +2326,7 @@ fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
     format!("^{body}")
 }
 
-fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
+pub fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
     let stem = Path::new(path)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -2395,24 +2395,9 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
     if segments.is_empty() {
         return "QnEmpty".to_string();
     }
-    let mut out = String::new();
-    for (idx, seg) in segments.iter().enumerate() {
-        if idx > 0 {
-            out.push_str(", tail: ");
-        }
-        if idx == 0 {
-            out.push_str("QnCons { head: ");
-        } else {
-            out.push_str("QnCons { head: ");
-        }
-        out.push('^');
-        out.push_str(seg);
-        if idx + 1 == segments.len() {
-            out.push_str(", tail: QnEmpty }");
-        }
-    }
-    for _ in 0..segments.len().saturating_sub(1) {
-        out.push('}');
+    let mut out = String::from("QnEmpty");
+    for seg in segments.iter().rev() {
+        out = format!("QnCons {{ head: ^{seg}, tail: {out} }}");
     }
     out
 }
@@ -2644,6 +2629,10 @@ pub fn emit_source_root_ingest_manifest(
     } else {
         out.push_str(&emit_source_root_ingest_monoid(inline_records));
         out.push('\n');
+    }
+    if let Some(admission) = entry_admission {
+        out.push('\n');
+        out.push_str(&emit_source_root_entry_admission_data(admission));
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))

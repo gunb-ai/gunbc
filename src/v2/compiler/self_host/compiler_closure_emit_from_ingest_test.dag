@@ -1,13 +1,9 @@
 // Scope: N_v2 substrate measurement — emit_compiler_import_closure_from_ingest on scoped
 //   53-module host manifest overlay (v2 own emitter via emit_for_target).
-// Status: #[ignore]-class heavy witness; run via scripts/v2-compiler-closure-emit-gate.sh.
+// Status: heavy witness; run via scripts/v2-compiler-closure-nv2-gate.sh or #[ignore] Rust test.
 
 module v2.test.self_host.compiler_closure_emit_from_ingest
 
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject
-}
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
@@ -17,26 +13,11 @@ import v2.extdeps.languages.rust { rust_mvp1_target_model }
 import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QnCons, QnEmpty }
+import v2.std.text { String, string_is_empty }
 import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
   host_source_root_ingest,
   host_source_root_ingest_coverage_receipt
-}
-
-
-fn compiler_closure_compile_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
-      name: QnCons {
-        head: ^v2,
-        tail: QnCons {
-          head: ^compiler,
-          tail: QnCons { head: ^compile, tail: QnEmpty }
-        }
-      }
-    },
-    imports: Empty
-  }
 }
 
 
@@ -62,12 +43,25 @@ fn compiler_closure_scoped_ingest_parses() -> Bool {
 fn compiler_closure_v2_emit_from_scoped_ingest_accepts() -> Bool {
   match emit_compiler_import_closure_from_ingest(
     ingest: host_source_root_ingest,
-    admission: compiler_closure_compile_admission(),
+    admission: host_compiler_closure_admission,
     target: rust_mvp1_target_model()
   ) {
     Accepted { value: receipt, diagnostics: d } =>
-      (d == None) && (receipt.closure_size > 0) && (receipt.source != None)
+      (d == None) && (receipt.closure_size > 0) && (string_is_empty(s: receipt.source) == false)
     Rejected { diagnostics: _ } => false
+  }
+}
+
+
+// Host transport for #[ignore] Rust test: decode emitted TargetSource for cargo-check receipt.
+fn compiler_closure_v2_emit_source_for_cargo_check() -> String {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: host_source_root_ingest,
+    admission: host_compiler_closure_admission,
+    target: rust_mvp1_target_model()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } => receipt.source
+    Rejected { diagnostics: _ } => ""
   }
 }
 

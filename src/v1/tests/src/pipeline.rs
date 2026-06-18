@@ -7834,15 +7834,15 @@ fn v2_compiler_import_closure_is_smaller_than_whole_v2_tree() {
         whole_tree
     );
     eprintln!(
-        "v2-emits-v2 scope: {} modules in compiler closure vs {} .dag files under src/v2",
+        "v2 compiler closure scope: {} modules in compiler closure vs {} .dag files under src/v2",
         closure.len(),
         whole_tree
     );
 }
 
 #[test]
-#[ignore] // Boundary: scoped compiler-closure emit + cargo check; records first v2-emits-v2 error count.
-fn v2_compiler_import_closure_emits_rust_cargo_check_records_error_count() {
+#[ignore] // Boundary: N_v1 bootstrap — v1 emitter on scoped v2 closure + cargo check error count.
+fn v2_compiler_import_closure_nv1_bootstrap_cargo_check_records_error_count() {
     let ws = crate::helpers::workspace_root();
     let v2_root = ws.join("src/v2");
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
@@ -7886,14 +7886,14 @@ fn v2_compiler_import_closure_emits_rust_cargo_check_records_error_count() {
     let combined = format!("{stdout}\n{stderr}");
     let error_count = combined.matches("error[").count() + combined.matches("error:").count();
     eprintln!(
-        "v2-emits-v2: cargo check success={} error_count={} emitted_files={}",
+        "N_v1 (v1-emits-v2 bootstrap): cargo check success={} error_count={} emitted_files={}",
         check.status.success(),
         error_count,
         result.files.len()
     );
-    // Headline receipt — first true v2-emits-v2 measurement (00_compile scoped closure).
+    // Pinned receipt — v1 emitter on scoped 00_compile closure (53 modules).
     eprintln!(
-        "v2-emits-v2 headline: 00_compile closure (53 modules) → {} cargo-check errors; top codes: E0308≈2776 E0282≈271 E0425≈203 E0277≈166 E0599≈100",
+        "N_v1 headline: 00_compile closure (53 modules) → {} cargo-check errors; top codes: E0308≈2776 E0282≈271 E0425≈203 E0277≈166 E0599≈100",
         error_count
     );
     if !check.status.success() {

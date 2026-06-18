@@ -84,6 +84,8 @@ mod pd3_adversarial;
 #[cfg(test)]
 mod peano_materialization_cap_test;
 #[cfg(test)]
+mod v2_compiler_closure_nv2_substrate_test;
+#[cfg(test)]
 mod pipeline;
 #[cfg(test)]
 mod r2_emit_add_named_test;

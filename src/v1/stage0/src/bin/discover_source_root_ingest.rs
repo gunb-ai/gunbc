@@ -22,7 +22,8 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     discover_source_root_reads, discover_source_root_reads_for_entry,
-    emit_source_root_ingest_manifest, source_root_ingest_content_hash_fnv1a64,
+    emit_source_root_ingest_manifest, parse_source_root_entry_admission,
+    source_root_ingest_content_hash_fnv1a64,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -102,7 +103,24 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     if let Some(path) = manifest_path {
-        if let Err(msg) = emit_source_root_ingest_manifest(&path, &records) {
+        let entry_admission = match entry_path.as_deref() {
+            Some(entry) => {
+                let entry_source = std::fs::read_to_string(entry).map_err(|e| {
+                    eprintln!(
+                        "discover_source_root_ingest: failed to read entry {:?}: {}",
+                        entry, e
+                    );
+                    ExitCode::from(1)
+                })?;
+                Some(parse_source_root_entry_admission(&entry_source).map_err(|msg| {
+                    eprintln!("discover_source_root_ingest: {}", msg);
+                    ExitCode::from(1)
+                })?)
+            }
+            None => None,
+        };
+        if let Err(msg) = emit_source_root_ingest_manifest(&path, &records, entry_admission.as_ref())
+        {
             eprintln!("discover_source_root_ingest: {}", msg);
             return Err(ExitCode::from(1));
         }
