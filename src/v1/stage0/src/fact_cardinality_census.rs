@@ -264,7 +264,9 @@ mod tests {
 
     #[test]
     fn lattice_is_cross_tree_coexistence_debt() {
-        assert!(cross_tree_is_coexistence("std/algebra.dag:Lattice".to_string()));
+        assert!(cross_tree_is_coexistence(
+            "std/algebra.dag:Lattice".to_string()
+        ));
     }
 
     #[test]
@@ -272,6 +274,15 @@ mod tests {
         assert!(!cross_tree_is_diverged_fork(
             "std/algebra.dag:Lattice".to_string()
         ));
+    }
+
+    #[test]
+    fn _probe_counts() {
+        panic!(
+            "coexistence={} diverged={}",
+            cross_tree_coexistence_count(),
+            cross_tree_diverged_fork_count()
+        );
     }
 
     #[test]
