@@ -2262,6 +2262,9 @@ pub(crate) const STD_NODE_BRIDGE_FNS: &[&str] = &[
     "syntactic_coproduct_arm_pairs",
 ];
 
+// v2.std.compilers.lexing bootstrap bridge — dissolve-on: substrate Lexeme→Symbol intern carrier.
+pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
+
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
 /// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
@@ -2289,6 +2292,15 @@ fn is_v4_std_node_query_bridge_call(ctx: &InterpContext, func_name: &str) -> boo
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.std.node_query")
+}
+
+fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_LEXING_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.std.compilers.lexing")
 }
 
 // ---------------------------------------------------------------------------
@@ -2320,6 +2332,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_syntactic_coproduct_arm_pairs(ctx, &args)
             }
             _ => unreachable!("bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_lexing_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "symbol_intern_lexeme" => {
+                crate::coproduct_reflection::eval_symbol_intern_lexeme(ctx, &args)
+            }
+            _ => unreachable!("lexing bridge fn set mismatch"),
         };
     }
 

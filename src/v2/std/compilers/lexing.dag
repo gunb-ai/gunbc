@@ -178,3 +178,9 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
     ModeledLexRules { root: _ } => lex_empty_node()
   }
 }
+
+// 🟡 gated — feature:t8-lexeme-intern-bridge — bind lane-3a.2 StampLexeme / STD_LEXING_BRIDGE_FNS —
+// dissolve-on: substrate Lexeme→Symbol interning carrier in std (host v1 intercept retires to zero).
+fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
+  symbol_intern_lexeme(lexeme: lexeme)
+}

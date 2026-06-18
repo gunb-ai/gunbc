@@ -31,6 +31,8 @@ import v2.std.node {
 }
 import v2.std.text { String }
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   FormalGrammarSymbol,
   FormalProduction,
   GrammarExpr,
@@ -175,7 +177,7 @@ fn english_wave1_lex() -> LexRules {
 
 
 fn english_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {

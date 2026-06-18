@@ -6,6 +6,8 @@
 module v2.extdeps.languages.go
 
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
   FormalGrammarSymbol,
@@ -1719,7 +1721,7 @@ fn go_mvp1_serialize_source_node() -> Node {
 }
 
 fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 

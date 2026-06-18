@@ -37,10 +37,8 @@ test fn program_assembly_real_ingest_host_manifest_receipt_holds() -> Bool {
     && (string_is_empty(s: host_source_root_ingest_content_hash) == false)
 }
 
-// Discriminating RED control (current-state marker — flips green when lane 3a.2 lands).
-// dissolve-on: lane-3a.2 — wave1-parsed module QN segments materialize bound Symbol
-//   identities (not ^dag_token_ident class placeholders) so validate_module_roots
-//   accepts parsed roots; today asserts Rejected, becomes false-positive after fix.
+// Discriminating witness — lane 3a.2: wave1-parsed module QN segments materialize bound Symbol
+//   identities (StampLexeme) so validate_module_roots accepts parsed roots.
 test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: host_source_root_ingest,
@@ -48,8 +46,8 @@ test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots()
   ) {
     Accepted { value: roots, diagnostics: _ } =>
       match validate_module_roots(roots: roots) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }

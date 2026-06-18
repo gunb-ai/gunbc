@@ -5,6 +5,8 @@
 module v2.extdeps.languages.lean
 
 import v2.std.grammar {
+  StampClass,
+  StampBinding,
   FormalGrammarSymbol,
   FormalProduction,
   GrammarExpr,
@@ -521,7 +523,7 @@ fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
 
 
 fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class, binding: Absent }
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 
