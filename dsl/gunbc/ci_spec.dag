@@ -1,15 +1,10 @@
-// gunbc/ci_spec.dag — CI intent as data (witness roots, gates, diff policy).
+// gunbc/ci_spec.dag — CI intent as data (gates, diff policy, transport scripts).
 
 module gunbc.ci_spec
 
-type WitnessRoot {
-  root: String
-  scan_subtrees: List<String>
-}
-
-type WitnessEntry {
-  entry: String
-  function: String
+import gunbc.ci_layer_roots {
+  witness_layer_roots,
+  witness_layer_source_flags
 }
 
 type Gate
@@ -29,48 +24,108 @@ type DiffPolicy {
 }
 
 type CiSpec {
-  witness_roots: List<WitnessRoot>
-  witness_entries: List<WitnessEntry>
   gates: List<Gate>
   diff_policy: DiffPolicy
   notice_title: String
 }
 
+// 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
+// dissolve-on-arrival: generic Symbol→inhabitant replaces exhaustive match roster;
+// roster completeness is witness-checked in src/v2/test/claim/ci_spec_witness_test.dag.
+data gunbc_ci_gates: List<Gate> = [
+  RustMonolithGate,
+  EmitHostGate,
+  LayeringImportsGate,
+  DslCompileCleanGate,
+  CiYamlGate,
+  SourceRootIngestGate
+]
+
 data gunbc_ci_spec: CiSpec = {
-  witness_roots: [
-    { root: "src/v2", scan_subtrees: [] },
-    { root: "dsl", scan_subtrees: [] }
-  ],
-  witness_entries: [
-    { entry: "dsl/test/claim/rust_stage0_gates_witness.dag", function: "rust_stage0_gates_witnesses" },
-    { entry: "dsl/test/claim/emit_host_gate_witness.dag", function: "emit_host_gate_witnesses" },
-    { entry: "src/v2/test/claim/layering_imports/coverage_domain_equivalence.dag", function: "coverage_domain_equivalence_argument_holds" },
-    { entry: "dsl/test/claim/filesystem_entry_kind_witness.dag", function: "filesystem_entry_kind_witnesses" },
-    { entry: "dsl/test/claim/power_watt_witness.dag", function: "power_watt_witnesses" },
-    { entry: "dsl/test/claim/cargo_target_path_witness.dag", function: "cargo_target_path_witnesses" },
-    { entry: "dsl/test/claim/dsl_compile_clean_witness.dag", function: "dsl_compile_clean_witnesses" },
-    { entry: "dsl/test/claim/ci_spec_witness.dag", function: "ci_spec_witnesses" },
-    { entry: "src/v2/test/claim/ci_floor_plan_witness.dag", function: "ci_floor_plan_witnesses" },
-    { entry: "dsl/test/claim/ci_yaml_serializer_witness.dag", function: "ci_yaml_serializer_keystone_holds" },
-    { entry: "dsl/test/claim/pareto_dominance_witness.dag", function: "pareto_dominance_holds" },
-    { entry: "dsl/test/claim/hardware_selection_witness.dag", function: "hardware_selection_holds" },
-    { entry: "dsl/test/claim/realization_witness.dag", function: "realization_witnesses" },
-    { entry: "dsl/test/claim/realization_schedule_witness.dag", function: "realization_schedule_witnesses" }
-  ],
-  gates: [
-    RustMonolithGate,
-    EmitHostGate,
-    LayeringImportsGate,
-    DslCompileCleanGate,
-    CiYamlGate,
-    SourceRootIngestGate
-  ],
+  gates: gunbc_ci_gates,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
     mode: DiffMergeBase
   },
   notice_title: "v2 claim corpus"
+}
+
+// Unify v1-compiler feature set across CI cargo invocations. v1-compiler-tests enables
+// text_lookup_work_counter; building gunbc/claim_executor without it forces a second full
+// v1-compiler compile when rust gates run clippy --all-targets (~49% CI wall-time prong).
+data ci_release_features: String = "text_lookup_work_counter"
+
+fn ci_repo_root_shell() -> String {
+  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+}
+
+fn ci_release_build_line() -> String {
+  concat(
+    concat(
+      "cargo build -p v1-compiler --release --features ",
+      ci_release_features
+    ),
+    " --bins"
+  )
+}
+
+// Two-tier cold retry on fleet EAGAIN (#4978 / #5138): first CARGO_BUILD_JOBS=1 with
+// sccache (populate daemon when it works); if sccache still cannot spawn rustc, drop
+// RUSTC_WRAPPER and compile direct. Then print stats.
+fn ci_release_build_script() -> String {
+  let build = ci_release_build_line()
+  concat(
+    concat(
+      concat(
+        concat("ROOT=", ci_repo_root_shell(), "\n"),
+        "set -o pipefail\n"
+      ),
+      concat(
+        concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
+        concat(build, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
+      )
+    ),
+    concat(
+      concat(
+        concat(
+          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' \"$BUILD_LOG\"; then\n",
+          "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
+        ),
+        concat(
+          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
+          concat(build, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
+        )
+      ),
+      concat(
+        concat(
+          concat(
+            "      if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$RETRY_LOG\"; then\n",
+            "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
+          ),
+          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(build, " || exit 1\n"))
+        ),
+        concat(
+          concat("      else\n", "        exit 1\n"),
+          concat("      fi\n", "    fi\n")
+        )
+      )
+    ),
+    concat(
+      concat(
+        concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
+        concat("    exit 1\n", "  fi\n")
+      ),
+      concat(
+        concat("fi\n", "rm -f \"$BUILD_LOG\"\n"),
+        concat("sccache --show-stats 2>/dev/null || true", "")
+      )
+    )
+  )
+}
+
+fn claim_executor_bin_shell() -> String {
+  "\"$ROOT/target/release/claim_executor\""
 }
 
 fn join_slash(parts: List<String>) -> String {
@@ -87,53 +142,46 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
   )
 }
 
-fn witness_root_source_flag(wr: WitnessRoot) -> String {
-  concat(" --source-root ", wr.root)
-}
-
 // `claim_executor` takes ONLY `--source-root` (to resolve the plan) — it has no
 // `--scan-dir` flag and hard-errors on any unknown argument. Scan dirs are carried
-// SOLELY by the plan (`ci_floor_plan.corpus_scan_dirs` → `RunnableDiscoveryBatch.
+// SOLELY by the plan (`ci_floor_plan` discovery batch `scan_dirs` from
+// `gunbc.ci_layer_roots.witness_discovery_scan_dirs` → `RunnableDiscoveryBatch.
 // scan_dirs`), the single authority for that derivation (DESIGN §3); emitting them
 // on the argv too would be a redundant, fail-closed mis-wire (DESIGN §5).
-fn witness_roots_source_flags(roots: List<WitnessRoot>) -> String {
-  fold(roots, init: "", f: (acc, wr) => concat(acc, witness_root_source_flag(wr: wr)))
-}
+//
+// Layer roots: `gunbc.ci_layer_roots.witness_layer_roots` (§3 single authority).
 
 // The dependency-ordered scheduler plan (the single floor topology, DESIGN §3) and
 // the host entry the executor evaluates. The scheduler — NOT a flat claim_batch +
 // gates pair — is the default CI runtime: both the discovery corpus and the gates
-// are scheduler plan nodes (`dsl/gunbc/ci_floor_plan.dag`), run dependency-ordered
+// are scheduler plan nodes (`src/v2/workflow/ci_floor_plan.dag`), run dependency-ordered
 // and parallel-where-independent, fail-closed (DESIGN §4/§5).
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 
 fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
-    "cargo build -q -p v1-compiler --release --bin claim_executor --bin yaml_check && ",
     concat(
       concat(
-        concat(
-          concat("cargo run -p v1-compiler --release --bin claim_executor --", witness_roots_source_flags(roots: spec.witness_roots)),
-          concat(" --plan-entry ", floor_plan_entry)
-        ),
+        concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
         concat(" --plan-function ", floor_plan_function)
       ),
       concat(concat(" --notice-title \"", spec.notice_title), "\"")
-    )
+    ),
+    ""
   )
 }
 
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
-    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
+    concat(
+      concat(ci_release_build_script(), "\n"),
+      concat(git_fetch_script(policy: spec.diff_policy), "\n")
+    ),
     scheduler_invoke(spec: spec)
   )
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  concat(
-    concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-    "cargo run -p v1-compiler --release --bin gunbc -- ci"
-  )
+  gunbc_ci_run_script(spec: spec)
 }

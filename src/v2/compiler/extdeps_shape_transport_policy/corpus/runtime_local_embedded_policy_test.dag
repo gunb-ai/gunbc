@@ -1,0 +1,17 @@
+// Scope: corpus regression guard — runtime/local has no embedded policy literals post-#5109.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.extdeps_shape_transport_policy.corpus.runtime_local_embedded_policy
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_file_embedded_policy_literal_count_for_path
+}
+import v2.std.logic { Bool }
+
+data runtime_local_path: String = "dsl/extdeps/runtime/local.dag"
+
+test fn corpus_runtime_local_embedded_policy_defused_holds() -> Bool {
+  extdeps_live_file_embedded_policy_literal_count_for_path(
+    path: runtime_local_path
+  ) == 0
+}

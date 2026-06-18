@@ -2,6 +2,7 @@
 // Source module: std.effects
 
 use self::CompositionVerdict::*;
+use self::CreateCause::*;
 use self::DeriveOpEffectResult::*;
 use self::EffectShape::*;
 use self::IdempotencyEvidence::*;
@@ -27,21 +28,23 @@ pub enum EffectShape {
     ReadEffect,
     UpsertEffect { key_source: Rc<KeySource> },
     DeleteEffect { key_source: Rc<KeySource> },
-    CreateEffect,
+    CreateEffect { cause: Rc<CreateCause> },
     AppendEffect,
 }
-impl EffectShape {
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CreateCause {
+    PostAlways,
+    CreateIfAbsent { key_source: Rc<KeySource> },
+}
+impl CreateCause {
     pub fn key_source(&self) -> Rc<KeySource> {
         match self {
-            EffectShape::ReadEffect => panic!("no key_source on unit variant"),
-            EffectShape::UpsertEffect {
+            CreateCause::PostAlways => panic!("no key_source on unit variant"),
+            CreateCause::CreateIfAbsent {
                 key_source: __val, ..
             } => __val.clone(),
-            EffectShape::DeleteEffect {
-                key_source: __val, ..
-            } => __val.clone(),
-            EffectShape::CreateEffect => panic!("no key_source on unit variant"),
-            EffectShape::AppendEffect => panic!("no key_source on unit variant"),
         }
     }
 }
@@ -81,8 +84,64 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
         EffectShape::DeleteEffect { .. } => true,
-        EffectShape::CreateEffect => false,
+        EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
+            CreateCause::CreateIfAbsent {
+                key_source: key_source,
+                ..
+            } => true,
+            CreateCause::PostAlways => false,
+        },
         EffectShape::AppendEffect => false,
+    }
+}
+
+pub fn key_source_eq(a: Rc<KeySource>, b: Rc<KeySource>) -> bool {
+    match (*a).clone() {
+        KeySource::PathParam { param: pa, .. } => match (*b).clone() {
+            KeySource::PathParam { param: pb, .. } => (pa.clone().as_str() == pb.clone().as_str()),
+            _ => false,
+        },
+        KeySource::InputField { field: fa, .. } => match (*b).clone() {
+            KeySource::InputField { field: fb, .. } => (fa.clone().as_str() == fb.clone().as_str()),
+            _ => false,
+        },
+        KeySource::CompositeKey { fields: fa, .. } => match (*b).clone() {
+            KeySource::CompositeKey { fields: fb, .. } => (fa.clone() == fb.clone()),
+            _ => false,
+        },
+    }
+}
+
+pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
+    match (*shape).clone() {
+        EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
+            CreateCause::CreateIfAbsent {
+                key_source: key_source,
+                ..
+            } => true,
+            CreateCause::PostAlways => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) -> bool {
+    match (*a).clone() {
+        EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
+            CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b).clone() {
+                EffectShape::CreateEffect { cause: cause_b, .. } => {
+                    match (*cause_b.clone()).clone() {
+                        CreateCause::CreateIfAbsent { key_source: kb, .. } => {
+                            key_source_eq(ka.clone(), kb.clone())
+                        }
+                        CreateCause::PostAlways => false,
+                    }
+                }
+                _ => false,
+            },
+            CreateCause::PostAlways => false,
+        },
+        _ => false,
     }
 }
 
@@ -162,24 +221,32 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
         HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
         HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
         HttpMethod::OPTIONS => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::POST => Rc::new(EffectShape::CreateEffect),
+        HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
+            cause: Rc::new(CreateCause::PostAlways),
+        }),
         HttpMethod::DELETE => match last_path_param(path) {
             Some(p) => Rc::new(EffectShape::DeleteEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect),
+            None => Rc::new(EffectShape::CreateEffect {
+                cause: Rc::new(CreateCause::PostAlways),
+            }),
         },
         HttpMethod::PUT => match last_path_param(path) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect),
+            None => Rc::new(EffectShape::CreateEffect {
+                cause: Rc::new(CreateCause::PostAlways),
+            }),
         },
         HttpMethod::PATCH => match last_path_param(path) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect),
+            None => Rc::new(EffectShape::CreateEffect {
+                cause: Rc::new(CreateCause::PostAlways),
+            }),
         },
     }
 }
@@ -240,26 +307,49 @@ pub fn check_modifier_vs_derivation(
         } else {
             if (declared_idempotent.clone() && !derived_idempotent.clone()) {
                 match (*op.shape.clone()).clone() {
-    EffectShape::CreateEffect => Rc::new(ModifierAgreement::DerivationUnknown {
-    reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
-}),
-    _ => Rc::new(ModifierAgreement::Disagrees {
-    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
-}),
-}
-            } else {
-                if (!declared_idempotent.clone() && declared_readonly.clone()) {
-                    match op.method.clone() {
-                        HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
-                        HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
-                        HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
-                        _ => Rc::new(ModifierAgreement::Disagrees {
-                            reason: "readonly declared but method is not GET/HEAD/OPTIONS"
+                    EffectShape::CreateEffect { cause, .. } => match (*cause).clone() {
+                        CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
+                            reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared"
                                 .to_string(),
                         }),
+                        CreateCause::CreateIfAbsent { .. } => Rc::new(ModifierAgreement::Disagrees {
+                            reason: "derivation says non-idempotent but modifier declares idempotent"
+                                .to_string(),
+                        }),
+                    },
+                    _ => Rc::new(ModifierAgreement::Disagrees {
+                        reason: "derivation says non-idempotent but modifier declares idempotent"
+                            .to_string(),
+                    }),
+                }
+            } else {
+                if (!declared_idempotent.clone() && derived_idempotent.clone()) {
+                    match (*op.shape.clone()).clone() {
+                        EffectShape::CreateEffect { cause, .. } => match (*cause).clone() {
+                            CreateCause::CreateIfAbsent { .. } => {
+                                Rc::new(ModifierAgreement::Disagrees {
+                                    reason: "create-if-absent has proven identity but modifier declares non-idempotent"
+                                        .to_string(),
+                                })
+                            }
+                            CreateCause::PostAlways => Rc::new(ModifierAgreement::Agrees),
+                        },
+                        _ => Rc::new(ModifierAgreement::Agrees),
                     }
                 } else {
-                    Rc::new(ModifierAgreement::Agrees)
+                    if (!declared_idempotent.clone() && declared_readonly.clone()) {
+                        match op.method.clone() {
+                            HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
+                            HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
+                            HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
+                            _ => Rc::new(ModifierAgreement::Disagrees {
+                                reason: "readonly declared but method is not GET/HEAD/OPTIONS"
+                                    .to_string(),
+                            }),
+                        }
+                    } else {
+                        Rc::new(ModifierAgreement::Agrees)
+                    }
                 }
             }
         };

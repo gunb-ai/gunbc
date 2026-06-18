@@ -44,7 +44,7 @@ fn watt_roundtrips() -> Bool {
   watt_count(w: watt(count: 183)) == 183
 }
 
-fn power_watt_witnesses() -> Bool {
+test fn power_watt_witnesses() -> Bool {
   watt_roundtrips()
     && empty_budget_is_zero_watts()
     && total_power_is_computed_sum()
