@@ -3903,41 +3903,94 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
   )
 }
 
-// Route B — owned translate diagnostic roster (06_translate error profile; probes use roster + head_reason_is_known).
+// Route B — declared translate diagnostic reason sum (§3/§4: coproduct authority, not Symbol roster + predicate fan-out).
+type TranslateDiagnosticReason
+  = TargetBundleMalformed
+  | TargetBundleDuplicateEdge
+  | SgRcBundlePartial
+  | GrammarInverseNotRealized
+  | GrammarRelationRowNotFound
+  | ConjInvalidEdge
+  | ConjNamedChildMissing
+  | ConcreteTokenClassMissing
+  | ConcreteTokenKindInvalid
+  | SerializeRecursionLimitExhausted
+  | LexRuleLiteralNotFound
+  | BindingSpellingNotFound
+  | TypeExpressionShapeMissing
+  | TypeExprKindAuthorityInvalid
+  | TargetAtomRealizationLookupMiss
+  | TargetFunctionSignatureRealizationLookupMiss
+  | TargetTypeExprEmittedShapeMalformed
+
+fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symbol {
+  discriminant(v: reason)
+}
+
+fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
+  if sym == translate_diagnostic_reason_symbol(reason: TargetBundleMalformed) {
+    optional_present(value: TargetBundleMalformed)
+  } else if sym == translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge) {
+    optional_present(value: TargetBundleDuplicateEdge)
+  } else if sym == translate_diagnostic_reason_symbol(reason: SgRcBundlePartial) {
+    optional_present(value: SgRcBundlePartial)
+  } else if sym == translate_diagnostic_reason_symbol(reason: GrammarInverseNotRealized) {
+    optional_present(value: GrammarInverseNotRealized)
+  } else if sym == translate_diagnostic_reason_symbol(reason: GrammarRelationRowNotFound) {
+    optional_present(value: GrammarRelationRowNotFound)
+  } else if sym == translate_diagnostic_reason_symbol(reason: ConjInvalidEdge) {
+    optional_present(value: ConjInvalidEdge)
+  } else if sym == translate_diagnostic_reason_symbol(reason: ConjNamedChildMissing) {
+    optional_present(value: ConjNamedChildMissing)
+  } else if sym == translate_diagnostic_reason_symbol(reason: ConcreteTokenClassMissing) {
+    optional_present(value: ConcreteTokenClassMissing)
+  } else if sym == translate_diagnostic_reason_symbol(reason: ConcreteTokenKindInvalid) {
+    optional_present(value: ConcreteTokenKindInvalid)
+  } else if sym == translate_diagnostic_reason_symbol(reason: SerializeRecursionLimitExhausted) {
+    optional_present(value: SerializeRecursionLimitExhausted)
+  } else if sym == translate_diagnostic_reason_symbol(reason: LexRuleLiteralNotFound) {
+    optional_present(value: LexRuleLiteralNotFound)
+  } else if sym == translate_diagnostic_reason_symbol(reason: BindingSpellingNotFound) {
+    optional_present(value: BindingSpellingNotFound)
+  } else if sym == translate_diagnostic_reason_symbol(reason: TypeExpressionShapeMissing) {
+    optional_present(value: TypeExpressionShapeMissing)
+  } else if sym == translate_diagnostic_reason_symbol(reason: TypeExprKindAuthorityInvalid) {
+    optional_present(value: TypeExprKindAuthorityInvalid)
+  } else if sym == translate_diagnostic_reason_symbol(reason: TargetAtomRealizationLookupMiss) {
+    optional_present(value: TargetAtomRealizationLookupMiss)
+  } else if sym == translate_diagnostic_reason_symbol(reason: TargetFunctionSignatureRealizationLookupMiss) {
+    optional_present(value: TargetFunctionSignatureRealizationLookupMiss)
+  } else if sym == translate_diagnostic_reason_symbol(reason: TargetTypeExprEmittedShapeMalformed) {
+    optional_present(value: TargetTypeExprEmittedShapeMalformed)
+  } else {
+    optional_absent()
+  }
+}
+
 fn translate_diagnostic_reason_roster() -> List<Symbol> {
   [
-    ^translate_target_bundle_malformed,
-    ^translate_target_bundle_duplicate_edge,
-    ^translate_sg_rc_bundle_partial,
-    ^translate_grammar_inverse_not_realized,
-    ^translate_grammar_relation_row_not_found,
-    ^translate_conj_invalid_edge,
-    ^translate_conj_named_child_missing,
-    ^translate_concrete_token_class_missing,
-    ^translate_concrete_token_kind_invalid,
-    ^translate_serialize_recursion_limit_exhausted,
-    ^translate_lex_rule_literal_not_found,
-    ^translate_binding_spelling_not_found,
-    ^translate_type_expression_shape_missing,
-    ^translate_type_expr_kind_authority_invalid,
-    ^target_atom_realization_lookup_miss,
-    ^target_function_signature_realization_lookup_miss,
-    ^target_type_expr_emitted_shape_malformed
+    translate_diagnostic_reason_symbol(reason: TargetBundleMalformed),
+    translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge),
+    translate_diagnostic_reason_symbol(reason: SgRcBundlePartial),
+    translate_diagnostic_reason_symbol(reason: GrammarInverseNotRealized),
+    translate_diagnostic_reason_symbol(reason: GrammarRelationRowNotFound),
+    translate_diagnostic_reason_symbol(reason: ConjInvalidEdge),
+    translate_diagnostic_reason_symbol(reason: ConjNamedChildMissing),
+    translate_diagnostic_reason_symbol(reason: ConcreteTokenClassMissing),
+    translate_diagnostic_reason_symbol(reason: ConcreteTokenKindInvalid),
+    translate_diagnostic_reason_symbol(reason: SerializeRecursionLimitExhausted),
+    translate_diagnostic_reason_symbol(reason: LexRuleLiteralNotFound),
+    translate_diagnostic_reason_symbol(reason: BindingSpellingNotFound),
+    translate_diagnostic_reason_symbol(reason: TypeExpressionShapeMissing),
+    translate_diagnostic_reason_symbol(reason: TypeExprKindAuthorityInvalid),
+    translate_diagnostic_reason_symbol(reason: TargetAtomRealizationLookupMiss),
+    translate_diagnostic_reason_symbol(reason: TargetFunctionSignatureRealizationLookupMiss),
+    translate_diagnostic_reason_symbol(reason: TargetTypeExprEmittedShapeMalformed)
   ]
 }
 
-fn translate_outcome_is_target_bundle_malformed(
+fn translate_diagnostic_reason_head(
   diagnostics: NonEmptyDiagnostics
-) -> Bool {
-  diagnostics.head.reason == ^translate_target_bundle_malformed
-}
-
-fn translate_outcome_head_reason_is_known(
-  diagnostics: NonEmptyDiagnostics
-) -> Bool {
-  contains(
-    xs: translate_diagnostic_reason_roster(),
-    item: diagnostics.head.reason,
-    eq: fn(left, right) { left == right }
-  )
+) -> Optional<TranslateDiagnosticReason> {
+  translate_diagnostic_reason_from_symbol(sym: diagnostics.head.reason)
 }
