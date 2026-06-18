@@ -61,7 +61,7 @@ fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
   )
 }
 
-fn witness_schedule_lens_red_when_corpus_runs_first() -> Bool {
+fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
   let perturbed = RealizationPlan {
     target: synthetic_target
     objective: RealizationObjective { goals: [] }
@@ -73,5 +73,5 @@ fn witness_schedule_lens_red_when_corpus_runs_first() -> Bool {
 
 fn realization_schedule_witnesses() -> Bool {
   witness_schedule_lens_green_on_synthetic_plan()
-    && witness_schedule_lens_red_when_corpus_runs_first()
+    && witness_schedule_lens_red_when_corpus_runs_first_on_synthetic()
 }

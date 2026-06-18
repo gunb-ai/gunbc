@@ -15,17 +15,14 @@ import std.measure {
 }
 import std.pareto { AxisGoal }
 
-// Measured: dissolution trigger — lands with extdeps/realization measured cost handlers.
-// Only Predicted is wired in this PR (cost_account_predicted_zero).
-type CostBasis = Measured | Predicted
-
 type NanosecondDuration = Measure<Time, Nano, Nat>
 
+// dissolve-on: extdeps/realization measured cost handlers — add `basis: CostBasis`
+//   (Measured | Predicted) and cost_account_measured_* / cost_account_predicted_zero rows.
 type CostAccount {
   time: NanosecondDuration
   space: ByteSize
   energy: Watt
-  basis: CostBasis
 }
 
 fn cost_account_predicted_zero() -> CostAccount {
@@ -33,7 +30,6 @@ fn cost_account_predicted_zero() -> CostAccount {
     time: NanosecondDuration { count: 0 }
     space: byte_size(count: 0)
     energy: watt(count: 0)
-    basis: Predicted
   }
 }
 
