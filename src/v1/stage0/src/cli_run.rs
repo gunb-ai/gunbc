@@ -2137,7 +2137,9 @@ pub fn run_discovery_rows_resolved<F>(
     execution_mode: v1_interpreter::ExecutionMode,
 ) -> Result<DiscoverySummary, String>
 where
-    F: Fn(&str) -> Result<
+    F: Fn(
+        &str,
+    ) -> Result<
         (
             Rc<v1_compiler_compile::ResolvedGraph>,
             Rc<HashMap<String, Rc<NewlineIndex>>>,
