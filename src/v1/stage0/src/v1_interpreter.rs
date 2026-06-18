@@ -5394,9 +5394,10 @@ fn eval_profile_enabled() -> bool {
     })
 }
 
-/// A host-side observation matching `compute_fabric.PerformanceReceipt` at the
-/// cache-subject grain (wall clock + eval self-time from the v1 proving handler
-/// of `std.realization_measurement.RealizationMeasureEffect`).
+/// SCAFFOLD — v1 proving handler mirror of `compute_fabric.PerformanceReceipt` (§3 peripheral).
+/// P5 receipt: `eval_measurement_purity_test.rs` (verdict unchanged under measurement).
+/// dissolve-on: v2 eval fold binds `RealizationMeasureEffect::ObserveElapsedAtSubject`;
+/// delete this struct + thread-local tap (`docs/plans/realization-measurement-loop.md` Phase 0 table).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerformanceReceipt {
     pub subject_key: String,

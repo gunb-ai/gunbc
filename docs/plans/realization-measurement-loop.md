@@ -148,6 +148,15 @@ this. NB: the timing *primitives already exist* — this is **"wire the existing
   vs aggregate-per-witness split) — which is *itself* the profiling the operator was about to do by hand,
   made first-class.
 - **§5 gate:** purity oracle — witness verdicts byte-identical instrumented vs not.
+- **P5 hand-Rust receipt (v1 seed only — dissolve-on v2 RealizationMeasureEffect fold):**
+
+  | Hand-Rust artifact | Location | Checkable receipt (green today) | Dissolve-on |
+  |---|---|---|---|
+  | eval tap + host `PerformanceReceipt` mirror | `v1_interpreter.rs` (`ACTIVE_SUBJECT`, `SUBJECT_SELF_NANOS`, `performance_receipt_from_witness`) | `eval_measurement_purity_test.rs` — witness verdict byte-identical with/without measurement | v2 eval fold binds `RealizationMeasureEffect::ObserveElapsedAtSubject`; delete thread-local tap + host struct |
+  | `run_claim_measured` / `DiscoverySummary` two-clock path | `cli_run.rs` | CI floor logs `CostAccount.time basis=Measured`; keystone witness `realization_measurement_keystone_test.dag` | v2 witness runner emits receipts via Realization carrier |
+  | `witness_work_subject_key` | `resolved_graph_cache.rs` | content-hash of closure digest + function matches cache-subject grain | subsumed by v2 resolved-graph subject projection |
+
+  ROADMAP: v1 rows delete when Phase 0 merges; v2 handler row opens Phase 1 width dispatch.
 - **Dissolution trigger:** `cost_account_predicted_zero()` has no callers on the floor path; `measured_ms`
   deleted.
 

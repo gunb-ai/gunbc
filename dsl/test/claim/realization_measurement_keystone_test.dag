@@ -18,8 +18,6 @@ import std.realization_measurement {
   RealizationMeasureEffect,
   v1_eval_expr_measure_handler_id,
   cost_account_measured_from_wall_nanos,
-  cost_account_has_measured_basis,
-  cost_account_has_predicted_basis,
   witness_measured_rollup_differs_from_predicted_zero,
 }
 import product.compute_fabric {
@@ -38,7 +36,10 @@ data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
 }
 
 fn witness_predicted_zero_is_predicted_basis() -> Bool {
-  cost_account_has_predicted_basis(account: cost_account_predicted_zero())
+  match cost_account_predicted_zero().basis {
+    Predicted => true
+    Measured => false
+  }
 }
 
 fn witness_measured_receipt_rollup_uses_lens() -> Bool {
@@ -49,7 +50,10 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   let total = cost_account_from_performance_receipts(receipts: [receipt])
   let rolled = cost_account_time_nanos(account: total)
   let observed = performance_receipts_total_wall_nanos(receipts: [receipt])
-  cost_account_has_measured_basis(account: total) && (rolled == observed)
+  match total.basis {
+    Measured => rolled == observed
+    Predicted => false
+  }
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
