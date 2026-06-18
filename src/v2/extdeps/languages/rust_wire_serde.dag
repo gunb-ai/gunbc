@@ -67,6 +67,14 @@ fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> Stri
   }
 }
 
+fn rust_wire_serde_attr_lex_spelling(naming: VariantNaming) -> String {
+  match rust_wire_serde_attr_token_class(naming: naming) {
+    ^rust_ws_token_attr_empty => ""
+    _ =>
+      concat(rust_wire_serde_string_variant_rename_all_attr(naming: naming), "\n")
+  }
+}
+
 fn rust_wire_serde_attr_token_class(naming: VariantNaming) -> Symbol {
   match naming {
     ScreamingSnakeCase => ^rust_ws_token_attr_screaming
@@ -82,9 +90,22 @@ fn rust_wire_serde_attr_token_class(naming: VariantNaming) -> Symbol {
 
 data rust_ws_review_event_body_golden: String = "pub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
 
-data rust_ws_review_event_screaming_golden: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]\npub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
+fn rust_ws_review_event_golden(naming: VariantNaming) -> String {
+  match rust_wire_serde_attr_token_class(naming: naming) {
+    ^rust_ws_token_attr_empty => rust_ws_review_event_body_golden
+    _ =>
+      concat(
+        rust_wire_serde_string_variant_rename_all_attr(naming: naming),
+        concat("\n", rust_ws_review_event_body_golden)
+      )
+  }
+}
 
-data rust_ws_review_event_snake_golden: String = "#[serde(rename_all = \"snake_case\")]\npub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
+data rust_ws_review_event_screaming_golden: String = rust_ws_review_event_golden(
+  naming: ScreamingSnakeCase
+)
+
+data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(naming: SnakeCase)
 
 // Arrow sentinel — exact grammar_relation_field_emitted fixture match (Atom would take the
 // lhs-exact singleton-terminal path, which does not fit a multi-terminal enum production).
@@ -122,11 +143,11 @@ fn rust_ws_lex_rules() -> LexRuleSet {
     rules: [
       rust_ws_lex_rule(
         token_class: ^rust_ws_token_attr_screaming,
-        text: "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]\n"
+        text: rust_wire_serde_attr_lex_spelling(naming: ScreamingSnakeCase)
       ),
       rust_ws_lex_rule(
         token_class: ^rust_ws_token_attr_snake,
-        text: "#[serde(rename_all = \"snake_case\")]\n"
+        text: rust_wire_serde_attr_lex_spelling(naming: SnakeCase)
       ),
       rust_ws_lex_rule(token_class: ^rust_ws_token_attr_empty, text: ""),
       rust_ws_lex_rule(
@@ -290,14 +311,7 @@ fn rust_ws_target_model_bundle(naming: VariantNaming) -> Node {
 }
 
 fn rust_ws_authority_source_text(naming: VariantNaming) -> String {
-  match naming {
-    ScreamingSnakeCase => rust_ws_review_event_screaming_golden
-    SnakeCase => rust_ws_review_event_snake_golden
-    AsAuthored => rust_ws_review_event_body_golden
-    StripPrefixAndSnakeCase { prefix: _ } => rust_ws_review_event_body_golden
-    StripSuffixAndSnakeCase { suffix: _ } => rust_ws_review_event_body_golden
-    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } => rust_ws_review_event_body_golden
-  }
+  rust_ws_review_event_golden(naming: naming)
 }
 
 fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
