@@ -1,5 +1,5 @@
 // Scope: the coarse "Rust stage0 monolith" CI dependency — the entire Rust seed
-//   (every `*.rs` and Cargo/toolchain manifest) treated as ONE dependency with two
+//   (every `*.rs` and Cargo/toolchain manifest) treated as ONE dependency with three
 //   gate-dependents (fmt, clippy, test). A diff touching the monolith fires all three; a non-Rust
 //   diff fires none.
 //
