@@ -167,6 +167,7 @@ import v2.std.effects {
   idempotent_operation_apply_once,
   idempotent_operation_apply_twice,
   sample_delete_composable,
+  sample_create_if_absent_composable,
   sample_label_only_subject,
   sample_read_composable,
   sample_state,
@@ -443,6 +444,7 @@ data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmp
 data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
+data idempotent_label_create_if_absent: String = "generated/idempotent_operation: CreateIfAbsentEffect f(f(x)) == f(x)"
 data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
@@ -634,6 +636,7 @@ fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempoten
     sample_read_composable,
     sample_upsert_composable,
     sample_delete_composable,
+    sample_create_if_absent_composable,
   ]
 }
 

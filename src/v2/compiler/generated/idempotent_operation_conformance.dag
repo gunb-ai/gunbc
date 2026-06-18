@@ -16,6 +16,7 @@ import v2.compiler.infer {
 import v2.lens.testgen {
   testgen_emit_idempotent_operation_claim,
   testgen_scheduled_idempotent_operation_subjects,
+  idempotent_label_create_if_absent,
   idempotent_label_delete,
   idempotent_label_read,
   idempotent_label_upsert
@@ -60,6 +61,7 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds }
 import v2.std.effects {
+  sample_create_if_absent_subject,
   sample_delete_subject,
   sample_label_only_subject,
   sample_read_subject,
@@ -226,6 +228,12 @@ data generated_delete_idempotent_operation_claim: Outcome<TestClaim> = testgen_e
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
+data generated_create_if_absent_idempotent_operation_claim: Outcome<TestClaim> = testgen_emit_idempotent_operation_claim(
+  label: idempotent_label_create_if_absent,
+  subject: sample_create_if_absent_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
 data generated_label_only_idempotent_skip: Outcome<TestClaim> = testgen_emit_idempotent_operation_claim(
   label: "generated/idempotent_operation: skip label-only inhabitance without composable body",
   subject: sample_label_only_subject,
@@ -253,6 +261,10 @@ data run_delete_idempotent_operation_via_run_test_claim: Outcome<TestClaimRun<No
   row: generated_delete_idempotent_operation_claim
 )
 
+data run_create_if_absent_idempotent_operation_via_run_test_claim: Outcome<TestClaimRun<Node, RuntimeValue>> = idempotent_operation_generated_run(
+  row: generated_create_if_absent_idempotent_operation_claim
+)
+
 data witness_read_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
   row: run_read_idempotent_operation_via_run_test_claim
 )
@@ -265,20 +277,25 @@ data witness_delete_idempotent_operation_run_non_pass: Bool = idempotent_operati
   row: run_delete_idempotent_operation_via_run_test_claim
 )
 
+data witness_create_if_absent_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
+  row: run_create_if_absent_idempotent_operation_via_run_test_claim
+)
+
 fn generated_idempotent_operation_claim_rows() -> List<Outcome<TestClaim>> {
   [
     generated_read_idempotent_operation_claim,
     generated_upsert_idempotent_operation_claim,
     generated_delete_idempotent_operation_claim,
+    generated_create_if_absent_idempotent_operation_claim,
   ]
 }
 
-fn generated_idempotent_operation_sample_count_is_three() -> Bool {
-  length(xs: generated_idempotent_operation_claim_rows()) == 3
+fn generated_idempotent_operation_sample_count_is_four() -> Bool {
+  length(xs: generated_idempotent_operation_claim_rows()) == 4
 }
 
-fn generated_idempotent_operation_scheduled_subject_count_is_three() -> Bool {
-  length(xs: testgen_scheduled_idempotent_operation_subjects()) == 3
+fn generated_idempotent_operation_scheduled_subject_count_is_four() -> Bool {
+  length(xs: testgen_scheduled_idempotent_operation_subjects()) == 4
 }
 
 fn generated_idempotent_operation_run_rows() -> List<Outcome<TestClaimRun<Node, RuntimeValue>>> {
@@ -286,9 +303,10 @@ fn generated_idempotent_operation_run_rows() -> List<Outcome<TestClaimRun<Node, 
     run_read_idempotent_operation_via_run_test_claim,
     run_upsert_idempotent_operation_via_run_test_claim,
     run_delete_idempotent_operation_via_run_test_claim,
+    run_create_if_absent_idempotent_operation_via_run_test_claim,
   ]
 }
 
-fn generated_idempotent_operation_run_count_is_three() -> Bool {
-  length(xs: generated_idempotent_operation_run_rows()) == 3
+fn generated_idempotent_operation_run_count_is_four() -> Bool {
+  length(xs: generated_idempotent_operation_run_rows()) == 4
 }
