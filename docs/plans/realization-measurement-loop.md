@@ -82,6 +82,27 @@ cost axis; product `compute_fabric` owns the **$/billing axis** (`CostClass`, `M
 fleet rows into the std shape (`placement_supply_row`, `compute_fabric.dag:220`); the **peripheral host
 realizer** bridges product→std and runs the Pareto pick. std stays product-free.
 
+### v2 is the target; v1 is the proving ground (DESIGN §7)
+
+v1 (the Rust seed) is shrinking to zero; v2 (the self-hosted `.dag` compiler) is what must benefit.
+**Every phase's durable artifact is `.dag` that v2 inherits; the Rust seed is only the proving *handler*
+— where a host-effect attaches today, while v2 is mid-bootstrap and the v1 interpreter is still the only
+evaluator that actually runs.** You MAY edit v1 (it's a proving ground), but:
+
+> **The v2-benefit test:** if a phase's deliverable is a Rust patch with *no `.dag` model*, it failed.
+> The carrier / lens / kernel / effect-shape is the artifact; the Rust code is one handler of it
+> (§2 one-shape-N-handlers; §3 measured⇒peripheral; §7 Rust→zero).
+
+This is *why* the keystone's measurement is modeled as an **effect-shape + `PerformanceReceipt` carrier +
+a roll-up lens over the Node fold** (the same `fold_node` v2's own evaluator uses) — so when v2 self-hosts,
+the instrumentation, the cache kernel, the scheduler, and the fabric all come along for free. The Rust tap
+in `v1_interpreter.rs` *proves* the model green-by-execution today; it is the realization, not the
+authority. Per-phase split: **Phase 0** durable = the `.dag` measure model/lens, proving = the Rust eval
+tap; **Phase 1** durable = the `.dag` width-fold (`scheduler.dag` is already v2), proving = the
+`claim_executor` spawn cap; **Phase 1.5a/2/3** are already `.dag`-native (`v2.lens.affected_set`, the
+cache catalog/kernel, `compute_fabric`/`ci_yaml_emit`) — v2-inheriting by construction; only the cache
+*backends* (`resolved_graph_cache.rs`, `ParseTableMemo`) stay v1 handlers of the one `.dag` kernel.
+
 ---
 
 ## Verified ground truth (file:line — do not re-derive)
@@ -308,6 +329,9 @@ groundwork. **Critical path:** Phase 0 → 1 / 2.
   `DeploymentFacts`.)
 - **Rows, not Rust** — express new schedule/cache/runner facts as data; do not cement the seed to satisfy
   a ratchet (the ratchet is downstream of substrate migration).
+- **v2-benefit test (§7)** — the durable artifact is `.dag` that v2 inherits; the Rust seed is only the
+  proving *handler*. A deliverable that is a Rust patch with no `.dag` model failed. (See the §0 "v2 is the
+  target" principle.)
 - **Fail-closed (§5)** + **purity oracle** on every memo/measurement (byte-identical warm-vs-cold; verdict
   identical instrumented-vs-not). A bounded "forever" ≠ an "unknown" error.
 - **Green by execution, not spec-without-execution.** A real consumer runs green + a discriminating input
