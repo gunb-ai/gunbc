@@ -104,6 +104,15 @@ pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
     )
 }
 
+/// Content-hash work subject for one witness: closure cache subject × function name.
+/// Keys the eval-tap PerformanceReceipt and matches the cache-subject grain (Phase 0).
+pub fn witness_work_subject_key(closure_subject_digest: &str, function: &str) -> Hash {
+    v1_rt::hash_combine(
+        v1_rt::atom_identity_hash(closure_subject_digest.to_string()),
+        v1_rt::atom_identity_hash(function.to_string()),
+    )
+}
+
 fn unique_temp_path(final_path: &Path) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

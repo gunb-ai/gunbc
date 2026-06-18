@@ -1463,6 +1463,11 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // gross time bubbles up to its parent via CHILD_NANOS — the classic
     // self-time decomposition. Runs on both the Ok and Err (`?`-propagated)
     // paths because the result is captured, not early-returned.
+    //
+    // Phase-0 keystone: when an active cache-subject is set, self-time rolls up
+    // to that content-hash key (PerformanceReceipt grain) instead of per-variant
+    // buckets. Variant counters remain as an opt-in deep projection when no
+    // subject is active.
     let idx = expr_variant_index(&node.expr_data);
     EVAL_COUNTS.with(|c| c.borrow_mut()[idx] += 1);
     let saved_children = CHILD_NANOS.replace(0);
@@ -1472,7 +1477,13 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     });
     let gross = start.elapsed().as_nanos();
     let children = CHILD_NANOS.get();
-    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += gross.saturating_sub(children));
+    let self_time = gross.saturating_sub(children);
+    if let Some(subject) = ACTIVE_SUBJECT.with(|s| s.borrow().clone()) {
+        SUBJECT_SELF_NANOS.with(|m| {
+            *m.borrow_mut().entry(subject).or_insert(0) += self_time;
+        });
+    }
+    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += self_time);
     CHILD_NANOS.set(saved_children + gross);
     result
 }
@@ -5142,6 +5153,10 @@ thread_local! {
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
     static EVAL_SELF_NANOS: RefCell<[u128; EXPR_VARIANT_COUNT]> =
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
+    /// Content-hash cache-subject key for the active witness eval (Phase-0 keystone).
+    static ACTIVE_SUBJECT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Self-time nanoseconds accumulated per cache-subject during the active profile window.
+    static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
     /// Gross nanoseconds charged by the child `eval_expr` frames of the frame
     /// currently running — read by a parent frame to subtract its children's
     /// time. Reset to 0 on frame entry, restored (plus the frame's own gross)
@@ -5165,6 +5180,56 @@ fn eval_profile_enabled() -> bool {
     })
 }
 
+/// A host-side observation matching `compute_fabric.PerformanceReceipt` at the
+/// cache-subject grain (wall clock + eval self-time from the interpreter tap).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PerformanceReceipt {
+    pub subject_key: String,
+    pub work_shape: String,
+    pub wall_nanos: u128,
+    pub eval_self_nanos: u128,
+    pub sample_count: u64,
+}
+
+/// Snapshot of per-subject eval self-time nanoseconds for the active thread.
+pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
+}
+
+/// Set the active cache-subject key for eval self-time attribution (`eval_expr` tap).
+pub fn eval_subject_set(subject_key: String) {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = Some(subject_key));
+}
+
+/// Clear the active cache-subject key.
+pub fn eval_subject_clear() {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = None);
+}
+
+/// Zero subject self-time counters and the child-time accumulator.
+pub fn eval_subject_timing_reset() {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow_mut().clear());
+    CHILD_NANOS.set(0);
+}
+
+/// Build a PerformanceReceipt from witness boundary timing + eval tap self-time.
+pub fn performance_receipt_from_witness(
+    subject_key: String,
+    work_shape: &str,
+    wall_nanos: u128,
+) -> PerformanceReceipt {
+    let eval_self_nanos = SUBJECT_SELF_NANOS
+        .with(|m| m.borrow().get(&subject_key).copied())
+        .unwrap_or(0);
+    PerformanceReceipt {
+        subject_key,
+        work_shape: work_shape.to_string(),
+        wall_nanos,
+        eval_self_nanos,
+        sample_count: 1,
+    }
+}
+
 /// A snapshot of the per-instruction eval profile (per-variant count + self-ns).
 #[derive(Clone)]
 pub struct EvalProfile {
@@ -5182,10 +5247,11 @@ pub fn eval_profile_snapshot() -> EvalProfile {
 }
 
 /// Zero the current thread's per-instruction profile (counts + self-ns + the
-/// child-time accumulator).
+/// child-time accumulator) and subject self-time map.
 pub fn eval_profile_reset() {
     EVAL_COUNTS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
     EVAL_SELF_NANOS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
+    eval_subject_timing_reset();
     CHILD_NANOS.set(0);
 }
 
