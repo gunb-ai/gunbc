@@ -64,7 +64,7 @@ fn witness_varref_vs_lit_quoting() -> Bool {
   out == "\"$ROOT\" 'ROOT'\n"
 }
 
-fn bash_serializer_keystone_holds() -> Bool {
+test fn bash_serializer_keystone_holds() -> Bool {
   witness_serialize_golden() &&
     witness_single_quote_escapes_embedded_quote() &&
     witness_metachars_are_quoted() &&
