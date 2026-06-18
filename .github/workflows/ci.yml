@@ -24,7 +24,13 @@ jobs:
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+          if sccache --show-stats >/dev/null 2>&1; then
+            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+            echo "CARGO_BUILD_JOBS=1" >> "$GITHUB_ENV"
+          else
+            echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
+          fi
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -52,5 +58,18 @@ jobs:
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: gunbc ci (.dag witnesses + gates)
         run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          set -o pipefail
+          BUILD_LOG=$(mktemp)
+          if ! (cargo build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+            if grep -qiE 'Resource temporarily unavailable|failed to spawn' "$BUILD_LOG"; then
+              echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+              CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+            else
+              exit 1
+            fi
+          fi
+          rm -f "$BUILD_LOG"
+          sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
-          cargo run -p v1-compiler --release --bin gunbc -- ci
+          "$ROOT/target/release/claim_executor" --source-root src/v2 --source-root dsl --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
