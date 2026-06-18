@@ -32,25 +32,25 @@ fn is_lossy(f: DecodeFidelity) -> Bool {
 
 fn text_medium_lossless() -> Medium<String> {
   Medium {
-    representation: "fn add(x: Int, y: Int) -> Int { x + y }",
+    carried: "fn add(x: Int, y: Int) -> Int { x + y }",
     fidelity: Lossless
   }
 }
 
 fn probe_medium_lossless() -> Medium<ProbeVerdict> {
-  Medium { representation: Dominates, fidelity: Lossless }
+  Medium { carried: Dominates, fidelity: Lossless }
 }
 
 fn prose_medium() -> Medium<String> {
   Medium {
-    representation: "roughly linear time, details omitted",
+    carried: "roughly linear time, details omitted",
     fidelity: Lossy
   }
 }
 
 fn mis_tagged_prose_medium() -> Medium<String> {
   Medium {
-    representation: "roughly linear time, details omitted",
+    carried: "roughly linear time, details omitted",
     fidelity: Lossless
   }
 }
@@ -71,9 +71,9 @@ fn probe_medium_tag_is_lossless() -> Bool {
   }
 }
 
-fn probe_representation_is_non_text() -> Bool {
+fn probe_carried_is_non_text() -> Bool {
   let m = probe_medium_lossless()
-  match m.representation {
+  match m.carried {
     Dominates => true
     Incomparable => false
   }
@@ -100,7 +100,7 @@ fn red_mistag_would_falsely_pass_lossless_check() -> Bool {
 test fn medium_fidelity_holds() -> Bool {
   text_medium_tag_is_lossless()
     && probe_medium_tag_is_lossless()
-    && probe_representation_is_non_text()
+    && probe_carried_is_non_text()
     && prose_medium_tag_is_lossy()
     && lossy_prose_not_advertised_lossless()
     && !red_mistag_would_falsely_pass_lossless_check()

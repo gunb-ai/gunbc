@@ -45,7 +45,7 @@ type DecodeFidelity = Lossless | Lossy
 // An idea carried in an external medium.
 //
 // Field ledger (§2 decompress — each field must be genuinely atomic):
-//   representation: R — the carried idea in this medium instance. Typed by `<R>` so
+//   carried: R — the represented value in this medium instance. Typed by `<R>` so
 //     text (R=String), verdicts (R=ProbeVerdict), values, binaries, … share one
 //     carrier without a text-flavored `form: String` discriminator (that would be
 //     redundant when R=String and would bias non-text media toward stringly encoding).
@@ -53,8 +53,8 @@ type DecodeFidelity = Lossless | Lossy
 //     values preserves information for this instance.
 //
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Two atomic axes (payload + decode policy); no third "kind" field at this layer.
+// Two atomic axes (carried value + decode policy); no third "kind" field at this layer.
 type Medium<R> {
-  representation: R
+  carried: R
   fidelity: DecodeFidelity
 }
