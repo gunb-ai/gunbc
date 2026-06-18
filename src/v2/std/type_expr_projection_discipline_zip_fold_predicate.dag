@@ -118,9 +118,10 @@ fn type_expr_projection_discipline_zip_fold_preservation_holds(
       ) {
         Accepted { value: child_slots_node, diagnostics: _ } =>
           let child_slots = child_slots_node.children
-          // child_slots may hold emitted-category targets (not substrate TypeNodes); row
-          // closedness is structural zip-fold + edge discipline, not substrate well_formed.
-          well_formed(n: candidate)
+          well_formed(n: source_facts)
+            && well_formed(n: candidate)
+            && well_formed(n: algebra)
+            && well_formed(n: child_slots_node)
             && (algebra == source_facts)
             && type_expr_projection_row_envelope_exact_equal(
               candidate: candidate,

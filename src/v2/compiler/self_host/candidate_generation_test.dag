@@ -34,6 +34,7 @@ import v2.test.manual.mvp1_rust_add_translate {
   mvp1_rust_missing_translation_rules_target
 }
 import v2.test.manual.sg2_type_expression_projection {
+  sg2_expected_arrow_text,
   sg2_project_arrow_emitted,
   sg2_type_expr_target
 }
@@ -80,7 +81,7 @@ fn translate_error_profile_sg2_projected_arrow_serialize_known() -> Bool {
     target: sg2_type_expr_target,
     emitted: sg2_project_arrow_emitted()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: source, diagnostics: _ } => source == sg2_expected_arrow_text
     Rejected { diagnostics: _ } => false
   }
 }

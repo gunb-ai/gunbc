@@ -40,10 +40,13 @@ import v2.std.compilers.target_model {
   TargetFunctionTypeShape,
   TargetModel,
   TargetTypeExpressionProjection,
+  target_type_expr_arrow_emitted,
+  target_type_expr_atom_emitted,
   target_type_expr_emitted_wire_decode,
   type_expr_projection_bundle_shape_for_connective,
   type_expr_projection_row_shape_witness_gate
 }
+import v2.std.algebra { Cons, Empty }
 import v2.std.node { Arrow }
 import v2.test.manual.mvp1_rust_add_translate {
   mvp1_rust_inferred_tree,
@@ -192,6 +195,29 @@ fn sg2_arrow_projected_serialized_text() -> String {
 
 fn sg2_arrow_projected_serialize_matches_expected() -> Bool {
   sg2_arrow_projected_serialized_text() == sg2_expected_arrow_text
+}
+
+// §5 discriminating RED — swap projected split inputs/output; wrong serialization must disagree.
+fn sg2_arrow_swapped_split_emitted() -> Node {
+  let row = rust_type_expression_projection()
+  target_type_expr_arrow_emitted(
+    form: row.arrow_form,
+    inputs: Cons {
+      head: target_type_expr_atom_emitted(
+        form: row.atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    },
+    output: target_type_expr_atom_emitted(
+      form: row.atom_form,
+      identity: ^rust_binding_sg2_x
+    )
+  )
+}
+
+fn sg2_arrow_swapped_split_serialize_mismatches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_arrow_swapped_split_emitted()) != sg2_expected_arrow_text
 }
 
 fn sg2_arrow_projected_serialize_accepts() -> Bool {
@@ -487,7 +513,10 @@ data claim_sg2_mvp1_translate_fallback: TestClaim = CompilesClaim {
 fn witness_sg2_arrow_holds() -> Bool {
   (content_hash(n: sg2_project_arrow_emitted()) == content_hash(n: rust_sg2_arrow_xy_emitted()))
     && sg2_arrow_serialize_matches_expected()
+    && sg2_arrow_projected_serialize_matches_expected()
+    && sg2_binary_fn_projection_accepts()
     && sg2_arrow_malformed_projection_rejects()
+    && sg2_arrow_swapped_split_serialize_mismatches_expected()
 }
 
 fn witness_sg2_projection_falsification_holds() -> Bool {
