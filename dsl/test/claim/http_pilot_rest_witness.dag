@@ -12,6 +12,7 @@
 //   CI floor: v1-compiler-tests `interp_recorded_fixture_test` (rust monolith gate) +
 //     `hermetic_replay_fidelity_witness_test` (discovery roster model witnesses).
 //   Committed fixture seed: dsl/extdeps/test/fixtures/http_pilot (no live host in CI).
+//   Wet record (opt-in, not every-push floor):
 //     claim_batch --source-root . --source-root dsl \
 //       --entry dsl/test/claim/http_pilot_rest_witness.dag \
 //       --function http_pilot_rest_keystone_holds --record --fixture-store /tmp/http-pilot-fixtures
