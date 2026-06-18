@@ -123,24 +123,6 @@ type RuntimeMountSource
   = MountBindSource { host_path: FilePath }
   | MountSymbolicSource { label: NonEmptyStr }
 
-fn parse_runtime_mount_source(raw: String, kind: RuntimeMountKind?) -> RuntimeMountSource? {
-  if raw == "" {
-    null
-  } else {
-    match kind {
-      null => MountSymbolicSource { label: raw }
-      other =>
-        match other {
-          RuntimeMountBind => MountBindSource { host_path: raw }
-          RuntimeMountTmpfs => MountSymbolicSource { label: raw }
-          RuntimeMountProc => MountSymbolicSource { label: raw }
-          RuntimeMountSys => MountSymbolicSource { label: raw }
-          RuntimeMountUnknown { raw: _ } => MountSymbolicSource { label: raw }
-        }
-    }
-  }
-}
-
 fn runtime_mount_source_label(source: RuntimeMountSource) -> String {
   match source {
     MountBindSource { host_path: path } => path
