@@ -5,6 +5,11 @@
 // that also pull v2.compiler.emit do not transitively load dsl/std.algebra and
 // collide with v2.std.algebra's FreeMonoid coproduct. Indexed after dsl/ in
 // witness_layer_roots so this row wins on module-path overlay.
+//
+// DISSOLUTION TRIGGER: this v2-local extdeps.shell overlay + the witness_layer_roots dsl-first flip are a
+// transitional bridge for the dsl<->v2 FreeMonoid co-rooting collision. Both dissolve at the FINAL migration
+// slice — when the last dsl transport is migrated and dsl/extdeps/shell/shell.dag is deleted, v2.extdeps.shell
+// becomes the sole shell.Exec authority and this overlay + the witness_layer_roots flip are removed.
 
 module extdeps.shell
 

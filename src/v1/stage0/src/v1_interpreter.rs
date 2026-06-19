@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // Persistent value carriers (ctrl#1533 phase 2), implementing the
 // v2.std.value_carrier declarations: HamtMap is a hash array mapped trie
@@ -1507,6 +1507,11 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // gross time bubbles up to its parent via CHILD_NANOS — the classic
     // self-time decomposition. Runs on both the Ok and Err (`?`-propagated)
     // paths because the result is captured, not early-returned.
+    //
+    // Phase-0 keystone: when an active cache-subject is set, self-time rolls up
+    // to that content-hash key (PerformanceReceipt grain) instead of per-variant
+    // buckets. Variant counters remain as an opt-in deep projection when no
+    // subject is active.
     let idx = expr_variant_index(&node.expr_data);
     EVAL_COUNTS.with(|c| c.borrow_mut()[idx] += 1);
     let saved_children = CHILD_NANOS.replace(0);
@@ -1516,7 +1521,16 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     });
     let gross = start.elapsed().as_nanos();
     let children = CHILD_NANOS.get();
-    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += gross.saturating_sub(children));
+    let self_time = gross.saturating_sub(children);
+    // Phase-0 keystone: v1 proving handler for std.realization_measurement
+    // RealizationMeasureEffect::ObserveElapsedAtSubject (see v1_eval_expr_measure_handler_id).
+    // Durable model + roll-up lens live in .dag; this tap is host-effect realization only.
+    if let Some(subject) = ACTIVE_SUBJECT.with(|s| s.borrow().clone()) {
+        SUBJECT_SELF_NANOS.with(|m| {
+            *m.borrow_mut().entry(subject).or_insert(0) += self_time;
+        });
+    }
+    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += self_time);
     CHILD_NANOS.set(saved_children + gross);
     result
 }
@@ -3755,6 +3769,48 @@ fn value_to_host_string(val: &Value) -> String {
     value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
+const SHELL_TRANSIENT_RETRY_MAX: u8 = 3;
+
+fn shell_output_is_transient_infra(stderr: &str, spawn_err: Option<&str>) -> bool {
+    let hay = format!("{} {}", stderr, spawn_err.unwrap_or_default()).to_lowercase();
+    hay.contains("resource temporarily unavailable")
+        || hay.contains("failed to spawn")
+        || hay.contains("sccache: encountered fatal error")
+}
+
+fn shell_retry_note(next_attempt: u8) -> &'static str {
+    match next_attempt {
+        1 => "retry CARGO_BUILD_JOBS=1 (keep sccache)",
+        2 => "retry without RUSTC_WRAPPER",
+        _ => "retry",
+    }
+}
+
+fn run_shell_argv(argv: &[String], attempt: u8) -> Result<std::process::Output, String> {
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..]);
+    if attempt >= 1 {
+        cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+    if attempt >= 2 {
+        cmd.env_remove("RUSTC_WRAPPER");
+    }
+    cmd.output()
+        .map_err(|e| format!("failed to execute '{}': {}", argv[0], e))
+}
+
+fn log_shell_failure(exit_code: i32, stdout: &str, stderr: &str) {
+    if stderr.is_empty() && stdout.is_empty() {
+        return;
+    }
+    if !stderr.is_empty() {
+        eprintln!("[shell] exit {exit_code} stderr:\n{stderr}");
+    }
+    if !stdout.is_empty() {
+        eprintln!("[shell] exit {exit_code} stdout:\n{stdout}");
+    }
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3777,22 +3833,56 @@ fn dispatch_shell(
 
     eprintln!("[shell] {}", argv.join(" "));
 
-    let output = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .output()
-        .map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
-
-    Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
-    })
+    let mut attempt = 0u8;
+    loop {
+        match run_shell_argv(&argv, attempt) {
+            Ok(output) => {
+                let exit_code = output.status.code().unwrap_or(-1);
+                let stdout = String::from_utf8_lossy(&output.stdout)
+                    .trim_end()
+                    .to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr)
+                    .trim_end()
+                    .to_string();
+                if exit_code != 0
+                    && attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
+                    && shell_output_is_transient_infra(&stderr, None)
+                {
+                    eprintln!(
+                        "[shell] transient infra error (exit {exit_code}), {}",
+                        shell_retry_note(attempt + 1)
+                    );
+                    log_shell_failure(exit_code, &stdout, &stderr);
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+                if exit_code != 0 {
+                    log_shell_failure(exit_code, &stdout, &stderr);
+                }
+                return Ok(ShellResult {
+                    exit_code,
+                    stdout,
+                    stderr,
+                });
+            }
+            Err(spawn_err)
+                if attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
+                    && shell_output_is_transient_infra("", Some(&spawn_err)) =>
+            {
+                eprintln!(
+                    "[shell] transient spawn error ({}), {}",
+                    spawn_err,
+                    shell_retry_note(attempt + 1)
+                );
+                attempt += 1;
+                std::thread::sleep(Duration::from_secs(1));
+            }
+            Err(spawn_err) => {
+                return Err(InterpError::TypeError { msg: spawn_err });
+            }
+        }
+    }
 }
 
 /// Map shell stdout/stderr/exit_code to the operation's return type fields.
@@ -5320,6 +5410,10 @@ thread_local! {
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
     static EVAL_SELF_NANOS: RefCell<[u128; EXPR_VARIANT_COUNT]> =
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
+    /// Content-hash cache-subject key for the active witness eval (Phase-0 keystone).
+    static ACTIVE_SUBJECT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Self-time nanoseconds accumulated per cache-subject during the active profile window.
+    static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
     /// Gross nanoseconds charged by the child `eval_expr` frames of the frame
     /// currently running — read by a parent frame to subtract its children's
     /// time. Reset to 0 on frame entry, restored (plus the frame's own gross)
@@ -5343,6 +5437,58 @@ fn eval_profile_enabled() -> bool {
     })
 }
 
+/// SCAFFOLD — v1 proving handler mirror of `compute_fabric.PerformanceReceipt` (§3 peripheral).
+/// P5 receipt: `eval_measurement_purity_test.rs` (verdict unchanged under measurement).
+/// dissolve-on: v2 eval fold binds `RealizationMeasureEffect::ObserveElapsedAtSubject`;
+/// delete this struct + thread-local tap (`docs/plans/realization-measurement-loop.md` Phase 0 table).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PerformanceReceipt {
+    pub subject_key: String,
+    pub work_shape: String,
+    pub wall_nanos: u128,
+    pub eval_self_nanos: u128,
+    pub sample_count: u64,
+}
+
+/// Snapshot of per-subject eval self-time nanoseconds for the active thread.
+pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
+}
+
+/// Set the active cache-subject key for eval self-time attribution (`eval_expr` tap).
+pub fn eval_subject_set(subject_key: String) {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = Some(subject_key));
+}
+
+/// Clear the active cache-subject key.
+pub fn eval_subject_clear() {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = None);
+}
+
+/// Zero subject self-time counters and the child-time accumulator.
+pub fn eval_subject_timing_reset() {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow_mut().clear());
+    CHILD_NANOS.set(0);
+}
+
+/// Build a PerformanceReceipt from witness boundary timing + eval tap self-time.
+pub fn performance_receipt_from_witness(
+    subject_key: String,
+    work_shape: &str,
+    wall_nanos: u128,
+) -> PerformanceReceipt {
+    let eval_self_nanos = SUBJECT_SELF_NANOS
+        .with(|m| m.borrow().get(&subject_key).copied())
+        .unwrap_or(0);
+    PerformanceReceipt {
+        subject_key,
+        work_shape: work_shape.to_string(),
+        wall_nanos,
+        eval_self_nanos,
+        sample_count: 1,
+    }
+}
+
 /// A snapshot of the per-instruction eval profile (per-variant count + self-ns).
 #[derive(Clone)]
 pub struct EvalProfile {
@@ -5360,10 +5506,11 @@ pub fn eval_profile_snapshot() -> EvalProfile {
 }
 
 /// Zero the current thread's per-instruction profile (counts + self-ns + the
-/// child-time accumulator).
+/// child-time accumulator) and subject self-time map.
 pub fn eval_profile_reset() {
     EVAL_COUNTS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
     EVAL_SELF_NANOS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
+    eval_subject_timing_reset();
     CHILD_NANOS.set(0);
 }
 
