@@ -27,7 +27,6 @@ import v2.std.layer {
   LayerPrefix,
   LayerPrefixCompiler,
   LayerPrefixExtdeps,
-  LayerPrefixOther,
   LayerPrefixStd,
   LayerPrefixWorkflow
 }
@@ -78,7 +77,6 @@ fn is_std_layer(layer: LayerPrefix) -> Bool {
     LayerPrefixExtdeps => false
     LayerPrefixCompiler => false
     LayerPrefixWorkflow => false
-    LayerPrefixOther => false
   }
 }
 

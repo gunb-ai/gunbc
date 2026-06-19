@@ -5,24 +5,20 @@
 
 module v2.std.layer
 
-// LayerPrefix — the 4-tier layer DAG from DESIGN.md §3.
-// LayerPrefixOther covers any prefix outside the canonical tiers (ordinal 4 = fail-closed high).
+// LayerPrefix — the closed 4-tier layer DAG from DESIGN.md §3.
+// A path outside these tiers is a host classification error (§5 loud fail), not a 5th tier.
 type LayerPrefix
   = LayerPrefixStd
   | LayerPrefixExtdeps
   | LayerPrefixCompiler
   | LayerPrefixWorkflow
-  | LayerPrefixOther
 
-// layer_prefix_ordinal — std=0 (most fundamental) through other=4 (fail-closed high).
-// Ordinal 4 for LayerPrefixOther ensures any cross-tree import from an unclassified layer
-// fails the layer-direction check (4 > any canonical ordinal).
+// layer_prefix_ordinal — std=0 (most fundamental) through workflow=3 (least fundamental).
 fn layer_prefix_ordinal(l: LayerPrefix) -> Int {
   match l {
     LayerPrefixStd => 0
     LayerPrefixExtdeps => 1
     LayerPrefixCompiler => 2
     LayerPrefixWorkflow => 3
-    LayerPrefixOther => 4
   }
 }
