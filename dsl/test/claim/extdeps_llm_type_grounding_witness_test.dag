@@ -27,13 +27,13 @@ import extdeps.llm.openai {
 }
 import extdeps.llm.openai_errors {
   OpenAiErrorDetails,
-  InvalidRequestError,
-  AuthenticationError,
-  PermissionError,
-  NotFoundError,
-  RateLimitError,
-  ApiError,
-  InsufficientQuota,
+  OpenAiInvalidRequestError,
+  OpenAiAuthenticationError,
+  OpenAiPermissionError,
+  OpenAiNotFoundError,
+  OpenAiRateLimitError,
+  OpenAiApiError,
+  OpenAiInsufficientQuota,
   OpenAiErrorTypeOther,
   parse_openai_error_type,
   openai_error_type_label,
@@ -62,12 +62,12 @@ import extdeps.llm.anthropic {
 }
 import extdeps.llm.anthropic_errors {
   AnthropicErrorEnvelope,
-  AuthenticationError,
-  InvalidRequestError,
-  RateLimitError,
-  OverloadedError,
-  NotFoundError,
-  ApiError,
+  AnthropicAuthenticationError,
+  AnthropicInvalidRequestError,
+  AnthropicRateLimitError,
+  AnthropicOverloadedError,
+  AnthropicNotFoundError,
+  AnthropicApiError,
   AnthropicErrorTypeOther,
   anthropic_error_example,
   parse_anthropic_error_type,
@@ -131,21 +131,21 @@ fn w_openai_responses_output_item_type_other() -> Bool {
 fn w_openai_error_type_known_and_other() -> Bool {
   let known = OpenAiErrorDetails {
     message: "bad",
-    type: InvalidRequestError,
+    type: OpenAiInvalidRequestError,
     param: none,
     code: none,
   }
-  known.type == InvalidRequestError
-    && openai_error_type_label(InvalidRequestError) == "invalid_request_error"
+  known.type == OpenAiInvalidRequestError
+    && openai_error_type_label(OpenAiInvalidRequestError) == "invalid_request_error"
     && match parse_openai_error_type("new_vendor_error") {
       OpenAiErrorTypeOther { raw: r } => r == "new_vendor_error"
-      InvalidRequestError => false
-      AuthenticationError => false
-      PermissionError => false
-      NotFoundError => false
-      RateLimitError => false
-      ApiError => false
-      InsufficientQuota => false
+      OpenAiInvalidRequestError => false
+      OpenAiAuthenticationError => false
+      OpenAiPermissionError => false
+      OpenAiNotFoundError => false
+      OpenAiRateLimitError => false
+      OpenAiApiError => false
+      OpenAiInsufficientQuota => false
     }
 }
 
@@ -206,16 +206,16 @@ fn w_anthropic_error_envelope_and_detail_types() -> Bool {
       anthropic_error_envelope_type_label(AnthropicErrorEnvelope {}) == "error"
   }
   envelope_ok
-    && anthropic_error_example.error.type == AuthenticationError
-    && anthropic_error_type_label(AuthenticationError) == "authentication_error"
+    && anthropic_error_example.error.type == AnthropicAuthenticationError
+    && anthropic_error_type_label(AnthropicAuthenticationError) == "authentication_error"
     && match parse_anthropic_error_type("future_error_kind") {
       AnthropicErrorTypeOther { raw: r } => r == "future_error_kind"
-      AuthenticationError => false
-      InvalidRequestError => false
-      RateLimitError => false
-      OverloadedError => false
-      NotFoundError => false
-      ApiError => false
+      AnthropicAuthenticationError => false
+      AnthropicInvalidRequestError => false
+      AnthropicRateLimitError => false
+      AnthropicOverloadedError => false
+      AnthropicNotFoundError => false
+      AnthropicApiError => false
     }
 }
 

@@ -8,13 +8,13 @@ import std.types { NonEmptyStr }
 
 // OpenAI API error `error.type` registry (extensible — closed cited rows + Other).
 type OpenAiErrorType
-  = InvalidRequestError
-  | AuthenticationError
-  | PermissionError
-  | NotFoundError
-  | RateLimitError
-  | ApiError
-  | InsufficientQuota
+  = OpenAiInvalidRequestError
+  | OpenAiAuthenticationError
+  | OpenAiPermissionError
+  | OpenAiNotFoundError
+  | OpenAiRateLimitError
+  | OpenAiApiError
+  | OpenAiInsufficientQuota
   | OpenAiErrorTypeOther { raw: NonEmptyStr }
 
 data openai_error_invalid_request_wire: String = "invalid_request_error"
@@ -26,25 +26,25 @@ data openai_error_api_wire: String = "api_error"
 data openai_error_insufficient_quota_wire: String = "insufficient_quota"
 
 fn parse_openai_error_type(raw: String) -> OpenAiErrorType {
-  if raw == openai_error_invalid_request_wire { InvalidRequestError }
-  else if raw == openai_error_authentication_wire { AuthenticationError }
-  else if raw == openai_error_permission_wire { PermissionError }
-  else if raw == openai_error_not_found_wire { NotFoundError }
-  else if raw == openai_error_rate_limit_wire { RateLimitError }
-  else if raw == openai_error_api_wire { ApiError }
-  else if raw == openai_error_insufficient_quota_wire { InsufficientQuota }
+  if raw == openai_error_invalid_request_wire { OpenAiInvalidRequestError }
+  else if raw == openai_error_authentication_wire { OpenAiAuthenticationError }
+  else if raw == openai_error_permission_wire { OpenAiPermissionError }
+  else if raw == openai_error_not_found_wire { OpenAiNotFoundError }
+  else if raw == openai_error_rate_limit_wire { OpenAiRateLimitError }
+  else if raw == openai_error_api_wire { OpenAiApiError }
+  else if raw == openai_error_insufficient_quota_wire { OpenAiInsufficientQuota }
   else { OpenAiErrorTypeOther { raw: raw } }
 }
 
 fn openai_error_type_label(kind: OpenAiErrorType) -> String {
   match kind {
-    InvalidRequestError => openai_error_invalid_request_wire
-    AuthenticationError => openai_error_authentication_wire
-    PermissionError => openai_error_permission_wire
-    NotFoundError => openai_error_not_found_wire
-    RateLimitError => openai_error_rate_limit_wire
-    ApiError => openai_error_api_wire
-    InsufficientQuota => openai_error_insufficient_quota_wire
+    OpenAiInvalidRequestError => openai_error_invalid_request_wire
+    OpenAiAuthenticationError => openai_error_authentication_wire
+    OpenAiPermissionError => openai_error_permission_wire
+    OpenAiNotFoundError => openai_error_not_found_wire
+    OpenAiRateLimitError => openai_error_rate_limit_wire
+    OpenAiApiError => openai_error_api_wire
+    OpenAiInsufficientQuota => openai_error_insufficient_quota_wire
     OpenAiErrorTypeOther { raw: r } => r
   }
 }
