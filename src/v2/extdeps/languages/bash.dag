@@ -28,6 +28,7 @@
 
 module v2.extdeps.languages.bash
 
+import v2.std.algebra { Empty, fold_list, list_snoc_item }
 import v2.std.grammar {
   GrammarExpr,
   GrammarProduction,
@@ -51,6 +52,7 @@ import v2.std.compilers.target_model {
   TargetModel,
   target_model_emit_transforms_empty,
   target_model_make_with_emit_transforms,
+  concrete_syntax_token_class,
   concrete_syntax_token_to_node
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
@@ -430,85 +432,61 @@ fn bash_fixed_tokens_grammar_relation_row(
   }
 }
 
-// Interim arity helpers for fixed-token Arrow anchors (slice 4). Dissolve-on: slice 5+
-// `bash_arrow_emitted_from_words(ids: List<Symbol>)` once compound rows need >6 slots.
-fn bash_arrow_emitted_three(left: Symbol, mid: Symbol, right: Symbol) -> Node {
+fn bash_arrow_emitted_from_words(ids: List<Symbol>) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: bash_word_atom(id: left) },
-      Edge { label: Positional, target: bash_word_atom(id: mid) },
-      Edge { label: Positional, target: bash_word_atom(id: right) }
-    ],
+    children: fold_list(
+      xs: ids,
+      empty: Empty,
+      cons: fn(acc, sym) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: bash_word_atom(id: sym) }
+        )
+      }
+    ),
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn bash_arrow_emitted_five(
-  a: Symbol,
-  b: Symbol,
-  c: Symbol,
-  d: Symbol,
-  e: Symbol
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: bash_word_atom(id: a) },
-      Edge { label: Positional, target: bash_word_atom(id: b) },
-      Edge { label: Positional, target: bash_word_atom(id: c) },
-      Edge { label: Positional, target: bash_word_atom(id: d) },
-      Edge { label: Positional, target: bash_word_atom(id: e) }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
+type BashGramSeqBuild
+  = BashGramSeqInit
+  | BashGramSeqReady { expr: GrammarExpr }
 
-fn bash_arrow_emitted_four(
-  a: Symbol,
-  b: Symbol,
-  c: Symbol,
-  d: Symbol
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: bash_word_atom(id: a) },
-      Edge { label: Positional, target: bash_word_atom(id: b) },
-      Edge { label: Positional, target: bash_word_atom(id: c) },
-      Edge { label: Positional, target: bash_word_atom(id: d) }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_arrow_emitted_six(
-  a: Symbol,
-  b: Symbol,
-  c: Symbol,
-  d: Symbol,
-  e: Symbol,
-  f: Symbol
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: bash_word_atom(id: a) },
-      Edge { label: Positional, target: bash_word_atom(id: b) },
-      Edge { label: Positional, target: bash_word_atom(id: c) },
-      Edge { label: Positional, target: bash_word_atom(id: d) },
-      Edge { label: Positional, target: bash_word_atom(id: e) },
-      Edge { label: Positional, target: bash_word_atom(id: f) }
-    ],
-    occurrence_id: SyntheticOccurrence
+// Left-nested Sequence spine from a concrete-token row (shared by slice-4 fixtures).
+fn bash_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
+  match fold_list(
+    xs: tokens,
+    empty: BashGramSeqInit,
+    cons: fn(state, token) {
+      match state {
+        BashGramSeqInit =>
+          BashGramSeqReady {
+            expr: grammar_expr_terminal(
+              token_class: concrete_syntax_token_class(token: token)
+            )
+          }
+        BashGramSeqReady { expr: acc } =>
+          BashGramSeqReady {
+            expr: Sequence {
+              left: acc,
+              right: grammar_expr_terminal(
+                token_class: concrete_syntax_token_class(token: token)
+              )
+            }
+          }
+      }
+    }
+  ) {
+    BashGramSeqInit =>
+      grammar_expr_terminal(token_class: ^bash_token_word_git)
+    BashGramSeqReady { expr: result } => result
   }
 }
 
 // AndOr { AndThen } — `'true' && 'false'`
-data bash_and_then_emitted: Node = bash_arrow_emitted_three(
-  left: ^bash_word_true,
-  mid: ^bash_surface_and_then,
-  right: ^bash_word_false
+data bash_and_then_emitted: Node = bash_arrow_emitted_from_words(
+  ids: [^bash_word_true, ^bash_surface_and_then, ^bash_word_false]
 )
 
 data bash_and_then_source_text: String = "'true' && 'false'"
@@ -521,20 +499,10 @@ fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_and_then_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: grammar_expr_terminal(token_class: ^bash_token_word_true),
-      right: grammar_expr_terminal(token_class: ^bash_token_and_then)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_word_false)
-  }
-}
-
 fn bash_and_then_grammar_production() -> GrammarProduction {
   GrammarProduction {
     name: ^bash_production_and_then,
-    expression: bash_and_then_grammar_expression(),
+    expression: bash_grammar_sequence_from_tokens(tokens: bash_and_then_concrete_tokens()),
     emitted: bash_word_atom(id: ^bash_surface_and_then_stmt)
   }
 }
@@ -557,10 +525,8 @@ fn bash_and_then_translation_rules_node() -> Node {
 }
 
 // AndOr { OrElse } — `'true' || 'false'`
-data bash_or_else_emitted: Node = bash_arrow_emitted_three(
-  left: ^bash_word_true,
-  mid: ^bash_surface_or_else,
-  right: ^bash_word_false
+data bash_or_else_emitted: Node = bash_arrow_emitted_from_words(
+  ids: [^bash_word_true, ^bash_surface_or_else, ^bash_word_false]
 )
 
 data bash_or_else_source_text: String = "'true' || 'false'"
@@ -573,20 +539,10 @@ fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_or_else_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: grammar_expr_terminal(token_class: ^bash_token_word_true),
-      right: grammar_expr_terminal(token_class: ^bash_token_or_else)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_word_false)
-  }
-}
-
 fn bash_or_else_grammar_production() -> GrammarProduction {
   GrammarProduction {
     name: ^bash_production_or_else,
-    expression: bash_or_else_grammar_expression(),
+    expression: bash_grammar_sequence_from_tokens(tokens: bash_or_else_concrete_tokens()),
     emitted: bash_word_atom(id: ^bash_surface_or_else_stmt)
   }
 }
@@ -609,11 +565,13 @@ fn bash_or_else_translation_rules_node() -> Node {
 }
 
 // WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
-data bash_with_redir_stderr_null_emitted: Node = bash_arrow_emitted_four(
-  a: ^bash_word_git,
-  b: ^bash_word_rev_parse,
-  c: ^bash_word_show_toplevel,
-  d: ^bash_surface_redir_stderr_null
+data bash_with_redir_stderr_null_emitted: Node = bash_arrow_emitted_from_words(
+  ids: [
+    ^bash_word_git,
+    ^bash_word_rev_parse,
+    ^bash_word_show_toplevel,
+    ^bash_surface_redir_stderr_null
+  ]
 )
 
 data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
@@ -627,23 +585,12 @@ fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_with_redir_stderr_null_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: Sequence {
-        left: grammar_expr_terminal(token_class: ^bash_token_word_git),
-        right: grammar_expr_terminal(token_class: ^bash_token_word_rev_parse)
-      },
-      right: grammar_expr_terminal(token_class: ^bash_token_word_show_toplevel)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_redir_stderr_null)
-  }
-}
-
 fn bash_with_redir_stderr_null_grammar_production() -> GrammarProduction {
   GrammarProduction {
     name: ^bash_production_with_redir_stderr_null,
-    expression: bash_with_redir_stderr_null_grammar_expression(),
+    expression: bash_grammar_sequence_from_tokens(
+      tokens: bash_with_redir_stderr_null_concrete_tokens()
+    ),
     emitted: bash_word_atom(id: ^bash_surface_with_redir_stderr_null)
   }
 }
@@ -666,12 +613,14 @@ fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
 }
 
 // Pipe — `'echo' 'hi' | 'wc' '-c'`
-data bash_pipe_emitted: Node = bash_arrow_emitted_five(
-  a: ^bash_word_echo,
-  b: ^bash_word_hi,
-  c: ^bash_surface_pipe,
-  d: ^bash_word_wc,
-  e: ^bash_word_minus_c
+data bash_pipe_emitted: Node = bash_arrow_emitted_from_words(
+  ids: [
+    ^bash_word_echo,
+    ^bash_word_hi,
+    ^bash_surface_pipe,
+    ^bash_word_wc,
+    ^bash_word_minus_c
+  ]
 )
 
 data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
@@ -686,26 +635,10 @@ fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_pipe_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: Sequence {
-        left: Sequence {
-          left: grammar_expr_terminal(token_class: ^bash_token_word_echo),
-          right: grammar_expr_terminal(token_class: ^bash_token_word_hi)
-        },
-        right: grammar_expr_terminal(token_class: ^bash_token_pipe)
-      },
-      right: grammar_expr_terminal(token_class: ^bash_token_word_wc)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_word_minus_c)
-  }
-}
-
 fn bash_pipe_grammar_production() -> GrammarProduction {
   GrammarProduction {
     name: ^bash_production_pipe,
-    expression: bash_pipe_grammar_expression(),
+    expression: bash_grammar_sequence_from_tokens(tokens: bash_pipe_concrete_tokens()),
     emitted: bash_word_atom(id: ^bash_surface_pipe_stmt)
   }
 }
@@ -729,13 +662,15 @@ fn bash_pipe_translation_rules_node() -> Node {
 
 // host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
 // Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
-data bash_or_else_with_redir_emitted: Node = bash_arrow_emitted_six(
-  a: ^bash_word_git,
-  b: ^bash_word_rev_parse,
-  c: ^bash_word_show_toplevel,
-  d: ^bash_surface_redir_stderr_null,
-  e: ^bash_surface_or_else,
-  f: ^bash_word_pwd
+data bash_or_else_with_redir_emitted: Node = bash_arrow_emitted_from_words(
+  ids: [
+    ^bash_word_git,
+    ^bash_word_rev_parse,
+    ^bash_word_show_toplevel,
+    ^bash_surface_redir_stderr_null,
+    ^bash_surface_or_else,
+    ^bash_word_pwd
+  ]
 )
 
 data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
@@ -751,29 +686,12 @@ fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_or_else_with_redir_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: Sequence {
-        left: Sequence {
-          left: Sequence {
-            left: grammar_expr_terminal(token_class: ^bash_token_word_git),
-            right: grammar_expr_terminal(token_class: ^bash_token_word_rev_parse)
-          },
-          right: grammar_expr_terminal(token_class: ^bash_token_word_show_toplevel)
-        },
-        right: grammar_expr_terminal(token_class: ^bash_token_redir_stderr_null)
-      },
-      right: grammar_expr_terminal(token_class: ^bash_token_or_else)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_word_pwd)
-  }
-}
-
 fn bash_or_else_with_redir_grammar_production() -> GrammarProduction {
   GrammarProduction {
     name: ^bash_production_or_else_with_redir,
-    expression: bash_or_else_with_redir_grammar_expression(),
+    expression: bash_grammar_sequence_from_tokens(
+      tokens: bash_or_else_with_redir_concrete_tokens()
+    ),
     emitted: bash_word_atom(id: ^bash_surface_or_else_with_redir)
   }
 }
