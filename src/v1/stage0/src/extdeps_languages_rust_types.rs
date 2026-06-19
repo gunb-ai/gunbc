@@ -216,3 +216,11 @@ pub fn serde_rename_template() -> String {
     }
     CACHED.with(|c: &String| c.clone())
 }
+
+pub struct Owned;
+pub struct SharedRef;
+pub struct MutRef;
+pub struct RawPtr;
+pub struct BoxPtr;
+pub struct RcPtr;
+pub struct ArcPtr;

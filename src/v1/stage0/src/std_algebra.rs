@@ -1416,3 +1416,21 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
     }
 }
+
+pub struct Less;
+pub struct Equal;
+pub struct Greater;
+pub struct OrderedRingProfile;
+pub struct ApproximateFieldProfile;
+pub struct BooleanAlgebraProfile;
+pub struct BooleanAlgebraCollectionProfile;
+pub struct FreeMonoidScalarProfile;
+pub struct FreeMonoidCollectionProfile;
+pub struct PartialFunctionProfile;
+pub struct ShrinkEffect;
+pub struct ProjectionEffect;
+pub struct IdentityEffect;
+pub struct ShapeConstant;
+pub struct ShapeLinearScan;
+pub struct ShapeIterateBody;
+pub struct ShapeSortBody;

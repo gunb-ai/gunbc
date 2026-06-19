@@ -1102,3 +1102,9 @@ pub fn bellman_ford_bound() -> Rc<CostBound> {
 pub fn floyd_warshall_bound() -> Rc<CostBound> {
     cost_poly("V".to_string(), 3)
 }
+
+pub struct DirectRecursion;
+pub struct ListRecursion;
+pub struct OptionalRecursion;
+pub struct SetRecursion;
+pub struct MapValueRecursion;

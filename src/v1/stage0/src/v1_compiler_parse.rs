@@ -14558,3 +14558,7 @@ pub fn peek_is_colon_after_ident(tokens: Rc<Vec<Rc<Token>>>) -> bool {
         None => false,
     }
 }
+
+pub struct ParserHelperSkipNewlines;
+pub struct ParserHelperSkipContinuationNewlines;
+pub struct ParserHelperWith;
