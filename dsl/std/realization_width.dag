@@ -26,7 +26,6 @@ import std.measure {
   Nano,
   hardware_thread_count,
   hardware_thread_count_value,
-  Nano,
 }
 import std.verification {
   NanosecondDuration,
