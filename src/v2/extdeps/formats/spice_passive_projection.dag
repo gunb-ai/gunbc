@@ -12,6 +12,7 @@ import v2.std.timeseries_signal {
   PassiveComponentSpec,
   PassiveElementTopology,
   PassiveElementValue,
+  PotentialReference,
   ResistorPassive,
 }
 import v2.extdeps.formats.spice {
