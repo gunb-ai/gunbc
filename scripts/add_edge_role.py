@@ -86,18 +86,20 @@ def transform_content(content: str) -> str:
 
 
 def patch_edge_copies(content: str) -> str:
-    replacements = [
-        (
-            "Edge { label: edge.label, target:",
-            "Edge { label: edge.label, role: edge.role, target:",
-        ),
-        (
-            "Edge { label: e.label, target:",
-            "Edge { label: e.label, role: e.role, target:",
-        ),
-    ]
-    for old, new in replacements:
-        content = content.replace(old, new)
+    for var in ("edge", "e"):
+        old = f"Edge {{ label: {var}.label, target:"
+        new = f"Edge {{ label: {var}.label, role: {var}.role, target:"
+        idx = 0
+        while True:
+            pos = content.find(old, idx)
+            if pos == -1:
+                break
+            head = content[pos : pos + len(old) + 40]
+            if "role:" in head.split("target:")[0]:
+                idx = pos + len(old)
+                continue
+            content = content[:pos] + new + content[pos + len(old) :]
+            idx = pos + len(new)
     return content
 
 

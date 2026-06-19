@@ -2,7 +2,14 @@
 
 module v2.test.claim.edge_role_containment_fold
 
-import v2.std.dependency { BindsTo, Contains, DependencyView, dependency_lens }
+import v2.std.dependency {
+  BootstrapDependsOn,
+  BindsTo,
+  Contains,
+  DependencyView,
+  ModuleDependsOn,
+  dependency_lens
+}
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -93,4 +100,60 @@ test fn containment_subtree_excludes_reference_child() -> Bool {
 
 test fn dependency_lens_reference_edge_is_not_contains() -> Bool {
   dependency_lens_reference_edge_is_not_contains_holds()
+}
+
+data edge_role_module_import_child: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^edge_role_module_import_child_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data edge_role_module_import_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    named_reference_edge(name: ^dependency_module_import_edge, target: edge_role_module_import_child)
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn dependency_lens_module_import_edge_is_module_depends_on_holds() -> Bool {
+  fold(dependency_lens(root: edge_role_module_import_root), init: true, f: fn(acc, view) {
+    if view.dependent == edge_role_module_import_child {
+      acc && (view.kind == ModuleDependsOn)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn dependency_lens_module_import_edge_is_module_depends_on() -> Bool {
+  dependency_lens_module_import_edge_is_module_depends_on_holds()
+}
+
+data edge_role_bootstrap_depends_child: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^edge_role_bootstrap_depends_child_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data edge_role_bootstrap_depends_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    named_reference_edge(name: ^dependency_bootstrap_depends_edge, target: edge_role_bootstrap_depends_child)
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn dependency_lens_bootstrap_depends_edge_is_bootstrap_depends_on_holds() -> Bool {
+  fold(dependency_lens(root: edge_role_bootstrap_depends_root), init: true, f: fn(acc, view) {
+    if view.dependent == edge_role_bootstrap_depends_child {
+      acc && (view.kind == BootstrapDependsOn)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn dependency_lens_bootstrap_depends_edge_is_bootstrap_depends_on() -> Bool {
+  dependency_lens_bootstrap_depends_edge_is_bootstrap_depends_on_holds()
 }
