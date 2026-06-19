@@ -122,11 +122,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-                if let Some(existing) = index.insert(module_path.clone(), rel.clone()) {
-                    panic!(
-                        "build_module_path_index: duplicate module path '{module_path}': {existing} vs {rel}"
-                    );
-                }
+                // Co-root overlay: later `source_roots` win on duplicate module paths
+                // (same last-wins policy as `build_module_index`). TRANSITIONAL (slice 3):
+                // enables v2 overlay without panic while dsl+src/v2 coexist. DISSOLUTION
+                // RESTORE (final slice): when witness_layer_roots reverts to a single root and
+                // dsl/extdeps/shell is deleted, restore fail-closed panic on duplicate module_path
+                // so an accidental name collision is loud again (§5).
+                index.insert(module_path.clone(), rel);
             }
         }
     }
@@ -795,12 +797,81 @@ pub fn make_eval_context_with_fixture_store(
     execution_mode: v1_interpreter::ExecutionMode,
     fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
 ) -> v1_interpreter::InterpContext {
-    v1_interpreter::InterpContext::with_fixture_store(
+    make_eval_context_with_runtime_options(
         graph,
         source_indices,
         execution_mode,
         fixture_store,
+        None,
     )
+}
+
+/// Like [`make_eval_context_with_fixture_store`], but threads M4.1 whole-tree precomputed
+/// published-mock keys so hermetic governance is independent of the entry import closure.
+pub fn make_eval_context_with_runtime_options(
+    graph: &v1_compiler_compile::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+) -> v1_interpreter::InterpContext {
+    v1_interpreter::InterpContext::with_runtime_options(
+        graph,
+        source_indices,
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    )
+}
+
+/// Source roots that name a `dsl/` tree (whole-tree published-mock-corpus authority for M4.1).
+fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
+    let mut dsl: Vec<String> = source_roots
+        .iter()
+        .filter(|r| {
+            let p = Path::new(r.as_str());
+            p.ends_with("dsl") || p.file_name().is_some_and(|n| n == "dsl")
+        })
+        .cloned()
+        .collect();
+    // Workspace-only `--source-root <repo>` still indexes dsl/ via build_multi_entry_index;
+    // include `<root>/dsl` when present so universal corpus precompute matches.
+    for root in source_roots {
+        let child = Path::new(root).join("dsl");
+        if child.is_dir() {
+            dsl.push(child.to_string_lossy().into_owned());
+        }
+    }
+    dsl.sort();
+    dsl.dedup();
+    dsl
+}
+
+/// Precompute the published mock corpus operation-key set from the whole dsl/ source tree.
+/// Independent of any witness entry's import closure — the SAME authority the M2
+/// `mock_totality_lens` reads module-by-module.
+pub fn precompute_whole_tree_published_mock_keys(
+    source_roots: &[String],
+) -> Result<std::collections::HashSet<String>, String> {
+    let dsl_roots = dsl_source_roots(source_roots);
+    if dsl_roots.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let index = build_module_index(&dsl_roots);
+    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
+    if all_sources.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
+    let ctx = v1_interpreter::InterpContext::with_runtime_options(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+        None,
+        None,
+    );
+    v1_interpreter::resolve_published_mock_keys(&ctx)
+        .map_err(|e| format!("whole-tree published mock corpus precompute: {e}"))
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
@@ -1801,12 +1872,30 @@ pub fn verify_bool_witness_transport_projection_complete(
     Ok(())
 }
 
-fn dag_string_escape(s: &str) -> String {
+fn dag_string_escape_core(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+}
+
+/// Fail-closed: manifest scalar fields (paths, names, hashes) must not contain `{`/`}`.
+fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
+    if s.contains('{') || s.contains('}') {
+        return Err(format!(
+            "manifest scalar field must be brace-free (got '{{' or '}}'): {s:?}"
+        ));
+    }
+    Ok(dag_string_escape_core(s))
+}
+
+/// Embedded raw `.dag` source in manifest string literals — brace-escape pairs with
+/// `v1_compiler_tokenize::process_escapes` (`\{`/`\}` → literal braces).
+fn dag_embedded_dag_source_escape(s: &str) -> String {
+    dag_string_escape_core(s)
+        .replace('{', "\\{")
+        .replace('}', "\\}")
 }
 
 fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
@@ -1821,24 +1910,24 @@ fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
     }
 }
 
-fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> String {
+fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> Result<String, String> {
     match initializer {
         OwnedDataDeclInitializer::BoolWitnessClaim {
             witness_entry,
             witness_function,
-        } => format!(
+        } => Ok(format!(
             "    initializer: OwnedBoolWitnessClaimInit {{\n      witness_entry: \"{}\",\n      witness_function: \"{}\"\n    }}",
-            dag_string_escape(witness_entry),
-            dag_string_escape(witness_function)
-        ),
+            dag_manifest_scalar_escape(witness_entry)?,
+            dag_manifest_scalar_escape(witness_function)?
+        )),
         OwnedDataDeclInitializer::NodeCorpus => {
-            "    initializer: OwnedNodeCorpusInit".to_string()
+            Ok("    initializer: OwnedNodeCorpusInit".to_string())
         }
-        OwnedDataDeclInitializer::Other { resolved } => format!(
+        OwnedDataDeclInitializer::Other { resolved } => Ok(format!(
             "    initializer: OwnedOtherInit {{\n      resolved: ResolvedDeclRef {{\n        module: \"{}\",\n        name: {}\n      }}\n    }}",
-            dag_string_escape(&resolved.module),
+            dag_manifest_scalar_escape(&resolved.module)?,
             manifest_symbol_for_resolved_decl(&resolved.module, &resolved.name)
-        ),
+        )),
     }
 }
 
@@ -1904,19 +1993,19 @@ pub fn emit_owned_data_manifest(
         out.push_str("  OwnedDataDeclRecord {\n");
         out.push_str(&format!(
             "    entry: \"{}\",\n",
-            dag_string_escape(&rec.entry)
+            dag_manifest_scalar_escape(&rec.entry)?
         ));
         out.push_str(&format!(
             "    module: \"{}\",\n",
-            dag_string_escape(&rec.module)
+            dag_manifest_scalar_escape(&rec.module)?
         ));
         out.push_str(&format!(
             "    decl_name: \"{}\",\n",
-            dag_string_escape(&rec.decl_name)
+            dag_manifest_scalar_escape(&rec.decl_name)?
         ));
         out.push_str(&format!(
             "{}\n",
-            emit_owned_data_initializer(&rec.initializer)
+            emit_owned_data_initializer(&rec.initializer)?
         ));
         out.push_str("  }");
     }
@@ -2013,8 +2102,10 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
     "host_source_root_ingest_manifest.dag",
-    // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
+    // Gate-only: requires host manifest overlay (v2.workflow.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
+    // Gate-only: N_v2 substrate witnesses (scripts/v2-compiler-closure-nv2-gate.sh).
+    "compiler_closure_emit_from_ingest_gate.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
@@ -2304,21 +2395,23 @@ pub struct SourceRootReadRecord {
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
-    let mut out = String::from('^');
+    let mut body = String::new();
     for ch in stem.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' {
-            out.push(ch);
+            body.push(ch);
         } else {
-            out.push('_');
+            body.push('_');
         }
     }
-    if out == "^" {
-        out.push_str("host_sr_empty");
+    if body.is_empty() {
+        body.push_str("host_sr_empty");
+    } else if body.as_bytes()[0].is_ascii_digit() {
+        body = format!("sr_{body}");
     }
-    out
+    format!("^{body}")
 }
 
-fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
+pub fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
     let stem = Path::new(path)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -2332,6 +2425,123 @@ fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("host_sr");
     source_root_ingest_symbol_from_stem(stem)
+}
+
+/// Parsed `Admission` facts for the scoped `--entry` module (subject + import targets).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceRootEntryAdmission {
+    pub subject: Vec<String>,
+    pub imports: Vec<Vec<String>>,
+}
+
+fn parse_dotted_module_path(path: &str) -> Option<Vec<String>> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let segments: Vec<String> = trimmed
+        .split('.')
+        .filter(|seg| !seg.is_empty())
+        .map(str::to_string)
+        .collect();
+    if segments.is_empty() {
+        None
+    } else {
+        Some(segments)
+    }
+}
+
+/// Parse `module …` and `import …` lines from an entry `.dag` source for manifest admission.
+/// Bootstrap host transport only — same lightweight line-scan shape as `extract_module_path`;
+/// dissolves when v2 owns ingest-side admission projection.
+pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntryAdmission, String> {
+    let mut subject: Option<Vec<String>> = None;
+    let mut imports: Vec<Vec<String>> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+
+    for line in source.lines() {
+        let line = line.split("//").next().unwrap_or("").trim();
+        if let Some(rest) = line.strip_prefix("module ") {
+            subject = parse_dotted_module_path(rest);
+        } else if let Some(rest) = line.strip_prefix("import ") {
+            let module_path = rest.split_whitespace().next().unwrap_or("");
+            if let Some(segments) = parse_dotted_module_path(module_path) {
+                if seen.insert(segments.clone()) {
+                    imports.push(segments);
+                }
+            }
+        }
+    }
+
+    subject
+        .map(|subject| SourceRootEntryAdmission { subject, imports })
+        .ok_or_else(|| "entry source missing `module` declaration".to_string())
+}
+
+fn emit_qualified_name_dag(segments: &[String]) -> String {
+    if segments.is_empty() {
+        return "QnEmpty".to_string();
+    }
+    let mut out = String::from("QnEmpty");
+    for seg in segments.iter().rev() {
+        out = format!("QnCons {{ head: ^{seg}, tail: {out} }}");
+    }
+    out
+}
+
+#[cfg(test)]
+mod manifest_emit_tests {
+    use super::{
+        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, emit_qualified_name_dag,
+    };
+
+    #[test]
+    fn emit_qualified_name_dag_three_segment_path() {
+        assert_eq!(
+            emit_qualified_name_dag(&["v2".into(), "compiler".into(), "compile".into()]),
+            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+        );
+    }
+
+    #[test]
+    fn emit_qualified_name_dag_empty_is_qn_empty() {
+        assert_eq!(emit_qualified_name_dag(&[]), "QnEmpty");
+    }
+
+    #[test]
+    fn manifest_scalar_escape_rejects_braces() {
+        assert!(dag_manifest_scalar_escape("src/v2/foo.dag").is_ok());
+        assert!(dag_manifest_scalar_escape("fnv1a64:abc").is_ok());
+        assert!(dag_manifest_scalar_escape("has{brace").is_err());
+        assert!(dag_manifest_scalar_escape("has}brace").is_err());
+    }
+
+    #[test]
+    fn embedded_dag_source_escape_preserves_braces_as_escapes() {
+        assert_eq!(
+            dag_embedded_dag_source_escape("match x { A => 1 }"),
+            "match x \\{ A => 1 \\}"
+        );
+    }
+}
+
+fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
+    let mut out = String::from("Empty");
+    for import in imports.iter().rev() {
+        out = format!(
+            "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
+            emit_qualified_name_dag(import)
+        );
+    }
+    out
+}
+
+fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -> String {
+    format!(
+        "data host_compiler_closure_admission: Admission = Admission {{\n  subject: ResolutionSubject {{\n    name: {}\n  }},\n  imports: {}\n}}\n\n\n",
+        emit_qualified_name_dag(&admission.subject),
+        emit_import_admission_list(&admission.imports)
+    )
 }
 
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
@@ -2416,30 +2626,76 @@ pub fn discover_source_root_reads(
     Ok(records)
 }
 
-fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
-    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
-    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
-    format!(
-        "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
-        dag_string_escape(&rec.source),
-        dag_string_escape(&rec.file_path),
-    )
+/// Parse-level import closure for one entry `.dag` file — same scope as
+/// `--claim-run --entry` / `load_sources_for_entry`, projected to ingest witnesses.
+pub fn discover_source_root_reads_for_entry(
+    source_roots: &[String],
+    entry_path: &str,
+    exclude_subpaths: &[String],
+) -> Result<Vec<SourceRootReadRecord>, String> {
+    for root in source_roots {
+        let root_path = Path::new(root);
+        if !root_path.exists() {
+            return Err(format!(
+                "discover_source_root_ingest: source root does not exist: {}",
+                root
+            ));
+        }
+    }
+
+    let closure = load_sources_for_entry(source_roots, entry_path)
+        .map_err(|msg| format!("discover_source_root_ingest: entry closure load failed: {msg}"))?;
+
+    let mut records: Vec<SourceRootReadRecord> = Vec::new();
+    for source in closure {
+        let rel_forward = source.path.replace('\\', "/");
+        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
+            continue;
+        }
+        let module_path = extract_module_path(&source.content).ok_or_else(|| {
+            format!(
+                "discover_source_root_ingest: no module declaration in {}",
+                rel_forward
+            )
+        })?;
+        records.push(SourceRootReadRecord {
+            file_path: rel_forward,
+            module_path,
+            source: source.content.clone(),
+        });
+    }
+
+    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    Ok(records)
 }
 
-fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
-    let mut witness_nodes: Vec<String> =
-        records.iter().map(emit_source_root_read_witness).collect();
+fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
+    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
+    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
+    Ok(format!(
+        "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        dag_embedded_dag_source_escape(&rec.source),
+        dag_manifest_scalar_escape(&rec.file_path)?,
+    ))
+}
+
+fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
+    let mut witness_nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_root_read_witness)
+        .collect::<Result<_, _>>()?;
     let mut out = String::from("Empty");
     while let Some(head) = witness_nodes.pop() {
         out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
     }
-    out
+    Ok(out)
 }
 
 /// Emit an ephemeral importable `.dag` manifest (never committed).
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
+    entry_admission: Option<&SourceRootEntryAdmission>,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -2466,10 +2722,20 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
-    out.push_str("import v2.std.text { String }\n\n\n");
+    out.push_str("import v2.std.text { String }\n");
+    if entry_admission.is_some() {
+        out.push_str("import v2.compiler.name_resolve {\n");
+        out.push_str("  Admission,\n");
+        out.push_str("  Import,\n");
+        out.push_str("  ImportVisible,\n");
+        out.push_str("  ResolutionSubject\n");
+        out.push_str("}\n");
+        out.push_str("import v2.std.qualified_name { QnCons, QnEmpty }\n");
+    }
+    out.push('\n');
     out.push_str(&format!(
         "data host_source_root_ingest_content_hash: String = \"{}\"\n\n\n",
-        dag_string_escape(&content_hash)
+        dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
@@ -2485,8 +2751,12 @@ pub fn emit_source_root_ingest_manifest(
     if inline_records.is_empty() {
         out.push_str("Empty\n");
     } else {
-        out.push_str(&emit_source_root_ingest_monoid(inline_records));
+        out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
         out.push('\n');
+    }
+    if let Some(admission) = entry_admission {
+        out.push('\n');
+        out.push_str(&emit_source_root_entry_admission_data(admission));
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
