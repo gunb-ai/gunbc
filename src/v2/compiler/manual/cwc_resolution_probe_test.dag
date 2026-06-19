@@ -108,13 +108,6 @@ fn cwc_norm_rejects(src: String) -> Bool {
   }
 }
 
-fn cwc_norm_rejects_with_located_diagnostics(src: String) -> Bool {
-  match cwc_norm_of(src: src) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-
 test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
   match cwc_norm_of(src: cwc_src_type_scalar) {
     Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root)
@@ -123,7 +116,8 @@ test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
 }
 
 test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
-  cwc_norm_rejects_with_located_diagnostics(src: cwc_src_type_malformed_coproduct)
+  // Rejected carries NonEmptyDiagnostics (located by type); goes RED if swallow returns Accepted.
+  cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
 }
 
 // §5 red control (bundled only — must NOT be a standalone test fn: discovery expects PASS=true).
