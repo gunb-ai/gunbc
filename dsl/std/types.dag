@@ -365,8 +365,6 @@ type GitRef       = String where non_empty
 
 // --- Domain enums (Level 4: Finite Coproducts) ------------------------
 
-type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
-
 // --- Extracted enums (WS1-2: stringly-typed -> sum types) ---------------
 
 type TopologyNodeKind = Pure | Transport | SubDag | Env
