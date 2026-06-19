@@ -219,18 +219,19 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => Vec::new(),
             };
-            let skip_unaffected_node_frontier = match ctx
-                .field(fields, "skip_unaffected_node_frontier")
-            {
-                Some(v) => match v {
-                    Value::Bool(b) => *b,
-                    other => return Err(format!(
+            let skip_unaffected_node_frontier =
+                match ctx.field(fields, "skip_unaffected_node_frontier") {
+                    Some(v) => match v {
+                        Value::Bool(b) => *b,
+                        other => {
+                            return Err(format!(
                         "RunnableDiscoveryBatch.skip_unaffected_node_frontier must be Bool, got {}",
                         other.type_label_public()
-                    )),
-                },
-                None => false,
-            };
+                    ))
+                        }
+                    },
+                    None => false,
+                };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,

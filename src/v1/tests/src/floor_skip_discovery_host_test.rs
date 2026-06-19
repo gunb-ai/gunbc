@@ -64,6 +64,47 @@ impl Drop for EnvVarGuard {
 }
 
 #[test]
+fn budget_roster_resolves_after_frontier_warmup() {
+    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
+
+    let ws = workspace_root();
+    let roots = vec![
+        ws.join("src/v2").to_string_lossy().into_owned(),
+        ws.join("dsl").to_string_lossy().into_owned(),
+    ];
+    let index = build_multi_entry_index(&roots);
+    for path in [
+        "dsl/std/realization_schedule.dag",
+        "src/v2/workflow/affected_set_floor_runner.dag",
+        "src/v2/workflow/affected_set_floor_runner_test.dag",
+    ] {
+        let _ = resolve_entry_with_index(&index, path);
+    }
+    let entry = ws
+        .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve");
+}
+
+#[test]
+fn budget_roster_resolves_cold() {
+    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
+
+    let ws = workspace_root();
+    let roots = vec![
+        ws.join("src/v2").to_string_lossy().into_owned(),
+        ws.join("dsl").to_string_lossy().into_owned(),
+    ];
+    let index = build_multi_entry_index(&roots);
+    let entry = ws
+        .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve cold");
+}
+
+#[test]
 fn discovery_corpus_skip_disabled_runs_without_panic() {
     let summary = run_explicit_roster(false).expect("skip-disabled discovery must not panic");
     assert_eq!(summary.skipped, 0, "skip disabled → no skips");
