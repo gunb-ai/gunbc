@@ -7,6 +7,65 @@ import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
 
+// SdramSignalingFamily — the SDRAM clock/signaling technology. DoubleDataRate is the DDR
+// family (data transferred on both clock edges). A closed enum because SDR vs DDR vs LPDDR
+// are genuinely categorical signaling regimes — not a magnitude.
+// Anchor: JEDEC — "DDR" = double data rate (the signaling property the generation number
+//   qualifies: DDR4 = double-data-rate generation 4).
+type SdramSignalingFamily = | DoubleDataRate
+
+// DramGeneration — decomposed SDRAM generation axis: signaling family × generation number.
+// "DDR4" is NOT an opaque enum token — it is DoubleDataRate × 4, reusing the cardinal-Int
+// pattern (like rank_count, CpuModelCatalogRow.cores) rather than minting Ddr4/Ddr5 variants
+// that re-coin the magnitude the marketing label already names (§2 failed-decomposition).
+type DramGeneration {
+  signaling_family: SdramSignalingFamily
+  // generation_number — the JEDEC ordinal in "DDR<N>" (4, 5, …), as a grounded cardinal Int
+  // so derivations and cited-ceiling dispatch key on the magnitude directly.
+  generation_number: Int
+}
+
+// Canonical DoubleDataRate generation rows — the magnitude lives once, not per-SKU enum tags.
+data dram_generation_ddr4: DramGeneration = DramGeneration {
+  signaling_family: DoubleDataRate,
+  generation_number: 4,
+}
+data dram_generation_ddr5: DramGeneration = DramGeneration {
+  signaling_family: DoubleDataRate,
+  generation_number: 5,
+}
+
+// Fail-closed sentinel for uncited generations (dispatch fallback in extdeps/memory/jedec).
+data dram_generation_unknown: DramGeneration = DramGeneration {
+  signaling_family: DoubleDataRate,
+  generation_number: 0,
+}
+
+fn dram_generation_eq(a: DramGeneration, b: DramGeneration) -> Bool {
+  (a.signaling_family == b.signaling_family) && (a.generation_number == b.generation_number)
+}
+
+fn dram_generation_number(gen: DramGeneration) -> Int {
+  gen.generation_number
+}
+
+fn dram_generation_signaling_family(gen: DramGeneration) -> SdramSignalingFamily {
+  gen.signaling_family
+}
+
+// JedecDdrGenerationCatalogRow — the cited JEDEC standard row for one SDRAM generation.
+// std/memory owns the SHAPE; the per-generation ceilings and standard ids live in
+// extdeps/memory/jedec (DESIGN §3: single authority — the spec is external, not re-coined).
+type JedecDdrGenerationCatalogRow {
+  generation: DramGeneration
+  // max_monolithic_die_density — largest per-die DATA capacity a single monolithic DRAM device
+  // can have under this generation's JEDEC standard (bytes — the module taxonomy's native
+  // unit; datasheets quote density in bits but capacity_bytes and this ceiling are both bytes).
+  max_monolithic_die_density: ByteSize
+  // jedec_standard — the cited JEDEC document id (e.g. JESD79-4 for DDR4 SDRAM).
+  jedec_standard: NonEmptyStr
+}
+
 // DimmBuffering — the command/address path between the host and the DRAM devices.
 // Unbuffered (UDIMM) drives the DRAM directly; Registered (RDIMM) buffers the
 // command/address lines through a register; Load-Reduced (LRDIMM) additionally
@@ -31,6 +90,9 @@ type DimmBuffering = Unbuffered | Registered | LoadReduced
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: DramManufacturer
+  // generation — decomposed SDRAM generation (signaling family × ordinal), not a stringly
+  // "DDR4" label or opaque enum that re-coins the magnitude.
+  generation: DramGeneration
   // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
   // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in std.memory with
   // a +/- claim — then capacity = die_density × (64 / bit_width_count(chip_width)) ×
@@ -101,10 +163,8 @@ fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
 // std.measure ByteSize carrier — NOT bits. Datasheets quote die DENSITY in bits (a "16 Gibit
 // die"), but capacity_bytes is already bytes, so the per-die figure in bytes needs NO byte↔bit
 // conversion: per-die bytes = capacity_bytes / (data chips × rank), directly — the inline ×8 a
-// bit-denominated density would carry is gone. The DDR4 monolithic ceiling 16 Gibit = 2 GiB =
-// 2_147_483_648 bytes. Anchor: JEDEC DDR4 (JESD79-4) device densities 2/4/8/16 Gbit; 32Gbit is
-// DDR5-era. 🟡 raise for DDR5 (up to 64Gbit = 8 GiB) when a generation axis lands — DDR4 today.
-data max_dram_die_density: ByteSize = byte_size(count: 2147483648)
+// bit-denominated density would carry is gone. The per-generation monolithic ceiling is cited in
+// extdeps/memory/jedec (JESD79-4 DDR4 → 16 Gbit = 2 GiB; JESD79-5 DDR5 → 64 Gbit = 8 GiB).
 
 // Per-die data capacity implied by the marketed capacity: total data bytes spread across the
 // part's data dies (data chips per rank × ranks). In bytes — both sides already bytes, no ×8.
@@ -112,11 +172,17 @@ fn dram_module_required_die_density(module: DramModuleCatalogRow) -> ByteSize {
   byte_size(count: byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
 }
 
-// A module is realizable iff its implied per-die capacity fits the monolithic ceiling. Used by
-// selection-time candidate filtering (product.hardware_selection) so a Pareto front can never
-// contain a physically non-existent part.
-fn dram_module_is_realizable(module: DramModuleCatalogRow) -> Bool {
-  byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: max_dram_die_density)
+// A module is realizable iff (a) its generation matches the cited JEDEC row and (b) its implied
+// per-die capacity fits that generation's monolithic ceiling. Used by selection-time candidate
+// filtering (product.hardware_selection) so a Pareto front can never contain a physically
+// non-existent part. Fail-closed on generation mismatch (§5): a DDR4 module scored against a
+// DDR5 ceiling would silently pass impossible SKUs.
+fn dram_module_is_realizable(module: DramModuleCatalogRow, jedec: JedecDdrGenerationCatalogRow) -> Bool {
+  if !dram_generation_eq(a: module.generation, b: jedec.generation) {
+    false
+  } else {
+    byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: jedec.max_monolithic_die_density)
+  }
 }
 
 type MemoryPopulationRow {
