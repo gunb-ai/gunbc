@@ -579,6 +579,52 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
     );
 }
 
+// M4.1 universal corpus governance: the witness entry imports ONLY the service module — the
+// published corpus lives in a separate file (dsl/test/fixture/m4_universal_governed_corpus.dag)
+// that is NOT in the entry import closure. The runtime must precompute keys from the whole dsl/
+// tree; without that, Forbidden would vacuously realize via its inline mock (M4.0 teeth gap).
+#[test]
+fn m4_universal_corpus_published_realizes_unpublished_fails_closed() {
+    let ws = workspace_root();
+    let common = |func: &str| -> std::process::Output {
+        run_claim_batch(&[
+            "--source-root",
+            ws.to_str().expect("workspace"),
+            "--source-root",
+            ws.join("dsl").to_str().expect("dsl root"),
+            "--entry",
+            ws.join("dsl/test/claim/m4_universal_corpus_witness.dag")
+                .to_str()
+                .expect("entry"),
+            "--function",
+            func,
+            "--hermetic",
+        ])
+    };
+
+    let green = common("witness_universal_published_realizes");
+    assert!(
+        green.status.success(),
+        "published op must realize with whole-tree corpus governance; stderr={}",
+        String::from_utf8_lossy(&green.stderr)
+    );
+
+    let red = common("witness_universal_unpublished_fails_closed");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&red.stdout),
+        String::from_utf8_lossy(&red.stderr)
+    );
+    assert!(
+        !red.status.success(),
+        "unpublished op must fail closed when corpus is outside entry closure; output:\n{combined}"
+    );
+    assert!(
+        combined.contains("not a published mock case"),
+        "expected published-corpus refusal diagnostic, got:\n{combined}"
+    );
+}
+
 fn fixture_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_json_files(dir, &mut out);
