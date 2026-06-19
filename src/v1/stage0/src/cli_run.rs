@@ -2060,6 +2060,7 @@ pub fn owned_data_bool_witness_transport_tsv(
 
 /// One discovered witness row. `label` is for diagnostics; the `(entry,
 /// function)` pair is what gets resolved and run.
+#[derive(Clone)]
 pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
@@ -2509,58 +2510,90 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-/// Node-precise skip seeds from git unified-diff line ranges.
+/// Node-precise skip seeds from git unified-diff line ranges. String-keyed (no `Value`)
+/// so the struct is `Send` and a clone can ride into each width-shard thread.
+#[derive(Clone, Default)]
 struct NodeFrontierSeeds {
-    nodes: Vec<v1_interpreter::Value>,
-    /// `(repo-relative file, data item name)` for TestClaim declarations whose spans overlap.
-    overlapping_test_claims: HashSet<(String, String)>,
-    /// Every data item whose full declaration span overlaps the diff (for entry-local re-eval).
+    /// `(repo-relative file, data item name)` for every `data` declaration whose span
+    /// overlaps the diff (re-evaluated per entry into substrate `Node`s).
     overlapping_data_items: HashSet<(String, String)>,
+    /// `(repo-relative file, witness fn name)` for every `test fn` whose own body span was
+    /// edited — that witness's behavior IS the diff, so it must run (finding 1, fail-closed).
+    edited_test_fns: HashSet<(String, String)>,
+    /// Fail-closed escape hatch: a change the node-frontier cannot bound — a non-`.dag`
+    /// file (e.g. the Rust seed), a `.dag` that fails to resolve (finding 2), an
+    /// unparsed/empty `.dag`, a module/import (preamble) edit, or a `fn`/`type`/`service`
+    /// declaration edit — disables the skip so the full corpus runs.
+    force_run_all: bool,
 }
 
-/// Node-precise frontier: substrate evaluation nodes from TestClaim `data` items whose
-/// declaration spans overlap git unified-diff line ranges (not whole changed files).
+impl NodeFrontierSeeds {
+    fn run_all() -> Self {
+        Self {
+            force_run_all: true,
+            ..Default::default()
+        }
+    }
+}
+
+/// Node-precise frontier seeds: classify each changed line of each changed `.dag` file by
+/// the top-level declaration whose source span owns it. A `data` decl joins the rerun
+/// frontier; a `test fn` decl force-runs that witness; anything the frontier cannot bound
+/// (see `force_run_all`) fails closed to a full run. Pure over the AST — the per-entry
+/// touch check (`entry_touches_frontier_seeds`) does the substrate evaluation.
 fn collect_frontier_seeds_from_diff_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    execution_mode: v1_interpreter::ExecutionMode,
 ) -> Result<NodeFrontierSeeds, String> {
-    let mut frontier = Vec::new();
-    let mut seen = HashSet::new();
-    let mut overlapping_test_claims = HashSet::new();
     let mut overlapping_data_items = HashSet::new();
+    let mut edited_test_fns = HashSet::new();
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            continue;
+            // A non-`.dag` change (the Rust seed / interpreter) can flip any witness's
+            // result; the node-frontier only models the `.dag` substrate → fail closed.
+            return Ok(NodeFrontierSeeds::run_all());
         }
         let file_norm = normalize_repo_path(file_path);
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
+            // Finding 2: a changed `.dag` we cannot resolve contributes nothing to the
+            // frontier; witnesses depending on it must not be assumed green → fail closed.
             Ok(pair) => pair,
-            Err(_) => continue,
+            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
         };
-        // This file's data items in source order. An item AST node's own `span` is just
-        // its keyword/name token, so its FULL declaration is [start .. next data item's
-        // start) (EOF for the last) — covering the value body AND any `test fn`/comment in
-        // the gap. Fail-closed: a change anywhere between two declarations re-runs the
-        // preceding one's dependents (using item.span alone is fail-open for value edits).
-        let mut file_data_items: Vec<Rc<Node>> = Vec::new();
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
+        };
+        // `test fn` is stripped of its `test` marker before parse, so the AST cannot tell a
+        // witness from a plain `fn`; match names against the same text scan discovery uses.
+        let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
+        // Every top-level declaration of this file, in source order. An item's own `span`
+        // is just its keyword/name token, so the full declaration of item[i] is
+        // [start_i .. start_{i+1} - 1] (EOF for the last); the −1 keeps the boundary off
+        // the next declaration's opening line.
+        let mut file_items: Vec<Rc<Node>> = Vec::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
-                if item_kind(item.clone()) != ItemKind::DataItem {
-                    continue;
-                }
                 if span_file_matches(&item.span.file, &file_norm) {
-                    file_data_items.push(item.clone());
+                    file_items.push(item.clone());
                 }
             }
         }
-        file_data_items.sort_by_key(|it| it.span.start);
-        let mut overlapping_data_names = Vec::new();
-        for (i, item) in file_data_items.iter().enumerate() {
-            // End one byte BEFORE the next item's start so the declaration's last line is
-            // the line before the next declaration's first line (no boundary bleed onto the
-            // next item's opening line). The last item runs to EOF (i64::MAX).
-            let decl_end = file_data_items
+        if file_items.is_empty() {
+            return Ok(NodeFrontierSeeds::run_all());
+        }
+        file_items.sort_by_key(|it| it.span.start);
+        // A change in the preamble (module decl / imports, before the first declaration)
+        // can re-resolve every symbol in the file → unbounded effect → fail closed.
+        let Some(nl) = newline_index_for_span(&file_items[0].span, &source_indices).cloned() else {
+            return Ok(NodeFrontierSeeds::run_all());
+        };
+        let first_decl_line = byte_to_line_col(nl, file_items[0].span.start).line;
+        if ranges.iter().any(|r| r.start < first_decl_line) {
+            return Ok(NodeFrontierSeeds::run_all());
+        }
+        for (i, item) in file_items.iter().enumerate() {
+            let decl_end = file_items
                 .get(i + 1)
                 .map(|next| next.span.start - 1)
                 .unwrap_or(i64::MAX);
@@ -2569,47 +2602,25 @@ fn collect_frontier_seeds_from_diff_line_ranges(
                 start: item.span.start,
                 end: decl_end,
             };
-            if span_overlaps_line_ranges(&decl_span, &source_indices, ranges) {
-                overlapping_data_names.push(authored_name_at(source_indices.clone(), item.clone()));
-            }
-        }
-        let ctx = make_eval_context(&graph, source_indices.clone(), execution_mode);
-        for name in overlapping_data_names {
-            // Keep `ctx` active so FreeMonoid Variant chains in the data
-            // initializer (e.g. `test_claim_evaluation_nodes`) decode via the
-            // interned Empty/Cons symbols; a bare call leaves ACTIVE_CTX None and
-            // `free_monoid_to_vec` fails "fold_list … got Variant" (root fix, #5295).
-            let Some(val) = v1_interpreter::with_active_context(&ctx, || {
-                v1_interpreter::eval_data_item_value(&ctx, &name)
-            })
-            .map_err(|e| format!("eval data `{name}` in {file_path}: {e}"))?
-            else {
+            if !span_overlaps_line_ranges(&decl_span, &source_indices, ranges) {
                 continue;
-            };
-            overlapping_data_items.insert((file_norm.clone(), name.clone()));
-            // A claim whose own declaration span was edited re-runs via the fast-path
-            // (entry_touches_frontier_seeds checks overlapping_test_claims by name).
-            if value_is_test_claim(&val, &ctx) {
-                overlapping_test_claims.insert((file_norm.clone(), name.clone()));
             }
-            // Node-level rerun frontier: seed EVERY Node the changed data item denotes,
-            // not just changed-TestClaim eval-nodes. This subsumes the old extraction (a
-            // TestClaim's value tree contains its lhs/rhs Nodes) and closes the fail-open
-            // hole for changes to plain `Node` data a witness depends on.
-            let mut item_nodes = Vec::new();
-            collect_node_values(&val, &ctx, &mut item_nodes);
-            for node in item_nodes {
-                let key = ctx.format_value(&node);
-                if seen.insert(key) {
-                    frontier.push(node);
-                }
+            let name = authored_name_at(source_indices.clone(), item.clone());
+            if test_fn_names.contains(&name) {
+                edited_test_fns.insert((file_norm.clone(), name));
+            } else if item_kind(item.clone()) == ItemKind::DataItem {
+                overlapping_data_items.insert((file_norm.clone(), name));
+            } else {
+                // A changed `fn`/`type`/`service` declaration can affect any dependent
+                // witness transitively; the node-frontier can't bound that → fail closed.
+                return Ok(NodeFrontierSeeds::run_all());
             }
         }
     }
     Ok(NodeFrontierSeeds {
-        nodes: frontier,
-        overlapping_test_claims,
         overlapping_data_items,
+        edited_test_fns,
+        force_run_all: false,
     })
 }
 
@@ -2620,7 +2631,6 @@ fn entry_frontier_nodes_from_seeds(
     entry_path: &str,
     seeds: &NodeFrontierSeeds,
 ) -> Result<Vec<v1_interpreter::Value>, String> {
-    let entry_norm = normalize_repo_path(entry_path);
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for (file, name) in &seeds.overlapping_data_items {
@@ -2646,33 +2656,20 @@ fn entry_frontier_nodes_from_seeds(
     Ok(out)
 }
 
+/// Does any witness in `entry_path` depend on a changed `data` node? Re-evaluates the
+/// overlapping data items in *this* entry's context (a claim edited in its own file lands
+/// here too: its `lhs`/`rhs` `Node`s join the frontier and the claim touches them). An
+/// edited `test fn` body is handled separately at the row level (`edited_test_fns`).
 fn entry_touches_frontier_seeds(
     ctx: &v1_interpreter::InterpContext,
     entry_path: &str,
     seeds: &NodeFrontierSeeds,
 ) -> Result<bool, String> {
-    for name in ctx.item_registry.keys() {
-        if seeds.overlapping_test_claims.iter().any(|(file, claim)| {
-            diff_file_matches_entry(file, entry_path) && claim == name
-        }) {
-            return Ok(true);
-        }
-    }
     let entry_frontier = entry_frontier_nodes_from_seeds(ctx, entry_path, seeds)?;
     if entry_frontier.is_empty() {
         return Ok(false);
     }
     entry_claims_touch_frontier(ctx, &list_value_from_vec(entry_frontier))
-}
-
-fn overlapping_test_claims_contains(
-    seeds: &NodeFrontierSeeds,
-    entry_norm: &str,
-    claim_name: &str,
-) -> bool {
-    seeds
-        .overlapping_test_claims
-        .contains(&(entry_norm.to_string(), claim_name.to_string()))
 }
 
 fn entry_claims_touch_frontier(
@@ -2742,12 +2739,14 @@ pub fn run_discovery_corpus(
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
+    parallel_width: usize,
 ) -> Result<DiscoverySummary, String> {
     run_discovery_corpus_with_options(
         source_roots,
         scan_dirs,
         explicit_entries,
         execution_mode,
+        parallel_width,
         DiscoveryCorpusOptions::default(),
     )
 }
@@ -2757,6 +2756,7 @@ pub fn run_discovery_corpus_with_options(
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
+    parallel_width: usize,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
@@ -2810,39 +2810,124 @@ pub fn run_discovery_corpus_with_options(
     let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier
         && !line_ranges_by_file.is_empty()
     {
-        match collect_frontier_seeds_from_diff_line_ranges(
-            &index,
-            &line_ranges_by_file,
-            execution_mode,
-        ) {
-            Ok(seeds) => (true, seeds),
+        match collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges_by_file) {
+            // `force_run_all` (a change the frontier can't bound) disables the skip.
+            Ok(seeds) => (!seeds.force_run_all, seeds),
             Err(msg) => {
                 eprintln!(
                     "claim_executor: node-frontier population failed ({msg}) — fail-closed, running full corpus"
                 );
-                (
-                    false,
-                    NodeFrontierSeeds {
-                        nodes: Vec::new(),
-                        overlapping_test_claims: HashSet::new(),
-                        overlapping_data_items: HashSet::new(),
-                    },
-                )
+                (false, NodeFrontierSeeds::default())
             }
         }
     } else {
-        (
-            false,
-            NodeFrontierSeeds {
-                nodes: Vec::new(),
-                overlapping_test_claims: HashSet::new(),
-                overlapping_data_items: HashSet::new(),
-            },
-        )
+        (false, NodeFrontierSeeds::default())
     };
 
-    // Group by entry (rows are sorted by (entry, function)), resolve each entry
-    // once, run its witnesses against the shared graph.
+    // Width realization (§3 peripheral): shard whole entry-groups across worker threads;
+    // the topology (which witnesses run vs. skip) is unchanged — only host fan-out differs.
+    // Seeds are string-keyed (Send), so each shard shares a clone of the skip decision.
+    let width = parallel_width.max(1);
+    if width == 1 {
+        return run_discovery_rows(&rows, &index, execution_mode, skip_enabled, &frontier_seeds);
+    }
+    let shards = shard_row_indices_by_entry(&rows, width);
+    eprintln!(
+        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
+        width,
+        shards.iter().filter(|s| !s.is_empty()).count()
+    );
+    let source_roots_owned = source_roots.to_vec();
+    let mut handles = Vec::new();
+    for shard in shards {
+        if shard.is_empty() {
+            continue;
+        }
+        let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
+        let roots = source_roots_owned.clone();
+        let seeds = frontier_seeds.clone();
+        handles.push(std::thread::spawn(move || {
+            let index = build_multi_entry_index(&roots);
+            run_discovery_rows(&shard_rows, &index, execution_mode, skip_enabled, &seeds)
+        }));
+    }
+    let mut summaries = Vec::new();
+    for handle in handles {
+        summaries.push(
+            handle
+                .join()
+                .map_err(|_| "discovery corpus shard thread panicked".to_string())??,
+        );
+    }
+    Ok(merge_discovery_summaries(summaries))
+}
+
+/// Partition row indices by whole entry groups (preserve resolve-once warmth), then
+/// round-robin groups across `parallel_width` shards.
+fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> Vec<Vec<usize>> {
+    let width = parallel_width.max(1);
+    let mut entry_groups: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    let mut current_entry: Option<&str> = None;
+    for (i, row) in rows.iter().enumerate() {
+        if current_entry != Some(row.entry.as_str()) {
+            if !current.is_empty() {
+                entry_groups.push(current);
+            }
+            current = vec![i];
+            current_entry = Some(&row.entry);
+        } else {
+            current.push(i);
+        }
+    }
+    if !current.is_empty() {
+        entry_groups.push(current);
+    }
+    let mut shards: Vec<Vec<usize>> = vec![Vec::new(); width];
+    for (gi, group) in entry_groups.into_iter().enumerate() {
+        shards[gi % width].extend(group);
+    }
+    shards
+}
+
+fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySummary {
+    let mut merged = DiscoverySummary {
+        total: 0,
+        passed: 0,
+        skipped: 0,
+        failures: Vec::new(),
+        entry_resolve_receipts: Vec::new(),
+        total_resolve_nanos: 0,
+        performance_receipts: Vec::new(),
+        total_measured_nanos: 0,
+    };
+    for summary in summaries {
+        merged.total += summary.total;
+        merged.passed += summary.passed;
+        merged.skipped += summary.skipped;
+        merged.failures.extend(summary.failures);
+        merged
+            .entry_resolve_receipts
+            .extend(summary.entry_resolve_receipts);
+        merged.total_resolve_nanos += summary.total_resolve_nanos;
+        merged
+            .performance_receipts
+            .extend(summary.performance_receipts);
+        merged.total_measured_nanos += summary.total_measured_nanos;
+    }
+    merged
+}
+
+/// Run an ordered slice of discovery rows against a shared multi-entry index. Rows must be
+/// sorted by `(entry, function)` so resolve-once-per-entry holds. `skip_enabled` +
+/// `frontier_seeds` carry the node-precise floor skip decision.
+fn run_discovery_rows(
+    rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
+    execution_mode: v1_interpreter::ExecutionMode,
+    skip_enabled: bool,
+    frontier_seeds: &NodeFrontierSeeds,
+) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
@@ -2857,13 +2942,13 @@ pub fn run_discovery_corpus_with_options(
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
     let mut current_entry_touches = true;
-    for row in &rows {
+    for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
+            let (graph, source_indices) = resolve_entry_with_index(index, &row.entry)
                 .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
             let resolve_nanos = resolve_started.elapsed().as_nanos();
             summary.total_resolve_nanos += resolve_nanos;
@@ -2875,14 +2960,20 @@ pub fn run_discovery_corpus_with_options(
             current_closure_subject = Some(closure_subject);
             let entry_ctx = make_eval_context(&graph, source_indices, execution_mode);
             current_entry_touches = if skip_enabled {
-                entry_touches_frontier_seeds(&entry_ctx, &row.entry, &frontier_seeds)?
+                entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
             } else {
                 true
             };
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
         }
-        if skip_enabled && !current_entry_touches {
+        // Finding 1 (fail-closed): a witness whose own `test fn` body span was edited must
+        // run even when no `data` node it reads changed — its behavior IS the diff.
+        let function_edited = skip_enabled
+            && frontier_seeds.edited_test_fns.iter().any(|(file, func)| {
+                diff_file_matches_entry(file, &row.entry) && func == &row.function
+            });
+        if skip_enabled && !current_entry_touches && !function_edited {
             summary.skipped += 1;
             eprintln!(
                 "SKIP [assumed-green node-frontier] {} ({})",
@@ -3041,11 +3132,10 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
         let ranges_a = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_a));
-        let seeds_a =
-            collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_a, ExecutionMode::Wet)
-                .expect("frontier for A-line diff");
+        let seeds_a = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_a)
+            .expect("frontier for A-line diff");
         assert!(
-            !seeds_a.nodes.is_empty(),
+            !seeds_a.overlapping_data_items.is_empty(),
             "A-line diff must seed a non-empty frontier (line_a={line_a}, line_b={line_b})"
         );
         let touches_a = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_a)
@@ -3056,57 +3146,14 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
 
         let ranges_b = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_b));
-        let seeds_b =
-            collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_b, ExecutionMode::Wet)
-                .expect("frontier for B-line diff");
+        let seeds_b = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_b)
+            .expect("frontier for B-line diff");
         let touches_b = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_b)
             .expect("touch check for B-line diff");
         assert!(
             !touches_b,
             "diff on B's claim span only must NOT touch witness W (skip assumed-green)"
         );
-    }
-
-    /// VERIFIER repro: does the unwrapped eval_data path actually raise the
-    /// reported `fold ... got Variant` error, and does the with_active_context
-    /// wrap fix it? Exercises the timeseries fixture the proposal cites.
-    #[test]
-    fn verifier_repro_eval_data_initializer_active_ctx() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let fixture =
-            "src/v2/compiler/manual/timeseries_passive_map_fold_anchor_test.dag".to_string();
-        let roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dsl").to_string_lossy().into_owned(),
-        ];
-        let index = build_multi_entry_index(&roots);
-        let (graph, source_indices) =
-            super::resolve_entry_with_index(&index, &fixture).expect("timeseries fixture resolves");
-        let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
-
-        // Unwrapped: exactly the current cli_run.rs:2621 call.
-        let unwrapped = crate::v1_interpreter::eval_data_initializer_values(&ctx);
-        eprintln!(
-            "UNWRAPPED eval_data_initializer_values => {:?}",
-            unwrapped.as_ref().map(|v| v.len())
-        );
-        if let Err(e) = &unwrapped {
-            eprintln!("UNWRAPPED ERROR: {e}");
-        }
-
-        // Wrapped: the proposed fix.
-        let wrapped = crate::v1_interpreter::with_active_context(&ctx, || {
-            crate::v1_interpreter::eval_data_initializer_values(&ctx)
-        });
-        eprintln!(
-            "WRAPPED eval_data_initializer_values => {:?}",
-            wrapped.as_ref().map(|v| v.len())
-        );
-        if let Err(e) = &wrapped {
-            eprintln!("WRAPPED ERROR: {e}");
-        }
-        assert!(wrapped.is_ok(), "wrapped must succeed");
     }
 }
 
