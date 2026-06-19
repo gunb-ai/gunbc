@@ -26,7 +26,7 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v2.std.provenance { span_index_empty }
-import v2.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Diagnostic,
@@ -48,6 +48,11 @@ import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.target_carriers { lossless_source }
 import v2.compiler.translate { target_serialize_source_from_model }
+import v2.std.cross_tree.import_model {
+  SourceRootRef,
+  source_root_ref_eq,
+  source_root_set_contains
+}
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -70,6 +75,23 @@ type DagSourceReadWitness {
   // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
   // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
   compilation_unit: Symbol
+  // Route C Phase C — grounded tree identity from host ingest (--source-root), not QN-prefix inference.
+  source_root: SourceRootRef
+}
+
+// Active source-root set derived from host-tagged ingest witnesses (authoritative).
+fn source_root_set_from_ingest(ingest: SourceRootIngest) -> FreeMonoid<SourceRootRef> {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      if source_root_set_contains(roots: acc, r: read.source_root) {
+        acc
+      } else {
+        Cons { head: read.source_root, tail: acc }
+      }
+    }
+  )
 }
 
 // Whole source-root ingest closure — the same set `--source-root src/v2` walks.

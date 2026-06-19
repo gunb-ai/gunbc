@@ -275,7 +275,8 @@ fn witness_cross_tree_more_fundamental_resolves_holds() -> Bool {
     roots: roots,
     admission: ct_cross_tree_admission(),
     order: MoreFundamental,
-    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
+    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots)),
+    bindings: Empty
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
