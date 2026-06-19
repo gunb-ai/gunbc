@@ -107,14 +107,14 @@ fn emit_effect_call_source(expr: TargetValueExpression) -> Outcome<Medium<String
 // sentinel makes the receipt fail loudly rather than emit a silently-degraded program.
 fn ts_effect_write_call_source() -> String {
   match emit_effect_call_source(expr: ts_effect_write_call_expr()) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
   }
 }
 
 fn ts_effect_read_call_source() -> String {
   match emit_effect_call_source(expr: ts_effect_read_call_expr()) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => "EFFECT_EMIT_REJECTED"
   }
 }

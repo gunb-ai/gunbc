@@ -172,7 +172,7 @@ fn sg2_mode2_serialize_accepts(emitted: Node) -> Bool {
 
 fn sg2_mode2_serialized_text(emitted: Node) -> String {
   match target_serialize_source_from_model(target: sg2_mode2_target(), emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
@@ -198,14 +198,14 @@ fn sg2_mode2_emit_accepts() -> Bool {
 
 fn sg2_mode2_emit_text() -> String {
   match emit(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
 fn sg2_mode2_perturbed_emit_text() -> String {
   match emit(tree: sg2_mode2_perturbed_inferred_tree, target: sg2_mode2_target()) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
