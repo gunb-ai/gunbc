@@ -1833,7 +1833,7 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_repeat(
         element: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
           right: item
         )
       ),
