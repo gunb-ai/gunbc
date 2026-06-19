@@ -1,0 +1,15 @@
+module v2.test.manual.cwc_probe_plan
+
+import std.realization_schedule { Runnable, RunnableSingleClaim }
+import v2.std.collection { List }
+
+fn cwc_probe_plan() -> List<List<Runnable>> {
+  [
+    [
+      RunnableSingleClaim {
+        entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
+        function: "cwc_nary_coproduct_normalize_boundary_holds"
+      }
+    ]
+  ]
+}

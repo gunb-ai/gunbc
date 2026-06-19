@@ -1,0 +1,63 @@
+// BOUNDARY-RECEIPT — v2 front-end n-ary-coproduct normalization gap (blocks C.i).
+//
+// WHAT THIS PROVES (green by execution today): the v2 front-end
+// (tokenize→parse→normalize) lowers a coproduct `type` decl with **≤2 variants** but
+// **rejects 3+ variants**. So no resolver-produced tree can carry a real multi-variant
+// enum (e.g. github ReviewEvent = Approve|RequestChanges|Comment|Pending) — which is the
+// input C.i ("v2 emit: module enum through fold into serde rename_all", node
+// adhoc-e6f251cb-02a) needs to flow a real enum + its CoproductWireContract through the
+// 06_translate fold into the rust_wire_serde serialize. C.i is therefore blocked UPSTREAM.
+//
+// THE GAP IS NOT a Disj well_formedness cap — Disj already accepts n-ary LabeledEdges with
+// no arity bound (src/v2/std/node.dag:466). The gap is the coproduct-RHS lowering of the
+// right-recursive `|` chain: dag_production_type_alias_rhs +
+// dag_production_type_alias_rhs_repeat_suffix (src/v2/extdeps/languages/dag.dag:1496-1517)
+// is NOT folded into a single n-ary Disj. Fix home: a normalize/sugar reduction in
+// 03_normalize.dag / std.compilers.sugar (sugar_rule_type's SugarUnwrapPositionalChild
+// unwraps the single RHS child and is NOT the arity gate).
+//
+// DISSOLUTION TRIGGER: when this witness flips RED, the chain→Disj fold has landed and 3+
+// variant coproducts now normalize => C.i is UNBLOCKED. That red is EXPECTED, not a
+// regression: go re-enable C.i (real enum + CoproductWireContract through the translate
+// fold arm), then delete this receipt. (Probe receipt for the gate-conclusion under PR
+// #5195; full method: drive tokenize→parse→normalize from a Source string via
+// dag_language_model_wave1().)
+
+module v2.test.manual.cwc_resolution_probe
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+
+// ≤2-variant coproducts normalize; 3+ do not (the boundary this receipt locks).
+data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
+data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
+
+fn cwc_norm_of(src: String) -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
+    f: fn(toks) {
+      bind_outcome(o: parse(tokens: toks, grammar: lm.grammar), f: fn(ptree) {
+        normalize(parse_tree: ptree)
+      })
+    }
+  )
+}
+
+fn cwc_norm_accepts(src: String) -> Bool {
+  match cwc_norm_of(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// GREEN today; flips RED the day the front-end chain→Disj fold lands (see header).
+test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
+  cwc_norm_accepts(src: cwc_src_type_two)
+    && (cwc_norm_accepts(src: cwc_src_type_three) == false)
+}
