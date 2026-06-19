@@ -14,8 +14,10 @@ import std.measure {
   byte_size_count,
   ElectricPotential,
   Micro,
+}
+import product.compute_fabric {
   money_micros,
-  money_micros_count
+  money_micros_count,
 }
 import std.types { Int }
 import std.logic { Bool }
@@ -40,8 +42,8 @@ fn measure_signed_magnitude_roundtrip_holds() -> Bool {
 }
 
 // Two-hop alias chain — the `<M>`-carrying `count` field read multi-hop through
-// MoneyMicros (= MoneyAmount<Micro> = Measure<Currency, Micro, Nat>). Substantiates
-// the "two-hop alias chains round-trip" claim in measure.dag (G3 + multi-hop landed
+// product.compute_fabric.MoneyMicros (= MoneyAmount<Micro> = Measure<Currency, Micro, Nat>).
+// Substantiates the "two-hop alias chains round-trip" claim in measure.dag (G3 + multi-hop landed
 // gunbc#4885): both `money_micros` (multi-hop record literal) and `money_micros_count`
 // (multi-hop `.count`) resolve + evaluate on the v2 interpreter.
 fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
