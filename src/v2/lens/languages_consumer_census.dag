@@ -8,8 +8,10 @@
 //     must be repointed before the row is deleted.
 // Status: M1 -- host census bridge + corpus witnesses.
 // Hand-Rust scaffold receipt (DESIGN.md section 7): languages_consumer_census.rs is
-//   bootstrap text-scan census only -- shrink target is delete that module once
-//   Node-tree decl projection + import-graph resolution own the census here.
+//   bootstrap text-scan census only.
+// Dissolve-on (owner: v2.lens.languages_consumer_census): delete languages_consumer_census.rs
+//   when Node-tree decl projection + import-graph resolution replace the text scan here.
+//   Concrete gate: languages.dag ~64-row delete PR after rust_spec/go_spec/python_spec repoints.
 // Consumer: claim_batch discovery over src/v2/compiler/languages_consumer_census.
 
 module v2.lens.languages_consumer_census
