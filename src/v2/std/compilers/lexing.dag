@@ -5,7 +5,7 @@
 
 module v2.std.compilers.lexing
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
@@ -69,11 +69,15 @@ type LexRules
 // concept, derive every use): an ordered list of (token_class, fragment) spans whose
 // fragments concatenate, in order, to the source text.
 //
-// Author it so the `fragment:` column reads top-to-bottom AS the sentence being formed —
-// the authored form IS the phrase. The lex rule set, the source text, and (in
-// target_model, which knows ConcreteSyntaxToken) the concrete-token sequence all PROJECT
-// from this one value, so the concat == source_text identity holds by construction and
-// the three can no longer drift (§5: the redundancy is removed, not merely checked).
+// The cosmetic authoring form is `phrase_text`: a `text:` row of fragments that reads
+// LEFT-TO-RIGHT as the sentence being formed, with a positionally-aligned `classes:` row
+// naming each fragment's token class — i.e. "here is the resulting phrase, and here is what
+// each piece is". The lex rule set, the source text, and (in target_model, which knows
+// ConcreteSyntaxToken) the concrete-token sequence all PROJECT from this one value, so the
+// concat == source_text identity holds by construction and the three can no longer drift
+// (§5: the redundancy is removed, not merely checked). A text/classes length or order
+// mismatch is caught by execution — the per-phrase emit witnesses go RED on a wrong
+// source text or token-class sequence (the fail-closed guard, not a silent zip-to-shorter).
 //
 // 🟡 layout-in-fragments interim — feature:t6-token-layout — bind gunbc#4761 (T-6 TokenLayout/
 // TriviaPolicy) — dissolve-on-arrival: `fragment` splits into (lexeme, trivia) once T-6
@@ -99,6 +103,32 @@ fn span(token_class: Symbol, fragment: String) -> TokenSpan {
 
 fn phrase(spans: List<TokenSpan>) -> LexicalPhrase {
   LexicalPhrase { spans: spans }
+}
+
+
+// zip_spans: pair the L→R `text` fragments with their `classes` in lockstep. Recurses to the
+// shorter list (a desync surfaces as a wrong projection caught RED by the emit witnesses).
+fn zip_spans(text: FreeMonoid<String>, classes: FreeMonoid<Symbol>) -> FreeMonoid<TokenSpan> {
+  match text {
+    Empty => Empty
+    Cons { head: fragment, tail: rest_text } =>
+      match classes {
+        Empty => Empty
+        Cons { head: token_class, tail: rest_classes } =>
+          Cons {
+            head: TokenSpan { token_class: token_class, fragment: fragment },
+            tail: zip_spans(text: rest_text, classes: rest_classes)
+          }
+      }
+  }
+}
+
+
+// phrase_text: the cosmetic authoring form. `text` reads left-to-right as the sentence; each
+// fragment's token class is the same-position entry of `classes`. Equivalent to a list of
+// `span(class, fragment)` but lets the resulting phrase read as one line of text.
+fn phrase_text(text: List<String>, classes: List<Symbol>) -> LexicalPhrase {
+  LexicalPhrase { spans: zip_spans(text: text, classes: classes) }
 }
 
 

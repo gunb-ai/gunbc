@@ -49,10 +49,9 @@ import v2.std.grammar {
 import v2.std.compilers.lexing {
   LexRules,
   LexicalPhrase,
-  phrase,
+  phrase_text,
   phrase_to_lex_rules,
-  phrase_to_source_text,
-  span
+  phrase_to_source_text
 }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -223,13 +222,12 @@ fn bash_relation_translation_rules_node(
 // =========================================================================
 // Lexical phrases — one authority per fixed-token phrase (DESIGN.md §3).
 //
-// Each phrase is authored ONCE here as an ordered list of (token_class, fragment)
-// spans: read the `fragment:` column top-to-bottom and it spells the shell text the
-// phrase emits. The lex rule set, the concrete-token sequence, and the source-text
-// string all PROJECT from these (phrase_to_lex_rules / phrase_to_fixed_concrete_tokens /
-// phrase_to_source_text), so the three can no longer drift (DESIGN.md §2 horizontal:
-// one concept, derive every use). The byte-identity to serialize_bash is proven by
-// execution in bash_emit_command_test.
+// Each phrase is authored ONCE: the `text:` row reads LEFT-TO-RIGHT as the shell text the
+// phrase emits, and the `classes:` row names each fragment's token class in the same order.
+// The lex rule set, the concrete-token sequence, and the source-text string all PROJECT
+// from these (phrase_to_lex_rules / phrase_to_fixed_concrete_tokens / phrase_to_source_text),
+// so the three can no longer drift (DESIGN.md §2 horizontal: one concept, derive every use).
+// The byte-identity to serialize_bash is proven by execution in bash_emit_command_test.
 //
 // Bound-word phrases (bash_bound_words / bash_embedded_quote) are spelled at emit time
 // from a binding, not a literal fragment, so they are NOT LexicalPhrases yet — a
@@ -237,64 +235,52 @@ fn bash_relation_translation_rules_node(
 // =========================================================================
 
 fn bash_mvp1_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_git,           fragment: "'git'"),
-    span(token_class: ^bash_token_word_rev_parse,     fragment: " 'rev-parse'"),
-    span(token_class: ^bash_token_word_show_toplevel, fragment: " '--show-toplevel'")
-  ])
+  phrase_text(
+    text:    ["'git'", " 'rev-parse'", " '--show-toplevel'"],
+    classes: [^bash_token_word_git, ^bash_token_word_rev_parse, ^bash_token_word_show_toplevel]
+  )
 }
 
 fn bash_source_root_ingest_gate_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_bash,                      fragment: "'bash'"),
-    span(token_class: ^bash_token_word_source_root_ingest_gate_sh, fragment: " 'scripts/source-root-ingest-gate.sh'")
-  ])
+  phrase_text(
+    text:    ["'bash'", " 'scripts/source-root-ingest-gate.sh'"],
+    classes: [^bash_token_word_bash, ^bash_token_word_source_root_ingest_gate_sh]
+  )
 }
 
 fn bash_and_then_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_true,  fragment: "'true'"),
-    span(token_class: ^bash_token_and_then,   fragment: " && "),
-    span(token_class: ^bash_token_word_false, fragment: "'false'")
-  ])
+  phrase_text(
+    text:    ["'true'", " && ", "'false'"],
+    classes: [^bash_token_word_true, ^bash_token_and_then, ^bash_token_word_false]
+  )
 }
 
 fn bash_or_else_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_true,  fragment: "'true'"),
-    span(token_class: ^bash_token_or_else,    fragment: " || "),
-    span(token_class: ^bash_token_word_false, fragment: "'false'")
-  ])
+  phrase_text(
+    text:    ["'true'", " || ", "'false'"],
+    classes: [^bash_token_word_true, ^bash_token_or_else, ^bash_token_word_false]
+  )
 }
 
 fn bash_with_redir_stderr_null_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_git,           fragment: "'git'"),
-    span(token_class: ^bash_token_word_rev_parse,     fragment: " 'rev-parse'"),
-    span(token_class: ^bash_token_word_show_toplevel, fragment: " '--show-toplevel'"),
-    span(token_class: ^bash_token_redir_stderr_null,  fragment: " 2>/dev/null")
-  ])
+  phrase_text(
+    text:    ["'git'", " 'rev-parse'", " '--show-toplevel'", " 2>/dev/null"],
+    classes: [^bash_token_word_git, ^bash_token_word_rev_parse, ^bash_token_word_show_toplevel, ^bash_token_redir_stderr_null]
+  )
 }
 
 fn bash_pipe_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_echo,    fragment: "'echo'"),
-    span(token_class: ^bash_token_word_hi,      fragment: " 'hi'"),
-    span(token_class: ^bash_token_pipe,         fragment: " | "),
-    span(token_class: ^bash_token_word_wc,      fragment: "'wc'"),
-    span(token_class: ^bash_token_word_minus_c, fragment: " '-c'")
-  ])
+  phrase_text(
+    text:    ["'echo'", " 'hi'", " | ", "'wc'", " '-c'"],
+    classes: [^bash_token_word_echo, ^bash_token_word_hi, ^bash_token_pipe, ^bash_token_word_wc, ^bash_token_word_minus_c]
+  )
 }
 
 fn bash_or_else_with_redir_phrase() -> LexicalPhrase {
-  phrase(spans: [
-    span(token_class: ^bash_token_word_git,           fragment: "'git'"),
-    span(token_class: ^bash_token_word_rev_parse,     fragment: " 'rev-parse'"),
-    span(token_class: ^bash_token_word_show_toplevel, fragment: " '--show-toplevel'"),
-    span(token_class: ^bash_token_redir_stderr_null,  fragment: " 2>/dev/null"),
-    span(token_class: ^bash_token_or_else,            fragment: " || "),
-    span(token_class: ^bash_token_word_pwd,           fragment: "'pwd'")
-  ])
+  phrase_text(
+    text:    ["'git'", " 'rev-parse'", " '--show-toplevel'", " 2>/dev/null", " || ", "'pwd'"],
+    classes: [^bash_token_word_git, ^bash_token_word_rev_parse, ^bash_token_word_show_toplevel, ^bash_token_redir_stderr_null, ^bash_token_or_else, ^bash_token_word_pwd]
+  )
 }
 
 // The canonical shell text emit must produce (POSIX single-quoted words). Byte-identical to
