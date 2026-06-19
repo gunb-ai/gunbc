@@ -11,12 +11,7 @@
 module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
-<<<<<<< HEAD
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
-  SourceRootIngestGate
-=======
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate
->>>>>>> origin/main
+  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
