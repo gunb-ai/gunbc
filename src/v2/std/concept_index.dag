@@ -4,7 +4,7 @@
 //        EVERY declared concept across the compiled corpus — the substrate primitive a
 //        namespace/concept index DFS (DESIGN.md §2 "DFS the concept DAG first") and the
 //        consolidation/DISPOSE authority (DESIGN.md §3 single-authority dedup) both build on.
-// Consumes: std/node.dag, std/qualified_name.dag, std/collection.dag.
+// Consumes: std/collection.dag, std/text.dag.
 // Single authority (DESIGN.md §3): QualifiedConcept / ConceptStruct are minted HERE, in gunbc
 //        std, and consumed downstream (e.g. ctrl plans.namespace_index). Do NOT fork a parallel
 //        concept-index carrier in a consumer — import this one.
@@ -13,24 +13,32 @@ module v2.std.concept_index
 
 
 import v2.std.collection { List }
-import v2.std.node { Node, Symbol }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
 
 
-// A single declared concept's substrate: its authored (unqualified) name and its structural
-// definition Node — the same resolved Node v2.std.node.resolve_type_node returns for that name.
-// "ConceptStruct" rather than a bare Node so the index row carries the concept's identity (name)
-// alongside its structure without re-resolving.
-type ConceptStruct {
-  name: Symbol
-  definition: Node
+// One declared field (record field, or coproduct arm projected as field/payload): the field's
+// name and the authored name of its type. The substrate projection a structural-equality /
+// homonym guard compares — NOT a raw Node, so two concepts compare field-by-field.
+type FieldRef {
+  field: String
+  type_name: String
 }
 
-// One row of the concept index: a concept located by its module-qualified name. qualified_name is
-// the module-path segments followed by the concept's own name (e.g. v2 . std . node . Connective),
-// so two same-named concepts in different modules are distinct rows under DESIGN.md §3.
+// A single declared concept's substrate projection: its authored (unqualified) name and the
+// ordered field projection of its definition. "ConceptStruct" rather than a bare Node so the
+// index row carries a comparable structural surface (DESIGN.md §3 nickname/homonym detection,
+// e.g. CpuArchitecture vs TargetArchitecture byte-identical enums) without re-resolving.
+type ConceptStruct {
+  name: String
+  fields: List<FieldRef>
+}
+
+// One row of the concept index: a concept located by its dotted module-qualified name
+// (e.g. "v2.std.node.Connective"), so two same-named concepts in different modules are distinct
+// rows under DESIGN.md §3. qualified_name is a dotted String to satisfy the downstream consumer
+// contract (plans.namespace_index); the structured carrier is v2.std.qualified_name.QualifiedName.
 type QualifiedConcept {
-  qualified_name: QualifiedName
+  qualified_name: String
   concept: ConceptStruct
 }
 
