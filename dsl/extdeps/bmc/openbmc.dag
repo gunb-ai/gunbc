@@ -31,6 +31,13 @@ data openbmc_factory_login: FactoryLogin = FactoryLogin {
 // are distinct, separately-cited interfaces (DESIGN §3 — exclusive, not aliases).
 data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
 
+// 🟡 dispatch — dissolution trigger: WHEN a second BmcFirmwareFamily variant lands
+// (e.g. AMI MegaRAC), lift this firmware→login / firmware→protocols dispatch OUT of this
+// per-family file into a non-family hub (extdeps/bmc/bmc.dag), mirroring the std/os.dag
+// projection ↔ extdeps/os/os.dag dispatch split (DESIGN §3 "dispatch lives in extdeps/,
+// not std/"). At one variant, lifting now would model ahead of a second instance (§6).
+// The header's "ONE home" claim is about the credential itself, which stays here.
+//
 // firmware → published factory login. Closed match; fail-closed on a new family
 // until its own cited file lands.
 fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
