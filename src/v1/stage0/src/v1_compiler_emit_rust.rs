@@ -12223,8 +12223,7 @@ pub fn emit_typed_call(
         }
         if (func.clone().as_str() == "utf8_decode_bytes".to_string().as_str()) {
             {
-                let decode_args =
-                    order_typed_call_args(args.clone(), func.clone(), scope.clone());
+                let decode_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let decode_result = match decode_args.first().cloned() {
                     Some(value_arg) => v1_rt::concat(
                         v1_rt::concat(

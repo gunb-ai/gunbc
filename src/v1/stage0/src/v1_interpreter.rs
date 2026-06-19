@@ -4979,9 +4979,8 @@ fn eval_builtin(
 
         "utf8_decode_bytes" => {
             let bytes = expect_byte_vec(positional.first().copied(), "utf8_decode_bytes")?;
-            let text = v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError {
-                msg,
-            })?;
+            let text =
+                v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError { msg })?;
             Ok(Some(Value::Str(text)))
         }
 
@@ -6100,11 +6099,7 @@ fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> 
             Ok(out)
         }
         Some(v) => Err(InterpError::TypeError {
-            msg: format!(
-                "{} expects Bytes (List), got {}",
-                context,
-                v.type_label()
-            ),
+            msg: format!("{} expects Bytes (List), got {}", context, v.type_label()),
         }),
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a Bytes argument", context),
