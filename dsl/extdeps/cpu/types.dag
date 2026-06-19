@@ -7,7 +7,7 @@
 
 module extdeps.cpu.types
 
-import std.measure { HardwareThreadCount, Hertz }
+import std.measure { HardwareThreadCount, Hertz, Watt }
 import std.types { Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -39,7 +39,7 @@ type CpuModelCatalogRow {
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
-  tdp_watts: Int
+  tdp_watts: Watt
   // TODO(P-CF-ISA): populate instruction_sets when InstructionSet dissolves
   // from Node in product.compute_fabric (Neoverse-N1 extension set for Altra Max).
 }

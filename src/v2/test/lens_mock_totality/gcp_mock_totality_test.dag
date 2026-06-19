@@ -5,7 +5,7 @@
 //         `claim_batch --roster-from-discovery` (whole src/v2 scanned for `test fn` in
 //         `*_test.dag`). Modeled on the M4.0 filesystem witness (#5188) / shell witness (#5238).
 //
-// The GCP layer is the MULTI-SERVICE shape (9 services, 14 published ops total) —
+// The GCP layer is the MULTI-SERVICE shape (9 services, 13 published ops total) —
 // the published corpus is a flat List spanning all of them, so this single totality witness
 // covers the whole layer.
 //
@@ -50,8 +50,6 @@ fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock>
     outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_oauth2_google_refresh })
   } else if case.operation_key == "shell.GCloud.AuthPrintAccessToken" {
     outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_auth_print_access_token })
-  } else if case.operation_key == "shell.GCloud.SecretManagerAccessVersion" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_secret_manager_access_version })
   } else if case.operation_key == "gcp.IAM.GenerateAccessToken" {
     outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_iam_generate_access_token })
   } else if case.operation_key == "gcp.ResourceManager.GetIamPolicy" {

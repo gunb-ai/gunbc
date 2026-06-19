@@ -66,7 +66,20 @@ type ReadLatencyClass = InProcessNs | LocalDiskUs | LanMs | WanTensMs
 // 🟡 STAGED — §1.6 axis (gate: header above).
 type ConsistencyModel = Strong | Eventual | ReadYourWrites
 
+// 🟢 TERMINAL — value (de)serialization faithfulness at the transport-encoding boundary.
+// M5 gap surface (docs/plans/m5-fixture-store-consolidation.md §2): the StructuredArtifact <->
+// backend-encoding round-trip must be faithful or fail loud. Maps recorded_fixture.rs
+// UnreplayableValue (record side) and DeserializationMismatch / UnknownTag (replay side) — the
+// hermetic-fixture FixtureError cases that today have no typed kernel home (collapsed in step 3).
+type TransportFaithfulnessReason
+  = ValueKindNotSerializable   // UnreplayableValue: Closure/Fn/Map/Set cannot be faithfully recorded
+  | EncodingMalformed          // DeserializationMismatch: stored bytes ill-formed for the encoding
+  | UnknownEncodedTag          // UnknownTag: tag outside the closed value vocabulary
+
 // 🟢 TERMINAL — typed cache reject reasons (case 15); no prose NonEmptyStr authority.
+// FreshnessExpired + TransportFaithfulnessFailure are M5 gap surfaces: a present-but-too-stale hit
+// (recorded_fixture.rs Expired, eviction: Ttl) is a LOUD refusal, not a silent evicted-Miss (§5); a
+// hit whose stored payload cannot be faithfully decoded is refused, never fabricated.
 type CacheRejectReason
   = SubjectDigestMismatch
   | ContentDigestMismatch
@@ -74,6 +87,8 @@ type CacheRejectReason
   | BackendKeyMalformed
   | BackendUnauthorized
   | BackendUnavailable
+  | FreshnessExpired
+  | TransportFaithfulnessFailure { reason: TransportFaithfulnessReason }
 
 // --- §1.3 lookup / write / miss semantics ------------------------------------
 
@@ -246,6 +261,37 @@ type CacheLookupResult<T>
   = Hit { receipt: CachedArtifactReceipt<T> }
   | Miss
   | RejectedHit { reason: CacheRejectReason }
+
+// 🟢 TERMINAL — write-side reject reasons. WriteOnceConflict is the cache-purity oracle
+// (recorded_fixture.rs ResponseDrift): an existing WriteOnce key offered DIFFERENT content for the
+// same subject_digest — the byte-identical-vs-cold purity falsifier. Backend-level rejects are
+// composed from the shared CacheRejectReason (no re-listing — §3 single authority).
+type CacheWriteRejectReason
+  = WriteOnceConflict
+  | WriteUnfaithful { reason: TransportFaithfulnessReason }
+  | BackendWriteRejected { backend_reason: CacheRejectReason }
+
+// 🟢 TERMINAL — write outcome (no silent overwrite, §5). A fresh subject is Written; an existing
+// WriteOnce key offered the SAME content is the idempotent no-op (the double-init Share collapse,
+// cf. realization.dag Materialization = Share); an existing key offered DIFFERENT content fails
+// closed (WriteRejected { WriteOnceConflict }). Splitting committed / idempotent / rejected keeps
+// the write state-space named, never a Bool conflating "present" with "I just wrote it".
+// WriteSkippedIdempotent's receipt.content_digest equals the existing key's BY CONSTRUCTION — that
+// equality is enforced at the write fold that constructs this variant (step 3, where a real
+// consumer compares the offered content against the stored hit before collapsing to idempotent),
+// not by this declaration. It is a comment-level invariant here, like CachedArtifactReceipt's other
+// digest correspondences, until the fold lands.
+type CacheWriteResult<T>
+  = Written { receipt: CachedArtifactReceipt<T> }
+  | WriteSkippedIdempotent { receipt: CachedArtifactReceipt<T> }
+  | WriteRejected { reason: CacheWriteRejectReason }
+
+// No outcome eliminators are minted here: classifying these coproducts is naming their variants,
+// which `match` already does at the consumer. The lookup/write folds (recorded_fixture.rs
+// FixtureError collapse / v2 05_eval) are the canonical consumers and arrive in step 3-4 (held for
+// operator sign-off); any fold over CacheLookupResult / CacheWriteResult is born WITH them, not as
+// per-question Bool readers in std/ (predicate-dissolution rule). These types parallel the existing
+// un-consumed CacheLookupResult above — terminal vocabulary awaiting its fold.
 
 // --- §1.8 cache-layer planner (catalog-parameterized; rows live in extdeps/cache/*) ---
 
