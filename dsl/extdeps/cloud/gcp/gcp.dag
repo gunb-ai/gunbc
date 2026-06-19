@@ -232,19 +232,4 @@ service shell.GCloud {
       nonzero => String "Failed to get access token"
     }
   }
-
-  operation SecretManagerAccessVersion {
-    input {
-      project_id: NonEmptyStr
-      secret_name: NonEmptyStr
-      version: NonEmptyStr = "latest"
-    }
-    output { secret_value: Secret from "stdout" }
-    readonly
-    transport shell { argv: ["gcloud", "secrets", "versions", "access", "\{version\}", "--secret=\{secret_name\}", "--project=\{project_id\}"] }
-    exit {
-      0 => Unit
-      nonzero => String "Failed to access secret"
-    }
-  }
 }

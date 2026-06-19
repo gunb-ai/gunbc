@@ -12,7 +12,7 @@ import std.realization_schedule {
   CostAccount,
   CostBasis,
   cost_account_predicted_zero,
-  cost_account_time_nanos,
+  cost_account_time_count,
 }
 import std.realization_measurement {
   RealizationMeasureEffect,
@@ -25,7 +25,7 @@ import product.compute_fabric {
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
 }
-import std.measure { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
@@ -49,7 +49,7 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
     wall_time: sample_wall_time,
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
-  let rolled = cost_account_time_nanos(account: total)
+  let rolled = cost_account_time_count(account: total)
   let observed = nanosecond_duration_count(
     d: performance_receipts_total_time(receipts: [receipt])
   )
