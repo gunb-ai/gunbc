@@ -130,28 +130,24 @@ fn extdeps_stable_authority_violations_for_module(
 fn extdeps_stable_authority_live_violations_for_module(
   module: QualifiedName
 ) -> List<ExtdepsStableAuthorityViolation> {
-  if extdeps_stable_authority_is_clean_tree_roster_excluded(module: module) {
-    empty_extdeps_stable_authority_violations
-  } else {
-    match extdeps_stable_authority_status_for_module(module: module) {
-      AnchorAbsent =>
-        if extdeps_stable_authority_is_anchor_machinery_exempt(module: module) {
-          empty_extdeps_stable_authority_violations
-        } else if extdeps_stable_authority_is_backfill_pending(module: module) {
-          empty_extdeps_stable_authority_violations
-        } else {
-          [
-            MissingFormalAnchor { module: module }
-          ]
-        }
-      AnchorPresent { scheme_identity: raw, locator: _ } =>
-        match decode_uri_scheme(raw: raw) {
-          Present { value: _ } => empty_extdeps_stable_authority_violations
-          Absent => [
-            UnrecognizedAnchorScheme { module: module, raw_scheme: raw }
-          ]
-        }
-    }
+  match extdeps_stable_authority_status_for_module(module: module) {
+    AnchorAbsent =>
+      if extdeps_stable_authority_is_anchor_machinery_exempt(module: module) {
+        empty_extdeps_stable_authority_violations
+      } else if extdeps_stable_authority_is_backfill_pending(module: module) {
+        empty_extdeps_stable_authority_violations
+      } else {
+        [
+          MissingFormalAnchor { module: module }
+        ]
+      }
+    AnchorPresent { scheme_identity: raw, locator: _ } =>
+      match decode_uri_scheme(raw: raw) {
+        Present { value: _ } => empty_extdeps_stable_authority_violations
+        Absent => [
+          UnrecognizedAnchorScheme { module: module, raw_scheme: raw }
+        ]
+      }
   }
 }
 
