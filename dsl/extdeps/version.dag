@@ -6,10 +6,10 @@
 //
 // Models version IDENTITY and ORDERING only — not any specific scheme.
 // Ecosystem schemes live in their own extdeps slices and build on this:
-//   extdeps/version/semver.dag     — Semantic Versioning (semver.org)
-//   extdeps/version/pep440.dag     — Python PEP 440
-//   extdeps/version/go_module.dag  — Go module versioning
-//   extdeps/version/git.dag        — Git tag versioning
+//   extdeps/version/semver.dag          — Semantic Versioning (semver.org)
+//   extdeps/version/pep440.dag          — Python PEP 440
+//   extdeps/languages/go/module.dag     — Go module versioning
+//   extdeps/git/versioning.dag          — Git release versioning (git binary)
 //
 // Key invariants:
 //   VersionIdentity — opaque label as the upstream ecosystem names it; no parsing here.
