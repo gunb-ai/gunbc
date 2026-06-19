@@ -1165,6 +1165,13 @@ pub struct InterpContext {
     mutation_counters: std::cell::RefCell<MutationCounters>,
     /// Single name intern table for runtime identity carriers (ctrl#1533 phase 3).
     symbols: RefCell<SymbolInterner>,
+    /// Memoized membership set of the PUBLISHED mock corpus — the §2 Realization pure-spec
+    /// the M2 mock_totality_lens also reads (the operation keys that are hermetically
+    /// realizable). The M4 hermetic-realization fold makes eval_service_call decide replay
+    /// from this ONE model rather than a parallel ledger. Computed once on first hermetic
+    /// service call via `resolve_published_mock_keys`; the corpus is an immutable global
+    /// constant for this context, with the same scoping as `data_cache`.
+    published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
 impl InterpContext {
@@ -1307,7 +1314,22 @@ impl InterpContext {
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
+            published_mock_keys: RefCell::new(None),
         }
+    }
+
+    /// The published mock corpus as an operation-key set (the §2 Realization pure-spec the
+    /// M2 mock_totality_lens also reads). Memoized: the corpus is an immutable global
+    /// constant for this context, so it is resolved at most once.
+    fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
+        {
+            if let Some(keys) = self.published_mock_keys.borrow().as_ref() {
+                return Ok(keys.clone());
+            }
+        }
+        let keys = Rc::new(resolve_published_mock_keys(self)?);
+        *self.published_mock_keys.borrow_mut() = Some(keys.clone());
+        Ok(keys)
     }
 
     fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
@@ -2862,7 +2884,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
             StringPart::Text { value } => result.push_str(value.as_str()),
             StringPart::Interpolation { expr } => {
                 let val = eval_expr(&expr, env, ctx)?;
-                result.push_str(&value_to_host_string(&val));
+                result.push_str(&format!("{}", val));
             }
         }
     }
@@ -3575,8 +3597,42 @@ fn eval_service_call(
         crate::recorded_fixture::service_inputs_fixture_json(op_node, &param_env, ctx)
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
-    // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
+        // M4 hermetic-realization fold (§2 Realization): the PUBLISHED mock corpus is the
+        // single authority for WHICH operations are hermetically realizable — the SAME model
+        // the M2 mock_totality_lens reads. A service is "corpus-governed" iff it publishes at
+        // least one case; for such a service the published model — NOT inline mock_* props —
+        // decides realizability. One decision procedure, shared by the runtime and the lens.
+        let published = ctx.published_mock_keys()?;
+        let service_is_governed = published.iter().any(|k| {
+            k.rsplit_once('.')
+                .map(|(svc, _)| svc == service_name)
+                .unwrap_or(false)
+        });
+        if service_is_governed && !published.contains(&key) {
+            // §5 fail-closed on disagreement: the service publishes a corpus but THIS operation
+            // is not a published case. Refuse loudly — even if a fixture or an inline mock_*
+            // prop still exists for it. A runtime that fabricated/replayed here would let the
+            // runtime decision and the published model diverge silently; this is the teeth.
+            let mut cases: Vec<&String> = published
+                .iter()
+                .filter(|k| {
+                    k.rsplit_once('.')
+                        .map(|(svc, _)| svc == service_name)
+                        .unwrap_or(false)
+                })
+                .collect();
+            cases.sort();
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "hermetic mode: operation {key} is not a published mock case for \
+                     corpus-governed service {service_name} — refusing to realize \
+                     (published cases: {cases:?})"
+                ),
+            });
+        }
+
+        // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
         if let Some(store) = &ctx.fixture_store {
             eprintln!(
                 "[hermetic:fixture] {}.{} inputs_hash={}",
@@ -3590,6 +3646,12 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
+        // Retained inline-mock fallback for extdeps layers that do NOT yet publish a dsl mock
+        // corpus (M4.0 migrated filesystem only). 🟡 dissolved-by —
+        // feature:m4-eval-service-call-folds-hermetic-realization — dissolve-on: every extdeps
+        // layer publishes a dsl-side PublishedMockCase corpus; when no corpus-free service
+        // relies on inline mock_* props, this branch and eval_mock_response delete together and
+        // the RecordedFixture store becomes the sole payload authority (§3).
         eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
@@ -3696,8 +3758,6 @@ struct ShellResult {
 
 /// Push one evaluated argv expression onto `argv`. List carriers splice
 /// element-wise; strings stay atomic (never exploded to codepoints).
-/// FreeMonoid<Char> chains whose heads are scalar char codes materialize to one
-/// host string (v2 emit → shell.Exec.Run script boundary).
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
@@ -3711,10 +3771,7 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
         Value::Variant { .. } => {
-            if let Some(s) = value_as_host_string(&val) {
-                argv.push(s);
-                Ok(())
-            } else if let Some(items) = free_monoid_to_vec(&val) {
+            if let Some(items) = free_monoid_to_vec(&val) {
                 for item in items {
                     push_shell_argv_tokens(argv, item)?;
                 }
@@ -3729,44 +3786,6 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
     }
-}
-
-// **SCAFFOLD (DESIGN.md §7)** — host string materialization at shell/REST `{param}` templates.
-//
-// Hand-Rust scaffold receipt (P5 / §7):
-// - **Gap:** v2 `emit(_, Bash)` returns `TargetSource` (`FreeMonoid<Char>` Cons chains); shell
-//   transport `argv: ["sh","-c","{script}"]` interpolated via `format!("{}", val)` printed Cons
-//   debug text instead of script bytes (slice 3 gate red-by-execution).
-// - **This site:** `value_as_host_string` / `value_to_host_string` flatten FreeMonoid chains at
-//   `eval_string_interp` and `substitute_template` (and `push_shell_argv_tokens` for direct argv).
-// - **Dissolve-on:** `TargetSource` (or `String`) gains a substrate/host coercion to flat Unicode
-//   text at the shell boundary, or transports take `ShellProgram` not raw emit output — delete these
-//   helpers when the coercion lives in `.dag` or the emit carrier is host-flat by construction.
-
-fn value_as_host_string(val: &Value) -> Option<String> {
-    if let Value::Str(s) = val {
-        return Some(s.clone());
-    }
-    let items = free_monoid_to_vec(val)?;
-    let mut out = String::new();
-    for item in items {
-        match item {
-            Value::Int(code) => {
-                let ch = char::from_u32(code as u32)?;
-                out.push(ch);
-            }
-            Value::Str(s) => out.push_str(&s),
-            _ => return None,
-        }
-    }
-    Some(out)
-}
-
-/// Materialize a runtime value for host-side string interpolation (shell argv
-/// `{param}` templates, REST path templates). FreeMonoid<Char> / TargetSource
-/// chains flatten to Unicode text; other values use Display.
-fn value_to_host_string(val: &Value) -> String {
-    value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
 const SHELL_TRANSIENT_RETRY_MAX: u8 = 3;
@@ -4436,7 +4455,7 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
                 var_name.push(c2);
             }
             if let Some(val) = env.lookup(ctx.sym(&var_name)) {
-                result.push_str(&value_to_host_string(&val));
+                result.push_str(&format!("{}", val));
             } else {
                 // Leave unresolved placeholders as-is
                 result.push('{');
@@ -4655,6 +4674,69 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             map_value(fields)
         }
     }
+}
+
+/// True iff a type-annotation node tree names `target` anywhere (the type itself or a type
+/// argument, e.g. the `PublishedMockCase` element of `List<PublishedMockCase>`). Reads SHAPE
+/// over the small type expression — cheap, no evaluation.
+fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
+    if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names(ctx, c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names(ctx, c, target))
+}
+
+/// Resolve the PUBLISHED mock corpus (the §2 Realization pure-spec) into its operation-key set.
+/// Reads SHAPE, not contents (DESIGN.md lens law): every `data` item DECLARED over
+/// `PublishedMockCase` contributes its rows' `operation_key`s. This is the SAME corpus the M2
+/// mock_totality_lens reads — the v1 runtime and the compile-time lens now decide hermetic
+/// realizability from ONE model. The declared-type pre-filter keeps this cheap: only corpus data
+/// items are evaluated, not every `data` constant in the loaded tree. Evaluated against
+/// `Env::empty()` like other `data` constants; data items are pure (no service calls), so this
+/// never re-enters `eval_service_call`.
+fn resolve_published_mock_keys(
+    ctx: &InterpContext,
+) -> InterpResult<std::collections::HashSet<String>> {
+    let mut keys = std::collections::HashSet::new();
+    for (name, info) in ctx.item_registry.iter() {
+        if info.kind != ItemKind::DataItem {
+            continue;
+        }
+        let Some(node) = ctx.lookup_fn(name) else {
+            continue;
+        };
+        // Declared-type gate: skip (without evaluating) any data item not declared over
+        // PublishedMockCase. Corpus data items always carry the explicit annotation.
+        let Some(ty) = node.type_annotation.as_ref() else {
+            continue;
+        };
+        if !type_annotation_names(ctx, ty, "PublishedMockCase") {
+            continue;
+        }
+        let Some(body) = node.body.as_ref() else {
+            continue;
+        };
+        let val = eval_expr(body, &Env::empty(), ctx)?;
+        let Value::List(items) = &val else {
+            continue;
+        };
+        for item in items.iter() {
+            if let Value::Record { type_name, fields } = item {
+                if ctx.sym_eq(*type_name, "PublishedMockCase") {
+                    if let Some(Value::Str(op_key)) = ctx.field(fields, "operation_key") {
+                        keys.insert(op_key.clone());
+                    }
+                }
+            }
+        }
+    }
+    Ok(keys)
 }
 
 /// Evaluate mock_response from an operation's properties for hermetic execution.
