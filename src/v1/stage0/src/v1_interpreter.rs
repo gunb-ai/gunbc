@@ -3717,6 +3717,18 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
     }
 }
 
+// **SCAFFOLD (DESIGN.md §7)** — host string materialization at shell/REST `{param}` templates.
+//
+// Hand-Rust scaffold receipt (P5 / §7):
+// - **Gap:** v2 `emit(_, Bash)` returns `TargetSource` (`FreeMonoid<Char>` Cons chains); shell
+//   transport `argv: ["sh","-c","{script}"]` interpolated via `format!("{}", val)` printed Cons
+//   debug text instead of script bytes (slice 3 gate red-by-execution).
+// - **This site:** `value_as_host_string` / `value_to_host_string` flatten FreeMonoid chains at
+//   `eval_string_interp` and `substitute_template` (and `push_shell_argv_tokens` for direct argv).
+// - **Dissolve-on:** `TargetSource` (or `String`) gains a substrate/host coercion to flat Unicode
+//   text at the shell boundary, or transports take `ShellProgram` not raw emit output — delete these
+//   helpers when the coercion lives in `.dag` or the emit carrier is host-flat by construction.
+
 fn value_as_host_string(val: &Value) -> Option<String> {
     if let Value::Str(s) = val {
         return Some(s.clone());

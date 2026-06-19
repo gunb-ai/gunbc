@@ -1,6 +1,6 @@
 // Status: structural + serialize receipts; bidirectional delimiter read from same projection row.
-// Phase A (T3): arrow + falsification witnesses rostered (green-on-current). instantiation/conj/sum → Phase B.
-// Serialize follow-on probes: sg2_arrow_projected_serialize_matches_expected / _accepts / _outcome / _reject_head_reason (+ _reject_is_*); measured reject: translate_grammar_relation_row_not_found.
+// Phase B: arrow + conj + instantiation projected serialize green (graft-gate dissolved #5184).
+// Serialize follow-on probes: sg2_*_projected_serialize_matches_expected + split-swap perturb red.
 
 module v2.test.manual.sg2_type_expression_projection
 
@@ -40,10 +40,13 @@ import v2.std.compilers.target_model {
   TargetFunctionTypeShape,
   TargetModel,
   TargetTypeExpressionProjection,
+  target_type_expr_arrow_emitted,
+  target_type_expr_atom_emitted,
   target_type_expr_emitted_wire_decode,
   type_expr_projection_bundle_shape_for_connective,
   type_expr_projection_row_shape_witness_gate
 }
+import v2.std.algebra { Cons, Empty }
 import v2.std.node { Arrow }
 import v2.test.manual.mvp1_rust_add_translate {
   mvp1_rust_inferred_tree,
@@ -194,54 +197,39 @@ fn sg2_arrow_projected_serialize_matches_expected() -> Bool {
   sg2_arrow_projected_serialized_text() == sg2_expected_arrow_text
 }
 
+fn sg2_conj_projected_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_project_conj_emitted()) == sg2_expected_conj_text
+}
+
+fn sg2_instantiation_projected_serialize_matches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_project_instantiation_emitted()) == sg2_expected_type_text
+}
+
+// §5 discriminating RED — swap projected split inputs/output; wrong serialization must disagree.
+fn sg2_arrow_swapped_split_emitted() -> Node {
+  let row = rust_type_expression_projection()
+  target_type_expr_arrow_emitted(
+    form: row.arrow_form,
+    inputs: Cons {
+      head: target_type_expr_atom_emitted(
+        form: row.atom_form,
+        identity: ^rust_binding_sg2_y
+      ),
+      tail: Empty
+    },
+    output: target_type_expr_atom_emitted(
+      form: row.atom_form,
+      identity: ^rust_binding_sg2_x
+    )
+  )
+}
+
+fn sg2_arrow_swapped_split_serialize_mismatches_expected() -> Bool {
+  sg2_serialized_text(emitted: sg2_arrow_swapped_split_emitted()) != sg2_expected_arrow_text
+}
+
 fn sg2_arrow_projected_serialize_accepts() -> Bool {
   sg2_serialize_accepts(emitted: sg2_project_arrow_emitted())
-}
-
-
-fn sg2_arrow_projected_serialize_outcome() -> Outcome<String> {
-  match target_serialize_source_from_model(
-    target: sg2_type_expr_target,
-    emitted: sg2_project_arrow_emitted()
-  ) {
-    Accepted { value: source, diagnostics: d } =>
-      Accepted { value: source, diagnostics: d }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn sg2_arrow_projected_serialize_rejected() -> Bool {
-  match sg2_arrow_projected_serialize_outcome() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-fn sg2_arrow_projected_serialize_reject_head_reason() -> Symbol {
-  match sg2_arrow_projected_serialize_outcome() {
-    Accepted { value: _, diagnostics: _ } => ^sg2_serialize_probe_not_rejected
-    Rejected { diagnostics: r } => r.head.reason
-  }
-}
-
-fn sg2_arrow_projected_serialize_reject_is_shape_missing() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_type_expression_shape_missing
-}
-
-fn sg2_arrow_projected_serialize_reject_is_emitted_shape_malformed() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == ^target_type_expr_emitted_shape_malformed
-}
-
-fn sg2_arrow_projected_serialize_reject_is_kind_authority_invalid() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_type_expr_kind_authority_invalid
-}
-
-fn sg2_arrow_projected_serialize_reject_is_grammar_inverse_not_realized() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_grammar_inverse_not_realized
-}
-
-fn sg2_arrow_projected_serialize_reject_is_grammar_relation_row_not_found() -> Bool {
-  sg2_arrow_projected_serialize_reject_head_reason() == ^translate_grammar_relation_row_not_found
 }
 
 fn sg2_conj_serialize_matches_expected() -> Bool {
@@ -487,7 +475,12 @@ data claim_sg2_mvp1_translate_fallback: TestClaim = CompilesClaim {
 fn witness_sg2_arrow_holds() -> Bool {
   (content_hash(n: sg2_project_arrow_emitted()) == content_hash(n: rust_sg2_arrow_xy_emitted()))
     && sg2_arrow_serialize_matches_expected()
+    && sg2_arrow_projected_serialize_matches_expected()
+    && sg2_conj_projected_serialize_matches_expected()
+    && sg2_instantiation_projected_serialize_matches_expected()
+    && sg2_binary_fn_projection_accepts()
     && sg2_arrow_malformed_projection_rejects()
+    && sg2_arrow_swapped_split_serialize_mismatches_expected()
 }
 
 fn witness_sg2_projection_falsification_holds() -> Bool {

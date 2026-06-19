@@ -14,6 +14,19 @@
 
 module extdeps.sql.migration
 
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
+// 🟢 GREEN (terminal). Ctrl migration projections target exactly three dialect
+// backends today; variants are 1:1 with externally named SQL engines.
+type SqlDialect = Postgres | Mysql | Sqlite
+
+fn sql_dialect_wire_label(dialect: SqlDialect) -> String {
+  match dialect {
+    Postgres => "postgres"
+    Mysql => "mysql"
+    Sqlite => "sqlite"
+  }
+}
+
 // Coproduct dissolution classification:
 // GREEN (terminal). Migration operations have distinct externally visible
 // schema effects and rollback constraints. Keeping them as variants preserves
@@ -36,7 +49,7 @@ type SqlMigrationOperationKind
 type SqlMigrationStep {
   name: String
   operation: SqlMigrationOperationKind
-  dialect: String
+  dialect: SqlDialect
   statement: String
   reversible: Bool
 }

@@ -24,17 +24,6 @@ type RequestedTokenType = RequestAccessToken | RequestIdToken
 // StsGrantType: single value "urn:ietf:params:oauth:grant-type:token-exchange"
 // Modeled as String since there is only one grant type for STS.
 
-// -- Token exchange request ----------------------------------------
-
-type StsTokenExchange {
-  grant_type: String
-  subject_token: String
-  subject_token_type: SubjectTokenType
-  audience: String
-  scope: String?
-  requested_token_type: RequestedTokenType?
-}
-
 // -- Token exchange response ---------------------------------------
 
 type StsTokenResponse {

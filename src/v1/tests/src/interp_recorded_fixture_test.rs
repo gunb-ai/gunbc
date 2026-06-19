@@ -35,6 +35,31 @@ fn fixture_store_dir(name: &str) -> PathBuf {
     ))
 }
 
+/// Copy the filesystem witness dag into `scratch` with its hardcoded `/tmp` target paths
+/// rewritten under `scratch`, returning the rewritten entry to pass as `--entry`. The witnesses
+/// do REAL filesystem I/O; the shared `/tmp/gunbc_fs_write_witness.txt` path made parallel libtest
+/// threads — and concurrent CI jobs on a shared runner — race on the same live file (one test's
+/// mutation corrupts another's read-back). Per-invocation unique paths remove that race; `scratch`
+/// is itself unique (`fixture_store_dir`: pid + nanos), so cross-process runs never collide.
+fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
+    let src = fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_witness.dag"))
+        .expect("read filesystem witness dag");
+    let live = scratch.join("fs_witness");
+    let absent = scratch.join("fs_witness_absent_should_not_exist_42");
+    let rewritten = src
+        .replace(
+            "/tmp/gunbc_fs_witness_absent_should_not_exist_42",
+            absent.to_str().expect("utf8 scratch path"),
+        )
+        .replace(
+            "/tmp/gunbc_fs_write_witness",
+            live.to_str().expect("utf8 scratch path"),
+        );
+    let entry = scratch.join("filesystem_write_witness.dag");
+    fs::write(&entry, rewritten).expect("write rewritten filesystem witness dag");
+    entry
+}
+
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     let msgs: Vec<String> = result
         .diagnostics
@@ -70,12 +95,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fs-write-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    assert!(
-        entry.is_file(),
-        "witness dag must exist at {}",
-        entry.display()
-    );
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
 
     // Wet capture: record live Filesystem.Read/Write responses.
     let record = run_claim_batch(&[
@@ -129,7 +149,7 @@ fn hermetic_fixture_staleness_fails_closed() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fs-stale");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
 
     let record = run_claim_batch(&[
         "--source-root",
@@ -349,8 +369,8 @@ fn hermetic_replay_rejects_corrupted_fixture_response() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("corrupt-response");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    let target = "/tmp/gunbc_fs_write_witness.txt";
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
+    let target = store_dir.join("fs_witness.txt");
 
     let record = run_claim_batch(&[
         "--source-root",
@@ -423,8 +443,8 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fixture-not-live");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
-    let target = "/tmp/gunbc_fs_write_witness.txt";
+    let entry = unique_fs_witness_entry(&ws, &store_dir);
+    let target = store_dir.join("fs_witness.txt");
     let payload = "hello from the v2 file transport\n";
 
     let record = run_claim_batch(&[
@@ -443,7 +463,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
     assert!(record.status.success(), "record must capture");
 
     // Mutate live filesystem AFTER record — hermetic must NOT observe this.
-    fs::write(target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
+    fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").expect("mutate live file");
 
     let hermetic = run_claim_batch(&[
         "--source-root",
@@ -470,7 +490,9 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
 #[test]
 fn filesystem_hermetic_without_fixture_store_fails_closed() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/filesystem_write_witness.dag");
+    let scratch = fixture_store_dir("fs-no-store-fails-closed");
+    fs::create_dir_all(&scratch).expect("scratch dir");
+    let entry = unique_fs_witness_entry(&ws, &scratch);
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
@@ -494,6 +516,67 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
     assert!(
         combined.contains("no mock_response") || combined.contains("refusing to fabricate"),
         "expected fail-closed mock_response diagnostic, got:\n{combined}"
+    );
+    let _ = fs::remove_dir_all(&scratch);
+}
+
+// M4 hermetic-realization fold: the PUBLISHED mock corpus is the single authority the runtime
+// reads to decide hermetic realizability — the SAME model the M2 mock_totality_lens reads. This is
+// the §5 discriminating pair (a real consumer GREEN by execution PLUS a discriminating input that
+// goes RED when the runtime decision and the published model DISAGREE), proven on the REAL
+// claim_batch CLI path (a subprocess over dsl/test/claim/m4_governed_service_witness.dag), NOT an
+// in-process harness that embeds its own corpus:
+//   - GREEN: GovernedProbe.Allowed IS a published case   -> the op realizes (via its inline mock).
+//   - RED:   GovernedProbe.Forbidden is NOT published, on the SAME corpus-governed service, yet it
+//            HAS an inline mock_response -> the run fails closed (non-zero exit). The teeth:
+//            without the corpus read, Forbidden would silently return its inline mock.
+// Hermetic with NO --fixture-store, so realization falls to the inline-mock branch the gate must
+// override. The corpus rows inhabit the real std.hermetic_replay.PublishedMockCase, resolved from
+// the entry's import closure exactly as a real Filesystem consumer's corpus now is (co-located via
+// the `import extdeps.filesystem.mock_corpus` in filesystem_io.dag).
+#[test]
+fn m4_governed_service_published_realizes_unpublished_fails_closed() {
+    let ws = workspace_root();
+    let common = |func: &str| -> std::process::Output {
+        run_claim_batch(&[
+            "--source-root",
+            ws.to_str().expect("workspace"),
+            "--source-root",
+            ws.join("dsl").to_str().expect("dsl root"),
+            "--entry",
+            ws.join("dsl/test/claim/m4_governed_service_witness.dag")
+                .to_str()
+                .expect("entry"),
+            "--function",
+            func,
+            "--hermetic",
+        ])
+    };
+
+    // GREEN by execution on the real CLI path: the published op realizes (gate passes -> inline mock).
+    let green = common("witness_published_realizes");
+    assert!(
+        green.status.success(),
+        "published op must realize hermetically on the claim_batch path; stderr={}",
+        String::from_utf8_lossy(&green.stderr)
+    );
+
+    // RED on disagreement (the teeth): the unpublished op on the SAME corpus-governed service must
+    // fail closed, EVEN THOUGH it has an inline mock_response. A vacuous runtime that returned the
+    // inline mock would diverge from the published model — this proves the model is genuinely read.
+    let red = common("witness_unpublished_fails_closed");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&red.stdout),
+        String::from_utf8_lossy(&red.stderr)
+    );
+    assert!(
+        !red.status.success(),
+        "unpublished op on a corpus-governed service must fail closed (non-zero exit); output:\n{combined}"
+    );
+    assert!(
+        combined.contains("not a published mock case"),
+        "expected published-corpus refusal diagnostic, got:\n{combined}"
     );
 }
 
