@@ -284,6 +284,7 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
 
 /// Outcome of running a single Bool witness (`--claim-run` semantics), without
 /// touching the process exit code. The exit-code contract lives in the caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     /// Function returned `Bool(true)` — witness holds.
     Pass,
@@ -2073,12 +2074,22 @@ pub struct EntryResolveReceipt {
     pub resolve_nanos: u128,
 }
 
+/// One witness verdict from a discovery-corpus run (for wet/hermetic equivalence).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveryWitnessOutcome {
+    pub entry: String,
+    pub function: String,
+    pub outcome: ClaimOutcome,
+}
+
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
 /// many passed, and a rendered failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub failures: Vec<String>,
+    /// Per-witness outcomes in roster order (wet/hermetic equivalence gate).
+    pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
     /// Aggregate resolve wall time across distinct entries (nanoseconds).
@@ -2087,6 +2098,46 @@ pub struct DiscoverySummary {
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
     pub total_measured_nanos: u128,
+}
+
+/// Representative governed-service witnesses: one discoverable `test fn` pair per
+/// extdeps layer with a published mock corpus (`src/v2/test/lens_mock_totality/*`).
+/// These exercise the M4 hermetic-realization model without live service dispatch.
+pub fn is_governed_service_representative_row(row: &DiscoveryRow) -> bool {
+    row.entry.contains("lens_mock_totality/")
+}
+
+/// Compare wet vs hermetic discovery-corpus outcomes row-for-row. Returns divergences
+/// (empty when equivalent). Fail-closed: roster length mismatch is a divergence.
+pub fn wet_hermetic_discovery_outcome_divergences(
+    wet: &[DiscoveryWitnessOutcome],
+    hermetic: &[DiscoveryWitnessOutcome],
+) -> Vec<String> {
+    let mut divergences = Vec::new();
+    if wet.len() != hermetic.len() {
+        divergences.push(format!(
+            "roster size mismatch: wet={} hermetic={}",
+            wet.len(),
+            hermetic.len()
+        ));
+        return divergences;
+    }
+    for (w, h) in wet.iter().zip(hermetic.iter()) {
+        if w.entry != h.entry || w.function != h.function {
+            divergences.push(format!(
+                "roster order mismatch: wet=({},{}) hermetic=({},{})",
+                w.function, w.entry, h.function, h.entry
+            ));
+            continue;
+        }
+        if w.outcome != h.outcome {
+            divergences.push(format!(
+                "{} ({}): wet={:?} hermetic={:?}",
+                w.function, w.entry, w.outcome, h.outcome
+            ));
+        }
+    }
+    divergences
 }
 
 /// Default exclude set for floor discovery. Manifest/law files that import the
@@ -2295,7 +2346,13 @@ pub fn run_discovery_corpus(
     execution_mode: v1_interpreter::ExecutionMode,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
-    let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
+    let mut rows = if scan_dirs.is_empty() && !explicit_entries.is_empty() {
+        // Explicit-roster-only path (wet/hermetic equivalence gate): do not walk the
+        // whole source tree when the caller pins a representative witness set.
+        Vec::new()
+    } else {
+        discover_floor_corpus_rows(source_roots, scan_dirs)?
+    };
     // Append explicit rows with (entry, function) dedup, then re-sort so each
     // entry's witnesses stay grouped for the resolve-once loop below.
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
@@ -2321,12 +2378,23 @@ pub fn run_discovery_corpus(
     }
     let index = build_multi_entry_index(source_roots);
 
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(Rc::new(keys)),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
+        }
+    };
+
     // Group by entry (rows are sorted by (entry, function)), resolve each entry
     // once, run its witnesses against the shared graph.
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
         failures: Vec::new(),
+        witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
@@ -2351,7 +2419,13 @@ pub fn run_discovery_corpus(
                 resolve_nanos,
             });
             current_closure_subject = Some(closure_subject);
-            ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
+            ctx = Some(make_eval_context_with_runtime_options(
+                &graph,
+                source_indices,
+                execution_mode,
+                None,
+                whole_tree_published_keys.clone(),
+            ));
             current_entry = Some(row.entry.clone());
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
@@ -2361,6 +2435,11 @@ pub fn run_discovery_corpus(
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
         summary.total_measured_nanos += receipt.wall_nanos;
         summary.performance_receipts.push(receipt);
+        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
+            entry: row.entry.clone(),
+            function: row.function.clone(),
+            outcome: outcome.clone(),
+        });
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => summary.failures.push(format!(
