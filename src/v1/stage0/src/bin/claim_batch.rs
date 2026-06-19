@@ -90,8 +90,9 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
-    discover_floor_corpus_rows, make_eval_context_with_fixture_store, resolve_entry_with_index,
-    run_claim_measured, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+    discover_floor_corpus_rows, make_eval_context_with_runtime_options,
+    precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
+    ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -481,6 +482,7 @@ fn run_witnesses(
     group: &EntryGroup,
     execution_mode: ExecutionMode,
     fixture_store: Option<Rc<RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
@@ -489,8 +491,13 @@ fn run_witnesses(
         eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
         ExitCode::from(1)
     })?;
-    let ctx =
-        make_eval_context_with_fixture_store(&graph, source_indices, execution_mode, fixture_store);
+    let ctx = make_eval_context_with_runtime_options(
+        &graph,
+        source_indices,
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    );
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
     }
@@ -598,6 +605,28 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Build the module source index ONCE for all entries.
     let index = build_multi_entry_index(&source_roots);
 
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
+        Ok(keys) => {
+            if keys.is_empty() {
+                eprintln!(
+                    "claim_batch: whole-tree published mock corpus — no dsl/ corpora precomputed; \
+                     using entry-closure fallback per witness"
+                );
+                None
+            } else {
+                eprintln!(
+                    "claim_batch: whole-tree published mock corpus — {} operation key(s)",
+                    keys.len()
+                );
+                Some(Rc::new(keys))
+            }
+        }
+        Err(e) => {
+            eprintln!("claim_batch: whole-tree published mock corpus precompute failed: {e}");
+            return Err(ExitCode::from(1));
+        }
+    };
+
     let flatten_baseline = v1_compiler::v1_interpreter::flatten_counters_snapshot();
     let stats_requested = std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0");
 
@@ -617,11 +646,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)
         })?;
-        let ctx = make_eval_context_with_fixture_store(
+        let ctx = make_eval_context_with_runtime_options(
             &graph,
             source_indices,
             execution_mode,
             fixture_store.clone(),
+            whole_tree_published_keys.clone(),
         );
         for function in &group.functions {
             run_claim_timed(
@@ -648,6 +678,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 group,
                 execution_mode,
                 fixture_store.clone(),
+                whole_tree_published_keys.clone(),
                 &mut any_failed,
                 &mut timings,
             )?;

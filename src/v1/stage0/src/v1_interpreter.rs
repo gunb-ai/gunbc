@@ -1173,6 +1173,13 @@ pub struct InterpContext {
     /// service call via `resolve_published_mock_keys`; the corpus is an immutable global
     /// constant for this context, with the same scoping as `data_cache`.
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
+    /// When set (M4.1), the published mock corpus was precomputed from the whole dsl/ tree —
+    /// independent of this context's entry import closure. Supersedes closure-scoped
+    /// `resolve_published_mock_keys` on first access.
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    /// Memoized set of service names that publish at least one mock case — O(1) membership for
+    /// the M4 hermetic-realization fold's corpus-governed check.
+    governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
 impl InterpContext {
@@ -1259,7 +1266,7 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
-        Self::with_fixture_store(graph, source_indices, execution_mode, None)
+        Self::with_runtime_options(graph, source_indices, execution_mode, None, None)
     }
 
     pub fn with_fixture_store(
@@ -1267,6 +1274,19 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    ) -> Self {
+        Self::with_runtime_options(graph, source_indices, execution_mode, fixture_store, None)
+    }
+
+    /// Build an interpreter context. When `whole_tree_published_keys` is `Some`, hermetic
+    /// governance reads that precomputed set (M4.1 whole-tree corpus) instead of scanning only
+    /// the entry closure's `item_registry`.
+    pub fn with_runtime_options(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        execution_mode: ExecutionMode,
+        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+        whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
@@ -1316,6 +1336,8 @@ impl InterpContext {
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
             published_mock_keys: RefCell::new(None),
+            whole_tree_published_keys,
+            governed_services: RefCell::new(None),
         }
     }
 
@@ -1328,9 +1350,37 @@ impl InterpContext {
                 return Ok(keys.clone());
             }
         }
-        let keys = Rc::new(resolve_published_mock_keys(self)?);
+        let keys = if let Some(seed) = self.whole_tree_published_keys.as_ref() {
+            if seed.is_empty() {
+                // dsl/ precompute found no corpora (or no dsl root) — fall back to the entry
+                // closure scan rather than treating universal governance as empty.
+                Rc::new(resolve_published_mock_keys(self)?)
+            } else {
+                seed.clone()
+            }
+        } else {
+            Rc::new(resolve_published_mock_keys(self)?)
+        };
         *self.published_mock_keys.borrow_mut() = Some(keys.clone());
         Ok(keys)
+    }
+
+    /// Service names that publish at least one hermetic mock case — precomputed once from the
+    /// published key set for O(1) corpus-governed checks in `eval_service_call`.
+    fn governed_services(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
+        {
+            if let Some(services) = self.governed_services.borrow().as_ref() {
+                return Ok(services.clone());
+            }
+        }
+        let published = self.published_mock_keys()?;
+        let services: std::collections::HashSet<String> = published
+            .iter()
+            .filter_map(|k| k.rsplit_once('.').map(|(svc, _)| svc.to_string()))
+            .collect();
+        let services = Rc::new(services);
+        *self.governed_services.borrow_mut() = Some(services.clone());
+        Ok(services)
     }
 
     fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
@@ -3705,11 +3755,8 @@ fn eval_service_call(
         // least one case; for such a service the published model — NOT inline mock_* props —
         // decides realizability. One decision procedure, shared by the runtime and the lens.
         let published = ctx.published_mock_keys()?;
-        let service_is_governed = published.iter().any(|k| {
-            k.rsplit_once('.')
-                .map(|(svc, _)| svc == service_name)
-                .unwrap_or(false)
-        });
+        let governed = ctx.governed_services()?;
+        let service_is_governed = governed.contains(service_name);
         if service_is_governed && !published.contains(&key) {
             // §5 fail-closed on disagreement: the service publishes a corpus but THIS operation
             // is not a published case. Refuse loudly — even if a fixture or an inline mock_*
@@ -4767,13 +4814,13 @@ fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bo
 
 /// Resolve the PUBLISHED mock corpus (the §2 Realization pure-spec) into its operation-key set.
 /// Reads SHAPE, not contents (DESIGN.md lens law): every `data` item DECLARED over
-/// `PublishedMockCase` contributes its rows' `operation_key`s. This is the SAME corpus the M2
+/// `PublishedMockCase` contributes its rows' operation keys. This is the SAME corpus the M2
 /// mock_totality_lens reads — the v1 runtime and the compile-time lens now decide hermetic
 /// realizability from ONE model. The declared-type pre-filter keeps this cheap: only corpus data
 /// items are evaluated, not every `data` constant in the loaded tree. Evaluated against
 /// `Env::empty()` like other `data` constants; data items are pure (no service calls), so this
 /// never re-enters `eval_service_call`.
-fn resolve_published_mock_keys(
+pub(crate) fn resolve_published_mock_keys(
     ctx: &InterpContext,
 ) -> InterpResult<std::collections::HashSet<String>> {
     let mut keys = std::collections::HashSet::new();
@@ -4802,14 +4849,32 @@ fn resolve_published_mock_keys(
         for item in items.iter() {
             if let Value::Record { type_name, fields } = item {
                 if ctx.sym_eq(*type_name, "PublishedMockCase") {
-                    if let Some(Value::Str(op_key)) = ctx.field(fields, "operation_key") {
-                        keys.insert(op_key.clone());
+                    if let Some(op_key) = published_case_operation_key(ctx, fields) {
+                        keys.insert(op_key);
                     }
                 }
             }
         }
     }
     Ok(keys)
+}
+
+/// Prefer grounded `service` + `operation` fields; fall back to legacy `operation_key`.
+fn published_case_operation_key(
+    ctx: &InterpContext,
+    fields: &HashMap<Symbol, Value>,
+) -> Option<String> {
+    if let (Some(Value::Str(svc)), Some(Value::Str(op))) =
+        (ctx.field(fields, "service"), ctx.field(fields, "operation"))
+    {
+        if !svc.is_empty() && !op.is_empty() {
+            return Some(format!("{svc}.{op}"));
+        }
+    }
+    ctx.field(fields, "operation_key").and_then(|v| match v {
+        Value::Str(s) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    })
 }
 
 /// Evaluate mock_response from an operation's properties for hermetic execution.
