@@ -21,8 +21,8 @@ fn witness_agent_claude_is_llm() -> Bool {
   }
 }
 
-fn witness_human_reviewer_is_human() -> Bool {
-  match reviewer_source(reviewer: HumanReviewer) {
+fn witness_human_seat_reviewer_is_human() -> Bool {
+  match reviewer_source(reviewer: HumanSeatReviewer) {
     Human => true
     _ => false
   }
@@ -59,7 +59,7 @@ fn witness_policy_reviewer_is_policy() -> Bool {
 
 fn all_reviewer_source_witnesses() -> Bool {
   witness_agent_claude_is_llm()
-    && witness_human_reviewer_is_human()
+    && witness_human_seat_reviewer_is_human()
     && witness_unattributed_jane_qa_is_unattributed()
     && witness_unattributed_policy_string_is_unattributed()
     && witness_policy_reviewer_is_policy()

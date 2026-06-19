@@ -48,7 +48,7 @@ type PolicyRef {
 
 // Coproduct receipt: terminal. LLM-only provider rows for AgentReviewer.
 // ReviewProvider (transport) retains HumanReviewer and ProviderOther for ctrl;
-// those coordinates lift to HumanReviewer / UnattributedReviewer arms here.
+// those coordinates lift to HumanSeatReviewer / UnattributedReviewer arms here.
 type LlmReviewProvider
   = OpenaiPro
   | Codex
@@ -60,7 +60,7 @@ type LlmReviewProvider
 // projection only (no nested ReviewProvider match undoing a conflation).
 type Reviewer
   = AgentReviewer { provider: LlmReviewProvider }
-  | HumanReviewer
+  | HumanSeatReviewer
   | PolicyReviewer { policy: PolicyRef }
   | UnattributedReviewer { provider_name: NonEmptyStr }
 
@@ -68,7 +68,7 @@ type Reviewer
 fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   match reviewer {
     AgentReviewer { provider: _ } => Llm
-    HumanReviewer => Human
+    HumanSeatReviewer => Human
     PolicyReviewer { policy: _ } => Policy
     UnattributedReviewer { provider_name: _ } => Unattributed
   }
