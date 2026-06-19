@@ -20,11 +20,8 @@ use im_rc::Vector as RrbVector;
 
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
-use crate::std_types::is_kernel_type;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
-use crate::v1_compiler_infer_env::{lookup_type_by_name, TypeEnv};
 use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
-use crate::v1_compiler_infer_resolve::{peel_nominal_alias_identity, resolve_node, resolve_node_bounded};
 use crate::v1_rt;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
@@ -2899,130 +2896,62 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 // Cast
 // ---------------------------------------------------------------------------
 
-fn lookup_type_env_for_name(ctx: &InterpContext, type_name: &str) -> Option<(Rc<TypeEnv>, String)> {
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
     for module in ctx.modules.iter() {
-        let module_name = authored_name_at(ctx.si(), module.module.clone());
-        if lookup_type_by_name(module.type_env.clone(), type_name.to_string()).is_some() {
-            return Some((module.type_env.clone(), module_name));
+        for item in module.items.iter() {
+            if authored_name_at(ctx.si(), item.clone()) == type_name {
+                return Some(item.clone());
+            }
         }
     }
     None
 }
 
-fn alias_rhs_node(decl: &Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Option<Rc<Node>> {
-    if let Some(InferredNode::Resolved { node }) = decl.inferred.as_deref() {
-        return Some(resolve_node(node.clone(), env, module_name).resolved.clone());
-    }
-    let peeled = peel_nominal_alias_identity(decl.clone(), env.clone(), module_name.clone());
-    if Rc::ptr_eq(&peeled, decl) {
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+    let rhs = match item.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    let name = authored_name_at(ctx.si(), rhs);
+    if name.is_empty() {
         None
     } else {
-        Some(peeled)
+        Some(name)
     }
 }
 
-/// Structural RHS of a type alias before nominal brand is re-applied (the peel inside
-/// `peel_nominal_alias_identity`, without `with_authored_identity`).
-fn structural_type_of_alias_by_name(
-    type_name: String,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Option<Rc<Node>> {
-    let resolved = lookup_type_by_name(env.clone(), type_name)?;
-    let structural = if resolved.connective == Connective::NoConnective
-        && resolved.children.is_empty()
-        && resolved.inferred.is_some()
-    {
-        match resolved.inferred.as_deref()? {
-            InferredNode::Resolved { node } => resolve_node_bounded(
-                node.clone(),
-                env.clone(),
-                module_name.clone(),
-                0,
-            )
-            .resolved
-            .clone(),
-            _ => resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
-                .resolved
-                .clone(),
-        }
-    } else {
-        resolve_node_bounded(resolved.clone(), env, module_name, 0)
-            .resolved
-            .clone()
-    };
-    Some(structural)
-}
-
-fn string_family_kernel_name(name: String) -> String {
-    if name == "Secret" {
-        "String".to_string()
-    } else {
-        name
-    }
-}
-
-/// Walk nominal_opaque / where / brand alias chains to the kernel type name that
-/// owns the runtime representation (Secret peels to String, etc.).
-fn cast_target_underlying_kernel(ctx: &InterpContext, mut target: Rc<Node>) -> String {
+/// Walk alias chains via type-decl items (pre-brand `inferred` RHS), not the
+/// brand-preserved `TypeEnv` bindings used at use sites.
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let mut current = authored_name_at(ctx.si(), target);
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
-        let name = authored_name_at(ctx.si(), target.clone());
-        if name.is_empty() {
-            if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref().cloned() {
-                target = node;
-                continue;
-            }
+        if current.is_empty() {
             return String::new();
         }
-
-        if !seen.insert(name.clone()) {
-            return string_family_kernel_name(name);
+        if !seen.insert(current.clone()) {
+            return current;
         }
-
-        if name == "String" {
+        if current == "String" {
             return "String".to_string();
         }
 
-        if is_kernel_type(name.clone()) {
-            return string_family_kernel_name(name);
-        }
-
-        let Some((env, module_name)) = lookup_type_env_for_name(ctx, &name) else {
-            return string_family_kernel_name(name);
+        let Some(item) = lookup_type_item_across_modules(ctx, &current) else {
+            return current;
         };
 
-        if let Some(structural) =
-            structural_type_of_alias_by_name(name.clone(), env.clone(), module_name.clone())
-        {
-            let structural_name = authored_name_at(ctx.si(), structural.clone());
-            if structural_name == "String" {
-                return "String".to_string();
-            }
-            if !structural_name.is_empty() && structural_name != name {
-                target = structural;
-                continue;
-            }
-        }
+        let Some(rhs_name) = type_item_alias_rhs_name(ctx, &item) else {
+            return current;
+        };
 
-        if let Some(decl) = lookup_type_by_name(env.clone(), name.clone()) {
-            if let Some(next) = alias_rhs_node(&decl, env.clone(), module_name.clone()) {
-                let next_name = authored_name_at(ctx.si(), next.clone());
-                if next_name == "String" {
-                    return "String".to_string();
-                }
-                if next_name != name {
-                    target = next;
-                    continue;
-                }
-            }
+        if rhs_name == current {
+            return current;
         }
-
-        return string_family_kernel_name(name);
+        current = rhs_name;
     }
 
-    string_family_kernel_name(authored_name_at(ctx.si(), target))
+    current
 }
 
 fn str_identity_cast_if_string_family(

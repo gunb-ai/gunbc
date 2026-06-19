@@ -7,10 +7,7 @@
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
-use v1_compiler::v1_compiler_infer_env::lookup_type_by_name;
-use v1_compiler::v1_compiler_infer_resolve::resolve_node_bounded;
 use v1_compiler::v1_interpreter::{self, Value};
-use v1_compiler::v1_std_core::{authored_name_at, InferredNode};
 
 use crate::helpers::resolve_imports_transitively;
 
@@ -39,43 +36,6 @@ fn run_witness(src: &str, witness_fn: &str) -> Value {
         .expect("graph after successful resolve");
     v1_interpreter::run(graph, resolved.source_indices.clone(), witness_fn)
         .unwrap_or_else(|e| panic!("run {witness_fn}: {e:?}"))
-}
-
-#[test]
-fn debug_nonempty_type_binding_shape() {
-    let src = r#"module test.string_family_cast
-import std.types { NonEmptyStr }
-fn string_to_nonempty(s: String) -> NonEmptyStr { s as NonEmptyStr }
-"#;
-    let sources = resolve_imports_transitively("test/string_family_cast.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved.graph.as_ref().unwrap();
-    for module in graph.modules.iter() {
-        let module_name = authored_name_at(resolved.source_indices.clone(), module.module.clone());
-        if module_name != "std.types" {
-            continue;
-        }
-        let decl = lookup_type_by_name(module.type_env.clone(), "NonEmptyStr".to_string())
-            .expect("NonEmptyStr decl");
-        let has_inferred = decl.inferred.is_some();
-        let decl_name = authored_name_at(resolved.source_indices.clone(), decl.clone());
-        let structural = if let Some(InferredNode::Resolved { node }) = decl.inferred.as_deref() {
-            resolve_node_bounded(node.clone(), module.type_env.clone(), module_name.clone(), 0)
-                .resolved
-                .clone()
-        } else {
-            resolve_node_bounded(decl.clone(), module.type_env.clone(), module_name.clone(), 0)
-                .resolved
-                .clone()
-        };
-        let structural_name =
-            authored_name_at(resolved.source_indices.clone(), structural.clone());
-        panic!(
-            "NonEmptyStr decl_name={decl_name} has_inferred={has_inferred} structural_name={structural_name}"
-        );
-    }
-    panic!("std.types module not found");
 }
 
 #[test]
