@@ -1,0 +1,34 @@
+// extdeps/render/ansi.dag — ANSI 256-color escape realization for SemanticColor.
+//
+// Upstream: gunb.ai/pkg/fermi/colors.go (consistent terminal appearance).
+//
+// P2 split: std.symbols owns the agnostic SemanticColor concept; the cited
+// per-color escape sequences live here in extdeps/render.
+
+module extdeps.render.ansi
+
+import std.symbols { SemanticColor }
+
+type AnsiMapping {
+  color: SemanticColor
+  code: String
+}
+
+data ansi_mappings: List<AnsiMapping> = [
+  { color: Default, code: "\x1b[0m"          },
+  { color: Success, code: "\x1b[38;5;34m"    },
+  { color: Warning, code: "\x1b[38;5;208m"   },
+  { color: Error,   code: "\x1b[38;5;196m"   },
+  { color: Info,    code: "\x1b[38;5;39m"    },
+  { color: Dim,     code: "\x1b[2m"           },
+  { color: Active,  code: "\x1b[38;5;208m"   },
+  { color: Accent,  code: "\x1b[38;5;75m"    }
+]
+
+fn ansi_code(c: SemanticColor) -> String? {
+  let matches = filter(ansi_mappings, m => m.color == c)
+  match matches |> first {
+    Present { value: mapping } => Present { value: mapping.code }
+    Absent => none
+  }
+}
