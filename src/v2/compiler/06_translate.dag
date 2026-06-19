@@ -63,7 +63,6 @@ import v2.std.diagnostic {
 import v2.std.node {
   Arrow,
   Atom,
-  Behavior,
   Cardinality,
   ComputationNode,
   Conj,
@@ -81,11 +80,7 @@ import v2.std.node {
   well_formed,
   SyntheticOccurrence
 }
-import v2.std.node_query {
-  coproduct_nullary_inhabitants,
-  find_named_child,
-  node_positional_child_targets
-}
+import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
@@ -3897,11 +3892,9 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
 //   fails closed when a `^translate_*` reason literal is raised with no matching variant. Whichever
 //   lands first removes this scaffold; this marker is the §6 dissolution trigger that keeps the
 //   staged migration from ossifying as parallel representation.
-//   Partial (#5180 follow-on): `_from_symbol` and `_roster` are derived by inverting `_symbol` over
-//   `coproduct_nullary_inhabitants` (§4 one-grammar-both-directions); only `_symbol` retains the
-//   wire-symbol projection table until emission sites migrate off bare `^translate_*` literals.
-data reflect_translate_diagnostic_reason_type: Symbol = ^TranslateDiagnosticReason
-
+//   Partial (#5180 follow-on): `_from_symbol` and `_roster` derive by inverting `_symbol` over
+//   `translate_diagnostic_reason_variants()` (§4 one-grammar-both-directions); only `_symbol` retains
+//   the wire-symbol projection table until emission sites migrate off bare `^translate_*` literals.
 type TranslateDiagnosticReason
   = TargetBundleMalformed
   | TargetBundleDuplicateEdge
@@ -3920,6 +3913,31 @@ type TranslateDiagnosticReason
   | TargetAtomRealizationLookupMiss
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
+
+// 🟡 gated — feature:coproduct-variant-enumeration — bind gunbc#4759 — dissolve-on-arrival: derive
+// TranslateDiagnosticReason variant list from coproduct-arm compile-time lens; delete this mirror.
+// forbidden: parallel hand-enumerated TranslateDiagnosticReason universes outside 06_translate.dag.
+fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
+  [
+    TargetBundleMalformed,
+    TargetBundleDuplicateEdge,
+    SgRcBundlePartial,
+    GrammarInverseNotRealized,
+    GrammarRelationRowNotFound,
+    ConjInvalidEdge,
+    ConjNamedChildMissing,
+    ConcreteTokenClassMissing,
+    ConcreteTokenKindInvalid,
+    SerializeRecursionLimitExhausted,
+    LexRuleLiteralNotFound,
+    BindingSpellingNotFound,
+    TypeExpressionShapeMissing,
+    TypeExprKindAuthorityInvalid,
+    TargetAtomRealizationLookupMiss,
+    TargetFunctionSignatureRealizationLookupMiss,
+    TargetTypeExprEmittedShapeMalformed
+  ]
+}
 
 fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symbol {
   match reason {
@@ -3945,14 +3963,14 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
 
 fn translate_diagnostic_reason_from_symbol_go(
   sym: Symbol,
-  inhabitants: List<Behavior>
+  variants: List<TranslateDiagnosticReason>
 ) -> Optional<TranslateDiagnosticReason> {
-  fold(inhabitants, init: optional_absent(), f: fn(acc, inhabitant) {
+  fold(variants, init: optional_absent(), f: fn(acc, variant) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        if sym == translate_diagnostic_reason_symbol(reason: inhabitant) {
-          optional_present(value: inhabitant)
+        if sym == translate_diagnostic_reason_symbol(reason: variant) {
+          optional_present(value: variant)
         } else {
           acc
         }
@@ -3961,28 +3979,19 @@ fn translate_diagnostic_reason_from_symbol_go(
 }
 
 fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
-  match coproduct_nullary_inhabitants(type_name: reflect_translate_diagnostic_reason_type) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
-      translate_diagnostic_reason_from_symbol_go(sym: sym, inhabitants: inhabitants)
-    Rejected { diagnostics: _ } => optional_absent()
-  }
-}
-
-fn translate_diagnostic_reason_roster_from_inhabitants(inhabitants: List<Behavior>) -> List<Symbol> {
-  fold(inhabitants, init: Empty, f: fn(acc, inhabitant) {
-    list_snoc_item(
-      xs: acc,
-      item: translate_diagnostic_reason_symbol(reason: inhabitant)
-    )
-  })
+  translate_diagnostic_reason_from_symbol_go(
+    sym: sym,
+    variants: translate_diagnostic_reason_variants()
+  )
 }
 
 fn translate_diagnostic_reason_roster() -> List<Symbol> {
-  match coproduct_nullary_inhabitants(type_name: reflect_translate_diagnostic_reason_type) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
-      translate_diagnostic_reason_roster_from_inhabitants(inhabitants: inhabitants)
-    Rejected { diagnostics: _ } => Empty
-  }
+  fold(translate_diagnostic_reason_variants(), init: Empty, f: fn(acc, variant) {
+    list_snoc_item(
+      xs: acc,
+      item: translate_diagnostic_reason_symbol(reason: variant)
+    )
+  })
 }
 
 fn translate_diagnostic_reason_head(

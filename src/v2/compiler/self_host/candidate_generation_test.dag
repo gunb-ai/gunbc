@@ -15,11 +15,12 @@ import v2.compiler.translate {
   translate_diagnostic_reason_from_symbol,
   translate_diagnostic_reason_roster,
   translate_diagnostic_reason_symbol,
+  translate_diagnostic_reason_variants,
   TargetBundleDuplicateEdge,
   TargetBundleMalformed,
   TranslateDiagnosticReason
 }
-import v2.std.collection { Absent, List, Optional, Present, optional_present }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.extdeps.languages.dag {
   dag_mvp1_emitted_add_fn_node,
   dag_mvp1_target_model
@@ -44,11 +45,7 @@ import v2.test.manual.sg2_type_expression_projection {
 import v2.std.algebra { bag_eq, length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Behavior, Symbol }
-import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
-
-
-data reflect_translate_diagnostic_reason_type: Symbol = ^TranslateDiagnosticReason
+import v2.std.node { Symbol }
 
 
 fn symbol_eq(left: Symbol, right: Symbol) -> Bool {
@@ -56,48 +53,82 @@ fn symbol_eq(left: Symbol, right: Symbol) -> Bool {
 }
 
 
-fn translate_diagnostic_reason_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
-  fold(inhabitants, init: [], f: fn(acc, inhabitant) {
-    list_snoc_item(xs: acc, item: translate_diagnostic_reason_symbol(reason: inhabitant))
+fn translate_diagnostic_reason_variant_symbols(variants: List<TranslateDiagnosticReason>) -> List<Symbol> {
+  fold(variants, init: [], f: fn(acc, variant) {
+    list_snoc_item(xs: acc, item: translate_diagnostic_reason_symbol(reason: variant))
   })
 }
 
 
-fn translate_diagnostic_reason_symbol_round_trips(sym: Symbol) -> Bool {
-  match translate_diagnostic_reason_from_symbol(sym: sym) {
-    Present { value: reason } => translate_diagnostic_reason_symbol(reason: reason) == sym
+fn translate_diagnostic_reason_from_symbol_over_variants(
+  sym: Symbol,
+  variants: List<TranslateDiagnosticReason>
+) -> Optional<TranslateDiagnosticReason> {
+  fold(variants, init: optional_absent(), f: fn(acc, variant) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sym == translate_diagnostic_reason_symbol(reason: variant) {
+          optional_present(value: variant)
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+
+fn translate_diagnostic_reason_variants_without_malformed() -> List<TranslateDiagnosticReason> {
+  fold(translate_diagnostic_reason_variants(), init: [], f: fn(acc, variant) {
+    match variant {
+      TargetBundleMalformed => acc
+      _ => list_snoc_item(xs: acc, item: variant)
+    }
+  })
+}
+
+
+fn translate_diagnostic_reason_variant_round_trips(variant: TranslateDiagnosticReason) -> Bool {
+  match translate_diagnostic_reason_from_symbol(sym: translate_diagnostic_reason_symbol(reason: variant)) {
+    Present { value: reason } => translate_diagnostic_reason_symbol(reason: reason) == translate_diagnostic_reason_symbol(reason: variant)
     Absent => false
   }
 }
 
 
-fn translate_diagnostic_reason_from_symbol_round_trips_inhabitants(
-  inhabitants: List<Behavior>
-) -> Bool {
-  fold(inhabitants, init: true, f: fn(acc, inhabitant) {
-    acc && translate_diagnostic_reason_symbol_round_trips(
-      sym: translate_diagnostic_reason_symbol(reason: inhabitant)
-    )
+fn translate_diagnostic_reason_symbol_round_trip_holds() -> Bool {
+  fold(translate_diagnostic_reason_variants(), init: true, f: fn(acc, variant) {
+    acc && translate_diagnostic_reason_variant_round_trips(variant: variant)
   })
 }
 
 
-fn translate_diagnostic_reason_roster_matches_coproduct_arms() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_translate_diagnostic_reason_type) {
-    Accepted { value: inhabitants, diagnostics: _ } =>
-      let arm_keys = coproduct_arm_keys(type_name: reflect_translate_diagnostic_reason_type)
-      let projected = translate_diagnostic_reason_inhabitant_discriminants(inhabitants: inhabitants)
-      (length(xs: inhabitants) == length(xs: arm_keys))
-        && bag_eq(
-          xs: translate_diagnostic_reason_roster(),
-          ys: projected,
-          eq: symbol_eq
-        )
-        && translate_diagnostic_reason_from_symbol_round_trips_inhabitants(
-          inhabitants: inhabitants
-        )
-    Rejected { diagnostics: _ } => false
+fn translate_diagnostic_reason_roster_matches_variants() -> Bool {
+  bag_eq(
+    xs: translate_diagnostic_reason_roster(),
+    ys: translate_diagnostic_reason_variant_symbols(
+      variants: translate_diagnostic_reason_variants()
+    ),
+    eq: symbol_eq
+  )
+}
+
+
+fn translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds() -> Bool {
+  match translate_diagnostic_reason_from_symbol_over_variants(
+    sym: translate_diagnostic_reason_symbol(reason: TargetBundleMalformed),
+    variants: translate_diagnostic_reason_variants_without_malformed()
+  ) {
+    Absent => true
+    Present { value: _ } => false
   }
+}
+
+
+fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
+  translate_diagnostic_reason_symbol_round_trip_holds()
+    && translate_diagnostic_reason_roster_matches_variants()
+    && translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds()
 }
 
 
@@ -208,7 +239,7 @@ fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
 
 
 test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
-  translate_diagnostic_reason_roster_matches_coproduct_arms()
+  translate_diagnostic_reason_symbol_inverse_holds()
 }
 
 
