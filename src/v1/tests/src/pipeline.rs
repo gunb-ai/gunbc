@@ -7866,7 +7866,7 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
     let dsl_root = ws.join("dsl");
     let v2_root = ws.join("src/v2");
-    let overlay_roots = vec![dsl_root.clone(), v2_root.clone()];
+    let overlay_roots = vec![v2_root.clone(), dsl_root.clone()];
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
     let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
@@ -7928,7 +7928,8 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
         eprintln!("--- cargo check stderr ---\n{stderr}");
     }
 
-    let _ = std::fs::remove_dir_all(&out_dir);
+    eprintln!("N_v1 emitted crate dir: {}", out_dir.display());
+    // let _ = std::fs::remove_dir_all(&out_dir);
     assert!(
         error_count > 0 || check.status.success(),
         "cargo check produced no diagnostics and did not succeed"

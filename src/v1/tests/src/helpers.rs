@@ -135,14 +135,7 @@ fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::
             scan_dag_files(&path, index);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             if let Some(module_path) = extract_module_declaration(&path) {
-                if let Some(existing) = index.get(&module_path) {
-                    panic!(
-                        "duplicate module declaration for {}: {} and {}",
-                        module_path,
-                        existing.display(),
-                        path.display()
-                    );
-                }
+                // Co-root overlay: later roots win (matches cli_run build_module_index).
                 index.insert(module_path, path);
             }
         }
