@@ -1,0 +1,56 @@
+// src/v2/std/cross_tree/policy.dag
+//
+// Operator decision — cross-tree v2.std / dsl.std import unification strategy.
+// Spike adhoc-0dd96c93-6a8: (a) by-module resolve wins; (b) unify-trees is the
+// fact_cardinality ratchet dissolution target, NOT the import-resolution mechanism.
+//
+// By-module resolve: qualified module paths (`std.*` vs `v2.std.*`) stay distinct;
+// cross-tree edges admit via TreeFundamentalityOrder + layer-direction when
+// source_root is grounded on DagSourceReadWitness (not QN-prefix inference).
+//
+// dissolve-on: fact_cardinality coexistence baseline reaches zero via per-decl
+// consolidation — at that point cross_tree_import_strategy may flip to UnifyTrees
+// and this module folds into a single std authority.
+
+module v2.std.cross_tree.policy
+
+import v2.std.cross_tree.import_model {
+  MoreFundamental,
+  TreeFundamentalityOrder
+}
+import v2.std.logic { Bool }
+
+
+// CrossTreeImportStrategy — closed operator choice for the import-resolution seam.
+type CrossTreeImportStrategy
+  = ByModuleResolve
+  | UnifyTrees
+
+// Operator decision (spike adhoc-0dd96c93-6a8).
+data cross_tree_import_strategy: CrossTreeImportStrategy = ByModuleResolve
+
+// Activation order for grounded-source_root ingest resolves (not QN-prefix fallback).
+// MoreFundamental orients each edge toward its import target without CoFundamental
+// peer-std equality while diverged forks remain (fact_cardinality ratchet).
+data cross_tree_activation_order: TreeFundamentalityOrder = MoreFundamental
+
+fn cross_tree_by_module_resolve_selected() -> Bool {
+  match cross_tree_import_strategy {
+    ByModuleResolve => true
+    UnifyTrees => false
+  }
+}
+
+fn cross_tree_unify_trees_selected() -> Bool {
+  match cross_tree_import_strategy {
+    ByModuleResolve => false
+    UnifyTrees => true
+  }
+}
+
+fn cross_tree_activation_uses_more_fundamental() -> Bool {
+  match cross_tree_activation_order {
+    MoreFundamental => true
+    _ => false
+  }
+}

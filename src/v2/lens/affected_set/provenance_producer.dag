@@ -24,6 +24,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.witness { Holds, Violates, Witness }
@@ -57,19 +58,22 @@ data provenance_producer_fixture_artifact: Artifact = Artifact {
 data provenance_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_fixture_source,
   artifact: provenance_producer_fixture_artifact,
-  compilation_unit: ^provenance_producer_compilation_unit
+  compilation_unit: ^provenance_producer_compilation_unit,
+  source_root: V2Tree
 }
 
 data provenance_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_malformed_source,
   artifact: provenance_producer_fixture_artifact,
-  compilation_unit: ^provenance_producer_compilation_unit
+  compilation_unit: ^provenance_producer_compilation_unit,
+  source_root: V2Tree
 }
 
 data provenance_producer_module_surface_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_module_surface_source,
   artifact: provenance_producer_fixture_artifact,
-  compilation_unit: ^provenance_producer_compilation_unit
+  compilation_unit: ^provenance_producer_compilation_unit,
+  source_root: V2Tree
 }
 
 data provenance_producer_single_read_ingest: SourceRootIngest = [provenance_producer_fixture_source_read]

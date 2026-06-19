@@ -28,6 +28,7 @@ import v2.std.node { MintedOccurrence, Node, OccurrenceId, Symbol, SyntheticOccu
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.test.claim.lens_affected_set.node_precision {
   affected_set_claim_tree,
   affected_set_mid,
@@ -61,13 +62,15 @@ data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
 data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit,
+  source_root: V2Tree
 }
 
 data edit_locus_source_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_malformed_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: edit_locus_source_producer_fixture_compilation_unit,
+  source_root: V2Tree
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {

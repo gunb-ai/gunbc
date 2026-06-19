@@ -14,6 +14,7 @@ module v2.compiler.program_assembly
 import v2.compiler.name_resolve {
   Admission,
   resolve_with_admission,
+  resolve_with_admission_from_ingest,
   validate_module_roots
 }
 import v2.compiler.normalize { normalize }
@@ -124,6 +125,7 @@ fn module_roots_from_source_root_ingest(
 
 
 // Validated module roots + cross-file admission → single resolved program CoreNode.
+// Synthetic / hand-built root pools use QN-prefix fallback + fail-closed Unknown order.
 fn assemble_program_from_module_roots(
   roots: FreeMonoid<Node>,
   admission: Admission,
@@ -151,10 +153,16 @@ fn assemble_program_from_ingest(
   bind_outcome(
     o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
     f: fn(roots) {
-      assemble_program_from_module_roots(
-        roots: roots,
-        admission: admission,
-        lm: lm
+      bind_outcome(
+        o: validate_module_roots(roots: roots),
+        f: fn(validated_roots) {
+          resolve_with_admission_from_ingest(
+            lm: lm,
+            ingest: ingest,
+            roots: validated_roots,
+            admission: admission
+          )
+        }
       )
     }
   )

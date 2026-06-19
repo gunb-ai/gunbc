@@ -2658,6 +2658,26 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
+    /// Modeled `SourceRootRef` variant name (`V2Tree` | `DslTree`).
+    pub source_root: String,
+}
+
+fn source_root_ref_for_file_path(path: &str) -> Result<&'static str, String> {
+    let normalized = path.replace('\\', "/");
+    let ws = workspace_root();
+    let rel = std::path::Path::new(&normalized)
+        .strip_prefix(&ws)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or(normalized);
+    if rel.starts_with("src/v2/") {
+        Ok("V2Tree")
+    } else if rel.starts_with("dsl/") {
+        Ok("DslTree")
+    } else {
+        Err(format!(
+            "discover_source_root_ingest: cannot infer SourceRootRef for path '{rel}' (expected src/v2/ or dsl/ prefix)"
+        ))
+    }
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
@@ -2885,6 +2905,7 @@ pub fn discover_source_root_reads(
             file_path: rel_forward,
             module_path,
             source: content,
+            source_root: source_root_ref_for_file_path(&rel_forward)?.to_string(),
         });
     }
 
@@ -2928,6 +2949,7 @@ pub fn discover_source_root_reads_for_entry(
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
+            source_root: source_root_ref_for_file_path(&rel_forward)?.to_string(),
         });
     }
 
@@ -2939,9 +2961,10 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
+        rec.source_root
     ))
 }
 
@@ -2989,6 +3012,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.cross_tree.import_model { DslTree, V2Tree }\n");
     out.push_str("import v2.std.text { String }\n");
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");

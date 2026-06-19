@@ -50,6 +50,7 @@ import v2.compiler.target_carriers { lossless_source }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.cross_tree.import_model { SourceRootRef }
 
 
 type DagSourceAst {
@@ -70,6 +71,9 @@ type DagSourceReadWitness {
   // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
   // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
   compilation_unit: Symbol
+  // Grounded source-tree identity — host tags by which --source-root the file came from.
+  // Replaces QN-prefix inference in v2.std.cross_tree.resolution (Route C Phase C).
+  source_root: SourceRootRef
 }
 
 // Whole source-root ingest closure — the same set `--source-root src/v2` walks.

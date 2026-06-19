@@ -1,0 +1,32 @@
+// Scope: operator-decision witnesses — cross_tree/policy (spike adhoc-0dd96c93-6a8).
+//
+// GREEN: by-module resolve selected; MoreFundamental activation order.
+// RED:   unify-trees NOT selected while ratchet debt remains.
+
+module v2.test.claim.cross_tree_policy
+
+import v2.std.cross_tree.policy {
+  cross_tree_activation_uses_more_fundamental,
+  cross_tree_by_module_resolve_selected,
+  cross_tree_unify_trees_selected
+}
+import v2.std.logic { Bool }
+
+
+fn witness_by_module_resolve_selected_holds() -> Bool {
+  cross_tree_by_module_resolve_selected()
+}
+
+fn witness_unify_trees_not_selected_holds() -> Bool {
+  !cross_tree_unify_trees_selected()
+}
+
+fn witness_activation_more_fundamental_holds() -> Bool {
+  cross_tree_activation_uses_more_fundamental()
+}
+
+test fn cross_tree_policy_witnesses() -> Bool {
+  witness_by_module_resolve_selected_holds()
+    && witness_unify_trees_not_selected_holds()
+    && witness_activation_more_fundamental_holds()
+}

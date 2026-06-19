@@ -64,8 +64,14 @@ import v2.std.cross_tree.import_model {
 import v2.std.cross_tree.resolution {
   cross_tree_import_admitted_qualified,
   cross_tree_import_is_same_tree,
-  source_root_set_from_module_roots
+  source_root_set_from_module_roots,
+  source_root_set_insert
 }
+import v2.std.cross_tree.policy {
+  cross_tree_activation_order,
+  cross_tree_by_module_resolve_selected
+}
+import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_eq
@@ -644,4 +650,37 @@ fn resolve_with_admission(
     order: FundamentalityUnknown,
     active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
   )
+}
+
+
+// Grounded ingest resolve — by-module cross-tree admission (Route C Phase C).
+// Uses witness source_root tags + cross_tree_activation_order from policy.
+fn source_root_set_from_ingest(ingest: SourceRootIngest) -> FreeMonoid<SourceRootRef> {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      source_root_set_insert(roots: acc, r: read.source_root)
+    }
+  )
+}
+
+
+fn resolve_with_admission_from_ingest(
+  lm: LanguageModel,
+  ingest: SourceRootIngest,
+  roots: FreeMonoid<Node>,
+  admission: Admission
+) -> Outcome<ResolvedTree> {
+  if cross_tree_by_module_resolve_selected() {
+    resolve_with_admission_policy(
+      lm: lm,
+      roots: roots,
+      admission: admission,
+      order: cross_tree_activation_order,
+      active_roots: source_root_set_from_ingest(ingest: ingest)
+    )
+  } else {
+    resolve_with_admission(lm: lm, roots: roots, admission: admission)
+  }
 }

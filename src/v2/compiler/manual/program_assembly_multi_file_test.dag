@@ -40,6 +40,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.qualified_name { QnCons, QnEmpty }
+import v2.std.cross_tree.import_model { V2Tree }
 
 
 
@@ -193,13 +194,15 @@ data pa_ingest_test_claim_artifact: Artifact = Artifact {
 data pa_ingest_source_file_read: DagSourceReadWitness = DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_source_file_artifact,
-  compilation_unit: ^pa_ingest_peer_cu
+  compilation_unit: ^pa_ingest_peer_cu,
+  source_root: V2Tree
 }
 
 data pa_ingest_non_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_test_claim_artifact,
-  compilation_unit: ^pa_ingest_peer_cu
+  compilation_unit: ^pa_ingest_peer_cu,
+  source_root: V2Tree
 }
 
 data pa_ingest_non_source_ingest: SourceRootIngest = Cons {
