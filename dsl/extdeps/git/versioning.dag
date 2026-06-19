@@ -6,22 +6,24 @@
 // (multi-year cadence: Git 1.6.0, Git 2.0, future Git 3.0). NOT SemVer:
 // Git does not follow semver.org semantics for its own releases.
 //
-// Layer-2 ecosystem model — composes with extdeps.version base identity +
-// ordering when that authority lands (gentle-raven-832 versioning program).
+// Layer-2 ecosystem model — 🟡 gated — feature:extdeps-version-base —
+// dissolve-on-arrival: extdeps/version.dag lands VersionIdentity +
+// version_compare → GitReleaseVersion inhabits base triple ordering and
+// git_release_version_compare delegates to version_compare.
 //
 // Consumers:
 //   (layer 3) extdeps/tools/tools.dag — git CliTool min_version constraint grounding
 
 module extdeps.git.versioning
 
-import std.types { Int, Url }
+import std.types { Url }
 import std.integer { NonNegativeInt }
-import std.algebra { Ordering, Less, Equal, Greater }
+import std.algebra { Ordering }
 import std.nat { nat_compare }
 
 // Git release triple since the Git 2.0 numbering policy.
 type GitReleaseVersion {
-  major: Int
+  major: NonNegativeInt
   minor: NonNegativeInt
   patch: NonNegativeInt
 }
@@ -47,13 +49,9 @@ data git_2_0_release: GitReleaseVersion = {
 // Spec citation for the release-numbering policy.
 data git_release_versioning_spec_url: Url = "https://git-scm.com/docs/BreakingChanges.html"
 
-fn compare_int(a: Int, b: Int) -> Ordering {
-  if a < b { Less } else { if a > b { Greater } else { Equal } }
-}
-
 // Total order on Git release triples: major, then minor, then patch.
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
-  match compare_int(a: a.major, b: b.major) {
+  match nat_compare(a: a.major, b: b.major) {
     Equal => match nat_compare(a: a.minor, b: b.minor) {
       Equal => nat_compare(a: a.patch, b: b.patch)
       other => other
