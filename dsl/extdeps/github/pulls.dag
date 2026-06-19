@@ -295,7 +295,7 @@ data structural_coverage_gap_github_pull_review_response_residual: List<String> 
 type ReviewComment {
   id: Int
   node_id: String
-  path: String
+  path: FilePath
   line: Int?
   original_line: Int?
   body: String
