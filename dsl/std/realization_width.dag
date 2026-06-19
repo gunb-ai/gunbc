@@ -44,6 +44,10 @@ import std.realization_schedule {
 }
 import std.realization_measurement { cost_account_measured_from_time }
 
+fn cost_account_predicted_zero_nano() -> CostAccount<Nano> {
+  cost_account_predicted_zero<Nano>()
+}
+
 fn int_min(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
@@ -137,7 +141,7 @@ fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Na
 fn witness_measured_cost_affects_shard_balance() -> Bool {
   let high = cost_account_measured_from_time(time: nanosecond_duration(count: 100))
   let low = cost_account_measured_from_time(time: nanosecond_duration(count: 10))
-  let baseline = cost_account_predicted_zero<Nano>()
+  let baseline = cost_account_predicted_zero_nano()
   let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
   let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
   left != right
