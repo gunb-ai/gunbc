@@ -27,22 +27,29 @@ import product.compute_fabric {
 fn hetzner_cax41_hourly_micros() -> Nat {
   cost_estimate_unit_price_micros(
     quote: per_second_billed_cost_quote(
-      unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly_eur)),
-      currency: Eur,
+      unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly)),
+      currency: cax41_catalog.currency,
     ),
   )
 }
 
 fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
   let quote = per_second_billed_cost_quote(
-    unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly_eur)),
-    currency: Eur,
+    unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly)),
+    currency: cax41_catalog.currency,
   )
   match quote.model.cost_class {
     PerSecondBilled => true
     OwnedMarginalZero => false
     Metered => false
     DeveloperAttention => false
+  }
+}
+
+fn hetzner_cax41_currency_is_eur() -> Bool {
+  match cax41_catalog.currency {
+    Eur => true
+    _ => false
   }
 }
 
@@ -53,5 +60,6 @@ fn hetzner_cax41_unit_price_matches_catalog() -> Bool {
 
 test fn hetzner_cost_quote_witness_holds() -> Bool {
   hetzner_cax41_cost_class_is_per_second_billed()
+    && hetzner_cax41_currency_is_eur()
     && hetzner_cax41_unit_price_matches_catalog()
 }

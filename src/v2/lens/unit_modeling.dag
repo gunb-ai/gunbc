@@ -114,10 +114,10 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^ram_cap_bytes, carrier: ^ByteSize },
   UnitFieldRow { field: ^memory_bytes, carrier: ^ByteSize },
   UnitFieldRow { field: ^disk_bytes, carrier: ^ByteSize },
-  // Currency — hourly_eur / monthly_cap_eur on extdeps.cloud.hetzner (MoneyAmountMicro);
-  // old bare-Int `*_eur_micros` field names dissolved.
-  UnitFieldRow { field: ^hourly_eur, carrier: ^MoneyAmountMicro },
-  UnitFieldRow { field: ^monthly_cap_eur, carrier: ^MoneyAmountMicro },
+  // Money — hourly / monthly_cap on extdeps.cloud.hetzner (MoneyAmountMicro + CurrencyCode).
+  UnitFieldRow { field: ^hourly, carrier: ^MoneyAmountMicro },
+  UnitFieldRow { field: ^monthly_cap, carrier: ^MoneyAmountMicro },
+  UnitFieldRow { field: ^vcpus, carrier: ^HardwareThreadCount },
   // Time. Carrier is compute_fabric.Duration = Measure<Time, One>
   // (compute_fabric.dag:76) — NOT the legacy types.dag:321 `Duration = Int`
   // brand. That brand is itself a violator of the scale+quantity-conflated
