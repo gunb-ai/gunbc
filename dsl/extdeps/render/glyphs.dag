@@ -9,15 +9,11 @@
 
 module extdeps.render.glyphs
 
-import std.symbols { SemanticColor, SymbolEntry, SymbolId, Tier, TierGlyph }
+import std.symbols { SemanticColor, SymbolEntry, SymbolId, Tier, TierGlyphs }
 
-// Data-authoring helper: binds each Tier variant to its glyph text in one place.
-fn glyphs_for_tiers(emoji: String, unicode: String, ascii: String) -> List<TierGlyph> {
-  [
-    { tier: Emoji, text: emoji },
-    { tier: Unicode, text: unicode },
-    { tier: Ascii, text: ascii }
-  ]
+// Data-authoring helper: total Tier→String product (one field per closed variant).
+fn glyphs_for_tiers(emoji: String, unicode: String, ascii: String) -> TierGlyphs {
+  { emoji: emoji, unicode: unicode, ascii: ascii }
 }
 
 // --- Standard symbol set ---
@@ -100,24 +96,17 @@ fn lookup_symbol_entry(id: SymbolId) -> SymbolEntry? {
   )
 }
 
-fn resolve_glyph(glyphs: List<TierGlyph>, tier: Tier) -> String? {
-  fold(glyphs,
-    init: none,
-    f: (acc, g) => match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if g.tier == tier {
-          Present { value: g.text }
-        } else {
-          none
-        }
-    }
-  )
+fn glyph_at(glyphs: TierGlyphs, tier: Tier) -> String {
+  match tier {
+    Emoji   => glyphs.emoji
+    Unicode => glyphs.unicode
+    Ascii   => glyphs.ascii
+  }
 }
 
 fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
   match lookup_symbol_entry(id: id) {
-    Present { value: entry } => resolve_glyph(glyphs: entry.glyphs, tier: tier)
+    Present { value: entry } => Present { value: glyph_at(glyphs: entry.glyphs, tier: tier) }
     Absent => none
   }
 }
