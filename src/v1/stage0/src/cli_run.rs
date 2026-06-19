@@ -2711,30 +2711,33 @@ pub fn source_root_ref_tag_for_path(
     }
 
     let rel = repo_relative_path(file_path);
-    let mut best: Option<(&str, usize)> = None;
+    let mut best: Option<(&'static str, usize)> = None;
     for root in source_roots {
         let root_rel = repo_relative_path(root);
         if rel == root_rel || rel.starts_with(&format!("{root_rel}/")) {
+            let tag = match root_rel.as_str() {
+                "src/v2" => "V2Tree",
+                "dsl" => "DslTree",
+                other => {
+                    return Err(format!(
+                        "discover_source_root_ingest: unknown source root {:?} (expected src/v2 or dsl)",
+                        other
+                    ))
+                }
+            };
             let len = root_rel.len();
             if best.map_or(true, |(_, bl)| len > bl) {
-                best = Some((root_rel.as_str(), len));
+                best = Some((tag, len));
             }
         }
     }
-    let matched = best.ok_or_else(|| {
+    let (tag, _) = best.ok_or_else(|| {
         format!(
             "discover_source_root_ingest: file path {:?} is not under any --source-root {:?}",
             file_path, source_roots
         )
     })?;
-    match matched {
-        "src/v2" => Ok("V2Tree"),
-        "dsl" => Ok("DslTree"),
-        other => Err(format!(
-            "discover_source_root_ingest: unknown source root {:?} (expected src/v2 or dsl)",
-            other
-        )),
-    }
+    Ok(tag)
 }
 
 /// Parsed `Admission` facts for the scoped `--entry` module (subject + import targets).
@@ -2941,11 +2944,13 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
+        let source_root =
+            source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string();
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: content,
-            source_root: source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string(),
+            source_root,
         });
     }
 
@@ -2985,11 +2990,13 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
+        let source_root =
+            source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string();
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
-            source_root: source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string(),
+            source_root,
         });
     }
 
