@@ -16294,7 +16294,12 @@ pub fn emit_typed_bin_op(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat("(".to_string(), emit_rust_dag_string_to_host_via_seam(l_str.clone())),
+                                                v1_rt::concat(
+                                                    "(".to_string(),
+                                                    emit_rust_dag_string_to_host_via_seam(
+                                                        l_str.clone(),
+                                                    ),
+                                                ),
                                                 " ".to_string(),
                                             ),
                                             op_str,
@@ -20334,23 +20339,28 @@ pub fn emit_data_def_body(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
                                                         "            __m.insert(".to_string(),
-                                                        emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
+                                                        emit_rust_host_to_dag_string_via_seam(
                                                             v1_rt::concat(
-                                                                "\"".to_string(),
-                                                                field_init_node_name_at(
-                                                                    f.clone(),
-                                                                    scope
-                                                                        .type_env
-                                                                        .clone()
-                                                                        .source_indices
-                                                                        .clone(),
+                                                                v1_rt::concat(
+                                                                    "\"".to_string(),
+                                                                    field_init_node_name_at(
+                                                                        f.clone(),
+                                                                        scope
+                                                                            .type_env
+                                                                            .clone()
+                                                                            .source_indices
+                                                                            .clone(),
+                                                                    ),
                                                                 ),
+                                                                "\"".to_string(),
                                                             ),
-                                                            "\"".to_string(),
-                                                        )),
+                                                        ),
                                                     ),
                                                     v1_rt::concat(
-                                                        v1_rt::concat(", ".to_string(), val_str.clone()),
+                                                        v1_rt::concat(
+                                                            ", ".to_string(),
+                                                            val_str.clone(),
+                                                        ),
                                                         ");".to_string(),
                                                     ),
                                                 ),
