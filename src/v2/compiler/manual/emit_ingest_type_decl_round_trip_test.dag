@@ -238,7 +238,7 @@ fn type_decl_lexer_tokens_to_concrete_syntax(tokens: List<Token>) -> List<Concre
 fn type_decl_tokenize_source_text(source: String) -> Outcome<List<Token>> {
   bind_outcome(
     o: tokenize(
-      text: source.carried,
+      text: source,
       file: type_decl_round_trip_source_file,
       rules: type_decl_target().lex
     ),
