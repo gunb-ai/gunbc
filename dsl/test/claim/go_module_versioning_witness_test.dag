@@ -1,0 +1,74 @@
+// test/claim/go_module_versioning_witness_test.dag — by-execution witnesses (DESIGN §5)
+// for the Go module versioning model (extdeps.languages.go.module).
+//
+// Green-by-execution: each witness asserts a fact from the model with a
+// discriminating input. Wrong rules (incorrect suffix rendering, wrong filename,
+// incorrect MVS property count) land on a different value and go RED.
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/go_module_versioning_witness_test.dag \
+//     --function go_module_versioning_witnesses --claim-run
+
+module test.claim.go_module_versioning_witness
+
+import std.logic { Bool }
+import std.types { Int, List }
+import extdeps.languages.go.module {
+  GoMvsProperty,
+  GoMajorVersionSuffix,
+  MajorV0OrV1,
+  MajorV2Plus,
+  go_mod_filename,
+  go_major_suffix_str,
+  go_mvs_properties
+}
+
+// -- go.mod filename is the single authority ------------------------------
+
+fn w_go_mod_filename() -> Bool {
+  go_mod_filename == "go.mod"
+}
+
+// -- Major version suffix rendering (go.dev/ref/mod#major-version-suffixes) --
+
+// v0/v1 modules have no path suffix.
+fn w_major_v0_or_v1_suffix_is_empty() -> Bool {
+  go_major_suffix_str(suffix: MajorV0OrV1) == ""
+}
+
+// v2 modules append "/v2".
+fn w_major_v2_suffix() -> Bool {
+  go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) == "/v2"
+}
+
+// v3 modules append "/v3" — distinct from v2 (discriminating: wrong major → wrong path).
+fn w_major_v3_suffix() -> Bool {
+  go_major_suffix_str(suffix: MajorV2Plus { major: 3 }) == "/v3"
+}
+
+// v2 and v0/v1 suffixes are distinct (discriminating control).
+fn w_suffixes_are_distinct() -> Bool {
+  go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) != go_major_suffix_str(suffix: MajorV0OrV1)
+}
+
+// -- MVS properties list -----------------------------------------------
+// go.dev/ref/mod#minimal-version-selection
+// Count by fold (no list-length builtin; fold is the kernel per DESIGN §4).
+
+fn mvs_property_count(ps: List<GoMvsProperty>) -> Int {
+  fold(ps, init: 0, f: (acc, _p) => acc + 1)
+}
+
+// Three properties declared: DeterministicMinimal, ContentHashLocked, MainModuleOnly.
+fn w_go_mvs_has_three_properties() -> Bool {
+  mvs_property_count(ps: go_mvs_properties) == 3
+}
+
+test fn go_module_versioning_witnesses() -> Bool {
+  w_go_mod_filename()
+    && w_major_v0_or_v1_suffix_is_empty()
+    && w_major_v2_suffix()
+    && w_major_v3_suffix()
+    && w_suffixes_are_distinct()
+    && w_go_mvs_has_three_properties()
+}
