@@ -2286,12 +2286,16 @@ pub fn discover_floor_corpus_rows(
 /// Phase 1.5a REDO v2 — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
 pub struct DiscoveryCorpusOptions {
     pub skip_unaffected_node_frontier: bool,
+    /// When true, skip marker/`test fn` roster discovery and run only `explicit_entries`.
+    /// Host tests use this to exercise skip transport without walking the full floor corpus.
+    pub explicit_roster_only: bool,
 }
 
 impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
             skip_unaffected_node_frontier: false,
+            explicit_roster_only: false,
         }
     }
 }
@@ -2650,7 +2654,11 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
-    let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
+    let mut rows = if options.explicit_roster_only {
+        Vec::new()
+    } else {
+        discover_floor_corpus_rows(source_roots, scan_dirs)?
+    };
     // Append explicit rows with (entry, function) dedup, then re-sort so each
     // entry's witnesses stay grouped for the resolve-once loop below.
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
@@ -2789,10 +2797,57 @@ pub fn run_discovery_corpus_with_options(
 
 #[cfg(test)]
 mod floor_skip_frontier_tests {
-    use super::{parse_unified_diff_line_ranges, span_overlaps_line_ranges, FileLineRange};
+    use super::{
+        build_multi_entry_index, collect_frontier_nodes_from_diff_line_ranges,
+        entry_claims_touch_frontier, list_value_from_vec, parse_unified_diff_line_ranges,
+        span_overlaps_line_ranges, FileLineRange,
+    };
     use crate::std_types::SourceSpan;
-    use crate::v1_std_core::build_newline_index;
+    use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
+    use crate::v1_interpreter::ExecutionMode;
+    use crate::v1_std_core::{authored_name_at, build_newline_index, byte_to_line_col};
     use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn fixture_path() -> String {
+        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag".to_string()
+    }
+
+    fn data_item_line(
+        fixture: &str,
+        source_indices: &HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+        graph: &std::rc::Rc<ResolvedGraph>,
+        name: &str,
+    ) -> i64 {
+        for module in graph.modules.iter() {
+            for item in module.items.iter() {
+                if item_kind(item.clone()) != ItemKind::DataItem {
+                    continue;
+                }
+                if authored_name_at(source_indices.clone(), item.clone()) != name {
+                    continue;
+                }
+                let span = item.span.as_ref().expect("data item span");
+                let index = source_indices.get(&span.file).expect("newline index");
+                return byte_to_line_col(index.clone(), span.start).line;
+            }
+        }
+        panic!("data item `{name}` not found in {fixture}");
+    }
+
+    fn unified_diff_for_line(file: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n@@ -{line},0 +{line},1 @@\n+// node-precise touch\n"
+        )
+    }
 
     #[test]
     fn parse_unified_diff_extracts_new_side_line_ranges() {
@@ -2834,6 +2889,67 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             &si,
             &[FileLineRange { start: 3, end: 3 }]
         ));
+    }
+
+    /// §5 discriminating receipt: same-file nodes A/B; witness W references A only.
+    /// Diff hunk overlapping A's claim span => entry runs; hunk on B only => entry skips.
+    #[test]
+    fn node_precise_same_file_ab_frontier_discriminates() {
+        let ws = workspace_root();
+        let fixture = fixture_path();
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
+            .expect("discriminator fixture resolves");
+        let line_a = data_item_line(
+            &fixture,
+            &source_indices,
+            &graph,
+            "floor_disc_claim_on_a",
+        );
+        let line_b = data_item_line(
+            &fixture,
+            &source_indices,
+            &graph,
+            "floor_disc_claim_on_b",
+        );
+        assert_ne!(
+            line_a, line_b,
+            "fixture must place A/B claims on distinct lines"
+        );
+
+        let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
+
+        let ranges_a = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_a));
+        let frontier_a = collect_frontier_nodes_from_diff_line_ranges(
+            &index,
+            &ranges_a,
+            ExecutionMode::Wet,
+        )
+        .expect("frontier for A-line diff");
+        let touches_a = entry_claims_touch_frontier(&ctx, &list_value_from_vec(frontier_a))
+            .expect("touch check for A-line diff");
+        assert!(
+            touches_a,
+            "diff on A's claim span must touch witness W (runs)"
+        );
+
+        let ranges_b = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_b));
+        let frontier_b = collect_frontier_nodes_from_diff_line_ranges(
+            &index,
+            &ranges_b,
+            ExecutionMode::Wet,
+        )
+        .expect("frontier for B-line diff");
+        let touches_b = entry_claims_touch_frontier(&ctx, &list_value_from_vec(frontier_b))
+            .expect("touch check for B-line diff");
+        assert!(
+            !touches_b,
+            "diff on B's claim span only must NOT touch witness W (skip assumed-green)"
+        );
     }
 }
 
