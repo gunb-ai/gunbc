@@ -1,14 +1,18 @@
 //! §5 execution receipts for Phase 1.5a REDO floor skip host transport (`cli_run`).
 //!
 //! Proves skip-disabled path runs, skip-enabled with empty/non-applicable diff runs all,
-//! and git diff observation failure fail-closes to running witnesses.
+//! git diff observation failure fail-closes to running witnesses, and same-file node-precision
+//! discrimination (edit node A → run, edit node B → skip).
 
 use std::path::PathBuf;
 
 use v1_compiler::cli_run::{
+    build_multi_entry_index, floor_skip_entry_touches_unified_diff, resolve_entry_with_index,
     run_discovery_corpus_with_options, DiscoveryCorpusOptions, DiscoverySummary,
 };
+use v1_compiler::v1_compiler_infer_items::{item_kind, ItemKind};
 use v1_compiler::v1_interpreter::ExecutionMode;
+use v1_compiler::v1_std_core::{authored_name_at, byte_to_line_col};
 
 fn workspace_root() -> PathBuf {
     crate::helpers::workspace_root()
@@ -61,6 +65,70 @@ impl Drop for EnvVarGuard {
             None => std::env::remove_var(self.key),
         }
     }
+}
+
+const FLOOR_SKIP_PRECISION_FIXTURE: &str = "dsl/test/claim/floor_skip_node_precision_fixture.dag";
+
+fn floor_skip_source_roots() -> Vec<String> {
+    let ws = workspace_root();
+    vec![
+        ws.join("src/v2").to_string_lossy().into_owned(),
+        ws.join("dsl").to_string_lossy().into_owned(),
+    ]
+}
+
+fn fixture_entry_abs() -> String {
+    workspace_root()
+        .join(FLOOR_SKIP_PRECISION_FIXTURE)
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn data_decl_mid_line(data_name: &str) -> i64 {
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let entry_abs = fixture_entry_abs();
+    let (graph, si) = resolve_entry_with_index(&index, &entry_abs)
+        .unwrap_or_else(|e| panic!("resolve {entry_abs}: {e}"));
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            if item_kind(item.clone()) != ItemKind::DataItem {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name != data_name {
+                continue;
+            }
+            let span = &*item.span;
+            let file_key = span.file.clone();
+            let nl = si
+                .get(&file_key)
+                .or_else(|| {
+                    si.iter()
+                        .find(|(path, _)| {
+                            path.ends_with(&file_key) || file_key.ends_with(path.as_str())
+                        })
+                        .map(|(_, idx)| idx)
+                })
+                .unwrap_or_else(|| panic!("newline index missing for {}", span.file));
+            let start = byte_to_line_col(nl.clone(), span.start).line;
+            let end = byte_to_line_col(nl.clone(), span.end).line;
+            return (start + end) / 2;
+        }
+    }
+    panic!("data item {data_name} not found in {entry_abs}");
+}
+
+fn unified_diff_hunk_for_line(file: &str, line: i64) -> String {
+    format!(
+        "\
+diff --git a/{file} b/{file}
+--- a/{file}
++++ b/{file}
+@@ -{line},1 +{line},1 @@
+ x
+"
+    )
 }
 
 #[test]
@@ -137,4 +205,46 @@ fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
         "git diff failure → skip inactive → run full explicit roster"
     );
     assert!(summary.passed >= 1);
+}
+
+/// §5 discriminating witness: same file, independent nodes A/B; witness touches A only.
+/// File-level skip would run the witness for both edits; node-precise skip must not.
+#[test]
+fn floor_skip_same_file_node_precision_holds() {
+    let roots = floor_skip_source_roots();
+    let entry = fixture_entry_abs();
+    let line_a = data_decl_mid_line("floor_skip_precision_node_a");
+    let line_b = data_decl_mid_line("floor_skip_precision_node_b");
+    assert_ne!(
+        line_a, line_b,
+        "fixture must place A and B on distinct declaration lines"
+    );
+
+    let diff_a = unified_diff_hunk_for_line(FLOOR_SKIP_PRECISION_FIXTURE, line_a);
+    let touches_a = floor_skip_entry_touches_unified_diff(
+        &roots,
+        &entry,
+        &diff_a,
+        ExecutionMode::Wet,
+    )
+    .expect("node A edit must produce a frontier")
+    .expect("node A edit must not fail-closed to run-all");
+    assert!(
+        touches_a,
+        "edit inside node A span → witness entry must RUN (touch frontier)"
+    );
+
+    let diff_b = unified_diff_hunk_for_line(FLOOR_SKIP_PRECISION_FIXTURE, line_b);
+    let touches_b = floor_skip_entry_touches_unified_diff(
+        &roots,
+        &entry,
+        &diff_b,
+        ExecutionMode::Wet,
+    )
+    .expect("node B edit must produce a frontier")
+    .expect("node B edit must not fail-closed to run-all");
+    assert!(
+        !touches_b,
+        "edit inside node B span only → witness entry must SKIP (assumed-green)"
+    );
 }

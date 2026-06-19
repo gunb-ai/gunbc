@@ -2308,7 +2308,6 @@ enum FloorGitDiffOutcome {
 
 /// New-side inclusive line range from one unified-diff hunk (`git diff -U0`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileLineRange {
     pub start: i64,
     pub end: i64,
@@ -2424,11 +2423,15 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
 }
 
 fn value_is_substrate_node(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
-    matches!(
-        val,
-        v1_interpreter::Value::Variant { variant_name, .. }
-            if ctx.resolve(*variant_name).as_str() == "Node"
-    )
+    match val {
+        v1_interpreter::Value::Record { type_name, .. } => {
+            ctx.resolve(*type_name).as_str() == "Node"
+        }
+        v1_interpreter::Value::Variant { variant_name, .. } => {
+            ctx.resolve(*variant_name).as_str() == "Node"
+        }
+        _ => false,
+    }
 }
 
 fn call_test_claim_fn_bool(
@@ -2518,8 +2521,8 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-/// Node-precise frontier: substrate evaluation nodes from TestClaim `data` items whose
-/// declaration spans overlap git unified-diff line ranges (not whole changed files).
+/// Node-precise frontier: substrate `Node` data items and evaluation nodes from overlapping
+/// `TestClaim` data items whose declaration spans intersect git unified-diff line ranges.
 fn collect_frontier_nodes_from_diff_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
@@ -2883,6 +2886,83 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             &si,
             &[FileLineRange { start: 3, end: 3 }]
         ));
+    }
+
+    #[test]
+    fn fixture_node_a_edit_produces_nonempty_frontier() {
+        use super::{
+            build_multi_entry_index, collect_frontier_nodes_from_diff_line_ranges,
+            floor_skip_entry_touches_unified_diff, resolve_entry_with_index,
+        };
+        use crate::v1_compiler_infer_items::{item_kind, ItemKind};
+        use crate::v1_interpreter::ExecutionMode;
+        use crate::v1_std_core::{authored_name_at, byte_to_line_col};
+        use std::path::PathBuf;
+
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ws = manifest
+            .ancestors()
+            .nth(2)
+            .expect("workspace root");
+        let fixture = "dsl/test/claim/floor_skip_node_precision_fixture.dag";
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry_abs = ws.join(fixture).to_string_lossy().into_owned();
+        let index = build_multi_entry_index(&roots);
+        let (graph, si) = resolve_entry_with_index(&index, &entry_abs).expect("resolve fixture");
+        let mut line_a = 0_i64;
+        for module in graph.modules.iter() {
+            for item in module.items.iter() {
+                if item_kind(item.clone()) != ItemKind::DataItem {
+                    continue;
+                }
+                if authored_name_at(si.clone(), item.clone()) != "floor_skip_precision_node_a" {
+                    continue;
+                }
+                let span = &*item.span;
+                let nl = si.get(&span.file).expect("newline index");
+                let start = byte_to_line_col(nl.clone(), span.start).line;
+                let end = byte_to_line_col(nl.clone(), span.end).line;
+                line_a = (start + end) / 2;
+            }
+        }
+        assert!(line_a > 0, "node_a line");
+        let diff = format!(
+            "\
+diff --git a/{fixture} b/{fixture}
+--- a/{fixture}
++++ b/{fixture}
+@@ -{line_a},1 +{line_a},1 @@
+ x
+"
+        );
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        assert!(
+            ranges.contains_key(fixture),
+            "parsed ranges: {:?}",
+            ranges.keys().collect::<Vec<_>>()
+        );
+        let frontier = collect_frontier_nodes_from_diff_line_ranges(
+            &index,
+            &ranges,
+            ExecutionMode::Wet,
+        )
+        .expect("collect frontier");
+        assert!(
+            !frontier.is_empty(),
+            "node A edit must seed frontier (got empty)"
+        );
+        let touches = floor_skip_entry_touches_unified_diff(
+            &roots,
+            &entry_abs,
+            &diff,
+            ExecutionMode::Wet,
+        )
+        .expect("touch Some")
+        .expect("touch not fail-closed");
+        assert!(touches, "witness must touch node A frontier");
     }
 }
 
