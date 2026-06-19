@@ -13,7 +13,9 @@ module v2.compiler.program_assembly
 
 import v2.compiler.name_resolve {
   Admission,
+  ModuleSourceRootBinding,
   resolve_with_admission,
+  resolve_with_admission_grounded,
   validate_module_roots
 }
 import v2.compiler.normalize { normalize }
@@ -22,10 +24,12 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
   source_authority_diagnostic,
+  source_root_set_from_ingest,
 }
 import v2.compiler.tokenize { tokenize }
-import v2.std.language_model { LanguageModel }
-import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.cross_tree.import_model { FundamentalityUnknown, SourceRootRef }
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item }
 import v2.std.artifact { SourceFile }
 import v2.std.diagnostic {
   Accepted,
@@ -36,12 +40,15 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v2.std.language_model { LanguageModel }
 import v2.std.node { Node }
+import v2.std.qualified_name { QualifiedName }
 
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<Node>
+      bindings: FreeMonoid<ModuleSourceRootBinding>
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics
@@ -82,6 +89,28 @@ fn program_assembly_read_to_normalized_root(
 }
 
 
+fn program_assembly_empty_bindings() -> FreeMonoid<ModuleSourceRootBinding> {
+  Empty
+}
+
+
+fn program_assembly_binding_for_read(
+  read: DagSourceReadWitness,
+  root: Node
+) -> Outcome<ModuleSourceRootBinding> {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: qn, diagnostics: _ } =>
+      outcome_accepted(
+        value: ModuleSourceRootBinding {
+          module_qn: qn,
+          source_root: read.source_root
+        }
+      )
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+
 fn program_assembly_fold_step(
   state: ProgramAssemblyFoldState,
   read: DagSourceReadWitness,
@@ -90,11 +119,17 @@ fn program_assembly_fold_step(
   match state {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: acc } =>
+    ProgramAssemblyFoldOk { roots: acc, bindings: bindings_acc } =>
       match program_assembly_read_to_normalized_root(read: read, lm: lm) {
         Accepted { value: root, diagnostics: _ } =>
-          ProgramAssemblyFoldOk {
-            roots: list_snoc_item(xs: acc, item: root)
+          match program_assembly_binding_for_read(read: read, root: root) {
+            Accepted { value: binding, diagnostics: _ } =>
+              ProgramAssemblyFoldOk {
+                roots: list_snoc_item(xs: acc, item: root),
+                bindings: list_snoc_item(xs: bindings_acc, item: binding)
+              }
+            Rejected { diagnostics: d } =>
+              ProgramAssemblyFoldFailed { diagnostics: d }
           }
         Rejected { diagnostics: d } =>
           ProgramAssemblyFoldFailed { diagnostics: d }
@@ -103,23 +138,48 @@ fn program_assembly_fold_step(
 }
 
 
-// Whole-ingest fold: per-read tokenize → parse_module → normalize; first Rejected short-circuits.
+// Whole-ingest fold: per-read tokenize → parse_module → normalize + grounded bindings.
 fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<Node>> {
+  match module_roots_and_bindings_from_source_root_ingest(ingest: ingest, lm: lm) {
+    Accepted { value: pair, diagnostics: _ } => outcome_accepted(value: pair.roots)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+
+fn module_roots_and_bindings_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<ProgramAssemblyIngestFold> {
   match fold_list(
     xs: ingest,
-    empty: ProgramAssemblyFoldOk { roots: program_assembly_empty_roots() },
+    empty: ProgramAssemblyFoldOk {
+      roots: program_assembly_empty_roots(),
+      bindings: program_assembly_empty_bindings()
+    },
     cons: fn(state, read) {
       program_assembly_fold_step(state: state, read: read, lm: lm)
     }
   ) {
-    ProgramAssemblyFoldOk { roots: roots } =>
-      outcome_accepted(value: roots)
+    ProgramAssemblyFoldOk { roots: roots, bindings: bindings } =>
+      outcome_accepted(
+        value: ProgramAssemblyIngestFold {
+          roots: roots,
+          bindings: bindings
+        }
+      )
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       Rejected { diagnostics: d }
   }
+}
+
+
+type ProgramAssemblyIngestFold {
+  roots: FreeMonoid<Node>
+  bindings: FreeMonoid<ModuleSourceRootBinding>
 }
 
 
@@ -143,18 +203,27 @@ fn assemble_program_from_module_roots(
 
 
 // Program assembly: whole ingest monoid → validated roots → admitted resolved program.
+// Uses grounded source_root bindings from host-tagged DagSourceReadWitness rows.
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   lm: LanguageModel
 ) -> Outcome<Node> {
   bind_outcome(
-    o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
-    f: fn(roots) {
-      assemble_program_from_module_roots(
-        roots: roots,
-        admission: admission,
-        lm: lm
+    o: module_roots_and_bindings_from_source_root_ingest(ingest: ingest, lm: lm),
+    f: fn(fold) {
+      bind_outcome(
+        o: validate_module_roots(roots: fold.roots),
+        f: fn(validated_roots) {
+          resolve_with_admission_grounded(
+            lm: lm,
+            roots: validated_roots,
+            admission: admission,
+            order: FundamentalityUnknown,
+            active_roots: source_root_set_from_ingest(ingest: ingest),
+            bindings: fold.bindings
+          )
+        }
       )
     }
   )

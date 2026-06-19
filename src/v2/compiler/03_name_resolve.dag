@@ -63,12 +63,21 @@ import v2.std.cross_tree.import_model {
 }
 import v2.std.cross_tree.resolution {
   cross_tree_import_admitted_qualified,
+  cross_tree_import_admitted_trees,
   cross_tree_import_is_same_tree,
+  cross_tree_import_is_same_tree_trees,
   source_root_set_from_module_roots
 }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_eq
+}
+
+
+// Route C Phase C — grounded module→tree binding from host-tagged ingest witnesses.
+type ModuleSourceRootBinding {
+  module_qn: QualifiedName
+  source_root: SourceRootRef
 }
 
 
@@ -424,7 +433,114 @@ fn admit_import_root_find(
 }
 
 
+fn source_root_for_qn_in_bindings(
+  bindings: FreeMonoid<ModuleSourceRootBinding>,
+  qn: QualifiedName
+) -> Outcome<SourceRootRef> {
+  match fold_list(
+    xs: bindings,
+    empty: Absent,
+    cons: fn(found, binding) {
+      if optional_present(opt: found) {
+        found
+      } else if qualified_name_eq(a: binding.module_qn, b: qn) {
+        optional_present(value: binding.source_root)
+      } else {
+        found
+      }
+    }
+  ) {
+    Present { value: tree } => outcome_accepted(value: tree)
+    Absent =>
+      outcome_rejected(
+        d: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
+      )
+  }
+}
+
+
 fn admit_import_entry(
+  roots: FreeMonoid<Node>,
+  import_edge: Import,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
+  order: TreeFundamentalityOrder,
+  active_roots: FreeMonoid<SourceRootRef>,
+  bindings: FreeMonoid<ModuleSourceRootBinding>
+) -> AdmissionState {
+  match state {
+    AdmissionRejected { diagnostics: d } =>
+      AdmissionRejected { diagnostics: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
+      match import_edge.visibility {
+        ImportHidden =>
+          AdmissionRejected {
+            diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
+          }
+        ImportVisible =>
+          match source_root_for_qn_in_bindings(bindings: bindings, qn: subject_qn) {
+            Accepted { value: subject_tree, diagnostics: _ } =>
+              match source_root_for_qn_in_bindings(bindings: bindings, qn: import_edge.target) {
+                Accepted { value: target_tree, diagnostics: _ } =>
+                  if cross_tree_import_is_same_tree_trees(from_tree: subject_tree, to_tree: target_tree) {
+                    admit_import_root_find(
+                      found: module_root_find(
+                        roots: roots,
+                        name: import_edge.target
+                      ),
+                      origin: import_edge.target,
+                      state: state
+                    )
+                  } else {
+                    match cross_tree_import_admitted_trees(
+                      from_tree: subject_tree,
+                      from_qn: subject_qn,
+                      to_tree: target_tree,
+                      to_qn: import_edge.target,
+                      roots: active_roots,
+                      order: order
+                    ) {
+                      CrossTreeAdmitted =>
+                        admit_import_root_find(
+                          found: module_root_find(
+                            roots: roots,
+                            name: import_edge.target
+                          ),
+                          origin: import_edge.target,
+                          state: state
+                        )
+                      CrossTreeDenied { reason: _ } =>
+                        AdmissionRejected {
+                          diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
+                        }
+                    }
+                  }
+                Rejected { diagnostics: _ } =>
+                  admit_import_entry_qn_fallback(
+                    roots: roots,
+                    import_edge: import_edge,
+                    state: state,
+                    subject_qn: subject_qn,
+                    order: order,
+                    active_roots: active_roots
+                  )
+              }
+            Rejected { diagnostics: _ } =>
+              admit_import_entry_qn_fallback(
+                roots: roots,
+                import_edge: import_edge,
+                state: state,
+                subject_qn: subject_qn,
+                order: order,
+                active_roots: active_roots
+              )
+      }
+  }
+}
+
+
+// Synthetic-witness fallback when ingest bindings are absent (QN-prefix tree inference).
+fn admit_import_entry_qn_fallback(
   roots: FreeMonoid<Node>,
   import_edge: Import,
   state: AdmissionState,
@@ -484,7 +600,8 @@ fn admit_imports(
   state: AdmissionState,
   subject_qn: QualifiedName,
   order: TreeFundamentalityOrder,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  bindings: FreeMonoid<ModuleSourceRootBinding>
 ) -> AdmissionState {
   fold_list(
     xs: imports,
@@ -496,7 +613,8 @@ fn admit_imports(
         state: acc,
         subject_qn: subject_qn,
         order: order,
-        active_roots: active_roots
+        active_roots: active_roots,
+        bindings: bindings
       )
     }
   )
@@ -524,7 +642,8 @@ fn namespace_for_subject(
   roots: FreeMonoid<Node>,
   admission: Admission,
   order: TreeFundamentalityOrder,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  bindings: FreeMonoid<ModuleSourceRootBinding>
 ) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -550,7 +669,8 @@ fn namespace_for_subject(
               ),
               subject_qn: admission.subject.name,
               order: order,
-              active_roots: active_roots
+              active_roots: active_roots,
+              bindings: bindings
             ) {
               AdmissionAccepted { bindings: b, origins: _ } =>
                 Accepted {
@@ -586,14 +706,16 @@ fn resolve_with_admission_policy(
   roots: FreeMonoid<Node>,
   admission: Admission,
   order: TreeFundamentalityOrder,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  bindings: FreeMonoid<ModuleSourceRootBinding>
 ) -> Outcome<ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
     roots: roots,
     admission: admission,
     order: order,
-    active_roots: active_roots
+    active_roots: active_roots,
+    bindings: bindings
   ) {
     Accepted { value: admitted, diagnostics: namespace_diag } =>
       match resolve_with_namespace(
@@ -637,11 +759,32 @@ fn resolve_with_admission(
   roots: FreeMonoid<Node>,
   admission: Admission
 ) -> Outcome<ResolvedTree> {
-  resolve_with_admission_policy(
+  resolve_with_admission_grounded(
     lm: lm,
     roots: roots,
     admission: admission,
     order: FundamentalityUnknown,
-    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
+    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots)),
+    bindings: Empty
+  )
+}
+
+
+// Route C Phase C — ingest-grounded source_root bindings for cross-tree admission.
+fn resolve_with_admission_grounded(
+  lm: LanguageModel,
+  roots: FreeMonoid<Node>,
+  admission: Admission,
+  order: TreeFundamentalityOrder,
+  active_roots: FreeMonoid<SourceRootRef>,
+  bindings: FreeMonoid<ModuleSourceRootBinding>
+) -> Outcome<ResolvedTree> {
+  resolve_with_admission_policy(
+    lm: lm,
+    roots: roots,
+    admission: admission,
+    order: order,
+    active_roots: active_roots,
+    bindings: bindings
   )
 }

@@ -7,8 +7,8 @@
 // SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback
 // dissolve-on (grounded source_root at ingest): add source_root: SourceRootRef to
 //   DagSourceReadWitness (src/v2/compiler/source_authority.dag); host tags by which
-//   --source-root the file came from; delete source_root_ref_from_qualified_name and
-//   source_root_set_from_module_roots QN-prefix fallback.
+//   --source-root the file came from; QN-prefix fallback below is synthetic-witness-only
+//   until all resolve paths thread ingest bindings (Phase D activation).
 // ACTIVATION GATE (hard): supplying a non-Unknown TreeFundamentalityOrder for real
 //   compilation (cross-tree direction-flip) MUST NOT land until grounded source_root
 //   tagging replaces this fallback. INERT Unknown-default is allowed; relying on QN-prefix
@@ -42,7 +42,7 @@ import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty }
 import v2.std.text { String }
 
 
-// ── Source-tree tagging (QN-prefix fallback — see module header dissolve-on) ───
+// ── Source-tree tagging (QN-prefix fallback — synthetic witnesses only) ────────
 
 // 🟡 SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback — bind dissolve-on above.
 // KNOWN LIMITATION: cross-tree-overlaid module paths (e.g. extdeps.shell in BOTH
@@ -130,7 +130,37 @@ fn source_root_set_from_module_roots(qns: FreeMonoid<QualifiedName>) -> FreeMono
 // dissolve-on: bold-bee 3a.2 QualifiedName materialization replaces with QN render.
 data cross_tree_module_path_interim: String = ""
 
-// QualifiedName-grounded cross-tree admission (Phase B wiring surface).
+// Grounded cross-tree admission — explicit per-module tree tags (ingest-authoritative).
+fn cross_tree_import_admitted_trees(
+  from_tree: SourceRootRef,
+  from_qn: QualifiedName,
+  to_tree: SourceRootRef,
+  to_qn: QualifiedName,
+  roots: FreeMonoid<SourceRootRef>,
+  order: TreeFundamentalityOrder
+) -> CrossTreeAdmissionVerdict {
+  cross_tree_import_admitted(
+    edge: CrossTreeImport {
+      from_tree: from_tree,
+      from_layer: layer_prefix_from_qualified_name(qn: from_qn),
+      from_module: cross_tree_module_path_interim,
+      to_tree: to_tree,
+      to_layer: layer_prefix_from_qualified_name(qn: to_qn),
+      to_module: cross_tree_module_path_interim
+    },
+    roots: roots,
+    order: order
+  )
+}
+
+fn cross_tree_import_is_same_tree_trees(
+  from_tree: SourceRootRef,
+  to_tree: SourceRootRef
+) -> Bool {
+  source_root_ref_eq(a: from_tree, b: to_tree)
+}
+
+// QualifiedName-grounded cross-tree admission (Phase B wiring surface; QN-prefix trees).
 fn cross_tree_import_admitted_qualified(
   from_qn: QualifiedName,
   to_qn: QualifiedName,
