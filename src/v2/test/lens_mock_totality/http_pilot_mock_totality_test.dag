@@ -5,18 +5,25 @@
 
 module v2.test.lens_mock_totality.http_pilot_mock_totality
 
-import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template {
+  mock_totality_green_holds,
+  mock_totality_red_on_omission_holds,
+  omit_consumer_handles,
+  outcome_accepted_p
+}
 import v2.extdeps.test.mock_corpus { http_pilot_published_mock_corpus }
 import v2.std.hermetic_replay { PublishedMockCase }
-import v2.std.algebra { filter }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 type MaterializedHttpPilotMock {
   tag: Symbol
 }
+
+data http_pilot_red_omit_keys: List<String> = ["test.HttpPilot.GetPost"]
 
 fn materialize_http_pilot_mock(case: PublishedMockCase) -> Outcome<MaterializedHttpPilotMock> {
   if case.operation_key == "test.HttpPilot.GetPost" {
@@ -26,50 +33,28 @@ fn materialize_http_pilot_mock(case: PublishedMockCase) -> Outcome<MaterializedH
   }
 }
 
-fn materialize_http_pilot_mock_omits_get_post(case: PublishedMockCase) -> Outcome<MaterializedHttpPilotMock> {
-  mock_unhandled_rejection()
-}
-
-fn http_pilot_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
 fn real_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_http_pilot_mock(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  outcome_accepted_p(outcome: materialize_http_pilot_mock(case: case))
 }
 
 fn omits_get_post_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_http_pilot_mock_omits_get_post(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
-  filter(xs: http_pilot_published_mock_corpus, predicate: consumer_handles)
+  omit_consumer_handles(
+    case: case,
+    omit_keys: http_pilot_red_omit_keys,
+    total_consumer_handles: real_consumer_handles
+  )
 }
 
 test fn http_pilot_mock_consumer_is_total_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_green_holds(
     published: http_pilot_published_mock_corpus,
-    handled: handled_by(consumer_handles: real_consumer_handles),
-    eq: http_pilot_mock_case_eq
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+    consumer_handles: real_consumer_handles
+  )
 }
 
 test fn http_pilot_mock_omitted_member_is_red_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_red_on_omission_holds(
     published: http_pilot_published_mock_corpus,
-    handled: handled_by(consumer_handles: omits_get_post_consumer_handles),
-    eq: http_pilot_mock_case_eq
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
+    consumer_handles: omits_get_post_consumer_handles
+  )
 }
