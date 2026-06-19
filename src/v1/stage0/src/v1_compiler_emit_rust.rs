@@ -231,12 +231,19 @@ pub fn render_rust_type_without_applied_binding(
                 None => emit_rust_compile_error_expr("Set missing element type".to_string()),
             }
         } else {
-            render_node_type(
-                n.clone(),
-                RenderTarget::Rust,
-                shared_types,
-                source_indices.clone(),
-            )
+            let tn = authored_name_at(source_indices.clone(), n.clone());
+            if (tn.clone().as_str() == "String".to_string().as_str()
+                && ((n.children.clone().len() as i64) == 0))
+            {
+                render_rust_text_carrier(shared_types.clone())
+            } else {
+                render_node_type(
+                    n.clone(),
+                    RenderTarget::Rust,
+                    shared_types,
+                    source_indices.clone(),
+                )
+            }
         }
     }
 }
@@ -250,11 +257,33 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
         && (v1_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
 }
 
+pub fn render_rust_text_carrier(
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+) -> String {
+    render_rust_shared_type_if_needed(
+        "FreeMonoid".to_string(),
+        "FreeMonoid<Nat>".to_string(),
+        shared_types,
+    )
+}
+
+pub fn emit_rust_dag_string_from_host_expr(host_expr: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "{ let __host = ".to_string(),
+            host_expr,
+        ),
+        "; __host.chars().fold(crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>(), |acc, ch| crate::v2_std_algebra::list_snoc_item(acc, v1_rt::code_point(ch.to_string()))) }".to_string(),
+    )
+}
+
 pub fn rust_named_type_base(name: String) -> String {
     if ((name.clone().as_str() == "Witness".to_string().as_str())
         || (name.clone().as_str() == "witness".to_string().as_str()))
     {
         "Witness".to_string()
+    } else if name.clone().as_str() == "String".to_string().as_str() {
+        "FreeMonoid<Nat>".to_string()
     } else {
         coerce_primitive_type(RenderTarget::Rust, name.clone())
     }
@@ -449,6 +478,10 @@ pub fn render_rust_decl_type(
 }
 
 pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
+    let name = authored_name_at(env.source_indices.clone(), n.clone());
+    if name.clone().as_str() == "String".to_string().as_str() {
+        return false;
+    }
     let binding = match lookup_type_for(env.clone(), n.clone()) {
         Some(b) => b,
         None => {
@@ -16082,10 +16115,7 @@ pub fn rust_zero_value(type_name: String) -> Option<String> {
             Some("false".to_string())
         } else {
             if (type_name.clone().as_str() == "String".to_string().as_str()) {
-                Some(v1_rt::concat(
-                    "\"\"".to_string(),
-                    ".to_string()".to_string(),
-                ))
+                Some("crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()".to_string())
             } else {
                 None
             }
