@@ -42,6 +42,8 @@ mod extdeps_shape_transport_policy_lens_test;
 #[cfg(test)]
 mod fact_cardinality_lens_test;
 #[cfg(test)]
+mod languages_consumer_census_lens_test;
+#[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
