@@ -137,15 +137,62 @@ type NodeKind
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
+// L-NEW-b — typed graph edges: containment vs reference at the substrate carrier.
+// Containment: parent contains child; grants MAY flow down only when inheritable=true (fail-closed default).
+// Reference: dependent points at source; reading the dependent must NOT expand grant scope to the source.
+type EdgeRole
+  = Containment { inheritable: Bool }
+  | Reference
 type Edge {
   label: EdgeLabel
   target: Node
+  role: EdgeRole
 }
 // 🟢 coproduct dissolution — PROV A-pivot lifecycle: pre-stamp tree for fixtures / hand-authored
 // stubs. No occurrence_id — illegal to treat as pipeline Node until stamped via v2.std.node_shape.
 type EdgeShape {
   label: EdgeLabel
   target: NodeShape
+  role: EdgeRole
+}
+fn edge(label: EdgeLabel, target: Node, role: EdgeRole) -> Edge {
+  Edge { label: label, target: target, role: role }
+}
+fn containment_edge(label: EdgeLabel, target: Node) -> Edge {
+  edge(label: label, target: target, role: Containment { inheritable: false })
+}
+fn containment_edge_inheritable(label: EdgeLabel, target: Node, inheritable: Bool) -> Edge {
+  edge(label: label, target: target, role: Containment { inheritable: inheritable })
+}
+fn named_containment_edge(name: Symbol, target: Node) -> Edge {
+  containment_edge(label: Named { name: name }, target: target)
+}
+fn positional_containment_edge(target: Node) -> Edge {
+  containment_edge(label: Positional, target: target)
+}
+fn reference_edge(label: EdgeLabel, target: Node) -> Edge {
+  edge(label: label, target: target, role: Reference)
+}
+fn named_reference_edge(name: Symbol, target: Node) -> Edge {
+  reference_edge(label: Named { name: name }, target: target)
+}
+fn edge_is_containment(e: Edge) -> Bool {
+  match e.role {
+    Containment { inheritable: _ } => true
+    Reference => false
+  }
+}
+fn edge_is_reference(e: Edge) -> Bool {
+  match e.role {
+    Containment { inheritable: _ } => false
+    Reference => true
+  }
+}
+fn edge_shape_containment(label: EdgeLabel, target: NodeShape) -> EdgeShape {
+  EdgeShape { label: label, target: target, role: Containment { inheritable: false } }
+}
+fn edge_shape_reference(label: EdgeLabel, target: NodeShape) -> EdgeShape {
+  EdgeShape { label: label, target: target, role: Reference }
 }
 type NodeShape {
   kind: NodeKind
@@ -197,7 +244,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+    children: concat(acc.children, [Edge { label: edge.label, target: child, role: edge.role }])
   )
 }
 
