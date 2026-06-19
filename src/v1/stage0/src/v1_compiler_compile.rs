@@ -2357,7 +2357,12 @@ pub fn compile_to_resolved_with_options(
     options: CompilePipelineOptions,
 ) -> Rc<ResolvedPipelineResult> {
     {
+        let __probe = std::env::var("NV2_STAGE_TIMING").is_ok();
+        let __t0 = std::time::Instant::now();
         let frontend = front_end_sources(sources);
+        if __probe {
+            eprintln!("STAGE front_end_sources: {:?}", __t0.elapsed());
+        }
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
             None => Rc::new(ResolvedPipelineResult {
@@ -2395,7 +2400,11 @@ pub fn compile_to_resolved_with_options(
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
+                let __t1 = std::time::Instant::now();
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
+                if __probe {
+                    eprintln!("STAGE normalize_graph: {:?}", __t1.elapsed());
+                }
                 let norm_diags = norm.diagnostics.clone();
                 let norm_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2419,11 +2428,15 @@ pub fn compile_to_resolved_with_options(
                         newline_indices: newline_indices.clone(),
                     });
                 }
+                let __t2 = std::time::Instant::now();
                 let typed = reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                if __probe {
+                    eprintln!("STAGE reconcile(typecheck): {:?}", __t2.elapsed());
+                }
                 let typed_diags = typed.diagnostics.clone();
                 let complexity = if options.analyze_complexity.clone() {
                     run_complexity_analysis(typed.clone(), source_indices.clone())
