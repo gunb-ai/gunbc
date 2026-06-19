@@ -104,22 +104,36 @@ the enforcement side (§7), not the detection taxonomy.
 
 ## 4. What is NOT mechanically decidable (the residual)
 
-A leaf that is (a) never compared to a closed set, (b) never cracked in-tree, and (c) has no existing
-authority — yet *does* have structure in the world. The live example is **version-constraint strings**:
-`CargoDepSource.RegistryDep { version: String }` (`extdeps/rust/cargo.dag:54`), `CargoPackage.version`,
-`cloud.dag:75`, `gcp.dag:114`. Semver has a grammar, but no `Semver` / `VersionConstraint` authority
-exists yet, and within the repo `version` is merely stored and handed to an external tool — the program
-**never depends on its parts**, so no signal fires.
+A leaf that is (a) never compared to a closed set, (b) never cracked in-tree, and (c) whose *specific*
+concept has no in-tree authority — yet *does* have structure in the world.
 
-Here the lens is *correctly silent*: it cannot know the world's grammar without either reading the
+First, the boundary cut precisely, because the corpus makes it subtle. An **exact** version *is* already
+covered: `type SemVer = String` exists (`std/types.dag:272`, itself a brand-deferred alias awaiting
+`where pattern("^\d+\.\d+\.\d+")` post-Q-Regex) and is consumed (`OciRuntimeVersion = SemVer`,
+`oci/types.dag:162`). So a field holding an exact version is **Signal A** — a nickname for `SemVer` —
+*not* a residual. The doc earlier overstated this as "no authority exists"; corrected.
+
+The genuine residual is a **version constraint**, which `SemVer` (a single point) does **not** cover:
+`CargoDepSource.RegistryDep { version: String }` (`extdeps/rust/cargo.dag:54`) is a Cargo *version
+requirement* (`^1.0` / `>=1.2, <1.5`, caret-by-default per the cited Cargo Reference) — a grammar of
+*operator + SemVer bound(s)*, a relation over `SemVer` with no in-tree authority. It is a residual on
+**both** counts: (c) no `VersionConstraint` / `VersionReq` type exists, and (b) within the repo the
+field is merely stored and handed to `cargo`, so the program **never depends on its parts** and no
+signal fires. (`ServiceEndpoint.version` / `GcpApiEndpoint.version` at `cloud.dag:75` / `gcp.dag:114`
+are a *third* concept — API version labels like `v1`, neither `SemVer` nor a constraint — a separate
+missing authority; omitted here to keep the example clean.)
+
+Here the lens is *correctly silent*: it cannot know the constraint grammar without either reading the
 characters (banned) or being told the grammar. The two honest resolutions:
 
-- **Human judgment** — the reviewer knows semver has parts and mints `VersionConstraint` (a *map*-then-
-  mint, since no authority exists — net concepts grow by **one**, legitimately, per §2's "reuse on
-  proven coincidence, else mint").
-- **Oracle (future)** — a *cited grammar* in `extdeps/` (e.g. the semver spec modeled as a type) turns
-  this residual into Signal A: once `VersionConstraint` exists, every `version: String` becomes a
-  nickname for it. The oracle does not read the leaf; it adds the authority the leaf should point at.
+- **Human judgment** — the modeler knows a Cargo requirement has parts and mints `VersionConstraint`
+  *over* the existing `SemVer` (a *map*-then-mint: reuse `SemVer` for the bounds, mint the constraint
+  relation — net concepts grow by **one**, legitimately, per §2's "reuse on proven coincidence, else
+  mint"; this is **not** re-invention, since no constraint authority exists).
+- **Oracle (future)** — a *cited grammar* in `extdeps/` (the Cargo version-requirement grammar modeled
+  as a type) turns this residual into Signal A: once `VersionConstraint` exists, every `version:
+  String` requirement becomes a nickname for it. The oracle does not read the leaf; it adds the
+  authority the leaf should point at.
 
 This is the boundary the doc most wants reviewed: **the lens flags "structure the program already
 depends on"; it cannot flag "structure that exists in the world but the program ignores."** The latter
@@ -201,8 +215,10 @@ type LeafGuard  = FallbackPayload | ParseInput | CitedAtom | PipelineSubject
    oracle/human handles world-structure"? Or do we want the cited-grammar oracle scoped now (it makes
    §4 collapse into Signal A)?
 2. **Signal A name-coincidence strength** — is field-name + existing-type enough for HardViolation, or
-   only with a second corroborating signal? (Risk: a field honestly named `version` where we *don't*
-   want a type.)
+   only with a second corroborating signal? The §4 `version` case is the cautionary one: the same field
+   name can mean an exact `SemVer` (Signal A correct), a version *constraint* (residual — `SemVer` is
+   the *wrong* target), or an API version label (a third authority entirely). So name alone cannot pick
+   the target type, which argues for name-only coincidence being **SoftCandidate**, not HardViolation.
 3. **Pressure-test before any ratchet** — the operator's standing ask: run the extractor over live
    `dsl/**` read-only and inspect HardViolation/SoftCandidate counts for over/under-fire *before*
    enrolling in the CI floor. This doc proposes the signals; the calibration run is the next step and
