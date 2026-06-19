@@ -5,9 +5,11 @@
 
 module extdeps.github.errors
 
+import std.types { Url }
+
 type GitHubErrorShape {
   message: String
-  documentation_url: String?
+  documentation_url: Url?
 }
 
 data github_error_example: GitHubErrorShape = {

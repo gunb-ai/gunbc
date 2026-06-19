@@ -68,6 +68,8 @@ mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;
 #[cfg(test)]
+mod languages_consumer_census_lens_test;
+#[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
@@ -113,6 +115,8 @@ mod v1_compiler_lib_test;
 mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
+#[cfg(test)]
+mod wet_hermetic_equivalence_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]
