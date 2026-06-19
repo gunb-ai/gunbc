@@ -114,7 +114,7 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^ram_cap_bytes, carrier: ^ByteSize },
   UnitFieldRow { field: ^memory_bytes, carrier: ^ByteSize },
   UnitFieldRow { field: ^disk_bytes, carrier: ^ByteSize },
-  // Currency (MoneyMicros = MoneyAmount<Micro>, measure.dag:225)
+  // Currency (MoneyMicros = MoneyAmount<Micro>, product.compute_fabric.dag)
   UnitFieldRow { field: ^hourly_eur_micros, carrier: ^MoneyMicros },
   UnitFieldRow { field: ^monthly_cap_eur_micros, carrier: ^MoneyMicros },
   // Time. Carrier is compute_fabric.Duration = Measure<Time, One>
