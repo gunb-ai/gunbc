@@ -1,0 +1,8 @@
+// extdeps/vendor/sk_hynix.dag — SK hynix as a cited hardware-vendor entity.
+// Anchor: https://en.wikipedia.org/wiki/SK_Hynix
+module extdeps.vendor.sk_hynix
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+data sk_hynix: Vendor<Hardware> = Vendor { legal_name: "SK hynix Inc." }

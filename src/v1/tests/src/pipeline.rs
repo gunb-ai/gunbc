@@ -320,13 +320,13 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
     );
 }
 
-// Real-file witness: std.cpu.types uses kernel T?, not an `Option` import (M9).
+// Real-file witness: extdeps.cpu.types uses kernel T?, not an `Option` import (M9).
 #[test]
-fn std_cpu_types_uses_kernel_t_question() {
-    let content = read_v2_file("dsl/std/cpu/types.dag");
+fn extdeps_cpu_types_uses_kernel_t_question() {
+    let content = read_v2_file("dsl/extdeps/cpu/types.dag");
     assert!(
         !content.contains("Option"),
-        "std.cpu.types must use kernel T? (M9), not import std.types Option"
+        "extdeps.cpu.types must use kernel T? (M9), not import std.types Option"
     );
     let source = "module cpu_t_witness\nimport std.types { Int, NonEmptyStr }\ntype Row { oem_listing_id: NonEmptyStr? }\n";
     assert_no_diagnostics(&compile_dag(source));

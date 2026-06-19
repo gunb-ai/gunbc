@@ -8,7 +8,7 @@
 //
 // WHY A STANDALONE WITNESS (not the real `product.compute_fabric.CostEstimate`):
 //   - `compute_fabric.dag` does NOT resolve on v2 today: its closure's
-//     `std.cpu.types` / `std.os.types` import `Option`, which has no v2
+//     `extdeps.cpu.types` / `std.os.types` import `Option`, which has no v2
 //     resolution yet. #4831 (in flight) lands it as an explicit `std.option`
 //     module (`Option = Absent | Present{value}`) and repoints those
 //     consumers to `import std.option { Option }`.
