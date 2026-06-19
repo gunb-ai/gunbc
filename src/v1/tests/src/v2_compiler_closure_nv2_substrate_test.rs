@@ -369,56 +369,57 @@ fn probe_gap4_scoped_ingest_first_reject() {
 
     let temp = unique_temp_dir("gap4-probe");
     fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("manifest.dag");
 
-    let mut failures: Vec<String> = Vec::new();
-    for (idx, rec) in records.iter().enumerate() {
-        let manifest_path = temp.join(format!("manifest-{idx}.dag"));
-        emit_source_root_ingest_manifest(&manifest_path, std::slice::from_ref(rec), Some(&admission))
-            .expect("emit single-file manifest");
+    let mut lo = 1usize;
+    let mut hi = records.len();
+    let mut failing_idx = None;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        emit_source_root_ingest_manifest(
+            &manifest_path,
+            &records[..mid],
+            Some(&admission),
+        )
+        .expect("emit prefix manifest");
+        eprintln!("gap4 probe: testing prefix {mid}/{} ...", records.len());
 
         let manifest_dir = manifest_path.parent().expect("manifest parent");
         let ctx = nv2_eval_context(manifest_dir).expect("resolve nv2 gate ctx");
-        match run_claim(&ctx, "compiler_closure_scoped_ingest_parses") {
-            ClaimOutcome::Pass => {}
-            ClaimOutcome::Fail => {
-                failures.push(format!(
-                    "  [{idx}] file_path={} module_path={}",
-                    rec.file_path, rec.module_path
-                ));
-            }
-            ClaimOutcome::NotBool { got } => {
-                failures.push(format!(
-                    "  [{idx}] file_path={} module_path={} non-Bool={got}",
-                    rec.file_path, rec.module_path
-                ));
-            }
-            ClaimOutcome::RuntimeError { message } => {
-                failures.push(format!(
-                    "  [{idx}] file_path={} module_path={} runtime_error={message}",
-                    rec.file_path, rec.module_path
-                ));
-            }
+        let pass = matches!(
+            run_claim(&ctx, "compiler_closure_scoped_ingest_parses"),
+            ClaimOutcome::Pass
+        );
+        eprintln!("gap4 probe: prefix {mid} => {}", if pass { "PASS" } else { "FAIL" });
+
+        if pass {
+            lo = mid + 1;
+        } else {
+            failing_idx = Some(mid - 1);
+            hi = mid - 1;
         }
     }
 
-    let report = if failures.is_empty() {
-        format!(
-            "gap4 probe: all {} scoped ingest files passed in isolation (unexpected — full fold failed)",
+    let report = match failing_idx {
+        None => format!(
+            "gap4 probe: all {} scoped ingest prefixes passed (unexpected — full fold failed)",
             records.len()
-        )
-    } else {
-        format!(
-            "gap4 scoped ingest per-file Reject(s) ({}/{} fail):\n{}",
-            failures.len(),
-            records.len(),
-            failures.join("\n")
-        )
+        ),
+        Some(idx) => {
+            let failing = &records[idx];
+            format!(
+                "gap4 scoped ingest first Reject at fold index {idx} (prefix {}):\n  file_path: {}\n  module_path: {}\n  note: program_assembly fold runs tokenize->parse->normalize per read\n",
+                idx + 1,
+                failing.file_path,
+                failing.module_path,
+            )
+        }
     };
     let report_path = std::env::temp_dir().join("gap4-scoped-ingest-probe.txt");
     fs::write(&report_path, &report).expect("write probe report");
     eprintln!("{report}");
     eprintln!("probe report: {}", report_path.display());
-    if failures.is_empty() {
+    if failing_idx.is_none() {
         panic!("{report}");
     }
     panic!("{report}");
