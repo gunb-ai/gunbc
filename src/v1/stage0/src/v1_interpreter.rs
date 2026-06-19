@@ -5086,7 +5086,8 @@ fn eval_builtin(
         }
 
         "import_resolution_facts" => {
-            let pool_roots = expect_str_list(positional.first().copied(), "import_resolution_facts")?;
+            let pool_roots =
+                expect_str_list(positional.first().copied(), "import_resolution_facts")?;
             let importer_roots =
                 expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
             let exclude_substrings =

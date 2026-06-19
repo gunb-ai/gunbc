@@ -15,6 +15,14 @@
 //! compile (`front_end_sources` short-circuits to `graph: none` on any parse error)
 //! never reaches.
 //!
+//! The AUTHORITATIVE producer of "this import is unresolvable" is the resolver:
+//! `resolve_import` emits `UnresolvedImport` at `v1_compiler_resolve.rs:271` (.dag mirror
+//! `src/v1/03_resolve.dag:170-173`) when `find_module(module_index, import_path) == Absent`.
+//! This projection PROJECTS that same rule into a cheap CI gate; it exists only because the
+//! parse-gate prevents tree-wide resolve from running (the v2-compile-no-entry-parse-only
+//! finding), so it is a projection of the single authority, not a fork — whether or not the
+//! root parse-resilience fix ever lands.
+//!
 //! Pure + deterministic: output is sorted by (path, import order), so a Wet run is
 //! byte-identical across invocations. The importer-set policy (which paths are excluded,
 //! e.g. the `/test/fixture/` text fixtures that intentionally carry broken imports) is
@@ -24,7 +32,9 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::cli_run::{build_module_path_index, collect_dag_files_tolerant, extract_import_paths};
+use crate::cli_run::{
+    build_module_path_index, collect_dag_files_tolerant, extract_import_paths, workspace_root,
+};
 
 /// One projected import-resolution fact: the repo-relative `.dag` path, the imported
 /// module path, and whether that module is declared anywhere in the pool roots.
@@ -51,7 +61,17 @@ pub fn import_resolution_facts(
     importer_roots: &[String],
     exclude_substrings: &[String],
 ) -> Vec<ImportResolutionFactRaw> {
-    let declared: HashSet<String> = build_module_path_index(pool_roots).into_keys().collect();
+    // build_module_path_index expects workspace-absolute roots (it strips the workspace
+    // prefix off each discovered path); the witness passes repo-relative roots, so anchor
+    // them to the workspace first. ws.join(abs) is idempotent if a root is already absolute.
+    let ws = workspace_root();
+    let abs_pool_roots: Vec<String> = pool_roots
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_keys()
+        .collect();
     let mut out = Vec::new();
     for root in importer_roots {
         let root_path = Path::new(root);

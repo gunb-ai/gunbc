@@ -11,6 +11,7 @@ type Gate
   = RustMonolithGate
   | EmitHostGate
   | LayeringImportsGate
+  | ResolvedImportsGate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate
@@ -36,6 +37,7 @@ data gunbc_ci_gates: List<Gate> = [
   RustMonolithGate,
   EmitHostGate,
   LayeringImportsGate,
+  ResolvedImportsGate,
   DslCompileCleanGate,
   CiYamlGate,
   SourceRootIngestGate

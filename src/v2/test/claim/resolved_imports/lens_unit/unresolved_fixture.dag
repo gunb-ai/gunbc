@@ -1,0 +1,31 @@
+// Scope: local lens-unit fixture — hardcoded facts only; not enrolled in CI gate.
+//        Proves the lens SEMANTICS: a fact with target_declared==false is one unresolved
+//        violation; a fact with target_declared==true is none. Discriminates the
+//        is_unresolved_import predicate independently of the host projection.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.resolved_imports.lens_unit.unresolved_fixture
+
+import v2.lens.resolved_imports {
+  ImportResolutionFact,
+  resolved_imports_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data unresolved_fixture_facts: List<ImportResolutionFact> = [
+  ImportResolutionFact {
+    path: "src/v2/std/_perturb_unresolved.dag",
+    import_module: "totally.broken.unresolved.module",
+    target_declared: false
+  },
+  ImportResolutionFact {
+    path: "src/v2/std/_perturb_resolved.dag",
+    import_module: "v2.std.logic",
+    target_declared: true
+  }
+]
+
+fn detects_unresolved_import_holds() -> Bool {
+  resolved_imports_violation_count(facts: unresolved_fixture_facts) == 1
+}

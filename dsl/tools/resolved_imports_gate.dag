@@ -1,0 +1,43 @@
+// tools/resolved_imports_gate.dag — unresolved-import (§5 fail-closed) gate, run by `gunbc`.
+//
+// Host enumerates import-resolution facts via tools.resolved_imports_transport;
+// v2.lens.resolved_imports owns violation semantics (target module declared nowhere =
+// dangling import). This is the import-enforcement the parse-gated whole-tree compile
+// never reaches. §7 shape: gate logic is `.dag` authority.
+//
+// Run in CI:
+//   cargo run -p v1-compiler --release --bin gunbc -- run \
+//     --source-root dsl --entry dsl/tools/resolved_imports_gate.dag --function main
+//
+// SCAFFOLD — dissolves when front_end_sources becomes parse-resilient so the whole-tree
+//   compile reaches resolve and emits UnresolvedImport natively (the deeper compile-path fix).
+
+module tools.resolved_imports_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.resolved_imports_transport {
+  run_clean_tree_gate,
+  run_scanner_perturb_receipts
+}
+
+// Green pass + scanner-execution perturb receipt (no short-circuit).
+func run_gate() -> ProcessExit {
+  let clean = run_clean_tree_gate()
+  let perturb = run_scanner_perturb_receipts()
+  return if clean && perturb {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "resolved imports gate failed: clean_tree (dangling import) and/or scanner-execution perturb receipt"
+    )
+  }
+}
+
+func main() -> ProcessExit {
+  run_gate()
+}
+
+// Composed CI entry point (tools.ci_gates imports this name).
+func run_resolved_imports_ci_gate() -> ProcessExit {
+  run_gate()
+}
