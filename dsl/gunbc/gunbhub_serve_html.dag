@@ -4,7 +4,6 @@ module gunbc.gunbhub_serve_html
 
 import std.markup {
   MarkupNode,
-  MarkupSerializeResult,
   Serialized,
   Rejected,
   ElementNode,

@@ -15,6 +15,7 @@ import std.markup {
   try_serialize_markup_node,
   escape_text,
 }
+import std.string_type { String }
 
 fn try_serialize_html_node(node: MarkupNode) -> MarkupSerializeResult {
   try_serialize_markup_node(node: node)
