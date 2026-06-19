@@ -21,6 +21,8 @@ import extdeps.cache.buildbuddy { buildbuddy_cas_id }
 import extdeps.cache.cache {
   cache_catalog_rows,
   cache_layer_default_order,
+  sccache_local_projected,
+  parse_table_memo_projected,
 }
 import extdeps.cache.github_actions { gha_actions_cache_id }
 import extdeps.cache.rustup { rustup_toolchain_store_id }
@@ -115,6 +117,11 @@ fn witness_empty_plan_means_recompute_only() -> Bool {
   plan.layers.length() == 0
 }
 
+fn witness_vendor_only_key_inputs_omission_is_explicit() -> Bool {
+  sccache_local_projected.key_derivation.vendor_only_key_inputs_omitted
+    && !parse_table_memo_projected.key_derivation.vendor_only_key_inputs_omitted
+}
+
 test fn cache_layer_planner_witnesses() -> Bool {
   witness_cheap_recompute_skips_wan_layers()
     && witness_expensive_recompute_reaches_wan_layers()
@@ -122,4 +129,5 @@ test fn cache_layer_planner_witnesses() -> Bool {
     && witness_plan_primary_and_fallback_projections()
     && witness_unavailable_backends_omitted()
     && witness_empty_plan_means_recompute_only()
+    && witness_vendor_only_key_inputs_omission_is_explicit()
 }

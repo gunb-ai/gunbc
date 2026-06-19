@@ -14,6 +14,7 @@ import extdeps.cache.types {
   CatalogProviderKey,
   CatalogCachedArtifactReceipt,
   agnostic_input_surfaces_from_catalog,
+  catalog_has_vendor_only_key_inputs,
   SccacheInternalHash,
   CargoFingerprint,
   SccacheInternalEncoding,
@@ -53,6 +54,7 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
     identity: row.identity
     backing_surface: row.backing_surface
     transport_encoding: match row.transport_encoding {
+      // Std agnostic view: vendor encodings collapse to CasContentEncoding.
       OpaqueStringEncoding => OpaqueStringEncoding
       CasContentEncoding => CasContentEncoding
       SccacheInternalEncoding => CasContentEncoding
@@ -61,6 +63,7 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
     key_derivation: {
       classification: row.key_derivation.classification
       inputs_considered: agnostic_input_surfaces_from_catalog(inputs: row.key_derivation.inputs_considered)
+      vendor_only_key_inputs_omitted: catalog_has_vendor_only_key_inputs(inputs: row.key_derivation.inputs_considered)
       overwritable: row.key_derivation.overwritable
       prefix_fallback_allowed: row.key_derivation.prefix_fallback_allowed
       content_verified_on_read: row.key_derivation.content_verified_on_read
@@ -137,6 +140,9 @@ data cache_catalog: List<CacheInterfaceCatalogFacts> = [
 
 data cache_catalog_rows: List<CacheInterfaceFacts> = cache_catalog
   |> map(row => cache_interface_facts_from_catalog(row: row))
+
+data sccache_local_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(sccache_local)
+data parse_table_memo_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(parse_table_memo)
 
 // Default probe order: in-process memo → runner target dir → host sccache/resolved-graph
 // → toolchain store → remote CAS (BuildBuddy) → GHA actions cache.

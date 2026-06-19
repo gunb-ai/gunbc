@@ -138,6 +138,9 @@ type InvalidationTrigger
 type KeyDerivationFacts {
   classification: KeyDerivationClass
   inputs_considered: List<InputSurface>
+  // True when cited catalog rows include vendor-only axes (rustc/toolchain) not
+  // representable in InputSurface; agnostic projection omits them from inputs_considered.
+  vendor_only_key_inputs_omitted: Bool
   overwritable: Bool
   prefix_fallback_allowed: Bool
   content_verified_on_read: Bool

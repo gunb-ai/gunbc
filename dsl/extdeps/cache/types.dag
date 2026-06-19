@@ -95,3 +95,12 @@ fn std_input_surface_from_catalog(input: CatalogInputSurface) -> List<InputSurfa
 fn agnostic_input_surfaces_from_catalog(inputs: List<CatalogInputSurface>) -> List<InputSurface> {
   inputs |> flat_map(std_input_surface_from_catalog)
 }
+
+fn catalog_has_vendor_only_key_inputs(inputs: List<CatalogInputSurface>) -> Bool {
+  inputs |> any(input => match input {
+    RustcInvocation => true
+    ToolchainSpec => true
+    UpsertSubject => false
+    FilePaths => false
+  })
+}
