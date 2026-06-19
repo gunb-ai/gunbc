@@ -13,12 +13,13 @@ module tools.ci_gates
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec, Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, DslCompileCleanGate, CiYamlGate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
   SourceRootIngestGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
+import tools.resolved_imports_gate { run_resolved_imports_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
 import tools.ci_yaml_gate { run_ci_yaml_gate }
 
@@ -31,6 +32,7 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     RustMonolithGate => run_rust_monolith_gate()
     EmitHostGate => run_emit_host_ci_gate()
     LayeringImportsGate => run_layering_imports_ci_gate()
+    ResolvedImportsGate => run_resolved_imports_ci_gate()
     DslCompileCleanGate => run_dsl_compile_clean_gate()
     CiYamlGate => run_ci_yaml_gate()
     SourceRootIngestGate => exit_failure(
@@ -44,9 +46,10 @@ func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
   let g0 = run_spec_gate(g: RustMonolithGate)
   let g1 = if exit_ok(g0) { run_spec_gate(g: EmitHostGate) } else { g0 }
   let g2 = if exit_ok(g1) { run_spec_gate(g: LayeringImportsGate) } else { g1 }
-  let g3 = if exit_ok(g2) { run_spec_gate(g: DslCompileCleanGate) } else { g2 }
-  let g4 = if exit_ok(g3) { run_spec_gate(g: CiYamlGate) } else { g3 }
-  if exit_ok(g4) { run_spec_gate(g: SourceRootIngestGate) } else { g4 }
+  let g3 = if exit_ok(g2) { run_spec_gate(g: ResolvedImportsGate) } else { g2 }
+  let g4 = if exit_ok(g3) { run_spec_gate(g: DslCompileCleanGate) } else { g3 }
+  let g5 = if exit_ok(g4) { run_spec_gate(g: CiYamlGate) } else { g4 }
+  if exit_ok(g5) { run_spec_gate(g: SourceRootIngestGate) } else { g5 }
 }
 
 func main() -> ProcessExit {

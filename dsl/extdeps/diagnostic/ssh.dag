@@ -7,6 +7,12 @@ module extdeps.diagnostic.ssh
 
 import std.types { NonEmptyStr }
 
+// 🟡 dissolved — feature:diagnostic-ssh-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
+// WHICH diagnostic.ssh.Session ops are hermetically realizable, and the fixture store owns the
+// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
+// shapes.
 service diagnostic.ssh.Session {
   operation Exec {
     input { host: NonEmptyStr, command: NonEmptyStr }
@@ -23,9 +29,6 @@ service diagnostic.ssh.Session {
       0 => Unit
       nonzero => String "ssh remote command failed"
     }
-    mock_response {
-      0 => { exit_code: 0, exit_success: true, stdout: "(mock)", stderr: "" } "Mock ssh exec"
-    }
   }
 
   operation Reachability {
@@ -36,9 +39,6 @@ service diagnostic.ssh.Session {
     exit {
       0 => Unit
       nonzero => String "ssh unreachable"
-    }
-    mock_response {
-      0 => { reachable: true } "Mock ssh reachability"
     }
   }
 }
