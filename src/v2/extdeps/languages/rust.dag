@@ -4,6 +4,7 @@
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v2.extdeps.languages.rust
+import v2.std.language_model { LanguageModel }
 
 import v2.std.grammar {
   StampClass,
@@ -324,13 +325,6 @@ type OverflowDisposition<IRCarrier> {
   checked_arithmetic_overflow_checks_disabled: OverflowAction
 }
 
-type RustLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 
 // T-11 rust-first grammar relation row: fixed terminals and bound terminals share
 // the Rust grammar production instead of an operator string template.
@@ -2526,11 +2520,11 @@ fn rust_model_core_wave1() -> Outcome<ModelCore> {
   }
 }
 
-fn rust_language_model_wave1() -> Outcome<RustLanguageModel> {
+fn rust_language_model_wave1() -> Outcome<LanguageModel> {
   match rust_model_core_wave1() {
     Accepted { value: core, diagnostics: d } =>
       Accepted {
-        value: RustLanguageModel {
+        value: LanguageModel {
           lex: rust_wave1_lex(),
           grammar: rust_wave1_grammar(),
           language_identity: ^rust_language_model_surface_id,
@@ -3182,11 +3176,11 @@ fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_language_model_wave2() -> Outcome<RustLanguageModel> {
+fn rust_language_model_wave2() -> Outcome<LanguageModel> {
   match rust_model_core_wave1() {
     Accepted { value: core, diagnostics: d } =>
       Accepted {
-        value: RustLanguageModel {
+        value: LanguageModel {
           lex: rust_wave2_lex(),
           grammar: rust_wave2_grammar(),
           language_identity: ^rust_language_model_surface_id,

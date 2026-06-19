@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // Persistent value carriers (ctrl#1533 phase 2), implementing the
 // v2.std.value_carrier declarations: HamtMap is a hash array mapped trie
@@ -87,6 +87,7 @@ use crate::v1_std_core::{
     FieldAccessStyle,
     FieldSummary,
     FieldValueShape,
+    InferredNode,
     MatchPattern,
     MethodSemantics,
     NewlineIndex,
@@ -2895,10 +2896,110 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 // Cast
 // ---------------------------------------------------------------------------
 
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            if authored_name_at(ctx.si(), item.clone()) == type_name {
+                return Some(item.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Next alias step from a type-decl `inferred` RHS (`String`, `Secret`, or the
+/// base of `Base where …` before brand preservation).
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+    let direct = authored_name_at(ctx.si(), rhs.clone());
+    if !direct.is_empty() {
+        return Some(direct);
+    }
+    if rhs.connective == Connective::Conj {
+        for child in rhs.children.iter() {
+            let base = authored_name_at(ctx.si(), child.clone());
+            if !base.is_empty() {
+                return Some(base);
+            }
+        }
+    }
+    match rhs.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            let inner = authored_name_at(ctx.si(), node.clone());
+            if inner.is_empty() {
+                None
+            } else {
+                Some(inner)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+    let rhs = match item.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    alias_rhs_next_name(ctx, rhs)
+}
+
+/// Walk alias chains via type-decl items (pre-brand `inferred` RHS), not the
+/// brand-preserved `TypeEnv` bindings used at use sites.
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let mut current = authored_name_at(ctx.si(), target);
+    let mut seen = BTreeSet::new();
+
+    for _ in 0..32 {
+        if current.is_empty() {
+            return String::new();
+        }
+        if !seen.insert(current.clone()) {
+            return current;
+        }
+        if current == "String" {
+            return "String".to_string();
+        }
+
+        let Some(item) = lookup_type_item_across_modules(ctx, &current) else {
+            return current;
+        };
+
+        let Some(rhs_name) = type_item_alias_rhs_name(ctx, &item) else {
+            return current;
+        };
+
+        if rhs_name == current {
+            return current;
+        }
+        current = rhs_name;
+    }
+
+    current
+}
+
+fn str_identity_cast_if_string_family(
+    val: &Value,
+    ctx: &InterpContext,
+    target: Rc<Node>,
+) -> Option<Value> {
+    let Value::Str(s) = val else {
+        return None;
+    };
+    if cast_target_underlying_kernel(ctx, target) == "String" {
+        Some(Value::Str(s.clone()))
+    } else {
+        None
+    }
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node);
+    let target_name = authored_name_at(ctx.si(), target_node.clone());
+
+    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+        return Ok(v);
+    }
 
     match (val, target_name.as_str()) {
         (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
@@ -3788,48 +3889,6 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
     }
 }
 
-const SHELL_TRANSIENT_RETRY_MAX: u8 = 3;
-
-fn shell_output_is_transient_infra(stderr: &str, spawn_err: Option<&str>) -> bool {
-    let hay = format!("{} {}", stderr, spawn_err.unwrap_or_default()).to_lowercase();
-    hay.contains("resource temporarily unavailable")
-        || hay.contains("failed to spawn")
-        || hay.contains("sccache: encountered fatal error")
-}
-
-fn shell_retry_note(next_attempt: u8) -> &'static str {
-    match next_attempt {
-        1 => "retry CARGO_BUILD_JOBS=1 (keep sccache)",
-        2 => "retry without RUSTC_WRAPPER",
-        _ => "retry",
-    }
-}
-
-fn run_shell_argv(argv: &[String], attempt: u8) -> Result<std::process::Output, String> {
-    let mut cmd = std::process::Command::new(&argv[0]);
-    cmd.args(&argv[1..]);
-    if attempt >= 1 {
-        cmd.env("CARGO_BUILD_JOBS", "1");
-    }
-    if attempt >= 2 {
-        cmd.env_remove("RUSTC_WRAPPER");
-    }
-    cmd.output()
-        .map_err(|e| format!("failed to execute '{}': {}", argv[0], e))
-}
-
-fn log_shell_failure(exit_code: i32, stdout: &str, stderr: &str) {
-    if stderr.is_empty() && stdout.is_empty() {
-        return;
-    }
-    if !stderr.is_empty() {
-        eprintln!("[shell] exit {exit_code} stderr:\n{stderr}");
-    }
-    if !stdout.is_empty() {
-        eprintln!("[shell] exit {exit_code} stdout:\n{stdout}");
-    }
-}
-
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3852,56 +3911,22 @@ fn dispatch_shell(
 
     eprintln!("[shell] {}", argv.join(" "));
 
-    let mut attempt = 0u8;
-    loop {
-        match run_shell_argv(&argv, attempt) {
-            Ok(output) => {
-                let exit_code = output.status.code().unwrap_or(-1);
-                let stdout = String::from_utf8_lossy(&output.stdout)
-                    .trim_end()
-                    .to_string();
-                let stderr = String::from_utf8_lossy(&output.stderr)
-                    .trim_end()
-                    .to_string();
-                if exit_code != 0
-                    && attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
-                    && shell_output_is_transient_infra(&stderr, None)
-                {
-                    eprintln!(
-                        "[shell] transient infra error (exit {exit_code}), {}",
-                        shell_retry_note(attempt + 1)
-                    );
-                    log_shell_failure(exit_code, &stdout, &stderr);
-                    attempt += 1;
-                    std::thread::sleep(Duration::from_secs(1));
-                    continue;
-                }
-                if exit_code != 0 {
-                    log_shell_failure(exit_code, &stdout, &stderr);
-                }
-                return Ok(ShellResult {
-                    exit_code,
-                    stdout,
-                    stderr,
-                });
-            }
-            Err(spawn_err)
-                if attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
-                    && shell_output_is_transient_infra("", Some(&spawn_err)) =>
-            {
-                eprintln!(
-                    "[shell] transient spawn error ({}), {}",
-                    spawn_err,
-                    shell_retry_note(attempt + 1)
-                );
-                attempt += 1;
-                std::thread::sleep(Duration::from_secs(1));
-            }
-            Err(spawn_err) => {
-                return Err(InterpError::TypeError { msg: spawn_err });
-            }
-        }
-    }
+    let output = std::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .output()
+        .map_err(|e| InterpError::TypeError {
+            msg: format!("failed to execute '{}': {}", argv[0], e),
+        })?;
+
+    Ok(ShellResult {
+        exit_code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr)
+            .trim_end()
+            .to_string(),
+    })
 }
 
 /// Map shell stdout/stderr/exit_code to the operation's return type fields.

@@ -49,6 +49,10 @@ import std.realization_schedule {
 import std.realization_measurement {
   RealizationMeasureEffect,
   cost_account_measured_from_time,
+  cost_account_measured_from_schedule_critical_path,
+  schedule_critical_path_time,
+  schedule_batch_critical_path,
+  nanosecond_duration_list_total,
 }
 import std.realization_width {
   bounded_host_spawn_width,

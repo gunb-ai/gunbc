@@ -24,7 +24,7 @@ import v2.compiler.source_authority {
   source_authority_diagnostic,
 }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { DagLanguageModel }
+import v2.std.language_model { LanguageModel }
 import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
 import v2.std.artifact { SourceFile }
 import v2.std.diagnostic {
@@ -55,7 +55,7 @@ fn program_assembly_empty_roots() -> FreeMonoid<Node> {
 
 fn program_assembly_read_to_normalized_root(
   read: DagSourceReadWitness,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<Node> {
   match read.artifact.kind {
     SourceFile =>
@@ -85,7 +85,7 @@ fn program_assembly_read_to_normalized_root(
 fn program_assembly_fold_step(
   state: ProgramAssemblyFoldState,
   read: DagSourceReadWitness,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> ProgramAssemblyFoldState {
   match state {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
@@ -106,7 +106,7 @@ fn program_assembly_fold_step(
 // Whole-ingest fold: per-read tokenize → parse_module → normalize; first Rejected short-circuits.
 fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<FreeMonoid<Node>> {
   match fold_list(
     xs: ingest,
@@ -127,7 +127,7 @@ fn module_roots_from_source_root_ingest(
 fn assemble_program_from_module_roots(
   roots: FreeMonoid<Node>,
   admission: Admission,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<Node> {
   bind_outcome(
     o: validate_module_roots(roots: roots),
@@ -146,7 +146,7 @@ fn assemble_program_from_module_roots(
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<Node> {
   bind_outcome(
     o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
