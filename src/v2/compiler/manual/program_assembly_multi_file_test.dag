@@ -25,6 +25,7 @@ import v2.extdeps.languages.dag {
   dag_language_model_surface_empty_prelude,
   dag_named_edge
 }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -193,13 +194,15 @@ data pa_ingest_test_claim_artifact: Artifact = Artifact {
 data pa_ingest_source_file_read: DagSourceReadWitness = DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_source_file_artifact,
-  compilation_unit: ^pa_ingest_peer_cu
+  compilation_unit: ^pa_ingest_peer_cu,
+  source_root: V2Tree
 }
 
 data pa_ingest_non_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_test_claim_artifact,
-  compilation_unit: ^pa_ingest_peer_cu
+  compilation_unit: ^pa_ingest_peer_cu,
+  source_root: V2Tree
 }
 
 data pa_ingest_non_source_ingest: SourceRootIngest = Cons {

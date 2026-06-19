@@ -1,0 +1,84 @@
+// Scope: Route C Phase C witnesses — grounded source_root on DagSourceReadWitness.
+//
+// GREEN: source_root_set_from_ingest collects unique host-tagged trees.
+// GREEN: dual-tree ingest carries both V2Tree and DslTree bindings.
+
+module v2.test.claim.grounded_source_root_ingest
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_root_set_from_ingest
+}
+import v2.std.algebra { Cons, Empty, contains, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model {
+  DslTree,
+  SourceRootRef,
+  V2Tree,
+  source_root_ref_eq
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+
+data gsri_v2_source: Medium<String> = Medium {
+  carried: "module gsri.v2\n",
+  fidelity: Lossless
+}
+
+data gsri_dsl_source: Medium<String> = Medium {
+  carried: "module gsri.dsl\n",
+  fidelity: Lossless
+}
+
+data gsri_v2_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: gsri_v2_source,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^gsri_v2_artifact,
+    file_path: "src/v2/test/fixture/gsri_v2.dag"
+  },
+  compilation_unit: ^gsri_v2_cu,
+  source_root: V2Tree
+}
+
+data gsri_dsl_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: gsri_dsl_source,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^gsri_dsl_artifact,
+    file_path: "dsl/test/fixture/gsri_dsl.dag"
+  },
+  compilation_unit: ^gsri_dsl_cu,
+  source_root: DslTree
+}
+
+data gsri_dual_ingest: SourceRootIngest = Cons {
+  head: gsri_v2_read,
+  tail: Cons { head: gsri_dsl_read, tail: Empty }
+}
+
+fn gsri_source_root_set_has_tree(
+  roots: SourceRootIngest,
+  tree: SourceRootRef
+) -> Bool {
+  contains(
+    xs: source_root_set_from_ingest(ingest: roots),
+    item: tree,
+    eq: source_root_ref_eq
+  )
+}
+
+test fn witness_ingest_source_root_set_includes_v2_tree() -> Bool {
+  gsri_source_root_set_has_tree(roots: gsri_dual_ingest, tree: V2Tree)
+}
+
+test fn witness_ingest_source_root_set_includes_dsl_tree() -> Bool {
+  gsri_source_root_set_has_tree(roots: gsri_dual_ingest, tree: DslTree)
+}
+
+test fn witness_ingest_source_root_set_count_is_two() -> Bool {
+  length(xs: source_root_set_from_ingest(ingest: gsri_dual_ingest)) == 2
+}

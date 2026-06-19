@@ -2658,6 +2658,7 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
+    pub source_root: String,
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
@@ -2817,6 +2818,8 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push('\0');
         material.push_str(&rec.source);
         material.push('\0');
+        material.push_str(&rec.source_root);
+        material.push('\0');
     }
     let mut hash = 0xcbf29ce484222325u64;
     for byte in material.as_bytes() {
@@ -2881,10 +2884,12 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
+        let source_root = source_root_tag_for_file_path(&rel_forward, source_roots);
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: content,
+            source_root,
         });
     }
 
@@ -2924,10 +2929,12 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
+        let source_root = source_root_tag_for_file_path(&rel_forward, source_roots);
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
+            source_root,
         });
     }
 
@@ -2935,13 +2942,39 @@ pub fn discover_source_root_reads_for_entry(
     Ok(records)
 }
 
+fn source_root_tag_for_file_path(path: &str, source_roots: &[String]) -> String {
+    let normalized = path.replace('\\', "/");
+    for root in source_roots.iter().rev() {
+        let r = root.replace('\\', "/");
+        let under = normalized == r
+            || normalized.starts_with(&format!("{}/", r))
+            || normalized.starts_with(&format!("{r}/"));
+        if under {
+            if r == "dsl" || r.ends_with("/dsl") {
+                return "DslTree".to_string();
+            }
+            if r == "src/v2" || r.ends_with("/src/v2") || r.contains("/v2") {
+                return "V2Tree".to_string();
+            }
+        }
+    }
+    if normalized.starts_with("dsl/") {
+        return "DslTree".to_string();
+    }
+    if normalized.starts_with("src/v2/") {
+        return "V2Tree".to_string();
+    }
+    "V2Tree".to_string()
+}
+
 fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
+        rec.source_root,
     ))
 }
 
@@ -2989,6 +3022,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.cross_tree.import_model { DslTree, V2Tree }\n");
     out.push_str("import v2.std.text { String }\n");
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");

@@ -19,6 +19,7 @@ import v2.compiler.source_authority {
   source_ir_artifact_provenance,
   source_ir_node_artifact_provenance_mvp1
 }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.logic { Bool }
@@ -61,19 +62,22 @@ data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
 data edit_locus_source_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit,
+  source_root: V2Tree
 }
 
 data edit_locus_source_producer_mvp1_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_mvp1_fixture_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit,
+  source_root: V2Tree
 }
 
 data edit_locus_source_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: edit_locus_source_producer_malformed_source,
   artifact: edit_locus_source_producer_fixture_artifact,
-  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit
+  compilation_unit: ^edit_locus_source_producer_fixture_compilation_unit,
+  source_root: V2Tree
 }
 
 data edit_locus_source_producer_git_diff: GitDiffNameOnly = GitDiffNameOnly {

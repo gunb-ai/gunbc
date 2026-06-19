@@ -118,7 +118,8 @@ fn witness_malformed_root_is_rejected_holds() -> Bool {
       state: initial_admission_state(),
       subject_qn: malformed_entry_name(),
       order: FundamentalityUnknown,
-      active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
+      active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots)),
+      bindings: Empty
     )
   )
 }

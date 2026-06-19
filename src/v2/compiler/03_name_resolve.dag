@@ -536,6 +536,7 @@ fn admit_import_entry(
                 order: order,
                 active_roots: active_roots
               )
+          }
       }
   }
 }
