@@ -42,23 +42,27 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
     visibility_scope: Repo
     invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
   }
-  lookup_semantics: PrefixFallback {
-    ordered_prefixes: [
-      "exact-subject-digest",
-      "toolchain-pinned",
-      "lockfile-pinned",
-      "runner-scoped",
-    ]
+  io: {
+    lookup_semantics: PrefixFallback {
+      ordered_prefixes: [
+        "exact-subject-digest",
+        "toolchain-pinned",
+        "lockfile-pinned",
+        "runner-scoped",
+      ]
+    }
+    write_semantics: WriteThenCommit
+    miss_semantics: MissThenCreate
   }
-  write_semantics: WriteThenCommit
-  miss_semantics: MissThenCreate
-  value_shape: TarArchive
-  locality: CrossHostNetwork
-  eviction: Lru
-  atomicity: WriteThenCommit
-  auth: ApiKey
-  read_latency: WanTensMs
-  consistency: Eventual
+  placement: {
+    value_shape: TarArchive
+    locality: CrossHostNetwork
+    eviction: Lru
+    atomicity: WriteThenCommit
+    auth: ApiKey
+    read_latency: WanTensMs
+    consistency: Eventual
+  }
   evidence: [
     {
       field: "lookup_semantics"

@@ -43,17 +43,21 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
     visibility_scope: Org
     invalidation_triggers: [ManualPurge, ToolchainChange]
   }
-  lookup_semantics: NativeInternalLookup
-  write_semantics: WriteThenRename
-  miss_semantics: MissThenCreate
-  value_shape: RawBytes
-  locality: PerHostFilesystem
-  // sccache max cache size is operator-configured (sccache.conf), not a fixed substrate fact.
-  eviction: Lru
-  atomicity: WriteThenRename
-  auth: FilesystemPerms
-  read_latency: LocalDiskUs
-  consistency: ReadYourWrites
+  io: {
+    lookup_semantics: NativeInternalLookup
+    write_semantics: WriteThenRename
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: RawBytes
+    locality: PerHostFilesystem
+    // sccache max cache size is operator-configured (sccache.conf), not a fixed substrate fact.
+    eviction: Lru
+    atomicity: WriteThenRename
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: ReadYourWrites
+  }
   evidence: [
     {
       field: "lookup_semantics"

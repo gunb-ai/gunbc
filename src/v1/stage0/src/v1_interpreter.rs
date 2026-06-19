@@ -798,7 +798,7 @@ struct PureCallMemo {
 }
 
 /// In-process parse-table memo — minimal Realization host handler for
-/// `ParseTableRealization` (§2 sccache pattern; spec in `dsl/std/cache_interface.dag`
+/// `ParseTableRealization` (§2 sccache pattern; spec in `extdeps/realization/parse_table_memo.dag`
 /// `parse_table_memo_facts` + `02_parse.dag` `parse_table_lookup`/`parse_table_insert`).
 ///
 /// Rust owns only lookup/insert glue keyed by the carrier's content-address fields;

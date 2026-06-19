@@ -6,22 +6,14 @@
 
 module extdeps.cache.types
 
+import extdeps.cache.catalog_io { CacheInterfaceCatalogIoSemantics }
+import extdeps.cache.catalog_placement { CacheInterfaceCatalogPlacement }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   StorageSurface,
   KeyDerivationClass,
   VisibilityScope,
   InvalidationTrigger,
-  CacheLookupSemantics,
-  CacheWriteSemantics,
-  CacheMissSemantics,
-  ValueShape,
-  PersistenceLocality,
-  EvictionPolicy,
-  AtomicityModel,
-  AuthScope,
-  ReadLatencyClass,
-  ConsistencyModel,
   CacheEvidence,
   OpaqueStringEncoding,
   CasContentEncoding,
@@ -29,6 +21,8 @@ import std.cache_interface {
   FilePaths,
   OpaqueStringKey,
   CasContentDigest,
+  ArtifactIdentity,
+  ProducerReceipt,
 }
 import std.types { ContentHash, NonEmptyStr, Bool }
 import std.list { List }
@@ -74,15 +68,14 @@ type CacheInterfaceCatalogFacts {
   backing_surface: StorageSurface
   transport_encoding: CatalogProviderKeyEncoding
   key_derivation: CatalogKeyDerivationFacts
-  lookup_semantics: CacheLookupSemantics
-  write_semantics: CacheWriteSemantics
-  miss_semantics: CacheMissSemantics
-  value_shape: ValueShape
-  locality: PersistenceLocality
-  eviction: EvictionPolicy
-  atomicity: AtomicityModel
-  auth: AuthScope
-  read_latency: ReadLatencyClass
-  consistency: ConsistencyModel
+  io: CacheInterfaceCatalogIoSemantics
+  placement: CacheInterfaceCatalogPlacement
   evidence: List<CacheEvidence>
+}
+
+type CatalogCachedArtifactReceipt<T> {
+  artifact: ArtifactIdentity<T>
+  backend_key: CatalogBackendCacheKey
+  producer: ProducerReceipt<T>
+  content_digest: ContentHash
 }

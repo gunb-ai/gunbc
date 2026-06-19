@@ -1,6 +1,6 @@
 // resolved_graph_cache.rs — Content-addressed cross-process resolved-graph cache.
 //
-// Authority row: dsl/std/cache_interface.dag `resolved_graph_cache_facts`.
+// Authority row: extdeps/realization/resolved_graph.dag `resolved_graph_cache_facts`.
 // Key = subject_digest over (closure module_name→file content) + resolve-logic
 // version + intern-seed-set version. Widen→MISS, never narrow→stale.
 

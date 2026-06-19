@@ -40,16 +40,20 @@ data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
     visibility_scope: Network
     invalidation_triggers: [ManualPurge]
   }
-  lookup_semantics: ContentAddressLookup
-  write_semantics: WriteOnce
-  miss_semantics: MissThenCreate
-  value_shape: RawBytes
-  locality: CrossHostNetwork
-  eviction: Never
-  atomicity: WriteThenCommit
-  auth: ApiKey
-  read_latency: LanMs
-  consistency: Strong
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: RawBytes
+    locality: CrossHostNetwork
+    eviction: Never
+    atomicity: WriteThenCommit
+    auth: ApiKey
+    read_latency: LanMs
+    consistency: Strong
+  }
   evidence: [
     {
       field: "lookup_semantics"
