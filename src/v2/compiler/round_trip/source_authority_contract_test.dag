@@ -1,0 +1,74 @@
+// Wave 3c-F FINISH-LINE-A: gate real-source parse/print round-trip on bind (non-add).
+// GREEN: REAL parse → serialize → reparse with source-string equality on canonical output.
+// RED: wrong-value bind source canonical text differs from authority (discriminating).
+
+module v2.test.round_trip.source_authority_contract
+
+import extdeps.communication.medium { Medium }
+import v2.compiler.source_authority {
+  CanonicalDagSourceEmissionLaw,
+  canonical_dag_source_parse_print_law
+}
+import v2.compiler.target_carriers { lossless_source }
+import v2.extdeps.languages.dag {
+  dag_mvp1_bind_source_text,
+  dag_mvp1_bind_target_model,
+  dag_mvp1_bind_wrong_value_source_text
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.witness { Holds, Violates }
+
+fn real_bind_source() -> Medium<String> {
+  lossless_source(text: dag_mvp1_bind_source_text)
+}
+
+fn real_bind_wrong_value_source() -> Medium<String> {
+  lossless_source(text: dag_mvp1_bind_wrong_value_source_text)
+}
+
+fn real_bind_target_model() -> TargetModel {
+  dag_mvp1_bind_target_model()
+}
+
+fn canonical_source_carried_from_parse_print_law(
+  source: Medium<String>,
+  target: TargetModel
+) -> Bool {
+  match canonical_dag_source_parse_print_law(
+    source: source,
+    canonical_source_target: target
+  ) {
+    Accepted { value: witness, diagnostics: _ } =>
+      match witness {
+        Holds { value: law } =>
+          law.canonical_source.carried == source.carried
+        Violates { diagnostic: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED: wrong-value bind must NOT round-trip to the authority source string.
+fn red_wrong_bind_canonical_differs_from_authority() -> Bool {
+  match canonical_dag_source_parse_print_law(
+    source: real_bind_wrong_value_source(),
+    canonical_source_target: real_bind_target_model()
+  ) {
+    Accepted { value: witness, diagnostics: _ } =>
+      match witness {
+        Holds { value: law } =>
+          law.canonical_source.carried != dag_mvp1_bind_source_text
+        Violates { diagnostic: _ } => true
+      }
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn canonical_dag_source_bind_parse_print_round_trip_holds() -> Bool {
+  canonical_source_carried_from_parse_print_law(
+    source: real_bind_source(),
+    target: real_bind_target_model()
+  ) && red_wrong_bind_canonical_differs_from_authority()
+}
