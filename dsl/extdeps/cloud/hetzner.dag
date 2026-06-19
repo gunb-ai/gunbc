@@ -1,5 +1,7 @@
 // extdeps/cloud/hetzner.dag — Hetzner Cloud facts (vendor catalog authority).
 //
+// Anchor: https://docs.hetzner.com/cloud/
+//
 // Spec: https://docs.hetzner.com/cloud/ (server types, billing model)
 // Pricing: https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
 //   (GE-D9256; Germany/Finland CAX rows effective 2026-04-01, ex-VAT)
