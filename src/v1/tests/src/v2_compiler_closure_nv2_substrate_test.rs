@@ -212,42 +212,17 @@ fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     );
 }
 
+// Manual RED->GREEN harness for the #5146-class resolve_expr_types O(2^depth)
+// fix (bind-once). Generates the host_source_root_ingest manifest at increasing
+// record counts N and times the gate resolve. PRE-FIX: 2^N — n=20 hung >800s.
+// POST-FIX (bind-once in 04_resolve.dag + v1_compiler_infer_resolve.rs): linear,
+// dominated by bounded front-end parse — n=20 ~87s, all ok=true. Not a CI gate
+// (wall-clock); the structural regression guard is
+// resolve_expr_types_has_no_redundant_child_retraversal (always-on).
+//   NV2_SCALE_NS=2,5,10,20 cargo test -p v1-compiler-tests \
+//     v2_compiler_closure_nv2_substrate_test::nv2_manifest_resolve_scaling_probe -- --ignored --nocapture
 #[test]
-#[ignore] // Timing probe for the N_v2 resolve hang root-cause; not a gate.
-fn nv2_manifest_resolve_timing_probe() {
-    use std::time::Instant;
-    let temp = unique_temp_dir("nv2-timing");
-    fs::create_dir_all(&temp).expect("temp dir");
-    let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
-    write_nv2_manifest(&manifest_path);
-    let manifest_src = fs::read_to_string(&manifest_path).expect("read manifest");
-    eprintln!(
-        "PROBE manifest bytes={} lines={}",
-        manifest_src.len(),
-        manifest_src.lines().count()
-    );
-    eprintln!("--- PROBE manifest source ---\n{manifest_src}\n--- end ---");
-
-    let ws = workspace_root();
-    let entry = ws.join(NV2_GATE_ENTRY);
-    let manifest_dir = manifest_path.parent().expect("manifest parent");
-    let roots = vec![
-        ws.join("src/v2").to_string_lossy().to_string(),
-        manifest_dir.to_string_lossy().to_string(),
-    ];
-    eprintln!("PROBE resolve_entry_graph (manifest overlay) starting...");
-    let start = Instant::now();
-    let result = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"));
-    eprintln!(
-        "PROBE resolve_entry_graph done in {:?} -> {:?}",
-        start.elapsed(),
-        result.as_ref().map(|_| "Ok").map_err(|e| e.as_str())
-    );
-    let _ = fs::remove_dir_all(&temp);
-}
-
-#[test]
-#[ignore] // Scaling probe: typecheck cost vs manifest record count N (super-linearity curve).
+#[ignore]
 fn nv2_manifest_resolve_scaling_probe() {
     use std::time::Instant;
     let ws = workspace_root();
@@ -283,8 +258,7 @@ fn nv2_manifest_resolve_scaling_probe() {
             manifest_dir.to_string_lossy().to_string(),
         ];
         let start = Instant::now();
-        let result =
-            resolve_entry_graph(&scale_roots, gate_entry.to_str().expect("entry utf8"));
+        let result = resolve_entry_graph(&scale_roots, gate_entry.to_str().expect("entry utf8"));
         eprintln!(
             "SCALE n={n} bytes={bytes} resolve={:?} ok={}",
             start.elapsed(),
