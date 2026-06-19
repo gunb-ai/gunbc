@@ -143,7 +143,7 @@ fn bash_formal_production_from_fixture(
   )
 }
 
-fn bash_derive_lhs_exact_relation_row(
+fn bash_lhs_exact_relation_row_witness(
   lhs: Symbol,
   tokens: List<ConcreteSyntaxToken>,
   emitted: Node
@@ -165,23 +165,53 @@ fn bash_derive_lhs_exact_relation_row(
   }
 }
 
-fn bash_lhs_exact_relation_row_node(
+fn bash_empty_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_relation_translation_rules_witness(
+  rule_name: Symbol,
   lhs: Symbol,
   tokens: List<ConcreteSyntaxToken>,
   emitted: Node
-) -> Node {
-  match bash_derive_lhs_exact_relation_row(
+) -> Witness<Node> {
+  match bash_lhs_exact_relation_row_witness(
     lhs: lhs,
     tokens: tokens,
     emitted: emitted
   ) {
-    Holds { value: row } => row
-    Violates { diagnostic: _ } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [],
-        occurrence_id: SyntheticOccurrence
+    Holds { value: row } =>
+      Holds {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            bash_named_edge(name: rule_name, target: row)
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
       }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_relation_translation_rules_node(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Node {
+  match bash_relation_translation_rules_witness(
+    rule_name: rule_name,
+    lhs: lhs,
+    tokens: tokens,
+    emitted: emitted
+  ) {
+    Holds { value: rules } => rules
+    Violates { diagnostic: _ } => bash_empty_translation_rules_node()
   }
 }
 
@@ -219,51 +249,31 @@ fn bash_named_edge(name: Symbol, target: Node) -> Edge {
 // Grammar relation row: emitted intent ⇄ concrete token sequence.
 // =========================================================================
 
-fn bash_grammar_relation_row_node() -> Node {
-  bash_lhs_exact_relation_row_node(
+fn bash_mvp1_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_command,
     lhs: ^bash_production_command,
     tokens: bash_mvp1_concrete_tokens(),
     emitted: bash_mvp1_emitted_command
   )
 }
 
-fn bash_mvp1_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_command,
-        target: bash_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn bash_bound_words_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_bound_words,
-        target: bash_bound_words_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_bound_words,
+    lhs: ^bash_production_bound_words,
+    tokens: bash_bound_words_concrete_tokens(),
+    emitted: bash_bound_words_emitted_command
+  )
 }
 
 fn bash_embedded_quote_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_embedded_quote_lit,
-        target: bash_embedded_quote_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_embedded_quote_lit,
+    lhs: ^bash_production_embedded_quote_lit,
+    tokens: bash_embedded_quote_concrete_tokens(),
+    emitted: bash_embedded_quote_emitted_command
+  )
 }
 
 // =========================================================================
@@ -284,14 +294,6 @@ data bash_bound_words_emitted_command: Node = bash_conj_emitted_from_tokens(
 
 data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
-fn bash_bound_words_grammar_relation_row_node() -> Node {
-  bash_lhs_exact_relation_row_node(
-    lhs: ^bash_production_bound_words,
-    tokens: bash_bound_words_concrete_tokens(),
-    emitted: bash_bound_words_emitted_command
-  )
-}
-
 // Single-word bound lit with an embedded single quote — total POSIX escaping.
 fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -307,14 +309,6 @@ data bash_embedded_quote_emitted_command: Node = bash_conj_emitted_from_tokens(
 )
 
 data bash_embedded_quote_source_text: String = "'a'\\''b'"
-
-fn bash_embedded_quote_grammar_relation_row_node() -> Node {
-  bash_lhs_exact_relation_row_node(
-    lhs: ^bash_production_embedded_quote_lit,
-    tokens: bash_embedded_quote_concrete_tokens(),
-    emitted: bash_embedded_quote_emitted_command
-  )
-}
 
 // =========================================================================
 // Slice 3 — source-root-ingest gate: fixed two-word Command.
@@ -335,25 +329,13 @@ data bash_source_root_ingest_gate_emitted_command: Node = bash_conj_emitted_from
 
 data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
 
-fn bash_source_root_ingest_gate_grammar_relation_row_node() -> Node {
-  bash_lhs_exact_relation_row_node(
+fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_source_root_ingest_gate,
     lhs: ^bash_production_source_root_ingest_gate,
     tokens: bash_source_root_ingest_gate_concrete_tokens(),
     emitted: bash_source_root_ingest_gate_emitted_command
   )
-}
-
-fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_source_root_ingest_gate,
-        target: bash_source_root_ingest_gate_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
 }
 
 // =========================================================================
@@ -378,20 +360,12 @@ data bash_and_then_emitted: Node = bash_conj_emitted_from_tokens(
 data bash_and_then_source_text: String = "'true' && 'false'"
 
 fn bash_and_then_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_and_then,
-        target: bash_lhs_exact_relation_row_node(
-          lhs: ^bash_production_and_then,
-          tokens: bash_and_then_concrete_tokens(),
-          emitted: bash_and_then_emitted
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_and_then,
+    lhs: ^bash_production_and_then,
+    tokens: bash_and_then_concrete_tokens(),
+    emitted: bash_and_then_emitted
+  )
 }
 
 fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -410,20 +384,12 @@ data bash_or_else_emitted: Node = bash_conj_emitted_from_tokens(
 data bash_or_else_source_text: String = "'true' || 'false'"
 
 fn bash_or_else_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_or_else,
-        target: bash_lhs_exact_relation_row_node(
-          lhs: ^bash_production_or_else,
-          tokens: bash_or_else_concrete_tokens(),
-          emitted: bash_or_else_emitted
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_or_else,
+    lhs: ^bash_production_or_else,
+    tokens: bash_or_else_concrete_tokens(),
+    emitted: bash_or_else_emitted
+  )
 }
 
 fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -443,20 +409,12 @@ data bash_with_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
 data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
 
 fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_with_redir_stderr_null,
-        target: bash_lhs_exact_relation_row_node(
-          lhs: ^bash_production_with_redir_stderr_null,
-          tokens: bash_with_redir_stderr_null_concrete_tokens(),
-          emitted: bash_with_redir_stderr_null_emitted
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_with_redir_stderr_null,
+    lhs: ^bash_production_with_redir_stderr_null,
+    tokens: bash_with_redir_stderr_null_concrete_tokens(),
+    emitted: bash_with_redir_stderr_null_emitted
+  )
 }
 
 fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -477,20 +435,12 @@ data bash_pipe_emitted: Node = bash_conj_emitted_from_tokens(
 data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
 
 fn bash_pipe_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_pipe,
-        target: bash_lhs_exact_relation_row_node(
-          lhs: ^bash_production_pipe,
-          tokens: bash_pipe_concrete_tokens(),
-          emitted: bash_pipe_emitted
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_pipe,
+    lhs: ^bash_production_pipe,
+    tokens: bash_pipe_concrete_tokens(),
+    emitted: bash_pipe_emitted
+  )
 }
 
 fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -513,20 +463,12 @@ data bash_or_else_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
 data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
 
 fn bash_or_else_with_redir_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_or_else_with_redir,
-        target: bash_lhs_exact_relation_row_node(
-          lhs: ^bash_production_or_else_with_redir,
-          tokens: bash_or_else_with_redir_concrete_tokens(),
-          emitted: bash_or_else_with_redir_emitted
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_or_else_with_redir,
+    lhs: ^bash_production_or_else_with_redir,
+    tokens: bash_or_else_with_redir_concrete_tokens(),
+    emitted: bash_or_else_with_redir_emitted
+  )
 }
 
 fn bash_binding_spellings() -> Map<Symbol, String> {
