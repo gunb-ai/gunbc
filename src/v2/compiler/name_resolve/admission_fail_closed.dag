@@ -13,6 +13,7 @@ import v2.compiler.name_resolve {
   ImportVisible,
   ResolutionSubject,
   admit_import_entry,
+  module_root_nodes_to_qns,
   resolve_with_admission,
   validate_module_roots
 }
@@ -154,7 +155,7 @@ fn admit_import_missing_module_is_rejected() -> Bool {
     state: fc_initial_admission_state(),
     subject_qn: fc_qn(seg: ^fc_subject_seg),
     order: FundamentalityUnknown,
-    active_roots: source_root_set_from_module_roots(roots: roots)
+    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
   ) {
     AdmissionAccepted { bindings: _, origins: _ } => false
     AdmissionRejected { diagnostics: _ } => true

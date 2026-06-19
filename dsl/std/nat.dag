@@ -1,7 +1,6 @@
 // std/nat.dag -- Natural numbers (ℕ) as semiring over the abstract counting carrier.
 //
-// Layer 2 of the construction chain authored in
-// `docs/design-numeric-construction.md`:
+// Layer 2 of the construction chain:
 //
 //   Magnitude → Nat → Int → Rational → Real
 //
