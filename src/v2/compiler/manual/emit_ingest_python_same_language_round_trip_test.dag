@@ -243,7 +243,7 @@ fn python_same_language_source_emit_round_trip_holds() -> Bool {
         target_model: python_mvp1_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>
-          source == python_mvp1_source_text
+          source.carried == python_mvp1_source_text
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

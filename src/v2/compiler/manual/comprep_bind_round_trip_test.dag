@@ -4,7 +4,7 @@ module v2.test.manual.comprep_bind_round_trip
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate {
   coerce_grounded_node,
   grammar_inverse_source_validated,
@@ -162,11 +162,11 @@ data comprep_bind_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn comprep_bind_emit_accepts() -> Outcome<TargetSource> {
+fn comprep_bind_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: comprep_bind_inferred_tree, target: comprep_bind_target_model)
 }
 
-data comprep_bind_emit_receipt: Outcome<TargetSource> = comprep_bind_emit_accepts()
+data comprep_bind_emit_receipt: Outcome<Medium<String>> = comprep_bind_emit_accepts()
 
 fn comprep_bind_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {

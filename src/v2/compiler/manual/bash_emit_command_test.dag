@@ -14,7 +14,7 @@ module v2.test.manual.bash_emit_command
 import v2.compiler.emit { emit }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.extdeps.languages.bash {
   bash_mvp1_emitted_command,
@@ -82,11 +82,11 @@ data bash_emit_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_bash_emit_accepts() -> Outcome<TargetSource> {
+fn anchor_bash_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: bash_emit_inferred_tree, target: bash_mvp1_target_model())
 }
 
-data bash_emit_receipt: Outcome<TargetSource> = anchor_bash_emit_accepts()
+data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
 
 // Keystone — emit(intent, Bash) must produce the canonical single-quoted command source
 // (`'git' 'rev-parse' '--show-toplevel'`). Discriminating: any quoting/word/layout drift in the lex
@@ -94,7 +94,7 @@ data bash_emit_receipt: Outcome<TargetSource> = anchor_bash_emit_accepts()
 test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source == bash_mvp1_source_text) && (d == None)
+      (source.carried == bash_mvp1_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -116,14 +116,14 @@ data bash_missing_rules_target: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<TargetSource> {
+fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: bash_missing_rules_target,
     emitted: bash_mvp1_emitted_command
   )
 }
 
-data bash_serialize_reject_receipt: Outcome<TargetSource> = anchor_bash_serialize_rejects_missing_rules()
+data bash_serialize_reject_receipt: Outcome<Medium<String>> = anchor_bash_serialize_rejects_missing_rules()
 
 test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   match bash_serialize_reject_receipt {
@@ -139,18 +139,18 @@ data bash_bound_words_emit_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_bash_bound_words_emit() -> Outcome<TargetSource> {
+fn anchor_bash_bound_words_emit() -> Outcome<Medium<String>> {
   emit(tree: bash_bound_words_emit_inferred_tree, target: bash_bound_words_target_model())
 }
 
-data bash_bound_words_emit_receipt: Outcome<TargetSource> = anchor_bash_bound_words_emit()
+data bash_bound_words_emit_receipt: Outcome<Medium<String>> = anchor_bash_bound_words_emit()
 
 // Slice 2 keystone — VarRef double-quoted + Lit single-quoted via emit-time transforms.
 // Byte-identical to serialize_bash(command([var_ref("ROOT"), lit("ROOT")])) => "$ROOT" 'ROOT'
 test fn bash_emit_bound_words_holds() -> Bool {
   match bash_bound_words_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source == bash_bound_words_source_text) && (d == None)
+      (source.carried == bash_bound_words_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -162,17 +162,17 @@ data bash_embedded_quote_emit_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_bash_embedded_quote_emit() -> Outcome<TargetSource> {
+fn anchor_bash_embedded_quote_emit() -> Outcome<Medium<String>> {
   emit(tree: bash_embedded_quote_emit_inferred_tree, target: bash_embedded_quote_target_model())
 }
 
-data bash_embedded_quote_emit_receipt: Outcome<TargetSource> = anchor_bash_embedded_quote_emit()
+data bash_embedded_quote_emit_receipt: Outcome<Medium<String>> = anchor_bash_embedded_quote_emit()
 
 // Discriminating — embedded `'` in a bound lit must use the canonical POSIX '\'' escape.
 test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source == bash_embedded_quote_source_text) && (d == None)
+      (source.carried == bash_embedded_quote_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -184,14 +184,14 @@ data bash_source_root_ingest_gate_emit_inferred_tree: InferredTree = InferredTre
   }
 }
 
-fn anchor_bash_source_root_ingest_gate_emit() -> Outcome<TargetSource> {
+fn anchor_bash_source_root_ingest_gate_emit() -> Outcome<Medium<String>> {
   emit(
     tree: bash_source_root_ingest_gate_emit_inferred_tree,
     target: bash_source_root_ingest_gate_target_model()
   )
 }
 
-data bash_source_root_ingest_gate_emit_receipt: Outcome<TargetSource> = anchor_bash_source_root_ingest_gate_emit()
+data bash_source_root_ingest_gate_emit_receipt: Outcome<Medium<String>> = anchor_bash_source_root_ingest_gate_emit()
 
 // Slice 3 keystone — first live transport command via row-driven bash emit.
 // Byte-identical to serialize_bash(command([lit("bash"), lit("scripts/source-root-ingest-gate.sh")]))
@@ -199,7 +199,7 @@ data bash_source_root_ingest_gate_emit_receipt: Outcome<TargetSource> = anchor_b
 test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
   match bash_source_root_ingest_gate_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source == bash_source_root_ingest_gate_source_text) && (d == None)
+      (source.carried == bash_source_root_ingest_gate_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -214,7 +214,7 @@ fn bash_emit_slice4_holds(
     facts: Map { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: d } => (source == source_text) && (d == None)
+    Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

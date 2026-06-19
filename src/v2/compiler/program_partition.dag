@@ -12,7 +12,7 @@ import v2.compiler.infer {
   admitted_inferred_facts_entry,
   facts_map_from_entries
 }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Medium }
 import v2.compiler.translate {
   serialize_concrete_syntax_tokens_to_source,
   translate_project_transform_in_arrow_scope
@@ -307,7 +307,7 @@ fn partition_segment_is_ambient_arrow_body_behavior(
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   bind_outcome(
     o: target_project_arrow_body_to_value_expression(
       arrow: partition.ambient.root,
@@ -342,7 +342,7 @@ fn emit_partition_arrow_body_behavior_source(
 fn emit_partition(
   partition: ProgramPartition,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
@@ -368,7 +368,7 @@ fn emit_for_target(
   segment: ProgramSegment,
   target: TargetModel,
   boundary: PartitionBoundaryPolicy
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   bind_outcome(
     o: resolve_program_partition(
       program: program,

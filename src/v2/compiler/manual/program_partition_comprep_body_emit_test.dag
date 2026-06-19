@@ -125,7 +125,7 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
                   (body_d == None)
                     && (whole_d == None)
                     && (body_source != whole_source)
-                    && (whole_source == ts_mvp1_source_text)
+                    && (whole_source.carried == ts_mvp1_source_text)
                 Rejected { diagnostics: _ } => false
               }
             Rejected { diagnostics: _ } => false
@@ -152,7 +152,7 @@ test fn program_partition_whole_program_emit_matches_direct() -> Bool {
               (direct_d == None)
                 && (partition_d == None)
                 && (direct_source == partition_source)
-                && (direct_source == ts_mvp1_source_text)
+                && (direct_source.carried == ts_mvp1_source_text)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false

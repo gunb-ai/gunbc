@@ -9,7 +9,7 @@ module v2.test.manual.comprep_add_body_emit_python
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.python {
   python_mvp1_emitted_add_fn_node,
@@ -65,7 +65,7 @@ fn comprep_python_add_emit_perturbed_target_model() -> TargetModel {
   }
 }
 
-fn comprep_python_add_emit_from_tree(target: TargetModel) -> Outcome<TargetSource> {
+fn comprep_python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
   emit(tree: mvp1_python_inferred_tree, target: target)
 }
 
@@ -94,7 +94,7 @@ fn comprep_python_add_emit_perturbed_spellings_discriminates() -> Bool {
       ) {
         Accepted { value: perturbed, diagnostics: dp } =>
           (perturbed != canonical)
-            && (perturbed == comprep_python_add_emit_perturbed_source_text)
+            && (perturbed.carried == comprep_python_add_emit_perturbed_source_text)
             && (dc == None)
             && (dp == None)
         Rejected { diagnostics: _ } => false

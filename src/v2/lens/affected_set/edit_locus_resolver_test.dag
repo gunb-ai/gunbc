@@ -2,6 +2,7 @@
 
 module v2.test.lens_affected_set.edit_locus_resolver
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.lens.edit_locus {
   EditLocusBinding,
   EditLocusRead,
@@ -14,8 +15,7 @@ import v2.lens.edit_locus {
 }
 import v2.extdeps.languages.dag { dag_mvp1_source_text }
 import v2.compiler.source_authority {
-  DagSource,
-  DagSourceReadWitness,
+    DagSourceReadWitness,
   source_ir_artifact_provenance,
   source_ir_node_artifact_provenance_mvp1
 }
@@ -49,10 +49,9 @@ data edit_locus_path_src_v4_affected_set: RepoPath = "src/v2/lens/affected_set.d
 data edit_locus_path_source_producer_fixture: RepoPath = "src/v2/lens/affected_set/source_producer_fixture.dag"
 data edit_locus_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
-data edit_locus_source_producer_fixture_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
-data edit_locus_source_producer_mvp1_fixture_source: DagSource = dag_mvp1_source_text
-data edit_locus_source_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + "
-
+data edit_locus_source_producer_fixture_source: Medium<String> = Medium { carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data edit_locus_source_producer_mvp1_fixture_source: Medium<String> = Medium { carried: dag_mvp1_source_text, fidelity: Lossless }
+data edit_locus_source_producer_malformed_source: Medium<String> = Medium { carried: "fn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
 data edit_locus_source_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^edit_locus_source_producer_fixture_artifact,
