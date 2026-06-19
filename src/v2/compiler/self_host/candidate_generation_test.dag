@@ -170,7 +170,7 @@ fn translate_error_profile_sg2_projected_arrow_serialize_known() -> Bool {
     target: sg2_type_expr_target,
     emitted: sg2_project_arrow_emitted()
   ) {
-    Accepted { value: source, diagnostics: _ } => source == sg2_expected_arrow_text
+    Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_arrow_text
     Rejected { diagnostics: _ } => false
   }
 }
@@ -180,7 +180,7 @@ fn translate_error_profile_sg2_projected_conj_serialize_known() -> Bool {
     target: sg2_type_expr_target,
     emitted: sg2_project_conj_emitted()
   ) {
-    Accepted { value: source, diagnostics: _ } => source == sg2_expected_conj_text
+    Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_conj_text
     Rejected { diagnostics: _ } => false
   }
 }

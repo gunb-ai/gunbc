@@ -250,7 +250,7 @@ fn inhabitant_neutralization_python_to_ts_cross_language_compile_e2e_holds() -> 
         source_model: python_mvp1_target_model(),
         target_model: ts_mvp1_target_model()
       ) {
-        Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
+        Accepted { value: source, diagnostics: _ } => source.carried == ts_mvp1_source_text
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -271,7 +271,7 @@ fn inhabitant_neutralization_python_to_go_cross_language_compile_e2e_holds() -> 
         source_model: python_mvp1_target_model(),
         target_model: go_mvp1_target_model()
       ) {
-        Accepted { value: source, diagnostics: _ } => source == go_mvp1_source_text
+        Accepted { value: source, diagnostics: _ } => source.carried == go_mvp1_source_text
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -287,7 +287,7 @@ fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
         source_model: python_mvp1_target_model(),
         target_model: ts_mvp1_target_model()
       ) {
-        Accepted { value: source, diagnostics: _ } => source == ts_mvp1_source_text
+        Accepted { value: source, diagnostics: _ } => source.carried == ts_mvp1_source_text
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
