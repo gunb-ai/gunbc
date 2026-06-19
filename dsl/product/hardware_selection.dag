@@ -50,7 +50,7 @@ import std.measure {
 }
 import product.compute_fabric { Bandwidth }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width }
+import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width, JedecDdrGenerationCatalogRow }
 import std.pareto {
   AxisComparison,
   DominanceVerdict,
@@ -155,6 +155,10 @@ fn min_int(a: Int, b: Int) -> Int {
 // buffering) — std.memory.types authority. The config adds the population choice (DPC).
 type MemoryConfig {
   module: DramModuleCatalogRow
+  // jedec — the cited JEDEC generation row for module.generation (extdeps/memory/jedec
+  // authority). Carried on the config so product/ stays extdeps-free (DESIGN §3 layering);
+  // callers wire jedec_ddr_generation_catalog_row(module.generation) at the deployment edge.
+  jedec: JedecDdrGenerationCatalogRow
   dimms_per_channel: Int
   // 🟡 CALIBRATE(dram-power-coefficient) — power drawn per DRAM device at this data rate, the
   // SECOND live-confirm point. Carried as `Milliwatt` (Power dimension at milli scale) not a
@@ -334,10 +338,11 @@ fn config_axes(cfg: SystemConfig) -> HardwareAxes {
 }
 
 // A config is REALIZABLE iff its DIMM is a part that can physically exist (std.memory owns the
-// DDR4 die-density physics; this is the selection-time filter, fail-closed like
-// psu_is_adequate — a non-existent SKU must never reach the Pareto front, §5).
+// die-density physics; jedec carries the per-generation ceiling from extdeps/memory/jedec;
+// this is the selection-time filter, fail-closed like psu_is_adequate — a non-existent SKU
+// must never reach the Pareto front, §5).
 fn config_is_realizable(cfg: SystemConfig) -> Bool {
-  dram_module_is_realizable(module: cfg.memory.module)
+  dram_module_is_realizable(module: cfg.memory.module, jedec: cfg.memory.jedec)
 }
 
 // === Dominance: the ONE kernel, applied =================================

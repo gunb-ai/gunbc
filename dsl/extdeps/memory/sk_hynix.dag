@@ -12,7 +12,7 @@
 module extdeps.memory.sk_hynix
 
 import std.measure { ByteSize, byte_size, bit_width }
-import std.memory.types { DramModuleCatalogRow }
+import std.memory.types { DramModuleCatalogRow, Ddr4 }
 
 // 16 GiB per stick (1×16GB, 2Gx72). The "PC4-21300" / "PC4-2666V" JEDEC class is
 // data_rate_mts (2666) × 8 bytes rounded to the label — derivable, so not stored.
@@ -29,6 +29,7 @@ data stick_capacity_bytes: ByteSize = byte_size(17179869184)
 data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
   manufacturer: SkHynix,
+  generation: Ddr4,
   capacity_bytes: stick_capacity_bytes,
   data_rate_mts: 2666,
   ecc: true,

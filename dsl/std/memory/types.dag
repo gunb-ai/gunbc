@@ -7,6 +7,27 @@ import std.types { Bool, Int, NonEmptyStr }
 
 type DramManufacturer = SkHynix | Samsung | Micron
 
+// DdrGeneration — the JEDEC SDRAM generation axis (DDR4, DDR5, …). A closed enum, not a
+// stringly "DDR4" label or bare Int: each generation carries distinct protocol/electrical
+// properties and a per-generation monolithic die-density ceiling (cited rows in
+// extdeps/memory/jedec). The generation is a categorical axis on every catalog row so
+// realizability, downclock tables, and data-rate semantics key on it without re-parsing
+// the part-number speed class.
+type DdrGeneration = Ddr4 | Ddr5
+
+// JedecDdrGenerationCatalogRow — the cited JEDEC standard row for one SDRAM generation.
+// std/memory owns the SHAPE; the per-generation ceilings and standard ids live in
+// extdeps/memory/jedec (DESIGN §3: single authority — the spec is external, not re-coined).
+type JedecDdrGenerationCatalogRow {
+  generation: DdrGeneration
+  // max_monolithic_die_density — largest per-die DATA capacity a single monolithic DRAM device
+  // can have under this generation's JEDEC standard (bytes — the module taxonomy's native
+  // unit; datasheets quote density in bits but capacity_bytes and this ceiling are both bytes).
+  max_monolithic_die_density: ByteSize
+  // jedec_standard — the cited JEDEC document id (e.g. JESD79-4 for DDR4 SDRAM).
+  jedec_standard: NonEmptyStr
+}
+
 // DimmBuffering — the command/address path between the host and the DRAM devices.
 // Unbuffered (UDIMM) drives the DRAM directly; Registered (RDIMM) buffers the
 // command/address lines through a register; Load-Reduced (LRDIMM) additionally
@@ -31,6 +52,8 @@ type DimmBuffering = Unbuffered | Registered | LoadReduced
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: DramManufacturer
+  // generation — the JEDEC SDRAM generation this module conforms to (DDR4, DDR5, …).
+  generation: DdrGeneration
   // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
   // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in std.memory with
   // a +/- claim — then capacity = die_density × (64 / bit_width_count(chip_width)) ×
@@ -101,10 +124,8 @@ fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
 // std.measure ByteSize carrier — NOT bits. Datasheets quote die DENSITY in bits (a "16 Gibit
 // die"), but capacity_bytes is already bytes, so the per-die figure in bytes needs NO byte↔bit
 // conversion: per-die bytes = capacity_bytes / (data chips × rank), directly — the inline ×8 a
-// bit-denominated density would carry is gone. The DDR4 monolithic ceiling 16 Gibit = 2 GiB =
-// 2_147_483_648 bytes. Anchor: JEDEC DDR4 (JESD79-4) device densities 2/4/8/16 Gbit; 32Gbit is
-// DDR5-era. 🟡 raise for DDR5 (up to 64Gbit = 8 GiB) when a generation axis lands — DDR4 today.
-data max_dram_die_density: ByteSize = byte_size(count: 2147483648)
+// bit-denominated density would carry is gone. The per-generation monolithic ceiling is cited in
+// extdeps/memory/jedec (JESD79-4 DDR4 → 16 Gbit = 2 GiB; JESD79-5 DDR5 → 64 Gbit = 8 GiB).
 
 // Per-die data capacity implied by the marketed capacity: total data bytes spread across the
 // part's data dies (data chips per rank × ranks). In bytes — both sides already bytes, no ×8.
@@ -112,11 +133,17 @@ fn dram_module_required_die_density(module: DramModuleCatalogRow) -> ByteSize {
   byte_size(count: byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
 }
 
-// A module is realizable iff its implied per-die capacity fits the monolithic ceiling. Used by
-// selection-time candidate filtering (product.hardware_selection) so a Pareto front can never
-// contain a physically non-existent part.
-fn dram_module_is_realizable(module: DramModuleCatalogRow) -> Bool {
-  byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: max_dram_die_density)
+// A module is realizable iff (a) its generation matches the cited JEDEC row and (b) its implied
+// per-die capacity fits that generation's monolithic ceiling. Used by selection-time candidate
+// filtering (product.hardware_selection) so a Pareto front can never contain a physically
+// non-existent part. Fail-closed on generation mismatch (§5): a DDR4 module scored against a
+// DDR5 ceiling would silently pass impossible SKUs.
+fn dram_module_is_realizable(module: DramModuleCatalogRow, jedec: JedecDdrGenerationCatalogRow) -> Bool {
+  if module.generation != jedec.generation {
+    false
+  } else {
+    byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: jedec.max_monolithic_die_density)
+  }
 }
 
 type MemoryPopulationRow {
