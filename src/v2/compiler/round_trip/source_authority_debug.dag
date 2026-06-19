@@ -1,0 +1,96 @@
+module v2.test.round_trip.source_authority_debug
+
+import v2.compiler.emit { emit }
+import v2.compiler.ingest {
+  cross_language_compile,
+  parse_tree_to_emitted_node,
+  parse_tree_to_target_model_bridge
+}
+import v2.compiler.infer { infer }
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production_tree
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_grammar_production_mvp1_fn_add,
+  dag_language_model_wave1,
+  dag_mvp1_source_text,
+  dag_mvp1_target_model
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v2.std.grammar { GrammarRoot, ParseTree, grammar_empty_sync_tokens }
+import v2.std.logic { Bool }
+
+fn parse_add_tree() -> Outcome<ParseTree> {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: dag_mvp1_source_text, file: ^debug_add_source, rules: lm.lex) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      let root = GrammarRoot {
+        start: ^dag_production_mvp1_fn_add,
+        productions: [dag_grammar_production_mvp1_fn_add()],
+        sync_tokens: grammar_empty_sync_tokens()
+      }
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
+        Accepted { value: validated, diagnostics: _ } =>
+          parse_production_tree(
+            tokens: token_stream.tokens,
+            validated: validated,
+            production_name: ^dag_production_mvp1_fn_add
+          )
+        Rejected { diagnostics: _ } => Rejected { diagnostics: None }
+      }
+    Rejected { diagnostics: _ } => Rejected { diagnostics: None }
+  }
+}
+
+fn debug_add_bridge_accepts() -> Bool {
+  match parse_add_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_target_model_bridge(
+        parse_tree: tree,
+        source_model: dag_mvp1_target_model()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_add_emit_from_emitted_accepts() -> Bool {
+  let target = dag_mvp1_target_model()
+  match parse_add_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_emitted_node(parse_tree: tree, source_model: target) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match infer(tree: emitted) {
+            Accepted { value: inferred, diagnostics: _ } =>
+              match emit(tree: inferred, target: target) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_add_emit_byte_identical() -> Bool {
+  let target = dag_mvp1_target_model()
+  match parse_add_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cross_language_compile(
+        parse_tree: tree,
+        source_model: target,
+        target_model: target
+      ) {
+        Accepted { value: source, diagnostics: _ } =>
+          source.carried == dag_mvp1_source_text
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
