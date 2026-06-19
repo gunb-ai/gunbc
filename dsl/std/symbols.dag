@@ -23,8 +23,9 @@ type SemanticColor = Default | Success | Warning | Error | Info | Dim | Active |
 
 // --- Encoding tier ---
 //
-// Ordered from richest to most compatible:
-//   Emoji > Unicode > Ascii
+// Project interface: ordered richness (Emoji > Unicode > Ascii).
+// Not an external authority — tier dispatch contract lives in std; cited
+// repertoire per tier is anchored in extdeps/render/glyphs.dag.
 
 type Tier = Emoji | Unicode | Ascii
 

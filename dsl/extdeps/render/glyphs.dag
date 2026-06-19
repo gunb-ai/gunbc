@@ -1,5 +1,8 @@
 // extdeps/render/glyphs.dag — Glyph realization table + encoding-tier dispatch.
 //
+// Anchor: https://www.unicode.org/versions/latest/
+//   Repertoire cited: U+2500 Box Drawing, U+2800 Braille Patterns; emoji tier per UTS #51.
+//
 // Project visual vocabulary: three-tier encodings (Emoji / Unicode / Ascii) per
 // SymbolId. Dispatch lives in extdeps/, not std/ (DESIGN.md §3): std.symbols
 // owns only the agnostic glyph identity and SymbolEntry shape.
