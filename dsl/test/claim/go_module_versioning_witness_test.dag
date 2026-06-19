@@ -14,6 +14,7 @@ module test.claim.go_module_versioning_witness
 
 import std.logic { Bool }
 import std.types { Int, List }
+import std.algebra { Ordering, Less, Equal, Greater }
 import extdeps.languages.go.emit { go_manifest_file }
 import extdeps.languages.go.module {
   GoMvsProperty,
@@ -23,6 +24,9 @@ import extdeps.languages.go.module {
   MajorV2Plus,
   go_major_suffix_str,
   go_semver_label,
+  go_semver_to_version_identity,
+  go_semver_compare,
+  go_module_version_scheme,
   go_mvs_properties
 }
 
@@ -121,6 +125,64 @@ fn w_go_mvs_has_three_properties() -> Bool {
   mvs_property_count(ps: go_mvs_properties) == 3
 }
 
+// -- go_semver_to_version_identity ----------------------------------------
+// Projects GoSemVer to opaque VersionIdentity; label must match go_semver_label.
+
+fn w_go_semver_to_version_identity() -> Bool {
+  go_semver_to_version_identity(v: GoSemVer {
+    major: 1, minor: 2, patch: 3, prerelease: none, build: none
+  }) == "v1.2.3"
+}
+
+// -- go_semver_compare --------------------------------------------------------
+// Structural ordering over GoSemVer atoms (go.dev/ref/mod#versions).
+// Uses call-result as match subject (avoids record-constructor parse ambiguity).
+
+fn w_go_semver_compare_major_less() -> Bool {
+  match go_semver_compare(
+    a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
+    b: GoSemVer { major: 2, minor: 0, patch: 0, prerelease: none, build: none }
+  ) {
+    Less => true
+    Equal => false
+    Greater => false
+  }
+}
+
+fn w_go_semver_compare_patch_greater() -> Bool {
+  match go_semver_compare(
+    a: GoSemVer { major: 1, minor: 0, patch: 5, prerelease: none, build: none },
+    b: GoSemVer { major: 1, minor: 0, patch: 2, prerelease: none, build: none }
+  ) {
+    Less => false
+    Equal => false
+    Greater => true
+  }
+}
+
+fn w_go_semver_compare_equal() -> Bool {
+  match go_semver_compare(
+    a: GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none },
+    b: GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none }
+  ) {
+    Less => false
+    Equal => true
+    Greater => false
+  }
+}
+
+// no-prerelease > same-version-with-prerelease (semver.org §11)
+fn w_go_semver_compare_no_pre_beats_pre() -> Bool {
+  match go_semver_compare(
+    a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
+    b: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: Present { value: "alpha.1" }, build: none }
+  ) {
+    Less => false
+    Equal => false
+    Greater => true
+  }
+}
+
 test fn go_module_versioning_witnesses() -> Bool {
   w_go_manifest_file()
     && w_major_v0_or_v1_suffix_is_empty()
@@ -134,4 +196,9 @@ test fn go_module_versioning_witnesses() -> Bool {
     && w_semver_prerelease_and_build_label()
     && w_semver_labels_distinct()
     && w_go_mvs_has_three_properties()
+    && w_go_semver_to_version_identity()
+    && w_go_semver_compare_major_less()
+    && w_go_semver_compare_patch_greater()
+    && w_go_semver_compare_equal()
+    && w_go_semver_compare_no_pre_beats_pre()
 }
