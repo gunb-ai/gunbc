@@ -5,11 +5,13 @@
 // LayerPrefix ordinals + TreeFundamentalityOrder (fail-closed, no ledger).
 //
 // GENERIC: all admission directions are explicit data — NOT hard-wired to dsl→v2.
-// The open operator question (DESIGN.md §3 open thread):
-//   - Is dsl→v2.std.* admissible? Supply order: MoreFundamental or CoFundamental for (DslTree, V2Tree).
-//   - Is v2→dsl (ci_floor_plan→gunbc.ci_spec) admissible? Supply order: MoreFundamental for (V2Tree, DslTree).
-//   - Are they peers converging to one shared std? Supply CoFundamental.
-// FundamentalityUnknown is the fail-closed default: any undecided direction is denied.
+// The open operator question (DESIGN.md §3 open thread) — RESOLVED spike adhoc-0dd96c93-6a8:
+//   Strategy: ByModuleResolve (v2.std.cross_tree.policy) — qualified module paths stay
+//   distinct (`std.*` vs `v2.std.*`); unify-trees is the fact_cardinality ratchet target.
+//   Activation order: MoreFundamental (not CoFundamental while diverged forks remain).
+//   - dsl→v2.std.* : MoreFundamental admits when V2Tree is the import target.
+//   - v2→dsl (ci_floor_plan→gunbc.ci_spec) : MoreFundamental admits when DslTree is target.
+// FundamentalityUnknown remains fail-closed default for QN-prefix fallback paths.
 //
 // SCAFFOLD — feature:route-c-cross-tree-import-model
 // bind node://adhoc-10a4dbed-059

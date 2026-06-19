@@ -2779,6 +2779,7 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
 mod manifest_emit_tests {
     use super::{
         dag_embedded_dag_source_escape, dag_manifest_scalar_escape, emit_qualified_name_dag,
+        source_root_ref_for_file_path,
     };
 
     #[test]
@@ -2808,6 +2809,19 @@ mod manifest_emit_tests {
             dag_embedded_dag_source_escape("match x { A => 1 }"),
             "match x \\{ A => 1 \\}"
         );
+    }
+
+    #[test]
+    fn source_root_ref_infers_v2_and_dsl_from_workspace_relative_path() {
+        assert_eq!(
+            source_root_ref_for_file_path("src/v2/compiler/foo.dag").unwrap(),
+            "V2Tree"
+        );
+        assert_eq!(
+            source_root_ref_for_file_path("dsl/std/bar.dag").unwrap(),
+            "DslTree"
+        );
+        assert!(source_root_ref_for_file_path("extdeps/shell/shell.dag").is_err());
     }
 }
 
@@ -2901,11 +2915,12 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
+        let source_root = source_root_ref_for_file_path(&rel_forward)?.to_string();
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: content,
-            source_root: source_root_ref_for_file_path(&rel_forward)?.to_string(),
+            source_root,
         });
     }
 
@@ -2945,11 +2960,12 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
+        let source_root = source_root_ref_for_file_path(&rel_forward)?.to_string();
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
-            source_root: source_root_ref_for_file_path(&rel_forward)?.to_string(),
+            source_root,
         });
     }
 
