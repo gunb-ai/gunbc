@@ -77,6 +77,10 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
         if path.is_dir() {
             collect_dag_files(&path, files);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules.
+            if path.to_string_lossy().contains("/tests/") {
+                continue;
+            }
             files.push(path);
         }
     }
