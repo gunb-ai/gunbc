@@ -53,12 +53,18 @@ type Pep440LocalSegment
   | Pep440LocalLexicographic { label: NonEmptyStr }
 
 // Decomposed public version identifier. `epoch` is the implicit-0 epoch when
-// omitted on the wire. `release_segments` is the N(.N)* segment (MUST be
-// non-empty for well-formed published versions). Optional suffix segments model the PEP 440
-// ordering chain: pre-release, post-release, developmental release.
+// omitted on the wire. `release_segments` is the N(.N)* segment — structurally
+// non-empty via `first` + `rest` (PEP 440 requires ≥1 release integer).
+// Optional suffix segments model the PEP 440 ordering chain: pre-release,
+// post-release, developmental release.
+type Pep440ReleaseSegments {
+  first: NonNegativeInt
+  rest: List<NonNegativeInt>
+}
+
 type Pep440PublicVersion {
   epoch: NonNegativeInt
-  release_segments: List<NonNegativeInt>
+  release_segments: Pep440ReleaseSegments
   pre_release: Pep440PreRelease?
   post_release: NonNegativeInt?
   dev_release: NonNegativeInt?
@@ -111,8 +117,13 @@ fn pep440_pre_release_label(pre: Pep440PreRelease) -> String {
   )
 }
 
-fn pep440_release_segment_label(release_segments: List<NonNegativeInt>) -> String {
-  release_segments |> map(n => "{n}") |> join(separator: ".")
+fn pep440_release_segments_label(segments: Pep440ReleaseSegments) -> String {
+  let head = "{segments.first}"
+  if segments.rest.length() == 0 {
+    head
+  } else {
+    concat(head, concat(".", segments.rest |> map(n => "{n}") |> join(separator: ".")))
+  }
 }
 
 fn pep440_epoch_prefix(epoch: NonNegativeInt) -> String {
@@ -122,7 +133,7 @@ fn pep440_epoch_prefix(epoch: NonNegativeInt) -> String {
 fn pep440_public_version_label(v: Pep440PublicVersion) -> String {
   let base = concat(
     pep440_epoch_prefix(epoch: v.epoch),
-    pep440_release_segment_label(release_segments: v.release_segments)
+    pep440_release_segments_label(segments: v.release_segments)
   )
   let with_pre = match v.pre_release {
     Present { value: pre } => concat(base, pep440_pre_release_label(pre: pre))
@@ -181,26 +192,4 @@ fn pep440_version_clause_label(clause: Pep440VersionClause) -> String {
 
 fn pep440_version_specifier_label(spec: Pep440VersionSpecifier) -> String {
   spec |> map(clause => pep440_version_clause_label(clause: clause)) |> join(separator: ", ")
-}
-
-// -- Constructors (witness / fixture ergonomics) ---------------------
-
-fn pep440_public(
-  epoch: NonNegativeInt,
-  release_segments: List<NonNegativeInt>,
-  pre_release: Pep440PreRelease?,
-  post_release: NonNegativeInt?,
-  dev_release: NonNegativeInt?
-) -> Pep440PublicVersion {
-  Pep440PublicVersion {
-    epoch: epoch,
-    release_segments: release_segments,
-    pre_release: pre_release,
-    post_release: post_release,
-    dev_release: dev_release
-  }
-}
-
-fn pep440_version(public: Pep440PublicVersion, local: List<Pep440LocalSegment>) -> Pep440Version {
-  Pep440Version { public: public, local: local }
 }

@@ -12,99 +12,112 @@ module test.claim.python_pep440_version_witness
 import extdeps.languages.python.version {
   Pep440Alpha,
   Pep440PreRelease,
+  Pep440PublicVersion,
+  Pep440Version,
   Pep440LocalLexicographic,
   Pep440LocalNumeric,
   Pep440CompatibleRelease,
   Pep440InclusiveAtLeast,
-  pep440_public,
-  pep440_version,
+  Pep440ReleaseSegments,
   pep440_version_specifier_label,
   pep440_version_label,
   pep440_spec_url,
   pep440_spec_label
 }
 
+fn release_1_0() -> Pep440ReleaseSegments {
+  Pep440ReleaseSegments { first: 1, rest: [0] }
+}
+
+fn release_2_0() -> Pep440ReleaseSegments {
+  Pep440ReleaseSegments { first: 2, rest: [0] }
+}
+
+fn release_2_2() -> Pep440ReleaseSegments {
+  Pep440ReleaseSegments { first: 2, rest: [2] }
+}
+
 fn v_final_1_0() -> Pep440Version {
-  pep440_version(
-    public: pep440_public(
+  Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 0,
-      release_segments: [1, 0],
+      release_segments: release_1_0(),
       pre_release: none,
       post_release: none,
       dev_release: none
-    ),
+    },
     local: []
-  )
+  }
 }
 
 fn v_alpha_1_0a1() -> Pep440Version {
-  pep440_version(
-    public: pep440_public(
+  Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 0,
-      release_segments: [1, 0],
+      release_segments: release_1_0(),
       pre_release: Present {
         value: Pep440PreRelease { phase: Pep440Alpha, number: 1 }
       },
       post_release: none,
       dev_release: none
-    ),
+    },
     local: []
-  )
+  }
 }
 
 fn v_epoch_1_2_0() -> Pep440Version {
-  pep440_version(
-    public: pep440_public(
+  Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 1,
-      release_segments: [2, 0],
+      release_segments: release_2_0(),
       pre_release: none,
       post_release: none,
       dev_release: none
-    ),
+    },
     local: []
-  )
+  }
 }
 
 fn v_post_1_0_post1() -> Pep440Version {
-  pep440_version(
-    public: pep440_public(
+  Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 0,
-      release_segments: [1, 0],
+      release_segments: release_1_0(),
       pre_release: none,
       post_release: Present { value: 1 },
       dev_release: none
-    ),
+    },
     local: []
-  )
+  }
 }
 
 fn v_dev_1_0_dev456() -> Pep440Version {
-  pep440_version(
-    public: pep440_public(
+  Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 0,
-      release_segments: [1, 0],
+      release_segments: release_1_0(),
       pre_release: none,
       post_release: none,
       dev_release: Present { value: 456 }
-    ),
+    },
     local: []
-  )
+  }
 }
 
 fn v_local_1_0_abc_5() -> Pep440Version {
-  pep440_version(
-    public: pep440_public(
+  Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 0,
-      release_segments: [1, 0],
+      release_segments: release_1_0(),
       pre_release: none,
       post_release: none,
       dev_release: none
-    ),
+    },
     local: [
       Pep440LocalLexicographic { label: "abc" },
       Pep440LocalNumeric { value: 5 }
     ]
-  )
+  }
 }
 
 fn w_final_release_label() -> Bool {
@@ -140,29 +153,41 @@ fn w_version_specifier_clause_label() -> Bool {
   pep440_version_specifier_label(spec: [
     {
       op: Pep440CompatibleRelease,
-      version: pep440_public(epoch: 0, release_segments: [2, 2], pre_release: none, post_release: none, dev_release: none)
+      version: Pep440PublicVersion {
+        epoch: 0,
+        release_segments: release_2_2(),
+        pre_release: none,
+        post_release: none,
+        dev_release: none
+      }
     },
     {
       op: Pep440InclusiveAtLeast,
-      version: pep440_public(epoch: 0, release_segments: [1, 0], pre_release: none, post_release: none, dev_release: none)
+      version: Pep440PublicVersion {
+        epoch: 0,
+        release_segments: release_1_0(),
+        pre_release: none,
+        post_release: none,
+        dev_release: none
+      }
     }
   ]) == "~= 2.2, >= 1.0"
 }
 
 fn w_discriminates_pre_release_numbers() -> Bool {
   let a1 = pep440_version_label(v: v_alpha_1_0a1())
-  let a2 = pep440_version_label(v: pep440_version(
-    public: pep440_public(
+  let a2 = pep440_version_label(v: Pep440Version {
+    public: Pep440PublicVersion {
       epoch: 0,
-      release_segments: [1, 0],
+      release_segments: release_1_0(),
       pre_release: Present {
         value: Pep440PreRelease { phase: Pep440Alpha, number: 2 }
       },
       post_release: none,
       dev_release: none
-    ),
+    },
     local: []
-  ))
+  })
   a1 == "1.0a1" && a2 == "1.0a2" && a1 != a2
 }
 
