@@ -2885,7 +2885,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
             StringPart::Text { value } => result.push_str(value.as_str()),
             StringPart::Interpolation { expr } => {
                 let val = eval_expr(&expr, env, ctx)?;
-                result.push_str(&format!("{}", val));
+                result.push_str(&value_to_host_string(&val));
             }
         }
     }
@@ -3859,6 +3859,8 @@ struct ShellResult {
 
 /// Push one evaluated argv expression onto `argv`. List carriers splice
 /// element-wise; strings stay atomic (never exploded to codepoints).
+/// FreeMonoid<Char> chains whose heads are scalar char codes materialize to one
+/// host string (v2 emit → shell.Exec.Run script boundary).
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
@@ -3872,7 +3874,10 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
         Value::Variant { .. } => {
-            if let Some(items) = free_monoid_to_vec(&val) {
+            if let Some(s) = value_as_host_string(&val) {
+                argv.push(s);
+                Ok(())
+            } else if let Some(items) = free_monoid_to_vec(&val) {
                 for item in items {
                     push_shell_argv_tokens(argv, item)?;
                 }
@@ -3887,6 +3892,49 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
     }
+}
+
+// **SCAFFOLD (DESIGN.md §7)** — host string materialization at shell/REST `{param}` templates.
+//
+// Hand-Rust scaffold receipt (P5 / §7):
+// - **Deleted wrong path:** `scripts/source-root-ingest-gate.sh` (deleted on main); slice-3 gate
+//   transport now emits `TargetSource` via row-driven bash emit (`src/v2/workflow/
+//   source_root_ingest_transport.dag`) instead of the retired sidecar script.
+// - **Red-by-execution (pre-scaffold):** `format!("{}", val)` on `FreeMonoid<Char>` Cons chains at
+//   `substitute_template` / `push_shell_argv_tokens` printed Cons debug text, not script bytes —
+//   `source_root_ingest_gate_passes` went RED on the CI floor until this flatten landed.
+// - **Green witnesses:** `v2.compiler.manual.bash_emit_command_test.bash_emit_source_root_ingest_gate_holds`
+//   (emit-time byte identity) + floor-plan `source_root_ingest_gate_passes` (Wet claim-run legs).
+// - **This site:** `value_as_host_string` / `value_to_host_string` flatten FreeMonoid chains at
+//   `eval_string_interp`, `substitute_template`, and `push_shell_argv_tokens`.
+// - **Dissolve-on (ROADMAP):** `ROADMAP.md` Now → Lane 3a `SourceRootIngest` (#5126 / #5155 slice 3) —
+//   delete these helpers when `TargetSource` gains a substrate coercion to flat Unicode at the shell
+//   boundary, or transports take `ShellProgram` not raw emit output.
+
+fn value_as_host_string(val: &Value) -> Option<String> {
+    if let Value::Str(s) = val {
+        return Some(s.clone());
+    }
+    let items = free_monoid_to_vec(val)?;
+    let mut out = String::new();
+    for item in items {
+        match item {
+            Value::Int(code) => {
+                let ch = char::from_u32(code as u32)?;
+                out.push(ch);
+            }
+            Value::Str(s) => out.push_str(&s),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// Materialize a runtime value for host-side string interpolation (shell argv
+/// `{param}` templates, REST path templates). FreeMonoid<Char> / TargetSource
+/// chains flatten to Unicode text; other values use Display.
+fn value_to_host_string(val: &Value) -> String {
+    value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
 /// Execute a shell transport: evaluate argv template, run command, capture output.
@@ -4480,7 +4528,7 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
                 var_name.push(c2);
             }
             if let Some(val) = env.lookup(ctx.sym(&var_name)) {
-                result.push_str(&format!("{}", val));
+                result.push_str(&value_to_host_string(&val));
             } else {
                 // Leave unresolved placeholders as-is
                 result.push('{');

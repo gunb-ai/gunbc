@@ -122,11 +122,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-                if let Some(existing) = index.insert(module_path.clone(), rel.clone()) {
-                    panic!(
-                        "build_module_path_index: duplicate module path '{module_path}': {existing} vs {rel}"
-                    );
-                }
+                // Co-root overlay: later `source_roots` win on duplicate module paths
+                // (same last-wins policy as `build_module_index`). TRANSITIONAL (slice 3):
+                // enables v2 overlay without panic while dsl+src/v2 coexist. DISSOLUTION
+                // RESTORE (final slice): when witness_layer_roots reverts to a single root and
+                // dsl/extdeps/shell is deleted, restore fail-closed panic on duplicate module_path
+                // so an accidental name collision is loud again (§5).
+                index.insert(module_path.clone(), rel);
             }
         }
     }
@@ -2031,7 +2033,7 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
     "host_source_root_ingest_manifest.dag",
-    // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
+    // Gate-only: requires host manifest overlay (v2.workflow.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
     // Gate-only: N_v2 substrate witnesses (scripts/v2-compiler-closure-nv2-gate.sh).
     "compiler_closure_emit_from_ingest_gate.dag",
