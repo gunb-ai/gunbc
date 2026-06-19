@@ -1,0 +1,88 @@
+// Scope: spice Component → std.timeseries_signal passive topology projection (§3 dispatch).
+// Anchor: https://ngspice.sourceforge.io/docs/ngspice-manual.pdf — SPICE3 passive R/L/C
+//         element netlist lines (Resistor/Capacitor/Inductor arms) modeled in v2.extdeps.formats.spice Component.
+
+module v2.extdeps.formats.spice_passive_projection
+
+import v2.std.collection { Optional, Absent, Present }
+import v2.std.timeseries_signal {
+  CapacitorPassive,
+  GroundReference,
+  InductorPassive,
+  NodeReference,
+  PassiveComponentSpec,
+  PassiveElementTopology,
+  PassiveElementValue,
+  PotentialReference,
+  ResistorPassive,
+}
+import v2.extdeps.formats.spice {
+  Capacitor,
+  Component,
+  Ground,
+  Inductor,
+  Named,
+  NamedNode,
+  NodeRef,
+  Resistor,
+  SpiceValue,
+}
+
+fn passive_terminal_from_node_ref(node: NodeRef) -> PotentialReference {
+  match node {
+    Ground => GroundReference
+    Named { node: NamedNode { name } } => NodeReference { name: name }
+  }
+}
+
+fn passive_value_from_spice(value: SpiceValue) -> PassiveElementValue {
+  PassiveElementValue { lexeme: value.lexeme }
+}
+
+fn passive_topology_from_component(component: Component) -> Optional<PassiveElementTopology> {
+  match component {
+    Resistor { name, n_plus, n_minus, value } => Present {
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: passive_terminal_from_node_ref(node: n_plus),
+        n_minus: passive_terminal_from_node_ref(node: n_minus),
+        value: passive_value_from_spice(value: value)
+      }
+    }
+    Capacitor { name, n_plus, n_minus, value } => Present {
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: passive_terminal_from_node_ref(node: n_plus),
+        n_minus: passive_terminal_from_node_ref(node: n_minus),
+        value: passive_value_from_spice(value: value)
+      }
+    }
+    Inductor { name, n_plus, n_minus, value } => Present {
+      value: PassiveElementTopology {
+        name: name,
+        n_plus: passive_terminal_from_node_ref(node: n_plus),
+        n_minus: passive_terminal_from_node_ref(node: n_minus),
+        value: passive_value_from_spice(value: value)
+      }
+    }
+    _ => Absent
+  }
+}
+
+fn passive_spec_from_component(component: Component) -> Optional<PassiveComponentSpec> {
+  match passive_topology_from_component(component: component) {
+    Present { value: topology } => match component {
+      Resistor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: ResistorPassive { topology: topology }
+      }
+      Capacitor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: CapacitorPassive { topology: topology }
+      }
+      Inductor { name: _, n_plus: _, n_minus: _, value: _ } => Present {
+        value: InductorPassive { topology: topology }
+      }
+      _ => Absent
+    }
+    Absent => Absent
+  }
+}
