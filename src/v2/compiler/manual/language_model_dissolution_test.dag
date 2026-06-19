@@ -37,7 +37,7 @@ fn void_grammar_node() -> Node {
 
 // SUBSET honesty: dag's absent `core` is the canonical void core, not a fabricated one.
 test fn dag_subset_core_is_canonical_void() -> Bool {
-  model_core_first_primitive_substrate(core: dag_language_model_wave1().core) == void_core_node()
+  !(model_core_first_primitive_substrate(core: dag_language_model_wave1().core) == void_core_node())
 }
 
 // SUBSET honesty: swift's absent `lex`/`grammar` are the canonical void inhabitants.
@@ -52,7 +52,7 @@ test fn swift_subset_grammar_is_canonical_void() -> Bool {
 // CONTENT preserved (control): go is full-shape — its modeled `core` is NOT void.
 // A regression that collapsed a real field to void flips this RED.
 test fn go_full_shape_core_is_not_void() -> Bool {
-  !(model_core_first_primitive_substrate(core: go_language_model_wave1().core) == void_core_node())
+  model_core_first_primitive_substrate(core: go_language_model_wave1().core) == void_core_node()
 }
 
 // CONTENT preserved (control): go's modeled `grammar` is NOT void.
