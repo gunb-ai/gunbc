@@ -60,8 +60,8 @@ import v2.std.runtime {
   InterpretationAlgebra,
   InterpretationStructureWitness,
   LoopInterpreter,
-  RuntimeUnit,
-  RuntimeUnitValue,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
   ValueInterpreter
@@ -103,10 +103,16 @@ fn effect_io_eval_termination_proof() -> TerminationProof {
   }
 }
 
-fn effect_io_eval_unit_value() -> RuntimeValue {
-  RuntimeUnit {
-    value: RuntimeUnitValue {
-      unit_type: effect_io_pure_unit_type_node()
+// M5 (node://adhoc-7e32be31-47c): the effect-IO roundtrip locator is now content-addressed — it
+// keys on content_hash(runtime_value_node_projection(arg)), which fails closed on an unrepresentable
+// RuntimeUnit. So literals in this roundtrip must reify faithfully: a RuntimePrimitive (always
+// representable) replaces the former unit literal, and the write/read-back hit now exercises the
+// real value-derived key (same literal node → same eval value → same content digest).
+fn effect_io_eval_literal_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: effect_io_pure_unit_type_node(),
+      bytes: []
     }
   }
 }
@@ -129,7 +135,7 @@ data effect_io_eval_roundtrip_node: Node = effect_io_roundtrip_transform(
 )
 
 fn effect_io_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  Accepted { value: effect_io_eval_unit_value(), diagnostics: None }
+  Accepted { value: effect_io_eval_literal_value(), diagnostics: None }
 }
 
 fn effect_io_eval_reject_primitive(
@@ -247,7 +253,7 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
     context: effect_io_eval_context_bound(),
     inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Accepted { value: v, diagnostics: None } => v == effect_io_eval_unit_value()
+    Accepted { value: v, diagnostics: None } => v == effect_io_eval_literal_value()
     _ => false
   }
 }

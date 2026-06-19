@@ -4874,6 +4874,21 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     }
     return ts_result
   }
+  // `utf8_decode_bytes(payload)` — RFC 3629 decode of wire Bytes → String (fail-closed §5).
+  // REST Secret Manager AccessVersion returns decoded payload bytes; text secrets cross here.
+  if func == "utf8_decode_bytes" {
+    let decode_args = order_typed_call_args(args: args, func: func, scope: scope)
+    let decode_result = match decode_args |> first {
+      Present { value: value_arg } =>
+        concat(
+          "String::from_utf8(",
+          emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+          ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {}\", e))?"
+        )
+      Absent => "compile_error!(\"utf8_decode_bytes call missing value argument\")"
+    }
+    return decode_result
+  }
   if func == "discriminant" {
     let disc_args = order_typed_call_args(args: args, func: func, scope: scope)
     let disc_result = match disc_args |> first {

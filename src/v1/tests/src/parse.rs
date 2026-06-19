@@ -905,6 +905,7 @@ fn gist_transitive_closure_parse() {
         "dsl/extdeps/cloud/cloud.dag",
         "dsl/extdeps/cloud/gcp/errors.dag",
         "dsl/extdeps/cloud/gcp/gcp.dag",
+        "dsl/extdeps/cloud/gcp/secret_manager.dag",
         "dsl/extdeps/github/errors.dag",
         "dsl/extdeps/github/github.dag",
         "dsl/extdeps/github/auth.dag",
