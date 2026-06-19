@@ -1801,17 +1801,30 @@ pub fn verify_bool_witness_transport_projection_complete(
     Ok(())
 }
 
-fn dag_string_escape(s: &str) -> String {
-    // Brace escapes pair with v1_compiler_tokenize::process_escapes (`\{`/`\}` → literal
-    // braces). Required when embedding raw `.dag` source in manifest string literals; other
-    // call sites (witness paths, module names) are brace-free in practice.
+fn dag_string_escape_core(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
-        .replace('{', "\\{")
-        .replace('}', "\\}")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+}
+
+/// Fail-closed: manifest scalar fields (paths, names, hashes) must not contain `{`/`}`.
+fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
+    if s.contains('{') || s.contains('}') {
+        return Err(format!(
+            "manifest scalar field must be brace-free (got '{{' or '}}'): {s:?}"
+        ));
+    }
+    Ok(dag_string_escape_core(s))
+}
+
+/// Embedded raw `.dag` source in manifest string literals — brace-escape pairs with
+/// `v1_compiler_tokenize::process_escapes` (`\{`/`\}` → literal braces).
+fn dag_embedded_dag_source_escape(s: &str) -> String {
+    dag_string_escape_core(s)
+        .replace('{', "\\{")
+        .replace('}', "\\}")
 }
 
 fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
@@ -1826,24 +1839,24 @@ fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
     }
 }
 
-fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> String {
+fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> Result<String, String> {
     match initializer {
         OwnedDataDeclInitializer::BoolWitnessClaim {
             witness_entry,
             witness_function,
-        } => format!(
+        } => Ok(format!(
             "    initializer: OwnedBoolWitnessClaimInit {{\n      witness_entry: \"{}\",\n      witness_function: \"{}\"\n    }}",
-            dag_string_escape(witness_entry),
-            dag_string_escape(witness_function)
-        ),
+            dag_manifest_scalar_escape(witness_entry)?,
+            dag_manifest_scalar_escape(witness_function)?
+        )),
         OwnedDataDeclInitializer::NodeCorpus => {
-            "    initializer: OwnedNodeCorpusInit".to_string()
+            Ok("    initializer: OwnedNodeCorpusInit".to_string())
         }
-        OwnedDataDeclInitializer::Other { resolved } => format!(
+        OwnedDataDeclInitializer::Other { resolved } => Ok(format!(
             "    initializer: OwnedOtherInit {{\n      resolved: ResolvedDeclRef {{\n        module: \"{}\",\n        name: {}\n      }}\n    }}",
-            dag_string_escape(&resolved.module),
+            dag_manifest_scalar_escape(&resolved.module)?,
             manifest_symbol_for_resolved_decl(&resolved.module, &resolved.name)
-        ),
+        )),
     }
 }
 
@@ -1909,19 +1922,19 @@ pub fn emit_owned_data_manifest(
         out.push_str("  OwnedDataDeclRecord {\n");
         out.push_str(&format!(
             "    entry: \"{}\",\n",
-            dag_string_escape(&rec.entry)
+            dag_manifest_scalar_escape(&rec.entry)?
         ));
         out.push_str(&format!(
             "    module: \"{}\",\n",
-            dag_string_escape(&rec.module)
+            dag_manifest_scalar_escape(&rec.module)?
         ));
         out.push_str(&format!(
             "    decl_name: \"{}\",\n",
-            dag_string_escape(&rec.decl_name)
+            dag_manifest_scalar_escape(&rec.decl_name)?
         ));
         out.push_str(&format!(
             "{}\n",
-            emit_owned_data_initializer(&rec.initializer)
+            emit_owned_data_initializer(&rec.initializer)?
         ));
         out.push_str("  }");
     }
@@ -2413,7 +2426,9 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
 
 #[cfg(test)]
 mod manifest_emit_tests {
-    use super::emit_qualified_name_dag;
+    use super::{
+        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, emit_qualified_name_dag,
+    };
 
     #[test]
     fn emit_qualified_name_dag_three_segment_path() {
@@ -2426,6 +2441,22 @@ mod manifest_emit_tests {
     #[test]
     fn emit_qualified_name_dag_empty_is_qn_empty() {
         assert_eq!(emit_qualified_name_dag(&[]), "QnEmpty");
+    }
+
+    #[test]
+    fn manifest_scalar_escape_rejects_braces() {
+        assert!(dag_manifest_scalar_escape("src/v2/foo.dag").is_ok());
+        assert!(dag_manifest_scalar_escape("fnv1a64:abc").is_ok());
+        assert!(dag_manifest_scalar_escape("has{brace").is_err());
+        assert!(dag_manifest_scalar_escape("has}brace").is_err());
+    }
+
+    #[test]
+    fn embedded_dag_source_escape_preserves_braces_as_escapes() {
+        assert_eq!(
+            dag_embedded_dag_source_escape("match x { A => 1 }"),
+            "match x \\{ A => 1 \\}"
+        );
     }
 }
 
@@ -2573,24 +2604,26 @@ pub fn discover_source_root_reads_for_entry(
     Ok(records)
 }
 
-fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> String {
+fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
-    format!(
+    Ok(format!(
         "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
-        dag_string_escape(&rec.source),
-        dag_string_escape(&rec.file_path),
-    )
+        dag_embedded_dag_source_escape(&rec.source),
+        dag_manifest_scalar_escape(&rec.file_path)?,
+    ))
 }
 
-fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> String {
-    let mut witness_nodes: Vec<String> =
-        records.iter().map(emit_source_root_read_witness).collect();
+fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
+    let mut witness_nodes: Vec<String> = records
+        .iter()
+        .map(emit_source_root_read_witness)
+        .collect::<Result<_, _>>()?;
     let mut out = String::from("Empty");
     while let Some(head) = witness_nodes.pop() {
         out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
     }
-    out
+    Ok(out)
 }
 
 /// Emit an ephemeral importable `.dag` manifest (never committed).
@@ -2637,7 +2670,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push('\n');
     out.push_str(&format!(
         "data host_source_root_ingest_content_hash: String = \"{}\"\n\n\n",
-        dag_string_escape(&content_hash)
+        dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
@@ -2653,7 +2686,7 @@ pub fn emit_source_root_ingest_manifest(
     if inline_records.is_empty() {
         out.push_str("Empty\n");
     } else {
-        out.push_str(&emit_source_root_ingest_monoid(inline_records));
+        out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
         out.push('\n');
     }
     if let Some(admission) = entry_admission {

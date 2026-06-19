@@ -123,6 +123,10 @@ fn nv2_eval_context(manifest_dir: &Path) -> Result<InterpContext, String> {
     ))
 }
 
+fn nv2_blocked_fail(detail: String) -> ! {
+    panic!("N_v2 BLOCKED_PENDING_COMPILED_BINARY — {detail}");
+}
+
 fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, String) {
     fs::create_dir_all(out_dir.join("src")).expect("create src dir");
     fs::write(out_dir.join("src/lib.rs"), source).expect("write emitted source");
@@ -145,7 +149,7 @@ fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, 
 }
 
 #[test]
-#[ignore] // Boundary: N_v2 — v2 emit_for_target via interpreter on scoped closure + cargo check.
+#[ignore] // Boundary: N_v2 — fail-closed when run with --ignored; panics BLOCKED until substrate unblocked.
 fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     let temp = unique_temp_dir("nv2-substrate");
     fs::create_dir_all(&temp).expect("temp dir");
@@ -157,52 +161,30 @@ fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
         .count();
 
     let manifest_dir = manifest_path.parent().expect("manifest parent");
-    let ctx = match nv2_eval_context(manifest_dir) {
-        Ok(ctx) => ctx,
-        Err(msg) => {
-            eprintln!(
-                "N_v2 headline: BLOCKED_PENDING_COMPILED_BINARY — resolve failed ({module_count} modules): {msg}"
-            );
-            let _ = fs::remove_dir_all(&temp);
-            return;
-        }
-    };
+    let ctx = nv2_eval_context(manifest_dir).unwrap_or_else(|msg| {
+        nv2_blocked_fail(format!(
+            "resolve failed ({module_count} modules): {msg}"
+        ));
+    });
 
     match run_claim(&ctx, ACCEPT_FN) {
         ClaimOutcome::Pass => {}
         ClaimOutcome::Fail => {
-            eprintln!(
-                "N_v2 headline: BLOCKED_PENDING_COMPILED_BINARY — {ACCEPT_FN} returned false ({module_count} modules)"
-            );
-            let _ = fs::remove_dir_all(&temp);
-            return;
+            nv2_blocked_fail(format!(
+                "{ACCEPT_FN} returned false ({module_count} modules)"
+            ));
         }
         ClaimOutcome::NotBool { got } => {
-            eprintln!(
-                "N_v2 headline: BLOCKED_PENDING_COMPILED_BINARY — {ACCEPT_FN} returned non-Bool ({got})"
-            );
-            let _ = fs::remove_dir_all(&temp);
-            return;
+            nv2_blocked_fail(format!("{ACCEPT_FN} returned non-Bool ({got})"));
         }
         ClaimOutcome::RuntimeError { message } => {
-            eprintln!(
-                "N_v2 headline: BLOCKED_PENDING_COMPILED_BINARY — {ACCEPT_FN} runtime error: {message}"
-            );
-            let _ = fs::remove_dir_all(&temp);
-            return;
+            nv2_blocked_fail(format!("{ACCEPT_FN} runtime error: {message}"));
         }
     }
 
-    let value = match v1_interpreter::run_in_context(&ctx, EMIT_SOURCE_FN, true) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!(
-                "N_v2 headline: BLOCKED_PENDING_COMPILED_BINARY — run {EMIT_SOURCE_FN} failed: {e:?}"
-            );
-            let _ = fs::remove_dir_all(&temp);
-            return;
-        }
-    };
+    let value = v1_interpreter::run_in_context(&ctx, EMIT_SOURCE_FN, true).unwrap_or_else(|e| {
+        nv2_blocked_fail(format!("run {EMIT_SOURCE_FN} failed: {e:?}"));
+    });
     let source = decode_freemonoid_string(&value, &ctx);
     assert!(
         !source.is_empty(),

@@ -27,7 +27,6 @@ import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
-  Rejected,
   Unavailable,
   bind_outcome,
   node_locus,
