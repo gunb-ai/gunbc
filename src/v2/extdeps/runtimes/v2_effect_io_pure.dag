@@ -49,23 +49,6 @@ import v2.std.runtime {
   runtime_value_node_projection
 }
 import v2.std.witness { Holds, Violates, Witness }
-// M5 fixture-store consolidation (node://adhoc-7e32be31-47c): the in-process fixture lookup's
-// NON-HIT outcomes are consolidated onto the shared content-addressed cache kernel — a missing
-// fixture is a kernel Miss, a backend/key fault is RejectedHit{CacheRejectReason}. See the scaffold
-// note on effect_io_pure_store_lookup for why the HIT path is payload-carrying (deferred).
-import std.cache_interface {
-  CacheLookupResult,
-  Hit,
-  Miss,
-  RejectedHit,
-  CacheRejectReason,
-  SubjectDigestMismatch,
-  ContentDigestMismatch,
-  ProducerReceiptMissing,
-  BackendKeyMalformed,
-  BackendUnauthorized,
-  BackendUnavailable
-}
 
 // 🟢 coproduct dissolution — resource transport backend axis; wave-2 gate exercises
 // FileResourceBackend; Http/Storage arms are declared honest stubs until host_run receipts land.
@@ -251,63 +234,18 @@ fn effect_io_pure_backends_match(
   }
 }
 
-// Per-reason carrier for the shared std.cache_interface.CacheRejectReason — every kernel reject
-// reason gets a distinct located v2 diagnostic, so a rejected fixture lookup names WHICH kernel
-// fault fired (no stringly fallback; DESIGN.md §3/§5).
-fn effect_io_pure_reject_reason_symbol(reason: CacheRejectReason) -> Symbol {
-  match reason {
-    SubjectDigestMismatch => ^effect_io_pure_reject_subject_digest_mismatch
-    ContentDigestMismatch => ^effect_io_pure_reject_content_digest_mismatch
-    ProducerReceiptMissing => ^effect_io_pure_reject_producer_receipt_missing
-    BackendKeyMalformed => ^effect_io_pure_reject_backend_key_malformed
-    BackendUnauthorized => ^effect_io_pure_reject_backend_unauthorized
-    BackendUnavailable => ^effect_io_pure_reject_backend_unavailable
-  }
-}
-
-fn effect_io_pure_reject_reason_diagnostic(reason: CacheRejectReason) -> Diagnostic {
-  Diagnostic {
-    reason: effect_io_pure_reject_reason_symbol(reason: reason),
-    at: node_locus(node: effect_io_pure_operation_node()),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-// Maps a NON-HIT shared kernel CacheLookupResult to the v2 Outcome rejection. MissIsDiagnostic: an
-// absent fixture is a loud diagnostic, never a fabricated value (DESIGN.md §5). The Hit arm is the
-// deferred path (see the scaffold note on effect_io_pure_store_lookup): the in-process store carries
-// its RuntimeValue payload directly, so a kernel Hit never reaches this mapper — if one did it would
-// be a programming error and fails closed.
-fn effect_io_pure_lookup_result_outcome(result: CacheLookupResult<RuntimeValue>) -> Outcome<RuntimeValue> {
-  match result {
-    Miss =>
-      outcome_rejected(
-        d: Diagnostic {
-          reason: ^effect_io_pure_resource_absent,
-          at: node_locus(node: effect_io_pure_operation_node()),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    RejectedHit { reason: r } =>
-      outcome_rejected(d: effect_io_pure_reject_reason_diagnostic(reason: r))
-    Hit { receipt: _ } =>
-      outcome_rejected(d: effect_io_pure_reject_reason_diagnostic(reason: BackendUnavailable))
-  }
-}
-
-// 🟡 SCAFFOLD (node://adhoc-7e32be31-47c) — feature:effect-io-fixture-hit-through-kernel.
-// The fixture lookup's NON-HIT outcomes now dispatch through the shared content-addressed cache
-// coproduct (std.cache_interface): an absent entry is a kernel Miss, and a backend-tagged key
-// addressed to the wrong store is RejectedHit{BackendKeyMalformed} — the §3/§5 fail-closed reject
-// vocabulary the v1 RecordedFixture handler will collapse onto too. The HIT path stays
-// payload-carrying via Outcome and does NOT yet dispatch through CacheLookupResult.Hit: the kernel
-// receipt holds no value, and ArtifactIdentity.subject_digest is a stringly ContentHash
-// (= NonEmptyStr brand) that v2's properly-opaque content Hash cannot inhabit without minting a
-// Hash->String render (forbidden — it would force a grounded digest down into convention, DESIGN.md
-// §1/§3). dissolve-on-arrival: CacheLookupResult.Hit dispatches through the kernel once
-// subject_digest accepts an opaque Hash (the ContentHash=NonEmptyStr-brand vs v2 opaque-Hash §3
-// mismatch is resolved). Until then the convergence (the actual fork closure) lands FULLY via the
-// value-derived key above, not via the Hit receipt.
+// 🟡 DEFERRED (node://adhoc-7e32be31-47c) — feature:effect-io-fixture-lookup-shared-coproduct.
+// Design-doc §5 step-4 envisioned this lookup returning the shared std.cache_interface
+// CacheLookupResult / CacheRejectReason (absent → Miss, backend fault → RejectedHit). That rewire
+// is BLOCKED by a substrate limitation, NOT a modeling gap: importing the dsl-tree
+// std.cache_interface into this v2 module pulls the dsl std closure, whose constructor names
+// (Empty / Cons, …) collide with v2.std under the v1 interpreter's flat namespace, so the module
+// fails to resolve. dissolve-on-arrival: the v1 interpreter resolves cross-tree imports by module
+// (no flat-namespace collision) OR v2.std and dsl.std unify. Until then the fail-closed reject
+// vocabulary stays v2-local (the M5 fork closure lands FULLY via the value-derived key above; the
+// cited std.cache_interface rows in extdeps/realization/hermetic_fixture.dag already describe this
+// handler as ContentAddressedByValue). MissIsDiagnostic holds: an absent fixture is a loud
+// diagnostic, never a fabricated value.
 fn effect_io_pure_store_lookup(
   store: EffectIoFixtureStore,
   locator: EffectIoResourceLocator
@@ -316,16 +254,27 @@ fn effect_io_pure_store_lookup(
     match map_get(m: store.entries, key: locator.identity) {
       Accepted { value: opt, diagnostics: None } =>
         match opt {
-          // Deferred-Hit: payload carried directly (see scaffold note).
           Present { value: payload } =>
             Accepted { value: payload, diagnostics: None }
           Absent =>
-            effect_io_pure_lookup_result_outcome(result: Miss)
+            outcome_rejected(
+              d: Diagnostic {
+                reason: ^effect_io_pure_resource_absent,
+                at: node_locus(node: effect_io_pure_operation_node()),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              }
+            )
         }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
   } else {
-    effect_io_pure_lookup_result_outcome(result: RejectedHit { reason: BackendKeyMalformed })
+    outcome_rejected(
+      d: Diagnostic {
+        reason: ^effect_io_pure_backend_mismatch,
+        at: node_locus(node: effect_io_pure_operation_node()),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    )
   }
 }
 

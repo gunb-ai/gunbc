@@ -135,9 +135,10 @@ test fn effect_io_pure_unrepresentable_locator_fails_closed_holds() -> Bool {
   }
 }
 
-// KERNEL MISS: a content-addressed read against an empty store rejects (the shared
-// CacheLookupResult Miss → MissIsDiagnostic), never fabricates a value.
-test fn effect_io_pure_absent_lookup_is_kernel_miss_holds() -> Bool {
+// MISS IS DIAGNOSTIC: a content-addressed read against an empty store rejects (loud diagnostic),
+// never fabricates a value (DESIGN.md §5). (The shared std.cache_interface Miss/RejectedHit rewire
+// of this fold is deferred — see the blocker note on effect_io_pure_store_lookup.)
+test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
   let store = effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
   let bundle = effect_io_pure_handler_binding(store: store)
   let read_handler = effect_handler_for_kind(binding: bundle.handlers, kind: ReadResource)
