@@ -345,3 +345,80 @@ fn parse_compiler_entry_admission_imports_compile_module() {
         admission.imports
     );
 }
+
+#[test]
+#[ignore = "gap4 probe — prefix-scan first scoped-ingest Reject (manual)"]
+fn probe_gap4_scoped_ingest_first_reject() {
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2").to_string_lossy().to_string();
+    let records = discover_source_root_reads_for_entry(
+        &[v2_root],
+        COMPILER_ENTRY,
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover scoped compiler closure reads");
+    assert!(
+        !records.is_empty(),
+        "expected non-empty scoped compiler closure ingest"
+    );
+
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+
+    let temp = unique_temp_dir("gap4-probe");
+    fs::create_dir_all(&temp).expect("temp dir");
+
+    let mut failures: Vec<String> = Vec::new();
+    for (idx, rec) in records.iter().enumerate() {
+        let manifest_path = temp.join(format!("manifest-{idx}.dag"));
+        emit_source_root_ingest_manifest(&manifest_path, std::slice::from_ref(rec), Some(&admission))
+            .expect("emit single-file manifest");
+
+        let manifest_dir = manifest_path.parent().expect("manifest parent");
+        let ctx = nv2_eval_context(manifest_dir).expect("resolve nv2 gate ctx");
+        match run_claim(&ctx, "compiler_closure_scoped_ingest_parses") {
+            ClaimOutcome::Pass => {}
+            ClaimOutcome::Fail => {
+                failures.push(format!(
+                    "  [{idx}] file_path={} module_path={}",
+                    rec.file_path, rec.module_path
+                ));
+            }
+            ClaimOutcome::NotBool { got } => {
+                failures.push(format!(
+                    "  [{idx}] file_path={} module_path={} non-Bool={got}",
+                    rec.file_path, rec.module_path
+                ));
+            }
+            ClaimOutcome::RuntimeError { message } => {
+                failures.push(format!(
+                    "  [{idx}] file_path={} module_path={} runtime_error={message}",
+                    rec.file_path, rec.module_path
+                ));
+            }
+        }
+    }
+
+    let report = if failures.is_empty() {
+        format!(
+            "gap4 probe: all {} scoped ingest files passed in isolation (unexpected — full fold failed)",
+            records.len()
+        )
+    } else {
+        format!(
+            "gap4 scoped ingest per-file Reject(s) ({}/{} fail):\n{}",
+            failures.len(),
+            records.len(),
+            failures.join("\n")
+        )
+    };
+    let report_path = std::env::temp_dir().join("gap4-scoped-ingest-probe.txt");
+    fs::write(&report_path, &report).expect("write probe report");
+    eprintln!("{report}");
+    eprintln!("probe report: {}", report_path.display());
+    if failures.is_empty() {
+        panic!("{report}");
+    }
+    panic!("{report}");
+}
