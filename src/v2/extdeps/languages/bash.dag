@@ -491,6 +491,28 @@ fn bash_arrow_emitted_four(
   }
 }
 
+fn bash_arrow_emitted_six(
+  a: Symbol,
+  b: Symbol,
+  c: Symbol,
+  d: Symbol,
+  e: Symbol,
+  f: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: bash_word_atom(id: a) },
+      Edge { label: Positional, target: bash_word_atom(id: b) },
+      Edge { label: Positional, target: bash_word_atom(id: c) },
+      Edge { label: Positional, target: bash_word_atom(id: d) },
+      Edge { label: Positional, target: bash_word_atom(id: e) },
+      Edge { label: Positional, target: bash_word_atom(id: f) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 // AndOr { AndThen } — `'true' && 'false'`
 data bash_and_then_emitted: Node = bash_arrow_emitted_three(
   left: ^bash_word_true,
@@ -715,12 +737,14 @@ fn bash_pipe_translation_rules_node() -> Node {
 }
 
 // host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
-data bash_or_else_with_redir_emitted: Node = bash_arrow_emitted_five(
+// Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
+data bash_or_else_with_redir_emitted: Node = bash_arrow_emitted_six(
   a: ^bash_word_git,
   b: ^bash_word_rev_parse,
   c: ^bash_word_show_toplevel,
-  d: ^bash_surface_or_else_with_redir_mid,
-  e: ^bash_word_pwd
+  d: ^bash_surface_redir_stderr_null,
+  e: ^bash_surface_or_else,
+  f: ^bash_word_pwd
 )
 
 data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
@@ -730,7 +754,8 @@ fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_word_git },
     FixedToken { token_class: ^bash_token_word_rev_parse },
     FixedToken { token_class: ^bash_token_word_show_toplevel },
-    FixedToken { token_class: ^bash_token_redir_stderr_null_or_else },
+    FixedToken { token_class: ^bash_token_redir_stderr_null },
+    FixedToken { token_class: ^bash_token_or_else },
     FixedToken { token_class: ^bash_token_word_pwd }
   ]
 }
@@ -740,12 +765,15 @@ fn bash_or_else_with_redir_grammar_expression() -> GrammarExpr {
     left: Sequence {
       left: Sequence {
         left: Sequence {
-          left: grammar_expr_terminal(token_class: ^bash_token_word_git),
-          right: grammar_expr_terminal(token_class: ^bash_token_word_rev_parse)
+          left: Sequence {
+            left: grammar_expr_terminal(token_class: ^bash_token_word_git),
+            right: grammar_expr_terminal(token_class: ^bash_token_word_rev_parse)
+          },
+          right: grammar_expr_terminal(token_class: ^bash_token_word_show_toplevel)
         },
-        right: grammar_expr_terminal(token_class: ^bash_token_word_show_toplevel)
+        right: grammar_expr_terminal(token_class: ^bash_token_redir_stderr_null)
       },
-      right: grammar_expr_terminal(token_class: ^bash_token_redir_stderr_null_or_else)
+      right: grammar_expr_terminal(token_class: ^bash_token_or_else)
     },
     right: grammar_expr_terminal(token_class: ^bash_token_word_pwd)
   }
@@ -1121,10 +1149,8 @@ fn bash_or_else_with_redir_lex() -> LexRules {
         bash_lex_rule(token_class: ^bash_token_word_git, text: "'git'"),
         bash_lex_rule(token_class: ^bash_token_word_rev_parse, text: " 'rev-parse'"),
         bash_lex_rule(token_class: ^bash_token_word_show_toplevel, text: " '--show-toplevel'"),
-        bash_lex_rule(
-          token_class: ^bash_token_redir_stderr_null_or_else,
-          text: " 2>/dev/null || "
-        ),
+        bash_lex_rule(token_class: ^bash_token_redir_stderr_null, text: " 2>/dev/null"),
+        bash_lex_rule(token_class: ^bash_token_or_else, text: " || "),
         bash_lex_rule(token_class: ^bash_token_word_pwd, text: "'pwd'")
       ]
     }
