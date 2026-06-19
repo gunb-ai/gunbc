@@ -284,8 +284,10 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
 
 // Compose generic-arg preservation with canonical rendering — do not replace the
 // applied-binding path when the enclosing item has type params.
-// Closed type aliases (e.g. NanosecondDuration = Measure<...>) expand to applied
-// shells in inference; fn signatures must emit the alias name only.
+// RC3: Closed type aliases (e.g. String = FreeMonoid<Char>, NanosecondDuration =
+// Measure<...>) expand to applied shells in inference; fn signatures and alias RHS
+// must emit the alias name only. Alias RHS may be brand-preserved (children > 0);
+// peel on declared param count, not structural child count.
 fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
   let binding = match lookup_type_for(env: env, node: n) {
     Present { value: b } => b
@@ -296,7 +298,7 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
         Absent => return false
       }
   }
-  (binding.children |> count) == 0 && (binding.params |> count) == 0
+  (binding.params |> count) == 0
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
@@ -345,6 +347,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     } else {
       name
     }
+    if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: scope.type_env, n: n) {
+      if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: base) {
+        wrap_shared_type(target: Rust, inner: base)
+      } else {
+        base
+      }
+    } else {
     let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
     if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
