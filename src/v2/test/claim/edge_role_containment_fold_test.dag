@@ -6,6 +6,8 @@ import v2.std.dependency { BindsTo, Contains, DependencyView, dependency_lens }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
+  Bind,
+  ComputationNode,
   Conj,
   Edge,
   Named,
@@ -55,6 +57,34 @@ fn dependency_lens_reference_edge_is_not_contains_holds() -> Bool {
       acc
     }
   })
+}
+
+data edge_role_bind_body_child: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^edge_role_bind_body_child_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data edge_role_bind_parent: Node = Node {
+  kind: ComputationNode { behavior: Bind },
+  children: [
+    named_reference_edge(name: ^dependency_binds_to_edge, target: edge_role_bind_body_child)
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn dependency_lens_bind_body_binds_to_edge_is_contains_holds() -> Bool {
+  fold(dependency_lens(root: edge_role_bind_parent), init: true, f: fn(acc, view) {
+    if view.dependent == edge_role_bind_body_child {
+      acc && (view.kind == Contains)
+    } else {
+      acc
+    }
+  })
+}
+
+test fn dependency_lens_bind_body_binds_to_edge_is_contains() -> Bool {
+  dependency_lens_bind_body_binds_to_edge_is_contains_holds()
 }
 
 test fn containment_subtree_excludes_reference_child() -> Bool {

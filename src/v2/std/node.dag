@@ -262,20 +262,6 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   })
 }
 
-type NodeFoldFiltered<R> {
-  include_edge: fn(Edge) -> Bool
-  init: fn(Node) -> R
-  step: fn(R, Edge, R) -> R
-}
-fn fold_node_filtered<R>(n: Node, algebra: NodeFoldFiltered<R>) -> R {
-  fold(
-    filter(n.children, predicate: fn(e) { algebra.include_edge(e: e) }),
-    init: algebra.init(n),
-    f: fn(acc, e) {
-      algebra.step(acc, e, fold_node_filtered(n: e.target, algebra: algebra))
-    }
-  )
-}
 fn fold_containment<R>(n: Node, algebra: NodeFold<R>) -> R {
   fold(
     filter(n.children, predicate: fn(e) {
