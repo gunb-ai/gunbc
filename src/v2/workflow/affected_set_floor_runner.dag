@@ -1,0 +1,142 @@
+// v2/workflow/affected_set_floor_runner.dag
+// Scope: Phase 1.5a REDO — stateless node-level CI floor witness skip policy.
+// Status: models fail-closed run vs SkipAssumedGreen for discovery-corpus rows whose
+//   node-closure does NOT intersect the rerun frontier. NO verified-green baseline
+//   cache (stateless: skipped witnesses are assumed green from the last full main run).
+// Host transport: cli_run::run_discovery_corpus_with_options reads
+//   RunnableDiscoveryBatch.skip_unaffected_node_frontier; git diff defaults MUST match
+//   gunbc.ci_spec.diff_policy via floor_skip_git_diff_policy() projection.
+// Dissolution trigger: host path→node bootstrap replaced by
+//   affected_set_reading_from_git_diff_provenance whole-tree producer (Lane 3a ingest).
+
+module v2.workflow.affected_set_floor_runner
+
+import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
+import v2.std.algebra { any, fold, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.verification {
+  TestClaim,
+  test_claim_evaluation_node_touches_frontier,
+  test_claim_evaluation_nodes,
+  test_claim_evaluation_touches_rerun_frontier
+}
+
+// Git diff transport outcome — fail-closed arms force RunAll.
+type FloorDiffObservation
+  = DiffPathsProduced { changed_paths: List<String> }
+  | DiffObservationFailClosed { reason: String }
+
+// Rerun frontier from changed nodes (node-level, not file-prefix).
+type FloorRerunFrontier
+  = FrontierProduced { nodes: List<Node> }
+  | FrontierFailClosed { reason: String }
+
+// Per-row disposition — skip only when frontier is known and witness is untouched.
+type WitnessRunDisposition
+  = RunWitness { reason: String }
+  | SkipAssumedGreen
+
+type FloorWitnessRow {
+  label: String
+  entry: String
+  function: String
+}
+
+fn floor_skip_git_diff_policy() -> DiffPolicy {
+  gunbc_ci_spec.diff_policy
+}
+
+fn floor_any_node_touches_frontier(nodes: List<Node>, frontier: List<Node>) -> Bool {
+  any(
+    xs: nodes,
+    predicate: fn(n) {
+      test_claim_evaluation_node_touches_frontier(n: n, frontier: frontier)
+    }
+  )
+}
+
+fn floor_claim_touches_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
+  test_claim_evaluation_touches_rerun_frontier(c: claim, frontier: frontier)
+}
+
+fn floor_any_claim_touches_rerun_frontier(claims: List<TestClaim>, frontier: List<Node>) -> Bool {
+  any(
+    xs: claims,
+    predicate: fn(c) { floor_claim_touches_rerun_frontier(claim: c, frontier: frontier) }
+  )
+}
+
+fn floor_witness_nodes_touch_frontier(witness_nodes: List<Node>, frontier: List<Node>) -> Bool {
+  floor_any_node_touches_frontier(nodes: witness_nodes, frontier: frontier)
+}
+
+// Policy kernel — fail-closed on ambiguous diff/frontier; skip ONLY when frontier is
+// produced, witness node-closure is disjoint, and diff is non-empty (host enforces the
+// latter: empty diff → run-all).
+fn floor_witness_run_disposition(
+  diff: FloorDiffObservation,
+  frontier: FloorRerunFrontier,
+  touches_frontier: Bool
+) -> WitnessRunDisposition {
+  match diff {
+    DiffObservationFailClosed { reason: reason } =>
+      RunWitness { reason: reason }
+    DiffPathsProduced { changed_paths: paths } =>
+      if paths.length() == 0 {
+        RunWitness { reason: "empty diff — run full corpus (fail-closed)" }
+      } else {
+        match frontier {
+          FrontierFailClosed { reason: reason } =>
+            RunWitness { reason: reason }
+          FrontierProduced { nodes: _ } =>
+            if touches_frontier {
+              RunWitness { reason: "witness node-closure intersects rerun frontier" }
+            } else {
+              SkipAssumedGreen
+            }
+        }
+      }
+  }
+}
+
+fn floor_kernel_would_skip(
+  changed_paths: List<String>,
+  frontier_nodes: List<Node>,
+  touches_frontier: Bool
+) -> Bool {
+  match floor_witness_run_disposition(
+    diff: DiffPathsProduced { changed_paths: changed_paths },
+    frontier: FrontierProduced { nodes: frontier_nodes },
+    touches_frontier: touches_frontier
+  ) {
+    SkipAssumedGreen => true
+    RunWitness { reason: _ } => false
+  }
+}
+
+// Host transport oracle: non-empty diff + produced frontier + !touches → skip.
+fn floor_host_scaffold_would_skip(
+  changed_paths: List<String>,
+  frontier_nodes: List<Node>,
+  touches_frontier: Bool
+) -> Bool {
+  floor_kernel_would_skip(
+    changed_paths: changed_paths,
+    frontier_nodes: frontier_nodes,
+    touches_frontier: touches_frontier
+  )
+}
+
+// Expand witness claims to evaluation nodes for host↔kernel equivalence receipts.
+fn floor_witness_eval_nodes_from_claims(claims: List<TestClaim>) -> List<Node> {
+  fold(claims, init: [], f: fn(acc, claim) {
+    fold(
+      test_claim_evaluation_nodes(c: claim),
+      init: acc,
+      f: fn(nodes, n) { list_snoc_item(xs: nodes, item: n) }
+    )
+  })
+}
