@@ -585,7 +585,7 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
 #[test]
 fn gcp_oauth_access_token_materializer_holds() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/gcp_oauth_access_token_witness_test.dag");
+    let entry = ws.join("dsl/test/claim/gcp_oauth_access_token_witness.dag");
     let store = ws.join("dsl/test/fixture/gcp_oauth_access_token_store");
     let common = |func: &str| -> std::process::Output {
         run_claim_batch(&[

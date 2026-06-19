@@ -1,4 +1,4 @@
-// dsl/test/claim/gcp_oauth_access_token_witness_test.dag
+// dsl/test/claim/gcp_oauth_access_token_witness.dag
 //
 // §5 by-execution witnesses for gunbc.auth.credentials.gcp_oauth_access_token(strategy).
 // NOT discovery-roster enrolled (`test fn` would dispatch Wet in CI — no gcloud on runners).
