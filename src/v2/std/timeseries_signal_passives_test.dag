@@ -52,7 +52,7 @@ data witness_voltage_zero: Voltage = voltage(0)
 
 data witness_current_zero: Current = current(0)
 
-fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
+test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   let component = Resistor {
     name: ^r1,
     n_plus: Named { node: NamedNode { name: ^n1 } },

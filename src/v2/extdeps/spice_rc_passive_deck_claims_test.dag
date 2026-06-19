@@ -94,7 +94,7 @@ fn spice_rc_passive_deck_op_directive_holds(body: List<DeckStatement>) -> Bool {
 }
 
 // Structural witness on imported fixture authority — wrong R/C values, nodes, or missing .op → false.
-fn spice_rc_passive_deck_authority_holds() -> Bool {
+test fn spice_rc_passive_deck_authority_holds() -> Bool {
   match spice_rc_passive_deck {
     SpiceNetlist { title: title, body: body } =>
       title == "RC passive series deck"

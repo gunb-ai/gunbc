@@ -102,7 +102,7 @@ data timeseries_anchor_signal: TimeSeriesSignal = Cons {
   tail: Empty
 }
 
-fn timeseries_anchor_resistor_map_holds() -> Bool {
+test fn timeseries_anchor_resistor_map_holds() -> Bool {
   let mapped = resistor_map_voltage(
     element: timeseries_anchor_resistor,
     current: timeseries_anchor_current,
@@ -112,7 +112,7 @@ fn timeseries_anchor_resistor_map_holds() -> Bool {
 
 // GATE1 signed-magnitude execution (zesty class-4): negative Current through resistor
 // map must yield negative Voltage count on v2 — value asserted, not just type-resolve.
-fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
+test fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
   let mapped = resistor_map_voltage(
     element: ResistorMap {
       kind: MapStep
@@ -131,7 +131,7 @@ data timeseries_signed_cap_initial_positive: CapacitorState = CapacitorState {
   charge_microcoulombs: charge_micro(1000)
 }
 
-fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
+test fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_signed_cap_initial_positive,
@@ -145,7 +145,7 @@ fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
   }
 }
 
-fn timeseries_anchor_capacitor_fold_holds() -> Bool {
+test fn timeseries_anchor_capacitor_fold_holds() -> Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_anchor_cap_initial,
@@ -172,7 +172,7 @@ data timeseries_anchor_current_pair: List<StepCurrent> = Cons {
   tail: Cons { head: timeseries_anchor_current_high, tail: Empty }
 }
 
-fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
+test fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
   match fold_capacitor_transient(
     element: timeseries_anchor_capacitor,
     initial: timeseries_anchor_cap_initial,
@@ -190,7 +190,7 @@ data timeseries_anchor_cap_zero_rating: CapacitorFold = CapacitorFold {
   rating: CapacitorRating { microfarads: capacitance_micro(0) }
 }
 
-fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
+test fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_cap_zero_rating,
     state: timeseries_anchor_cap_initial,
@@ -202,7 +202,7 @@ fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
   }
 }
 
-fn timeseries_anchor_inductor_fold_holds() -> Bool {
+test fn timeseries_anchor_inductor_fold_holds() -> Bool {
   match inductor_fold_step(
     element: timeseries_anchor_inductor,
     state: timeseries_anchor_ind_initial,

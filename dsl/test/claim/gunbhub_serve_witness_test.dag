@@ -1,4 +1,4 @@
-// dsl/test/claim/gunbhub_serve_witness.dag
+// dsl/test/claim/gunbhub_serve_witness_test.dag
 //
 // gunbhub M2 served render surface keystone: ServedStaticRouteTable +
 // dispatch witness (request → 200+body / 404). Bodies are compose-time
@@ -229,7 +229,7 @@ fn witness_repo_path_route_binding_declared() -> Bool {
   )
 }
 
-fn gunbhub_serve_keystone_holds() -> Bool {
+test fn gunbhub_serve_keystone_holds() -> Bool {
   witness_static_table_has_two_get_routes()
     && witness_static_table_browse_row_matches_host_contract()
     && witness_static_table_repo_path_row_is_m1_placeholder()
