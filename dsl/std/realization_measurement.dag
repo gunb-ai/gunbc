@@ -1,0 +1,72 @@
+// std/realization_measurement.dag — Measured-cost model (Phase-0 keystone, v2-inheritable).
+//
+// Authority split (§3 / §7):
+//   THIS MODULE — durable model + pure roll-up lens (what v2 inherits).
+//   extdeps/realization/* — peripheral host handlers (v1 eval_expr tap today).
+//   product.compute_fabric — PerformanceReceipt observation carrier.
+//
+// Instrumentation is the dual of cache (realization-measurement-loop.md Phase 0):
+// both wrap the same fold boundary keyed by content-hash subject; cache stores
+// node→value, measurement stores node→duration. The handler is host-effect;
+// the analysis is this lens.
+
+module std.realization_measurement
+
+import std.types { ContentHash, Bool, String, List }
+import std.nat { Nat }
+import std.measure {
+  NanosecondDuration,
+  nanosecond_duration,
+  nanosecond_duration_count,
+}
+import std.realization_schedule {
+  CostAccount,
+  CostBasis,
+  cost_account_measured,
+  cost_account_predicted_zero,
+  cost_account_time_nanos,
+}
+
+// Host-effect shape: observe elapsed wall time at a cache-subject boundary.
+// NOT a state-mutation EffectShape (std.effects) — measurement is peripheral
+// realization (§3 measured⇒peripheral), keyed like cache UpsertSubject.
+type RealizationMeasureEffect
+  = ObserveElapsedAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+
+// SCAFFOLD — v1 handler binding (§3: dispatch is realization, not std authority).
+// dissolve-on: relocate to extdeps/realization when v2 eval fold subsumes; std keeps Effect shape only.
+data v1_eval_expr_measure_handler_id: String = "host:v1-interpreter.eval_expr_self_time"
+
+// --- Pure roll-up lens: observations → CostAccount.time --------------------
+
+fn cost_account_measured_from_time(time: NanosecondDuration) -> CostAccount {
+  cost_account_measured(time: time)
+}
+
+fn nanosecond_duration_list_total(times: List<NanosecondDuration>) -> NanosecondDuration {
+  nanosecond_duration(
+    count: fold(times, init: 0, f: (acc, t) => acc + nanosecond_duration_count(d: t))
+  )
+}
+
+fn cost_account_measured_from_time_list(times: List<NanosecondDuration>) -> CostAccount {
+  cost_account_measured_from_time(time: nanosecond_duration_list_total(times: times))
+}
+
+// Discriminating lens: non-zero measured roll-up must differ from predicted_zero
+// and preserve nanosecond count (§5 — goes red if roll-up aliases or drops time).
+fn witness_measured_rollup_differs_from_predicted_zero(wall_time: NanosecondDuration) -> Bool {
+  if nanosecond_duration_count(d: wall_time) == 0 {
+    false
+  } else {
+    let measured_nanos = cost_account_time_nanos(
+      account: cost_account_measured_from_time(time: wall_time)
+    )
+    let predicted_nanos = cost_account_time_nanos(account: cost_account_predicted_zero())
+    measured_nanos != predicted_nanos
+      && measured_nanos == nanosecond_duration_count(d: wall_time)
+  }
+}

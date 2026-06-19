@@ -21,7 +21,8 @@
 
 module std.verification
 
-import std.types { Milliseconds }
+import std.nat { Nat }
+import std.measure { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 
 // The predicate form of an assertion.
 // Each variant corresponds to a standard verification predicate
@@ -52,14 +53,8 @@ type TestClaim {
 // warn-name list. **Follow-on:** attach explicit `TimingBudget` / `TimingMeasurement`
 // rows per test where paydown replaces warn-only policy.
 //
-// Legacy dsl projection note: this tree does not carry T-WAD's finer
-// `TimingBudget` / `TimingMeasurement` / `Nanoseconds` timing substrate yet.
-// These `_ms` fields use the existing branded
-// non-negative `Milliseconds` carrier as the older dsl projection of that
-// same timing fact, not a parallel cost algebra.
-// Retirement trigger: #102 (`slow_test_exemptions_dissolved`) lands a
-// `Nanoseconds` timing authority for the slow-test ratchet, then deletes or
-// rewires this dsl projection instead of extending it.
+// Phase-0 convergence: `NanosecondDuration` (std.measure) is the timing authority;
+// budget/measured facts are nanosecond thresholds, not parallel Milliseconds fields.
 
 // A named test case — a conjunction of claims.
 // All claims must hold for the test to pass.
@@ -74,6 +69,10 @@ type TestNodeRef
 
 type TestNodeCostDimension {
   node: TestNodeRef
-  budget_ms: Milliseconds
-  measured_ms: Milliseconds
+  budget_time: NanosecondDuration
+  measured_time: NanosecondDuration
+}
+
+fn test_node_cost_within_budget(fact: TestNodeCostDimension) -> Bool {
+  nanosecond_duration_count(d: fact.measured_time) <= nanosecond_duration_count(d: fact.budget_time)
 }

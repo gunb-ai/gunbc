@@ -1,13 +1,15 @@
 // extdeps/github/auth.dag -- GitHub credential acquisition.
 //
-// Delegates to gunbc.auth.credentials for concrete materialization.
+// Delegates to extdeps.shell.credentials for concrete materialization.
 // Service-specific knowledge (which secret, which scopes) stays here;
-// materialization mechanics live in gunbc.auth.
+// materialization mechanics (read env var via the host shell) live in
+// extdeps.shell.credentials.
 
 module extdeps.github.auth
 
 import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRepo }
-import std.credentials { CredentialSource, EnvVar, env_credential }
+import std.credentials { CredentialSource, EnvVar }
+import extdeps.shell.credentials { env_credential }
 import std.types { NonEmptyStr, Timestamp }
 
 // The default PAT path cannot introspect GitHub-issued token claims. Keep the

@@ -70,19 +70,38 @@ type WifProvider {
 // -- API endpoints -------------------------------------------------
 // Pattern: {service}.googleapis.com/{version}
 
+type GcpService
+  = GcpStorage
+  | GcpIam
+  | GcpSecretManager
+  | GcpCloudRun
+  | GcpPubsub
+  | GcpSts
+
+fn gcp_service_wire_label(service: GcpService) -> String {
+  match service {
+    GcpStorage => "storage"
+    GcpIam => "iam"
+    GcpSecretManager => "secretmanager"
+    GcpCloudRun => "run"
+    GcpPubsub => "pubsub"
+    GcpSts => "sts"
+  }
+}
+
 type GcpApiEndpoint {
-  service: String
+  service: GcpService
   base_url: String
   version: String
 }
 
 data api_endpoints: List<GcpApiEndpoint> = [
-  { service: "storage", base_url: "https://storage.googleapis.com/storage/v1", version: "v1" },
-  { service: "iam", base_url: "https://iam.googleapis.com/v1", version: "v1" },
-  { service: "secretmanager", base_url: "https://secretmanager.googleapis.com/v1", version: "v1" },
-  { service: "run", base_url: "https://run.googleapis.com/v2", version: "v2" },
-  { service: "pubsub", base_url: "https://pubsub.googleapis.com/v1", version: "v1" },
-  { service: "sts", base_url: "https://sts.googleapis.com/v1", version: "v1" }
+  { service: GcpStorage, base_url: "https://storage.googleapis.com/storage/v1", version: "v1" },
+  { service: GcpIam, base_url: "https://iam.googleapis.com/v1", version: "v1" },
+  { service: GcpSecretManager, base_url: "https://secretmanager.googleapis.com/v1", version: "v1" },
+  { service: GcpCloudRun, base_url: "https://run.googleapis.com/v2", version: "v2" },
+  { service: GcpPubsub, base_url: "https://pubsub.googleapis.com/v1", version: "v1" },
+  { service: GcpSts, base_url: "https://sts.googleapis.com/v1", version: "v1" }
 ]
 
 // -- Regions -------------------------------------------------------
