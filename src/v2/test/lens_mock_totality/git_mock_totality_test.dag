@@ -18,29 +18,28 @@
 
 module v2.test.lens_mock_totality.git_mock_totality
 
-import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
-// Single authority for the git mock corpus lives in the dsl/ tree
-// (dsl/extdeps/git/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does (M4
-// hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern.
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template {
+  mock_totality_green_holds,
+  mock_totality_red_on_omission_holds,
+  omit_consumer_handles,
+  outcome_accepted_p
+}
 import extdeps.git.mock_corpus {
   PublishedMockCase,
   git_published_mock_corpus
 }
-import v2.std.algebra { filter }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-// The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
-// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
 type MaterializedGitMock {
   tag: Symbol
 }
 
-// The REAL consumer: materializes ANY published git.Core case impl-blind, keyed on the
-// operation_key across all nine published ops; fail-closes (the canonical
-// `mock_unhandled_rejection`) for an unpublished op.
+data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]
+
 fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
   if case.operation_key == "git.Core.CurrentBranch" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
@@ -65,77 +64,28 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
   }
 }
 
-// The DELIBERATELY-INCOMPLETE consumer: omits `DiffNameOnlyMerge` → fail-closes on that published
-// case. This is the discriminating input that drives the lens RED on omission.
-fn materialize_git_mock_omits_diff_name_only_merge(case: PublishedMockCase) -> Outcome<MaterializedGitMock> {
-  if case.operation_key == "git.Core.CurrentBranch" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_current_branch })
-  } else if case.operation_key == "git.Core.RemoteBranches" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_remote_branches })
-  } else if case.operation_key == "git.Core.LsFiles" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ls_files })
-  } else if case.operation_key == "git.Core.Diff" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff })
-  } else if case.operation_key == "git.Core.DiffNameOnly" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_name_only })
-  } else if case.operation_key == "git.Core.RevList" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_rev_list })
-  } else if case.operation_key == "git.Core.RevListBefore" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_rev_list_before })
-  } else if case.operation_key == "git.Core.Show" {
-    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show })
-  } else {
-    mock_unhandled_rejection()
-  }
-}
-
-fn git_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
-// Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
 fn git_real_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_git_mock(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  outcome_accepted_p(outcome: materialize_git_mock(case: case))
 }
 
-// Did the DELIBERATELY-INCOMPLETE consumer (no `DiffNameOnlyMerge` handler) materialize this case?
 fn git_omits_diff_name_only_merge_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_git_mock_omits_diff_name_only_merge(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  omit_consumer_handles(
+    case: case,
+    omit_keys: git_red_omit_keys,
+    total_consumer_handles: git_real_consumer_handles
+  )
 }
 
-// The handled set = the published members a consumer accepts, BY EXECUTION over the corpus.
-fn git_handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
-  filter(xs: git_published_mock_corpus, predicate: consumer_handles)
-}
-
-// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
 test fn git_mock_consumer_is_total_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_green_holds(
     published: git_published_mock_corpus,
-    handled: git_handled_by(consumer_handles: git_real_consumer_handles),
-    eq: git_mock_case_eq
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+    consumer_handles: git_real_consumer_handles
+  )
 }
 
-// RED-on-omission by execution: omit `DiffNameOnlyMerge` from the consumer → the lens MUST fail-close.
-// GREEN here proves the lens has teeth (it rejects an unhandled published member); a vacuous
-// lens that accepted anyway would make this witness RED.
 test fn git_mock_omitted_member_is_red_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_red_on_omission_holds(
     published: git_published_mock_corpus,
-    handled: git_handled_by(consumer_handles: git_omits_diff_name_only_merge_consumer_handles),
-    eq: git_mock_case_eq
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
+    consumer_handles: git_omits_diff_name_only_merge_consumer_handles
+  )
 }

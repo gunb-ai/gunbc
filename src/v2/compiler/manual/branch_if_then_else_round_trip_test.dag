@@ -4,7 +4,7 @@ module v2.test.manual.branch_if_then_else_round_trip
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate {
   coerce_grounded_node,
   grammar_inverse_source_validated,
@@ -148,11 +148,11 @@ data branch_if_then_else_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn branch_if_then_else_emit_accepts() -> Outcome<TargetSource> {
+fn branch_if_then_else_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: branch_if_then_else_inferred_tree, target: branch_if_then_else_target_model)
 }
 
-data branch_if_then_else_emit_receipt: Outcome<TargetSource> = branch_if_then_else_emit_accepts()
+data branch_if_then_else_emit_receipt: Outcome<Medium<String>> = branch_if_then_else_emit_accepts()
 
 fn branch_if_then_else_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {

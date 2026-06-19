@@ -125,7 +125,7 @@ fn sg_rc_apply_layer_to_diagnostics(layer: TargetReferenceLayer) -> Node {
 
 fn sg_rc_serialized_type_text(emitted: Node) -> String {
   match target_serialize_source_from_model(target: sg_rc_target(), emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => sg_rc_fail_text
   }
 }

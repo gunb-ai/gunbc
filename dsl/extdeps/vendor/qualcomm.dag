@@ -1,0 +1,8 @@
+// extdeps/vendor/qualcomm.dag — Qualcomm as a cited hardware-vendor entity.
+// Anchor: https://en.wikipedia.org/wiki/Qualcomm
+module extdeps.vendor.qualcomm
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+data qualcomm: Vendor<Hardware> = Vendor { legal_name: "Qualcomm Incorporated" }

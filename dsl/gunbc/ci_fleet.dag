@@ -23,7 +23,7 @@ import product.compute_fabric {
   PerJobFilesystem,
   Dram,
 }
-import std.cpu.types { CpuFacts, CpuDeploymentFacts }
+import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure { byte_size, hertz }
 import std.os.types {
   OperatingSystemSurface,
@@ -31,7 +31,7 @@ import std.os.types {
   Posix,
   PosixProcess,
 }
-import std.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity }
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
