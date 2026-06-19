@@ -11,8 +11,7 @@ import v2.lens.languages_consumer_census {
 import v2.std.logic { Bool }
 
 test fn corpus_per_language_row_count_matches_baseline() -> Bool {
-  languages_consumer_census_live_per_language_row_count()
-    == languages_consumer_census_per_language_row_baseline
+  languages_consumer_census_live_per_language_row_count() == languages_consumer_census_per_language_row_baseline
 }
 
 test fn corpus_per_language_row_ratchet_holds() -> Bool {
