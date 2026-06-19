@@ -59,7 +59,7 @@ import std.cpu.types {
   SocketPackage,
   Aarch64,
 }
-import std.placement_supply { HostIdentity, PlacementSupplyRow }
+import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
@@ -286,7 +286,7 @@ fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyS
 
 // --- §1.4b placement projection (derived — NOT a parallel authority) ----------
 //
-// PlacementSupplyRow authority: std.placement_supply. ram_bytes_total is a
+// PlacementSupplyRow authority: product.placement_supply. ram_bytes_total is a
 // value-typed ByteSize projection — Measure carriers now have inhabitants via
 // std.measure, so this consumer is migrated in step with the census (the
 // prior P-CF-BYTESIZE bare-Int stopgap here is dissolved).
