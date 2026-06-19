@@ -8,6 +8,7 @@ module extdeps.llm.openai
 
 import extdeps.llm.llm { llm_snake_wire_contract }
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.types { NonEmptyStr }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
 // Single authority: `extdeps.llm.llm` (`llm_snake_wire_contract`); module-local
@@ -82,10 +83,28 @@ type FunctionCall {
 }
 
 // OpenAI tool call: wire shape requires {"type": "function", ...}.
-// Single-value discriminant, but the field must be present for API fidelity.
+// Extensible registry: closed known row + Other escape (fail-open ingress).
+type OpenAiToolCallType
+  = OpenAiToolCallFunction
+  | OpenAiToolCallTypeOther { raw: NonEmptyStr }
+
+data openai_tool_call_function_wire: String = "function"
+
+fn parse_openai_tool_call_type(raw: String) -> OpenAiToolCallType {
+  if raw == openai_tool_call_function_wire { OpenAiToolCallFunction }
+  else { OpenAiToolCallTypeOther { raw: raw } }
+}
+
+fn openai_tool_call_type_label(kind: OpenAiToolCallType) -> String {
+  match kind {
+    OpenAiToolCallFunction => openai_tool_call_function_wire
+    OpenAiToolCallTypeOther { raw: r } => r
+  }
+}
+
 type ToolCall {
   id: String
-  type: String
+  type: OpenAiToolCallType
   function: FunctionCall
 }
 
@@ -240,6 +259,42 @@ data structural_coverage_gap_openai_chat_message_additive_content_parts: List<St
 ]
 
 // Narrow 200-OK wire slice for OpenAI Responses (`response { 200 => … }`).
+type OpenAiResponsesOutputContentType
+  = OpenAiResponsesOutputText
+  | OpenAiResponsesOutputContentTypeOther { raw: NonEmptyStr }
+
+data openai_responses_output_text_wire: String = "output_text"
+
+fn parse_openai_responses_output_content_type(raw: String) -> OpenAiResponsesOutputContentType {
+  if raw == openai_responses_output_text_wire { OpenAiResponsesOutputText }
+  else { OpenAiResponsesOutputContentTypeOther { raw: raw } }
+}
+
+fn openai_responses_output_content_type_label(kind: OpenAiResponsesOutputContentType) -> String {
+  match kind {
+    OpenAiResponsesOutputText => openai_responses_output_text_wire
+    OpenAiResponsesOutputContentTypeOther { raw: r } => r
+  }
+}
+
+type OpenAiResponsesOutputItemType
+  = OpenAiResponsesOutputMessage
+  | OpenAiResponsesOutputItemTypeOther { raw: NonEmptyStr }
+
+data openai_responses_output_message_wire: String = "message"
+
+fn parse_openai_responses_output_item_type(raw: String) -> OpenAiResponsesOutputItemType {
+  if raw == openai_responses_output_message_wire { OpenAiResponsesOutputMessage }
+  else { OpenAiResponsesOutputItemTypeOther { raw: raw } }
+}
+
+fn openai_responses_output_item_type_label(kind: OpenAiResponsesOutputItemType) -> String {
+  match kind {
+    OpenAiResponsesOutputMessage => openai_responses_output_message_wire
+    OpenAiResponsesOutputItemTypeOther { raw: r } => r
+  }
+}
+
 // The operation's current projections read text-output and usage token counts,
 // so this carrier models the stable message/output_text path plus token-detail
 // usage rows. Refusal content, tool, reasoning-detail, error, and multimodal
@@ -247,7 +302,7 @@ data structural_coverage_gap_openai_chat_message_additive_content_parts: List<St
 // required here so the typed 200 body cannot inhabit this projection path
 // without the string field the operation declares.
 type OpenAiResponses200OutputContent {
-  type: String
+  type: OpenAiResponsesOutputContentType
   text: String
   annotations: List<OpenAiResponses200Annotation>?
 }
@@ -267,7 +322,7 @@ type OpenAiResponses200Annotation
 
 type OpenAiResponses200OutputItem {
   id: String?
-  type: String
+  type: OpenAiResponsesOutputItemType
   status: String?
   role: String?
   content: List<OpenAiResponses200OutputContent>

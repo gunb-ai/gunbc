@@ -1,0 +1,235 @@
+// By-execution witnesses for extdeps llm type/media_type anemia groundings (slice B).
+// Discriminating: each witness goes RED if a field reverts to bare String.
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_llm_type_grounding_witness_test.dag \
+//     --function extdeps_llm_type_grounding_witnesses --claim-run
+
+module test.claim.extdeps_llm_type_grounding_witness
+
+import extdeps.llm.openai {
+  ToolCall,
+  FunctionCall,
+  OpenAiToolCallFunction,
+  OpenAiToolCallTypeOther,
+  OpenAiResponsesOutputText,
+  OpenAiResponsesOutputContentTypeOther,
+  OpenAiResponsesOutputMessage,
+  OpenAiResponsesOutputItemTypeOther,
+  OpenAiResponses200OutputContent,
+  OpenAiResponses200OutputItem,
+  parse_openai_tool_call_type,
+  openai_tool_call_type_label,
+  parse_openai_responses_output_content_type,
+  openai_responses_output_content_type_label,
+  parse_openai_responses_output_item_type,
+  openai_responses_output_item_type_label,
+}
+import extdeps.llm.openai_errors {
+  OpenAiErrorDetails,
+  OpenAiInvalidRequestError,
+  OpenAiAuthenticationError,
+  OpenAiPermissionError,
+  OpenAiNotFoundError,
+  OpenAiRateLimitError,
+  OpenAiApiError,
+  OpenAiInsufficientQuota,
+  OpenAiErrorTypeOther,
+  parse_openai_error_type,
+  openai_error_type_label,
+}
+import extdeps.llm.anthropic {
+  Base64Image,
+  UrlImage,
+  ImageJpeg,
+  ImagePng,
+  ImageGif,
+  ImageWebp,
+  AnthropicImageMediaTypeOther,
+  CacheControl,
+  CacheEphemeral,
+  AnthropicMessages200Body,
+  MessagesObjectMessage,
+  Assistant,
+  MessagesTextBlock,
+  EndTurn,
+  AnthropicMessages200Usage,
+  Standard,
+  parse_anthropic_image_media_type,
+  anthropic_image_media_type_label,
+  cache_control_type_label,
+  anthropic_messages_object_type_label,
+}
+import extdeps.llm.anthropic_errors {
+  AnthropicErrorEnvelope,
+  AnthropicAuthenticationError,
+  AnthropicInvalidRequestError,
+  AnthropicRateLimitError,
+  AnthropicOverloadedError,
+  AnthropicNotFoundError,
+  AnthropicApiError,
+  AnthropicErrorTypeOther,
+  anthropic_error_example,
+  parse_anthropic_error_type,
+  anthropic_error_type_label,
+  anthropic_error_envelope_type_label,
+}
+
+fn w_openai_tool_call_type_known() -> Bool {
+  let row = ToolCall {
+    id: "call_1",
+    type: OpenAiToolCallFunction,
+    function: FunctionCall { name: "get_weather", arguments: "{}" },
+  }
+  row.type == OpenAiToolCallFunction
+    && openai_tool_call_type_label(OpenAiToolCallFunction) == "function"
+}
+
+fn w_openai_tool_call_type_other_accepts_extension() -> Bool {
+  match parse_openai_tool_call_type("custom_tool") {
+    OpenAiToolCallTypeOther { raw: r } => r == "custom_tool"
+    OpenAiToolCallFunction => false
+  }
+}
+
+fn w_openai_responses_output_content_type() -> Bool {
+  let row = OpenAiResponses200OutputContent {
+    type: OpenAiResponsesOutputText,
+    text: "hello",
+    annotations: none,
+  }
+  row.type == OpenAiResponsesOutputText
+    && openai_responses_output_content_type_label(OpenAiResponsesOutputText) == "output_text"
+}
+
+fn w_openai_responses_output_content_type_other() -> Bool {
+  match parse_openai_responses_output_content_type("refusal") {
+    OpenAiResponsesOutputContentTypeOther { raw: r } => r == "refusal"
+    OpenAiResponsesOutputText => false
+  }
+}
+
+fn w_openai_responses_output_item_type() -> Bool {
+  let row = OpenAiResponses200OutputItem {
+    id: Present { value: "msg_1" },
+    type: OpenAiResponsesOutputMessage,
+    status: none,
+    role: none,
+    content: [],
+  }
+  row.type == OpenAiResponsesOutputMessage
+    && openai_responses_output_item_type_label(OpenAiResponsesOutputMessage) == "message"
+}
+
+fn w_openai_responses_output_item_type_other() -> Bool {
+  match parse_openai_responses_output_item_type("reasoning") {
+    OpenAiResponsesOutputItemTypeOther { raw: r } => r == "reasoning"
+    OpenAiResponsesOutputMessage => false
+  }
+}
+
+fn w_openai_error_type_known_and_other() -> Bool {
+  let known = OpenAiErrorDetails {
+    message: "bad",
+    type: OpenAiInvalidRequestError,
+    param: none,
+    code: none,
+  }
+  known.type == OpenAiInvalidRequestError
+    && openai_error_type_label(OpenAiInvalidRequestError) == "invalid_request_error"
+    && match parse_openai_error_type("new_vendor_error") {
+      OpenAiErrorTypeOther { raw: r } => r == "new_vendor_error"
+      OpenAiInvalidRequestError => false
+      OpenAiAuthenticationError => false
+      OpenAiPermissionError => false
+      OpenAiNotFoundError => false
+      OpenAiRateLimitError => false
+      OpenAiApiError => false
+      OpenAiInsufficientQuota => false
+    }
+}
+
+fn w_anthropic_image_media_type() -> Bool {
+  let source = Base64Image { media_type: ImageJpeg, data: "abc" }
+  match source {
+    Base64Image { media_type: mt, data: _ } =>
+      mt == ImageJpeg
+        && anthropic_image_media_type_label(ImageJpeg) == "image/jpeg"
+    UrlImage { url: _ } => false
+  }
+}
+
+fn w_anthropic_image_media_type_other() -> Bool {
+  match parse_anthropic_image_media_type("image/heic") {
+    AnthropicImageMediaTypeOther { raw: r } => r == "image/heic"
+    ImageJpeg => false
+    ImagePng => false
+    ImageGif => false
+    ImageWebp => false
+  }
+}
+
+fn w_cache_control_type() -> Bool {
+  let row = CacheControl { type: CacheEphemeral {} }
+  match row.type {
+    CacheEphemeral {} => cache_control_type_label(CacheEphemeral {}) == "ephemeral"
+  }
+}
+
+fn w_anthropic_messages_object_type() -> Bool {
+  let body = AnthropicMessages200Body {
+    id: "msg_01",
+    type: MessagesObjectMessage {},
+    role: Assistant {},
+    content: [MessagesTextBlock { text: "hi", citations: none }],
+    model: "claude-sonnet-4-6",
+    stop_reason: EndTurn,
+    stop_sequence: none,
+    usage: AnthropicMessages200Usage {
+      input_tokens: 1,
+      output_tokens: 1,
+      cache_creation_input_tokens: none,
+      cache_read_input_tokens: none,
+      service_tier: Present { value: Standard },
+    },
+    container: none,
+  }
+  match body.type {
+    MessagesObjectMessage {} =>
+      anthropic_messages_object_type_label(MessagesObjectMessage {}) == "message"
+  }
+}
+
+fn w_anthropic_error_envelope_and_detail_types() -> Bool {
+  let envelope_ok = match anthropic_error_example.type {
+    AnthropicErrorEnvelope {} =>
+      anthropic_error_envelope_type_label(AnthropicErrorEnvelope {}) == "error"
+  }
+  envelope_ok
+    && anthropic_error_example.error.type == AnthropicAuthenticationError
+    && anthropic_error_type_label(AnthropicAuthenticationError) == "authentication_error"
+    && match parse_anthropic_error_type("future_error_kind") {
+      AnthropicErrorTypeOther { raw: r } => r == "future_error_kind"
+      AnthropicAuthenticationError => false
+      AnthropicInvalidRequestError => false
+      AnthropicRateLimitError => false
+      AnthropicOverloadedError => false
+      AnthropicNotFoundError => false
+      AnthropicApiError => false
+    }
+}
+
+test fn extdeps_llm_type_grounding_witnesses() -> Bool {
+  w_openai_tool_call_type_known()
+    && w_openai_tool_call_type_other_accepts_extension()
+    && w_openai_responses_output_content_type()
+    && w_openai_responses_output_content_type_other()
+    && w_openai_responses_output_item_type()
+    && w_openai_responses_output_item_type_other()
+    && w_openai_error_type_known_and_other()
+    && w_anthropic_image_media_type()
+    && w_anthropic_image_media_type_other()
+    && w_cache_control_type()
+    && w_anthropic_messages_object_type()
+    && w_anthropic_error_envelope_and_detail_types()
+}
