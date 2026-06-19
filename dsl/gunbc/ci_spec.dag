@@ -73,10 +73,10 @@ fn ci_release_build_line() -> String {
 // Two-tier cold retry on fleet EAGAIN (#4978 / #5138): first CARGO_BUILD_JOBS=1 with
 // sccache (populate daemon when it works); if sccache still cannot spawn rustc, drop
 // RUSTC_WRAPPER and compile direct. Workflow policy — NOT generic shell transport.
-fn ci_cargo_eagain_retry_script(command: String) -> String {
+fn ci_cargo_eagain_retry_core(command: String) -> String {
   concat(
     concat(
-      concat("set -o pipefail\n", concat("BUILD_LOG=$(mktemp)\n", "if ! (")),
+      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
       concat(command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
     ),
     concat(
@@ -111,6 +111,19 @@ fn ci_cargo_eagain_retry_script(command: String) -> String {
       ),
       concat("fi\n", "rm -f \"$BUILD_LOG\"\n")
     )
+  )
+}
+
+// ci.yml workflow step (runs under bash — pipefail is available).
+fn ci_cargo_eagain_retry_script(command: String) -> String {
+  concat("set -o pipefail\n", ci_cargo_eagain_retry_core(command: command))
+}
+
+// claim_executor / shell.Exec path (`sh -c` — delegate to bash for pipefail).
+fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
+  concat(
+    concat("bash -o pipefail <<'__GUNBC_CI_RETRY__'\n", ci_cargo_eagain_retry_core(command: command)),
+    "__GUNBC_CI_RETRY__"
   )
 }
 

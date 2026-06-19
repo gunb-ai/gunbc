@@ -20,7 +20,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec,
   DiffMergeBase,
   DiffTwoDot,
-  ci_cargo_eagain_retry_script,
+  ci_cargo_eagain_retry_shell_exec,
   ci_rust_gate_fmt_command,
   ci_rust_gate_clippy_command,
   ci_rust_gate_test_command,
@@ -33,13 +33,13 @@ import gunbc.ci_spec {
 // and full v1-compiler-tests package are green without ignored tests (§6 named trigger).
 func run_gates() -> ProcessExit {
   fmt = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_script(command: ci_rust_gate_fmt_command())
+    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
   )
   clippy = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_script(command: ci_rust_gate_clippy_command())
+    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_clippy_command())
   )
   test = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_script(command: ci_rust_gate_test_command())
+    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_test_command())
   )
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
