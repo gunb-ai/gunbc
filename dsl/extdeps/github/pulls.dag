@@ -230,7 +230,7 @@ service github.Pulls {
       owner: String
       repo: String
       pull_number: Int
-      commit_id: String
+      commit_id: CommitSha
       body: String
       event: ReviewEvent = Comment
       comments: Json
