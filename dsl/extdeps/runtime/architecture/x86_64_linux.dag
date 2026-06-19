@@ -1,6 +1,6 @@
 // extdeps/runtime/architecture/x86_64_linux.dag — x86-64 Linux architecture profile (cited facts).
 //
-// Scope: Slice-1 inhabitant of std.architecture_profile.ArchitectureProfile — Architecture::X86_64
+// Scope: Slice-1 inhabitant of extdeps.toolchain.architecture_profile.ArchitectureProfile — Architecture::X86_64
 // with cited machine facts, sysv_amd64 syscall convention, and downward stack.
 //
 // Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (§3.2.2 stack; §3.4.1 alignment)
@@ -23,7 +23,7 @@ import extdeps.runtime.abi.sysv_amd64 {
 import extdeps.runtime.syscalls.linux { linux_x86_64_syscall_abi }
 import extdeps.toolchain.types { X86_64 }
 import std.abi { ArchitecturalRegister, StackLayout }
-import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
+import extdeps.toolchain.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
 import std.os.invocation { SyscallAbiSurface }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
