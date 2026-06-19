@@ -1,0 +1,352 @@
+// extdeps/version/pep440.dag — Python PEP 440 version identification scheme.
+//
+// Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
+//   Spec: https://packaging.python.org/en/latest/specifications/version-specifiers/
+//   (canonical PyPA spec; PEP 440 is the historical document)
+//   Version: PEP 440 (Final, Distutils-SIG, 2014-08-22)
+//
+// Canonical public identifier grammar (PEP 440 §Public version identifiers):
+//   [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
+// Local version (PEP 440 §Local version identifiers):
+//   <public>[+<local version label>]
+//
+// Scheme slice for `extdeps.version` — decomposed PEP 440 carriers, canonical
+// wire labels, and projection onto `VersionIdentity` / `VersionConstraint`.
+// Do NOT alias to `std.types.SemVer`.
+//
+// Consumers:
+//   dsl/test/claim/python_pep440_version_witness_test.dag — render witnesses
+//   (future) package metadata / dependency rows when pip/setuptools modeling lands
+
+module extdeps.version.pep440
+
+import extdeps.version { VersionConstraint, VersionIdentity }
+import std.algebra { Equal, Greater, Less, Ordering }
+import std.integer { NonNegativeInt }
+import std.list { List }
+import std.types { NonEmptyStr }
+
+// -- Spec citation -------------------------------------------------
+
+data pep440_spec_url: NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
+data pep440_spec_label: NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
+
+// PEP 440 version-specifier wire text — predicate over identities, not a version.
+type Pep440Constraint = VersionConstraint
+
+// Minimum CPython for workflows invoking python3 on PATH (typechecker rows).
+data min_python_interpreter: Pep440Constraint = ">= 3.11"
+
+// -- Public version segments ---------------------------------------
+//
+// Coproduct dissolution: `Pep440PreReleasePhase` — alpha/beta/rc are mutually
+// exclusive pre-release phases with distinct wire spellings and sort order.
+
+type Pep440PreReleasePhase
+  = Pep440Alpha
+  | Pep440Beta
+  | Pep440ReleaseCandidate
+
+type Pep440PreRelease {
+  phase: Pep440PreReleasePhase
+  number: NonNegativeInt
+}
+
+// Local version label segment (PEP 440 §Local version identifiers): each dot-
+// separated piece is either all-ASCII-digits (numeric, compared as int) or
+// contains a letter (lexicographic, case-insensitive on wire).
+type Pep440LocalSegment
+  = Pep440LocalNumeric { value: NonNegativeInt }
+  | Pep440LocalLexicographic { label: NonEmptyStr }
+
+// Decomposed public version identifier. `epoch` is the implicit-0 epoch when
+// omitted on the wire. `release_segments` is the N(.N)* segment — structurally
+// non-empty via `first` + `rest` (PEP 440 requires ≥1 release integer).
+// Optional suffix segments model the PEP 440 ordering chain: pre-release,
+// post-release, developmental release.
+type Pep440ReleaseSegments {
+  first: NonNegativeInt
+  rest: List<NonNegativeInt>
+}
+
+type Pep440PublicVersion {
+  epoch: NonNegativeInt
+  release_segments: Pep440ReleaseSegments
+  pre_release: Pep440PreRelease?
+  post_release: NonNegativeInt?
+  dev_release: NonNegativeInt?
+}
+
+// Full version: public identifier plus optional local label (+segment...).
+type Pep440Version {
+  public: Pep440PublicVersion
+  local: List<Pep440LocalSegment>
+}
+
+// -- Version specifiers (PEP 440 §Version specifiers) --------------
+//
+// Dependency clauses use these operators against public versions. Wildcard
+// matching (`== 1.3.4.*`) is deferred — carriers hold a concrete public
+// version today.
+
+type Pep440SpecifierOp
+  = Pep440CompatibleRelease       // ~=
+  | Pep440VersionMatching         // ==
+  | Pep440VersionExclusion        // !=
+  | Pep440InclusiveAtLeast        // >=
+  | Pep440InclusiveAtMost         // <=
+  | Pep440ExclusiveLess           // <
+  | Pep440ExclusiveGreater        // >
+  | Pep440ArbitraryEquality       // ===
+
+type Pep440VersionClause {
+  op: Pep440SpecifierOp
+  version: Pep440PublicVersion
+}
+
+// Comma-separated specifier: candidate must satisfy every clause (logical AND).
+type Pep440VersionSpecifier = List<Pep440VersionClause>
+
+// -- Base-layer projection -----------------------------------------
+
+fn pep440_version_identity(v: Pep440Version) -> VersionIdentity {
+  pep440_version_label(v: v)
+}
+
+fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> VersionConstraint {
+  pep440_version_specifier_label(spec: spec)
+}
+
+// Slice-1 ordering on structured public carriers. `VersionScheme.compare` on opaque
+// `VersionIdentity` values is gated to slice-2 (parse ingress) — installing a stub
+// comparator would violate DESIGN.md §5 fail-closed semantics.
+fn pep440_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
+  if a < b { Less }
+  else if a > b { Greater }
+  else { Equal }
+}
+
+fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSegments) -> Ordering {
+  match pep440_compare_non_negative_int(a: a.first, b: b.first) {
+    Equal => pep440_compare_release_rest(a_rest: a.rest, b_rest: b.rest)
+    other => other
+  }
+}
+
+fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNegativeInt>) -> Ordering {
+  if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
+  else if a_rest.length() == 0 {
+    // PEP 440: shorter release tuples are zero-padded before comparison.
+    if b_rest.first() == 0 {
+      pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
+    } else {
+      Less
+    }
+  } else if b_rest.length() == 0 {
+    if a_rest.first() == 0 {
+      pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
+    } else {
+      Greater
+    }
+  } else {
+    match pep440_compare_non_negative_int(a: a_rest.first(), b: b_rest.first()) {
+      Equal => pep440_compare_release_rest(
+        a_rest: a_rest.skip(n: 1),
+        b_rest: b_rest.skip(n: 1)
+      )
+      other => other
+    }
+  }
+}
+
+fn pep440_pre_release_phase_rank(phase: Pep440PreReleasePhase) -> NonNegativeInt {
+  match phase {
+    Pep440Alpha => 0
+    Pep440Beta => 1
+    Pep440ReleaseCandidate => 2
+  }
+}
+
+fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> Ordering {
+  match a {
+    Absent => match b {
+      Absent => Equal
+      Present { value: _ } => Greater
+    }
+    Present { value: av } => match b {
+      Absent => Less
+      Present { value: bv } =>
+        match pep440_compare_non_negative_int(
+          a: pep440_pre_release_phase_rank(phase: av.phase),
+          b: pep440_pre_release_phase_rank(phase: bv.phase)
+        ) {
+          Equal => pep440_compare_non_negative_int(a: av.number, b: bv.number)
+          other => other
+        }
+    }
+  }
+}
+
+fn pep440_compare_dev_release(a: NonNegativeInt?, b: NonNegativeInt?) -> Ordering {
+  match a {
+    Absent => match b {
+      Absent => Equal
+      Present { value: _ } => Greater
+    }
+    Present { value: av } => match b {
+      Absent => Less
+      Present { value: bv } => pep440_compare_non_negative_int(a: av, b: bv)
+    }
+  }
+}
+
+fn pep440_compare_post_release(a: NonNegativeInt?, b: NonNegativeInt?) -> Ordering {
+  match a {
+    Absent => match b {
+      Absent => Equal
+      Present { value: _ } => Less
+    }
+    Present { value: av } => match b {
+      Absent => Greater
+      Present { value: bv } => pep440_compare_non_negative_int(a: av, b: bv)
+    }
+  }
+}
+
+fn pep440_is_bare_dev_public(v: Pep440PublicVersion) -> Bool {
+  match v.pre_release {
+    Absent => match v.post_release {
+      Absent => match v.dev_release {
+        Present { value: _ } => true
+        Absent => false
+      }
+      Present { value: _ } => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+fn pep440_compare_bare_dev_tier(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Ordering {
+  let a_bare = pep440_is_bare_dev_public(v: a)
+  let b_bare = pep440_is_bare_dev_public(v: b)
+  if a_bare && !b_bare { Less }
+  else if !a_bare && b_bare { Greater }
+  else { Equal }
+}
+
+fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Ordering {
+  match pep440_compare_non_negative_int(a: a.epoch, b: b.epoch) {
+    Equal =>
+      match pep440_compare_release_segments(a: a.release_segments, b: b.release_segments) {
+        Equal =>
+          match pep440_compare_bare_dev_tier(a: a, b: b) {
+            Equal =>
+              match pep440_compare_pre_release(a: a.pre_release, b: b.pre_release) {
+                Equal =>
+                  match pep440_compare_post_release(a: a.post_release, b: b.post_release) {
+                    Equal => pep440_compare_dev_release(a: a.dev_release, b: b.dev_release)
+                    other => other
+                  }
+                other => other
+              }
+            other => other
+          }
+        other => other
+      }
+    other => other
+  }
+}
+
+// -- Wire labels ---------------------------------------------------
+
+fn pep440_pre_release_phase_label(phase: Pep440PreReleasePhase) -> String {
+  match phase {
+    Pep440Alpha => "a"
+    Pep440Beta => "b"
+    Pep440ReleaseCandidate => "rc"
+  }
+}
+
+fn pep440_pre_release_label(pre: Pep440PreRelease) -> String {
+  concat(
+    pep440_pre_release_phase_label(phase: pre.phase),
+    "{pre.number}"
+  )
+}
+
+fn pep440_release_segments_label(segments: Pep440ReleaseSegments) -> String {
+  let head = "{segments.first}"
+  if segments.rest.length() == 0 {
+    head
+  } else {
+    concat(head, concat(".", segments.rest |> map(n => "{n}") |> join(separator: ".")))
+  }
+}
+
+fn pep440_epoch_prefix(epoch: NonNegativeInt) -> String {
+  if epoch == 0 { "" } else { concat("{epoch}", "!") }
+}
+
+fn pep440_public_version_label(v: Pep440PublicVersion) -> String {
+  let base = concat(
+    pep440_epoch_prefix(epoch: v.epoch),
+    pep440_release_segments_label(segments: v.release_segments)
+  )
+  let with_pre = match v.pre_release {
+    Present { value: pre } => concat(base, pep440_pre_release_label(pre: pre))
+    Absent => base
+  }
+  let with_post = match v.post_release {
+    Present { value: n } => concat(with_pre, concat(".post", "{n}"))
+    Absent => with_pre
+  }
+  match v.dev_release {
+    Present { value: n } => concat(with_post, concat(".dev", "{n}"))
+    Absent => with_post
+  }
+}
+
+fn pep440_local_segment_label(seg: Pep440LocalSegment) -> String {
+  match seg {
+    Pep440LocalNumeric { value: v } => "{v}"
+    Pep440LocalLexicographic { label: s } => s
+  }
+}
+
+fn pep440_local_version_label(local: List<Pep440LocalSegment>) -> String {
+  local |> map(seg => pep440_local_segment_label(seg: seg)) |> join(separator: ".")
+}
+
+fn pep440_version_label(v: Pep440Version) -> String {
+  let public_label = pep440_public_version_label(v: v.public)
+  if v.local.length() == 0 {
+    public_label
+  } else {
+    concat(public_label, concat("+", pep440_local_version_label(local: v.local)))
+  }
+}
+
+fn pep440_specifier_op_label(op: Pep440SpecifierOp) -> String {
+  match op {
+    Pep440CompatibleRelease => "~="
+    Pep440VersionMatching => "=="
+    Pep440VersionExclusion => "!="
+    Pep440InclusiveAtLeast => ">="
+    Pep440InclusiveAtMost => "<="
+    Pep440ExclusiveLess => "<"
+    Pep440ExclusiveGreater => ">"
+    Pep440ArbitraryEquality => "==="
+  }
+}
+
+fn pep440_version_clause_label(clause: Pep440VersionClause) -> String {
+  concat(
+    pep440_specifier_op_label(op: clause.op),
+    " ",
+    pep440_public_version_label(v: clause.version)
+  )
+}
+
+fn pep440_version_specifier_label(spec: Pep440VersionSpecifier) -> String {
+  spec |> map(clause => pep440_version_clause_label(clause: clause)) |> join(separator: ", ")
+}
