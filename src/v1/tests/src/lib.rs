@@ -64,8 +64,6 @@ mod interp_string_family_cast_test;
 #[cfg(test)]
 mod interp_wire_serialize_test;
 #[cfg(test)]
-mod wet_hermetic_equivalence_test;
-#[cfg(test)]
 mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;
@@ -115,6 +113,8 @@ mod v1_compiler_lib_test;
 mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
+#[cfg(test)]
+mod wet_hermetic_equivalence_test;
 #[cfg(test)]
 mod width_nat_type_arg_test;
 #[cfg(test)]

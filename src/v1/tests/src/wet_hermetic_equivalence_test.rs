@@ -7,8 +7,8 @@
 //! corpus runner (`cli_run::run_discovery_corpus`). RED on any divergence.
 
 use v1_compiler::cli_run::{
-    discover_floor_corpus_rows, is_governed_service_representative_row,
-    run_discovery_corpus, wet_hermetic_discovery_outcome_divergences,
+    discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
+    wet_hermetic_discovery_outcome_divergences,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -25,9 +25,7 @@ fn ci_witness_layer_roots() -> Vec<String> {
 fn ci_witness_scan_dirs() -> Vec<String> {
     let ws = workspace_root();
     vec![
-        ws.join("dsl/test/claim")
-            .to_string_lossy()
-            .into_owned(),
+        ws.join("dsl/test/claim").to_string_lossy().into_owned(),
         ws.join("src/v2/compiler/manual")
             .to_string_lossy()
             .into_owned(),
@@ -57,12 +55,12 @@ fn wet_hermetic_governed_service_representative_equivalence_holds() {
     let explicit = governed_service_representative_explicit_entries();
     let wet = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Wet)
         .expect("wet discovery run for governed-service representative roster");
-    let hermetic =
-        run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic).expect(
-            "hermetic discovery run for governed-service representative roster",
-        );
-    let divergences =
-        wet_hermetic_discovery_outcome_divergences(&wet.witness_outcomes, &hermetic.witness_outcomes);
+    let hermetic = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic)
+        .expect("hermetic discovery run for governed-service representative roster");
+    let divergences = wet_hermetic_discovery_outcome_divergences(
+        &wet.witness_outcomes,
+        &hermetic.witness_outcomes,
+    );
     assert!(
         divergences.is_empty(),
         "wet and hermetic must agree on every governed-service representative witness; divergences:\n{}",
