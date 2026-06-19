@@ -94,7 +94,18 @@ data perturb_seed_drift_body: String = "// __stage0_lockstep_perturb_red__ plant
 // RED receipt: clobber one committed generated seed file, run `--verify` (MUST
 // fail), restore via `git checkout` on both branches. If `--verify` SUCCEEDS on
 // the drifted seed the gate is toothless → exit 1.
+//
+// CRASH-SAFETY: this mutates a TRACKED seed file in place (verify must read the
+// on-disk committed seed, so — unlike the compile-clean perturb — it cannot stay
+// in a TMP dir). Two guards: (1) the floor gate is CI-EPHEMERAL — it runs in a
+// fresh per-run checkout, so a crash cannot corrupt a persistent tree; (2) a
+// fail-closed PRE-CHECK refuses to run if the seed is already dirty (`git diff
+// --quiet`), so it never clobbers a dev's uncommitted seed and surfaces a prior
+// crash's residue instead of compounding it. The bash program model has no
+// `trap`, and `RawLine` is the banned transport-position escape hatch, so the
+// pre-check + ephemeral-checkout posture is the model-expressible safety net.
 //   set -e; <prelude>
+//   git -C "$ROOT" diff --quiet -- <seed> || exit 1   # refuse to clobber a dirty seed
 //   cat > "$ROOT"/<seed> <<'PERTURB' ... PERTURB
 //   if "$REGEN" --verify >/dev/null 2>&1; then git -C "$ROOT" checkout -- <seed>; exit 1; fi
 //   git -C "$ROOT" checkout -- <seed>; exit 0
@@ -109,6 +120,14 @@ fn stage0_lockstep_perturb_program() -> ShellProgram {
   ShellProgram {
     set_e: true,
     statements: concat(ensure_regen_stage0_built(), [
+      AndOr {
+        left: command(words: [
+          lit(text: "git"), lit(text: "-C"), root, lit(text: "diff"), lit(text: "--quiet"),
+          lit(text: "--"), lit(text: perturb_seed_relpath)
+        ]),
+        op: OrElse,
+        right: Exit { code: 1 }
+      },
       Heredoc {
         path: seed_abs,
         delimiter: "PERTURB",
