@@ -346,15 +346,77 @@ fn parse_compiler_entry_admission_imports_compile_module() {
     );
 }
 
+/// Bounded representative slice for Q1 correctness (gap-lane manager brief).
+pub const REPRESENTATIVE_SLICE_PATHS: &[&str] = &[
+    "src/v2/compiler/01_tokenize.dag",
+    "src/v2/compiler/02_parse.dag",
+    "src/v2/compiler/03_normalize.dag",
+    "src/v2/compiler/03_name_resolve.dag",
+    "src/v2/compiler/04_infer.dag",
+    "src/v2/compiler/program_assembly.dag",
+    "src/v2/extdeps/languages/dag.dag",
+    "src/v2/std/grammar.dag",
+    "src/v2/std/qualified_name.dag",
+    "src/v2/std/node.dag",
+];
+
+#[test]
+#[ignore = "emit bounded slice manifest for v2-compiler-closure-nv2-slice-gate.sh"]
+fn emit_representative_slice_manifest() {
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2").to_string_lossy().to_string();
+    let entry = ws.join(COMPILER_ENTRY);
+    let all = discover_source_root_reads_for_entry(
+        &[v2_root],
+        entry.to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover scoped compiler closure reads");
+
+    let normalize_path = |path: &str| -> String {
+        let forward = path.replace('\\', "/");
+        if let Ok(stripped) = std::path::Path::new(&forward).strip_prefix(&ws) {
+            stripped.to_string_lossy().replace('\\', "/")
+        } else {
+            forward
+        }
+    };
+
+    let slice: Vec<_> = REPRESENTATIVE_SLICE_PATHS
+        .iter()
+        .map(|path| {
+            let mut rec = all
+                .iter()
+                .find(|r| normalize_path(&r.file_path) == *path)
+                .unwrap_or_else(|| panic!("slice path not in compiler closure: {path}"))
+                .clone();
+            rec.file_path = (*path).to_string();
+            rec
+        })
+        .collect();
+
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+
+    let manifest_path = ws.join("target/v2-compiler-closure-slice-manifest.dag");
+    emit_source_root_ingest_manifest(&manifest_path, &slice, Some(&admission))
+        .expect("emit slice manifest");
+    eprintln!(
+        "emit_representative_slice_manifest: {} module(s) -> {}",
+        slice.len(),
+        manifest_path.display()
+    );
+}
+
 #[test]
 #[ignore = "gap4 probe — prefix-scan first scoped-ingest Reject (manual)"]
 fn probe_gap4_scoped_ingest_first_reject() {
     let ws = workspace_root();
     let v2_root = ws.join("src/v2").to_string_lossy().to_string();
-    let entry = ws.join(COMPILER_ENTRY).to_string_lossy().to_string();
     let records = discover_source_root_reads_for_entry(
         &[v2_root],
-        &entry,
+        COMPILER_ENTRY,
         &["host_source_root_ingest_manifest.dag".to_string()],
     )
     .expect("discover scoped compiler closure reads");

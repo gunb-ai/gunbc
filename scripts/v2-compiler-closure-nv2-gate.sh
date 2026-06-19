@@ -25,6 +25,7 @@ cargo run -p v1-compiler --release --bin discover_source_root_ingest -- \
 run_claim() {
   local fn="$1"
   "$GUNBC" run \
+    --source-root dsl \
     --source-root src/v2 \
     --source-root "$MANIFEST_DIR" \
     --entry src/v2/compiler/self_host/compiler_closure_emit_from_ingest_gate.dag \
