@@ -8,7 +8,6 @@
 module v2.lens.application_serializer
 
 import extdeps.communication.medium { Medium }
-import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.lens.application { apply_diff }
 import v2.std.compilers.target_model { TargetModel }
