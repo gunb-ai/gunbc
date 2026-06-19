@@ -54,6 +54,35 @@ fn ensure_gunbc_built() -> List<ShellStmt> {
   ]
 }
 
+// Pre-built release bin for Lane 3a ingest (CI builds with --bins; avoid cargo run under
+// batch-2 parallel load — races rust_monolith fmt/clippy/test for the lock).
+fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
+  let root = var_ref(name: "ROOT")
+  let bin = var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST")
+  [
+    assign(name: "DISCOVER_SOURCE_ROOT_INGEST", value: Concat { parts: [root, lit(text: "/target/release/discover_source_root_ingest")] }),
+    If {
+      cond: test_not_executable(path: bin),
+      then: [
+        AndOr {
+          left: Subshell { body: [
+            AndOr {
+              left: command(words: [lit(text: "cd"), root]),
+              op: AndThen,
+              right: command(words: [
+                lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
+                lit(text: "--release"), lit(text: "--bin"), lit(text: "discover_source_root_ingest")
+              ])
+            }
+          ] },
+          op: OrElse,
+          right: Exit { code: 1 }
+        }
+      ]
+    }
+  ]
+}
+
 // 🟡 toolchain-provision carve-out — dissolve-on: model ToolchainProvision in std;
 //   interim structural allow for emit_host go/ts provisioning workarounds. Callers pass
 //   literal blobs here; the wrapper's shell.Exec.Run uses the parameter (computed), not
