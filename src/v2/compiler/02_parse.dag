@@ -161,7 +161,7 @@ type GrammarExprCornerFold {
 
 // Authority facts (dissolve-on: import std.cache_interface when v2 compiler layer resolves std):
 //   dsl/std/cache_identity.dag: parse_table_artifact_kind = "parse_table"
-//   dsl/std/cache_interface.dag: parse_table_memo_id = "parse_table_memo"
+//   dsl/std/cache_interface.dag: parse_table_memo_id = "parse_table_memo_cache"
 // Tracked scaffold — Symbol mirrors until v2 compiler layer imports std (dissolution receipt:
 // that layer-resolution landing, not a follow-up). Do not fork ids.
 data parse_table_artifact_kind: Symbol = ^parse_table
