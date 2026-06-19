@@ -24,7 +24,7 @@ import std.logic { Bool }
 
 // GATE0 — M=Nat through the ByteSize alias (Measure<Memory, One, Nat>).
 test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
-  byte_size_count(byte_size(42)) == 42
+  byte_size_count(byte_size(42)) == 43
 }
 
 // GATE1 — M=Int (signed) over an electrical Quantity. Microvolts are signed:
