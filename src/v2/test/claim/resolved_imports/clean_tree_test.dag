@@ -23,7 +23,7 @@ import v2.std.text { String }
 data resolved_imports_exclude_substrings: List<String> = ["/test/fixture/"]
 
 test fn resolved_imports_clean_over_live_tree_holds() -> Bool {
-  resolved_imports_clean_holds(facts: import_resolution_facts_live(
+  resolved_imports_clean_nonvacuous_holds(facts: import_resolution_facts_live(
     pool_roots: witness_layer_roots,
     importer_roots: witness_layer_roots,
     exclude_substrings: resolved_imports_exclude_substrings
