@@ -125,6 +125,9 @@ type Duration = Measure<Time, One, Nat>
 // Demanded by Hetzner cost quotes whose source data is `*_eur_micros` (e.g. 50500
 // micro-EUR/hour); micros are finer than the EUR minor unit (cent), so a minor-unit
 // `<One>` carrier could not hold them losslessly.
+// dissolution-trigger: collapse with std.measure.MoneyAmountMicro once v2 parametric-
+// in-field-position eval lands — both aliases dissolve to `MoneyAmount<Micro>` (see
+// std/measure.dag header on the dual-alias pair).
 type MoneyMicros = MoneyAmount<Micro>
 
 fn money_micros(count: Nat) -> MoneyMicros {

@@ -338,11 +338,16 @@ fn watt_count(w: Watt) -> Nat {
 // facing micro-scale alias; product owns the downstream nickname. Multi-hop alias
 // field-access (G3 + multi-hop, gunbc#4885) is verified by execution via
 // product.compute_fabric.MoneyMicros — see measure_two_hop_alias_count_roundtrip_holds.
+// dissolution-trigger: collapse `MoneyAmountMicro` + `MoneyMicros` to parametric
+// `MoneyAmount<Micro>` in field positions once v2 parametric-in-field-position eval
+// lands (the v2-eval scaffold that forced the dual named aliases); repoint extdeps +
+// product consumers and delete the witness cross-alias pump in hetzner_cost_quote_witness.
 type MoneyAmount<S> = Measure<Currency, S, Nat>
 
 // Micro-scale money at the extdeps boundary (Hetzner `*_eur_micros` source rows).
 // Named alias required for v2 eval (parametric `MoneyAmount<Micro>` in field positions
 // does not evaluate); product `MoneyMicros` is the downstream CostEstimate nickname.
+// dissolution-trigger: see header on `MoneyAmountMicro`/`MoneyMicros` pair above.
 type MoneyAmountMicro = MoneyAmount<Micro>
 
 fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
