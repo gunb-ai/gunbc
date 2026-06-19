@@ -1819,13 +1819,22 @@ fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
   Repeat { element: element }
 }
 
+// item (comma? item)* comma? — the inter-item comma is OPTIONAL, mirroring the v1
+// single authority parse_field_list_acc (src/v1/stage0/src/v1_compiler_parse.rs): v1
+// skip_newlines + eat(ExpectComma) tolerating EatUnchanged, i.e. items separate on a
+// comma OR bare juxtaposition (newlines are whitespace), uniformly across list sites
+// (field decls, param lists, generic/type-arg lists). v2 had FORKED to a mandatory
+// comma; that fork left every newline-separated multi-field record body unparseable
+// (parse_g0_tokens_remain). This is a strict superset — comma-separated lists still
+// parse. (v1 forbids commas only on positional-variant payloads, which have no v2
+// wave1 production at all, so no comma_list site needs the strict policy.)
 fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: item,
     right: dag_grammar_sequence(
       left: dag_grammar_repeat(
         element: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
           right: item
         )
       ),
