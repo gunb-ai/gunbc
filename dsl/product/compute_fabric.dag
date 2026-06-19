@@ -36,11 +36,9 @@ import std.measure {
   Currency,
   Micro,
   One,
+  Nano,
   ByteSize,
   MoneyAmount,
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -49,6 +47,8 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+// Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
 import std.content_hash {
@@ -664,6 +664,12 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
+  // NANOSECOND scale CHOICE (relocated here per DESIGN §3): the realization /
+  // measurement framework (std.realization_measurement / std.realization_schedule) is
+  // scale-AGNOSTIC; this consumer — the host wall-clock observation boundary — OWNS the
+  // decision to denominate measured cost in nanoseconds, because that is the resolution
+  // the host clock observes elapsed wall time at. The framework rolls up whatever scale
+  // arrives; nanosecond is named here, once, where it is measured.
   wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
@@ -684,7 +690,9 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 
 // Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
 // → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
-fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
+// The scale-agnostic roll-up is instantiated at `CostAccount<Nano>` HERE (this consumer's
+// owned ns choice), inferred from the NanosecondDuration wall_duration.
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
 }
 
