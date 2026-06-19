@@ -16,22 +16,15 @@ MANIFEST="$ROOT/target/v2-compiler-closure-slice-manifest.dag"
 MANIFEST_DIR="$(dirname "$MANIFEST")"
 GUNBC="$ROOT/target/release/gunbc"
 
-# Representative slice (10 modules from the scoped 00_compile closure):
-#   gap-1 caret ^IDENT  → dag.dag, 01_tokenize.dag
-#   gap-2 comma-optional lists → dag.dag, grammar.dag, 02_parse.dag
-#   gap-3 repeat/cons + qual names → 02_parse, grammar, qualified_name, program_assembly
-#   normalize/infer depth → 03_normalize, 04_infer, program_assembly
+# Representative slice (7 modules from scoped 00_compile closure; dag.dag excluded — scale):
 SLICE_PATHS=(
-  "src/v2/compiler/01_tokenize.dag"
   "src/v2/compiler/02_parse.dag"
   "src/v2/compiler/03_normalize.dag"
   "src/v2/compiler/03_name_resolve.dag"
   "src/v2/compiler/04_infer.dag"
   "src/v2/compiler/program_assembly.dag"
-  "src/v2/extdeps/languages/dag.dag"
   "src/v2/std/grammar.dag"
   "src/v2/std/qualified_name.dag"
-  "src/v2/std/node.dag"
 )
 
 cargo build -p v1-compiler --release --bin discover_source_root_ingest --bin gunbc

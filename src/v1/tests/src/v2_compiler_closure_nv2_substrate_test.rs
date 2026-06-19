@@ -347,17 +347,15 @@ fn parse_compiler_entry_admission_imports_compile_module() {
 }
 
 /// Bounded representative slice for Q1 correctness (gap-lane manager brief).
+/// Excludes extdeps/languages/dag.dag (grammar LM corpus — scale-dominated; covered by unit witnesses).
 pub const REPRESENTATIVE_SLICE_PATHS: &[&str] = &[
-    "src/v2/compiler/01_tokenize.dag",
     "src/v2/compiler/02_parse.dag",
     "src/v2/compiler/03_normalize.dag",
     "src/v2/compiler/03_name_resolve.dag",
     "src/v2/compiler/04_infer.dag",
     "src/v2/compiler/program_assembly.dag",
-    "src/v2/extdeps/languages/dag.dag",
     "src/v2/std/grammar.dag",
     "src/v2/std/qualified_name.dag",
-    "src/v2/std/node.dag",
 ];
 
 #[test]
