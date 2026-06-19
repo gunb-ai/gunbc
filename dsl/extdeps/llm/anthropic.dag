@@ -8,6 +8,7 @@ module extdeps.llm.anthropic
 
 import extdeps.llm.llm { llm_snake_wire_contract }
 import std.serialization { CoproductWireContract, VariantEncoding }
+import std.types { NonEmptyStr }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
 data wire_contract: VariantEncoding = llm_snake_wire_contract
@@ -71,11 +72,42 @@ data models: List<AnthropicModelSpec> = [
 // Tool-use / tool-result surfaces are Anthropic-specific. `ImageSource`
 // models Anthropic Messages API image `source` shapes (base64 / url; file deferred).
 
+// Anthropic Messages image `source` base64 media types (extensible registry).
+type AnthropicImageMediaType
+  = ImageJpeg
+  | ImagePng
+  | ImageGif
+  | ImageWebp
+  | AnthropicImageMediaTypeOther { raw: NonEmptyStr }
+
+data anthropic_image_jpeg_wire: String = "image/jpeg"
+data anthropic_image_png_wire: String = "image/png"
+data anthropic_image_gif_wire: String = "image/gif"
+data anthropic_image_webp_wire: String = "image/webp"
+
+fn parse_anthropic_image_media_type(raw: String) -> AnthropicImageMediaType {
+  if raw == anthropic_image_jpeg_wire { ImageJpeg }
+  else if raw == anthropic_image_png_wire { ImagePng }
+  else if raw == anthropic_image_gif_wire { ImageGif }
+  else if raw == anthropic_image_webp_wire { ImageWebp }
+  else { AnthropicImageMediaTypeOther { raw: raw } }
+}
+
+fn anthropic_image_media_type_label(kind: AnthropicImageMediaType) -> String {
+  match kind {
+    ImageJpeg => anthropic_image_jpeg_wire
+    ImagePng => anthropic_image_png_wire
+    ImageGif => anthropic_image_gif_wire
+    ImageWebp => anthropic_image_webp_wire
+    AnthropicImageMediaTypeOther { raw: r } => r
+  }
+}
+
 // 🟡 SCAFFOLD provider-domain coproduct for Anthropic Messages image `source`
 // (base64/url arms emittable via `llm.Anthropic.Messages`; dissolve on
 // `structural_coverage_gap_anthropic_messages_file_image_beta_header`).
 type ImageSource
-  = Base64Image { media_type: String, data: String }
+  = Base64Image { media_type: AnthropicImageMediaType, data: String }
   | UrlImage { url: String }
 
 // 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic accepts
@@ -191,9 +223,19 @@ type AnthropicAssistantContentBlock
 // -- System prompt -------------------------------------------------
 
 // Anthropic API cache control: wire shape requires {"type": "ephemeral"}.
-// Single-value discriminant, but the field must be present for API fidelity.
+type CacheControlType
+  = CacheEphemeral {}
+
+data cache_control_ephemeral_wire: String = "ephemeral"
+
+fn cache_control_type_label(kind: CacheControlType) -> String {
+  match kind {
+    CacheEphemeral {} => cache_control_ephemeral_wire
+  }
+}
+
 type CacheControl {
-  type: String
+  type: CacheControlType
 }
 
 type SystemPrompt {
@@ -302,12 +344,24 @@ type AnthropicMessages200Role
 // documented reason-token domain.
 type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal | ModelContextWindowExceeded
 
+// Message object envelope `type` — Anthropic returns only "message" today.
+type AnthropicMessagesObjectType
+  = MessagesObjectMessage {}
+
+data anthropic_messages_object_message_wire: String = "message"
+
+fn anthropic_messages_object_type_label(kind: AnthropicMessagesObjectType) -> String {
+  match kind {
+    MessagesObjectMessage {} => anthropic_messages_object_message_wire
+  }
+}
+
 // Message object envelope for POST /v1/messages 200 responses per Anthropic docs
 // (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
 // `model`, `stop_reason`, optional `stop_sequence`, `usage`.
 type AnthropicMessages200Body {
   id: String
-  type: String
+  type: AnthropicMessagesObjectType
   role: AnthropicMessages200Role
   content: List<AnthropicMessages200ContentBlock>
   model: String
