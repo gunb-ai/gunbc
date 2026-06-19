@@ -60,7 +60,7 @@ mod interp_recorded_fixture_test;
 #[cfg(test)]
 mod interp_stats_test;
 #[cfg(test)]
-mod interp_string_secret_cast_test;
+mod interp_string_family_cast_test;
 #[cfg(test)]
 mod interp_wire_serialize_test;
 #[cfg(test)]

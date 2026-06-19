@@ -20,8 +20,11 @@ use im_rc::Vector as RrbVector;
 
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
+use crate::std_types::is_kernel_type;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
+use crate::v1_compiler_infer_env::{lookup_type_by_name, TypeEnv};
 use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_resolve::resolve_node;
 use crate::v1_rt;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
@@ -87,6 +90,7 @@ use crate::v1_std_core::{
     FieldAccessStyle,
     FieldSummary,
     FieldValueShape,
+    InferredNode,
     MatchPattern,
     MethodSemantics,
     NewlineIndex,
@@ -2895,10 +2899,101 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 // Cast
 // ---------------------------------------------------------------------------
 
+fn lookup_type_env_for_name(ctx: &InterpContext, type_name: &str) -> Option<(Rc<TypeEnv>, String)> {
+    for module in ctx.modules.iter() {
+        let module_name = authored_name_at(ctx.si(), module.module.clone());
+        if lookup_type_by_name(module.type_env.clone(), type_name.to_string()).is_some() {
+            return Some((module.type_env.clone(), module_name));
+        }
+    }
+    None
+}
+
+fn alias_rhs_node(decl: &Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Option<Rc<Node>> {
+    let rhs = match decl.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    Some(resolve_node(rhs, env, module_name).resolved.clone())
+}
+
+/// Walk nominal_opaque / where / brand alias chains to the kernel type name that
+/// owns the runtime representation (Secret peels to String, etc.).
+fn cast_target_underlying_kernel(ctx: &InterpContext, mut target: Rc<Node>) -> String {
+    let mut seen = BTreeSet::new();
+
+    for _ in 0..32 {
+        let name = authored_name_at(ctx.si(), target.clone());
+        if name.is_empty() {
+            if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref().cloned() {
+                target = node;
+                continue;
+            }
+            return String::new();
+        }
+
+        if !seen.insert(name.clone()) {
+            return name;
+        }
+
+        if name == "String" || name == "Secret" {
+            return "String".to_string();
+        }
+
+        if is_kernel_type(name.clone()) {
+            return name;
+        }
+
+        let Some((env, module_name)) = lookup_type_env_for_name(ctx, &name) else {
+            return name;
+        };
+        let Some(decl) = lookup_type_by_name(env.clone(), name.clone()) else {
+            return name;
+        };
+        let Some(next) = alias_rhs_node(&decl, env, module_name) else {
+            return name;
+        };
+
+        let next_name = authored_name_at(ctx.si(), next.clone());
+        if next_name == name {
+            if let Some(InferredNode::Resolved { node }) = next.inferred.as_deref().cloned() {
+                if Rc::ptr_eq(&node, &next) {
+                    return name;
+                }
+                target = node;
+                continue;
+            }
+            return name;
+        }
+        target = next;
+    }
+
+    authored_name_at(ctx.si(), target)
+}
+
+fn str_identity_cast_if_string_family(
+    val: &Value,
+    ctx: &InterpContext,
+    target: Rc<Node>,
+) -> Option<Value> {
+    let Value::Str(s) = val else {
+        return None;
+    };
+    if cast_target_underlying_kernel(ctx, target) == "String" {
+        Some(Value::Str(s.clone()))
+    } else {
+        None
+    }
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node);
+    let target_name = authored_name_at(ctx.si(), target_node.clone());
+
+    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+        return Ok(v);
+    }
 
     match (val, target_name.as_str()) {
         (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
@@ -2907,8 +3002,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
         (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
         (v, "String") => Ok(Value::Str(format!("{}", v))),
-        // Secret = nominal_opaque String — alias cast is identity (std/coercion.dag).
-        (Value::Str(s), "Secret") => Ok(Value::Str(s.clone())),
         (v, t) => Err(InterpError::TypeError {
             msg: format!("cannot cast {} to {}", v.type_label(), t),
         }),
