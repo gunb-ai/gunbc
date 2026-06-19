@@ -8,7 +8,7 @@
 //              pass undetected before this lens was tightened.
 //        Rule (2) is scoped to the dsl-tree `extdeps`/`extdeps.*` module form today. The
 //        `v2.extdeps.*` form is DEFERRED (🟡 dissolve-on: the pre-existing src/v2/std →
-//        v2.extdeps.* importers — timeseries_signal{,_passives}, qualified_name.from_module_node,
+//        v2.extdeps.* importers — qualified_name.from_module_node,
 //        grounding.terminal_gate_test — are migrated; widen `is_std_importing_extdeps` to also
 //        match the `v2.extdeps`/`v2.extdeps.*` form then).
 // Consumer: tools.layering_imports_gate → tools.layering_imports_transport host scan.

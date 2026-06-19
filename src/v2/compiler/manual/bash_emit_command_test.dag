@@ -18,6 +18,8 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.extdeps.languages.bash {
+  bash_lhs_exact_relation_row_witness,
+  bash_mvp1_concrete_tokens,
   bash_mvp1_emitted_command,
   bash_mvp1_source_text,
   bash_mvp1_lex,
@@ -59,8 +61,8 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
-import v2.std.witness { Violates, Witness }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Holds, Violates, Witness }
 
 // Bash emit uses lhs-exact Conj-positional emitted rows; `translate`'s grammar-first
 // short-circuit returns the node raw without consulting facts. This lookup is therefore
@@ -74,6 +76,55 @@ fn bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   }
+}
+
+// Slice 5a RED — Arrow-shaped emitted must Violates lhs-exact selection (not Conj/Atom).
+fn bash_arrow_emitted_red_fixture() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_lhs_exact_arrow_emitted_rejects() -> Bool {
+  match bash_lhs_exact_relation_row_witness(
+    lhs: ^bash_production_command,
+    tokens: bash_mvp1_concrete_tokens(),
+    emitted: bash_arrow_emitted_red_fixture()
+  ) {
+    Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
+    Holds { value: _ } => false
+  }
+}
+
+test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
+  bash_lhs_exact_arrow_emitted_rejects()
 }
 
 data bash_emit_inferred_tree: InferredTree = InferredTree {
