@@ -9,7 +9,7 @@
 module test.claim.cargo_build_run_argv_witness
 
 import std.logic { Bool }
-import std.collection { List }
+import std.types { List }
 import extdeps.cargo_build
 
 data cargo_build_run_path: String = "dsl/extdeps/rust/cargo_build.dag"
@@ -17,7 +17,7 @@ data cargo_build_run_service: String = "cargo.Build"
 data cargo_build_run_operation: String = "Run"
 data cargo_build_run_package: String = "v1-compiler"
 data cargo_build_run_bin: String = "gunbc"
-data cargo_build_run_args: List<String> = ["--version"]
+data cargo_build_run_args: List<String> = ["--", "compile", "--help"]
 
 fn argv_token_at(argv: List<String>, index: Int) -> String {
   argv.skip(n: index).first()
@@ -32,14 +32,16 @@ fn witness_cargo_build_run_argv_materializes() -> Bool {
     cargo_build_run_bin,
     cargo_build_run_args
   )
-  length(xs: argv) == 7
+  length(xs: argv) == 9
     && argv_token_at(argv: argv, index: 0) == "cargo"
     && argv_token_at(argv: argv, index: 1) == "run"
     && argv_token_at(argv: argv, index: 2) == "-p"
     && argv_token_at(argv: argv, index: 3) == cargo_build_run_package
     && argv_token_at(argv: argv, index: 4) == "--bin"
     && argv_token_at(argv: argv, index: 5) == cargo_build_run_bin
-    && argv_token_at(argv: argv, index: 6) == "--version"
+    && argv_token_at(argv: argv, index: 6) == "--"
+    && argv_token_at(argv: argv, index: 7) == "compile"
+    && argv_token_at(argv: argv, index: 8) == "--help"
 }
 
 fn witness_cargo_build_run_live_call() -> Bool {

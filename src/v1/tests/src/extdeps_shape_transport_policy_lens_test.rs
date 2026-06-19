@@ -1,5 +1,8 @@
 //! Parse + resolve receipts for `v2.lens.extdeps_shape_transport_policy`.
 
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use v1_compiler::extdeps_shape_transport_policy_project;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_interpreter::{self, Value};
@@ -61,9 +64,6 @@ fn extdeps_argv_projection_cargo_run_defused_on_live_tree() {
 
 #[test]
 fn cargo_build_run_argv_materializes_bare_param_refs_by_execution() {
-    use std::collections::HashMap;
-    use v1_compiler::v1_interpreter::{self, Value};
-
     let argv = v1_interpreter::materialize_shell_argv_for_operation(
         "dsl/extdeps/rust/cargo_build.dag".to_string(),
         "cargo.Build".to_string(),
@@ -73,7 +73,14 @@ fn cargo_build_run_argv_materializes_bare_param_refs_by_execution() {
             ("bin".to_string(), Value::Str("gunbc".to_string())),
             (
                 "args".to_string(),
-                Value::List(imbl::vector![Value::Str("--version".to_string())]),
+                Value::List(Rc::new(
+                    vec![
+                        Value::Str("--".to_string()),
+                        Value::Str("compile".to_string()),
+                        Value::Str("--help".to_string()),
+                    ]
+                    .into(),
+                )),
             ),
         ]),
     )
@@ -87,7 +94,9 @@ fn cargo_build_run_argv_materializes_bare_param_refs_by_execution() {
             "v1-compiler",
             "--bin",
             "gunbc",
-            "--version"
+            "--",
+            "compile",
+            "--help"
         ]
     );
 }
