@@ -901,8 +901,7 @@ data bash_env_prefixed_cargo_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_env_prefixed_cargo_concrete_tokens()
 )
 
-data bash_env_prefixed_cargo_source_text: String =
-  "CARGO_TARGET_DIR=\"$WORKDIR\"'/target' 'cargo' 'build' '--quiet'"
+data bash_env_prefixed_cargo_source_text: String = "CARGO_TARGET_DIR=\"$WORKDIR\"'/target' 'cargo' 'build' '--quiet'"
 
 fn bash_env_prefixed_cargo_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
