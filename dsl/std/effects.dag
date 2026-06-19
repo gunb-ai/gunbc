@@ -38,8 +38,7 @@
 
 module std.effects
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, String, List }
-import std.realization_schedule { string_list_eq }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, String, List, string_list_eq }
 import std.http_path {
   PathTemplate,
   PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
