@@ -2501,6 +2501,7 @@ pub fn run_discovery_corpus_with_options(
         total_measured_nanos: 0,
     };
     let mut current_entry: Option<String> = None;
+    let mut current_closure_digest: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
     let mut current_entry_closure_touched = true;
@@ -2511,11 +2512,13 @@ pub fn run_discovery_corpus_with_options(
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
             let (graph, source_indices) = if skip_enabled {
+                current_closure_digest = Some(closure_subject.clone());
                 current_entry_closure_touched =
                     floor_entry_closure_touched_from_sources(&row.entry, &changed_paths, &sources);
                 resolve_entry_with_parse_cache(&index, &row.entry, Some(sources))
                     .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?
             } else {
+                current_closure_digest = None;
                 current_entry_closure_touched = true;
                 resolve_entry_with_index(&index, &row.entry)
                     .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?
@@ -2531,12 +2534,11 @@ pub fn run_discovery_corpus_with_options(
             ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
             current_entry = Some(row.entry.clone());
         }
-        let closure_subject = current_closure_subject
-            .as_ref()
-            .expect("closure subject set on entry resolve above");
         if skip_enabled
             && !current_entry_closure_touched
-            && floor_witness_should_skip(&row.function, closure_subject, baseline_cache.as_deref())
+            && current_closure_digest.as_ref().is_some_and(|cd| {
+                floor_witness_should_skip(&row.function, cd, baseline_cache.as_deref())
+            })
         {
             summary.skipped += 1;
             eprintln!(
@@ -2546,6 +2548,9 @@ pub fn run_discovery_corpus_with_options(
             continue;
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
+        let closure_subject = current_closure_subject
+            .as_ref()
+            .expect("closure subject set on entry resolve above");
         let (outcome, receipt) =
             run_claim_measured(ctx_ref, closure_subject.as_str(), &row.function);
         summary.total_measured_nanos += receipt.wall_nanos;
@@ -2553,12 +2558,10 @@ pub fn run_discovery_corpus_with_options(
         match outcome {
             ClaimOutcome::Pass => {
                 summary.passed += 1;
-                if let Some(cache_root) = baseline_cache.as_deref() {
-                    let _ = witness_baseline_record_verified_green(
-                        cache_root,
-                        closure_subject,
-                        &row.function,
-                    );
+                if let (Some(cache_root), Some(cd)) =
+                    (baseline_cache.as_deref(), current_closure_digest.as_ref())
+                {
+                    let _ = witness_baseline_record_verified_green(cache_root, cd, &row.function);
                 }
             }
             ClaimOutcome::Fail => summary.failures.push(format!(
