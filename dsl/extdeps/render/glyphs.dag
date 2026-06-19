@@ -1,6 +1,6 @@
 // extdeps/render/glyphs.dag — Glyph realization table + encoding-tier dispatch.
 //
-// The canonical three-tier visual encodings (Emoji / Unicode / Ascii) for each
+// Project visual vocabulary: three-tier encodings (Emoji / Unicode / Ascii) per
 // SymbolId. Dispatch lives in extdeps/, not std/ (DESIGN.md §3): std.symbols
 // owns only the agnostic glyph identity and SymbolEntry shape.
 

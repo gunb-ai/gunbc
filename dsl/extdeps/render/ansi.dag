@@ -1,9 +1,15 @@
-// extdeps/render/ansi.dag — ANSI 256-color escape realization for SemanticColor.
+// extdeps/render/ansi.dag — ANSI escape / SGR color realization for SemanticColor.
 //
-// Upstream: gunb.ai/pkg/fermi/colors.go (consistent terminal appearance).
+// Anchor: https://en.wikipedia.org/wiki/ANSI_escape_code
 //
-// P2 split: std.symbols owns the agnostic SemanticColor concept; the cited
-// per-color escape sequences live here in extdeps/render.
+// Upstream: ECMA-48 (ISO/IEC 6429) / ANSI X3.64 — control sequences for character
+//   imputation. The cited escape strings are Select Graphic Rendition (SGR) CSI
+//   sequences (`ESC [ … m`); 256-color foreground uses `38;5;<n>` (ISO 8613-6
+//   indexed palette). Real spec names kept in the `code` field.
+//
+// P2 split: std.symbols owns the agnostic SemanticColor concept; the cited SGR
+// escape sequences live here. Project palette index choices per semantic role
+// align with gunb.ai/pkg/fermi/colors.go for consistent appearance.
 
 module extdeps.render.ansi
 
