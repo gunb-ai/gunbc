@@ -23,11 +23,12 @@ module std.realization_width
 import std.types { Int, List }
 import std.measure {
   HardwareThreadCount,
-  NanosecondDuration,
   hardware_thread_count,
   hardware_thread_count_value,
-  nanosecond_duration,
 }
+// nanosecond scale CHOICE relocated out of std.measure (scale-agnostic) to the timing
+// authority consumer std.verification by #5286 — import the scaled constructor from there.
+import std.verification { nanosecond_duration }
 import std.pareto { AxisGoal, LowerIsBetter }
 import std.realization_schedule {
   Schedule,
@@ -38,7 +39,7 @@ import std.realization_schedule {
   schedule_eq,
   cost_account_measured,
   cost_account_predicted_zero,
-  cost_account_time_nanos,
+  cost_account_time_count,
 }
 
 fn int_min(a: Int, b: Int) -> Int {
@@ -123,10 +124,12 @@ fn witness_budget_ignoring_fold_fails(
 }
 
 // Measured shard-balance scaffold: assignment must read CostAccount.basis=Measured.
-fn shard_balance_slot_for_cost(cost: CostAccount, baseline: CostAccount) -> Int {
+// CostAccount is scale-generic (CostAccount<S>) post-#5286; the slot reads the scale-agnostic
+// time COUNT (Nat, widened to Int) rather than a nanosecond-fixed projection.
+fn shard_balance_slot_for_cost<S>(cost: CostAccount<S>, baseline: CostAccount<S>) -> Int {
   match cost.basis {
-    Measured => cost_account_time_nanos(account: cost)
-    Predicted => cost_account_time_nanos(account: baseline)
+    Measured => cost_account_time_count(account: cost)
+    Predicted => cost_account_time_count(account: baseline)
   }
 }
 
