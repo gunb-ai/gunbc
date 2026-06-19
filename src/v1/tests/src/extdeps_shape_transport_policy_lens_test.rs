@@ -48,6 +48,51 @@ fn assert_witness_true(entry: &str, witness_fn: &str) {
 }
 
 #[test]
+fn extdeps_argv_projection_cargo_run_defused_on_live_tree() {
+    assert_eq!(
+        extdeps_shape_transport_policy_project::dead_param_count_for_module_path(
+            "extdeps.cargo_build".to_string(),
+            "cargo.Build".to_string(),
+            "Run".to_string(),
+        ),
+        0
+    );
+}
+
+#[test]
+fn cargo_build_run_argv_materializes_bare_param_refs_by_execution() {
+    use std::collections::HashMap;
+    use v1_compiler::v1_interpreter::{self, Value};
+
+    let argv = v1_interpreter::materialize_shell_argv_for_operation(
+        "dsl/extdeps/rust/cargo_build.dag".to_string(),
+        "cargo.Build".to_string(),
+        "Run".to_string(),
+        HashMap::from([
+            ("package".to_string(), Value::Str("v1-compiler".to_string())),
+            ("bin".to_string(), Value::Str("gunbc".to_string())),
+            (
+                "args".to_string(),
+                Value::List(imbl::vector![Value::Str("--version".to_string())]),
+            ),
+        ]),
+    )
+    .expect("materialize cargo.Build.Run argv");
+    assert_eq!(
+        argv,
+        vec![
+            "cargo",
+            "run",
+            "-p",
+            "v1-compiler",
+            "--bin",
+            "gunbc",
+            "--version"
+        ]
+    );
+}
+
+#[test]
 fn extdeps_argv_projection_cargo_fmt_doc_defused_on_live_tree() {
     let root = workspace_root();
     let path = root
