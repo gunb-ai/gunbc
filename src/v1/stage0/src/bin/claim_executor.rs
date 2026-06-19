@@ -253,7 +253,11 @@ struct ClaimResult {
     detail: String,
 }
 
-fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable, spawn_width: usize) -> ClaimResult {
+fn run_one_runnable(
+    source_roots: Vec<String>,
+    runnable: Runnable,
+    spawn_width: usize,
+) -> ClaimResult {
     match runnable {
         Runnable::SingleClaim { entry, function } => {
             run_single_claim(&source_roots, entry, function)
@@ -401,10 +405,7 @@ fn spawn_width_function_name(plan_function: &str) -> Option<String> {
         .map(|prefix| format!("{prefix}_spawn_width"))
 }
 
-fn hardware_thread_count_from_value(
-    value: &Value,
-    ctx: &InterpContext,
-) -> Result<usize, String> {
+fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Result<usize, String> {
     match value {
         Value::Record { fields, .. } => match ctx.field(fields, "count") {
             Some(Value::Int(n)) => Ok((*n).max(1) as usize),
@@ -430,12 +431,8 @@ fn eval_spawn_width(
     let Some(width_fn) = spawn_width_function_name(plan_function) else {
         return Ok(1);
     };
-    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry).map_err(|msg| {
-        format!(
-            "resolve failed for spawn width {}:\n{}",
-            plan_entry, msg
-        )
-    })?;
+    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
+        .map_err(|msg| format!("resolve failed for spawn width {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let width_value = run_value(&plan_ctx, &width_fn).map_err(|msg| {
         format!(
@@ -459,11 +456,7 @@ struct WalkOutcome {
 /// The batch boundary is a barrier: batch N+1 starts only after every claim in batch N
 /// has reported. A failed batch halts the walk before its dependents. The batch
 /// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
-fn run_walk(
-    source_roots: &[String],
-    batches: &[Vec<Runnable>],
-    spawn_width: usize,
-) -> WalkOutcome {
+fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
     let mut batches_run = 0usize;

@@ -2302,9 +2302,13 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.total += summary.total;
         merged.passed += summary.passed;
         merged.failures.extend(summary.failures);
-        merged.entry_resolve_receipts.extend(summary.entry_resolve_receipts);
+        merged
+            .entry_resolve_receipts
+            .extend(summary.entry_resolve_receipts);
         merged.total_resolve_nanos += summary.total_resolve_nanos;
-        merged.performance_receipts.extend(summary.performance_receipts);
+        merged
+            .performance_receipts
+            .extend(summary.performance_receipts);
         merged.total_measured_nanos += summary.total_measured_nanos;
     }
     merged
