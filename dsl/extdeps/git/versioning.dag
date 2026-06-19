@@ -8,10 +8,6 @@
 //
 // Layer-2 ecosystem model on extdeps.version (VersionIdentity + VersionScheme).
 // Layer-3 constraint grounding: min_git_version (GitVersionConstraint).
-//
-// Consumers:
-//   extdeps/tools/tools.dag — CliTool min_version when git tool rows land
-//   dsl/test/claim/extdeps_git_versioning_witness_test.dag — by-execution witnesses
 
 module extdeps.git.versioning
 
