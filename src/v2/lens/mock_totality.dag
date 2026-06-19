@@ -3,7 +3,7 @@
 // Anchor: DESIGN.md §4 (pure reader, stores nothing) / §5 (fail-closed) / §6 (gate, not illusion).
 //
 // The operator's layering contract has three parts: a layer PUBLISHES a mock corpus as a
-// closed structural fact (`v2.extdeps.filesystem.mock_corpus` / `v2.extdeps.test.mock_corpus`), an adjacent layer's CONSUMER
+// closed structural fact (`extdeps.filesystem.mock_corpus` in dsl/ / `v2.extdeps.test.mock_corpus`), an adjacent layer's CONSUMER
 // materializes ANY published case impl-blind, and THIS lens enforces the consumer is TOTAL —
 // it fail-closes (§5) the moment a published member is left unhandled.
 //
