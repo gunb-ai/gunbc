@@ -214,7 +214,7 @@ fn bash_emit_slice4_holds(
     facts: Map { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: d } => (source == source_text) && (d == None)
+    Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
