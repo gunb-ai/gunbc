@@ -1,0 +1,83 @@
+// dsl/test/claim/gcp_oauth_access_token_witness_test.dag
+//
+// §5 by-execution witnesses for gunbc.auth.credentials.gcp_oauth_access_token(strategy).
+// Hermetic replay via committed fixtures under dsl/test/fixture/gcp_oauth_access_token_store/
+// (v1-compiler-tests `gcp_oauth_access_token_materializer_holds`).
+//
+// Discriminating pair:
+//   GREEN — both strategies route to distinguishable fixture tokens.
+//   RED   — swapped-dispatch perturbation returns the wrong leaf token.
+
+module test.claim.gcp_oauth_access_token_witness
+
+import extdeps.cloud.gcp.gcp { AdcRefresh, GcloudCli, GcpOAuth2AccessTokenStrategy }
+import gunbc.auth.credentials {
+  gcp_oauth_access_token,
+  gcp_oauth_access_token_via_adc_refresh,
+  gcp_oauth_access_token_via_gcloud
+}
+import std.collection { Absent, Present }
+import std.logic { Bool }
+import std.types { FilePath, Secret }
+
+// Fixture-authored tokens (must match dsl/test/fixture/gcp_oauth_access_token_store/*).
+data token_adc_refresh: String = "ya29.WITNESS_ADC_REFRESH_TOKEN"
+data token_gcloud_cli: String = "ya29.WITNESS_GCLOUD_CLI_TOKEN"
+
+data witness_adc_path: FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
+
+fn secret_eq(a: Secret, b: String) -> Bool {
+  (a as String) == b
+}
+
+fn witness_gcloud_cli_strategy_holds() -> Bool {
+  let r = gcp_oauth_access_token(strategy: GcloudCli)
+  secret_eq(a: r.token, b: token_gcloud_cli)
+}
+
+fn witness_adc_refresh_absent_path_holds() -> Bool {
+  let r = gcp_oauth_access_token(strategy: AdcRefresh { adc_path: Absent })
+  secret_eq(a: r.token, b: token_adc_refresh)
+}
+
+fn witness_adc_refresh_present_path_holds() -> Bool {
+  let r = gcp_oauth_access_token(
+    strategy: AdcRefresh { adc_path: Present { value: witness_adc_path } }
+  )
+  secret_eq(a: r.token, b: token_adc_refresh)
+}
+
+// Perturbation: swapped match arms — must NOT return the canonical strategy token.
+pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
+  uses net: Network
+{
+  node result = match strategy {
+    GcloudCli => gcp_oauth_access_token_via_adc_refresh()
+    AdcRefresh { adc_path: Absent } => gcp_oauth_access_token_via_gcloud()
+    AdcRefresh { adc_path: Present { value: _path } } => gcp_oauth_access_token_via_gcloud()
+  }
+  return { token: result.token }
+}
+
+fn witness_swapped_dispatch_gcloud_cli_is_red() -> Bool {
+  let r = gcp_oauth_access_token_dispatch_swapped(strategy: GcloudCli)
+  !secret_eq(a: r.token, b: token_gcloud_cli)
+}
+
+fn witness_swapped_dispatch_adc_refresh_is_red() -> Bool {
+  let r = gcp_oauth_access_token_dispatch_swapped(
+    strategy: AdcRefresh { adc_path: Absent }
+  )
+  !secret_eq(a: r.token, b: token_adc_refresh)
+}
+
+test fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
+  witness_gcloud_cli_strategy_holds()
+    && witness_adc_refresh_absent_path_holds()
+    && witness_adc_refresh_present_path_holds()
+}
+
+test fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
+  witness_swapped_dispatch_gcloud_cli_is_red()
+    && witness_swapped_dispatch_adc_refresh_is_red()
+}
