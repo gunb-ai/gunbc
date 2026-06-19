@@ -2,7 +2,6 @@
 // Source module: std.types
 
 use self::AbiEnv::*;
-use self::Arch::*;
 use self::AuthScheme::*;
 use self::Bool::*;
 use self::CodegenBackend::*;
@@ -11,7 +10,7 @@ use self::ExecutionEnv::*;
 use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::Os::*;
-use self::Platform::*;
+use self::TargetArchitecture::*;
 use self::TopologyNodeKind::*;
 use self::Vendor::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
@@ -309,16 +308,6 @@ pub type GitRef = String;
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
-pub enum Platform {
-    Linux,
-    Macos,
-    Windows,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
 pub enum TopologyNodeKind {
     Pure,
     Transport,
@@ -352,16 +341,10 @@ pub enum FermiDepth {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
-pub enum Arch {
+pub enum TargetArchitecture {
     X86_64,
-    X86,
     Aarch64,
-    Arm,
     Armv7,
-    Mips,
-    Mipsel,
-    Mips64,
-    Mips64el,
     Riscv64,
     Wasm32,
 }
@@ -421,7 +404,7 @@ pub enum ExecutionEnv {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetTriple {
-    pub arch: Arch,
+    pub arch: TargetArchitecture,
     pub vendor: Vendor,
     pub os: Os,
     pub env: Option<AbiEnv>,

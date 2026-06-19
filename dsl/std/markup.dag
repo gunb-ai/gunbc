@@ -333,3 +333,17 @@ fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
 fn serialize_markup_node(node: MarkupNode) -> String {
   serialize_fragment(frag: markup_node_to_fragment(node: node))
 }
+
+// Serialize-or-reject result — ONE authority for html/markdown consumers.
+type MarkupSerializeResult
+  = Serialized { html: String }
+  | Rejected { reason: String }
+
+fn try_serialize_markup_node(node: MarkupNode) -> MarkupSerializeResult {
+  match find_first_rejected_url(node: node) {
+    Present { value: _ } =>
+      Rejected { reason: "URL scheme not allowlisted for href/src" }
+    Absent =>
+      Serialized { html: serialize_markup_node(node: node) }
+  }
+}
