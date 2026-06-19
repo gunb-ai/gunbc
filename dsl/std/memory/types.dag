@@ -47,13 +47,12 @@ type DramModuleCatalogRow {
   // reusing std.measure.BitWidth rather than minting a fresh enum (§2: map onto the
   // concept that already exists). The power-vs-chipkill axis; NOT a rank count (the
   // "...R4..." misread). Magnitude lets chips_per_rank = 72 / bit_width_count(chip_width).
-  // Anchor: SK Hynix DDR4 decoder DDR4MODULE_20170623.fm ORGANIZATION { 4=x4, 8=x8, 6=x16 }.
   chip_width: BitWidth
   // rank_count — number of independently chip-selected device sets (1/2/4): the
   // bandwidth-interleave-vs-electrical-loading axis, as a grounded cardinal Int (like
   // CpuModelCatalogRow.cores), so interleave/capacity derivations multiply by it.
-  // For SK Hynix DDR4 rank is NOT a PN field — derived per density+width and confirmed
-  // on the live host (dmidecode `Rank:`); never guessed from the "...R4..." digit.
+  // Per-vendor part-number decode rules and live-host confirmation live in
+  // extdeps/memory/<vendor> — std owns only the cardinal axis shape.
   rank_count: Int
 }
 
@@ -126,12 +125,4 @@ type MemoryPopulationRow {
 
 type HostMemoryPopulation {
   rows: List<MemoryPopulationRow>
-}
-
-// Nominal stick population vs observed usable bytes (srv1 degraded case).
-// P-CF-BYTESIZE: raw Int bytes — shared stopgap with Hetzner catalog; dissolves when
-// Measure value-typing lands (ByteSize inhabitants), converting operator_fleet + cloud rows.
-type HostRamSupplyFacts {
-  nominal_bytes: ByteSize
-  observed_usable_bytes: ByteSize
 }
