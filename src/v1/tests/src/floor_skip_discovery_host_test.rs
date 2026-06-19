@@ -329,3 +329,54 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
         "editing witness B's body must SKIP witness A (per-function precision)"
     );
 }
+
+/// §3 cache-impurity regression — the #5295 CI break. The node-frontier analysis resolves the
+/// changed `.dag` files to locate which of their declarations moved. `resolve_entry_with_index`
+/// warms the index's interior-mutable parse / intern / typed-module caches, so resolving the
+/// frontier over the *corpus's own* index pre-seeds it — and under the known v2
+/// generic-instantiation bootstrap limitation, resolving `ci_floor_plan.dag` first caches
+/// `FreeMonoid<T>` WITHOUT its `Empty`/`Cons` variants, after which every corpus entry whose
+/// closure reuses `node_query.dag` fails to resolve (`undefined variable 'Empty'`). The full floor
+/// pass went red on exactly this; the explicit-roster host tests stayed green only because their
+/// injected diffs never named a poisoning file. `collect_frontier_seeds` now resolves over a
+/// throwaway index, so the read-only analysis cannot perturb the corpus it decides over.
+///
+/// Discriminating input (a proven poisoner × a `node_query` consumer): a diff on
+/// `ci_floor_plan.dag` with `budget_roster_completeness_test.dag` in the roster. `run_discovery_rows`
+/// resolves every entry *before* the skip decision, so without the fix the budget_roster resolve
+/// returns Err and the harness `.expect` panics; with it the resolve is clean and — because
+/// budget_roster does not reference the edited `ci_floor_plan` node — the witness skips.
+#[test]
+fn frontier_warmup_does_not_poison_corpus_resolution() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    chdir_workspace();
+    let ws = workspace_root();
+    let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
+    let poisoner_abs = ws.join(poisoner_rel);
+    let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
+    // Anchor the hunk on a `data` decl so the seed stays precise (a plain-`fn` edit would
+    // fail-closed to run-all) — the frontier resolves the whole file regardless, so it is the
+    // resolution, not the seed outcome, that poisons a shared index.
+    let data_line = fixture_line(&text, "data floor_corpus_node");
+    let budget = ws
+        .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![(
+        budget,
+        "complexity_budget_roster_family_gate_holds".to_string(),
+    )];
+
+    // `.expect` inside the harness fires if the corpus resolve returns Err (the pre-fix poison).
+    let summary = run_injected_diff_roster(poisoner_rel, data_line, &roster);
+    assert_eq!(summary.total, 1);
+    assert!(
+        summary.failures.is_empty(),
+        "corpus must resolve cleanly after frontier warmup (no FreeMonoid poison): {:?}",
+        summary.failures
+    );
+    assert_eq!(
+        summary.skipped, 1,
+        "budget_roster does not reference the edited ci_floor_plan node → skips after a clean resolve"
+    );
+}

@@ -2963,7 +2963,18 @@ pub fn run_discovery_corpus_with_options(
     let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier
         && !line_ranges_by_file.is_empty()
     {
-        match collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges_by_file) {
+        // The frontier analysis resolves only the changed `.dag` files, to locate which of
+        // their declarations moved. `resolve_entry_with_index` warms the index's
+        // interior-mutable caches (parse / intern / typed-module), so resolving over the
+        // corpus's own `index` would let this read-only analysis pre-seed — and, under the
+        // known v2 generic-instantiation bootstrap limitation, corrupt — a module the corpus
+        // later reuses: a workflow entry resolved first caches `FreeMonoid<T>` without its
+        // variants, and every later witness then reports `Empty`/`Cons` "not found". Resolve
+        // over a throwaway index so the analysis cannot perturb the corpus it decides over
+        // (the width>1 shards already build a fresh index per thread; this gives the width==1
+        // path the same isolation). Cache impurity oracle: cold-vs-warm resolve must agree.
+        let frontier_index = build_multi_entry_index(source_roots);
+        match collect_frontier_seeds_from_diff_line_ranges(&frontier_index, &line_ranges_by_file) {
             // `force_run_all` (a change the frontier can't bound) disables the skip.
             Ok(seeds) => (!seeds.force_run_all, seeds),
             Err(msg) => {
