@@ -51,9 +51,10 @@ import v2.std.grammar {
 import v2.std.compilers.lexing {
   LexRules,
   LexicalPhrase,
-  phrase_text,
+  phrase,
   phrase_to_lex_rules,
-  phrase_to_source_text
+  phrase_to_source_text,
+  span
 }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -237,52 +238,64 @@ fn bash_relation_translation_rules_node(
 // =========================================================================
 
 fn bash_mvp1_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'git'", " 'rev-parse'", " '--show-toplevel'"],
-    classes: [^bash_token_word_git, ^bash_token_word_rev_parse, ^bash_token_word_show_toplevel]
-  )
+  phrase([
+    span(text: "'git'",             class: ^bash_token_word_git),
+    span(text: " 'rev-parse'",      class: ^bash_token_word_rev_parse),
+    span(text: " '--show-toplevel'", class: ^bash_token_word_show_toplevel)
+  ])
 }
 
 fn bash_source_root_ingest_gate_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'bash'", " 'scripts/source-root-ingest-gate.sh'"],
-    classes: [^bash_token_word_bash, ^bash_token_word_source_root_ingest_gate_sh]
-  )
+  phrase([
+    span(text: "'bash'",                              class: ^bash_token_word_bash),
+    span(text: " 'scripts/source-root-ingest-gate.sh'", class: ^bash_token_word_source_root_ingest_gate_sh)
+  ])
 }
 
 fn bash_and_then_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'true'", " && ", "'false'"],
-    classes: [^bash_token_word_true, ^bash_token_and_then, ^bash_token_word_false]
-  )
+  phrase([
+    span(text: "'true'",  class: ^bash_token_word_true),
+    span(text: " && ",    class: ^bash_token_and_then),
+    span(text: "'false'", class: ^bash_token_word_false)
+  ])
 }
 
 fn bash_or_else_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'true'", " || ", "'false'"],
-    classes: [^bash_token_word_true, ^bash_token_or_else, ^bash_token_word_false]
-  )
+  phrase([
+    span(text: "'true'",  class: ^bash_token_word_true),
+    span(text: " || ",    class: ^bash_token_or_else),
+    span(text: "'false'", class: ^bash_token_word_false)
+  ])
 }
 
 fn bash_with_redir_stderr_null_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'git'", " 'rev-parse'", " '--show-toplevel'", " 2>/dev/null"],
-    classes: [^bash_token_word_git, ^bash_token_word_rev_parse, ^bash_token_word_show_toplevel, ^bash_token_redir_stderr_null]
-  )
+  phrase([
+    span(text: "'git'",              class: ^bash_token_word_git),
+    span(text: " 'rev-parse'",       class: ^bash_token_word_rev_parse),
+    span(text: " '--show-toplevel'", class: ^bash_token_word_show_toplevel),
+    span(text: " 2>/dev/null",       class: ^bash_token_redir_stderr_null)
+  ])
 }
 
 fn bash_pipe_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'echo'", " 'hi'", " | ", "'wc'", " '-c'"],
-    classes: [^bash_token_word_echo, ^bash_token_word_hi, ^bash_token_pipe, ^bash_token_word_wc, ^bash_token_word_minus_c]
-  )
+  phrase([
+    span(text: "'echo'", class: ^bash_token_word_echo),
+    span(text: " 'hi'",  class: ^bash_token_word_hi),
+    span(text: " | ",    class: ^bash_token_pipe),
+    span(text: "'wc'",   class: ^bash_token_word_wc),
+    span(text: " '-c'",  class: ^bash_token_word_minus_c)
+  ])
 }
 
 fn bash_or_else_with_redir_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'git'", " 'rev-parse'", " '--show-toplevel'", " 2>/dev/null", " || ", "'pwd'"],
-    classes: [^bash_token_word_git, ^bash_token_word_rev_parse, ^bash_token_word_show_toplevel, ^bash_token_redir_stderr_null, ^bash_token_or_else, ^bash_token_word_pwd]
-  )
+  phrase([
+    span(text: "'git'",              class: ^bash_token_word_git),
+    span(text: " 'rev-parse'",       class: ^bash_token_word_rev_parse),
+    span(text: " '--show-toplevel'", class: ^bash_token_word_show_toplevel),
+    span(text: " 2>/dev/null",       class: ^bash_token_redir_stderr_null),
+    span(text: " || ",               class: ^bash_token_or_else),
+    span(text: "'pwd'",              class: ^bash_token_word_pwd)
+  ])
 }
 
 // The canonical shell text emit must produce (POSIX single-quoted words). Byte-identical to
@@ -513,50 +526,73 @@ fn bash_or_else_with_redir_translation_rules_node() -> Node {
 // `'true' && ('false' | 'true')`. Correct emit wraps the AndOr operand: `{ 'true' && 'false'; } | 'true'`.
 // Authority: program.dag BraceGroup + Pipe fixture (not the sidecar's flat Pipe concat).
 //
-// Lexical phrases (same single-authority form as the slice-1..4 phrases above): `text:`
-// reads left-to-right as the shell text, `classes:` names each fragment's token class.
+// Lexical phrases (same single-authority form as the slice-1..4 phrases above): each
+// span(text:, class:) pairs a fragment with its token class; the text column reads as shell.
 // =========================================================================
 
 fn bash_subshell_true_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["(", "'true'", ")"],
-    classes: [^bash_token_lparen, ^bash_token_word_true, ^bash_token_rparen]
-  )
+  phrase([
+    span(text: "(",      class: ^bash_token_lparen),
+    span(text: "'true'", class: ^bash_token_word_true),
+    span(text: ")",      class: ^bash_token_rparen)
+  ])
 }
 
 fn bash_if_true_then_false_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["if ", "'true'", "; ", "then ", "'false'", "; ", "fi"],
-    classes: [^bash_token_kw_if, ^bash_token_word_true, ^bash_token_semicolon, ^bash_token_kw_then, ^bash_token_word_false, ^bash_token_semicolon, ^bash_token_kw_fi]
-  )
+  phrase([
+    span(text: "if ",     class: ^bash_token_kw_if),
+    span(text: "'true'",  class: ^bash_token_word_true),
+    span(text: "; ",      class: ^bash_token_semicolon),
+    span(text: "then ",   class: ^bash_token_kw_then),
+    span(text: "'false'", class: ^bash_token_word_false),
+    span(text: "; ",      class: ^bash_token_semicolon),
+    span(text: "fi",      class: ^bash_token_kw_fi)
+  ])
 }
 
 fn bash_heredoc_simple_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["cat", " > ", "'out'", " <<'EOF'\n", "hi\n", "EOF"],
-    classes: [^bash_token_word_cat, ^bash_token_greater, ^bash_token_word_out, ^bash_token_heredoc_open_eof, ^bash_token_heredoc_body_hi, ^bash_token_heredoc_close_eof]
-  )
+  phrase([
+    span(text: "cat",         class: ^bash_token_word_cat),
+    span(text: " > ",         class: ^bash_token_greater),
+    span(text: "'out'",       class: ^bash_token_word_out),
+    span(text: " <<'EOF'\n",  class: ^bash_token_heredoc_open_eof),
+    span(text: "hi\n",        class: ^bash_token_heredoc_body_hi),
+    span(text: "EOF",         class: ^bash_token_heredoc_close_eof)
+  ])
 }
 
 fn bash_subshell_and_or_nested_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["(", "'true'", " && ", "'false'", ")", " || ", "'true'"],
-    classes: [^bash_token_lparen, ^bash_token_word_true, ^bash_token_and_then, ^bash_token_word_false, ^bash_token_rparen, ^bash_token_or_else, ^bash_token_word_true]
-  )
+  phrase([
+    span(text: "(",       class: ^bash_token_lparen),
+    span(text: "'true'",  class: ^bash_token_word_true),
+    span(text: " && ",    class: ^bash_token_and_then),
+    span(text: "'false'", class: ^bash_token_word_false),
+    span(text: ")",       class: ^bash_token_rparen),
+    span(text: " || ",    class: ^bash_token_or_else),
+    span(text: "'true'",  class: ^bash_token_word_true)
+  ])
 }
 
 fn bash_pipe_and_or_brace_grouped_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["{ ", "'true'", " && ", "'false'", "; }", " | ", "'true'"],
-    classes: [^bash_token_lbrace, ^bash_token_word_true, ^bash_token_and_then, ^bash_token_word_false, ^bash_token_semicolon_rbrace, ^bash_token_pipe, ^bash_token_word_true]
-  )
+  phrase([
+    span(text: "{ ",      class: ^bash_token_lbrace),
+    span(text: "'true'",  class: ^bash_token_word_true),
+    span(text: " && ",    class: ^bash_token_and_then),
+    span(text: "'false'", class: ^bash_token_word_false),
+    span(text: "; }",     class: ^bash_token_semicolon_rbrace),
+    span(text: " | ",     class: ^bash_token_pipe),
+    span(text: "'true'",  class: ^bash_token_word_true)
+  ])
 }
 
 fn bash_pipe_and_or_flat_wrong_phrase() -> LexicalPhrase {
-  phrase_text(
-    text:    ["'true'", " && ", "'false'", " | ", "'true'"],
-    classes: [^bash_token_word_true, ^bash_token_and_then, ^bash_token_word_false, ^bash_token_pipe, ^bash_token_word_true]
-  )
+  phrase([
+    span(text: "'true'",  class: ^bash_token_word_true),
+    span(text: " && ",    class: ^bash_token_and_then),
+    span(text: "'false'", class: ^bash_token_word_false),
+    span(text: " | ",     class: ^bash_token_pipe),
+    span(text: "'true'",  class: ^bash_token_word_true)
+  ])
 }
 
 fn bash_subshell_true_concrete_tokens() -> List<ConcreteSyntaxToken> {
