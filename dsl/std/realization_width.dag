@@ -45,7 +45,7 @@ import std.realization_schedule {
 import std.realization_measurement { cost_account_measured_from_time }
 
 fn cost_account_predicted_zero_nano() -> CostAccount<Nano> {
-  cost_account_predicted_zero<Nano>()
+  cost_account_predicted_zero()
 }
 
 fn int_min(a: Int, b: Int) -> Int {

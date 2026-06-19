@@ -13,6 +13,7 @@ import std.realization_schedule {
   RealizationObjective,
   Runnable,
   RunnableSingleClaim,
+  CostAccount,
   cost_account_predicted_zero,
 }
 import std.realization {
@@ -35,7 +36,7 @@ fn witness_threads_4() -> HardwareThreadCount {
 }
 
 fn synthetic_plan_total() -> CostAccount<Nano> {
-  cost_account_predicted_zero<Nano>()
+  cost_account_predicted_zero()
 }
 
 fn synthetic_plan() -> RealizationPlan<Nano> {
