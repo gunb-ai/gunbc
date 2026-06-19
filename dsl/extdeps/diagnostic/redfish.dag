@@ -8,6 +8,12 @@ import std.types { NonEmptyStr }
 // Service name is 2-segment (`redfish.Http`) so it is actually callable from a fn —
 // the prior `diagnostic.redfish.Http` (3-segment) could not be referenced as a call path
 // (and had zero callers; it was spec-without-execution).
+//
+// 🟡 dissolved — feature:diagnostic-redfish-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
+// WHICH redfish.Http ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service redfish.Http {
   operation GetSensors {
     input { base_url: NonEmptyStr }
@@ -19,9 +25,6 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish sensors GET failed"
-    }
-    mock_response {
-      0 => { body: "{\"@odata.type\":\"#SensorCollection.SensorCollection\"}", success: true } "Mock redfish sensors"
     }
   }
 
@@ -41,9 +44,6 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish system GET failed"
-    }
-    mock_response {
-      0 => { body: "{\"PowerState\":\"On\",\"Manufacturer\":\"ASRockRack\"}", success: true } "Mock redfish system"
     }
   }
 }
