@@ -126,8 +126,8 @@ test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
   cwc_norm_rejects_with_located_diagnostics(src: cwc_src_type_malformed_coproduct)
 }
 
-// §5 red control: swallowing fold Rejected would accept malformed 3-arm coproduct (must stay false).
-test fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
+// §5 red control (bundled only — must NOT be a standalone test fn: discovery expects PASS=true).
+fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
   !cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
 }
 
