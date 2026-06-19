@@ -6,10 +6,11 @@
 
 module std.cpu
 
-import std.cpu.types { CpuArchitecture, CpuFacts, CpuVendor }
+import std.cpu.types { CpuArchitecture, CpuFacts }
+import std.hardware { HardwareVendor }
 import std.measure { HardwareThreadCount, Hertz }
 
-fn cpu_vendor(cpu: CpuFacts) -> CpuVendor {
+fn cpu_vendor(cpu: CpuFacts) -> HardwareVendor {
   cpu.catalog.vendor
 }
 

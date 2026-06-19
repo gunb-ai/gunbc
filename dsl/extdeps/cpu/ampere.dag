@@ -8,7 +8,7 @@
 
 module extdeps.cpu.ampere
 
-import std.cpu.types { CpuArchitecture, CpuModelCatalogRow, CpuSocket, CpuVendor, SocketPackage }
+import std.cpu.types { CpuArchitecture, CpuModelCatalogRow, CpuSocket, SocketPackage }
 import std.measure { hardware_thread_count, hertz }
 
 // Ampere Altra Max M128-30 — 128c/128t, 183W, Neoverse-N1.

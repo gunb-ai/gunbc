@@ -15,6 +15,7 @@ module product.compute_fabric
 
 import std.nat { Nat }
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, List }
+import std.hardware { HardwareVendor }
 import std.os.types {
   FileSystemSemantics,
   Linux,
@@ -134,21 +135,17 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
-// 🟡 grounded, NOT terminal. Closed GPU-vendor surface — kills the stringly anemia. Overlaps
-// std.cpu.CpuVendor on shared entities (AMD/Intel/Apple/Qualcomm).
-// dissolution-trigger: fold into a single shared Vendor authority with std.cpu.CpuVendor pending
-// the parked, operator-gated std-conflation vendor-unification decision.
-type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
-
 // NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
-// major/minor magnitudes, not a marketplace label string.
+// major/minor magnitudes, not a marketplace label string. `vendor` is the single
+// std.hardware.HardwareVendor authority — GPU-maker validity is enforced fail-closed
+// at the label projection below, not by a forked GPU-only vendor enum.
 type GpuComputeCapability {
-  vendor: GpuVendor
+  vendor: HardwareVendor
   major: Int
   minor: Int
 }
 
-type UnsubstantiatedGpuCapabilityLabel { vendor: GpuVendor }
+type UnsubstantiatedGpuCapabilityLabel { vendor: HardwareVendor }
 
 type GpuCapabilityLabelOutcome
   = GpuCapabilityLabelOk { label: String }
@@ -173,18 +170,25 @@ fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLa
     Qualcomm => GpuCapabilityLabelRejected {
       reason: UnsubstantiatedGpuCapabilityLabel { vendor: Qualcomm }
     }
+    Ampere => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Ampere }
+    }
+    Arm => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Arm }
+    }
   }
 }
 
 type GpuFacts {
-  vendor: GpuVendor
+  vendor: HardwareVendor
   model: NonEmptyStr
   compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }
 
-type AcceleratorFacts { vendor: NonEmptyStr, model: NonEmptyStr }
+// vendor grounds onto the single HardwareVendor authority (was a stringly NonEmptyStr).
+type AcceleratorFacts { vendor: HardwareVendor, model: NonEmptyStr }
 
 type MemoryDevice {
   capacity: ByteSize

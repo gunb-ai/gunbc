@@ -4,10 +4,9 @@ module std.cpu.types
 
 import std.measure { HardwareThreadCount, Hertz }
 import std.types { Int, NonEmptyStr }
+import std.hardware { HardwareVendor }
 
 type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
-
-type CpuVendor = Intel | Amd | Ampere | Apple | Arm | Qualcomm
 
 // CpuSocket — the physical CPU mount, decomposed from the marketing string (e.g.
 // "LGA4926" = a Land Grid Array package with 4926 contacts/lands). `package` is the
@@ -28,7 +27,7 @@ type CpuSocket {
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
-  vendor: CpuVendor
+  vendor: HardwareVendor
   architecture: CpuArchitecture
   cores: Int
   threads: HardwareThreadCount
