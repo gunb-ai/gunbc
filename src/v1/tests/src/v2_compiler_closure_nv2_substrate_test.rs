@@ -423,6 +423,71 @@ fn emit_representative_slice_manifest() {
 }
 
 #[test]
+#[ignore = "gap4 single-module v2-interpreter discriminator (smallest slice: 03_normalize)"]
+fn gap4_single_module_discriminator() {
+    const SINGLE: &str = "src/v2/compiler/03_normalize.dag";
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2").to_string_lossy().to_string();
+    let entry = ws.join(COMPILER_ENTRY);
+    let all = discover_source_root_reads_for_entry(
+        &[v2_root],
+        entry.to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover scoped compiler closure reads");
+    let normalize_path = |path: &str| -> String {
+        let forward = path.replace('\\', "/");
+        if let Ok(stripped) = std::path::Path::new(&forward).strip_prefix(&ws) {
+            stripped.to_string_lossy().replace('\\', "/")
+        } else {
+            forward
+        }
+    };
+    let record = REPRESENTATIVE_SLICE_PATHS
+        .iter()
+        .map(|path| {
+            let mut rec = all
+                .iter()
+                .find(|r| normalize_path(&r.file_path) == *path)
+                .unwrap_or_else(|| panic!("slice path not in compiler closure: {path}"))
+                .clone();
+            rec.file_path = (*path).to_string();
+            rec
+        })
+        .find(|r| normalize_path(&r.file_path) == SINGLE)
+        .unwrap_or_else(|| panic!("single-module path not in slice: {SINGLE}"));
+
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+
+    let temp = unique_temp_dir("gap4-single");
+    fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("host_source_root_ingest_manifest.dag");
+    emit_source_root_ingest_manifest(
+        &manifest_path,
+        std::slice::from_ref(&record),
+        Some(&admission),
+    )
+    .expect("emit single-module manifest");
+
+    let manifest_dir = manifest_path.parent().expect("manifest parent");
+    let ctx = nv2_eval_context(manifest_dir).expect("resolve nv2 gate ctx");
+
+    let parses = run_claim(&ctx, "compiler_closure_scoped_ingest_parses");
+    let probe_ok = run_claim(&ctx, "gap4_probe_all_ingest_reads_accept");
+    eprintln!(
+        "gap4 single-module discriminator ({SINGLE}): parses={parses:?} probe_all_accept={probe_ok:?}"
+    );
+    let path = v1_interpreter::run_in_context(&ctx, "gap4_probe_found_file_path", true)
+        .unwrap_or_else(|e| panic!("gap4_probe_found_file_path: {e:?}"));
+    eprintln!("gap4 single-module probe file_path: {path:?}");
+    let byte = v1_interpreter::run_in_context(&ctx, "gap4_probe_found_byte_start", true)
+        .unwrap_or_else(|e| panic!("gap4_probe_found_byte_start: {e:?}"));
+    eprintln!("gap4 single-module probe byte_start: {byte:?}");
+}
+
+#[test]
 #[ignore = "gap4 probe — prefix binary-search first scoped-ingest Reject (manual)"]
 fn probe_gap4_scoped_ingest_first_reject() {
     let ws = workspace_root();

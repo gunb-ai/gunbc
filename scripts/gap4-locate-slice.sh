@@ -13,7 +13,11 @@ cd "$ROOT"
 source "$ROOT/scripts/lib/witness_layer_roots.sh"
 witness_layer_roots_load "$ROOT"
 
-MANIFEST_DIR="${MANIFEST_DIR:-$ROOT/target}"
+MANIFEST_DIR="${MANIFEST_DIR:-$(mktemp -d /tmp/gap4-slice-manifest-XXXXXX)}"
+if [[ -z "${MANIFEST_DIR_PERSIST:-}" ]]; then
+  cp "$ROOT/target/v2-compiler-closure-slice-manifest.dag" \
+    "$MANIFEST_DIR/host_source_root_ingest_manifest.dag"
+fi
 GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
 
 cargo build -p v1-compiler --release --bin gunbc >/dev/null
