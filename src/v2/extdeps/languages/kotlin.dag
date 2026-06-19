@@ -4,6 +4,7 @@
 // Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html — syntax/lex/grammar: https://kotlinlang.org/spec/syntax-and-grammar.html
 
 module v2.extdeps.languages.kotlin
+import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
@@ -187,13 +188,6 @@ type KotlinNonNumericPrimitiveFacts {
   value_fact: KotlinNonNumericValueFact
 }
 
-type KotlinLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 
 // T-11 kotlin grammar relation row: fixed terminals and bound terminals share
 // the Kotlin grammar production instead of an operator string template. Tokens are the
@@ -2602,8 +2596,8 @@ fn kotlin_model_core_wave1() -> ModelCore {
   }
 }
 
-fn kotlin_language_model_wave1() -> KotlinLanguageModel {
-  KotlinLanguageModel {
+fn kotlin_language_model_wave1() -> LanguageModel {
+  LanguageModel {
     lex: kotlin_wave1_lex(),
     grammar: kotlin_wave1_grammar(),
     language_identity: ^kotlin_language_model_surface_id,

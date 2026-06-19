@@ -4,6 +4,7 @@
 // Anchor: https://go.dev/ref/spec
 
 module v2.extdeps.languages.go
+import v2.std.language_model { LanguageModel }
 
 import v2.std.grammar {
   StampClass,
@@ -190,13 +191,6 @@ type GoGrammarRelationRow {
   tokens: List<ConcreteSyntaxToken>
 }
 
-type GoLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 
 // Go spec: typed integer arithmetic truncates silently on overflow (not panic).
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -2239,9 +2233,9 @@ fn go_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-// 🟡 needs-more-work · E-6(b) bounded-exception · scaffold feature:go-language-model-consumer · dissolve-on: GoLanguageModel registry/T-11 consumes `go_language_model_wave1()` as the Go target carrier.
-fn go_language_model_wave1() -> GoLanguageModel {
-  GoLanguageModel {
+// 🟡 needs-more-work · E-6(b) bounded-exception · scaffold feature:go-language-model-consumer · dissolve-on: LanguageModel registry/T-11 consumes `go_language_model_wave1()` as the Go target carrier.
+fn go_language_model_wave1() -> LanguageModel {
+  LanguageModel {
     lex: go_wave1_lex(),
     grammar: go_wave1_grammar(),
     language_identity: ^go_language_model_surface_id,

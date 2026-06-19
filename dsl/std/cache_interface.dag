@@ -8,7 +8,18 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
-import std.measure { ByteSize }
+import std.measure { ByteSize, NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+import std.pareto {
+  AxisComparison,
+  DominanceVerdict,
+  HigherIsBetter,
+  LowerIsBetter,
+  axis_comparison_int,
+  dominance_of_comparisons,
+}
+import std.realization_schedule {
+  CostAccount,
+}
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
@@ -18,8 +29,8 @@ import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDi
 // ReadLatencyClass, ConsistencyModel, CacheLookupSemantics, CacheWriteSemantics,
 // CacheMissSemantics, KeyDerivationClass, InputSurface, VisibilityScope, InvalidationTrigger.
 // feature:cache-interface-substrate-landed
-// consumer: ci harness cache projection + downstream cache lookup planner
-// dissolve-on-arrival: Grounding binds literal row fields when first consumer lands
+// consumer: cache-layer planner (plan_cache_layers) + ci harness cache projection
+// dissolve-on-arrival: cost-aware reach binds Phase-0 measured recompute cost
 
 type StorageSurface = NonEmptyStr where brand("StorageSurface")
 
@@ -87,10 +98,16 @@ type CacheMissSemantics
   | MissIsDiagnostic
   | ProviderNativeFallback
 
-// Cross-store L1→L2 fallback is composition — not a field on CacheInterfaceFacts.
+// Cross-store L1→L2→L3 fallback is composition — not a field on CacheInterfaceFacts.
+// Ordered nearest→farthest (InProcess → runner/host filesystem → network CAS).
+// Empty layers = fail-closed recompute-only (recompute is the implicit terminal).
 type CacheLayerPlan {
-  primary: CacheInterfaceId
-  fallback: Option<CacheInterfaceId>
+  layers: List<CacheInterfaceId>
+}
+
+// Deployment declares which catalog backends are reachable; planner emits wiring.
+type CacheDeploymentBackends {
+  available: List<CacheInterfaceId>
 }
 
 // --- §1.4 KeyDerivationFacts -------------------------------------------------
@@ -486,7 +503,7 @@ data resolved_graph_cache_facts: CacheInterfaceFacts = {
   ]
 }
 
-data parse_table_memo_id: CacheInterfaceId = "parse_table_memo"
+data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
 
 // In-process parse memo: content-addressed (grammar_digest × token_stream_digest × position × production).
 // Grammar scopes the in-process store; token_stream_digest prevents cross-source cell reuse.
@@ -532,7 +549,197 @@ data parse_table_memo_facts: CacheInterfaceFacts = {
   ]
 }
 
-// --- §1.7 projection + view helpers ------------------------------------------
+// --- §1.8 cache-layer planner (first catalog consumer) -----------------------
+
+data cache_catalog_rows: List<CacheInterfaceFacts> = [
+  parse_table_memo_facts,
+  cargo_target_dir_facts,
+  sccache_local_facts,
+  resolved_graph_cache_facts,
+  rustup_toolchain_store_facts,
+  buildbuddy_cas_facts,
+  gha_actions_cache_facts,
+]
+
+// Locality rank — nearer stores probe first (L1 in-process → L2 host → L3 WAN).
+fn persistence_locality_rank(locality: PersistenceLocality) -> Int {
+  match locality {
+    InProcess => 0
+    PerRunnerFilesystem => 1
+    PerHostFilesystem => 2
+    CrossHostNetwork => 3
+  }
+}
+
+fn read_latency_rank(latency: ReadLatencyClass) -> Int {
+  match latency {
+    InProcessNs => 0
+    LocalDiskUs => 1
+    LanMs => 2
+    WanTensMs => 3
+  }
+}
+
+// Representative fetch-cost for read_latency axis. Carrier stays NanosecondDuration;
+// unwrap only at Pareto comparison boundary (hardware_selection / CostAccount pattern).
+fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
+  match facts.read_latency {
+    InProcessNs => nanosecond_duration(count: 1)
+    LocalDiskUs => nanosecond_duration(count: 1000)
+    LanMs => nanosecond_duration(count: 1000000)
+    WanTensMs => nanosecond_duration(count: 10000000)
+  }
+}
+
+type CacheReachCandidate {
+  layer: CacheInterfaceId?
+  fetch_cost: NanosecondDuration
+  recompute_saved: NanosecondDuration
+  latency: NanosecondDuration
+}
+
+fn cache_reach_candidate_recompute() -> CacheReachCandidate {
+  CacheReachCandidate {
+    layer: none
+    fetch_cost: nanosecond_duration(count: 0)
+    recompute_saved: nanosecond_duration(count: 0)
+    latency: nanosecond_duration(count: 0)
+  }
+}
+
+fn cache_reach_candidate_probe(id: CacheInterfaceId, recompute: CostAccount) -> CacheReachCandidate {
+  let facts = cache_facts_for_id(id: id)
+  let fetch = read_latency_cost(facts: facts)
+  CacheReachCandidate {
+    layer: Present { value: id }
+    fetch_cost: fetch
+    recompute_saved: recompute.time
+    latency: fetch
+  }
+}
+
+fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> List<AxisComparison> {
+  [
+    axis_comparison_int(
+      goal: LowerIsBetter,
+      a: nanosecond_duration_count(d: a.fetch_cost),
+      b: nanosecond_duration_count(d: b.fetch_cost),
+    ),
+    axis_comparison_int(
+      goal: HigherIsBetter,
+      a: nanosecond_duration_count(d: a.recompute_saved),
+      b: nanosecond_duration_count(d: b.recompute_saved),
+    ),
+    axis_comparison_int(
+      goal: LowerIsBetter,
+      a: nanosecond_duration_count(d: a.latency),
+      b: nanosecond_duration_count(d: b.latency),
+    ),
+  ]
+}
+
+fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> DominanceVerdict {
+  dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
+}
+
+// Layer is worth probing when measured recompute exceeds representative fetch cost
+// (recompute path does not dominate the probe on fetch+saved axes at cheap grain).
+fn cache_layer_cost_justified(id: CacheInterfaceId, recompute: CostAccount) -> Bool {
+  nanosecond_duration_count(d: recompute.time) >= nanosecond_duration_count(d: read_latency_cost(facts: cache_facts_for_id(id: id)))
+}
+
+fn cache_layer_beats_recompute_path(id: CacheInterfaceId, recompute: CostAccount) -> Bool {
+  let probe = cache_reach_candidate_probe(id: id, recompute: recompute)
+  match cache_reach_dominates(
+    a: cache_reach_candidate_recompute(),
+    b: probe,
+  ) {
+    Dominates => false
+    _ => cache_layer_cost_justified(id: id, recompute: recompute)
+  }
+}
+
+fn cache_interface_id_available(
+  id: CacheInterfaceId,
+  available: List<CacheInterfaceId>,
+) -> Bool {
+  available
+    |> fold(
+      init: false,
+      f: (acc, candidate) => acc || (candidate == id),
+    )
+}
+
+fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: CacheInterfaceId) -> Bool {
+  plan.layers
+    |> fold(
+      init: false,
+      f: (acc, layer) => acc || (layer == id),
+    )
+}
+
+// Default probe order: in-process memo → runner target dir → host sccache/resolved-graph
+// → toolchain store → remote CAS (BuildBuddy) → GHA actions cache.
+data cache_layer_default_order: List<CacheInterfaceId> = [
+  parse_table_memo_id,
+  cargo_target_dir_id,
+  sccache_local_id,
+  resolved_graph_cache_id,
+  rustup_toolchain_store_id,
+  buildbuddy_cas_id,
+  gha_actions_cache_id,
+]
+
+fn plan_cache_layers(deployment: CacheDeploymentBackends, recompute: CostAccount) -> CacheLayerPlan {
+  CacheLayerPlan {
+    layers: cache_layer_default_order
+      |> filter(id => cache_interface_id_available(id: id, available: deployment.available))
+      |> filter(id => cache_layer_beats_recompute_path(id: id, recompute: recompute)),
+  }
+}
+
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId {
+  plan.layers.first()
+}
+
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
+  plan.layers.skip(n: 1).first()
+}
+
+fn cache_facts_for_id(id: CacheInterfaceId) -> CacheInterfaceFacts {
+  cache_catalog_rows
+    |> filter(facts => facts.identity == id)
+    |> first()
+}
+
+fn cache_layer_ids_respect_locality(
+  layers: List<CacheInterfaceId>,
+  last_rank: Int,
+) -> Bool {
+  if layers.length() == 0 {
+    true
+  } else {
+    let id = layers.first()
+    let facts = cache_facts_for_id(id: id)
+    let rank = persistence_locality_rank(locality: facts.locality)
+    if rank < last_rank {
+      false
+    } else {
+      cache_layer_ids_respect_locality(
+        layers: layers.skip(n: 1),
+        last_rank: rank,
+      )
+    }
+  }
+}
+
+// Cost-aware reach: measured recompute vs read_latency fetch cost (Phase 0 CostAccount).
+// dissolve-on: resolved_graph_cache re-key consumes this fold; p(miss) term when probe lands.
+fn cache_layer_plan_respects_locality_order(plan: CacheLayerPlan) -> Bool {
+  cache_layer_ids_respect_locality(layers: plan.layers, last_rank: -1)
+}
+
+// --- §1.9 projection + view helpers ------------------------------------------
 
 fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
   CacheStoreView { facts: facts }

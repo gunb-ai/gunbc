@@ -50,6 +50,7 @@ data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
 
 data gunbc_ci_host: ComputeHost = ComputeHost {
   identity: gunbc_ci_host_identity,
+  baseboard: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
   memory: [MemoryDevice { capacity: byte_size(274877906944), memory_kind: Dram, bandwidth: none }],
   storage: [],

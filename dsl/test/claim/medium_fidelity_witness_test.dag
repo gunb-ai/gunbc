@@ -1,4 +1,4 @@
-// dsl/test/claim/medium_fidelity_witness_test.dag — Cut 2 gated witness for std.medium.
+// dsl/test/claim/medium_fidelity_witness_test.dag — Cut 2 gated witness for extdeps.communication.medium.
 //
 // GREEN: (a) text Medium<String> Lossless; (b) non-text Medium<ProbeVerdict> Lossless;
 //        (c) lossy prose Medium<String> Lossy — each tag reads back via match.
@@ -10,7 +10,7 @@
 
 module test.claim.medium_fidelity
 
-import std.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import std.types { String }
 import std.logic { Bool }
 
