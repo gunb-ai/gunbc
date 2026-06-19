@@ -1,0 +1,206 @@
+// extdeps/languages/python/version.dag — PEP 440 version identification scheme.
+//
+// Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
+//   Spec: https://packaging.python.org/en/latest/specifications/version-specifiers/
+//   (canonical PyPA spec; PEP 440 is the historical document)
+//   Version: PEP 440 (Final, Distutils-SIG, 2014-08-22)
+//
+// Canonical public identifier grammar (PEP 440 §Public version identifiers):
+//   [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
+// Local version (PEP 440 §Local version identifiers):
+//   <public>[+<local version label>]
+//
+// Single authority for Python distribution version **structure**. Do NOT alias to
+// `std.types.SemVer` — PEP 440 segment ordering and pre/post/dev suffix grammar
+// differ from semver. `extdeps.version` owns upstream fidelity citations; this
+// file owns the decomposed PEP 440 carriers and canonical wire labels.
+//
+// Consumers:
+//   dsl/test/claim/python_pep440_version_witness_test.dag — render witnesses
+//   (future) package metadata / dependency rows when pip/setuptools modeling lands
+
+module extdeps.languages.python.version
+
+import std.integer { NonNegativeInt }
+import std.list { List }
+import std.types { NonEmptyStr }
+
+// -- Spec citation -------------------------------------------------
+
+data pep440_spec_url: NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
+data pep440_spec_label: NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
+
+// -- Public version segments ---------------------------------------
+//
+// Coproduct dissolution: `Pep440PreReleasePhase` — alpha/beta/rc are mutually
+// exclusive pre-release phases with distinct wire spellings and sort order.
+
+type Pep440PreReleasePhase
+  = Pep440Alpha
+  | Pep440Beta
+  | Pep440ReleaseCandidate
+
+type Pep440PreRelease {
+  phase: Pep440PreReleasePhase
+  number: NonNegativeInt
+}
+
+// Local version label segment (PEP 440 §Local version identifiers): each dot-
+// separated piece is either all-ASCII-digits (numeric, compared as int) or
+// contains a letter (lexicographic, case-insensitive on wire).
+type Pep440LocalSegment
+  = Pep440LocalNumeric { value: NonNegativeInt }
+  | Pep440LocalLexicographic { label: NonEmptyStr }
+
+// Decomposed public version identifier. `epoch` is the implicit-0 epoch when
+// omitted on the wire. `release_segments` is the N(.N)* segment (MUST be
+// non-empty for well-formed published versions). Optional suffix segments model the PEP 440
+// ordering chain: pre-release, post-release, developmental release.
+type Pep440PublicVersion {
+  epoch: NonNegativeInt
+  release_segments: List<NonNegativeInt>
+  pre_release: Pep440PreRelease?
+  post_release: NonNegativeInt?
+  dev_release: NonNegativeInt?
+}
+
+// Full version: public identifier plus optional local label (+segment...).
+type Pep440Version {
+  public: Pep440PublicVersion
+  local: List<Pep440LocalSegment>
+}
+
+// -- Version specifiers (PEP 440 §Version specifiers) --------------
+//
+// Dependency clauses use these operators against public versions. Wildcard
+// matching (`== 1.3.4.*`) is deferred — carriers hold a concrete public
+// version today.
+
+type Pep440SpecifierOp
+  = Pep440CompatibleRelease       // ~=
+  | Pep440VersionMatching         // ==
+  | Pep440VersionExclusion        // !=
+  | Pep440InclusiveAtLeast        // >=
+  | Pep440InclusiveAtMost         // <=
+  | Pep440ExclusiveLess           // <
+  | Pep440ExclusiveGreater        // >
+  | Pep440ArbitraryEquality       // ===
+
+type Pep440VersionClause {
+  op: Pep440SpecifierOp
+  version: Pep440PublicVersion
+}
+
+// Comma-separated specifier: candidate must satisfy every clause (logical AND).
+type Pep440VersionSpecifier = List<Pep440VersionClause>
+
+// -- Wire labels ---------------------------------------------------
+
+fn pep440_pre_release_phase_label(phase: Pep440PreReleasePhase) -> String {
+  match phase {
+    Pep440Alpha => "a"
+    Pep440Beta => "b"
+    Pep440ReleaseCandidate => "rc"
+  }
+}
+
+fn pep440_pre_release_label(pre: Pep440PreRelease) -> String {
+  concat(
+    pep440_pre_release_phase_label(phase: pre.phase),
+    "{pre.number}"
+  )
+}
+
+fn pep440_release_segment_label(release_segments: List<NonNegativeInt>) -> String {
+  release_segments |> map(n => "{n}") |> join(separator: ".")
+}
+
+fn pep440_epoch_prefix(epoch: NonNegativeInt) -> String {
+  if epoch == 0 { "" } else { concat("{epoch}", "!") }
+}
+
+fn pep440_public_version_label(v: Pep440PublicVersion) -> String {
+  let base = concat(
+    pep440_epoch_prefix(epoch: v.epoch),
+    pep440_release_segment_label(release_segments: v.release_segments)
+  )
+  let with_pre = match v.pre_release {
+    Present { value: pre } => concat(base, pep440_pre_release_label(pre: pre))
+    Absent => base
+  }
+  let with_post = match v.post_release {
+    Present { value: n } => concat(with_pre, concat(".post", "{n}"))
+    Absent => with_pre
+  }
+  match v.dev_release {
+    Present { value: n } => concat(with_post, concat(".dev", "{n}"))
+    Absent => with_post
+  }
+}
+
+fn pep440_local_segment_label(seg: Pep440LocalSegment) -> String {
+  match seg {
+    Pep440LocalNumeric { value: v } => "{v}"
+    Pep440LocalLexicographic { label: s } => s
+  }
+}
+
+fn pep440_local_version_label(local: List<Pep440LocalSegment>) -> String {
+  local |> map(seg => pep440_local_segment_label(seg: seg)) |> join(separator: ".")
+}
+
+fn pep440_version_label(v: Pep440Version) -> String {
+  let public_label = pep440_public_version_label(v: v.public)
+  if length(local: v.local) == 0 {
+    public_label
+  } else {
+    concat(public_label, concat("+", pep440_local_version_label(local: v.local)))
+  }
+}
+
+fn pep440_specifier_op_label(op: Pep440SpecifierOp) -> String {
+  match op {
+    Pep440CompatibleRelease => "~="
+    Pep440VersionMatching => "=="
+    Pep440VersionExclusion => "!="
+    Pep440InclusiveAtLeast => ">="
+    Pep440InclusiveAtMost => "<="
+    Pep440ExclusiveLess => "<"
+    Pep440ExclusiveGreater => ">"
+    Pep440ArbitraryEquality => "==="
+  }
+}
+
+fn pep440_version_clause_label(clause: Pep440VersionClause) -> String {
+  concat(
+    pep440_specifier_op_label(op: clause.op),
+    " ",
+    pep440_public_version_label(v: clause.version)
+  )
+}
+
+fn pep440_version_specifier_label(spec: Pep440VersionSpecifier) -> String {
+  spec |> map(clause => pep440_version_clause_label(clause: clause)) |> join(separator: ", ")
+}
+
+// -- Constructors (witness / fixture ergonomics) ---------------------
+
+fn pep440_public(
+  epoch: NonNegativeInt,
+  release_segments: List<NonNegativeInt>,
+  pre_release: Pep440PreRelease?,
+  post_release: NonNegativeInt?,
+  dev_release: NonNegativeInt?
+) -> Pep440PublicVersion {
+  Pep440PublicVersion {
+    epoch: epoch,
+    release_segments: release_segments,
+    pre_release: pre_release,
+    post_release: post_release,
+    dev_release: dev_release
+  }
+}
+
+fn pep440_version(public: Pep440PublicVersion, local: List<Pep440LocalSegment>) -> Pep440Version {
+  Pep440Version { public: public, local: local }
+}

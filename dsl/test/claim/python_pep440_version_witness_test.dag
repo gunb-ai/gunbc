@@ -1,0 +1,180 @@
+// By-execution witnesses for extdeps.languages.python.version (PEP 440).
+// Discriminating: each witness goes RED if label rendering reverts to opaque String
+// concatenation or drops epoch/pre/post/dev/local segments.
+//
+// Run via:
+//   gunbc run --source-root dsl \
+//     --entry dsl/test/claim/python_pep440_version_witness_test.dag \
+//     --function python_pep440_version_witnesses --claim-run
+
+module test.claim.python_pep440_version_witness
+
+import extdeps.languages.python.version {
+  Pep440Alpha,
+  Pep440Beta,
+  Pep440PreRelease,
+  Pep440LocalLexicographic,
+  Pep440LocalNumeric,
+  Pep440CompatibleRelease,
+  Pep440InclusiveAtLeast,
+  pep440_public,
+  pep440_version,
+  pep440_version_specifier_label,
+  pep440_version_label,
+  pep440_spec_url,
+  pep440_spec_label
+}
+
+fn v_final_1_0() -> Pep440Version {
+  pep440_version(
+    public: pep440_public(
+      epoch: 0,
+      release_segments: [1, 0],
+      pre_release: none,
+      post_release: none,
+      dev_release: none
+    ),
+    local: []
+  )
+}
+
+fn v_alpha_1_0a1() -> Pep440Version {
+  pep440_version(
+    public: pep440_public(
+      epoch: 0,
+      release_segments: [1, 0],
+      pre_release: Present {
+        value: Pep440PreRelease { phase: Pep440Alpha, number: 1 }
+      },
+      post_release: none,
+      dev_release: none
+    ),
+    local: []
+  )
+}
+
+fn v_epoch_1_2_0() -> Pep440Version {
+  pep440_version(
+    public: pep440_public(
+      epoch: 1,
+      release_segments: [2, 0],
+      pre_release: none,
+      post_release: none,
+      dev_release: none
+    ),
+    local: []
+  )
+}
+
+fn v_post_1_0_post1() -> Pep440Version {
+  pep440_version(
+    public: pep440_public(
+      epoch: 0,
+      release_segments: [1, 0],
+      pre_release: none,
+      post_release: Present { value: 1 },
+      dev_release: none
+    ),
+    local: []
+  )
+}
+
+fn v_dev_1_0_dev456() -> Pep440Version {
+  pep440_version(
+    public: pep440_public(
+      epoch: 0,
+      release_segments: [1, 0],
+      pre_release: none,
+      post_release: none,
+      dev_release: Present { value: 456 }
+    ),
+    local: []
+  )
+}
+
+fn v_local_1_0_abc_5() -> Pep440Version {
+  pep440_version(
+    public: pep440_public(
+      epoch: 0,
+      release_segments: [1, 0],
+      pre_release: none,
+      post_release: none,
+      dev_release: none
+    ),
+    local: [
+      Pep440LocalLexicographic { label: "abc" },
+      Pep440LocalNumeric { value: 5 }
+    ]
+  )
+}
+
+fn w_final_release_label() -> Bool {
+  pep440_version_label(v: v_final_1_0()) == "1.0"
+}
+
+fn w_alpha_pre_release_label() -> Bool {
+  pep440_version_label(v: v_alpha_1_0a1()) == "1.0a1"
+}
+
+fn w_epoch_prefix_label() -> Bool {
+  pep440_version_label(v: v_epoch_1_2_0()) == "1!2.0"
+}
+
+fn w_post_release_label() -> Bool {
+  pep440_version_label(v: v_post_1_0_post1()) == "1.0.post1"
+}
+
+fn w_dev_release_label() -> Bool {
+  pep440_version_label(v: v_dev_1_0_dev456()) == "1.0.dev456"
+}
+
+fn w_local_version_label() -> Bool {
+  pep440_version_label(v: v_local_1_0_abc_5()) == "1.0+abc.5"
+}
+
+fn w_spec_citation_present() -> Bool {
+  string_contains(s: pep440_spec_url, pattern: "packaging.python.org")
+    && string_contains(s: pep440_spec_label, pattern: "PEP 440")
+}
+
+fn w_version_specifier_clause_label() -> Bool {
+  pep440_version_specifier_label(spec: [
+    {
+      op: Pep440CompatibleRelease,
+      version: pep440_public(epoch: 0, release_segments: [2, 2], pre_release: none, post_release: none, dev_release: none)
+    },
+    {
+      op: Pep440InclusiveAtLeast,
+      version: pep440_public(epoch: 0, release_segments: [1, 0], pre_release: none, post_release: none, dev_release: none)
+    }
+  ]) == "~= 2.2, >= 1.0"
+}
+
+fn w_discriminates_alpha_numbers() -> Bool {
+  let a = pep440_version_label(v: v_alpha_1_0a1())
+  let b = pep440_version_label(v: pep440_version(
+    public: pep440_public(
+      epoch: 0,
+      release_segments: [1, 0],
+      pre_release: Present {
+        value: Pep440PreRelease { phase: Pep440Beta, number: 2 }
+      },
+      post_release: none,
+      dev_release: none
+    ),
+    local: []
+  ))
+  a != b
+}
+
+test fn python_pep440_version_witnesses() -> Bool {
+  w_final_release_label()
+    && w_alpha_pre_release_label()
+    && w_epoch_prefix_label()
+    && w_post_release_label()
+    && w_dev_release_label()
+    && w_local_version_label()
+    && w_spec_citation_present()
+    && w_version_specifier_clause_label()
+    && w_discriminates_alpha_numbers()
+}
