@@ -1,11 +1,21 @@
 // dsl/test/claim/realization_scale_agnostic_test.dag
 //
-// §5 discriminating witness: the realization measurement framework
-// (std.realization_measurement / std.realization_schedule) is scale-AGNOSTIC. It is
-// exercised here at the MILLI scale — a scale the framework never names. If any roll-up
-// fn or CostAccount field had stayed hardcoded to NanosecondDuration (Measure<Time,Nano>),
-// these Milli-scale instantiations would fail to resolve / type-check. Green here means
-// the scale CHOICE genuinely lives at the consumer, not in the framework.
+// §5 witness: the realization measurement framework (std.realization_measurement /
+// std.realization_schedule) is exercised at the MILLI scale — a scale the framework
+// never names — and its roll-up ARITHMETIC composes correctly there (seq = add, par =
+// max, critical-path = seq-of-batch-max, and the CostAccount<Milli> bridge preserves the
+// count). That is what these witnesses actually bite on: perturbing the arithmetic (e.g.
+// dropping an addend in time_measure_seq) turns them FALSE.
+//
+// HONEST SCOPE (what this does NOT prove): scale-agnosticism is NOT enforced by execution
+// or type-checking. The `<S>` scale tag is a PHANTOM type the substrate erases — neither
+// the interpreter nor the dag compiler checks it (re-hardcoding a roll-up fn to
+// Measure<Time, Nano, Nat> leaves these Milli witnesses GREEN and emits 0 diagnostics).
+// This is the same no-where-clause / constrained-inhabitance substrate gap already cited
+// for `<M>` (std.measure.time_measure). So no runtime witness can carry anti-regression
+// teeth for the scale-agnosticism claim. The genuine guard is STRUCTURAL — a lens
+// asserting the framework modules contain no concrete scale literal — tracked as the
+// honest follow-up, not delivered here.
 //
 // Run: gunbc run --source-root dsl --entry <this> --function realization_scale_agnostic_witnesses --claim-run
 
