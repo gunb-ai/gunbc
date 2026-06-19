@@ -1,0 +1,38 @@
+// By-execution witnesses for extdeps.version — DESIGN.md §3 fidelity citations.
+// Discriminating: each witness goes RED if a field reverts to bare String.
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_version_witness_test.dag \
+//     --function extdeps_version_witnesses --claim-run
+
+module test.claim.extdeps_version_witness
+
+import extdeps.cron.schedule_model { posix_crontab_spec }
+import extdeps.github.github { default_rest_api_version }
+import extdeps.llm.anthropic { current_api_version }
+
+fn w_posix_crontab_spec_citation() -> Bool {
+  posix_crontab_spec.version == "POSIX.1-2017 (IEEE Std 1003.1-2017; Open Group Issue 7, 2018 edition online snapshot)"
+    && string_contains(s: posix_crontab_spec.source, pattern: "crontab.html")
+}
+
+fn w_anthropic_api_version_header() -> Bool {
+  current_api_version.header == "anthropic-version"
+    && current_api_version.version == "2023-06-01"
+}
+
+fn w_github_api_version_header() -> Bool {
+  default_rest_api_version.header == "X-GitHub-Api-Version"
+    && default_rest_api_version.version == "2022-11-28"
+}
+
+fn w_distinct_api_version_labels() -> Bool {
+  current_api_version.version != default_rest_api_version.version
+}
+
+test fn extdeps_version_witnesses() -> Bool {
+  w_posix_crontab_spec_citation()
+    && w_anthropic_api_version_header()
+    && w_github_api_version_header()
+    && w_distinct_api_version_labels()
+}

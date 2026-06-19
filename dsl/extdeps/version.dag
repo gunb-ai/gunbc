@@ -1,0 +1,40 @@
+// extdeps/version.dag — upstream version citations (DESIGN.md §3).
+//
+// extdeps invariant: cite the source, keep its real names, declare its version.
+// Single authority for *how* extdeps records that fidelity citation — not a
+// normalization layer. Upstream names its own versions (POSIX.1-2017,
+// 2022-11-28, v1, 1.2.0); carriers preserve those labels as
+// `UpstreamVersionLabel`.
+//
+// SemVer lives in `std.types` when upstream genuinely uses semver (OCI runtime
+// bundle version, crate manifests). Do not re-mint semver here.
+//
+// Consumers:
+//   extdeps/cron/schedule_model.dag — `UpstreamSpecCitation`
+//   extdeps/llm/anthropic.dag         — `RestApiVersionHeader`
+//   extdeps/github/github.dag         — `RestApiVersionHeader`
+
+module extdeps.version
+
+import std.types { NonEmptyStr, Url }
+
+// Version label exactly as the upstream source names it — not normalized to SemVer.
+type UpstreamVersionLabel = NonEmptyStr where brand("UpstreamVersionLabel")
+
+// DESIGN §3 spec citation: source URL + declared version.
+type UpstreamSpecCitation {
+  source: Url
+  version: UpstreamVersionLabel
+}
+
+// REST API version pinned via a request header (Anthropic `anthropic-version`,
+// GitHub `X-GitHub-Api-Version`). Header name is part of the upstream contract.
+type RestApiVersionHeader {
+  header: NonEmptyStr
+  version: UpstreamVersionLabel
+}
+
+// REST API version pinned via URL path segment (GCP `/storage/v1`, `/run/v2`).
+type RestApiPathVersion {
+  segment: NonEmptyStr
+}

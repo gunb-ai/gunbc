@@ -7,6 +7,7 @@
 module extdeps.llm.anthropic
 
 import extdeps.llm.llm { llm_snake_wire_contract }
+import extdeps.version { RestApiVersionHeader }
 import std.serialization { CoproductWireContract, VariantEncoding }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
@@ -220,14 +221,9 @@ type AnthropicToolDefinition {
 
 // -- API versioning ------------------------------------------------
 
-type AnthropicApiVersion {
-  version: String
-  header: String
-}
-
-data current_api_version: AnthropicApiVersion = {
-  version: "2023-06-01",
-  header: "anthropic-version"
+data current_api_version: RestApiVersionHeader = {
+  header: "anthropic-version",
+  version: "2023-06-01"
 }
 
 // Messages API conversation row: the outer variant is the role discriminator,

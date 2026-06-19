@@ -1,8 +1,7 @@
 // extdeps/cron/schedule_model.dag — POSIX crontab schedule protocol (carriers + wire render).
 //
 // Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
-//   Spec: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html
-//   Version: POSIX.1-2017 (IEEE Std 1003.1-2017; Open Group Issue 7, 2018 edition online snapshot)
+//   `posix_crontab_spec` (extdeps.version.UpstreamSpecCitation)
 //
 // Sections referenced:
 //   — XCU `crontab` utility: user crontab file layout; five time-and-date fields (minute, hour,
@@ -23,8 +22,14 @@
 
 module extdeps.cron.schedule_model
 
+import extdeps.version { UpstreamSpecCitation }
 import std.integer { NonNegativeInt, PositiveInt }
 import std.list { List }
+
+data posix_crontab_spec: UpstreamSpecCitation = {
+  source: "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html",
+  version: "POSIX.1-2017 (IEEE Std 1003.1-2017; Open Group Issue 7, 2018 edition online snapshot)"
+}
 
 // Coproduct dissolution: `CronField`.
 //
