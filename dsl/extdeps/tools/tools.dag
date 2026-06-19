@@ -27,6 +27,7 @@ import extdeps.gnu_coreutils
 import extdeps.rustup { rustup_install_url }
 import extdeps.brew   { brew_install_url }
 import extdeps.apt
+import extdeps.version { VersionConstraint }
 
 // ── Install source ──────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ type InstallSource
 // all paths when the tool is missing.
 type CliTool {
   name: NonEmptyStr
-  min_version: String?
+  min_version: VersionConstraint?
   installable_via: List<InstallSource>
 }
 
