@@ -10,12 +10,12 @@ module std.architecture_profile
 import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
 import std.measure { BitWidth, ByteSize }
 import std.os.invocation { StableInvocationSurface }
+import std.types { TargetArchitecture }
 
 // 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on extdeps.cpu.types
 // Option import. `import extdeps.cpu.types { CpuArchitecture }` resolves the module graph but claim-run
 // fails: extdeps.cpu.types imports named Option from std.types (unexported on v2; snappy-stag-903).
 // Dissolve-on: repoint architecture to CpuArchitecture when Option-repoint lands (flip-SHA).
-type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
 // 🟢 TERMINAL coproduct — irreducible machine byte-order distinction (little vs big endian).
 type Endianness = LittleEndian | BigEndian
