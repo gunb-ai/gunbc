@@ -1970,6 +1970,7 @@ pub fn owned_data_bool_witness_transport_tsv(
 
 /// One discovered witness row. `label` is for diagnostics; the `(entry,
 /// function)` pair is what gets resolved and run.
+#[derive(Clone)]
 pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
