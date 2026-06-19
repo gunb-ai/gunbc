@@ -607,11 +607,19 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
-            eprintln!(
-                "claim_batch: whole-tree published mock corpus — {} operation key(s)",
-                keys.len()
-            );
-            Some(Rc::new(keys))
+            if keys.is_empty() {
+                eprintln!(
+                    "claim_batch: whole-tree published mock corpus — no dsl/ corpora precomputed; \
+                     using entry-closure fallback per witness"
+                );
+                None
+            } else {
+                eprintln!(
+                    "claim_batch: whole-tree published mock corpus — {} operation key(s)",
+                    keys.len()
+                );
+                Some(Rc::new(keys))
+            }
         }
         Err(e) => {
             eprintln!("claim_batch: whole-tree published mock corpus precompute failed: {e}");

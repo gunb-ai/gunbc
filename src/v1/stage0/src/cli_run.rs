@@ -832,6 +832,14 @@ fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
         })
         .cloned()
         .collect();
+    // Workspace-only `--source-root <repo>` still indexes dsl/ via build_multi_entry_index;
+    // include `<root>/dsl` when present so universal corpus precompute matches.
+    for root in source_roots {
+        let child = Path::new(root).join("dsl");
+        if child.is_dir() {
+            dsl.push(child.to_string_lossy().into_owned());
+        }
+    }
     dsl.sort();
     dsl.dedup();
     dsl

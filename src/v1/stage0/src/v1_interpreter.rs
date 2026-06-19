@@ -1350,7 +1350,13 @@ impl InterpContext {
             }
         }
         let keys = if let Some(seed) = self.whole_tree_published_keys.as_ref() {
-            seed.clone()
+            if seed.is_empty() {
+                // dsl/ precompute found no corpora (or no dsl root) — fall back to the entry
+                // closure scan rather than treating universal governance as empty.
+                Rc::new(resolve_published_mock_keys(self)?)
+            } else {
+                seed.clone()
+            }
         } else {
             Rc::new(resolve_published_mock_keys(self)?)
         };
