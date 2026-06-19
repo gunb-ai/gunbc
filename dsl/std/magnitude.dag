@@ -2,16 +2,15 @@
 //
 // Magnitude is the foot of the construction chain
 //   Magnitude → Nat → Int → Rational → Real
-// authored in `docs/design-numeric-construction.md` (R3 lane #6,
-// T-Numeric-Construction).
+// (R3 lane #6, T-Numeric-Construction). Modeling discipline: construction-chain
+// layer authority is this module plus dsl/std/nat.dag, integer.dag, rational.dag.
 //
 // SHAPE: opaque atom — no fields, no algebra inhabitance, no value body.
 // Refinements `Nat<N>` / `Int<N>` (later slices) parameterize the namespace
 // to give it concrete bit-width at grounding time. Magnitude itself carries
 // no width — that is the structurally honest representation of "unbounded
-// counting." See `docs/audit/t-numeric-construction-magnitude-6q.md` for the
-// 6Q substrate-introduction audit (encoding design call: abstract counting,
-// rejecting bit-stream and word-stream encodings on Q3/Q6 grounds).
+// counting." Encoding design: abstract counting, rejecting bit-stream and
+// word-stream encodings (no storage encoding at this layer).
 //
 // PRECEDENT: `dsl/std/constructors.dag:68,72` declares `type Product` and
 // `type Coproduct` as bare opaque atoms — same shape as Magnitude.
