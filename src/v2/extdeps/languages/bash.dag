@@ -31,7 +31,9 @@
 // MIGRATION SLICE 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone
 // (`Pipe { AndOr left }` must emit `{ a && b; } | c`, not flat `a && b | c`). Subshell
 // nesting AndOr is a separate recursion fixture. Witnesses in bash_emit_command_test.
-// Next slices: Assign/EnvPrefixed/Exit → migrate sidecar consumers → delete program.dag.
+// MIGRATION SLICE 5c — Assign / EnvPrefixed / CmdSubst + Concat (FINAL emit-vocab before
+// Exit). Byte-identical to serialize_bash for each fixture; witnesses in bash_emit_command_test.
+// Next slices: Exit → migrate sidecar consumers → delete program.dag.
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
 
@@ -797,10 +799,214 @@ fn bash_pipe_and_or_flat_wrong_target_model() -> TargetModel {
   )
 }
 
+// =========================================================================
+// Slice 5c — Assign / EnvPrefixed / CmdSubst + Concat (FINAL emit-vocab before Exit).
+// Byte-identical to serialize_bash for each fixture.
+// =========================================================================
+
+// Assign { CmdSubst { Command } } — bash_serializer_witness / transport keystone:
+// assign(name: "OUT", value: CmdSubst { body: command([mktemp, -d]) })
+fn bash_assign_cmdsubst_mktemp_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_assign_out_eq_dollar_paren },
+    FixedToken { token_class: ^bash_token_word_mktemp },
+    FixedToken { token_class: ^bash_token_word_minus_d_spaced },
+    FixedToken { token_class: ^bash_token_rparen }
+  ]
+}
+
+data bash_assign_cmdsubst_mktemp_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_assign_cmdsubst_mktemp_concrete_tokens()
+)
+
+data bash_assign_cmdsubst_mktemp_source_text: String = "OUT=$('mktemp' '-d')"
+
+fn bash_assign_cmdsubst_mktemp_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_assign_cmdsubst_mktemp,
+    lhs: ^bash_production_assign_cmdsubst_mktemp,
+    tokens: bash_assign_cmdsubst_mktemp_concrete_tokens(),
+    emitted: bash_assign_cmdsubst_mktemp_emitted
+  )
+}
+
+// Assign { Concat { VarRef, Lit } } — host_prelude GUNBC line; Concat has no separator.
+// assign(name: "GUNBC", value: Concat { parts: [var_ref("ROOT"), lit("/target/release/gunbc")] })
+fn bash_assign_concat_gunbc_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_assign_gunbc_eq },
+    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
+    BoundToken {
+      token_class: ^bash_token_lit,
+      binding: ^bash_binding_lit_target_release_gunbc
+    }
+  ]
+}
+
+data bash_assign_concat_gunbc_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_assign_concat_gunbc_concrete_tokens()
+)
+
+data bash_assign_concat_gunbc_source_text: String = "GUNBC=\"$ROOT\"'/target/release/gunbc'"
+
+fn bash_assign_concat_gunbc_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_assign_concat_gunbc,
+    lhs: ^bash_production_assign_concat_gunbc,
+    tokens: bash_assign_concat_gunbc_concrete_tokens(),
+    emitted: bash_assign_concat_gunbc_emitted
+  )
+}
+
+// Discriminating — spaced lit after VarRef is wrong for Concat (word-splitting seam).
+fn bash_assign_concat_gunbc_spaced_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_assign_gunbc_eq },
+    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
+    BoundToken {
+      token_class: ^bash_token_lit_spaced,
+      binding: ^bash_binding_lit_target_release_gunbc
+    }
+  ]
+}
+
+data bash_assign_concat_gunbc_spaced_wrong_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_assign_concat_gunbc_spaced_wrong_concrete_tokens()
+)
+
+data bash_assign_concat_gunbc_spaced_wrong_source_text: String = "GUNBC=\"$ROOT\" '/target/release/gunbc'"
+
+fn bash_assign_concat_gunbc_spaced_wrong_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_assign_concat_gunbc_spaced_wrong,
+    lhs: ^bash_production_assign_concat_gunbc_spaced_wrong,
+    tokens: bash_assign_concat_gunbc_spaced_wrong_concrete_tokens(),
+    emitted: bash_assign_concat_gunbc_spaced_wrong_emitted
+  )
+}
+
+// EnvPrefixed { Concat value, Command } — emit_host_transport cargo row (truncated).
+fn bash_env_prefixed_cargo_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_env_cargo_target_dir_eq },
+    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_WORKDIR },
+    BoundToken { token_class: ^bash_token_lit, binding: ^bash_binding_lit_target },
+    FixedToken { token_class: ^bash_token_word_cargo_spaced },
+    FixedToken { token_class: ^bash_token_word_build_spaced },
+    FixedToken { token_class: ^bash_token_word_quiet_spaced }
+  ]
+}
+
+data bash_env_prefixed_cargo_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_env_prefixed_cargo_concrete_tokens()
+)
+
+data bash_env_prefixed_cargo_source_text: String =
+  "CARGO_TARGET_DIR=\"$WORKDIR\"'/target' 'cargo' 'build' '--quiet'"
+
+fn bash_env_prefixed_cargo_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_env_prefixed_cargo,
+    lhs: ^bash_production_env_prefixed_cargo,
+    tokens: bash_env_prefixed_cargo_concrete_tokens(),
+    emitted: bash_env_prefixed_cargo_emitted
+  )
+}
+
+fn bash_assign_cmdsubst_mktemp_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_assign_out_eq_dollar_paren, text: "OUT=$("),
+        bash_lex_rule(token_class: ^bash_token_word_mktemp, text: "'mktemp'"),
+        bash_lex_rule(token_class: ^bash_token_word_minus_d_spaced, text: " '-d'"),
+        bash_lex_rule(token_class: ^bash_token_rparen, text: ")")
+      ]
+    }
+  }
+}
+
+fn bash_assign_cmdsubst_mktemp_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_assign_cmdsubst_mktemp_translation_rules_node(),
+    source_literal: ^bash_assign_cmdsubst_mktemp_source_literal,
+    production_name: ^bash_production_assign_cmdsubst_mktemp,
+    tokens: bash_assign_cmdsubst_mktemp_concrete_tokens(),
+    source_text: bash_assign_cmdsubst_mktemp_source_text,
+    lex: bash_assign_cmdsubst_mktemp_lex()
+  )
+}
+
+fn bash_assign_concat_gunbc_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_assign_gunbc_eq, text: "GUNBC=")
+      ]
+    }
+  }
+}
+
+fn bash_assign_concat_gunbc_target_model() -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_assign_concat_gunbc_translation_rules_node(),
+    source_literal: ^bash_assign_concat_gunbc_source_literal,
+    production_name: ^bash_production_assign_concat_gunbc,
+    tokens: bash_assign_concat_gunbc_concrete_tokens(),
+    source_text: bash_assign_concat_gunbc_source_text,
+    lex: bash_assign_concat_gunbc_lex(),
+    binding_spellings: bash_binding_spellings()
+  )
+}
+
+fn bash_assign_concat_gunbc_spaced_wrong_lex() -> LexRules {
+  bash_assign_concat_gunbc_lex()
+}
+
+fn bash_assign_concat_gunbc_spaced_wrong_target_model() -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_assign_concat_gunbc_spaced_wrong_translation_rules_node(),
+    source_literal: ^bash_assign_concat_gunbc_spaced_wrong_source_literal,
+    production_name: ^bash_production_assign_concat_gunbc_spaced_wrong,
+    tokens: bash_assign_concat_gunbc_spaced_wrong_concrete_tokens(),
+    source_text: bash_assign_concat_gunbc_spaced_wrong_source_text,
+    lex: bash_assign_concat_gunbc_spaced_wrong_lex(),
+    binding_spellings: bash_binding_spellings()
+  )
+}
+
+fn bash_env_prefixed_cargo_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_env_cargo_target_dir_eq, text: "CARGO_TARGET_DIR="),
+        bash_lex_rule(token_class: ^bash_token_word_cargo_spaced, text: " 'cargo'"),
+        bash_lex_rule(token_class: ^bash_token_word_build_spaced, text: " 'build'"),
+        bash_lex_rule(token_class: ^bash_token_word_quiet_spaced, text: " '--quiet'")
+      ]
+    }
+  }
+}
+
+fn bash_env_prefixed_cargo_target_model() -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_env_prefixed_cargo_translation_rules_node(),
+    source_literal: ^bash_env_prefixed_cargo_source_literal,
+    production_name: ^bash_production_env_prefixed_cargo,
+    tokens: bash_env_prefixed_cargo_concrete_tokens(),
+    source_text: bash_env_prefixed_cargo_source_text,
+    lex: bash_env_prefixed_cargo_lex(),
+    binding_spellings: bash_binding_spellings()
+  )
+}
+
 fn bash_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^bash_binding_var_ROOT, "ROOT")
   let m1 = map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
-  map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
+  let m2 = map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
+  let m3 = map_insert(m2, ^bash_binding_var_WORKDIR, "WORKDIR")
+  let m4 = map_insert(m3, ^bash_binding_lit_target_release_gunbc, "/target/release/gunbc")
+  map_insert(m4, ^bash_binding_lit_target, "/target")
 }
 
 // POSIX §2.2.2 — inside single quotes every character is literal; embedded `'` → `'\''`.
@@ -1035,6 +1241,32 @@ fn bash_make_fixed_tokens_target_model(
     lex: lex,
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  )
+}
+
+fn bash_make_bound_tokens_target_model(
+  rules: Node,
+  source_literal: Symbol,
+  production_name: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  source_text: String,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> TargetModel {
+  target_model_make_with_emit_transforms(
+    bundle: bash_target_model_bundle(
+      rules: rules,
+      serialize_source: bash_serialize_source_node(
+        source_text_binding: source_literal,
+        production_binding: production_name,
+        tokens: tokens
+      )
+    ),
+    lex: lex,
+    binding_spellings: binding_spellings,
+    token_class_emit_transforms: bash_token_class_emit_transforms(),
     authority_source_text: source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
