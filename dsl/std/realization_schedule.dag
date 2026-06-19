@@ -10,8 +10,8 @@ module std.realization_schedule
 import std.types { ContentHash, Bool, String, List, Int }
 import std.nat { Nat }
 import std.measure {
-  ByteSize, Watt, NanosecondDuration,
-  byte_size, watt, nanosecond_duration
+  Measure, Time, ByteSize, Watt,
+  byte_size, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
 import std.lens_verdict {
@@ -28,23 +28,27 @@ type CostBasis
   = Predicted
   | Measured
 
-type CostAccount {
-  time: NanosecondDuration
+// Scale-AGNOSTIC cost ledger: `time` is a `Time` magnitude at ANY scale `<S>` (DESIGN §3
+// — the framework names no scale; a consumer pins `<S>`, e.g. `CostAccount<Nano>` for
+// measured wall-clock, at its own boundary). `space`/`power` keep their own dimensional
+// scales (`Memory@One` / `Power@One`); only the time axis is the relocated scale choice.
+type CostAccount<S> {
+  time: Measure<Time, S, Nat>
   space: ByteSize
   power: Watt
   basis: CostBasis
 }
 
-fn cost_account_predicted_zero() -> CostAccount {
+fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   CostAccount {
-    time: nanosecond_duration(count: 0)
+    time: time_measure(count: 0)
     space: byte_size(count: 0)
     power: watt(count: 0)
     basis: Predicted
   }
 }
 
-fn cost_account_measured(time: NanosecondDuration) -> CostAccount {
+fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   CostAccount {
     time: time
     space: byte_size(count: 0)
@@ -53,8 +57,9 @@ fn cost_account_measured(time: NanosecondDuration) -> CostAccount {
   }
 }
 
-fn cost_account_time_nanos(account: CostAccount) -> Nat {
-  nanosecond_duration_count(d: account.time)
+// Magnitude projection at the ledger's declared scale (count, not scale-named "nanos").
+fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
+  measure_count(m: account.time)
 }
 
 type RealizationObjective {
@@ -76,14 +81,15 @@ type Runnable
 
 type Schedule = List<List<Runnable>>
 
-type RealizationPlan {
+type RealizationPlan<S> {
   target: ContentHash
   objective: RealizationObjective
   schedule: Schedule
   // Measured roll-up along schedule critical path (seq across batches, max within batch);
   // authority v1.compiler.complexity span / cost_seq / cost_par — see
-  // std.realization_measurement.schedule_critical_path_time.
-  total: CostAccount
+  // std.realization_measurement.schedule_critical_path_time. `<S>` is the consumer-pinned
+  // time scale of the ledger (e.g. `RealizationPlan<Nano>`); the plan itself is agnostic.
+  total: CostAccount<S>
 }
 
 fn runnable_step_label(r: Runnable) -> String {
@@ -127,7 +133,7 @@ fn schedule_lens_violation_diagnostic(
   }
 }
 
-fn schedule_lens_verdict_for_ci_floor(plan: RealizationPlan, compile_gate_fn: String) -> LensVerdict {
+fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_fn: String) -> LensVerdict {
   if plan.schedule.length() == 0 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(
@@ -181,7 +187,7 @@ fn schedule_lens_verdict_for_ci_floor(plan: RealizationPlan, compile_gate_fn: St
   }
 }
 
-fn schedule_generates_same_batch_count(left: RealizationPlan, right: RealizationPlan) -> Bool {
+fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: RealizationPlan<S>) -> Bool {
   left.schedule.length() == right.schedule.length()
 }
 
@@ -253,6 +259,6 @@ fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
   }
 }
 
-fn schedule_generates_identical_schedule(plan: RealizationPlan, schedule: Schedule) -> Bool {
+fn schedule_generates_identical_schedule<S>(plan: RealizationPlan<S>, schedule: Schedule) -> Bool {
   schedule_eq(left: plan.schedule, right: schedule)
 }

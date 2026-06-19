@@ -23,7 +23,7 @@ import product.compute_fabric {
   PerJobFilesystem,
   Dram,
 }
-import std.cpu.types { CpuFacts, CpuDeploymentFacts }
+import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure { byte_size, hertz }
 import std.os.types {
   OperatingSystemSurface,

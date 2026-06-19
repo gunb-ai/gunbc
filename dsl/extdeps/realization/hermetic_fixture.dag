@@ -1,0 +1,166 @@
+// extdeps/realization/hermetic_fixture.dag — the hermetic fixture store as TWO
+// content-addressed-cache handlers of ONE kernel (DESIGN.md §2 horizontal / §3 single authority).
+//
+// The fixture store is forked across the two seeds:
+//   - v1 RecordedFixture (src/v1/stage0/src/recorded_fixture.rs): on-disk
+//     `{root}/{op_slug}/{input_hash}.json`, keyed by content_hash(inputs), value-verified on read.
+//   - v2 EffectIoFixtureStore (src/v2/extdeps/runtimes/v2_effect_io_pure.dag): in-process
+//     `Map<Symbol, RuntimeValue>`, keyed by a degenerate Symbol pin (today fail-open).
+//
+// They are not two concepts — they are ONE artifact kind (a wet-captured effect response,
+// keyed by the content hash of the operation inputs) realized at two placements. This file
+// cites both as `CacheInterfaceCatalogFacts` rows (parallel to parse_table_memo.dag /
+// resolved_graph.dag), so the shared kernel (std.cache_interface) sees the fork as a
+// key_derivation divergence on ONE artifact-kind family — the §3 census the M5 fold rewiring
+// then closes (v1/v2 lookup folds return std.cache_interface.CacheLookupResult).
+//
+// MODEL-FIRST SPIKE (node://adhoc-3efc6449-ec5): these rows + the witness are additive and
+// touch no load-bearing fold. The load-bearing bridge (v1 eval_service_call, v2 05_eval
+// effect dispatch, recorded_fixture.rs) is escalated separately — see
+// docs/plans/m5-fixture-store-consolidation.md.
+//
+// Authority: this module, cited in tests. Do NOT fork or duplicate.
+
+module extdeps.realization.hermetic_fixture
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  CasContentEncoding,
+  OpaqueStringEncoding,
+  ContentAddressedByValue,
+  HandAuthoredString,
+  UpsertSubject,
+  ContentAddressLookup,
+  ExactKeyOnly,
+  WriteOnce,
+  OverwriteAllowed,
+  MissIsDiagnostic,
+  StructuredArtifact,
+  PerHostFilesystem,
+  InProcess,
+  Ttl,
+  Never,
+  PerFile,
+  FilesystemPerms,
+  None,
+  LocalDiskUs,
+  InProcessNs,
+  ReadYourWrites,
+  Strong,
+  OperatorObserved,
+  TtlExpiry,
+  ManualPurge,
+  Repo,
+}
+
+data hermetic_fixture_file_store_id: CacheInterfaceId = "hermetic_fixture_file_store"
+data hermetic_fixture_in_process_id: CacheInterfaceId = "hermetic_fixture_in_process"
+
+// --- Handler 1: v1 RecordedFixture (on-disk, content-addressed reference) -----------
+//
+// recorded_fixture.rs: input_hash = content_hash_service_inputs(op, inputs); the store
+// keeps the faithful `inputs` and verifies them on lookup (collision safety →
+// content_verified_on_read). WriteOnce: a re-record returning a different response for the
+// same input_hash is ResponseDrift, the cache-purity oracle. Ttl: FIXTURE_FRESHNESS_SECS
+// (30 days) → expiry is a loud fail-closed refusal, not a silent miss (MissIsDiagnostic).
+data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
+  identity: hermetic_fixture_file_store_id
+  backing_surface: "gunbc-recorded-fixture-on-disk"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+    classification: ContentAddressedByValue
+    inputs_considered: [UpsertSubject]
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Repo
+    invalidation_triggers: [TtlExpiry, ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissIsDiagnostic
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: PerHostFilesystem
+    eviction: Ttl { days: 30 }
+    atomicity: PerFile
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: ReadYourWrites
+  }
+  evidence: [
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "input_hash = content_hash_service_inputs(op, bound inputs); stored inputs verified on lookup (collision safety) — recorded_fixture.rs RecordedFixtureStore::lookup"
+        observed_at: 0
+      }
+    },
+    {
+      field: "write_semantics"
+      evidence: OperatorObserved {
+        note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle); freshness window FIXTURE_FRESHNESS_SECS = 30d"
+        observed_at: 0
+      }
+    },
+  ]
+}
+
+// --- Handler 2: v2 EffectIoFixtureStore (in-process; fork-side, key-derivation gap) --
+//
+// v2_effect_io_pure.dag: Map<Symbol, RuntimeValue>. TODAY the locator identity is a single
+// declare-per-claim pin (^effect_io_pure_default_locator) that ignores the RuntimeValue arg —
+// so this handler is HandAuthoredString + content_verified_on_read:false, the fork the M5
+// design closes. dissolve-on-arrival: when effect_io_pure_locator_identity derives the key
+// from RuntimeValue->Node content_hash (the SAME content digest the file handler already uses),
+// these two fields flip to ContentAddressedByValue / true and the divergence is gone.
+// 🟡 gated — feature:effect-io-fixture-content-addressed-key — bind node://adhoc-3efc6449-ec5
+// — forbidden: marking this row ContentAddressedByValue before the locator-identity fold lands
+// (that would fabricate convergence; the in-process-fork witness fails closed if it is).
+data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
+  identity: hermetic_fixture_in_process_id
+  backing_surface: "gunbc-effect-io-fixture-in-memory"
+  transport_encoding: OpaqueStringEncoding
+  key_derivation: {
+    classification: HandAuthoredString
+    inputs_considered: [UpsertSubject]
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ExactKeyOnly
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissIsDiagnostic
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: InProcess
+    eviction: Never
+    atomicity: PerFile
+    auth: None
+    read_latency: InProcessNs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "locator identity = ^effect_io_pure_default_locator constant pin (ignores RuntimeValue arg) — v2_effect_io_pure.dag effect_io_pure_locator_identity; fork closes when key derives from RuntimeValue->Node content_hash"
+        observed_at: 0
+      }
+    },
+    {
+      field: "miss_semantics"
+      evidence: OperatorObserved {
+        note: "Absent entry => ^effect_io_pure_resource_absent rejected (fail-closed) — effect_io_pure_store_lookup"
+        observed_at: 0
+      }
+    },
+  ]
+}

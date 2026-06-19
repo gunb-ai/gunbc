@@ -17,30 +17,28 @@
 
 module v2.test.lens_mock_totality.github_mock_totality
 
-import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
-// Single authority for the github mock corpus lives in the dsl/ tree
-// (dsl/extdeps/github/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does (M4
-// hermetic-realization fold). POST-M4.1 whole-tree load discovers the corpus without a co-located
-// import in each service module. Cross-tree v2->dsl import is the existing pattern.
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template {
+  mock_totality_green_holds,
+  mock_totality_red_on_omission_holds,
+  omit_consumer_handles,
+  outcome_accepted_p
+}
 import extdeps.github.mock_corpus {
   PublishedMockCase,
   github_published_mock_corpus
 }
-import v2.std.algebra { filter }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-// The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
-// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
 type MaterializedGithubMock {
   tag: Symbol
 }
 
-// The REAL consumer: materializes ANY published github case impl-blind, keyed on the operation_key
-// across all eight published ops; fail-closes (the canonical `mock_unhandled_rejection`) for an
-// unpublished op.
+data github_red_omit_keys: List<String> = ["github.Pulls.ListReviews"]
+
 fn materialize_github_mock(case: PublishedMockCase) -> Outcome<MaterializedGithubMock> {
   if case.operation_key == "github.Gist.Create" {
     outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_gist_create })
@@ -63,75 +61,28 @@ fn materialize_github_mock(case: PublishedMockCase) -> Outcome<MaterializedGithu
   }
 }
 
-// The DELIBERATELY-INCOMPLETE consumer: omits `github.Pulls.ListReviews` → fail-closes on that
-// published case. This is the discriminating input that drives the lens RED on omission.
-fn materialize_github_mock_omits_list_reviews(case: PublishedMockCase) -> Outcome<MaterializedGithubMock> {
-  if case.operation_key == "github.Gist.Create" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_gist_create })
-  } else if case.operation_key == "github.Pulls.List" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list })
-  } else if case.operation_key == "github.Pulls.Get" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_get })
-  } else if case.operation_key == "github.Pulls.Diff" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_diff })
-  } else if case.operation_key == "github.Pulls.CreateComment" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_create_comment })
-  } else if case.operation_key == "github.Pulls.CreateReview" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_create_review })
-  } else if case.operation_key == "github.Pulls.ListComments" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list_comments })
-  } else {
-    mock_unhandled_rejection()
-  }
-}
-
-fn github_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
-// Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
 fn github_real_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_github_mock(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  outcome_accepted_p(outcome: materialize_github_mock(case: case))
 }
 
-// Did the DELIBERATELY-INCOMPLETE consumer (no `ListReviews` handler) materialize this case?
 fn github_omits_list_reviews_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_github_mock_omits_list_reviews(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  omit_consumer_handles(
+    case: case,
+    omit_keys: github_red_omit_keys,
+    total_consumer_handles: github_real_consumer_handles
+  )
 }
 
-// The handled set = the published members a consumer accepts, BY EXECUTION over the corpus.
-fn github_handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
-  filter(xs: github_published_mock_corpus, predicate: consumer_handles)
-}
-
-// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
 test fn github_mock_consumer_is_total_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_green_holds(
     published: github_published_mock_corpus,
-    handled: github_handled_by(consumer_handles: github_real_consumer_handles),
-    eq: github_mock_case_eq
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+    consumer_handles: github_real_consumer_handles
+  )
 }
 
-// RED-on-omission by execution: omit `github.Pulls.ListReviews` from the consumer → the lens MUST
-// fail-close. GREEN here proves the lens has teeth (it rejects an unhandled published member); a
-// vacuous lens that accepted anyway would make this witness RED.
 test fn github_mock_omitted_member_is_red_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_red_on_omission_holds(
     published: github_published_mock_corpus,
-    handled: github_handled_by(consumer_handles: github_omits_list_reviews_consumer_handles),
-    eq: github_mock_case_eq
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
+    consumer_handles: github_omits_list_reviews_consumer_handles
+  )
 }

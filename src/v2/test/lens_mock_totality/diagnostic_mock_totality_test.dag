@@ -19,23 +19,27 @@
 
 module v2.test.lens_mock_totality.diagnostic_mock_totality
 
-import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
-// Single authority for the diagnostic mock corpus lives in the dsl/ tree
-// (dsl/extdeps/diagnostic/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does
-// (M4 hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern.
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template {
+  mock_totality_green_holds,
+  mock_totality_red_on_omission_holds,
+  omit_consumer_handles,
+  outcome_accepted_p
+}
 import extdeps.diagnostic.mock_corpus {
   PublishedMockCase,
   diagnostic_published_mock_corpus
 }
-import v2.std.algebra { filter }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 type MaterializedDiagnosticMock {
   tag: Symbol
 }
+
+data diagnostic_red_omit_keys: List<String> = ["diagnostic.ipmi.Tool.SelList"]
 
 fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
   if case.operation_key == "diagnostic.ssh.Session.Exec" {
@@ -59,66 +63,28 @@ fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedD
   }
 }
 
-fn materialize_diagnostic_mock_omits_sel_list(case: PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
-  if case.operation_key == "diagnostic.ssh.Session.Exec" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
-  } else if case.operation_key == "diagnostic.ssh.Session.Reachability" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
-  } else if case.operation_key == "redfish.Http.GetSensors" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_sensors })
-  } else if case.operation_key == "redfish.Http.GetSystem" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })
-  } else if case.operation_key == "diagnostic.edac.RasMcCtl.CorrectableCounts" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_edac_correctable_counts })
-  } else if case.operation_key == "diagnostic.ipmi.Tool.SensorList" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sensor_list })
-  } else if case.operation_key == "diagnostic.ipmi.Tool.SdrList" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sdr_list })
-  } else {
-    mock_unhandled_rejection()
-  }
-}
-
-fn diagnostic_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
 fn diagnostic_real_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_diagnostic_mock(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  outcome_accepted_p(outcome: materialize_diagnostic_mock(case: case))
 }
 
 fn diagnostic_omits_sel_list_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_diagnostic_mock_omits_sel_list(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn diagnostic_handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
-  filter(xs: diagnostic_published_mock_corpus, predicate: consumer_handles)
+  omit_consumer_handles(
+    case: case,
+    omit_keys: diagnostic_red_omit_keys,
+    total_consumer_handles: diagnostic_real_consumer_handles
+  )
 }
 
 test fn diagnostic_mock_consumer_is_total_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_green_holds(
     published: diagnostic_published_mock_corpus,
-    handled: diagnostic_handled_by(consumer_handles: diagnostic_real_consumer_handles),
-    eq: diagnostic_mock_case_eq
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+    consumer_handles: diagnostic_real_consumer_handles
+  )
 }
 
 test fn diagnostic_mock_omitted_member_is_red_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_red_on_omission_holds(
     published: diagnostic_published_mock_corpus,
-    handled: diagnostic_handled_by(consumer_handles: diagnostic_omits_sel_list_consumer_handles),
-    eq: diagnostic_mock_case_eq
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
+    consumer_handles: diagnostic_omits_sel_list_consumer_handles
+  )
 }

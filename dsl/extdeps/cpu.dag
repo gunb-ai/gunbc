@@ -1,15 +1,17 @@
-// std/cpu.dag — CPU concept projections over a vendor-agnostic catalog row.
+// extdeps/cpu.dag — CPU concept projections over a vendor-agnostic catalog row.
 //
-// Types: std.cpu.types. Per-vendor catalog data: extdeps.cpu.<vendor>.
-// std/cpu owns only the general CPU concept; it does not enumerate any one
+// Types: extdeps.cpu.types. Per-vendor catalog data: extdeps.cpu.<vendor>.
+// This owns only the general CPU concept; it does not enumerate any one
 // vendor's parts, so it does NOT dispatch on owned SKUs.
 
-module std.cpu
+module extdeps.cpu
 
-import std.cpu.types { CpuArchitecture, CpuFacts, CpuVendor }
+import extdeps.cpu.types { CpuArchitecture, CpuFacts }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 import std.measure { HardwareThreadCount, Hertz }
 
-fn cpu_vendor(cpu: CpuFacts) -> CpuVendor {
+fn cpu_vendor(cpu: CpuFacts) -> Vendor<Hardware> {
   cpu.catalog.vendor
 }
 
