@@ -354,12 +354,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         base
       }
     } else {
-    let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
-    if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
-      wrap_shared_type(target: Rust, inner: applied_ty)
-    } else {
-      applied_ty
+      let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
+      let applied_ty = concat(base, "<", args, ">")
+      if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+        wrap_shared_type(target: Rust, inner: applied_ty)
+      } else {
+        applied_ty
+      }
     }
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
