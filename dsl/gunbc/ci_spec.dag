@@ -72,19 +72,12 @@ fn ci_release_build_line() -> String {
 
 // Two-tier cold retry on fleet EAGAIN (#4978 / #5138): first CARGO_BUILD_JOBS=1 with
 // sccache (populate daemon when it works); if sccache still cannot spawn rustc, drop
-// RUSTC_WRAPPER and compile direct. Then print stats.
-fn ci_release_build_script() -> String {
-  let build = ci_release_build_line()
+// RUSTC_WRAPPER and compile direct. Workflow policy — NOT generic shell transport.
+fn ci_cargo_eagain_retry_script(command: String) -> String {
   concat(
     concat(
-      concat(
-        concat("ROOT=", ci_repo_root_shell(), "\n"),
-        "set -o pipefail\n"
-      ),
-      concat(
-        concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
-        concat(build, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
-      )
+      concat("set -o pipefail\n", concat("BUILD_LOG=$(mktemp)\n", "if ! (")),
+      concat(command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
     ),
     concat(
       concat(
@@ -94,7 +87,7 @@ fn ci_release_build_script() -> String {
         ),
         concat(
           concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( CARGO_BUILD_JOBS=1 "),
-          concat(build, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
+          concat(command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")
         )
       ),
       concat(
@@ -103,7 +96,7 @@ fn ci_release_build_script() -> String {
             "      if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$RETRY_LOG\"; then\n",
             "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
           ),
-          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(build, " || exit 1\n"))
+          concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
         ),
         concat(
           concat("      else\n", "        exit 1\n"),
@@ -116,12 +109,33 @@ fn ci_release_build_script() -> String {
         concat("    rm -f \"$RETRY_LOG\"\n", "  else\n"),
         concat("    exit 1\n", "  fi\n")
       ),
-      concat(
-        concat("fi\n", "rm -f \"$BUILD_LOG\"\n"),
-        concat("sccache --show-stats 2>/dev/null || true", "")
-      )
+      concat("fi\n", "rm -f \"$BUILD_LOG\"\n")
     )
   )
+}
+
+// Release bootstrap build + sccache stats (ci.yml workflow step).
+fn ci_release_build_script() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      ci_cargo_eagain_retry_script(command: ci_release_build_line()),
+      "sccache --show-stats 2>/dev/null || true"
+    )
+  )
+}
+
+// Rust-monolith gate argv lines (workflow policy lives here, not in dispatch_shell).
+fn ci_rust_gate_fmt_command() -> String {
+  "cargo fmt --all --check"
+}
+
+fn ci_rust_gate_clippy_command() -> String {
+  "cargo clippy --all-targets -- -D warnings"
+}
+
+fn ci_rust_gate_test_command() -> String {
+  "cargo test -p v1-compiler-tests interp_recorded_fixture"
 }
 
 fn claim_executor_bin_shell() -> String {
