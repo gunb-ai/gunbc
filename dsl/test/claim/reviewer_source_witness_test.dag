@@ -1,7 +1,7 @@
 // dsl/test/claim/reviewer_source_witness_test.dag
 //
-// §5 discriminating proof for ctrl.review_verdict.reviewer_source — ProviderOther
-// must map to Unattributed (fail-closed), not Llm; policy uses PolicyReviewer.
+// §5 discriminating proof for ctrl.review_verdict.reviewer_source — source kind
+// is structural per Reviewer arm; ProviderOther lifts to UnattributedReviewer.
 
 module test.claim.reviewer_source_witness_test
 
@@ -21,25 +21,25 @@ fn witness_agent_claude_is_llm() -> Bool {
   }
 }
 
-fn witness_agent_human_is_human() -> Bool {
-  match reviewer_source(reviewer: AgentReviewer { provider: HumanReviewer }) {
+fn witness_human_reviewer_is_human() -> Bool {
+  match reviewer_source(reviewer: HumanReviewer) {
     Human => true
     _ => false
   }
 }
 
-fn witness_agent_provider_other_jane_qa_is_unattributed() -> Bool {
+fn witness_unattributed_jane_qa_is_unattributed() -> Bool {
   match reviewer_source(
-    reviewer: AgentReviewer { provider: ProviderOther { name: witness_jane_qa } }
+    reviewer: UnattributedReviewer { provider_name: witness_jane_qa }
   ) {
     Unattributed => true
     _ => false
   }
 }
 
-fn witness_agent_provider_other_policy_string_is_unattributed() -> Bool {
+fn witness_unattributed_policy_string_is_unattributed() -> Bool {
   match reviewer_source(
-    reviewer: AgentReviewer { provider: ProviderOther { name: witness_policy_string } }
+    reviewer: UnattributedReviewer { provider_name: witness_policy_string }
   ) {
     Unattributed => true
     _ => false
@@ -59,9 +59,9 @@ fn witness_policy_reviewer_is_policy() -> Bool {
 
 fn all_reviewer_source_witnesses() -> Bool {
   witness_agent_claude_is_llm()
-    && witness_agent_human_is_human()
-    && witness_agent_provider_other_jane_qa_is_unattributed()
-    && witness_agent_provider_other_policy_string_is_unattributed()
+    && witness_human_reviewer_is_human()
+    && witness_unattributed_jane_qa_is_unattributed()
+    && witness_unattributed_policy_string_is_unattributed()
     && witness_policy_reviewer_is_policy()
 }
 

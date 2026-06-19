@@ -46,27 +46,31 @@ type PolicyRef {
   version: NonEmptyStr
 }
 
-// Coproduct receipt: terminal. Structured reviewer identity for verdict
-// carriers. Agent-backed reviews name a ReviewProvider; policy-backed reviews
-// name a grounded PolicyRef instead of smuggling policy as ProviderOther.
-type Reviewer
-  = AgentReviewer { provider: ReviewProvider }
-  | PolicyReviewer { policy: PolicyRef }
+// Coproduct receipt: terminal. LLM-only provider rows for AgentReviewer.
+// ReviewProvider (transport) retains HumanReviewer and ProviderOther for ctrl;
+// those coordinates lift to HumanReviewer / UnattributedReviewer arms here.
+type LlmReviewProvider
+  = OpenaiPro
+  | Codex
+  | Claude
+  | Cursor
 
-// Total projection from Reviewer to ReviewSource. Closed LLM providers -> Llm;
-// HumanReviewer -> Human; ProviderOther (including legacy "policy" strings) ->
-// Unattributed (fail-closed, not Policy or Llm); PolicyReviewer -> Policy.
+// Coproduct receipt: terminal. Structured reviewer identity for verdict
+// carriers. Source kind is structural per arm — reviewer_source is tag
+// projection only (no nested ReviewProvider match undoing a conflation).
+type Reviewer
+  = AgentReviewer { provider: LlmReviewProvider }
+  | HumanReviewer
+  | PolicyReviewer { policy: PolicyRef }
+  | UnattributedReviewer { provider_name: NonEmptyStr }
+
+// Total tag projection: each Reviewer arm maps 1:1 to ReviewSource.
 fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   match reviewer {
-    AgentReviewer { provider: p } => match p {
-      HumanReviewer => Human
-      OpenaiPro => Llm
-      Codex => Llm
-      Claude => Llm
-      Cursor => Llm
-      ProviderOther { name: _ } => Unattributed
-    }
+    AgentReviewer { provider: _ } => Llm
+    HumanReviewer => Human
     PolicyReviewer { policy: _ } => Policy
+    UnattributedReviewer { provider_name: _ } => Unattributed
   }
 }
 
