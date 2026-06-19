@@ -929,18 +929,18 @@ fn bash_env_prefixed_cargo_translation_rules_node() -> Node {
   )
 }
 
+// Bound-word phrase: only the FIXED tokens carry a literal lex rule (the bound var-ref /
+// cmd-subst body spellings resolve at emit time). Authored as a `phrase` of fixed spans and
+// projected to its lex rules; T-6 binding-carrying spans (the full single-authority migration)
+// are the child lane's job.
 fn bash_assign_cmdsubst_mktemp_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_assign_eq, text: "="),
-        bash_lex_rule(token_class: ^bash_token_cmdsubst_open, text: "$("),
-        bash_lex_rule(token_class: ^bash_token_word_mktemp, text: "'mktemp'"),
-        bash_lex_rule(token_class: ^bash_token_word_minus_d_spaced, text: " '-d'"),
-        bash_lex_rule(token_class: ^bash_token_rparen, text: ")")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: phrase([
+    span(text: "=",       class: ^bash_token_assign_eq),
+    span(text: "$(",      class: ^bash_token_cmdsubst_open),
+    span(text: "'mktemp'", class: ^bash_token_word_mktemp),
+    span(text: " '-d'",   class: ^bash_token_word_minus_d_spaced),
+    span(text: ")",       class: ^bash_token_rparen)
+  ]))
 }
 
 fn bash_assign_cmdsubst_mktemp_target_model() -> TargetModel {
@@ -956,13 +956,9 @@ fn bash_assign_cmdsubst_mktemp_target_model() -> TargetModel {
 }
 
 fn bash_assign_concat_gunbc_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_assign_eq, text: "=")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: phrase([
+    span(text: "=", class: ^bash_token_assign_eq)
+  ]))
 }
 
 fn bash_assign_concat_gunbc_target_model() -> TargetModel {
@@ -994,16 +990,12 @@ fn bash_assign_concat_gunbc_spaced_wrong_target_model() -> TargetModel {
 }
 
 fn bash_env_prefixed_cargo_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_assign_eq, text: "="),
-        bash_lex_rule(token_class: ^bash_token_word_cargo_spaced, text: " 'cargo'"),
-        bash_lex_rule(token_class: ^bash_token_word_build_spaced, text: " 'build'"),
-        bash_lex_rule(token_class: ^bash_token_word_quiet_spaced, text: " '--quiet'")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: phrase([
+    span(text: "=",        class: ^bash_token_assign_eq),
+    span(text: " 'cargo'",  class: ^bash_token_word_cargo_spaced),
+    span(text: " 'build'",  class: ^bash_token_word_build_spaced),
+    span(text: " '--quiet'", class: ^bash_token_word_quiet_spaced)
+  ]))
 }
 
 fn bash_env_prefixed_cargo_target_model() -> TargetModel {
