@@ -1,4 +1,4 @@
-// dsl/test/claim/markup_serializer_witness.dag
+// dsl/test/claim/markup_serializer_witness_test.dag
 //
 // By-execution witnesses for the Fragment-IR markup serializer (std/markup.dag).
 // Run via the claim-witness corpus gate: `gunbc run --source-root dsl --entry
@@ -147,7 +147,7 @@ fn witness_perturb_break_escape_goes_red() -> Bool {
 // -- keystone -------------------------------------------------------
 // Single corpus row ANDs every witness above (one data row, not N*M arms).
 
-fn markup_serializer_keystone_holds() -> Bool {
+test fn markup_serializer_keystone_holds() -> Bool {
   witness_text_escaping_by_execution() &&
     witness_attribute_escaping_by_execution() &&
     witness_url_escaping_by_execution() &&

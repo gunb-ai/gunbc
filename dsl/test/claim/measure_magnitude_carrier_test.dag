@@ -23,7 +23,7 @@ import std.types { Int }
 import std.logic { Bool }
 
 // GATE0 — M=Nat through the ByteSize alias (Measure<Memory, One, Nat>).
-fn measure_nat_magnitude_roundtrip_holds() -> Bool {
+test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
   byte_size_count(byte_size(42)) == 42
 }
 
@@ -37,7 +37,7 @@ fn signed_microvolts_count(v: Measure<ElectricPotential, Micro, Int>) -> Int {
   v.count
 }
 
-fn measure_signed_magnitude_roundtrip_holds() -> Bool {
+test fn measure_signed_magnitude_roundtrip_holds() -> Bool {
   signed_microvolts_count(signed_microvolts(-5)) == -5
 }
 
@@ -46,6 +46,6 @@ fn measure_signed_magnitude_roundtrip_holds() -> Bool {
 // Substantiates the "two-hop alias chains round-trip" claim in measure.dag (G3 + multi-hop landed
 // gunbc#4885): both `money_micros` (multi-hop record literal) and `money_micros_count`
 // (multi-hop `.count`) resolve + evaluate on the v2 interpreter.
-fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
+test fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
   money_micros_count(money_micros(99)) == 99
 }

@@ -1,0 +1,79 @@
+// extdeps/realization/resolved_graph.dag — gunbc resolved-graph per-host cache (operator facts).
+//
+// Realization handler for v1 resolved_graph_cache.rs; cited rows graduate from
+// std.cache_interface per realization.dag dissolution trigger.
+
+module extdeps.realization.resolved_graph
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  CasContentEncoding,
+  ContentAddressedByValue,
+  UpsertSubject,
+  ContentAddressLookup,
+  WriteOnce,
+  MissThenCreate,
+  StructuredArtifact,
+  PerHostFilesystem,
+  SizeBounded,
+  WriteThenRename,
+  FilesystemPerms,
+  LocalDiskUs,
+  ReadYourWrites,
+  OperatorObserved,
+  ToolchainChange,
+  ManualPurge,
+  Org,
+}
+import std.measure { ByteSize, byte_size }
+
+// Operator deployment default — not a substrate literal (§3 business-policy).
+data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
+
+data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
+
+data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
+  identity: resolved_graph_cache_id
+  backing_surface: "gunbc-resolved-graph-per-host-cache"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+    classification: ContentAddressedByValue
+    inputs_considered: [UpsertSubject]
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Org
+    invalidation_triggers: [ToolchainChange, ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: PerHostFilesystem
+    eviction: SizeBounded { cap_bytes: resolved_graph_cache_cap_bytes }
+    atomicity: WriteThenRename
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: ReadYourWrites
+  }
+  evidence: [
+    {
+      field: "atomicity"
+      evidence: OperatorObserved {
+        note: "resolved_graph_cache.rs temp-file + rename write path (WriteOnce under race)"
+        observed_at: 0
+      }
+    },
+    {
+      field: "lookup_semantics"
+      evidence: OperatorObserved {
+        note: "subject_digest = closure content + resolve-logic version + intern-seed version"
+        observed_at: 0
+      }
+    },
+  ]
+}

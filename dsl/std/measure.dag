@@ -199,7 +199,7 @@ fn scale_exponent(s: Scale) -> Int {
 //     access (G2), parametric record literals (G3), and multi-hop alias
 //     field-access chains all now resolve on the v2 interpreter (G3 + multi-hop
 //     landed in gunbc#4885, alias-chain peel / fail-closed). The carrier
-//     witnesses in dsl/test/claim/measure_magnitude_carrier.dag exercise each
+//     witnesses in dsl/test/claim/measure_magnitude_carrier_test.dag exercise each
 //     path by execution; the constructor/projection fns below remain the
 //     ergonomic surface, no longer a pre-flip workaround.
 // MAGNITUDE GENERALIZATION (`<M>`): the `count` field now carries its magnitude at
@@ -215,11 +215,11 @@ fn scale_exponent(s: Scale) -> Int {
 // interpreter today (verified by execution post-#4885 G3 + multi-hop): M=Nat via the
 // single-hop alias projection, signed M=Int via a direct record literal, and a two-hop
 // alias chain (product.compute_fabric.MoneyMicros.count) all round-trip —
-// dsl/test/claim/measure_magnitude_carrier.dag.
+// dsl/test/claim/measure_magnitude_carrier_test.dag.
 // GATE1 signed SPICE *execution* (negative magnitude through map/fold, value asserted):
 // gunbc#4942 class-4 deciding artifact = ENROLLED shard-b
 // `timeseries_signed_magnitude_capacitor_fold_holds` (Form-B signed int_mul/int_add
-// crossing zero + int_div v=Q/C) in timeseries_passive_map_fold_anchor.dag.
+// crossing zero + int_div v=Q/C) in timeseries_passive_map_fold_anchor_test.dag.
 // Supplementary enrolled map witness: `timeseries_signed_magnitude_resistor_map_holds`
 // (signed int_mul R·i). NOT class-4: `measure_signed_magnitude_roundtrip_holds` is
 // projection roundtrip only (stores -5, reads back — not discriminating arithmetic).

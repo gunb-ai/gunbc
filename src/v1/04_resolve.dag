@@ -833,82 +833,57 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       }
       ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprCall { call_semantics: cs, descent_evidence: de } =>
-      let resolved_children = texpr.children |> map(arg_node =>
+      // bind-once: resolve each arg child a SINGLE time, then split into
+      // resolved children + diagnostics (resolving twice makes a nested
+      // constructor literal O(2^depth) — see ExprListLit/resolve_node_bounded).
+      let arg_results = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Present { value: v } => v  Absent => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_arg_node(name: if arg_node.ident_span == none { none } else { Present { value: authored_name(env: env, node: arg_node) } }, value: vr.expr, span: arg_node.span, name_span: node_name_span(n: arg_node))
+        ExprResolveResult { expr: make_arg_node(name: if arg_node.ident_span == none { none } else { Present { value: authored_name(env: env, node: arg_node) } }, value: vr.expr, span: arg_node.span, name_span: node_name_span(n: arg_node)), diagnostics: vr.diagnostics }
       )
-      let all_diags = texpr.children |> flat_map(arg_node =>
-        let val = match arg_node.children |> first { Present { value: v } => v  Absent => arg_node }
-        let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        vr.diagnostics
-      )
+      let resolved_children = arg_results |> map(r => r.expr)
+      let all_diags = flat_map(arg_results, r => r.diagnostics)
       ExprResolveResult { expr: make_named_expr_node(name: expr_call_func_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprCall { call_semantics: cs, descent_evidence: de }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMethodCall { method_semantics: ms } =>
-      let resolved_children = texpr.children |> enumerate |> map(pair =>
+      // bind-once: resolve each child a SINGLE time (see ExprCall).
+      let mc_results = texpr.children |> enumerate |> map(pair =>
         let idx = pair.first
         let child = pair.second
         if idx == 0 {
           let rr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
-          rr.expr
+          ExprResolveResult { expr: rr.expr, diagnostics: rr.diagnostics }
         } else {
           let val = match child.children |> first { Present { value: v } => v  Absent => child }
           let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-          make_arg_node(name: if child.ident_span == none { none } else { Present { value: authored_name_at(source_indices: env.source_indices, node: child) } }, value: vr.expr, span: child.span, name_span: node_name_span(n: child))
+          ExprResolveResult { expr: make_arg_node(name: if child.ident_span == none { none } else { Present { value: authored_name_at(source_indices: env.source_indices, node: child) } }, value: vr.expr, span: child.span, name_span: node_name_span(n: child)), diagnostics: vr.diagnostics }
         }
       )
-      let all_diags = texpr.children |> enumerate |> flat_map(pair =>
-        let idx = pair.first
-        let child = pair.second
-        if idx == 0 {
-          let rr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
-          rr.diagnostics
-        } else {
-          let val = match child.children |> first { Present { value: v } => v  Absent => child }
-          let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-          vr.diagnostics
-        }
-      )
+      let resolved_children = mc_results |> map(r => r.expr)
+      let all_diags = flat_map(mc_results, r => r.diagnostics)
       ExprResolveResult { expr: make_named_expr_node(name: expr_method_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprMethodCall { method_semantics: ms }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprMatch =>
-      let resolved_children = texpr.children |> enumerate |> map(pair =>
+      // bind-once: resolve each scrutinee/arm a SINGLE time (see ExprCall).
+      let match_results = texpr.children |> enumerate |> map(pair =>
         let idx = pair.first
         let child = pair.second
         if idx == 0 {
           let sr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
-          sr.expr
+          ExprResolveResult { expr: sr.expr, diagnostics: sr.diagnostics }
         } else {
           let arm_ch = child.children
           let has_guard = arm_ch |> count == 2
           if has_guard {
             let guard_r = match arm_ch |> first { Present { value: g } => resolve_expr_types(texpr: g, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
             let body_r = match arm_ch |> skip(1) |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => Wildcard }, guard: Present { value: guard_r.expr }, body: body_r.expr, span: child.span)
+            ExprResolveResult { expr: make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => Wildcard }, guard: Present { value: guard_r.expr }, body: body_r.expr, span: child.span), diagnostics: concat(guard_r.diagnostics, body_r.diagnostics) }
           } else {
             let body_r = match arm_ch |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => Wildcard }, guard: none, body: body_r.expr, span: child.span)
+            ExprResolveResult { expr: make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => Wildcard }, guard: none, body: body_r.expr, span: child.span), diagnostics: body_r.diagnostics }
           }
         }
       )
-      let all_diags = texpr.children |> enumerate |> flat_map(pair =>
-        let idx = pair.first
-        let child = pair.second
-        if idx == 0 {
-          let sr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
-          sr.diagnostics
-        } else {
-          let arm_ch = child.children
-          let has_guard = arm_ch |> count == 2
-          if has_guard {
-            let guard_r = match arm_ch |> first { Present { value: g } => resolve_expr_types(texpr: g, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            let body_r = match arm_ch |> skip(1) |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            concat(guard_r.diagnostics, body_r.diagnostics)
-          } else {
-            let body_r = match arm_ch |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            body_r.diagnostics
-          }
-        }
-      )
+      let resolved_children = match_results |> map(r => r.expr)
+      let all_diags = flat_map(match_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(expr_data: ExprMatch, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprIf =>
       let ch = texpr.children
@@ -924,16 +899,16 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = match br { Present { value: r } => [vr.expr, r.expr]  Absent => [vr.expr] }
       ExprResolveResult { expr: make_named_expr_node(name: let_binding_name_at(texpr: texpr, source_indices: env.source_indices), expr_data: ExprLet, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: concat(vr.diagnostics, match br { Present { value: r } => r.diagnostics  Absent => [] }) }
     ExprRecordLit { parent_enum: pe } =>
-      let resolved_children = texpr.children |> map(fi_node =>
+      // bind-once: resolve each field-init value a SINGLE time (see ExprCall).
+      // This is the arm hit by deep nested constructor literals (Cons/record
+      // chains) — resolving twice per field was O(2^depth).
+      let fi_results = texpr.children |> map(fi_node =>
         let val = match fi_node.children |> first { Present { value: v } => v  Absent => fi_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_field_init_node(name: authored_name(env: env, node: fi_node), value: vr.expr, span: fi_node.span, name_span: node_name_span(n: fi_node))
+        ExprResolveResult { expr: make_field_init_node(name: authored_name(env: env, node: fi_node), value: vr.expr, span: fi_node.span, name_span: node_name_span(n: fi_node)), diagnostics: vr.diagnostics }
       )
-      let all_diags = texpr.children |> flat_map(fi_node =>
-        let val = match fi_node.children |> first { Present { value: v } => v  Absent => fi_node }
-        let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        vr.diagnostics
-      )
+      let resolved_children = fi_results |> map(r => r.expr)
+      let all_diags = flat_map(fi_results, r => r.diagnostics)
       ExprResolveResult { expr: make_named_expr_node(name: authored_name_at(source_indices: env.source_indices, node: texpr), expr_data: ExprRecordLit { parent_enum: pe }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprListLit =>
       let el_results = texpr.children |> map(el => resolve_expr_types(texpr: el, env: env, module_name: module_name))
@@ -953,30 +928,21 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let r = match texpr.children |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], lam_param_nodes), inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     ExprStringInterp =>
-      let resolved_children = texpr.children |> map(part_node =>
+      // bind-once: resolve each interpolation part a SINGLE time (see ExprCall).
+      let part_results = texpr.children |> map(part_node =>
         match part_node.expr_data {
-          ExprLiteral { value: _ } => part_node
+          ExprLiteral { value: _ } => ExprResolveResult { expr: part_node, diagnostics: [] }
           _ =>
             match part_node.children |> first {
               Present { value: inner } =>
                 let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
-                make_interp_part_node(expr: r.expr, span: part_node.span)
-              Absent => part_node
+                ExprResolveResult { expr: make_interp_part_node(expr: r.expr, span: part_node.span), diagnostics: r.diagnostics }
+              Absent => ExprResolveResult { expr: part_node, diagnostics: [] }
             }
         }
       )
-      let all_diags = texpr.children |> flat_map(part_node =>
-        match part_node.expr_data {
-          ExprLiteral { value: _ } => []
-          _ =>
-            match part_node.children |> first {
-              Present { value: inner } =>
-                let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
-                r.diagnostics
-              Absent => []
-            }
-        }
-      )
+      let resolved_children = part_results |> map(r => r.expr)
+      let all_diags = flat_map(part_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(expr_data: ExprStringInterp, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
     ExprBlock =>
       let stmt_results = texpr.children |> map(s => resolve_expr_types(texpr: s, env: env, module_name: module_name))

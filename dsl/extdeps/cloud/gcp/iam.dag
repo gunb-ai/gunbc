@@ -9,7 +9,7 @@
 
 module extdeps.cloud.gcp.iam
 
-import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject }
+import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject, GcpProjectId, ServiceAccountEmail }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
 import std.types { HttpMethod, AuthScheme }
 
