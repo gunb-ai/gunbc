@@ -5,9 +5,8 @@
 // Hermetic replay via committed fixtures under dsl/test/fixture/gcp_oauth_access_token_store/
 // (v1-compiler-tests `gcp_oauth_access_token_materializer_holds` → claim_batch --hermetic).
 //
-// Discriminating pair:
-//   GREEN — both strategies route to distinguishable fixture tokens.
-//   RED   — swapped-dispatch perturbation returns the wrong leaf token.
+// Symbolic teeth: prove dispatch routes to the correct leaf materializer (relational),
+// never re-stating fixture token bytes — sole authority is the fixture JSON store.
 
 module test.claim.gcp_oauth_access_token_witness
 
@@ -20,42 +19,56 @@ import gunbc.auth.credentials {
 import std.logic { Bool }
 import std.types { FilePath, Secret }
 
-// Fixture-authored tokens (must match dsl/test/fixture/gcp_oauth_access_token_store/*).
-data token_adc_refresh: String = "ya29.WITNESS_ADC_REFRESH_TOKEN"
-data token_gcloud_cli: String = "ya29.WITNESS_GCLOUD_CLI_TOKEN"
-
 data witness_adc_path: FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
-
-fn secret_eq(a: Secret, b: String) -> Bool {
-  (a as String) == b
-}
-
-fn witness_gcloud_cli_strategy_holds() -> Bool {
-  let r = gcp_oauth_access_token(strategy: GcloudCli)
-  secret_eq(a: r.token, b: token_gcloud_cli)
-}
-
-fn witness_adc_refresh_absent_path_holds() -> Bool {
-  let r = gcp_oauth_access_token(strategy: AdcRefresh { adc_path: Absent })
-  secret_eq(a: r.token, b: token_adc_refresh)
-}
-
-fn witness_adc_refresh_present_path_holds() -> Bool {
-  let r = gcp_oauth_access_token(
-    strategy: AdcRefresh { adc_path: Present { value: witness_adc_path } }
-  )
-  secret_eq(a: r.token, b: token_adc_refresh)
-}
 
 // Literal-built optional null must not crash Present/Absent match (§5 execution gate).
 data null_adc_path: FilePath? = none
 
-fn witness_adc_refresh_null_optional_path_holds() -> Bool {
-  let r = gcp_oauth_access_token(strategy: AdcRefresh { adc_path: null_adc_path })
-  secret_eq(a: r.token, b: token_adc_refresh)
+fn secret_eq(a: Secret, b: Secret) -> Bool {
+  (a as String) == (b as String)
 }
 
-// Perturbation: swapped match arms — must NOT return the canonical strategy token.
+// GREEN: each strategy's dispatch equals invoking that strategy's leaf directly.
+fn witness_gcloud_cli_routes_to_gcloud_leaf() -> Bool {
+  secret_eq(
+    a: gcp_oauth_access_token(strategy: GcloudCli).token,
+    b: gcp_oauth_access_token_via_gcloud().token
+  )
+}
+
+fn witness_adc_refresh_absent_routes_to_adc_leaf() -> Bool {
+  secret_eq(
+    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: Absent }).token,
+    b: gcp_oauth_access_token_via_adc_refresh().token
+  )
+}
+
+fn witness_adc_refresh_present_routes_to_adc_leaf() -> Bool {
+  secret_eq(
+    a: gcp_oauth_access_token(
+      strategy: AdcRefresh { adc_path: Present { value: witness_adc_path } }
+    ).token,
+    b: gcp_oauth_access_token_via_adc_refresh(adc_path: witness_adc_path).token
+  )
+}
+
+fn witness_adc_refresh_null_optional_routes_to_adc_leaf() -> Bool {
+  secret_eq(
+    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: null_adc_path }).token,
+    b: gcp_oauth_access_token_via_adc_refresh().token
+  )
+}
+
+// Distinguishability — without this the routing asserts are vacuous if both leaves returned
+// the same token. Explicit where the old duplicated literals only implied it.
+fn witness_leaves_are_distinguishable() -> Bool {
+  !secret_eq(
+    a: gcp_oauth_access_token_via_gcloud().token,
+    b: gcp_oauth_access_token_via_adc_refresh().token
+  )
+}
+
+// Perturbation: swapped match arms — must route to the opposite leaf.
 pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
 {
   node result = match strategy {
@@ -65,26 +78,32 @@ pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenSt
   return { token: result.token }
 }
 
-fn witness_swapped_dispatch_gcloud_cli_is_red() -> Bool {
-  let r = gcp_oauth_access_token_dispatch_swapped(strategy: GcloudCli)
-  !secret_eq(a: r.token, b: token_gcloud_cli)
+// RED — swapped dispatch hits the WRONG leaf, so it must EQUAL the other leaf.
+fn witness_swapped_gcloud_hits_adc_leaf() -> Bool {
+  secret_eq(
+    a: gcp_oauth_access_token_dispatch_swapped(strategy: GcloudCli).token,
+    b: gcp_oauth_access_token_via_adc_refresh().token
+  )
 }
 
-fn witness_swapped_dispatch_adc_refresh_is_red() -> Bool {
-  let r = gcp_oauth_access_token_dispatch_swapped(
-    strategy: AdcRefresh { adc_path: Absent }
+fn witness_swapped_adc_hits_gcloud_leaf() -> Bool {
+  secret_eq(
+    a: gcp_oauth_access_token_dispatch_swapped(
+      strategy: AdcRefresh { adc_path: Absent }
+    ).token,
+    b: gcp_oauth_access_token_via_gcloud().token
   )
-  !secret_eq(a: r.token, b: token_adc_refresh)
 }
 
 fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
-  witness_gcloud_cli_strategy_holds()
-    && witness_adc_refresh_absent_path_holds()
-    && witness_adc_refresh_present_path_holds()
-    && witness_adc_refresh_null_optional_path_holds()
+  witness_gcloud_cli_routes_to_gcloud_leaf()
+    && witness_adc_refresh_absent_routes_to_adc_leaf()
+    && witness_adc_refresh_present_routes_to_adc_leaf()
+    && witness_adc_refresh_null_optional_routes_to_adc_leaf()
+    && witness_leaves_are_distinguishable()
 }
 
 fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
-  witness_swapped_dispatch_gcloud_cli_is_red()
-    && witness_swapped_dispatch_adc_refresh_is_red()
+  witness_swapped_gcloud_hits_adc_leaf()
+    && witness_swapped_adc_hits_gcloud_leaf()
 }
