@@ -84,6 +84,16 @@ pub mod v1_interpreter;
 pub mod v1_rt;
 pub mod v1_std_core;
 pub mod wire_value_serialize;
+// BOOTSTRAP-ONLY (diagnostic): A-fix declares these 7 hand-maintained mods; the
+// committed lib.rs predates A, so add them by hand to break the regen chicken-and-egg.
+// regen_stage0 overwrites lib.rs with identical content (emitter now produces 13 mods).
+pub mod recorded_fixture;
+pub mod extdeps_shape_transport_policy_project;
+pub mod fact_cardinality_census;
+pub mod import_resolution_project;
+pub mod layering_imports_project;
+pub mod module_path_index;
+pub mod transport_script_position_project;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);

@@ -5,6 +5,15 @@
 // `regen_stage0 --verify` (the lockstep oracle) over the live tree (GREEN) plus
 // a planted-drift RED receipt (the +/- teeth), mirroring tools.dsl_compile_clean_gate.
 //
+// Catches drift the existing floor MISSES — two observed data points: (1) a
+// hand-patched seed fn with no `.dag` source (the policy accessors that lived
+// seed-only) regen-drops on a fresh self-compile, which `regen_stage0 --verify`
+// flags but a typecheck of the committed seed does not; (2) a parse error in the
+// emitter `.dag` that surfaces ONLY in regen's self-compile of the v1 tree — a PR
+// whose `DslCompileCleanGate` was GREEN still failed `regen_stage0 --verify` (a
+// parser-strictness divergence / compile-clean blind spot). Both are seed↔.dag
+// lockstep failures the regen oracle detects and the rest of the floor does not.
+//
 // Run standalone:
 //   cargo run -p v1-compiler --release --bin gunbc -- run \
 //     --source-root dsl --entry dsl/tools/stage0_lockstep_gate.dag --function main

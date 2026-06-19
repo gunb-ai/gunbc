@@ -236,9 +236,9 @@ pub enum Bool {
     False,
 }
 
-pub type Json = Json;
+pub type Json = serde_json::Value;
 
-pub type Bytes = Bytes;
+pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
