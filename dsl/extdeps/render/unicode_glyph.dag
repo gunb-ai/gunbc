@@ -1,0 +1,21 @@
+// extdeps/render/unicode_glyph.dag — Unicode-tier glyph carrier.
+//
+// Anchor: https://www.unicode.org/versions/latest/
+//   (Unicode Standard — same authority as std.unicode UCD 15.x; no parallel model)
+//
+// dissolve-on: Q-Regex repertoire refinement — cited blocks (U+2500 Box Drawing,
+//   U+2800 Braille Patterns, …).
+
+module extdeps.render.unicode_glyph
+
+import std.unicode {}
+
+type UnicodeGlyph = String where brand("UnicodeGlyph")
+
+fn unicode_glyph(text: String) -> UnicodeGlyph {
+  text
+}
+
+fn unicode_glyph_text(g: UnicodeGlyph) -> String {
+  g
+}
