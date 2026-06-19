@@ -586,6 +586,16 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^dag_token_gt)
       ]
     ),
+    // STALE — comma-MANDATORY (DESIGN §3/§6; paired with dag_grammar_comma_list_expr
+    // above). Every dag_production_comma_*_list / _suffix production below requires an
+    // inter-item comma. The v1-mirrored TRUTH is comma-OPTIONAL (parse_field_list_acc):
+    // see dag_grammar_comma_list_expr, the operational grammar parse_module actually
+    // walks. These flat-BNF rows were intentionally NOT hand-doubled to optional — that
+    // would grow §2 parallel-ledger debt for a consistency nothing enforces (zero
+    // consumers outside this file). CP-1b convergence MUST land on comma-OPTIONAL and
+    // never re-impose mandatory commas. EXECUTABLE BACKSTOP: a mandatory-comma
+    // regression goes RED by execution in
+    // src/v2/test/claim/languages/dag_comma_optional_list_test.dag (two-newline-fields).
     grammar_formal_production(
       lhs: ^dag_production_comma_ident_list,
       rhs: [
@@ -1827,13 +1837,35 @@ fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
   Repeat { element: element }
 }
 
+// item (comma? item)* comma? — the inter-item comma is OPTIONAL, mirroring the v1
+// single authority parse_field_list_acc (src/v1/stage0/src/v1_compiler_parse.rs): v1
+// skip_newlines + eat(ExpectComma) tolerating EatUnchanged, i.e. items separate on a
+// comma OR bare juxtaposition (newlines are whitespace), uniformly across list sites
+// (field decls, param lists, generic/type-arg lists). v2 had FORKED to a mandatory
+// comma; that fork left every newline-separated multi-field record body unparseable
+// (parse_g0_tokens_remain). This is a strict superset — comma-separated lists still
+// parse. (v1 forbids commas only on positional-variant payloads, which have no v2
+// wave1 production at all, so no comma_list site needs the strict policy.)
+//
+// CP-1b RESOLUTION DIRECTION (DESIGN §3/§6 — the dissolution trigger, not just a note):
+// comma-OPTIONAL is the v1-mirrored TRUTH and lives HERE (the operational GrammarExpr
+// scaffold that parse_module actually walks). The parallel formal flat-BNF productions
+// dag_production_comma_*_list* in dag_wave1_formal_productions are STALE — still
+// comma-MANDATORY — and were deliberately NOT hand-doubled to optional (doing so would
+// grow §2 parallel-ledger debt to satisfy a consistency nothing enforces; those
+// productions have zero consumers outside this file). CP-1b convergence MUST land on
+// comma-OPTIONAL and must NOT re-impose the stale mandatory formal (that would silently
+// revert this fix). EXECUTABLE BACKSTOP: the floor witnesses in
+// src/v2/test/claim/languages/dag_comma_optional_list_test.dag (two-newline-fields
+// Accepts) go RED by execution if mandatory commas are ever reintroduced — a witness
+// that fails the build, stronger than a marker someone must read.
 fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: item,
     right: dag_grammar_sequence(
       left: dag_grammar_repeat(
         element: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
           right: item
         )
       ),
