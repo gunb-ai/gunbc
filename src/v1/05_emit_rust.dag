@@ -71,6 +71,7 @@ import extdeps.languages.rust.emit {
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
+import extdeps.cargo_version { render_cargo_package_header_prefix }
 import v1.compiler.languages {
   scaffold_for_target, serialization_for_target,
   TestConventions, ItemKeywords,
@@ -189,7 +190,12 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       Absent => emit_rust_compile_error_expr(message: "Set missing element type")
     }
   } else {
-    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+    let tn = authored_name_at(source_indices: source_indices, node: n)
+    if tn == "String" && n.children |> count == 0 {
+      render_rust_text_carrier(shared_types: shared_types)
+    } else {
+      render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+    }
   }
 }
 
@@ -201,9 +207,52 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
 }
 
+// §3 faithful DAG String carrier for v2 Rust self-host (String = FreeMonoid<Char>, Char = Nat).
+fn render_rust_text_carrier(shared_types: Set<String>) -> String {
+  render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Nat>", shared_types: shared_types)
+}
+
+// §2 — route ALL host→DAG String boundary bridges through HostStringText seam (one authority).
+fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
+  concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
+}
+
+fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
+  concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
+}
+
+fn rust_host_string_seam_fn_emit(name: String) -> String? {
+  if name == "host_string_text_from_rust_host" {
+    Present { value: concat(
+      "pub fn host_string_text_from_rust_host(host: String) -> String {\n",
+      "    host.chars().fold(crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>(), ",
+      "|acc, ch| crate::v2_std_algebra::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n",
+      "}\n"
+    ) }
+  } else if name == "host_string_text_to_rust_host" {
+    Present { value: concat(
+      "pub fn host_string_text_to_rust_host(text: String) -> String {\n",
+      "    crate::v2_std_algebra::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n",
+      "}\n"
+    ) }
+  } else {
+    none
+  }
+}
+
+fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
+  if name == "Json" || name == "Bytes" {
+    Present { value: coerce_primitive_type(target: Rust, dag_name: name) }
+  } else {
+    none
+  }
+}
+
 fn rust_named_type_base(name: String) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
+  } else if name == "String" {
+    "FreeMonoid<Nat>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
   }
@@ -270,12 +319,20 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         name
       } else if n.connective == NoConnective && n.children |> count == 0 {
-        rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
+        if name == "String" {
+          render_rust_text_carrier(shared_types: shared_types)
+        } else {
+          rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
+        }
       } else if n.connective == NoConnective && n.children |> count > 0 {
+        if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+          render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+        } else {
         let base = rust_named_type_base(name: name)
         let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)) |> join(separator: ", ")
         let applied_ty = concat(base, "<", args, ">")
         render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
+        }
       } else {
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
       }
@@ -284,9 +341,15 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
 
 // Compose generic-arg preservation with canonical rendering — do not replace the
 // applied-binding path when the enclosing item has type params.
-// Closed type aliases (e.g. NanosecondDuration = Measure<...>) expand to applied
-// shells in inference; fn signatures must emit the alias name only.
+// RC3: Closed type aliases (e.g. String = FreeMonoid<Char>, NanosecondDuration =
+// Measure<...>) expand to applied shells in inference; fn signatures and alias RHS
+// must emit the alias name only. Alias RHS may be brand-preserved (children > 0);
+// peel on declared param count, not structural child count.
 fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  if name == "String" {
+    return false
+  }
   let binding = match lookup_type_for(env: env, node: n) {
     Present { value: b } => b
     Absent =>
@@ -296,19 +359,17 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
         Absent => return false
       }
   }
-  (binding.children |> count) == 0 && (binding.params |> count) == 0
+  (binding.params |> count) == 0
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if generic_param_names |> count > 0 {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+    render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+  } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
-    let name = authored_name_at(source_indices: source_indices, node: n)
-    if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-      render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
-    } else {
-      render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
-    }
+    render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
   }
 }
 
@@ -336,7 +397,12 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
+    if name == "String" {
+      render_rust_text_carrier(shared_types: shared_types)
+    } else if match rust_opaque_kernel_alias_carrier(name: name) {
+      Present { value: carrier } => carrier
+      Absent => rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
+    }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let local_mod = module_to_filename(name: module_name)
     let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
@@ -345,12 +411,20 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     } else {
       name
     }
-    let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
-    if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
-      wrap_shared_type(target: Rust, inner: applied_ty)
+    if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: scope.type_env, n: n) {
+      if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: base) {
+        wrap_shared_type(target: Rust, inner: base)
+      } else {
+        base
+      }
     } else {
-      applied_ty
+      let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
+      let applied_ty = concat(base, "<", args, ">")
+      if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+        wrap_shared_type(target: Rust, inner: applied_ty)
+      } else {
+        applied_ty
+      }
     }
   } else {
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
@@ -1108,7 +1182,10 @@ fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>
   if is_phantom_unit_variant_type_arg(env: env, variant_name: name) {
     name
   } else {
-    rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    match rust_opaque_kernel_alias_carrier(name: name) {
+      Present { value: carrier } => carrier
+      Absent => rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    }
   }
 }
 
@@ -1364,7 +1441,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   // rest_transport_facts.rs bounded substrate seed).
   // These are not generated — they survive regen as non-generated files.
   let hand_maintained_mods = if has_compiler_tests {
-    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;"
+    "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;"
   } else {
     ""
   }
@@ -1582,7 +1659,9 @@ fn has_physical_type_def_in_module_filename(rhs_name: String, mod_filename: Stri
     Present { value: mods } => mods |> any(tm =>
       tm.items |> any(item =>
         authored_name_at(source_indices: source_indices, node: item) == rhs_name
-        && is_type_def_item(item: item)
+        && (is_type_def_item(item: item)
+          || is_type_alias_item(item: item, source_indices: source_indices)
+          || is_type_decl_item(item: item, source_indices: source_indices))
       )
     )
     Absent => false
@@ -3291,6 +3370,9 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
 // =========================================================================
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match rust_host_string_seam_fn_emit(name: name) {
+    Present { value: seam_fn } => seam_fn
+    Absent => {
   let si = scope.type_env.source_indices
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
@@ -3317,6 +3399,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, needs_stacker: needs_stacker)
+  }
+    }
   }
 }
 
@@ -3479,11 +3563,7 @@ fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_typ
 //   between the type signature and ownership analysis and breaks fixed-point.
 fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let type_node = resolved_type(n: param)
-  if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else {
-    render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  }
+  render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
 }
 
 fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
@@ -4706,7 +4786,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-          concat("        ", pat, " => \"", child_text, "\".to_string(),")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\"")), ",")
         )
         // Borrow the scrutinee so the arms (which never bind fields) don't move it. Shared types
         // are Rc-wrapped, so deref through the Rc with `&*` to reach `&T`; owned values use `&`.
@@ -4718,9 +4798,9 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
         concat("(match ", scrut_ref, " {\n", arms |> join(separator: "\n"), "\n    })")
       } else {
         // Product/record type: the discriminant is the type's own name (interpreter returns type_name).
-        concat("\"", ty_name, "\".to_string()")
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
       }
-    Absent => concat("\"", ty_name, "\".to_string()")
+    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
   }
 }
 
@@ -4802,10 +4882,25 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()")
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
+  }
+  // `utf8_decode_bytes(payload)` — RFC 3629 decode of wire Bytes → String (fail-closed §5).
+  // REST Secret Manager AccessVersion returns decoded payload bytes; text secrets cross here.
+  if func == "utf8_decode_bytes" {
+    let decode_args = order_typed_call_args(args: args, func: func, scope: scope)
+    let decode_result = match decode_args |> first {
+      Present { value: value_arg } =>
+        concat(
+          "String::from_utf8(",
+          emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
+          ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {}\", e))?"
+        )
+      Absent => "compile_error!(\"utf8_decode_bytes call missing value argument\")"
+    }
+    return decode_result
   }
   if func == "discriminant" {
     let disc_args = order_typed_call_args(args: args, func: func, scope: scope)
@@ -6011,7 +6106,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
 fn rust_zero_value(type_name: String) -> String? {
   if type_name == "Int" { Present { value: "0" } }
   else if type_name == "Bool" { Present { value: "false" } }
-  else if type_name == "String" { Present { value: concat("\"\"", ".to_string()") } }
+  else if type_name == "String" { Present { value: "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()" } }
   else { none }
 }
 
@@ -6026,11 +6121,11 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", l_str, ".as_str())") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", r_str, ".as_str())") }
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), ")") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
-        concat("(", l_str, ".as_str() ", op_str, " ", r_str, ".as_str())")
+        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")")
       }
     } else {
       concat("(", l_str, " ", op_str, " ", r_str, ")")
@@ -6072,10 +6167,10 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
     |> map(p => p.arg_expr)
     |> filter(a => a != "")
   if args |> count == 0 {
-    concat("\"", fmt_str, "\".to_string()")
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""))
   } else {
     let args_str = args |> join(separator: ", ")
-    concat("format!(\"", fmt_str, "\", ", args_str, ")")
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"))
   }
 }
 
@@ -6703,8 +6798,8 @@ fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineInde
     Present { value: q } => {
       let pairs = q.children |> map(fi =>
         concat("(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
-          emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices),
-          ".to_string())")
+          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices)),
+          ")")
       )
       if pairs |> count > 0 {
         concat("let request = request.query(&[", pairs |> join(separator: ", "), "]);")
@@ -6886,8 +6981,8 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
   let escaped_path = from_path |> split("/") |> map(seg => escape_json_pointer_segment(seg: seg)) |> join(separator: "/")
   let pointer = concat("/", escaped_path)
   let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name)
-  let accessor = if rust_type == "String" {
-    concat(".and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or(\"missing field: ", from_path, "\")?")
+  let accessor = if dag_type_name == "String" {
+    concat(".and_then(|v| v.as_str()).map(|s| crate::v2_std_text::host_string_text_from_rust_host(s.to_string())).ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "i64" {
     concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "f64" {
@@ -7026,7 +7121,7 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node, source_indices: Map<St
     let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) }," }
+      else { "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(crate::v2_std_text::host_string_text_from_rust_host(stderr)) }," }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -7045,7 +7140,7 @@ fn emit_exit_arm(prop: Node, inferred: Node, source_indices: Map<String, Newline
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred, source_indices: source_indices), " },")
   } else {
-    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) },")
+    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(crate::v2_std_text::host_string_text_from_rust_host(stderr)) },")
   }
 }
 
@@ -7144,9 +7239,9 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         Absent => false
       }
       if is_opt {
-        concat("&", var_name, ".as_deref().unwrap_or(\"\").to_string()")
+        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"))
       } else {
-        concat("&", var_name, ".to_string()")
+        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name)
       }
     }
     _ => emit_simple_expr(expr: arg, target: Rust, source_indices: source_indices)
@@ -7400,7 +7495,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
         ExprRecordLit { parent_enum: _ } =>
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("            __m.insert(\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\".to_string(), ", val_str, ");")
+            concat("            __m.insert(", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\"")), ", ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",
@@ -7511,7 +7606,7 @@ fn emit_cargo_dep(name: String, version: String, features: List<String>) -> Stri
 }
 
 fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
-  let header = concat("[package]\nname = \"", crate_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
+  let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
   let workspace = "\n[workspace]\n"
   let base_deps = [
     emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
@@ -7886,8 +7981,12 @@ fn emit_cli_param_type_node(n: Node, source_indices: Map<String, NewlineIndex>) 
     "String"
   } else if n.children |> count == 0 {
     let nname = authored_name_at(source_indices: source_indices, node: n)
-    let mapped = coerce_primitive_type(target: Rust, dag_name: nname)
-    if mapped != nname { mapped } else { "String" }
+    if nname == "String" {
+      "String"
+    } else {
+      let mapped = coerce_primitive_type(target: Rust, dag_name: nname)
+      if mapped != nname { mapped } else { "String" }
+    }
   } else {
     "String"
   }
