@@ -2982,6 +2982,14 @@ pub fn is_import_graph_type_name(
         typed_modules.clone(),
         source_indices.clone(),
         module_index.clone(),
+    ) && type_name_is_rust_importable_in_module(
+        name.clone(),
+        import_module.clone(),
+        typed_modules.clone(),
+        registry.clone(),
+        export_sets.clone(),
+        source_indices.clone(),
+        module_index.clone(),
     ) {
         true
     } else {

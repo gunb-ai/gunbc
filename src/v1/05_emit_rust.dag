@@ -1514,7 +1514,8 @@ fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
 // SG-8: graph type imports proven from the declared import module's physical defs
 // and export surface — never from bare-name registry lookup (global homonyms).
 fn is_import_graph_type_name(name: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
-  if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: module_to_filename(name: import_module), typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+  if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: module_to_filename(name: import_module), typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    && type_name_is_rust_importable_in_module(name: name, module_name: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
     true
   } else if match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
     Present { value: src } => type_name_is_rust_importable_in_module(name: name, module_name: src, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
