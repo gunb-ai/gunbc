@@ -176,18 +176,6 @@ fn reference_edge(label: EdgeLabel, target: Node) -> Edge {
 fn named_reference_edge(name: Symbol, target: Node) -> Edge {
   reference_edge(label: Named { name: name }, target: target)
 }
-fn edge_is_containment(e: Edge) -> Bool {
-  match e.role {
-    Containment { inheritable: _ } => true
-    Reference => false
-  }
-}
-fn edge_is_reference(e: Edge) -> Bool {
-  match e.role {
-    Containment { inheritable: _ } => false
-    Reference => true
-  }
-}
 fn edge_shape_containment(label: EdgeLabel, target: NodeShape) -> EdgeShape {
   EdgeShape { label: label, target: target, role: Containment { inheritable: false } }
 }
@@ -289,12 +277,16 @@ fn fold_node_filtered<R>(n: Node, algebra: NodeFoldFiltered<R>) -> R {
   )
 }
 fn fold_containment<R>(n: Node, algebra: NodeFold<R>) -> R {
-  fold_node_filtered(
-    n: n,
-    algebra: NodeFoldFiltered {
-      include_edge: edge_is_containment,
-      init: algebra.init,
-      step: algebra.step
+  fold(
+    filter(n.children, predicate: fn(e) {
+      match e.role {
+        Containment { inheritable: _ } => true
+        Reference => false
+      }
+    }),
+    init: algebra.init(n),
+    f: fn(acc, e) {
+      algebra.step(acc, e, fold_containment(n: e.target, algebra: algebra))
     }
   )
 }
