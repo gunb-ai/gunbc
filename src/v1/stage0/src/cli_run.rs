@@ -2478,9 +2478,10 @@ pub fn run_discovery_corpus_with_options(
         }
     };
     // SCAFFOLD — thin host transport feeding `v2.workflow.affected_set_floor_runner`
-    // (`floor_witness_run_disposition`). Dissolve-on: host reads git/cache only;
-    // kernel decides skip (ROADMAP.md — affected-set floor skip kernel consumption).
-    // Paired witness: `floor_runner_host_kernel_skip_equivalent_holds`.
+    // (`floor_witness_run_disposition`). ROADMAP.md CI wall-time P4 (#5179); dissolve-on:
+    // host reads git/cache only; kernel decides skip.
+    // Paired witnesses: `floor_runner_host_kernel_skip_equivalent_holds`,
+    // `floor_runner_empty_diff_verified_green_skips_holds`.
     let baseline_cache = if skip_enabled {
         witness_baseline_cache_root_from_env()
     } else {

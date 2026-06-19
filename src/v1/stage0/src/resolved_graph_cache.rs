@@ -373,7 +373,9 @@ pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> R
     Ok(())
 }
 
-// ── Witness verified-green baseline (Phase 1.5a affected-set floor skip) ─────
+// ── Witness verified-green baseline (Phase 1.5a / ROADMAP CI wall-time P4 #5179) ─
+// Hand-Rust SCAFFOLD tombstone cache — dissolve-on: host consumes
+// `floor_witness_run_disposition`; interim gate `floor_runner_host_kernel_skip_equivalent_holds`.
 
 pub const WITNESS_BASELINE_VERSION: &str = "witness-baseline-v1";
 
