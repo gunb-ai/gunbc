@@ -1506,6 +1506,23 @@ pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Val
     Ok(out)
 }
 
+/// Evaluate one named `data` initializer (fail-closed if missing or not data).
+pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResult<Option<Value>> {
+    let Some(info) = ctx.item_registry.get(item_name) else {
+        return Ok(None);
+    };
+    if info.kind != ItemKind::DataItem {
+        return Ok(None);
+    }
+    let Some(node) = ctx.lookup_fn(item_name) else {
+        return Ok(None);
+    };
+    let Some(body) = node.body.as_ref() else {
+        return Ok(None);
+    };
+    Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
+}
+
 // ---------------------------------------------------------------------------
 // Function call
 // ---------------------------------------------------------------------------

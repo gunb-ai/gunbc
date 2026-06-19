@@ -14,7 +14,7 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::lookup_type_by_name;
-use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
@@ -2526,22 +2526,28 @@ fn collect_frontier_nodes_from_diff_line_ranges(
             Ok(pair) => pair,
             Err(_) => continue,
         };
+        let mut overlapping_data_names = Vec::new();
+        for module in graph.modules.iter() {
+            for item in module.items.iter() {
+                if item_kind(item.clone()) != ItemKind::DataItem {
+                    continue;
+                }
+                if !span_overlaps_line_ranges(item.span.as_ref(), &source_indices, ranges) {
+                    continue;
+                }
+                overlapping_data_names.push(authored_name_at(
+                    source_indices.clone(),
+                    item.clone(),
+                ));
+            }
+        }
         let ctx = make_eval_context(&graph, source_indices.clone(), execution_mode);
-        for (name, info) in ctx.item_registry.iter() {
-            if info.kind != ItemKind::DataItem {
-                continue;
-            }
-            let Some(item_node) = ctx.lookup_fn(name) else {
-                continue;
-            };
-            if !span_overlaps_line_ranges(&item_node.span, &source_indices, ranges) {
-                continue;
-            }
-            let Some(body) = item_node.body.as_ref() else {
+        for name in overlapping_data_names {
+            let Some(val) = v1_interpreter::eval_data_item_value(&ctx, &name)
+                .map_err(|e| format!("eval data `{name}` in {file_path}: {e}"))?
+            else {
                 continue;
             };
-            let val = v1_interpreter::eval_expr(body, &v1_interpreter::Env::empty(), &ctx)
-                .map_err(|e| format!("eval data `{name}` in {file_path}: {e}"))?;
             if !value_is_test_claim(&val, &ctx) {
                 continue;
             }
@@ -2754,10 +2760,10 @@ pub fn run_discovery_corpus_with_options(
 
 #[cfg(test)]
 mod floor_skip_frontier_tests {
-    use super::{parse_unified_diff_line_ranges, FileLineRange, span_overlaps_line_ranges};
-    use crate::v1_std_core::{build_newline_index, byte_to_line_col, SourceSpan};
+    use super::{parse_unified_diff_line_ranges, span_overlaps_line_ranges, FileLineRange};
+    use crate::std_types::SourceSpan;
+    use crate::v1_std_core::build_newline_index;
     use std::collections::HashMap;
-    use std::rc::Rc;
 
     #[test]
     fn parse_unified_diff_extracts_new_side_line_ranges() {
@@ -2800,106 +2806,6 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             &[FileLineRange { start: 3, end: 3 }]
         ));
     }
-}
-
-/// Run the whole floor discovery corpus through one shared module index
-/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
-/// are appended to the discovered roster with `(entry, function)` dedup — exactly
-/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
-/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
-/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
-/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
-/// `claim_batch` keeps its own timing/stats loop but shares the roster.
-pub fn run_discovery_corpus(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<DiscoverySummary, String> {
-    check_floor_filename_hygiene(source_roots)?;
-    let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
-    // Append explicit rows with (entry, function) dedup, then re-sort so each
-    // entry's witnesses stay grouped for the resolve-once loop below.
-    let mut seen: std::collections::BTreeSet<(String, String)> = rows
-        .iter()
-        .map(|r| (r.entry.clone(), r.function.clone()))
-        .collect();
-    for (entry, function) in explicit_entries {
-        if seen.insert((entry.clone(), function.clone())) {
-            rows.push(DiscoveryRow {
-                label: function.clone(),
-                entry: entry.clone(),
-                function: function.clone(),
-            });
-        }
-    }
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    if rows.is_empty() {
-        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
-    }
-    let index = build_multi_entry_index(source_roots);
-
-    // Group by entry (rows are sorted by (entry, function)), resolve each entry
-    // once, run its witnesses against the shared graph.
-    let mut summary = DiscoverySummary {
-        total: rows.len(),
-        passed: 0,
-        failures: Vec::new(),
-        entry_resolve_receipts: Vec::new(),
-        total_resolve_nanos: 0,
-        performance_receipts: Vec::new(),
-        total_measured_nanos: 0,
-    };
-    let mut current_entry: Option<String> = None;
-    let mut current_closure_subject: Option<String> = None;
-    let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    for row in &rows {
-        if current_entry.as_deref() != Some(row.entry.as_str()) {
-            let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
-                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
-            let closure_subject = subject_digest_for_closure(&sources);
-            let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
-                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
-            let resolve_nanos = resolve_started.elapsed().as_nanos();
-            summary.total_resolve_nanos += resolve_nanos;
-            summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                entry: row.entry.clone(),
-                closure_subject: closure_subject.clone(),
-                resolve_nanos,
-            });
-            current_closure_subject = Some(closure_subject);
-            ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
-            current_entry = Some(row.entry.clone());
-        }
-        let ctx_ref = ctx.as_ref().expect("ctx set above");
-        let closure_subject = current_closure_subject
-            .as_deref()
-            .expect("closure subject set above");
-        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        summary.total_measured_nanos += receipt.wall_nanos;
-        summary.performance_receipts.push(receipt);
-        match outcome {
-            ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => summary.failures.push(format!(
-                "{} ({}) returned Bool(false)",
-                row.function, row.entry
-            )),
-            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
-                "{} ({}) returned `{}`, not Bool",
-                row.function, row.entry, got
-            )),
-            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
-                "{} ({}) runtime error: {}",
-                row.function, row.entry, message
-            )),
-        }
-    }
-    Ok(summary)
 }
 
 // ---------------------------------------------------------------------------
