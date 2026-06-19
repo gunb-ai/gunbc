@@ -72,25 +72,27 @@ fn width_fold_objective_goals() -> List<AxisGoal> {
   [LowerIsBetter, LowerIsBetter]
 }
 
-type WidthBoundedRealization {
-  plan: RealizationPlan
+// `<S>` is the plan's consumer-pinned cost-ledger time scale (RealizationPlan<S> post-#5286);
+// width is peripheral and never reads the ledger, so S only rides through for well-formedness.
+type WidthBoundedRealization<S> {
+  plan: RealizationPlan<S>
   spawn_width: HardwareThreadCount
 }
 
 // Width is peripheral: the schedule topology is unchanged (§3 invariant).
-fn width_bounded_realization(
-  plan: RealizationPlan,
+fn width_bounded_realization<S>(
+  plan: RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
-) -> WidthBoundedRealization {
+) -> WidthBoundedRealization<S> {
   WidthBoundedRealization {
     plan: plan
     spawn_width: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   }
 }
 
-fn witness_width_fold_preserves_schedule_topology(
-  plan: RealizationPlan,
+fn witness_width_fold_preserves_schedule_topology<S>(
+  plan: RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
 ) -> Bool {
