@@ -438,12 +438,8 @@ fn probe_gap4_scoped_ingest_first_reject() {
     let mut failing_idx = None;
     while lo <= hi {
         let mid = lo + (hi - lo) / 2;
-        emit_source_root_ingest_manifest(
-            &manifest_path,
-            &records[..mid],
-            Some(&admission),
-        )
-        .expect("emit prefix manifest");
+        emit_source_root_ingest_manifest(&manifest_path, &records[..mid], Some(&admission))
+            .expect("emit prefix manifest");
         eprintln!("gap4 probe: testing prefix {mid}/{} ...", records.len());
 
         let manifest_dir = manifest_path.parent().expect("manifest parent");
@@ -452,7 +448,10 @@ fn probe_gap4_scoped_ingest_first_reject() {
             run_claim(&ctx, "compiler_closure_scoped_ingest_parses"),
             ClaimOutcome::Pass
         );
-        eprintln!("gap4 probe: prefix {mid} => {}", if pass { "PASS" } else { "FAIL" });
+        eprintln!(
+            "gap4 probe: prefix {mid} => {}",
+            if pass { "PASS" } else { "FAIL" }
+        );
 
         if pass {
             lo = mid + 1;
