@@ -469,19 +469,17 @@ pub fn render_rust_fn_sig_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    if ((generic_param_names.clone().len() as i64) > 0) {
+    let name = authored_name_at(source_indices.clone(), n.clone());
+    if ((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) > 0)
+        && !is_container_type(name.clone())
+        && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+    {
+        render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
+    } else if ((generic_param_names.clone().len() as i64) > 0) {
         render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
     } else {
-        let name = authored_name_at(source_indices.clone(), n.clone());
-        if ((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) > 0)
-            && !is_container_type(name.clone())
-            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
-        {
-            render_rust_shared_type_if_needed(name.clone(), name, shared_types.clone())
-        } else {
-            render_rust_fn_sig_type_applied_binding(n, shared_types, source_indices, env)
-        }
+        render_rust_fn_sig_type_applied_binding(n, shared_types, source_indices, env)
     }
 }
 
@@ -8478,22 +8476,13 @@ pub fn render_rust_param_sig_type(
 ) -> String {
     {
         let type_node = resolved_type(param.clone());
-        if ((generic_param_names.clone().len() as i64) > 0) {
-            render_rust_decl_type(
-                type_node,
-                generic_param_names.clone(),
-                shared_types,
-                source_indices,
-            )
-        } else {
-            render_rust_fn_sig_type(
-                type_node,
-                generic_param_names,
-                shared_types,
-                source_indices,
-                env,
-            )
-        }
+        render_rust_fn_sig_type(
+            type_node,
+            generic_param_names,
+            shared_types,
+            source_indices,
+            env,
+        )
     }
 }
 

@@ -272,10 +272,14 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       } else if n.connective == NoConnective && n.children |> count == 0 {
         rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
       } else if n.connective == NoConnective && n.children |> count > 0 {
+        if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+          render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+        } else {
         let base = rust_named_type_base(name: name)
         let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)) |> join(separator: ", ")
         let applied_ty = concat(base, "<", args, ">")
         render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
+        }
       } else {
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices)
       }
@@ -302,15 +306,13 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if generic_param_names |> count > 0 {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+    render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+  } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
-    let name = authored_name_at(source_indices: source_indices, node: n)
-    if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-      render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
-    } else {
-      render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
-    }
+    render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
   }
 }
 
@@ -3489,11 +3491,7 @@ fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_typ
 //   between the type signature and ownership analysis and breaks fixed-point.
 fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let type_node = resolved_type(n: param)
-  if generic_param_names |> count > 0 {
-    render_rust_decl_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else {
-    render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  }
+  render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
 }
 
 fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
