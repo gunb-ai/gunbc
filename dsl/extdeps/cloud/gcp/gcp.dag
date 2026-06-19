@@ -189,8 +189,8 @@ type GoogleOAuth2Refresh200Body {
 // OAuth2 token refresh: ONE interface shape (this service), N transport handlers elsewhere.
 // REST is the cited upstream contract (RFC 6749 §6); gcloud.Auth.ReadADC (file) supplies
 // refresh inputs; shell.GCloud.AuthPrintAccessToken (shell) is an alternate acquisition path.
-// Materializers: gunbc.auth.credentials.{gcp_oauth_access_token_via_adc_refresh,
-// gcp_oauth_access_token_via_gcloud}.
+// Materializers: gunbc.auth.credentials.gcp_oauth_access_token(strategy) dispatches
+// GcpOAuth2AccessTokenStrategy to leaf handlers below.
 //
 // 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
 // dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
