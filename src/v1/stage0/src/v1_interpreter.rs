@@ -2907,17 +2907,40 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     None
 }
 
+/// Next alias step from a type-decl `inferred` RHS (`String`, `Secret`, or the
+/// base of `Base where …` before brand preservation).
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+    let direct = authored_name_at(ctx.si(), rhs.clone());
+    if !direct.is_empty() {
+        return Some(direct);
+    }
+    if rhs.connective == Connective::Conj {
+        for child in rhs.children.iter() {
+            let base = authored_name_at(ctx.si(), child.clone());
+            if !base.is_empty() {
+                return Some(base);
+            }
+        }
+    }
+    match rhs.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            let inner = authored_name_at(ctx.si(), node.clone());
+            if inner.is_empty() {
+                None
+            } else {
+                Some(inner)
+            }
+        }
+        _ => None,
+    }
+}
+
 fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
     let rhs = match item.inferred.as_deref()? {
         InferredNode::Resolved { node } => node.clone(),
         _ => return None,
     };
-    let name = authored_name_at(ctx.si(), rhs);
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    alias_rhs_next_name(ctx, rhs)
 }
 
 /// Walk alias chains via type-decl items (pre-brand `inferred` RHS), not the
