@@ -617,8 +617,7 @@ fn read_stable_authority_anchor_from_items(
                 }
             }
             "Internal" => {
-                let Some(authority_node) =
-                    record_field_value(body, "authority", source_indices)
+                let Some(authority_node) = record_field_value(body, "authority", source_indices)
                 else {
                     return StableAuthorityAnchorProjection::Absent;
                 };
@@ -652,7 +651,9 @@ pub fn stable_authority_anchor_kind_for_module_path(module_path: String) -> Stri
 
 pub fn stable_authority_scheme_identity_for_module_path(module_path: String) -> String {
     match project_stable_authority_anchor(&module_path) {
-        StableAuthorityAnchorProjection::External { scheme_identity, .. } => scheme_identity,
+        StableAuthorityAnchorProjection::External {
+            scheme_identity, ..
+        } => scheme_identity,
         _ => String::new(),
     }
 }
