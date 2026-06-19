@@ -2551,12 +2551,20 @@ fn collect_frontier_nodes_from_diff_line_ranges(
             if !value_is_test_claim(&val, &ctx) {
                 continue;
             }
-            if let Some(nodes) = call_test_claim_fn_nodes(&ctx, &val)? {
-                for node in nodes {
-                    let key = ctx.format_value(&node);
-                    if seen.insert(key) {
-                        frontier.push(node);
+            match call_test_claim_fn_nodes(&ctx, &val) {
+                Ok(Some(nodes)) => {
+                    for node in nodes {
+                        let key = ctx.format_value(&node);
+                        if seen.insert(key) {
+                            frontier.push(node);
+                        }
                     }
+                }
+                Ok(None) => {}
+                Err(msg) => {
+                    return Err(format!(
+                        "frontier node extraction failed for `{name}` in {file_path}: {msg}"
+                    ));
                 }
             }
         }
@@ -2574,23 +2582,37 @@ fn entry_claims_touch_frontier(
             continue;
         }
         saw_claim = true;
-        if let Some(true) = call_test_claim_fn_bool(
+        match call_test_claim_fn_bool(
             ctx,
             "test_claim_evaluation_touches_rerun_frontier",
             &val,
             frontier,
             "c",
-        )? {
-            return Ok(true);
+        ) {
+            Ok(Some(true)) => return Ok(true),
+            Ok(Some(false)) | Ok(None) => {}
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: test_claim_evaluation_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
+                );
+                return Ok(true);
+            }
         }
-        if let Some(true) = call_test_claim_fn_bool(
+        match call_test_claim_fn_bool(
             ctx,
             "floor_claim_touches_rerun_frontier",
             &val,
             frontier,
             "claim",
-        )? {
-            return Ok(true);
+        ) {
+            Ok(Some(true)) => return Ok(true),
+            Ok(Some(false)) | Ok(None) => {}
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: floor_claim_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
+                );
+                return Ok(true);
+            }
         }
     }
     // Fail-closed: no TestClaim surface in this entry → always run the witness.
@@ -2671,15 +2693,22 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
     };
-    let skip_enabled = options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty();
-    let frontier_nodes = if skip_enabled {
-        collect_frontier_nodes_from_diff_line_ranges(
+    let (skip_enabled, frontier_nodes) = if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
+        match collect_frontier_nodes_from_diff_line_ranges(
             &index,
             &line_ranges_by_file,
             execution_mode,
-        )?
+        ) {
+            Ok(nodes) => (true, nodes),
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: node-frontier population failed ({msg}) — fail-closed, running full corpus"
+                );
+                (false, Vec::new())
+            }
+        }
     } else {
-        Vec::new()
+        (false, Vec::new())
     };
     let frontier_value = list_value_from_vec(frontier_nodes.clone());
 
