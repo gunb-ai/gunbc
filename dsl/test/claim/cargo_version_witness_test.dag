@@ -12,6 +12,7 @@ import extdeps.cargo {
   CargoDependency,
   RegistryDep,
   Edition2021,
+  min_cargo_version,
 }
 import extdeps.cargo_version {
   default_stage0_package_version,
