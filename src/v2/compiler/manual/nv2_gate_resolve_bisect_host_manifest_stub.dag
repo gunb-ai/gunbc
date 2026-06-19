@@ -1,4 +1,5 @@
 // Throwaway: trivial entry importing ONLY nv2 gate direct import host manifest stub.
+// dissolve-on: #5146-class N_v2 resolve hang root-caused — delete this bisect DAG + ignored Rust bisect tests.
 module v2.test.manual.nv2_gate_resolve_bisect_host_manifest_stub
 
 import v2.test.workflow.host_source_root_ingest_manifest {

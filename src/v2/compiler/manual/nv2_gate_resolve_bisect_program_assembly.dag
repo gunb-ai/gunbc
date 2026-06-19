@@ -1,4 +1,5 @@
 // Throwaway: trivial entry importing ONLY nv2 gate direct import program_assembly.
+// dissolve-on: #5146-class N_v2 resolve hang root-caused — delete this bisect DAG + ignored Rust bisect tests.
 module v2.test.manual.nv2_gate_resolve_bisect_program_assembly
 
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }

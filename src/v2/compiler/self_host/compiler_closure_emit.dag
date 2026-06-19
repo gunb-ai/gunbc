@@ -15,7 +15,7 @@ import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.target_carriers { TargetSource }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
-import v2.std.algebra { length }
+import v2.std.algebra { contains, length }
 import v2.std.collection { List }
 import v2.std.dependency {
   DependencyView,
@@ -78,17 +78,10 @@ fn compiler_closure_frontier_count(closure: AffectedSetClosureAcc) -> Int {
 }
 
 
-fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
-  fold(nodes, init: false, f: fn(found, node) {
-    found || (node == needle)
-  })
-}
-
-
 fn compiler_closure_frontier_subset_of_ready(root: Node, closure: AffectedSetClosureAcc) -> Bool {
   let ready = ready_set(graph_node: root)
   fold(closure.frontier, init: true, f: fn(ok, node) {
-    ok && node_in_list(nodes: ready, needle: node)
+    ok && contains(xs: ready, item: node, eq: fn(left, right) { left == right })
   })
 }
 

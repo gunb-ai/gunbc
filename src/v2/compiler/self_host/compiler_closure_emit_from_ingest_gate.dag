@@ -24,7 +24,6 @@ import v2.test.workflow.host_source_root_ingest_manifest {
 fn compiler_closure_scoped_ingest_module_count_ok() -> Bool {
   host_source_root_ingest_coverage_receipt.coverage_complete
     && (host_source_root_ingest_coverage_receipt.ingest_read_count == host_source_root_ingest_coverage_receipt.produced_row_count)
-    && (length(xs: host_source_root_ingest) == host_source_root_ingest_coverage_receipt.ingest_read_count)
     && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 

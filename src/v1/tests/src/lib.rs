@@ -106,6 +106,7 @@ mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
 #[cfg(test)]
+mod nv2_gate_manifest_resolve_bisect_test;
 #[cfg(test)]
 mod nv2_gate_resolve_bisect_test;
 #[cfg(test)]

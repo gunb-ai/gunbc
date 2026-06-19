@@ -1,4 +1,5 @@
 // Throwaway: trivial entry importing ONLY nv2 gate direct import rust_mvp1_target_model.
+// dissolve-on: #5146-class N_v2 resolve hang root-caused — delete this bisect DAG + ignored Rust bisect tests.
 module v2.test.manual.nv2_gate_resolve_bisect_rust_target_model
 
 import v2.extdeps.languages.rust { rust_mvp1_target_model }
