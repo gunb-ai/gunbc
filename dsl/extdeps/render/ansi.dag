@@ -1,0 +1,48 @@
+// extdeps/render/ansi.dag — ANSI escape / SGR color realization for SemanticColor.
+//
+// Anchor: https://en.wikipedia.org/wiki/ANSI_escape_code
+//
+// Upstream: ECMA-48 (ISO/IEC 6429) / ANSI X3.64 — control sequences for character
+//   imputation. The cited escape strings are Select Graphic Rendition (SGR) CSI
+//   sequences (`ESC [ … m`); 256-color foreground uses `38;5;<n>` (ISO 8613-6
+//   indexed palette). Real spec names kept in the `code` field.
+//
+// P2 split: std.symbols owns the agnostic SemanticColor concept; the cited SGR
+// escape sequences live here. Project palette index choices per semantic role
+// align with gunb.ai/pkg/fermi/colors.go for consistent appearance.
+
+module extdeps.render.ansi
+
+import std.symbols { SemanticColor }
+
+type AnsiMapping {
+  color: SemanticColor
+  code: String
+}
+
+data ansi_mappings: List<AnsiMapping> = [
+  { color: Default, code: "\x1b[0m"          },
+  { color: Success, code: "\x1b[38;5;34m"    },
+  { color: Warning, code: "\x1b[38;5;208m"   },
+  { color: Error,   code: "\x1b[38;5;196m"   },
+  { color: Info,    code: "\x1b[38;5;39m"    },
+  { color: Dim,     code: "\x1b[2m"           },
+  { color: Active,  code: "\x1b[38;5;208m"   },
+  { color: Accent,  code: "\x1b[38;5;75m"    }
+]
+
+// Lookup via fold + structural == (filter+field-equality hits a v1 interpreter bug).
+fn ansi_code(c: SemanticColor) -> String? {
+  fold(ansi_mappings,
+    init: none,
+    f: (acc, m) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if m.color == c {
+          Present { value: m.code }
+        } else {
+          none
+        }
+    }
+  )
+}

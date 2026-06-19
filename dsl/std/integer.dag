@@ -1,8 +1,8 @@
 // std/integer.dag -- Integer types as carrier + algebra witness.
 //
-// MODELING NOTE: T-Numeric-Construction Slice 3 pivots the default `Int`
-// alias from the legacy 64-bit storage carrier to the honest construction-
-// chain form. Authority chain:
+// T-Numeric-Construction Slice 3 pivots the default `Int` alias from the
+// legacy 64-bit storage carrier to the honest construction-chain form.
+// Authority chain:
 //
 //   - construction-chain layer 3.
 //   - Q6 single-authority resolution: `type Int = AbelianGroup<GroupCompletion<Nat>>`,

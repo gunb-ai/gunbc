@@ -1,6 +1,8 @@
 // extdeps/cloud/hetzner.dag — Hetzner Cloud facts (vendor catalog authority).
 //
-// Spec: https://docs.hetzner.com/cloud/ (server types, billing model)
+// Anchor: https://docs.hetzner.com/cloud/servers/overview
+//
+// Spec: https://docs.hetzner.com/cloud/servers/overview (CAX server-type table)
 // Pricing: https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
 //   (GE-D9256; Germany/Finland CAX rows effective 2026-04-01, ex-VAT)
 //
@@ -9,20 +11,27 @@
 module extdeps.cloud.hetzner
 
 import extdeps.cpu.types { CpuArchitecture }
-import std.types { Int, NonEmptyStr }
+import std.currency { CurrencyCode, Eur }
+import std.measure {
+  MoneyAmountMicro,
+  money_amount_micro,
+  ByteSize,
+  byte_size,
+  HardwareThreadCount,
+  hardware_thread_count,
+}
+import std.types { NonEmptyStr }
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 type HetznerCloudServerCatalogRow {
   server_type: HetznerCloudServerType
-  // P-CF-BYTESIZE: shared raw-Int stopgap (operator_fleet + Hetzner) — NOT a parallel
-  // representation. Dissolves when Measure value-typing lands (ByteSize, currency, thread
-  // count); converts BOTH operator_fleet and Hetzner catalog rows.
-  vcpus: Int
-  memory_bytes: Int
-  disk_bytes: Int
-  hourly_eur_micros: Int
-  monthly_cap_eur_micros: Int
+  vcpus: HardwareThreadCount
+  memory_bytes: ByteSize
+  disk_bytes: ByteSize
+  hourly: MoneyAmountMicro
+  monthly_cap: MoneyAmountMicro
+  currency: CurrencyCode
   pricing_citation: NonEmptyStr
   cpu_architecture: CpuArchitecture
 }
@@ -31,11 +40,12 @@ type HetznerCloudServerCatalogRow {
 // Hourly €0.0505 / monthly cap €31.49 — docs price-adjustment Germany/Finland 2026-04-01.
 data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
   server_type: Cax41,
-  vcpus: 16,
-  memory_bytes: 34359738368,
-  disk_bytes: 343597383680,
-  hourly_eur_micros: 50500,
-  monthly_cap_eur_micros: 31490000,
-  pricing_citation: "docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/ GE-D9256 CAX41 Germany/Finland €0.0505/hr €31.49/mo ex-VAT effective 2026-04-01",
+  vcpus: hardware_thread_count(16),
+  memory_bytes: byte_size(34359738368),
+  disk_bytes: byte_size(343597383680),
+  hourly: money_amount_micro(count: 50500),
+  monthly_cap: money_amount_micro(count: 31490000),
+  currency: Eur,
+  pricing_citation: "GE-D9256",
   cpu_architecture: Aarch64,
 }
