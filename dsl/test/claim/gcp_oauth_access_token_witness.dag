@@ -57,7 +57,6 @@ fn witness_adc_refresh_null_optional_path_holds() -> Bool {
 
 // Perturbation: swapped match arms — must NOT return the canonical strategy token.
 pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
-  uses net: Network
 {
   node result = match strategy {
     GcloudCli => gcp_oauth_access_token_via_adc_refresh()
