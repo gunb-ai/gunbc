@@ -2060,6 +2060,7 @@ pub fn owned_data_bool_witness_transport_tsv(
 
 /// One discovered witness row. `label` is for diagnostics; the `(entry,
 /// function)` pair is what gets resolved and run.
+#[derive(Clone)]
 pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
@@ -2413,65 +2414,14 @@ pub fn discover_floor_corpus_rows(
     Ok(rows)
 }
 
-/// Run the whole floor discovery corpus through one shared module index
-/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
-/// are appended to the discovered roster with `(entry, function)` dedup — exactly
-/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
-/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
-/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
-/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
-/// `claim_batch` keeps its own timing/stats loop but shares the roster.
-pub fn run_discovery_corpus(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
+/// Run an ordered slice of discovery rows against a shared multi-entry index.
+/// Rows must be sorted by `(entry, function)` so resolve-once-per-entry holds.
+fn run_discovery_rows(
+    rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
+    whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
-    check_floor_filename_hygiene(source_roots)?;
-    let mut rows = if scan_dirs.is_empty() && !explicit_entries.is_empty() {
-        // Explicit-roster-only path (wet/hermetic equivalence gate): do not walk the
-        // whole source tree when the caller pins a representative witness set.
-        Vec::new()
-    } else {
-        discover_floor_corpus_rows(source_roots, scan_dirs)?
-    };
-    // Append explicit rows with (entry, function) dedup, then re-sort so each
-    // entry's witnesses stay grouped for the resolve-once loop below.
-    let mut seen: std::collections::BTreeSet<(String, String)> = rows
-        .iter()
-        .map(|r| (r.entry.clone(), r.function.clone()))
-        .collect();
-    for (entry, function) in explicit_entries {
-        if seen.insert((entry.clone(), function.clone())) {
-            rows.push(DiscoveryRow {
-                label: function.clone(),
-                entry: entry.clone(),
-                function: function.clone(),
-            });
-        }
-    }
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    if rows.is_empty() {
-        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
-    }
-    let index = build_multi_entry_index(source_roots);
-
-    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
-        Ok(keys) if keys.is_empty() => None,
-        Ok(keys) => Some(Rc::new(keys)),
-        Err(e) => {
-            return Err(format!(
-                "whole-tree published mock corpus precompute failed: {e}"
-            ));
-        }
-    };
-
-    // Group by entry (rows are sorted by (entry, function)), resolve each entry
-    // once, run its witnesses against the shared graph.
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
@@ -2485,13 +2435,14 @@ pub fn run_discovery_corpus(
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    for row in &rows {
+    let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
+    for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
+            let (graph, source_indices) = resolve_entry_with_index(index, &row.entry)
                 .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
             let resolve_nanos = resolve_started.elapsed().as_nanos();
             summary.total_resolve_nanos += resolve_nanos;
@@ -2539,6 +2490,160 @@ pub fn run_discovery_corpus(
         }
     }
     Ok(summary)
+}
+
+/// Partition row indices by whole entry groups (preserve resolve-once warmth), then
+/// round-robin groups across `parallel_width` shards.
+fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> Vec<Vec<usize>> {
+    let width = parallel_width.max(1);
+    let mut entry_groups: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    let mut current_entry: Option<&str> = None;
+    for (i, row) in rows.iter().enumerate() {
+        if current_entry != Some(row.entry.as_str()) {
+            if !current.is_empty() {
+                entry_groups.push(current);
+            }
+            current = vec![i];
+            current_entry = Some(&row.entry);
+        } else {
+            current.push(i);
+        }
+    }
+    if !current.is_empty() {
+        entry_groups.push(current);
+    }
+    let mut shards: Vec<Vec<usize>> = vec![Vec::new(); width];
+    for (gi, group) in entry_groups.into_iter().enumerate() {
+        shards[gi % width].extend(group);
+    }
+    shards
+}
+
+fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySummary {
+    let mut merged = DiscoverySummary {
+        total: 0,
+        passed: 0,
+        failures: Vec::new(),
+        witness_outcomes: Vec::new(),
+        entry_resolve_receipts: Vec::new(),
+        total_resolve_nanos: 0,
+        performance_receipts: Vec::new(),
+        total_measured_nanos: 0,
+    };
+    for summary in summaries {
+        merged.total += summary.total;
+        merged.passed += summary.passed;
+        merged.failures.extend(summary.failures);
+        merged.witness_outcomes.extend(summary.witness_outcomes);
+        merged
+            .entry_resolve_receipts
+            .extend(summary.entry_resolve_receipts);
+        merged.total_resolve_nanos += summary.total_resolve_nanos;
+        merged
+            .performance_receipts
+            .extend(summary.performance_receipts);
+        merged.total_measured_nanos += summary.total_measured_nanos;
+    }
+    merged
+}
+
+/// Run the whole floor discovery corpus through one shared module index
+/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
+/// are appended to the discovered roster with `(entry, function)` dedup — exactly
+/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
+/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
+/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
+/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
+/// `claim_batch` keeps its own timing/stats loop but shares the roster.
+pub fn run_discovery_corpus(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    parallel_width: usize,
+) -> Result<DiscoverySummary, String> {
+    check_floor_filename_hygiene(source_roots)?;
+    let mut rows = if scan_dirs.is_empty() && !explicit_entries.is_empty() {
+        // Explicit-roster-only path (wet/hermetic equivalence gate): do not walk the
+        // whole source tree when the caller pins a representative witness set.
+        Vec::new()
+    } else {
+        discover_floor_corpus_rows(source_roots, scan_dirs)?
+    };
+    // Append explicit rows with (entry, function) dedup, then re-sort so each
+    // entry's witnesses stay grouped for the resolve-once loop below.
+    let mut seen: std::collections::BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.entry.clone(), r.function.clone()))
+        .collect();
+    for (entry, function) in explicit_entries {
+        if seen.insert((entry.clone(), function.clone())) {
+            rows.push(DiscoveryRow {
+                label: function.clone(),
+                entry: entry.clone(),
+                function: function.clone(),
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
+    if rows.is_empty() {
+        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
+    }
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(keys),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
+        }
+    };
+    let index = build_multi_entry_index(source_roots);
+    let width = parallel_width.max(1);
+    if width == 1 {
+        return run_discovery_rows(
+            &rows,
+            &index,
+            execution_mode,
+            whole_tree_published_keys.clone(),
+        );
+    }
+    // Peripheral width realization: shard whole entry-groups across workers; topology
+    // (which witnesses run) is unchanged — only host fan-out differs.
+    let shards = shard_row_indices_by_entry(&rows, width);
+    eprintln!(
+        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
+        width,
+        shards.iter().filter(|s| !s.is_empty()).count()
+    );
+    let source_roots_owned = source_roots.to_vec();
+    let mut handles = Vec::new();
+    for shard in shards {
+        if shard.is_empty() {
+            continue;
+        }
+        let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
+        let roots = source_roots_owned.clone();
+        let keys = whole_tree_published_keys.clone();
+        handles.push(std::thread::spawn(move || {
+            let index = build_multi_entry_index(&roots);
+            run_discovery_rows(&shard_rows, &index, execution_mode, keys)
+        }));
+    }
+    let mut summaries = Vec::new();
+    for handle in handles {
+        summaries.push(
+            handle
+                .join()
+                .map_err(|_| "discovery corpus shard thread panicked".to_string())??,
+        );
+    }
+    Ok(merge_discovery_summaries(summaries))
 }
 
 // ---------------------------------------------------------------------------

@@ -151,9 +151,9 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
 fn wet_hermetic_scaffold_roster_outcomes_agree() {
     let roots = ci_witness_layer_roots();
     let explicit = governed_service_representative_explicit_entries();
-    let wet = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Wet)
+    let wet = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Wet, 1)
         .expect("wet discovery run for scaffold roster");
-    let hermetic = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic)
+    let hermetic = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic, 1)
         .expect("hermetic discovery run for scaffold roster");
     let divergences = wet_hermetic_discovery_outcome_divergences(
         &wet.witness_outcomes,
