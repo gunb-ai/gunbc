@@ -211,10 +211,32 @@ fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Nat>", shared_types: shared_types)
 }
 
-fn emit_rust_dag_string_from_host_expr(host_expr: String) -> String {
-  concat(
-    "{ let __host = ", host_expr, "; __host.chars().fold(crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>(), |acc, ch| crate::v2_std_algebra::list_snoc_item(acc, v1_rt::code_point(ch.to_string()))) }"
-  )
+// §2 — route ALL host→DAG String boundary bridges through HostStringText seam (one authority).
+fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
+  concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
+}
+
+fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
+  concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
+}
+
+fn rust_host_string_seam_fn_emit(name: String) -> String? {
+  if name == "host_string_text_from_rust_host" {
+    Present { value: concat(
+      "pub fn host_string_text_from_rust_host(host: String) -> String {\n",
+      "    host.chars().fold(crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>(), ",
+      "|acc, ch| crate::v2_std_algebra::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n",
+      "}\n"
+    ) }
+  } else if name == "host_string_text_to_rust_host" {
+    Present { value: concat(
+      "pub fn host_string_text_to_rust_host(text: String) -> String {\n",
+      "    crate::v2_std_algebra::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n",
+      "}\n"
+    ) }
+  } else {
+    none
+  }
 }
 
 fn rust_named_type_base(name: String) -> String {
@@ -3335,6 +3357,9 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
 // =========================================================================
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match rust_host_string_seam_fn_emit(name: name) {
+    Present { value: seam_fn } => seam_fn
+    Absent =>
   let si = scope.type_env.source_indices
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
@@ -4746,7 +4771,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-        concat("        ", pat, " => ", emit_rust_dag_string_from_host_expr(host_expr: concat("\"", child_text, "\"")), ",")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\"")), ",")
         )
         // Borrow the scrutinee so the arms (which never bind fields) don't move it. Shared types
         // are Rc-wrapped, so deref through the Rc with `&*` to reach `&T`; owned values use `&`.
@@ -4758,9 +4783,9 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
         concat("(match ", scrut_ref, " {\n", arms |> join(separator: "\n"), "\n    })")
       } else {
         // Product/record type: the discriminant is the type's own name (interpreter returns type_name).
-        emit_rust_dag_string_from_host_expr(host_expr: concat("\"", ty_name, "\""))
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
       }
-    Absent => emit_rust_dag_string_from_host_expr(host_expr: concat("\"", ty_name, "\""))
+    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
   }
 }
 
@@ -4842,7 +4867,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_dag_string_from_host_expr(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -6112,7 +6137,7 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
     |> map(p => p.arg_expr)
     |> filter(a => a != "")
   if args |> count == 0 {
-    emit_rust_dag_string_from_host_expr(host_expr: concat("\"", fmt_str, "\""))
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""))
   } else {
     let args_str = args |> join(separator: ", ")
     concat("format!(\"", fmt_str, "\", ", args_str, ")")

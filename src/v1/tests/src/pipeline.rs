@@ -7928,8 +7928,7 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
         eprintln!("--- cargo check stderr ---\n{stderr}");
     }
 
-    eprintln!("N_v1 emitted crate dir: {}", out_dir.display());
-    // let _ = std::fs::remove_dir_all(&out_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
     assert!(
         error_count > 0 || check.status.success(),
         "cargo check produced no diagnostics and did not succeed"

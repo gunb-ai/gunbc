@@ -257,9 +257,7 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
         && (v1_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
 }
 
-pub fn render_rust_text_carrier(
-    shared_types: Rc<std::collections::BTreeSet<String>>,
-) -> String {
+pub fn render_rust_text_carrier(shared_types: Rc<std::collections::BTreeSet<String>>) -> String {
     render_rust_shared_type_if_needed(
         "FreeMonoid".to_string(),
         "FreeMonoid<Nat>".to_string(),
@@ -584,11 +582,15 @@ pub fn render_rust_alias_rhs_type(
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
         {
-            rust_render_type_leaf_name(
-                name.clone(),
-                variant_to_enum.clone(),
-                scope.type_env.clone(),
-            )
+            if name.clone().as_str() == "String".to_string().as_str() {
+                render_rust_text_carrier(shared_types.clone())
+            } else {
+                rust_render_type_leaf_name(
+                    name.clone(),
+                    variant_to_enum.clone(),
+                    scope.type_env.clone(),
+                )
+            }
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
         {
@@ -12237,7 +12239,7 @@ pub fn emit_typed_call(
                 let to_string_args =
                     order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let ts_result = match to_string_args.first().cloned() {
-                    Some(value_arg) => v1_rt::concat(
+                    Some(value_arg) => emit_rust_dag_string_from_host_expr(v1_rt::concat(
                         v1_rt::concat(
                             "(".to_string(),
                             emit_typed_expr(
@@ -12251,7 +12253,7 @@ pub fn emit_typed_call(
                             ),
                         ),
                         ").to_string()".to_string(),
-                    ),
+                    )),
                     None => "compile_error!(\"to_string call missing value argument\")".to_string(),
                 };
                 return ts_result;
@@ -16115,7 +16117,10 @@ pub fn rust_zero_value(type_name: String) -> Option<String> {
             Some("false".to_string())
         } else {
             if (type_name.clone().as_str() == "String".to_string().as_str()) {
-                Some("crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()".to_string())
+                Some(
+                    "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()"
+                        .to_string(),
+                )
             } else {
                 None
             }
@@ -16354,10 +16359,10 @@ pub fn emit_typed_string_interp(
             __result
         });
         if ((args.clone().len() as i64) == 0) {
-            v1_rt::concat(
+            emit_rust_dag_string_from_host_expr(v1_rt::concat(
                 v1_rt::concat("\"".to_string(), fmt_str),
-                "\".to_string()".to_string(),
-            )
+                "\"".to_string(),
+            ))
         } else {
             {
                 let args_str = args.clone().join(&", ".to_string());
