@@ -1,0 +1,26 @@
+// extdeps/go/go.dag — Go toolchain we shell out to.
+//
+// Spec: https://go.dev/ref/spec
+// Version: Go 1.22+ (module semver constraint syntax)
+//
+// This is a STUB. It documents the `go` binary our workflows rely on
+// (emit-host MVP smokes bootstrap go1.22.5 when missing). Language modeling
+// lives in extdeps/languages/go/* — this file is the runtime dependency
+// declaration only.
+//
+// Future:
+//   When we model `go build` / `go run` as service operations, this file
+//   gets full coverage like extdeps/rust/cargo.dag.
+
+module extdeps.go
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionConstraint }
+
+// ── Spec citations ──────────────────────────────────────────────────
+
+data go_docs: NonEmptyStr = "https://go.dev/ref/spec"
+
+// Minimum go toolchain for emit-host MVP smokes (go1.22.5 bootstrap tarball).
+// Go module versioning constraint — distinct from a bare release tag identity.
+data min_go_version: VersionConstraint = ">= 1.22"

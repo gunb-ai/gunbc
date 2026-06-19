@@ -1,0 +1,27 @@
+// extdeps/python/python.dag — CPython interpreter we shell out to.
+//
+// Spec: https://docs.python.org/3/reference/
+// Version: CPython 3.11+ (PEP 440 constraint syntax)
+//
+// This is a STUB. It documents the python3 binary our workflows rely on
+// (emit-host MVP smokes, ci_yaml PyYAML fallback, typechecker python_version).
+// Language modeling lives in extdeps/languages/python/* — this file is the
+// runtime dependency declaration only.
+//
+// Future:
+//   When we model python3 as a service operation, this file gets full
+//   coverage like extdeps/rust/cargo.dag.
+
+module extdeps.python
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionConstraint }
+
+// ── Spec citations ──────────────────────────────────────────────────
+
+data python_docs: NonEmptyStr = "https://docs.python.org/3/reference/"
+
+// Minimum interpreter for workflows that invoke python3 on PATH.
+// Matches v2 typechecker python_version rows (mypy, pyright) and emit-host
+// MVP-2 smokes — PEP 440 constraint, not a bare identity label.
+data min_python_version: VersionConstraint = ">= 3.11"
