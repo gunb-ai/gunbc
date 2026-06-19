@@ -27,10 +27,10 @@ import std.measure {
   hardware_thread_count,
   hardware_thread_count_value,
 }
-import std.verification {
-  NanosecondDuration,
-  nanosecond_duration,
-}
+// nanosecond_duration is homed at the timing-authority consumer (std.verification),
+// NOT std.measure — the scale-fixed nanosecond CHOICE lives where it is decided
+// (DESIGN §3).
+import std.verification { nanosecond_duration }
 import std.pareto { AxisGoal, LowerIsBetter }
 import std.realization_schedule {
   Schedule,
@@ -39,13 +39,9 @@ import std.realization_schedule {
   CostAccount,
   CostBasis,
   schedule_eq,
+  cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
-}
-import std.realization_measurement { cost_account_measured_from_time }
-
-fn cost_account_predicted_zero_nano() -> CostAccount<Nano> {
-  cost_account_predicted_zero()
 }
 
 fn int_min(a: Int, b: Int) -> Int {
@@ -78,25 +74,27 @@ fn width_fold_objective_goals() -> List<AxisGoal> {
   [LowerIsBetter, LowerIsBetter]
 }
 
-type WidthBoundedRealization {
-  plan: RealizationPlan<Nano>
+type WidthBoundedRealization<S> {
+  plan: RealizationPlan<S>
   spawn_width: HardwareThreadCount
 }
 
 // Width is peripheral: the schedule topology is unchanged (§3 invariant).
-fn width_bounded_realization(
-  plan: RealizationPlan<Nano>,
+// Scale-agnostic over the carried cost ledger's time scale `<S>` (the plan itself
+// names no scale; a consumer pins it, e.g. RealizationPlan<Nano>).
+fn width_bounded_realization<S>(
+  plan: RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
-) -> WidthBoundedRealization {
+) -> WidthBoundedRealization<S> {
   WidthBoundedRealization {
     plan: plan
     spawn_width: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   }
 }
 
-fn witness_width_fold_preserves_schedule_topology(
-  plan: RealizationPlan<Nano>,
+fn witness_width_fold_preserves_schedule_topology<S>(
+  plan: RealizationPlan<S>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
 ) -> Bool {
@@ -139,9 +137,9 @@ fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Na
 
 // RED guard (b): asymmetric measured costs must yield different slot assignments.
 fn witness_measured_cost_affects_shard_balance() -> Bool {
-  let high = cost_account_measured_from_time(time: nanosecond_duration(count: 100))
-  let low = cost_account_measured_from_time(time: nanosecond_duration(count: 10))
-  let baseline = cost_account_predicted_zero_nano()
+  let high = cost_account_measured(time: nanosecond_duration(count: 100))
+  let low = cost_account_measured(time: nanosecond_duration(count: 10))
+  let baseline = cost_account_predicted_zero()
   let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
   let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
   left != right
