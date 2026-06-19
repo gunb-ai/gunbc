@@ -53,16 +53,17 @@ fn cited_cache_interface_facts(product: CacheInterfaceProduct) -> CacheInterface
 }
 
 // Project catalog input surfaces onto std InputSurface (drop vendor-only axes).
+fn std_input_surface_from_catalog(input: CatalogInputSurface) -> List<InputSurface> {
+  match input {
+    UpsertSubject => [UpsertSubject]
+    FilePaths => [FilePaths]
+    RustcInvocation => []
+    ToolchainSpec => []
+  }
+}
+
 fn agnostic_input_surfaces_from_catalog(inputs: List<CatalogInputSurface>) -> List<InputSurface> {
-  inputs |> fold(
-    init: [],
-    f: (acc, input) => match input {
-      UpsertSubject => concat(acc, [UpsertSubject])
-      FilePaths => concat(acc, [FilePaths])
-      RustcInvocation => acc
-      ToolchainSpec => acc
-    },
-  )
+  inputs |> flat_map(std_input_surface_from_catalog)
 }
 
 // Planner-facing projection: flatten catalog io/placement into std CacheInterfaceFacts.
