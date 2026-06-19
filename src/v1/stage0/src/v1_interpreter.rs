@@ -2884,7 +2884,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
             StringPart::Text { value } => result.push_str(value.as_str()),
             StringPart::Interpolation { expr } => {
                 let val = eval_expr(&expr, env, ctx)?;
-                result.push_str(&format!("{}", val));
+                result.push_str(&value_to_host_string(&val));
             }
         }
     }
@@ -3758,6 +3758,8 @@ struct ShellResult {
 
 /// Push one evaluated argv expression onto `argv`. List carriers splice
 /// element-wise; strings stay atomic (never exploded to codepoints).
+/// FreeMonoid<Char> chains whose heads are scalar char codes materialize to one
+/// host string (v2 emit → shell.Exec.Run script boundary).
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
@@ -3771,7 +3773,10 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
         Value::Variant { .. } => {
-            if let Some(items) = free_monoid_to_vec(&val) {
+            if let Some(s) = value_as_host_string(&val) {
+                argv.push(s);
+                Ok(())
+            } else if let Some(items) = free_monoid_to_vec(&val) {
                 for item in items {
                     push_shell_argv_tokens(argv, item)?;
                 }
@@ -3786,6 +3791,44 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
     }
+}
+
+// **SCAFFOLD (DESIGN.md §7)** — host string materialization at shell/REST `{param}` templates.
+//
+// Hand-Rust scaffold receipt (P5 / §7):
+// - **Gap:** v2 `emit(_, Bash)` returns `TargetSource` (`FreeMonoid<Char>` Cons chains); shell
+//   transport `argv: ["sh","-c","{script}"]` interpolated via `format!("{}", val)` printed Cons
+//   debug text instead of script bytes (slice 3 gate red-by-execution).
+// - **This site:** `value_as_host_string` / `value_to_host_string` flatten FreeMonoid chains at
+//   `eval_string_interp` and `substitute_template` (and `push_shell_argv_tokens` for direct argv).
+// - **Dissolve-on:** `TargetSource` (or `String`) gains a substrate/host coercion to flat Unicode
+//   text at the shell boundary, or transports take `ShellProgram` not raw emit output — delete these
+//   helpers when the coercion lives in `.dag` or the emit carrier is host-flat by construction.
+
+fn value_as_host_string(val: &Value) -> Option<String> {
+    if let Value::Str(s) = val {
+        return Some(s.clone());
+    }
+    let items = free_monoid_to_vec(val)?;
+    let mut out = String::new();
+    for item in items {
+        match item {
+            Value::Int(code) => {
+                let ch = char::from_u32(code as u32)?;
+                out.push(ch);
+            }
+            Value::Str(s) => out.push_str(&s),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// Materialize a runtime value for host-side string interpolation (shell argv
+/// `{param}` templates, REST path templates). FreeMonoid<Char> / TargetSource
+/// chains flatten to Unicode text; other values use Display.
+fn value_to_host_string(val: &Value) -> String {
+    value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
 const SHELL_TRANSIENT_RETRY_MAX: u8 = 3;
@@ -4455,7 +4498,7 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
                 var_name.push(c2);
             }
             if let Some(val) = env.lookup(ctx.sym(&var_name)) {
-                result.push_str(&format!("{}", val));
+                result.push_str(&value_to_host_string(&val));
             } else {
                 // Leave unresolved placeholders as-is
                 result.push('{');
