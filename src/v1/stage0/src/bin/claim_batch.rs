@@ -221,9 +221,8 @@ struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
-    /// Witness execution mode. Phase 1 default: Wet (CI unchanged).
-    /// `--hermetic` replays recorded fixtures when `--fixture-store` is set, else
-    /// modeled `mock_response`; `--record` is wet capture into the fixture store.
+    /// Witness execution mode. Phase 2 default: Hermetic (CI floor). `--wet` opts into
+    /// live dispatch for real-I/O witnesses; `--hermetic` is explicit parity with default.
     execution_mode: ExecutionMode,
     /// Directory for recorded fixture JSON files (`--fixture-store <path>`).
     fixture_store: Option<PathBuf>,
@@ -241,9 +240,9 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut roster_from_discovery = false;
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "v2 CI claim gate".to_string();
-    // Phase 1: default Wet so CI behavior is unchanged. Phase 2 flips default
-    // to Hermetic; `--wet` then opts into live dispatch for real-I/O witnesses.
-    let mut execution_mode = ExecutionMode::Wet;
+    // Phase 2: default Hermetic for CI floor (P3c equivalence gate green). `--wet` opts
+    // into live dispatch for real-I/O witnesses.
+    let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
 
     let mut i = 1;

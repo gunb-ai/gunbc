@@ -1,6 +1,8 @@
 // Scope: Wave-2 M-E2 gate — per-backend ReadResource→WriteResource round-trip via
-//   EffectHandlerBinding dispatch (single default locator per backend; not multi-resource
-//   discrimination). Pure/test + host bundle wiring. Executable Bool witnesses for --claim-run.
+//   EffectHandlerBinding dispatch + M5 fixture-store consolidation (node://adhoc-7e32be31-47c):
+//   executing witnesses that the in-process fixture key is now value-derived (content-addressed),
+//   discriminating (distinct resources → distinct keys; RED if reverted to the constant pin),
+//   fail-closed on unrepresentable locators, and that an absent lookup is a kernel Miss.
 // Status: E-10 consumer for v2.extdeps.runtimes.v2_effect_io_{pure,host}.dag.
 
 module v2.test.runtimes.effect_io_handler_claims
@@ -11,11 +13,13 @@ import v2.extdeps.runtimes.v2_effect_io_host {
 }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoResourceBackend,
-  EffectIoResourceLocator,
   FileResourceBackend,
   HttpResourceBackend,
   StorageResourceBackend,
+  effect_io_pure_empty_fixture_store,
+  effect_io_pure_handler_binding,
   effect_io_pure_invoke_handler,
+  effect_io_pure_locator_identity,
   effect_io_pure_read_request,
   effect_io_pure_read_write_roundtrip,
   effect_io_pure_unit_type_node
@@ -23,23 +27,41 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 import v2.std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node { Hash }
 import v2.std.runtime {
   ReadResource,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
   RuntimeUnit,
   RuntimeUnitValue,
   RuntimeValue,
   effect_handler_for_kind
 }
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v2.std.witness { Holds, Violates }
 
-fn effect_io_claim_locator(backend: EffectIoResourceBackend) -> EffectIoResourceLocator {
-  EffectIoResourceLocator {
-    backend: backend,
-    identity: ^effect_io_pure_default_locator
+// --- representable resource locators (RuntimePrimitive reifies faithfully; distinct bytes →
+//     distinct content_hash) and one unrepresentable locator (RuntimeUnit → fail-closed) ---------
+
+fn effect_io_claim_resource_arg(bytes: List<Byte>) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: effect_io_pure_unit_type_node(),
+      bytes: bytes
+    }
   }
 }
 
-fn effect_io_claim_locator_arg() -> RuntimeValue {
+fn effect_io_claim_resource_a() -> RuntimeValue {
+  effect_io_claim_resource_arg(bytes: [])
+}
+
+fn effect_io_claim_resource_b() -> RuntimeValue {
+  effect_io_claim_resource_arg(bytes: [Byte { bits: [true] }])
+}
+
+// No faithful Node reification (RuntimeUnit) — the value-derived key MUST fail closed on it.
+fn effect_io_claim_unrepresentable_arg() -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue {
       unit_type: effect_io_pure_unit_type_node()
@@ -55,41 +77,88 @@ fn effect_io_claim_payload() -> RuntimeValue {
   }
 }
 
-// Wave-2: one default locator — proves file-backend binding dispatch round-trip, not distinct resources.
+// --- Wave-2: per-backend binding-dispatch round-trip, now over a content-addressed key ----------
+// The write then read-back hit through the SAME value-derived key (no constant-pin coincidence).
+
 test fn effect_io_pure_file_roundtrip_holds() -> Bool {
   effect_io_pure_read_write_roundtrip(
     backend: FileResourceBackend,
-    locator: effect_io_claim_locator(backend: FileResourceBackend),
     payload: effect_io_claim_payload(),
-    locator_arg: effect_io_claim_locator_arg()
+    locator_arg: effect_io_claim_resource_a()
   )
 }
 
-// Wave-2: one default locator — proves http-backend binding dispatch round-trip.
 test fn effect_io_pure_http_roundtrip_holds() -> Bool {
   effect_io_pure_read_write_roundtrip(
     backend: HttpResourceBackend,
-    locator: effect_io_claim_locator(backend: HttpResourceBackend),
     payload: effect_io_claim_payload(),
-    locator_arg: effect_io_claim_locator_arg()
+    locator_arg: effect_io_claim_resource_a()
   )
 }
 
-// Wave-2: one default locator — proves storage-backend binding dispatch round-trip.
 test fn effect_io_pure_storage_roundtrip_holds() -> Bool {
   effect_io_pure_read_write_roundtrip(
     backend: StorageResourceBackend,
-    locator: effect_io_claim_locator(backend: StorageResourceBackend),
     payload: effect_io_claim_payload(),
-    locator_arg: effect_io_claim_locator_arg()
+    locator_arg: effect_io_claim_resource_a()
   )
 }
 
-// Host bundle: dispatch through EffectHandlerBinding; file backend fail-closed until host_run lands.
+// --- M5 convergence proof, by execution -----------------------------------------------------------
+//
+// DISCRIMINATING: distinct resource locators derive DISTINCT content-addressed keys (RED if the
+// derivation is reverted to the ^effect_io_pure_default_locator constant pin, which aliases them),
+// and the SAME resource derives the SAME key (determinism — what makes a read-back hit possible).
+// This is the executing witness that the in-process handler is now ContentAddressedByValue.
+test fn effect_io_pure_value_derived_key_discriminates_holds() -> Bool {
+  match effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
+    Holds { value: key_a } =>
+      match effect_io_pure_locator_identity(value: effect_io_claim_resource_b()) {
+        Holds { value: key_b } =>
+          match effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
+            Holds { value: key_a_again } =>
+              !(key_a == key_b) && (key_a == key_a_again)
+            Violates { diagnostic: _ } => false
+          }
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// FAIL-CLOSED: a locator with no faithful Node reification is a LOUD reject, never a silent alias
+// onto a shared key (DESIGN.md §5). RED if the derivation fabricated a key for an unrepresentable arg.
+test fn effect_io_pure_unrepresentable_locator_fails_closed_holds() -> Bool {
+  match effect_io_pure_locator_identity(value: effect_io_claim_unrepresentable_arg()) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
+
+// MISS IS DIAGNOSTIC: a content-addressed read against an empty store rejects (loud diagnostic),
+// never fabricates a value (DESIGN.md §5). (The shared std.cache_interface Miss/RejectedHit rewire
+// of this fold is deferred — see the blocker note on effect_io_pure_store_lookup.)
+test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
+  let store = effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
+  let bundle = effect_io_pure_handler_binding(store: store)
+  let read_handler = effect_handler_for_kind(binding: bundle.handlers, kind: ReadResource)
+  let read_args = Cons { head: effect_io_claim_resource_a(), tail: Empty }
+  match effect_io_pure_invoke_handler(
+    handler: read_handler,
+    request: effect_io_pure_read_request(args: read_args)
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// --- host bundle: dispatch through EffectHandlerBinding; HTTP host door fail-closed until host_run ---
+
+// Representable locator so the reject is the HOST-DOOR deferral, not a locator-formation fault.
 test fn effect_io_host_read_fail_closed_holds() -> Bool {
   let runtime = effect_io_host_runtime_wave2(backend: FileResourceBackend)
   let read_args = Cons {
-    head: effect_io_claim_locator_arg(),
+    head: effect_io_claim_resource_a(),
     tail: Empty
   }
   let read_handler = effect_handler_for_kind(binding: runtime.handlers, kind: ReadResource)

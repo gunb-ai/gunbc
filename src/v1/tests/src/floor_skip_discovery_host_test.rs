@@ -168,7 +168,6 @@ fn fixture_line(text: &str, needle: &str) -> i64 {
 fn run_injected_diff_roster(
     rel_path: &str,
     line: i64,
-    _entry: &str,
     roster: &[(String, String)],
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");
@@ -214,7 +213,7 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
 
     // Edit node C (the transitive witness's claim references it through helper_conj) → RUN.
     let c_line = fixture_line(&text, "^floor_disc_node_c_symbol");
-    let run = run_injected_diff_roster(rel, c_line, &entry, &roster);
+    let run = run_injected_diff_roster(rel, c_line, &roster);
     assert_eq!(run.total, 1);
     assert!(
         run.failures.is_empty(),
@@ -229,7 +228,7 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
 
     // Edit the orphan node (no claim references it), SAME file → SKIP.
     let orphan_line = fixture_line(&text, "^floor_disc_orphan_symbol");
-    let skip = run_injected_diff_roster(rel, orphan_line, &entry, &roster);
+    let skip = run_injected_diff_roster(rel, orphan_line, &roster);
     assert_eq!(skip.total, 1);
     assert!(
         skip.failures.is_empty(),
@@ -261,7 +260,6 @@ fn node_precise_transitive_c_edit_runs_conj_witness() {
     let summary = run_injected_diff_roster(
         rel,
         c_line,
-        &entry,
         &[(
             entry.clone(),
             "floor_disc_witness_transitive_holds".to_string(),
@@ -297,7 +295,7 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
 
     // Edit witness A's OWN body → witness A runs (no `data` node it reads changed).
     let a_fn_line = fixture_line(&text, "test fn floor_disc_witness_a_only_holds");
-    let a = run_injected_diff_roster(rel, a_fn_line, &entry, &roster);
+    let a = run_injected_diff_roster(rel, a_fn_line, &roster);
     assert_eq!(a.total, 1);
     assert!(
         a.failures.is_empty(),
@@ -315,7 +313,7 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
 
     // Edit a DIFFERENT witness's body → witness A skips (per-function, not file-level run-all).
     let b_fn_line = fixture_line(&text, "test fn floor_disc_witness_b_only_holds");
-    let b = run_injected_diff_roster(rel, b_fn_line, &entry, &roster);
+    let b = run_injected_diff_roster(rel, b_fn_line, &roster);
     assert_eq!(b.total, 1);
     assert!(
         b.failures.is_empty(),

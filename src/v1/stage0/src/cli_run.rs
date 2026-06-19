@@ -285,6 +285,7 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
 
 /// Outcome of running a single Bool witness (`--claim-run` semantics), without
 /// touching the process exit code. The exit-code contract lives in the caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     /// Function returned `Bool(true)` — witness holds.
     Pass,
@@ -2075,6 +2076,14 @@ pub struct EntryResolveReceipt {
     pub resolve_nanos: u128,
 }
 
+/// One witness verdict from a discovery-corpus run (for wet/hermetic equivalence).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveryWitnessOutcome {
+    pub entry: String,
+    pub function: String,
+    pub outcome: ClaimOutcome,
+}
+
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
 /// many passed, how many were skipped (stateless node-frontier), and a rendered
 /// failure line per non-pass (empty on full green).
@@ -2083,6 +2092,8 @@ pub struct DiscoverySummary {
     pub passed: usize,
     pub skipped: usize,
     pub failures: Vec<String>,
+    /// Per-witness outcomes in roster order (wet/hermetic equivalence gate).
+    pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
     /// Aggregate resolve wall time across distinct entries (nanoseconds).
@@ -2091,6 +2102,128 @@ pub struct DiscoverySummary {
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
     pub total_measured_nanos: u128,
+}
+
+/// Enrolled witness `.dag` carrying the scaffold roster entry-prefix authority.
+pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
+    "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
+/// `data` binding name for the single-authority roster entry prefix (§3).
+pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
+    "wet_hermetic_equivalence_representative_prefix";
+
+fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Result<String, String> {
+    let path = Path::new(entry);
+    if path.is_file() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    for root in source_roots {
+        let root_path = Path::new(root);
+        let root_name = root_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if !root_name.is_empty() {
+            let prefix = format!("{root_name}/");
+            if let Some(suffix) = entry.strip_prefix(&prefix) {
+                let candidate = root_path.join(suffix);
+                if candidate.is_file() {
+                    return Ok(candidate.to_string_lossy().into_owned());
+                }
+            }
+        }
+        let candidate = root_path.join(entry);
+        if candidate.is_file() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(format!(
+        "entry file does not exist or is not a file: {}",
+        entry
+    ))
+}
+
+/// Load the scaffold roster entry-prefix from the enrolled witness `.dag` data
+/// binding. Rust filter code must use this — no parallel substring authority.
+pub fn wet_hermetic_scaffold_roster_entry_prefix(
+    source_roots: &[String],
+) -> Result<String, String> {
+    let entry =
+        resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
+    let (graph, source_indices) = resolve_entry_graph(source_roots, &entry)?;
+    let sources = load_sources_for_entry(source_roots, &entry)?;
+    let entry_source = sources
+        .iter()
+        .find(|s| s.path == entry || s.path.ends_with(WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY))
+        .ok_or_else(|| format!("{entry}: missing from entry closure"))?;
+    let entry_module = extract_module_path(&entry_source.content)
+        .ok_or_else(|| format!("{entry}: missing module declaration"))?;
+    let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
+    let si = Rc::new((*source_indices).clone());
+    for item in typed_module.items.iter() {
+        if item.body.is_none() {
+            continue;
+        }
+        let decl_name = authored_name_at(si.clone(), item.clone());
+        if decl_name != WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA {
+            continue;
+        }
+        let body = item.body.as_ref().ok_or_else(|| {
+            format!("{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' missing body")
+        })?;
+        return literal_string_from_expr(body).ok_or_else(|| {
+            format!(
+                "{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' must be a string literal"
+            )
+        });
+    }
+    Err(format!(
+        "{entry}: missing data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}'"
+    ))
+}
+
+/// Scaffold roster filter: one discoverable `test fn` per extdeps layer with a
+/// published mock corpus under `prefix` (from
+/// `wet_hermetic_scaffold_roster_entry_prefix`). These witnesses exercise the M4
+/// hermetic-realization *model* in pure `.dag` — they do NOT traverse
+/// `eval_service_call` under either Wet or Hermetic, so they cannot observe
+/// mock-vs-live faithfulness. Dissolution: replace with witnesses that dispatch
+/// live transport under Wet and published-mock under Hermetic.
+pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
+    !prefix.is_empty() && row.entry.contains(prefix)
+}
+
+/// Row-for-row outcome comparator for the P3c scaffold gate. Returns divergence
+/// lines (empty when equivalent). Teeth: unit-tested with synthetic vectors;
+/// roster integration is vacuous until live-transport witnesses enroll.
+pub fn wet_hermetic_discovery_outcome_divergences(
+    wet: &[DiscoveryWitnessOutcome],
+    hermetic: &[DiscoveryWitnessOutcome],
+) -> Vec<String> {
+    let mut divergences = Vec::new();
+    if wet.len() != hermetic.len() {
+        divergences.push(format!(
+            "roster size mismatch: wet={} hermetic={}",
+            wet.len(),
+            hermetic.len()
+        ));
+        return divergences;
+    }
+    for (w, h) in wet.iter().zip(hermetic.iter()) {
+        if w.entry != h.entry || w.function != h.function {
+            divergences.push(format!(
+                "roster order mismatch: wet=({},{}) hermetic=({},{})",
+                w.function, w.entry, h.function, h.entry
+            ));
+            continue;
+        }
+        if w.outcome != h.outcome {
+            divergences.push(format!(
+                "{} ({}): wet={:?} hermetic={:?}",
+                w.function, w.entry, w.outcome, h.outcome
+            ));
+        }
+    }
+    divergences
 }
 
 /// Default exclude set for floor discovery. Manifest/law files that import the
@@ -2767,11 +2900,15 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
-    let mut rows = if options.explicit_roster_only {
-        Vec::new()
-    } else {
-        discover_floor_corpus_rows(source_roots, scan_dirs)?
-    };
+    // Roster-only (skip the whole-tree walk): either a caller that pins a
+    // representative witness set via `explicit_roster_only` (host skip tests), or the
+    // wet/hermetic equivalence gate (empty scan_dirs + explicit entries).
+    let mut rows =
+        if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
+            Vec::new()
+        } else {
+            discover_floor_corpus_rows(source_roots, scan_dirs)?
+        };
     // Append explicit rows with (entry, function) dedup, then re-sort so each
     // entry's witnesses stay grouped for the resolve-once loop below.
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
@@ -2795,6 +2932,15 @@ pub fn run_discovery_corpus_with_options(
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(keys),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
+        }
+    };
     let index = build_multi_entry_index(source_roots);
 
     let diff_outcome = if options.skip_unaffected_node_frontier {
@@ -2836,7 +2982,14 @@ pub fn run_discovery_corpus_with_options(
     // Seeds are string-keyed (Send), so each shard shares a clone of the skip decision.
     let width = parallel_width.max(1);
     if width == 1 {
-        return run_discovery_rows(&rows, &index, execution_mode, skip_enabled, &frontier_seeds);
+        return run_discovery_rows(
+            &rows,
+            &index,
+            execution_mode,
+            skip_enabled,
+            &frontier_seeds,
+            whole_tree_published_keys.clone(),
+        );
     }
     let shards = shard_row_indices_by_entry(&rows, width);
     eprintln!(
@@ -2853,9 +3006,17 @@ pub fn run_discovery_corpus_with_options(
         let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
         let roots = source_roots_owned.clone();
         let seeds = frontier_seeds.clone();
+        let keys = whole_tree_published_keys.clone();
         handles.push(std::thread::spawn(move || {
             let index = build_multi_entry_index(&roots);
-            run_discovery_rows(&shard_rows, &index, execution_mode, skip_enabled, &seeds)
+            run_discovery_rows(
+                &shard_rows,
+                &index,
+                execution_mode,
+                skip_enabled,
+                &seeds,
+                keys,
+            )
         }));
     }
     let mut summaries = Vec::new();
@@ -2903,6 +3064,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         passed: 0,
         skipped: 0,
         failures: Vec::new(),
+        witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
@@ -2913,6 +3075,7 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.passed += summary.passed;
         merged.skipped += summary.skipped;
         merged.failures.extend(summary.failures);
+        merged.witness_outcomes.extend(summary.witness_outcomes);
         merged
             .entry_resolve_receipts
             .extend(summary.entry_resolve_receipts);
@@ -2934,12 +3097,14 @@ fn run_discovery_rows(
     execution_mode: v1_interpreter::ExecutionMode,
     skip_enabled: bool,
     frontier_seeds: &NodeFrontierSeeds,
+    whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
         skipped: 0,
         failures: Vec::new(),
+        witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
@@ -2949,6 +3114,7 @@ fn run_discovery_rows(
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
     let mut current_entry_touches = true;
+    let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
@@ -2965,7 +3131,13 @@ fn run_discovery_rows(
                 resolve_nanos,
             });
             current_closure_subject = Some(closure_subject);
-            let entry_ctx = make_eval_context(&graph, source_indices, execution_mode);
+            let entry_ctx = make_eval_context_with_runtime_options(
+                &graph,
+                source_indices,
+                execution_mode,
+                None,
+                whole_tree_published_keys.clone(),
+            );
             current_entry_touches = if skip_enabled {
                 entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
             } else {
@@ -2995,6 +3167,11 @@ fn run_discovery_rows(
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
         summary.total_measured_nanos += receipt.wall_nanos;
         summary.performance_receipts.push(receipt);
+        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
+            entry: row.entry.clone(),
+            function: row.function.clone(),
+            outcome: outcome.clone(),
+        });
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => summary.failures.push(format!(
