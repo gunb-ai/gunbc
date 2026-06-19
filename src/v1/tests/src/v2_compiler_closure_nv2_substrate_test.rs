@@ -162,9 +162,7 @@ fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
 
     let manifest_dir = manifest_path.parent().expect("manifest parent");
     let ctx = nv2_eval_context(manifest_dir).unwrap_or_else(|msg| {
-        nv2_blocked_fail(format!(
-            "resolve failed ({module_count} modules): {msg}"
-        ));
+        nv2_blocked_fail(format!("resolve failed ({module_count} modules): {msg}"));
     });
 
     match run_claim(&ctx, ACCEPT_FN) {
