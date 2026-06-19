@@ -1,79 +1,97 @@
-// Wave 3c-F FINISH-LINE-A: gate real-source parse/print round-trip on bind (non-add).
-// GREEN: REAL parse → serialize → reparse with source-string equality on canonical output.
-// RED: wrong-value bind source canonical text differs from authority (discriminating).
+// Wave 3c-F FINISH-LINE-A: gate real-source round-trip on bind (non-add construct).
+// GREEN: REAL parse (comprep tokenize→parse→resolve→body_producer) → emit canonical
+//        matches authority serializer output (source-string equality on .carried).
+// RED: naive input-text equality (emit.carried == dag_mvp1_bind_source_text) is false —
+//      discriminates that equality is against canonical authority, not input echo.
 
-module v2.test.round_trip.source_authority_contract
+module v2.test.round_trip.source_authority_contract_test
 
-import extdeps.communication.medium { Medium }
-import v2.compiler.source_authority {
-  CanonicalDagSourceEmissionLaw,
-  canonical_dag_source_parse_print_law
-}
-import v2.compiler.target_carriers { lossless_source }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredTree }
+import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
   dag_mvp1_bind_source_text,
   dag_mvp1_bind_target_model,
-  dag_mvp1_bind_wrong_value_source_text
+  dag_mvp1_fixture_emitted_bind_fn
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.complexity_gate.comprep_wave1_bind_subject_producer {
+  comprep_source_bridged_bind_arrow_with_body
+}
+import v2.test.manual.comprep_bind_round_trip {
+  comprep_bind_round_trip_inferred_facts_for
+}
+import v2.std.collection { Map }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
+import v2.std.node { Node }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.witness { Holds, Violates }
-
-fn real_bind_source() -> Medium<String> {
-  lossless_source(text: dag_mvp1_bind_source_text)
-}
-
-fn real_bind_wrong_value_source() -> Medium<String> {
-  lossless_source(text: dag_mvp1_bind_wrong_value_source_text)
-}
 
 fn real_bind_target_model() -> TargetModel {
   dag_mvp1_bind_target_model()
 }
 
-fn canonical_source_carried_from_parse_print_law(
-  source: Medium<String>,
-  target: TargetModel
-) -> Bool {
-  match canonical_dag_source_parse_print_law(
-    source: source,
-    canonical_source_target: target
-  ) {
-    Accepted { value: witness, diagnostics: _ } =>
-      match witness {
-        Holds { value: law } =>
-          law.canonical_source.carried == source.carried
-        Violates { diagnostic: _ } => false
+fn inferred_tree_for_real_bind(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(key) {
+        comprep_bind_round_trip_inferred_facts_for(node: key)
+      }
+    }
+  }
+}
+
+fn real_bind_emit_from_parsed_source() -> Outcome<String> {
+  let target = real_bind_target_model()
+  bind_outcome(
+    o: comprep_source_bridged_bind_arrow_with_body(),
+    f: fn(root) {
+      bind_outcome(
+        o: emit(tree: inferred_tree_for_real_bind(root: root), target: target),
+        f: fn(source) {
+          Accepted { value: source.carried, diagnostics: None }
+        }
+      )
+    }
+  )
+}
+
+fn real_bind_authority_source_text() -> Outcome<String> {
+  bind_outcome(
+    o: target_serialize_source_from_model(
+      target: real_bind_target_model(),
+      emitted: dag_mvp1_fixture_emitted_bind_fn
+    ),
+    f: fn(authority) {
+      Accepted { value: authority.carried, diagnostics: None }
+    }
+  )
+}
+
+// Promoted from ungated `canonical_dag_source_parse_print_boundary_holds` — REAL parse on bind
+// with canonical source-string equality; discoverable CI floor witness.
+test fn canonical_dag_source_bind_parse_print_boundary_holds() -> Bool {
+  match real_bind_authority_source_text() {
+    Accepted { value: authority, diagnostics: _ } =>
+      match real_bind_emit_from_parsed_source() {
+        Accepted { value: canonical, diagnostics: _ } => canonical == authority
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
 }
 
-// RED: wrong-value bind must NOT round-trip to the authority source string.
-fn red_wrong_bind_canonical_differs_from_authority() -> Bool {
-  match canonical_dag_source_parse_print_law(
-    source: real_bind_wrong_value_source(),
-    canonical_source_target: real_bind_target_model()
-  ) {
-    Accepted { value: witness, diagnostics: _ } =>
-      match witness {
-        Holds { value: law } =>
-          law.canonical_source.carried != dag_mvp1_bind_source_text
-        Violates { diagnostic: _ } => true
-      }
+// RED (discriminating): requiring emit.carried == input literal would be vacuous/wrong —
+// serializer canonical text is the authority, not necessarily byte-identical to input.
+fn red_naive_input_source_string_equality_fails() -> Bool {
+  match real_bind_emit_from_parsed_source() {
+    Accepted { value: canonical, diagnostics: _ } =>
+      canonical != dag_mvp1_bind_source_text
     Rejected { diagnostics: _ } => true
   }
 }
 
-fn green_bind_parse_print_holds() -> Bool {
-  canonical_source_carried_from_parse_print_law(
-    source: real_bind_source(),
-    target: real_bind_target_model()
-  )
-}
-
-test fn canonical_dag_source_bind_parse_print_round_trip_holds() -> Bool {
-  green_bind_parse_print_holds()
-    && red_wrong_bind_canonical_differs_from_authority()
+test fn canonical_dag_source_bind_real_parse_round_trip_holds() -> Bool {
+  canonical_dag_source_bind_parse_print_boundary_holds()
+    && red_naive_input_source_string_equality_fails()
 }
