@@ -2761,15 +2761,11 @@ pub fn emit_source_root_ingest_transport_sidecar(
         let source_path = transport_dir.join(&source_relpath);
         if let Some(parent) = source_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                format!(
-                    "failed to create ingest source parent {:?}: {}",
-                    parent, e
-                )
+                format!("failed to create ingest source parent {:?}: {}", parent, e)
             })?;
         }
-        std::fs::write(&source_path, &rec.source).map_err(|e| {
-            format!("failed to write ingest source {:?}: {}", source_path, e)
-        })?;
+        std::fs::write(&source_path, &rec.source)
+            .map_err(|e| format!("failed to write ingest source {:?}: {}", source_path, e))?;
         rows.push(format!(
             "{}\t{}\t{}",
             dag_manifest_scalar_escape(&rec.file_path)?,

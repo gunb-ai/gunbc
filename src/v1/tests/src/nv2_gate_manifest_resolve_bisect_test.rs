@@ -34,10 +34,7 @@ fn nv2_gate_resolve_without_manifest_overlay() {
 #[ignore]
 fn nv2_gate_resolve_with_transport_sidecar_manifest() {
     let ws = workspace_root();
-    let temp = std::env::temp_dir().join(format!(
-        "gunbc-nv2-transport-{}",
-        std::process::id()
-    ));
+    let temp = std::env::temp_dir().join(format!("gunbc-nv2-transport-{}", std::process::id()));
     fs::create_dir_all(&temp).expect("temp");
     let manifest_path = temp.join("host_source_root_ingest_manifest.dag");
     let entry = ws.join(COMPILE_ENTRY);
@@ -52,12 +49,10 @@ fn nv2_gate_resolve_with_transport_sidecar_manifest() {
         records.len() > SOURCE_ROOT_INGEST_INLINE_MAX,
         "compiler closure must exceed inline cap to exercise transport sidecar"
     );
-    let admission = parse_source_root_entry_admission(
-        &fs::read_to_string(&entry).expect("read entry"),
-    )
-    .expect("admission");
-    emit_source_root_ingest_manifest(&manifest_path, &records, Some(&admission))
-        .expect("emit");
+    let admission =
+        parse_source_root_entry_admission(&fs::read_to_string(&entry).expect("read entry"))
+            .expect("admission");
+    emit_source_root_ingest_manifest(&manifest_path, &records, Some(&admission)).expect("emit");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
     assert!(
         manifest.contains("host_source_root_ingest: SourceRootIngest = Empty"),

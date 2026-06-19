@@ -1,4 +1,7 @@
 //! Solo resolve-perf bisect for N_v2 hang (#5146 full-interface elaboration).
+//! Bisect result: hang is inline 59-module `host_source_root_ingest` Cons literals in the
+//! manifest overlay (1.5MB typecheck), not solo gate direct-imports. Root fix: TSV sidecar
+//! when `records.len() > SOURCE_ROOT_INGEST_INLINE_MAX` + runtime hydration.
 //! dissolve-on: #5146-class N_v2 resolve hang root-caused — delete manual/nv2_gate_resolve_bisect_*.dag + ignored Rust bisect tests.
 //!
 //! Run (parent order): target_model → 06_translate → find_witness → languages
