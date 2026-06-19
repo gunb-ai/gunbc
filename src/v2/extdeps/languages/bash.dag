@@ -430,17 +430,8 @@ fn bash_fixed_tokens_grammar_relation_row(
   }
 }
 
-fn bash_arrow_emitted_two(left: Symbol, right: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: bash_word_atom(id: left) },
-      Edge { label: Positional, target: bash_word_atom(id: right) }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
+// Interim arity helpers for fixed-token Arrow anchors (slice 4). Dissolve-on: slice 5+
+// `bash_arrow_emitted_from_words(ids: List<Symbol>)` once compound rows need >6 slots.
 fn bash_arrow_emitted_three(left: Symbol, mid: Symbol, right: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
