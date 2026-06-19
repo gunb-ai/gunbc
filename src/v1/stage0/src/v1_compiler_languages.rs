@@ -1345,3 +1345,15 @@ pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
         v1_rt::replace(tmpl, "{0}".to_string(), inner)
     }
 }
+
+pub struct SnakeCaseTestNames;
+pub struct PascalCaseTestNames;
+pub struct IfExpression;
+pub struct ConditionalTernary;
+pub struct IfStatement;
+pub struct MatchExpression;
+pub struct MatchStatementArmReturn;
+pub struct PascalCase;
+pub struct SnakeCase;
+pub struct CamelCase;
+pub struct AsAuthored;

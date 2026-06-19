@@ -2015,9 +2015,6 @@ pub fn resolve_expr_types(
                 descent_evidence: de,
                 ..
             } => {
-                // bind-once: resolve each arg child a SINGLE time, then split
-                // into resolved children + diagnostics. Resolving twice made a
-                // nested constructor literal O(2^depth).
                 let arg_results = Rc::new({
                     let mut __result = Vec::new();
                     for arg_node in texpr.children.clone().iter().cloned() {
@@ -2047,14 +2044,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
+                    for r in arg_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
+                    for r in arg_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2078,7 +2075,6 @@ pub fn resolve_expr_types(
                 method_semantics: ms,
                 ..
             } => {
-                // bind-once: resolve each child a SINGLE time (see ExprCall).
                 let mc_results = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
@@ -2144,14 +2140,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
+                    for r in mc_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
+                    for r in mc_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2171,7 +2167,6 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprMatch => {
-                // bind-once: resolve each scrutinee/arm a SINGLE time (see ExprCall).
                 let match_results = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
@@ -2282,14 +2277,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
+                    for r in match_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
+                    for r in match_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2390,9 +2385,6 @@ pub fn resolve_expr_types(
             ExprData::ExprRecordLit {
                 parent_enum: pe, ..
             } => {
-                // bind-once: resolve each field-init value a SINGLE time. This is
-                // the arm hit by deep nested constructor literals (Cons/record
-                // chains) — resolving twice per field was O(2^depth).
                 let fi_results = Rc::new({
                     let mut __result = Vec::new();
                     for fi_node in texpr.children.clone().iter().cloned() {
@@ -2418,14 +2410,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
+                    for r in fi_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
+                    for r in fi_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2559,7 +2551,6 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprStringInterp => {
-                // bind-once: resolve each interpolation part a SINGLE time (see ExprCall).
                 let part_results = Rc::new({
                     let mut __result = Vec::new();
                     for part_node in texpr.children.clone().iter().cloned() {
@@ -2594,14 +2585,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
+                    for r in part_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
+                    for r in part_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -3316,3 +3307,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         })
     })
 }
+
+pub struct AliasParameterized;
+pub struct AliasLeaf;
+pub struct AliasPassthrough;

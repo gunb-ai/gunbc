@@ -9915,3 +9915,6 @@ pub fn build_complexity_report(
         })
     }
 }
+
+pub struct Proven;
+pub struct Conservative;

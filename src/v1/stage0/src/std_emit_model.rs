@@ -37,3 +37,6 @@ pub struct MethodTemplateContract {
     pub wraps_result: bool,
     pub placeholder_convention: PlaceholderConvention,
 }
+
+pub struct IndexedArgs;
+pub struct NamedArg;

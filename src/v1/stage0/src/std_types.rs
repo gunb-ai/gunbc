@@ -208,9 +208,9 @@ pub enum Bool {
     False,
 }
 
-pub type Json = serde_json::Value;
+pub type Json = Json;
 
-pub type Bytes = Vec<u8>;
+pub type Bytes = Bytes;
 
 pub type Char = i64;
 
@@ -654,3 +654,60 @@ pub struct DocSource {
     pub path: FilePath,
     pub kind: DocSourceKind,
 }
+
+pub struct True;
+pub struct False;
+pub struct Pure;
+pub struct Transport;
+pub struct SubDag;
+pub struct Env;
+pub struct Template;
+pub struct Generated;
+pub struct Static;
+pub struct Xs;
+pub struct S;
+pub struct M;
+pub struct L;
+pub struct Xl;
+pub struct X86_64;
+pub struct X86;
+pub struct Aarch64;
+pub struct Arm;
+pub struct Armv7;
+pub struct Mipsel;
+pub struct Mips64;
+pub struct Mips64el;
+pub struct Riscv64;
+pub struct Wasm32;
+pub struct UnknownVendor;
+pub struct Pc;
+pub struct Apple;
+pub struct W64;
+pub struct Freebsd;
+pub struct Android;
+pub struct Ios;
+pub struct Wasi;
+pub struct NoneAbi;
+pub struct Gnu;
+pub struct GnuEabi;
+pub struct GnuEabihf;
+pub struct Musl;
+pub struct Msvc;
+pub struct AndroidAbi;
+pub struct Eabi;
+pub struct Eabihf;
+pub struct Native;
+pub struct Wsl;
+pub struct Container;
+pub struct Ci;
+pub struct Emulator;
+pub struct GET;
+pub struct POST;
+pub struct PUT;
+pub struct PATCH;
+pub struct DELETE;
+pub struct HEAD;
+pub struct OPTIONS;
+pub struct Rust;
+pub struct Go;
+pub struct C;

@@ -401,3 +401,6 @@ pub fn emit_stage0_crate_boundary_files(plan: Rc<Stage0CratePlan>) -> Rc<Vec<Rc<
 pub fn stage0_crate_boundary_files() -> Rc<Vec<Rc<TextFile>>> {
     emit_stage0_crate_boundary_files(stage0_crate_plan())
 }
+
+pub struct CoreCrate;
+pub struct EmitCoreCrate;
