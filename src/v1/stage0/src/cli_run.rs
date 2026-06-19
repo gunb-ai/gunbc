@@ -973,6 +973,10 @@ pub fn handle_run_with_options(
     };
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
+    if let Err(msg) = hydrate_source_root_ingest_overlay(&ctx, &source_roots) {
+        eprintln!("error: {}", msg);
+        std::process::exit(1);
+    }
     v1_interpreter::with_active_context(&ctx, || {
         match v1_interpreter::run_in_context(&ctx, &function, !claim_run) {
             Ok(val) => {
@@ -1766,6 +1770,15 @@ pub struct OwnedDataDiscoveryReceipt {
 /// Inline manifest list only for small fixture-scale scans; large corpus uses receipt + TSV.
 pub const MANIFEST_INLINE_LIST_MAX: usize = 64;
 
+/// Inline `SourceRootIngest` monoid in the host manifest only for fixture-scale corpora.
+/// The v2 compiler closure (59 modules) exceeds this cap and uses a transport sidecar so
+/// `compile_to_resolved` does not typecheck megabyte-scale `Cons` literals (#5146-class hang).
+pub const SOURCE_ROOT_INGEST_INLINE_MAX: usize = 16;
+
+const SOURCE_ROOT_INGEST_TRANSPORT_TSV: &str = "host_source_root_ingest_transport.tsv";
+const SOURCE_ROOT_INGEST_SOURCES_DIR: &str = "host_source_root_ingest_sources";
+const HOST_SOURCE_ROOT_INGEST_DATA: &str = "host_source_root_ingest";
+
 pub fn compute_owned_data_discovery_receipt(
     records: &[OwnedDataDeclRecord],
 ) -> Result<OwnedDataDiscoveryReceipt, String> {
@@ -2452,6 +2465,30 @@ mod manifest_emit_tests {
             "match x \\{ A => 1 \\}"
         );
     }
+
+    #[test]
+    fn source_root_ingest_transport_roundtrip() {
+        use super::{
+            emit_source_root_ingest_transport_sidecar, load_source_root_ingest_transport,
+            SourceRootReadRecord, SOURCE_ROOT_INGEST_INLINE_MAX,
+        };
+        let records: Vec<SourceRootReadRecord> = (0..SOURCE_ROOT_INGEST_INLINE_MAX + 1)
+            .map(|i| SourceRootReadRecord {
+                file_path: format!("src/v2/mod/file_{i}.dag"),
+                module_path: format!("v2.mod.file_{i}"),
+                source: format!("module v2.mod.file_{i}\n"),
+            })
+            .collect();
+        let temp = std::env::temp_dir().join(format!(
+            "gunbc-ingest-transport-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&temp).expect("temp");
+        emit_source_root_ingest_transport_sidecar(&temp, &records).expect("emit");
+        let loaded = load_source_root_ingest_transport(&temp).expect("load");
+        assert_eq!(loaded, records);
+        let _ = std::fs::remove_dir_all(&temp);
+    }
 }
 
 fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
@@ -2633,7 +2670,7 @@ pub fn emit_source_root_ingest_manifest(
 
     let content_hash = source_root_ingest_content_hash_fnv1a64(records);
     let read_count = records.len();
-    let inline_records = if read_count <= MANIFEST_INLINE_LIST_MAX {
+    let inline_records = if read_count <= SOURCE_ROOT_INGEST_INLINE_MAX {
         records
     } else {
         &[]
@@ -2673,7 +2710,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("}\n\n\n");
     if inline_records.is_empty() && !records.is_empty() {
         out.push_str(
-            "// Large corpus: inline ingest omitted; standing gates use host_source_root_ingest_coverage_receipt scalars.\n",
+            "// Large corpus: inline ingest omitted; runtime loads host_source_root_ingest_transport.tsv + host_source_root_ingest_sources/.\n",
         );
     }
     out.push_str("data host_source_root_ingest: SourceRootIngest = ");
@@ -2688,5 +2725,208 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str(&emit_source_root_entry_admission_data(admission));
     }
 
-    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))?;
+    if inline_records.is_empty() && !records.is_empty() {
+        let transport_dir = path
+            .parent()
+            .ok_or_else(|| "manifest path has no parent directory".to_string())?;
+        emit_source_root_ingest_transport_sidecar(transport_dir, records)?;
+    }
+    Ok(())
+}
+
+fn source_root_ingest_transport_source_relpath(file_path: &str) -> String {
+    let stem = Path::new(file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("host_sr.dag");
+    format!("{SOURCE_ROOT_INGEST_SOURCES_DIR}/{stem}")
+}
+
+/// Write TSV + per-row source files beside the manifest (never committed).
+pub fn emit_source_root_ingest_transport_sidecar(
+    transport_dir: &Path,
+    records: &[SourceRootReadRecord],
+) -> Result<(), String> {
+    let sources_dir = transport_dir.join(SOURCE_ROOT_INGEST_SOURCES_DIR);
+    std::fs::create_dir_all(&sources_dir).map_err(|e| {
+        format!(
+            "failed to create source-root ingest transport dir {:?}: {}",
+            sources_dir, e
+        )
+    })?;
+    let mut rows = Vec::with_capacity(records.len());
+    for rec in records {
+        let source_relpath = source_root_ingest_transport_source_relpath(&rec.file_path);
+        let source_path = transport_dir.join(&source_relpath);
+        if let Some(parent) = source_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "failed to create ingest source parent {:?}: {}",
+                    parent, e
+                )
+            })?;
+        }
+        std::fs::write(&source_path, &rec.source).map_err(|e| {
+            format!("failed to write ingest source {:?}: {}", source_path, e)
+        })?;
+        rows.push(format!(
+            "{}\t{}\t{}",
+            dag_manifest_scalar_escape(&rec.file_path)?,
+            dag_manifest_scalar_escape(&rec.module_path)?,
+            dag_manifest_scalar_escape(&source_relpath)?
+        ));
+    }
+    let tsv_path = transport_dir.join(SOURCE_ROOT_INGEST_TRANSPORT_TSV);
+    std::fs::write(&tsv_path, rows.join("\n")).map_err(|e| {
+        format!(
+            "failed to write source-root ingest transport {:?}: {}",
+            tsv_path, e
+        )
+    })
+}
+
+fn find_source_root_ingest_transport_dir(source_roots: &[String]) -> Option<PathBuf> {
+    for root in source_roots.iter().rev() {
+        let tsv = Path::new(root).join(SOURCE_ROOT_INGEST_TRANSPORT_TSV);
+        if tsv.is_file() {
+            return Some(Path::new(root).to_path_buf());
+        }
+    }
+    None
+}
+
+/// Load transport rows written by `emit_source_root_ingest_transport_sidecar`.
+pub fn load_source_root_ingest_transport(
+    transport_dir: &Path,
+) -> Result<Vec<SourceRootReadRecord>, String> {
+    let tsv_path = transport_dir.join(SOURCE_ROOT_INGEST_TRANSPORT_TSV);
+    let text = std::fs::read_to_string(&tsv_path).map_err(|e| {
+        format!(
+            "failed to read source-root ingest transport {:?}: {}",
+            tsv_path, e
+        )
+    })?;
+    let mut records = Vec::new();
+    for (line_no, line) in text.lines().enumerate() {
+        if line.is_empty() {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.len() != 3 {
+            return Err(format!(
+                "malformed source-root ingest transport row {} in {:?}",
+                line_no + 1,
+                tsv_path
+            ));
+        }
+        let source_path = transport_dir.join(cols[2]);
+        let source = std::fs::read_to_string(&source_path).map_err(|e| {
+            format!(
+                "failed to read ingest source {:?} for transport row {}: {}",
+                source_path,
+                line_no + 1,
+                e
+            )
+        })?;
+        records.push(SourceRootReadRecord {
+            file_path: cols[0].to_string(),
+            module_path: cols[1].to_string(),
+            source,
+        });
+    }
+    Ok(records)
+}
+
+fn build_dag_source_read_witness_value(
+    ctx: &v1_interpreter::InterpContext,
+    rec: &SourceRootReadRecord,
+) -> v1_interpreter::Value {
+    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
+    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
+    let mut artifact_fields = HashMap::new();
+    artifact_fields.insert(
+        ctx.sym("kind"),
+        v1_interpreter::Value::Variant {
+            type_name: ctx.sym("ArtifactKind"),
+            variant_name: ctx.sym("SourceFile"),
+            fields: Rc::new(HashMap::new()),
+        },
+    );
+    artifact_fields.insert(ctx.sym("id"), v1_interpreter::Value::Str(artifact_id));
+    artifact_fields.insert(
+        ctx.sym("file_path"),
+        v1_interpreter::Value::Str(rec.file_path.clone()),
+    );
+    let mut witness_fields = HashMap::new();
+    witness_fields.insert(
+        ctx.sym("source"),
+        v1_interpreter::Value::Str(rec.source.clone()),
+    );
+    witness_fields.insert(
+        ctx.sym("artifact"),
+        v1_interpreter::Value::Record {
+            type_name: ctx.sym("Artifact"),
+            fields: Rc::new(artifact_fields),
+        },
+    );
+    witness_fields.insert(
+        ctx.sym("compilation_unit"),
+        v1_interpreter::Value::Str(compilation_unit),
+    );
+    v1_interpreter::Value::Record {
+        type_name: ctx.sym("DagSourceReadWitness"),
+        fields: Rc::new(witness_fields),
+    }
+}
+
+fn build_source_root_ingest_value(
+    ctx: &v1_interpreter::InterpContext,
+    records: &[SourceRootReadRecord],
+) -> v1_interpreter::Value {
+    let empty_sym = ctx.sym("Empty");
+    let cons_sym = ctx.sym("Cons");
+    let mut value = v1_interpreter::Value::Variant {
+        type_name: ctx.sym("SourceRootIngest"),
+        variant_name: empty_sym,
+        fields: Rc::new(HashMap::new()),
+    };
+    for rec in records.iter().rev() {
+        let mut cons_fields = HashMap::new();
+        cons_fields.insert(
+            ctx.sym("head"),
+            build_dag_source_read_witness_value(ctx, rec),
+        );
+        cons_fields.insert(ctx.sym("tail"), value);
+        value = v1_interpreter::Value::Variant {
+            type_name: ctx.sym("SourceRootIngest"),
+            variant_name: cons_sym,
+            fields: Rc::new(cons_fields),
+        };
+    }
+    value
+}
+
+fn seed_host_source_root_ingest_cache(
+    ctx: &v1_interpreter::InterpContext,
+    value: v1_interpreter::Value,
+) {
+    ctx.seed_data_cache(HOST_SOURCE_ROOT_INGEST_DATA, value);
+}
+
+/// Hydrate `host_source_root_ingest` from a transport sidecar when the manifest uses `Empty`.
+pub fn hydrate_source_root_ingest_overlay(
+    ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
+) -> Result<(), String> {
+    let Some(transport_dir) = find_source_root_ingest_transport_dir(source_roots) else {
+        return Ok(());
+    };
+    let records = load_source_root_ingest_transport(&transport_dir)?;
+    if records.is_empty() {
+        return Ok(());
+    }
+    let value = build_source_root_ingest_value(ctx, &records);
+    seed_host_source_root_ingest_cache(ctx, value);
+    Ok(())
 }

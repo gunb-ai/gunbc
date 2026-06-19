@@ -1343,6 +1343,14 @@ impl InterpContext {
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
         self.fn_nodes.get(name)
     }
+
+    /// Pre-seed a module `data` item's lazy-eval cache (host transport hydration).
+    pub fn seed_data_cache(&self, data_name: &str, value: Value) {
+        if let Some(node) = self.lookup_fn(data_name) {
+            let key = Rc::as_ptr(node) as usize;
+            self.data_cache.borrow_mut().insert(key, value);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

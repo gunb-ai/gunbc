@@ -9,8 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
     discover_floor_corpus_rows, discover_source_root_reads_for_entry,
-    emit_source_root_ingest_manifest, make_eval_context, parse_source_root_entry_admission,
-    resolve_entry_graph, run_claim, ClaimOutcome,
+    emit_source_root_ingest_manifest, hydrate_source_root_ingest_overlay,
+    make_eval_context, parse_source_root_entry_admission, resolve_entry_graph, run_claim,
+    ClaimOutcome,
 };
 use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
@@ -116,11 +117,13 @@ fn nv2_eval_context(manifest_dir: &Path) -> Result<InterpContext, String> {
         manifest_dir.to_string_lossy().to_string(),
     ];
     let (graph, source_indices) = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))?;
-    Ok(make_eval_context(
+    let ctx = make_eval_context(
         &graph,
         source_indices,
         ExecutionMode::Wet,
-    ))
+    );
+    hydrate_source_root_ingest_overlay(&ctx, &roots)?;
+    Ok(ctx)
 }
 
 fn nv2_blocked_fail(detail: String) -> ! {
