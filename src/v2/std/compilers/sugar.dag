@@ -48,6 +48,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   edges_conform,
+  is_empty_conj_root,
   is_positional
 }
 
@@ -171,13 +172,6 @@ fn sugar_sequence_pair_optional(node: Node) -> SugarSequencePair? {
   }
 }
 
-fn sugar_is_empty_conj(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } => count(node.children) == 0
-    _ => false
-  }
-}
-
 fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
   match sugar_sequence_pair_optional(node: node) {
     Present { value: pair } => optional_present(value: pair.right)
@@ -186,7 +180,7 @@ fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
 }
 
 fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
-  if sugar_is_empty_conj(node: spine) {
+  if is_empty_conj_root(n: spine) {
     Empty
   } else {
     match sugar_sequence_pair_optional(node: spine) {
