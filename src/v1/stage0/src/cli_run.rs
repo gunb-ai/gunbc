@@ -2143,7 +2143,8 @@ fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Resul
 pub fn wet_hermetic_scaffold_roster_entry_prefix(
     source_roots: &[String],
 ) -> Result<String, String> {
-    let entry = resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
+    let entry =
+        resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
     let (graph, source_indices) = resolve_entry_graph(source_roots, &entry)?;
     let sources = load_sources_for_entry(source_roots, &entry)?;
     let entry_source = sources
