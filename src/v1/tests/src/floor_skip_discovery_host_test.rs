@@ -72,15 +72,11 @@ fn discovery_corpus_entry_resolves_in_roster_order() {
     };
 
     let ws = workspace_root();
-    let roots = vec![
-        ws.join("src/v2").to_string_lossy().into_owned(),
-        ws.join("dsl").to_string_lossy().into_owned(),
-    ];
+    std::env::set_current_dir(&ws).expect("chdir to workspace root");
+    let roots = vec!["dsl".to_string(), "src/v2".to_string()];
     let scan_dirs = vec![
-        ws.join("dsl/test/claim").to_string_lossy().into_owned(),
-        ws.join("src/v2/compiler/manual")
-            .to_string_lossy()
-            .into_owned(),
+        "dsl/test/claim".to_string(),
+        "src/v2/compiler/manual".to_string(),
     ];
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
     let index = build_multi_entry_index(&roots);
