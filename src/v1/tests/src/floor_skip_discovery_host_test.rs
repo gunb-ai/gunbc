@@ -167,7 +167,7 @@ fn fixture_line(text: &str, needle: &str) -> i64 {
 fn run_injected_diff_roster(
     rel_path: &str,
     line: i64,
-    entry: &str,
+    _entry: &str,
     roster: &[(String, String)],
 ) -> DiscoverySummary {
     let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");

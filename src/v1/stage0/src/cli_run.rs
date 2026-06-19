@@ -2419,63 +2419,11 @@ fn span_overlaps_line_ranges(
         .any(|r| start_line <= r.end && end_line >= r.start)
 }
 
-/// Accumulate the byte-offset bounds [min start, max end] of every node in `node`'s
-/// subtree that belongs to `file` into `lo`/`hi`. A data item AST node's own `span` is
-/// just its `data`-keyword / name token; the declared VALUE lives in the child subtree,
-/// so the full declaration span is the subtree's min-start..max-end. Restricted to `file`
-/// so a resolved cross-file reference span cannot corrupt the bounds.
-fn accumulate_subtree_span_bounds_in_file(node: &Node, file: &str, lo: &mut i64, hi: &mut i64) {
-    if normalize_repo_path(&node.span.file) == file {
-        if node.span.start < *lo {
-            *lo = node.span.start;
-        }
-        if node.span.end > *hi {
-            *hi = node.span.end;
-        }
-    }
-    for c in node.children.iter() {
-        accumulate_subtree_span_bounds_in_file(c, file, lo, hi);
-    }
-    for c in node.params.iter() {
-        accumulate_subtree_span_bounds_in_file(c, file, lo, hi);
-    }
-    for c in node.uses.iter() {
-        accumulate_subtree_span_bounds_in_file(c, file, lo, hi);
-    }
-    for c in node.properties.iter() {
-        accumulate_subtree_span_bounds_in_file(c, file, lo, hi);
-    }
-    if let Some(b) = &node.body {
-        accumulate_subtree_span_bounds_in_file(b, file, lo, hi);
-    }
-    if let Some(t) = &node.transport {
-        accumulate_subtree_span_bounds_in_file(t, file, lo, hi);
-    }
-    if let Some(ta) = &node.type_annotation {
-        accumulate_subtree_span_bounds_in_file(ta, file, lo, hi);
-    }
-}
-
-/// Does a data item's FULL declaration (its subtree span, not just the keyword token)
-/// overlap any changed line range? Fail-closed node-level granularity: editing ANY line
-/// of the declaration — including the value body — registers the item as changed. Using
-/// only `item.span` (the keyword) is fail-open: an edit to the value on a later line would
-/// not register, silently skipping witnesses that depend on the changed node.
-fn item_full_declaration_overlaps_line_ranges(
-    item: &Node,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    ranges: &[FileLineRange],
-) -> bool {
-    let file = normalize_repo_path(&item.span.file);
-    let mut lo = item.span.start;
-    let mut hi = item.span.end;
-    accumulate_subtree_span_bounds_in_file(item, &file, &mut lo, &mut hi);
-    let full_span = SourceSpan {
-        file: item.span.file.clone(),
-        start: lo,
-        end: hi,
-    };
-    span_overlaps_line_ranges(&full_span, source_indices, ranges)
+/// Fuzzy repo-path equality (abs vs repo-relative): one path ends with the other after
+/// normalization. Mirrors the lookup in `newline_index_for_span`.
+fn span_file_matches(span_file: &str, target_norm: &str) -> bool {
+    let s = normalize_repo_path(span_file);
+    s == target_norm || s.ends_with(target_norm) || target_norm.ends_with(&s)
 }
 
 fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
@@ -2590,15 +2538,38 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             Ok(pair) => pair,
             Err(_) => continue,
         };
-        let mut overlapping_data_names = Vec::new();
+        // This file's data items in source order. An item AST node's own `span` is just
+        // its keyword/name token, so its FULL declaration is [start .. next data item's
+        // start) (EOF for the last) — covering the value body AND any `test fn`/comment in
+        // the gap. Fail-closed: a change anywhere between two declarations re-runs the
+        // preceding one's dependents (using item.span alone is fail-open for value edits).
+        let mut file_data_items: Vec<Rc<Node>> = Vec::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
                 if item_kind(item.clone()) != ItemKind::DataItem {
                     continue;
                 }
-                if !item_full_declaration_overlaps_line_ranges(item, &source_indices, ranges) {
-                    continue;
+                if span_file_matches(&item.span.file, &file_norm) {
+                    file_data_items.push(item.clone());
                 }
+            }
+        }
+        file_data_items.sort_by_key(|it| it.span.start);
+        let mut overlapping_data_names = Vec::new();
+        for (i, item) in file_data_items.iter().enumerate() {
+            // End one byte BEFORE the next item's start so the declaration's last line is
+            // the line before the next declaration's first line (no boundary bleed onto the
+            // next item's opening line). The last item runs to EOF (i64::MAX).
+            let decl_end = file_data_items
+                .get(i + 1)
+                .map(|next| next.span.start - 1)
+                .unwrap_or(i64::MAX);
+            let decl_span = SourceSpan {
+                file: item.span.file.clone(),
+                start: item.span.start,
+                end: decl_end,
+            };
+            if span_overlaps_line_ranges(&decl_span, &source_indices, ranges) {
                 overlapping_data_names.push(authored_name_at(source_indices.clone(), item.clone()));
             }
         }
