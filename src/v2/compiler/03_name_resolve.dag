@@ -616,6 +616,21 @@ fn resolve_with_admission_policy(
 }
 
 
+// Extract QualifiedNames from raw module root Nodes (SCAFFOLD — dissolves with grounded source_root).
+fn module_root_nodes_to_qns(roots: FreeMonoid<Node>) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, root) {
+      match qualified_name_from_module_node(root: root) {
+        Accepted { value: qn, diagnostics: _ } => Cons { head: qn, tail: acc }
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+
 // Fail-closed default: FundamentalityUnknown denies all cross-tree imports.
 fn resolve_with_admission(
   lm: LanguageModel,
@@ -627,6 +642,6 @@ fn resolve_with_admission(
     roots: roots,
     admission: admission,
     order: FundamentalityUnknown,
-    active_roots: source_root_set_from_module_roots(roots: roots)
+    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
   )
 }
