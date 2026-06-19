@@ -4977,6 +4977,14 @@ fn eval_builtin(
             Ok(Some(Value::Str(format!("{}", v))))
         }
 
+        "utf8_decode_bytes" => {
+            let bytes = expect_byte_vec(positional.first().copied(), "utf8_decode_bytes")?;
+            let text = v1_rt::utf8_decode_bytes(&bytes).map_err(|msg| InterpError::TypeError {
+                msg,
+            })?;
+            Ok(Some(Value::Str(text)))
+        }
+
         // `discriminant(v)` reifies a coproduct/record value's own constructor name as a
         // `Symbol` (Symbol values are interned strings — see eval_var's `data X: Symbol = X`
         // idiom at Value::Str). This is the single intrinsic that dissolves the hand-written
@@ -6067,6 +6075,39 @@ fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
         }),
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a string argument", context),
+        }),
+    }
+}
+
+fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> {
+    match val {
+        Some(Value::List(items)) => {
+            let mut out: Vec<u8> = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                match item {
+                    Value::Int(n) if (0..=255).contains(n) => out.push(*n as u8),
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "{} expects Bytes (List of 0..255), got element {}",
+                                context,
+                                other.type_label()
+                            ),
+                        });
+                    }
+                }
+            }
+            Ok(out)
+        }
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects Bytes (List), got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a Bytes argument", context),
         }),
     }
 }
