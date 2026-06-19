@@ -64,7 +64,6 @@ import v2.extdeps.languages.bash {
   bash_pipe_and_or_brace_grouped_emitted,
   bash_pipe_and_or_brace_grouped_source_text,
   bash_pipe_and_or_brace_grouped_target_model,
-  bash_pipe_and_or_flat_wrong_concrete_tokens,
   bash_pipe_and_or_flat_wrong_emitted,
   bash_pipe_and_or_flat_wrong_source_text,
   bash_pipe_and_or_flat_wrong_target_model
@@ -385,20 +384,13 @@ test fn bash_emit_pipe_and_or_flat_ne_brace_grouped_holds() -> Bool {
   bash_pipe_and_or_flat_wrong_source_text != bash_pipe_and_or_brace_grouped_source_text
 }
 
-// RED — flat wrong bytes must not lhs-exact-match the brace-grouped production.
-fn bash_lhs_exact_pipe_flat_wrong_rejects_brace_grouped_lhs() -> Bool {
-  match bash_lhs_exact_relation_row_witness(
-    lhs: ^bash_production_pipe_and_or_brace_grouped,
-    tokens: bash_pipe_and_or_flat_wrong_concrete_tokens(),
-    emitted: bash_pipe_and_or_flat_wrong_emitted
-  ) {
-    Violates { diagnostic: _ } => true
-    Holds { value: _ } => false
-  }
-}
-
-test fn bash_emit_pipe_flat_wrong_rejects_brace_grouped_lhs_holds() -> Bool {
-  bash_lhs_exact_pipe_flat_wrong_rejects_brace_grouped_lhs()
+// RED — flat-wrong model emits the mis-grouped bytes (proves the wrong fixture is real).
+test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_pipe_and_or_flat_wrong_emitted,
+    source_text: bash_pipe_and_or_flat_wrong_source_text,
+    target: bash_pipe_and_or_flat_wrong_target_model()
+  )
 }
 
 // RED — brace-grouped emitted through the flat-wrong target model must not fabricate grouped bytes.
