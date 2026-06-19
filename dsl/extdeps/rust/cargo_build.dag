@@ -105,7 +105,7 @@ service cargo.Build {
       stderr: String from "stderr"
     }
     // Note: args are appended to the command by the transport layer.
-    transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}", args] }
+    transport shell { argv: ["cargo", "run", "-p", package, "--bin", bin, args] }
     exit {
       0 => Unit
       101 => String "Run failed"
