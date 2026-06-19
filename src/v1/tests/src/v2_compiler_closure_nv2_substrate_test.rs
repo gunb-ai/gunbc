@@ -112,6 +112,7 @@ fn nv2_eval_context(manifest_dir: &Path) -> Result<InterpContext, String> {
     let ws = workspace_root();
     let entry = ws.join(NV2_GATE_ENTRY);
     let roots = vec![
+        ws.join("dsl").to_string_lossy().to_string(),
         ws.join("src/v2").to_string_lossy().to_string(),
         manifest_dir.to_string_lossy().to_string(),
     ];
@@ -408,7 +409,7 @@ fn emit_representative_slice_manifest() {
 }
 
 #[test]
-#[ignore = "gap4 probe — prefix-scan first scoped-ingest Reject (manual)"]
+#[ignore = "gap4 probe — prefix binary-search first scoped-ingest Reject (manual)"]
 fn probe_gap4_scoped_ingest_first_reject() {
     let ws = workspace_root();
     let v2_root = ws.join("src/v2").to_string_lossy().to_string();
