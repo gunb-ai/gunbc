@@ -54,6 +54,11 @@ data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
 
 // -- Service: REST transport wiring ------------------------------
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH gcp.STS ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.STS {
   config {
     endpoint: "https://sts.googleapis.com"
@@ -86,17 +91,17 @@ service gcp.STS {
       429 => GcpOAuth2ErrorShape
       5xx => GcpOAuth2ErrorShape
     }
-    mock_response {
-      200 => { access_token: "ya29.mock-sts-token", issued_token_type: "urn:ietf:params:oauth:token-type:access_token", token_type: "Bearer", expires_in: 3600 } "Token exchanged",
-      400 => { error: "invalid_grant", error_description: "Subject token is expired" } "Invalid or expired token",
-      403 => { error: "access_denied", error_description: "WIF pool not bound to service account" } "WIF not configured"
-    }
   }
 }
 
 // OIDC token providers -- these are not GCP services but are used
 // to acquire subject tokens for the STS exchange.
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH github.OIDC ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service github.OIDC {
   // Endpoint and auth token come from per-job env vars on GitHub Actions
   // (ACTIONS_ID_TOKEN_REQUEST_URL / ACTIONS_ID_TOKEN_REQUEST_TOKEN).
@@ -119,14 +124,14 @@ service github.OIDC {
       403 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
-    mock_response {
-      200 => { value: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-oidc-token", count: 1 } "OIDC token acquired",
-      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Invalid request token",
-      403 => { message: "Forbidden", documentation_url: "https://docs.github.com/rest" } "Not running on GitHub Actions"
-    }
   }
 }
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH gcp.Metadata ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.Metadata {
   config { endpoint: "http://metadata.google.internal" }
 
@@ -140,10 +145,6 @@ service gcp.Metadata {
       200 => String
       404 => GcpErrorShape
       5xx => GcpErrorShape
-    }
-    mock_response {
-      200 => "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-identity-token" "Identity token from metadata server",
-      404 => { error: { code: 404, message: "Metadata server not available", status: "NOT_FOUND" } } "Not running on GCP"
     }
   }
 }

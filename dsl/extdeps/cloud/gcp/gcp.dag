@@ -137,9 +137,6 @@ service gcloud.Auth {
       0 => Unit
       nonzero => String "Authentication failed"
     }
-    mock_response {
-      0 => { ok: true } "Login succeeded"
-    }
   }
 
   operation ReadADC {
@@ -152,9 +149,6 @@ service gcloud.Auth {
     readonly
     // Parses JSON: extracts client_id, client_secret, refresh_token
     transport file { op: READ, path: "\{path\}" }
-    mock_response {
-      0 => { client_id: "mock-client-id.apps.googleusercontent.com", client_secret: "mock-client-secret", refresh_token: "1//mock-refresh-token" } "Mock ADC"
-    }
   }
 }
 
@@ -165,6 +159,11 @@ type GoogleOAuth2Refresh200Body {
   scope: String?
 }
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH oauth2.Google ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service oauth2.Google {
   config { endpoint: "https://oauth2.googleapis.com" }
 
@@ -188,11 +187,6 @@ service oauth2.Google {
       401 => GcpOAuth2ErrorShape
       5xx => GcpOAuth2ErrorShape
     }
-    mock_response {
-      200 => { access_token: "ya29.mock-access-token", expires_in: 3600, token_type: "Bearer", scope: "https://www.googleapis.com/auth/cloud-platform" } "Token refreshed",
-      400 => { error: "invalid_grant", error_description: "Token has been expired or revoked" } "Expired refresh token",
-      401 => { error: "invalid_client", error_description: "The OAuth client was not found" } "Invalid client credentials"
-    }
   }
 }
 
@@ -203,6 +197,11 @@ service oauth2.Google {
 // defect its own comment flagged. Removed: there is exactly one model of the
 // refresh endpoint, and `curl` is a transport, not a second handler we owe here.
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH shell.GCloud ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}
@@ -212,9 +211,6 @@ service shell.GCloud {
     exit {
       0 => Unit
       nonzero => String "Failed to get access token"
-    }
-    mock_response {
-      0 => { access_token: "ya29.mock-gcloud-access-token" } "Mock access token"
     }
   }
 
@@ -230,9 +226,6 @@ service shell.GCloud {
     exit {
       0 => Unit
       nonzero => String "Failed to access secret"
-    }
-    mock_response {
-      0 => { secret_value: "mock-secret-value" } "Mock secret"
     }
   }
 }
