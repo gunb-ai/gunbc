@@ -160,8 +160,10 @@ fn decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
     walk_tree(&ws.join("dsl"), &mut files);
     walk_tree(&ws.join("src"), &mut files);
 
-    let mut by_decl: HashMap<String, HashSet<String>> =
-        decl_names.iter().map(|name| (name.clone(), HashSet::new())).collect();
+    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
+        .iter()
+        .map(|name| (name.clone(), HashSet::new()))
+        .collect();
 
     for path in files {
         let rel = rel_path_from_workspace(&ws, &path);
