@@ -89,9 +89,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, check_floor_filename_hygiene, discover_floor_corpus_rows,
-    make_eval_context_with_fixture_store, resolve_entry_with_index, run_claim, ClaimOutcome,
-    DiscoveryRow, MultiEntryIndex,
+    build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
+    discover_floor_corpus_rows, make_eval_context_with_fixture_store, resolve_entry_with_index,
+    run_claim_measured, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -394,21 +394,23 @@ fn resolve_timed(
 /// Run one witness, timing its eval and reporting it on stderr.
 fn run_claim_timed(
     ctx: &InterpContext,
+    closure_subject: &str,
     function: &str,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) {
-    // Under GUNBC_INTERP_PROFILE=1 the interpreter records a per-instruction
-    // eval histogram; reset before this witness so the breakdown is per-row.
-    v1_compiler::v1_interpreter::eval_profile_reset();
-    let started = Instant::now();
-    let outcome = run_claim(ctx, function);
-    let ms = started.elapsed().as_millis();
+    let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
     report_outcome(function, outcome, any_failed);
-    eprintln!("[witness] {}: {}ms", function, ms);
+    eprintln!(
+        "[witness] {}: {}ms subject={} eval_self={:.3}ms",
+        function,
+        receipt.wall_nanos / 1_000_000,
+        receipt.subject_key,
+        receipt.eval_self_nanos as f64 / 1.0e6,
+    );
     print_eval_profile(function);
     timings.witnesses += 1;
-    timings.witness_ms += ms;
+    timings.witness_ms += receipt.wall_nanos / 1_000_000;
 }
 
 /// Print the per-instruction eval breakdown for the witness just run, sorted by
@@ -483,10 +485,14 @@ fn run_witnesses(
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
+    let closure_subject = closure_subject_for_entry(index, &group.entry).map_err(|e| {
+        eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
+        ExitCode::from(1)
+    })?;
     let ctx =
         make_eval_context_with_fixture_store(&graph, source_indices, execution_mode, fixture_store);
     for function in &group.functions {
-        run_claim_timed(&ctx, function, any_failed, timings);
+        run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
     }
     Ok(())
 }
@@ -607,6 +613,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             group.functions.len()
         );
         let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
+        let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
+            eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
+            ExitCode::from(1)
+        })?;
         let ctx = make_eval_context_with_fixture_store(
             &graph,
             source_indices,
@@ -614,7 +624,13 @@ fn run() -> Result<ExitCode, ExitCode> {
             fixture_store.clone(),
         );
         for function in &group.functions {
-            run_claim_timed(&ctx, function, &mut any_failed, &mut timings);
+            run_claim_timed(
+                &ctx,
+                &closure_subject,
+                function,
+                &mut any_failed,
+                &mut timings,
+            );
         }
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);

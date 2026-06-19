@@ -17,7 +17,13 @@
 module v2.lens.identical_variant_payload
 
 
-import v2.std.node { Node, Symbol }
+import std.lens_verdict {
+  LensVerdict,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
+  Unrealized,
+}
+import v2.std.node { Node }
 
 
 // 🟢 family discriminator — shared by L1.4 parent, L1.4.b, and this sub-signature.
@@ -27,20 +33,23 @@ type CarrierCloneTrigger
   | IdenticalVariantPayload
 
 
-// 🟢 verdict — fail-closed until structural_similarity lands.
-type IdenticalVariantPayloadVerdict
-  = Unrealized
-  | NotDuplicatePayload
-  | DuplicatePayloadArms {
-      coproduct: Symbol
-      trigger: CarrierCloneTrigger
+data identical_variant_payload_module: String = "v2.lens.identical_variant_payload"
+
+
+fn identical_variant_payload_unrealized_verdict() -> LensVerdict {
+  Unrealized {
+    diagnostic: LensVerdictDiagnostic {
+      reason: "identical_variant_payload_producer_unavailable",
+      at: ModuleWholeFile { module_name: identical_variant_payload_module }
     }
+  }
+}
 
 
 // 🟢 lens fact — one row per scanned type-decl locus.
 type IdenticalVariantPayloadFact {
   type_locus: Node
-  verdict: IdenticalVariantPayloadVerdict
+  verdict: LensVerdict
 }
 
 
@@ -48,6 +57,6 @@ type IdenticalVariantPayloadFact {
 fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantPayloadFact {
   IdenticalVariantPayloadFact {
     type_locus: type_node,
-    verdict: Unrealized
+    verdict: identical_variant_payload_unrealized_verdict()
   }
 }

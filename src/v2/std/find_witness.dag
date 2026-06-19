@@ -30,9 +30,6 @@ import v2.std.project_to_core_predicate {
   project_to_core_preservation_holds
 }
 import v2.std.refinement_widening_predicate { refinement_widening_preservation_holds }
-import v2.std.type_expr_projection_discipline_zip_fold_predicate {
-  type_expr_projection_discipline_zip_fold_preservation_holds
-}
 import v2.std.node { Node, Symbol, well_formed }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -74,8 +71,7 @@ fn realized_preservation_rules() -> List<Symbol> {
     ^preservation_rule_constraint_satisfaction,
     ^preservation_rule_exact_structural_equality_zip_fold,
     ^preservation_rule_refinement_widening,
-    ^preservation_rule_project_to_core,
-    ^preservation_rule_type_expr_projection_discipline_zip_fold
+    ^preservation_rule_project_to_core
   ]
 }
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
@@ -140,12 +136,6 @@ fn preservation_predicate_holds(
     )
   } else if predicate.preservation_rule == ^preservation_rule_project_to_core {
     project_to_core_preservation_holds(
-      source_facts: source_facts,
-      candidate: candidate,
-      algebra: predicate.algebra
-    )
-  } else if predicate.preservation_rule == ^preservation_rule_type_expr_projection_discipline_zip_fold {
-    type_expr_projection_discipline_zip_fold_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra
