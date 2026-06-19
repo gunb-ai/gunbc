@@ -1,11 +1,16 @@
-// std/memory/types.dag — DRAM module taxonomy (shared types, no vendor data).
+// extdeps/memory/types.dag — DRAM module taxonomy (shared types, no vendor data).
+//
+// DRAM is a hardware domain model, not a universal framework, so it lives downstream
+// of std (extdeps), alongside the per-vendor catalog rows that inhabit this shape
+// (extdeps/memory/<vendor>.dag). std owns only the universal frameworks it builds on
+// (measure, types).
 
-module std.memory.types
+module extdeps.memory.types
 
 import std.measure { ByteSize, BitWidth, byte_size_count, bit_width, bit_width_count }
 import std.types { Bool, Int, NonEmptyStr }
-
-type DramManufacturer = SkHynix | Samsung | Micron
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 
 // DimmBuffering — the command/address path between the host and the DRAM devices.
 // Unbuffered (UDIMM) drives the DRAM directly; Registered (RDIMM) buffers the
@@ -17,9 +22,10 @@ type DramManufacturer = SkHynix | Samsung | Micron
 // Anchor: https://en.wikipedia.org/wiki/Registered_memory  (RDIMM vs LRDIMM)
 type DimmBuffering = Unbuffered | Registered | LoadReduced
 
-// A populated DIMM identifies itself by its catalog row — std/memory owns the SHAPE
-// + the manufacturer taxonomy; the per-vendor rows live in extdeps/memory/<vendor>.
-// No std-level enum of one vendor's SKUs (that would make the taxonomy a purchase
+// A populated DIMM identifies itself by its catalog row — this owns the SHAPE; the
+// manufacturer is the single Vendor<Hardware> authority (extdeps/vendor/) and the
+// per-vendor rows live in extdeps/memory/<vendor>.
+// No enum of one vendor's SKUs (that would make the taxonomy a purchase
 // order). One JEDEC part is ONE catalog row regardless of how many marketplace
 // listings sell it: the row decomposes the part number into grounded axes. The two
 // numeric organization axes carry their MAGNITUDE (not an opaque enum token) so
@@ -30,7 +36,7 @@ type DimmBuffering = Unbuffered | Registered | LoadReduced
 // capacity = die_density × dram_data_chips_per_rank × rank_count.
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
-  manufacturer: DramManufacturer
+  manufacturer: Vendor<Hardware>
   // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
   // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in std.memory with
   // a +/- claim — then capacity = die_density × (64 / bit_width_count(chip_width)) ×

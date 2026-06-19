@@ -8,14 +8,15 @@
 
 module extdeps.cpu.ampere
 
-import std.cpu.types { CpuArchitecture, CpuModelCatalogRow, CpuSocket, SocketPackage }
+import extdeps.cpu.types { CpuArchitecture, CpuModelCatalogRow, CpuSocket, SocketPackage }
+import extdeps.vendor.ampere { ampere }
 import std.measure { hardware_thread_count, hertz }
 
 // Ampere Altra Max M128-30 — 128c/128t, 183W, Neoverse-N1.
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,
-  vendor: Ampere,
+  vendor: ampere,
   architecture: Aarch64,
   cores: 128,
   threads: hardware_thread_count(128),
@@ -28,7 +29,7 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "Q64-30",
   oem_listing_id: "AC-106418002",
-  vendor: Ampere,
+  vendor: ampere,
   architecture: Aarch64,
   cores: 64,
   threads: hardware_thread_count(64),

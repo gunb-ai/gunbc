@@ -1,10 +1,16 @@
-// std/cpu/types.dag — shared CPU taxonomy types (no vendor catalog data).
+// extdeps/cpu/types.dag — shared CPU taxonomy types (no vendor catalog data).
+//
+// A CPU is a hardware domain model, not a universal framework, so it lives downstream
+// of std (extdeps), alongside the per-vendor catalog rows that inhabit this shape
+// (extdeps/cpu/<vendor>.dag). std owns only the universal frameworks it builds on
+// (measure, types).
 
-module std.cpu.types
+module extdeps.cpu.types
 
 import std.measure { HardwareThreadCount, Hertz }
 import std.types { Int, NonEmptyStr }
-import std.hardware { HardwareVendor }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 
 type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 
@@ -27,7 +33,7 @@ type CpuSocket {
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
-  vendor: HardwareVendor
+  vendor: Vendor<Hardware>
   architecture: CpuArchitecture
   cores: Int
   threads: HardwareThreadCount
