@@ -163,15 +163,3 @@ pub struct DagArtifact {
     pub diagnostics: Rc<Vec<String>>,
     pub files: Rc<Vec<String>>,
 }
-
-pub struct Python;
-pub struct Dag;
-pub struct ServiceBinary;
-pub struct Library;
-pub struct Frontend;
-pub struct GeneratedSupport;
-pub struct DirectCall;
-pub struct HttpJson;
-pub struct MessageQueue;
-pub struct Ffi;
-pub struct FileProtocol;

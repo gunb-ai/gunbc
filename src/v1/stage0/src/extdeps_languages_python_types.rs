@@ -258,6 +258,3 @@ pub fn python_cast_syntax() -> Rc<CastSyntax> {
     }
     CACHED.with(|c: &Rc<CastSyntax>| c.clone())
 }
-
-pub struct DynamicType;
-pub struct AnnotatedType;

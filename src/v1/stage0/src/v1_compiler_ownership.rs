@@ -1246,8 +1246,3 @@ pub fn analyze_ownership(
         })
     }
 }
-
-pub struct Consumed;
-pub struct Read;
-pub struct Threaded;
-pub struct Projected;

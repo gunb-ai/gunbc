@@ -4816,7 +4816,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
         concat(
           "String::from_utf8(",
           emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
-          ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {}\", e))?"
+          ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {e}\"))?"
         )
       Absent => "compile_error!(\"utf8_decode_bytes call missing value argument\")"
     }

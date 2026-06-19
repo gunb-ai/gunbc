@@ -242,10 +242,3 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
         }
     }
 }
-
-pub struct Fold;
-pub struct Descend;
-pub struct Repeat;
-pub struct TreeDescent;
-pub struct CollectionFold;
-pub struct ArithmeticRepeat;

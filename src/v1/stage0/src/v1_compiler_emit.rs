@@ -6105,15 +6105,3 @@ pub fn emit_typed_tco_reassign_shared(
 pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
     v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, String>(), key, value)
 }
-
-pub struct CapServiceEmit;
-pub struct CapAsyncTransport;
-pub struct CapTestGeneration;
-pub struct CapDryRunMode;
-pub struct CapRcOwnership;
-pub struct ExprCatLeaf;
-pub struct ExprCatCompound;
-pub struct ExprCatControlFlow;
-pub struct ExprCatBinding;
-pub struct ExprCatService;
-pub struct ExprCatNone;
