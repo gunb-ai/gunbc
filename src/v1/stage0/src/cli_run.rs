@@ -2353,6 +2353,13 @@ fn normalize_repo_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
 }
 
+/// Match a diff-side repo-relative path to a witness entry path (absolute or relative).
+fn diff_file_matches_entry(diff_file: &str, entry_path: &str) -> bool {
+    let file = normalize_repo_path(diff_file);
+    let entry = normalize_repo_path(entry_path);
+    file == entry || entry.ends_with(&file) || file.ends_with(&entry)
+}
+
 /// Parse unified diff output into new-side line ranges per repo-relative file path.
 fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
@@ -2559,6 +2566,8 @@ struct NodeFrontierSeeds {
     nodes: Vec<v1_interpreter::Value>,
     /// `(repo-relative file, data item name)` for TestClaim declarations whose spans overlap.
     overlapping_test_claims: HashSet<(String, String)>,
+    /// Every data item whose full declaration span overlaps the diff (for entry-local re-eval).
+    overlapping_data_items: HashSet<(String, String)>,
 }
 
 /// Node-precise frontier: substrate evaluation nodes from TestClaim `data` items whose
@@ -2571,6 +2580,7 @@ fn collect_frontier_seeds_from_diff_line_ranges(
     let mut frontier = Vec::new();
     let mut seen = HashSet::new();
     let mut overlapping_test_claims = HashSet::new();
+    let mut overlapping_data_items = HashSet::new();
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
             continue;
@@ -2605,6 +2615,7 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             else {
                 continue;
             };
+            overlapping_data_items.insert((file_norm.clone(), name.clone()));
             // A claim whose own declaration span was edited re-runs via the fast-path
             // (entry_touches_frontier_seeds checks overlapping_test_claims by name).
             if value_is_test_claim(&val, &ctx) {
@@ -2627,7 +2638,41 @@ fn collect_frontier_seeds_from_diff_line_ranges(
     Ok(NodeFrontierSeeds {
         nodes: frontier,
         overlapping_test_claims,
+        overlapping_data_items,
     })
+}
+
+/// Re-evaluate changed data items in the *entry* context so frontier `Node` values share
+/// the same `InterpContext` as the witness claims (`==` / subtree checks are ctx-sensitive).
+fn entry_frontier_nodes_from_seeds(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    seeds: &NodeFrontierSeeds,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let entry_norm = normalize_repo_path(entry_path);
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for (file, name) in &seeds.overlapping_data_items {
+        if !diff_file_matches_entry(file, entry_path) {
+            continue;
+        }
+        let Some(val) = v1_interpreter::with_active_context(ctx, || {
+            v1_interpreter::eval_data_item_value(ctx, name)
+        })
+        .map_err(|e| format!("re-eval `{name}` in {entry_path}: {e}"))?
+        else {
+            continue;
+        };
+        let mut item_nodes = Vec::new();
+        collect_node_values(&val, ctx, &mut item_nodes);
+        for node in item_nodes {
+            let key = ctx.format_value(&node);
+            if seen.insert(key) {
+                out.push(node);
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn entry_touches_frontier_seeds(
@@ -2635,13 +2680,18 @@ fn entry_touches_frontier_seeds(
     entry_path: &str,
     seeds: &NodeFrontierSeeds,
 ) -> Result<bool, String> {
-    let entry_norm = normalize_repo_path(entry_path);
     for name in ctx.item_registry.keys() {
-        if overlapping_test_claims_contains(seeds, &entry_norm, name) {
+        if seeds.overlapping_test_claims.iter().any(|(file, claim)| {
+            diff_file_matches_entry(file, entry_path) && claim == name
+        }) {
             return Ok(true);
         }
     }
-    entry_claims_touch_frontier(ctx, &list_value_from_vec(seeds.nodes.clone()))
+    let entry_frontier = entry_frontier_nodes_from_seeds(ctx, entry_path, seeds)?;
+    if entry_frontier.is_empty() {
+        return Ok(false);
+    }
+    entry_claims_touch_frontier(ctx, &list_value_from_vec(entry_frontier))
 }
 
 fn overlapping_test_claims_contains(
@@ -2804,6 +2854,7 @@ pub fn run_discovery_corpus_with_options(
                     NodeFrontierSeeds {
                         nodes: Vec::new(),
                         overlapping_test_claims: HashSet::new(),
+                        overlapping_data_items: HashSet::new(),
                     },
                 )
             }
@@ -2814,6 +2865,7 @@ pub fn run_discovery_corpus_with_options(
             NodeFrontierSeeds {
                 nodes: Vec::new(),
                 overlapping_test_claims: HashSet::new(),
+                overlapping_data_items: HashSet::new(),
             },
         )
     };
