@@ -1,9 +1,9 @@
 // Status: compile-only anchor.
 
 module v2.test.manual.typescript_language_model_anchor
+import v2.std.language_model { LanguageModel }
 
 import v2.extdeps.languages.typescript {
-  TsLanguageModel,
   ts_declared_inhabitants_root,
   ts_bigint_algebra_inhabitance,
   ts_bool_algebra_inhabitance,
@@ -23,7 +23,7 @@ import v2.std.collection { List }
 import v2.std.model_core { AlgebraInhabitanceDecl, PrimitiveFactBundle }
 import v2.std.node { Node }
 
-type ts_anchor_language_model = TsLanguageModel
+type ts_anchor_language_model = LanguageModel
 
 data ts_anchor_wave1: ts_anchor_language_model = ts_language_model_wave1()
 data ts_anchor_number: Node = ts_inhabitant_number_node()

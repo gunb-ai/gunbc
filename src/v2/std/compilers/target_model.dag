@@ -147,7 +147,6 @@ type TargetModel {
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
 }
-type TargetModelBundle = TargetModel
 
 // Default-empty emit transforms for non-shell targets (identity on absent lookup).
 data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()

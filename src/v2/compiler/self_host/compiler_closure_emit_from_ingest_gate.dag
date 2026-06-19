@@ -1,0 +1,65 @@
+// Scope: N_v2 substrate gate — emit_compiler_import_closure_from_ingest on scoped
+//   host manifest overlay (v2 own emitter via emit_for_target).
+// Status: NOT auto-enrolled (no test fn); run via scripts/v2-compiler-closure-nv2-gate.sh only.
+
+module v2.test.self_host.compiler_closure_emit_from_ingest_gate
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String, string_is_empty }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
+  host_source_root_ingest,
+  host_source_root_ingest_coverage_receipt
+}
+
+
+fn compiler_closure_scoped_ingest_module_count_ok() -> Bool {
+  host_source_root_ingest_coverage_receipt.coverage_complete
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count == host_source_root_ingest_coverage_receipt.produced_row_count)
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+}
+
+
+fn compiler_closure_scoped_ingest_parses() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: host_source_root_ingest,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn compiler_closure_v2_emit_from_scoped_ingest_accepts() -> Bool {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: host_source_root_ingest,
+    admission: host_compiler_closure_admission,
+    target: rust_mvp1_target_model()
+  ) {
+    Accepted { value: receipt, diagnostics: d } =>
+      (d == None) && (receipt.closure_size > 0) && (string_is_empty(s: receipt.source) == false)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn compiler_closure_v2_emit_source_for_cargo_check() -> String {
+  match emit_compiler_import_closure_from_ingest(
+    ingest: host_source_root_ingest,
+    admission: host_compiler_closure_admission,
+    target: rust_mvp1_target_model()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } => receipt.source
+    Rejected { diagnostics: _ } => ""
+  }
+}

@@ -8,11 +8,16 @@
 
 module v2.test.workflow.host_source_root_ingest_manifest
 
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+}
 import v2.compiler.source_authority {
   SourceRootIngest,
   SourceRootProvenanceCoverageReceipt,
 }
 import v2.std.algebra { Empty }
+import v2.std.qualified_name { QnCons, QnEmpty }
 import v2.std.text { String }
 
 data host_source_root_ingest_content_hash: String = ""
@@ -24,3 +29,16 @@ data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageRecei
 }
 
 data host_source_root_ingest: SourceRootIngest = Empty
+
+// Compile stub — runtime overlay replaces with entry-parsed admission from discover_source_root_ingest.
+// Admission QN authority: 00_compile.dag entry source; pinned by v1-compiler-tests
+//   parse_compiler_entry_admission_imports_compile_module + manifest_entry_admission_qualified_name_is_well_formed.
+data host_compiler_closure_admission: Admission = Admission {
+  subject: ResolutionSubject {
+    name: QnCons {
+      head: ^v2,
+      tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } }
+    }
+  },
+  imports: Empty
+}

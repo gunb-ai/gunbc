@@ -1,7 +1,7 @@
 //! Node-tree projection for `v2.lens.extdeps_shape_transport_policy`.
 //! Parses extdeps `.dag` modules: dead input params per operation + embedded policy literals in data rows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -278,6 +278,48 @@ pub fn embedded_policy_literal_count_for_qualified_name(qn: &crate::v1_interpret
     embedded_policy_literal_count_for_module_path(module_path)
 }
 
+fn module_source_nickname_literal_count_in_node(
+    node: &Rc<Node>,
+    real_paths: &HashSet<String>,
+) -> i64 {
+    let mut count = 0i64;
+    if let Some(lit) = literal_string_value(node) {
+        if real_paths.contains(&lit) {
+            count += 1;
+        }
+    }
+    if let Some(body) = node.body.as_ref() {
+        count += module_source_nickname_literal_count_in_node(body, real_paths);
+    }
+    for child in node.children.iter() {
+        count += module_source_nickname_literal_count_in_node(child, real_paths);
+    }
+    for param in node.params.iter() {
+        count += module_source_nickname_literal_count_in_node(param, real_paths);
+    }
+    if let Some(type_annotation) = node.type_annotation.as_ref() {
+        count += module_source_nickname_literal_count_in_node(type_annotation, real_paths);
+    }
+    count
+}
+
+/// Count `LitStr` nodes whose value is an exact member of `build_module_path_index().values()`.
+/// dissolve-on: ROADMAP Lane 3a SourceRootIngest (#5126).
+pub fn module_source_nickname_literal_count_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> i64 {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    let path = source_path_for_module_path(&module_path);
+    let index = crate::module_path_index::build_module_path_index();
+    let real_paths: HashSet<String> = index.into_values().collect();
+    let (items, _) = parse_module_items(&path);
+    let mut total = 0i64;
+    for item in items.iter() {
+        total += module_source_nickname_literal_count_in_node(item, &real_paths);
+    }
+    total
+}
+
 pub fn policy_leak_count_for_qualified_name(qn: &crate::v1_interpreter::Value) -> i64 {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     policy_leak_count_for_module_path(module_path)
@@ -494,6 +536,21 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coverage_domain_module_source_nickname_literal_count_is_positive() {
+        let path = crate::module_path_index::source_path_for_module_path(
+            "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence".to_string(),
+        );
+        let index = crate::module_path_index::build_module_path_index();
+        let real_paths: HashSet<String> = index.into_values().collect();
+        let (items, _) = parse_module_items(&path);
+        let mut total = 0i64;
+        for item in items.iter() {
+            total += module_source_nickname_literal_count_in_node(item, &real_paths);
+        }
+        assert!(total > 0, "expected nickname literals, got {total}");
+    }
 
     #[test]
     fn cargo_clippy_dead_param_defused_after_list_argv_splice() {
