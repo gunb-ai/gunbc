@@ -24,6 +24,12 @@ data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
 data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
 data cwc_src_type_review: String = "module probe\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\n"
 
+// Non-coproduct RHS: single type reference, not a pipe chain — fold is not-applicable.
+data cwc_src_type_scalar: String = "module probe\ntype T = Int\n"
+
+// Malformed n-ary coproduct: record variant without a top-level atom identity (≥2 arms).
+data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int } | B | C\n"
+
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
@@ -95,6 +101,36 @@ fn cwc_disj_arm_count(n: Node) -> Int {
   )
 }
 
+fn cwc_norm_rejects(src: String) -> Bool {
+  match cwc_norm_of(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn cwc_norm_rejects_with_located_diagnostics(src: String) -> Bool {
+  match cwc_norm_of(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_scalar) {
+    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
+  cwc_norm_rejects_with_located_diagnostics(src: cwc_src_type_malformed_coproduct)
+}
+
+// §5 red control: swallowing fold Rejected would accept malformed 3-arm coproduct (must stay false).
+test fn cwc_malformed_nary_coproduct_fail_open_control() -> Bool {
+  !cwc_norm_rejects(src: cwc_src_type_malformed_coproduct)
+}
+
 test fn cwc_norm_review_event_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_review)
 }
@@ -137,4 +173,7 @@ test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
     && cwc_review_normalized_has_disj()
     && cwc_review_disj_has_four_arms()
     && cwc_cwc_module_resolve_accepts()
+    && cwc_non_coproduct_rhs_passes_through()
+    && cwc_malformed_nary_coproduct_normalize_rejects()
+    && !cwc_malformed_nary_coproduct_fail_open_control()
 }
