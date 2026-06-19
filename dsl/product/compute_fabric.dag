@@ -45,6 +45,7 @@ import std.measure {
   hardware_thread_count,
   hardware_thread_count_value,
   hertz,
+  watt,
 }
 import std.currency { CurrencyCode }
 // Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
@@ -78,6 +79,7 @@ import extdeps.cpu.types {
 }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
+import std.realization_width { bounded_host_spawn_width }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -444,18 +446,56 @@ fn requires_placement_facts(demand: WorkDemand) -> Bool {
 }
 
 fn satisfied_dimensions_for(demand: WorkDemand) -> List<DemandDimension> {
+  let parallelism_dims = match demand.parallelism {
+    IndependentShards { shard_count: _ } => [DemandParallelism]
+    SingleWorkItem => []
+    DependencyGraphParallel { graph: _ } => []
+    PartitionedReduce {
+      partitioner: _,
+      map: _,
+      reduce: _,
+      laws: _,
+    } => []
+  }
   concat(
     [DemandIsolation],
     concat(
-      match demand.resources.cpu {
-        Absent => []
-        Present { value: _ } => [DemandCpu]
-      },
-      match demand.resources.memory {
-        Absent => []
-        Present { value: _ } => [DemandMemory]
-      },
+      parallelism_dims,
+      concat(
+        match demand.resources.cpu {
+          Absent => []
+          Present { value: _ } => [DemandCpu]
+        },
+        match demand.resources.memory {
+          Absent => []
+          Present { value: _ } => [DemandMemory]
+        },
+      ),
     ),
+  )
+}
+
+fn work_demand_shard_count(demand: WorkDemand) -> Int {
+  match demand.parallelism {
+    SingleWorkItem => 1
+    IndependentShards { shard_count } => shard_count
+    DependencyGraphParallel { graph: _ } => 1
+    PartitionedReduce {
+      partitioner: _,
+      map: _,
+      reduce: _,
+      laws: _,
+    } => 1
+  }
+}
+
+// Width projection: min(shard_count, PlacementSupplyRow.hardware_threads) — single authority.
+// Eligibility is NOT rejected when demand exceeds supply — the peripheral host fold caps
+// fan-out; satisfies records DemandParallelism as proven when IndependentShards is present.
+fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> HardwareThreadCount {
+  bounded_host_spawn_width(
+    shard_count: work_demand_shard_count(demand: demand),
+    hardware_threads: supply.hardware_threads
   )
 }
 
@@ -930,7 +970,7 @@ data example_resource_cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
-  tdp_watts: 250,
+  tdp_watts: watt(250),
 }
 
 data example_resource_cpu: CpuFacts = CpuFacts {

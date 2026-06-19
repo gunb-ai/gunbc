@@ -140,7 +140,7 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
-  tdp_watts: 250
+  tdp_watts: watt(250)
 }
 
 // 🟡 aggregate_throughput is a MEASURED relative compute index (SPECrate-style), NOT cores×GHz.
