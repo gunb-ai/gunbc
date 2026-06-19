@@ -3,9 +3,9 @@
 // The generated main.rs calls handle_run_with_options() for the Run subcommand.
 
 use std::cell::RefCell;
-use std::process::Command;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::rc::Rc;
 
 use crate::std_node::compiler_recursive_types;
@@ -2344,9 +2344,7 @@ fn floor_git_diff_range() -> Result<String, String> {
 }
 
 fn normalize_repo_path(path: &str) -> String {
-    path.strip_prefix("./")
-        .unwrap_or(path)
-        .replace('\\', "/")
+    path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
 }
 
 /// Parse unified diff output into new-side line ranges per repo-relative file path.
@@ -2363,10 +2361,7 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
             let plus = line.split_whitespace().nth(2).unwrap_or("");
             let plus = plus.trim_start_matches('+');
             let (start, count) = if let Some((s, c)) = plus.split_once(',') {
-                (
-                    s.parse::<i64>().unwrap_or(1),
-                    c.parse::<i64>().unwrap_or(1),
-                )
+                (s.parse::<i64>().unwrap_or(1), c.parse::<i64>().unwrap_or(1))
             } else {
                 (plus.parse::<i64>().unwrap_or(1), 1)
             };
@@ -2548,16 +2543,19 @@ fn collect_frontier_seeds_from_diff_line_ranges(
                 if !span_overlaps_line_ranges(item.span.as_ref(), &source_indices, ranges) {
                     continue;
                 }
-                overlapping_data_names.push(authored_name_at(
-                    source_indices.clone(),
-                    item.clone(),
-                ));
+                overlapping_data_names.push(authored_name_at(source_indices.clone(), item.clone()));
             }
         }
         let ctx = make_eval_context(&graph, source_indices.clone(), execution_mode);
         for name in overlapping_data_names {
-            let Some(val) = v1_interpreter::eval_data_item_value(&ctx, &name)
-                .map_err(|e| format!("eval data `{name}` in {file_path}: {e}"))?
+            // Keep `ctx` active so FreeMonoid Variant chains in the data
+            // initializer (e.g. `test_claim_evaluation_nodes`) decode via the
+            // interned Empty/Cons symbols; a bare call leaves ACTIVE_CTX None and
+            // `free_monoid_to_vec` fails "fold_list … got Variant" (root fix, #5295).
+            let Some(val) = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::eval_data_item_value(&ctx, &name)
+            })
+            .map_err(|e| format!("eval data `{name}` in {file_path}: {e}"))?
             else {
                 continue;
             };
@@ -2618,7 +2616,14 @@ fn entry_claims_touch_frontier(
     frontier: &v1_interpreter::Value,
 ) -> Result<bool, String> {
     let mut saw_claim = false;
-    for val in v1_interpreter::eval_data_initializer_values(ctx).map_err(|e| format!("{e}"))? {
+    // Same active-context guard as the frontier-seed path: the data initializers
+    // include FreeMonoid Variant chains (`test_claim_evaluation_nodes`) that only
+    // decode while ACTIVE_CTX is set (root fix, #5295).
+    let initializer_values = v1_interpreter::with_active_context(ctx, || {
+        v1_interpreter::eval_data_initializer_values(ctx)
+    })
+    .map_err(|e| format!("{e}"))?;
+    for val in initializer_values {
         if !value_is_test_claim(&val, ctx) {
             continue;
         }
@@ -2738,7 +2743,9 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
     };
-    let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
+    let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier
+        && !line_ranges_by_file.is_empty()
+    {
         match collect_frontier_seeds_from_diff_line_ranges(
             &index,
             &line_ranges_by_file,
@@ -2749,17 +2756,23 @@ pub fn run_discovery_corpus_with_options(
                 eprintln!(
                     "claim_executor: node-frontier population failed ({msg}) — fail-closed, running full corpus"
                 );
-                (false, NodeFrontierSeeds {
-                    nodes: Vec::new(),
-                    overlapping_test_claims: HashSet::new(),
-                })
+                (
+                    false,
+                    NodeFrontierSeeds {
+                        nodes: Vec::new(),
+                        overlapping_test_claims: HashSet::new(),
+                    },
+                )
             }
         }
     } else {
-        (false, NodeFrontierSeeds {
-            nodes: Vec::new(),
-            overlapping_test_claims: HashSet::new(),
-        })
+        (
+            false,
+            NodeFrontierSeeds {
+                nodes: Vec::new(),
+                overlapping_test_claims: HashSet::new(),
+            },
+        )
     };
 
     // Group by entry (rows are sorted by (entry, function)), resolve each entry
@@ -2841,8 +2854,8 @@ pub fn run_discovery_corpus_with_options(
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
-        entry_touches_frontier_seeds, parse_unified_diff_line_ranges,
-        span_overlaps_line_ranges, FileLineRange,
+        entry_touches_frontier_seeds, parse_unified_diff_line_ranges, span_overlaps_line_ranges,
+        FileLineRange,
     };
     use crate::std_types::SourceSpan;
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
@@ -2865,7 +2878,9 @@ mod floor_skip_frontier_tests {
 
     fn data_item_line(
         fixture: &str,
-        source_indices: &std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+        source_indices: &std::rc::Rc<
+            HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+        >,
         graph: &std::rc::Rc<ResolvedGraph>,
         name: &str,
     ) -> i64 {
@@ -2906,7 +2921,10 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let file = "src/v2/lens/affected_set.dag";
         assert_eq!(
             ranges.get(file),
-            Some(&vec![FileLineRange { start: 101, end: 103 }])
+            Some(&vec![FileLineRange {
+                start: 101,
+                end: 103
+            }])
         );
     }
 
@@ -2947,18 +2965,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let index = build_multi_entry_index(&roots);
         let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
             .expect("discriminator fixture resolves");
-        let line_a = data_item_line(
-            &fixture,
-            &source_indices,
-            &graph,
-            "floor_disc_claim_on_a",
-        );
-        let line_b = data_item_line(
-            &fixture,
-            &source_indices,
-            &graph,
-            "floor_disc_node_b",
-        );
+        let line_a = data_item_line(&fixture, &source_indices, &graph, "floor_disc_claim_on_a");
+        let line_b = data_item_line(&fixture, &source_indices, &graph, "floor_disc_node_b");
         assert_ne!(
             line_a, line_b,
             "fixture must place A/B claims on distinct lines"
@@ -2967,12 +2975,9 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
         let ranges_a = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_a));
-        let seeds_a = collect_frontier_seeds_from_diff_line_ranges(
-            &index,
-            &ranges_a,
-            ExecutionMode::Wet,
-        )
-        .expect("frontier for A-line diff");
+        let seeds_a =
+            collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_a, ExecutionMode::Wet)
+                .expect("frontier for A-line diff");
         assert!(
             !seeds_a.nodes.is_empty(),
             "A-line diff must seed a non-empty frontier (line_a={line_a}, line_b={line_b})"
@@ -2985,12 +2990,9 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
 
         let ranges_b = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_b));
-        let seeds_b = collect_frontier_seeds_from_diff_line_ranges(
-            &index,
-            &ranges_b,
-            ExecutionMode::Wet,
-        )
-        .expect("frontier for B-line diff");
+        let seeds_b =
+            collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_b, ExecutionMode::Wet)
+                .expect("frontier for B-line diff");
         let touches_b = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_b)
             .expect("touch check for B-line diff");
         assert!(
@@ -3013,13 +3015,16 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             ws.join("dsl").to_string_lossy().into_owned(),
         ];
         let index = build_multi_entry_index(&roots);
-        let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
-            .expect("timeseries fixture resolves");
+        let (graph, source_indices) =
+            super::resolve_entry_with_index(&index, &fixture).expect("timeseries fixture resolves");
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
         // Unwrapped: exactly the current cli_run.rs:2621 call.
         let unwrapped = crate::v1_interpreter::eval_data_initializer_values(&ctx);
-        eprintln!("UNWRAPPED eval_data_initializer_values => {:?}", unwrapped.as_ref().map(|v| v.len()));
+        eprintln!(
+            "UNWRAPPED eval_data_initializer_values => {:?}",
+            unwrapped.as_ref().map(|v| v.len())
+        );
         if let Err(e) = &unwrapped {
             eprintln!("UNWRAPPED ERROR: {e}");
         }
@@ -3028,7 +3033,10 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let wrapped = crate::v1_interpreter::with_active_context(&ctx, || {
             crate::v1_interpreter::eval_data_initializer_values(&ctx)
         });
-        eprintln!("WRAPPED eval_data_initializer_values => {:?}", wrapped.as_ref().map(|v| v.len()));
+        eprintln!(
+            "WRAPPED eval_data_initializer_values => {:?}",
+            wrapped.as_ref().map(|v| v.len())
+        );
         if let Err(e) = &wrapped {
             eprintln!("WRAPPED ERROR: {e}");
         }

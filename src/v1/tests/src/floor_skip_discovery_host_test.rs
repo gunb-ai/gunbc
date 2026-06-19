@@ -161,10 +161,7 @@ fn discovery_corpus_skip_enabled_skips_untouched_explicit_witness() {
     let summary = run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
-        &[(
-            entry,
-            "floor_disc_witness_a_only_holds".to_string(),
-        )],
+        &[(entry, "floor_disc_witness_a_only_holds".to_string())],
         ExecutionMode::Wet,
         discovery_options(true),
     )
