@@ -15,6 +15,7 @@ type Gate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate
+  | Stage0LockstepGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -40,7 +41,8 @@ data gunbc_ci_gates: List<Gate> = [
   ResolvedImportsGate,
   DslCompileCleanGate,
   CiYamlGate,
-  SourceRootIngestGate
+  SourceRootIngestGate,
+  Stage0LockstepGate
 ]
 
 data gunbc_ci_spec: CiSpec = {
