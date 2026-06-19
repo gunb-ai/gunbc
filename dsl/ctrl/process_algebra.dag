@@ -1,4 +1,4 @@
-// std/process_algebra.dag -- staged process decomposition algebra.
+// ctrl/process_algebra.dag -- staged process decomposition algebra.
 //
 // Status: 🟡 STAGED. This file models the ctrl/ decomposition algebra as
 // substrate, but it is not runtime authority until the cut-over trio lands:
@@ -25,7 +25,7 @@
 // - ctrl/scripts/session-dashboard/dag_api.mjs
 // - ctrl PRs #1192/#1193/#1195/#1197.
 
-module std.process_algebra
+module ctrl.process_algebra
 
 import std.algebra { FreeMonoid }
 import std.effects { OperationEffect }

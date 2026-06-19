@@ -1,0 +1,8 @@
+// extdeps/vendor/nvidia.dag — Nvidia as a cited hardware-vendor entity.
+// Anchor: https://en.wikipedia.org/wiki/Nvidia
+module extdeps.vendor.nvidia
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+data nvidia: Vendor<Hardware> = Vendor { legal_name: "NVIDIA Corporation" }

@@ -32,7 +32,7 @@ import v2.test.manual.comprep_add_body_emit_typescript {
   comprep_ts_target_model_minus_catalog
 }
 import v2.test.manual.connective_anchors { stub_empty_conj }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 
 
 
@@ -44,7 +44,7 @@ fn comprep_b3_emit_host_fixture_inputs() -> Inputs {
   )
 }
 
-fn comprep_b3_host_run_i32(target: TargetModel, source: TargetSource) -> Outcome<Int> {
+fn comprep_b3_host_run_i32(target: TargetModel, source: Medium<String>) -> Outcome<Int> {
   match run_emit_host(
     target: target,
     source: source,

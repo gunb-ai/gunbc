@@ -36,8 +36,6 @@ import v2.extdeps.formats.spice {
   SpiceValue
 }
 import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
   CompilesClaim,
   ManualAnchorAbsent,
   StructuralEqualsClaim,
@@ -65,7 +63,7 @@ test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   }
 }
 
-fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
+test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
   let component = Capacitor {
     name: ^c1,
     n_plus: Named { node: NamedNode { name: ^n2 } },
@@ -78,7 +76,7 @@ fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
   }
 }
 
-fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
+test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
   let component = Inductor {
     name: ^l1,
     n_plus: Named { node: NamedNode { name: ^n3 } },
@@ -91,7 +89,7 @@ fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
   }
 }
 
-fn passive_topology_preserves_component_name_holds() -> Bool {
+test fn passive_topology_preserves_component_name_holds() -> Bool {
   let component = Resistor {
     name: ^r9,
     n_plus: Named { node: NamedNode { name: ^n9 } },
@@ -104,7 +102,7 @@ fn passive_topology_preserves_component_name_holds() -> Bool {
   }
 }
 
-fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
+test fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
   let named = named_affine_voltage(
     reference: GroundReference,
     approx: timeseries_witness_spice_approx_zero
@@ -115,7 +113,7 @@ fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
   )
 }
 
-fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
+test fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
   let named = named_affine_voltage(
     reference: GroundReference,
     approx: timeseries_witness_spice_approx_zero
@@ -124,48 +122,6 @@ fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
     named: named,
     magnitude: witness_voltage_zero
   )
-}
-
-data claim_spice_resistor_passive_spec: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: spice Resistor projects ResistorPassive topology",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_resistor_projects_resistor_passive_topology_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_spice_capacitor_passive_arm: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: spice Capacitor projects CapacitorPassive arm",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_capacitor_projects_capacitor_passive_arm_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_spice_inductor_passive_arm: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: spice Inductor projects InductorPassive arm",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: spice_inductor_projects_inductor_passive_arm_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_passive_topology_preserves_name: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: passive_topology_from_component preserves name",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: passive_topology_preserves_component_name_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_named_affine_voltage_preserves_reference: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: named_affine_voltage preserves GroundReference",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: named_affine_voltage_preserves_ground_reference_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_absolute_potential_preserves_reference: TestClaim = BoolWitnessClaim {
-  label: "std/timeseries_signal: absolute_potential_from_named preserves reference",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  witness: BoolWitness { holds: absolute_potential_from_named_preserves_reference_holds() },
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_potential_difference_of_magnitude_structural: TestClaim = StructuralEqualsClaim {

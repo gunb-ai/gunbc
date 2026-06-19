@@ -194,7 +194,10 @@ fn type_decl_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
 }
 
 fn type_decl_emit_source_text(emitted: Node) -> Outcome<String> {
-  let rules = type_decl_rules()
+  type_decl_emit_source_text_with_rules(emitted: emitted, rules: type_decl_rules())
+}
+
+fn type_decl_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<String> {
   let target = type_decl_target()
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
@@ -205,7 +208,12 @@ fn type_decl_emit_source_text(emitted: Node) -> Outcome<String> {
           bind_outcome(
             o: concrete_syntax_token_list_from_node(list_node: tokens_root),
             f: fn(tokens) {
-              serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens)
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens),
+                f: fn(medium) {
+                  outcome_accepted(value: medium.carried)
+                }
+              )
             }
           )
         }
@@ -278,12 +286,16 @@ fn type_decl_emit_row_forward_identity_holds(emitted: Node) -> Bool {
 }
 
 fn type_decl_reparse_emitted_from_source(source: String) -> Outcome<Node> {
+  type_decl_reparse_from_source_with_rules(source: source, rules: type_decl_rules())
+}
+
+fn type_decl_reparse_from_source_with_rules(source: String, rules: Node) -> Outcome<Node> {
   bind_outcome(
     o: type_decl_tokenize_source_text(source: source),
     f: fn(tokens) {
       grammar_relation_row_forward_token_selection(
         tokens: type_decl_lexer_tokens_to_concrete_syntax(tokens: tokens),
-        rules: type_decl_rules(),
+        rules: rules,
         start_lhs: ^dag_production_type_decl
       )
     }
@@ -307,6 +319,58 @@ fn type_decl_parse_from_emitted_source_holds(emitted: Node) -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+// Wave 3c-F FINISH-LINE-A: REAL parse from surface text only (tokenize + forward row
+// selection) -> emit -> byte-identical source. Non-add construct (type decl).
+fn type_decl_source_text_emit_round_trip_holds(source: String) -> Bool {
+  type_decl_source_text_emit_round_trip_with_rules(
+    rules: type_decl_rules(),
+    source: source
+  )
+}
+
+fn type_decl_source_text_emit_round_trip_with_rules(rules: Node, source: String) -> Bool {
+  match type_decl_reparse_from_source_with_rules(source: source, rules: rules) {
+    Accepted { value: node, diagnostics: _ } =>
+      match type_decl_emit_source_text_with_rules(emitted: node, rules: rules) {
+        Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn type_decl_perturbed_rules_for_point_source() -> Outcome<Node> {
+  match grammar_relation_row_for_emitted(
+    rules: type_decl_rules(),
+    emitted: type_decl_pixel_emitted()
+  ) {
+    Accepted { value: pixel_row, diagnostics: _ } =>
+      outcome_accepted(value: type_decl_translation_rules_with_row(row: pixel_row))
+    Rejected { diagnostics: _ } => Rejected { diagnostics: None }
+  }
+}
+
+// §5 discriminating RED: perturbed grammar-row table (Pixel row only) breaks Point
+// source round-trip; clean rules stay green — proves rows drive parse→emit.
+fn type_decl_perturbed_row_breaks_source_roundtrip_holds() -> Bool {
+  match type_decl_perturbed_rules_for_point_source() {
+    Accepted { value: perturbed_rules, diagnostics: _ } =>
+      type_decl_source_text_emit_round_trip_holds(source: type_decl_point_source_text)
+        && !type_decl_source_text_emit_round_trip_with_rules(
+          rules: perturbed_rules,
+          source: type_decl_point_source_text
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn type_decl_real_source_round_trip_holds() -> Bool {
+  type_decl_source_text_emit_round_trip_holds(source: type_decl_point_source_text)
+    && type_decl_perturbed_row_breaks_source_roundtrip_holds()
+    && type_decl_emit_structural_not_fixture_lookup_holds()
+    && type_decl_forward_class_spine_ambiguous_rejects_holds()
 }
 
 fn type_decl_derived_row_preserves_emitted_holds(emitted: Node) -> Bool {
