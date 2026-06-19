@@ -7,7 +7,7 @@
 //
 // Authority for ComputeHost remains product.compute_fabric; CpuFacts / the CPU
 // concept is std.cpu (vendor catalogs in extdeps.cpu); DIMM taxonomy std.memory
-// (SK Hynix catalog std.memory.sk_hynix). Concrete operator DIMM populations are
+// (SK Hynix catalog extdeps.memory.sk_hynix). Concrete operator DIMM populations are
 // the operator's deployment (ctrl), not gunbc std. Thin projection
 // surface importable without pulling the full fabric graph.
 
