@@ -45,6 +45,7 @@ import std.measure {
   hardware_thread_count,
   hardware_thread_count_value,
   hertz,
+  watt,
 }
 import std.currency { CurrencyCode }
 // Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
@@ -969,7 +970,7 @@ data example_resource_cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
-  tdp_watts: 250,
+  tdp_watts: watt(250),
 }
 
 data example_resource_cpu: CpuFacts = CpuFacts {
