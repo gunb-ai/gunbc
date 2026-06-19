@@ -33,21 +33,13 @@
 module v2.extdeps.languages.bash
 
 import v2.std.algebra { Empty, fold_list, list_snoc_item }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Unavailable,
-  node_locus
-}
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,
-  GrammarExpr,
-  Sequence,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
-  grammar_expr_terminal,
   grammar_formal_production,
+  grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_relation_tokens_node
 }
@@ -66,10 +58,9 @@ import v2.std.compilers.target_model {
   TargetModel,
   target_model_emit_transforms_empty,
   target_model_make_with_emit_transforms,
-  concrete_syntax_token_class,
   concrete_syntax_token_to_node
 }
-import v2.std.collection { List, Map, empty_map, list_nth, map_insert }
+import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Atom,
@@ -87,13 +78,11 @@ import v2.std.witness { Holds, Violates, Witness }
 // =========================================================================
 // The emitted intent (the `translate`-side anchor).
 //
-// An Arrow of leaf-Atom children — one atom per command word. Arrow + leaf children means: (a)
-// `translate`'s structure-preserving fold is identity (raw == node), and (b) the shape is NOT
-// lhs-exact-supported, so the grammar relation row is selected by exact fixture equality on
-// `grammar_relation_field_emitted` (06_translate.dag → grammar.dag
-// grammar_relation_row_emitted_reverse_parse_matches, the Arrow fallback). This is the same emit
-// anchor shape rust's mvp1 add-fn uses. The intent's *modeled* form (a real ShellStmt/Command
-// vocabulary the transports lower from) is a later slice; here it is a synthetic rendering anchor.
+// Conj of leaf-Atom positional children — one atom per bound-token slot (FixedToken
+// occurrences in FormalProduction.rhs are unbound and carry no emitted child).
+// lhs-exact-supported: grammar relation row selection walks FormalProduction rhs
+// against positional emitted children (`formal_production_for_lhs_exact` →
+// `derive_grammar_relation_row_node`), not Arrow exact-fixture equality.
 // =========================================================================
 
 fn bash_word_atom(id: Symbol) -> Node {
@@ -104,15 +93,98 @@ fn bash_word_atom(id: Symbol) -> Node {
   }
 }
 
-data bash_mvp1_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_git) },
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_rev_parse) },
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_show_toplevel) }
-  ],
-  occurrence_id: SyntheticOccurrence
+fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: tokens,
+      empty: Empty,
+      cons: fn(acc, token) {
+        match token {
+          BoundToken { binding: binding, token_class: _ } =>
+            list_snoc_item(
+              xs: acc,
+              item: Edge { label: Positional, target: bash_word_atom(id: binding) }
+            )
+          FixedToken { token_class: _ } => acc
+        }
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
 }
+
+
+fn bash_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
+      grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
+fn bash_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: bash_formal_symbol_from_token(token: token))
+    }
+  )
+}
+
+fn bash_formal_production_from_fixture(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> FormalProduction {
+  grammar_formal_production(
+    lhs: lhs,
+    rhs: bash_formal_rhs_from_tokens(tokens: tokens)
+  )
+}
+
+fn bash_derive_lhs_exact_relation_row(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  let production = bash_formal_production_from_fixture(lhs: lhs, tokens: tokens)
+  let productions = [production]
+  match formal_production_for_lhs_exact(
+    productions: productions,
+    lhs: lhs,
+    child: emitted
+  ) {
+    Holds { value: selected } =>
+      derive_grammar_relation_row_node(
+        production: selected,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_lhs_exact_relation_row_node(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Node {
+  match bash_derive_lhs_exact_relation_row(
+    lhs: lhs,
+    tokens: tokens,
+    emitted: emitted
+  ) {
+    Holds { value: row } => row
+    Violates { diagnostic: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
 
 // The canonical shell text emit must produce (POSIX single-quoted words). Byte-identical to
 // `serialize_bash(command([lit("git"), lit("rev-parse"), lit("--show-toplevel")]))`.
@@ -130,6 +202,10 @@ fn bash_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+data bash_mvp1_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_mvp1_concrete_tokens()
+)
+
 fn bash_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // Serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -143,43 +219,12 @@ fn bash_named_edge(name: Symbol, target: Node) -> Edge {
 // Grammar relation row: emitted intent ⇄ concrete token sequence.
 // =========================================================================
 
-fn bash_grammar_command_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: grammar_expr_terminal(token_class: ^bash_token_word_git),
-      right: grammar_expr_terminal(token_class: ^bash_token_word_rev_parse)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_word_show_toplevel)
-  }
-}
-
-fn bash_grammar_production_command() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_command,
-    expression: bash_grammar_command_expression(),
-    emitted: bash_word_atom(id: ^bash_surface_command)
-  }
-}
-
 fn bash_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: bash_grammar_production_command())
-      ),
-      bash_named_edge(name: ^grammar_relation_field_emitted, target: bash_mvp1_emitted_command),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_mvp1_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_lhs_exact_relation_row_node(
+    lhs: ^bash_production_command,
+    tokens: bash_mvp1_concrete_tokens(),
+    emitted: bash_mvp1_emitted_command
+  )
 }
 
 fn bash_mvp1_translation_rules_node() -> Node {
@@ -226,17 +271,6 @@ fn bash_embedded_quote_translation_rules_node() -> Node {
 // Byte-identical to serialize_bash(command([var_ref("ROOT"), lit("ROOT")])) => "$ROOT" 'ROOT'
 // =========================================================================
 
-data bash_bound_words_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_var_ROOT) },
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_lit_ROOT) }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
-
 fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
@@ -244,56 +278,21 @@ fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_bound_words_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: grammar_expr_terminal(token_class: ^bash_token_var_ref),
-    right: grammar_expr_terminal(token_class: ^bash_token_lit_spaced)
-  }
-}
+data bash_bound_words_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_bound_words_concrete_tokens()
+)
 
-fn bash_bound_words_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_bound_words,
-    expression: bash_bound_words_grammar_expression(),
-    emitted: bash_word_atom(id: ^bash_surface_bound_words)
-  }
-}
+data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
 fn bash_bound_words_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: bash_bound_words_grammar_production())
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: bash_bound_words_emitted_command
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_bound_words_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_lhs_exact_relation_row_node(
+    lhs: ^bash_production_bound_words,
+    tokens: bash_bound_words_concrete_tokens(),
+    emitted: bash_bound_words_emitted_command
+  )
 }
 
 // Single-word bound lit with an embedded single quote — total POSIX escaping.
-data bash_embedded_quote_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_lit_a_quote_b) }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_embedded_quote_source_text: String = "'a'\\''b'"
-
 fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken {
@@ -303,36 +302,18 @@ fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_embedded_quote_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_embedded_quote_lit,
-    expression: grammar_expr_terminal(token_class: ^bash_token_lit),
-    emitted: bash_word_atom(id: ^bash_surface_embedded_quote_lit)
-  }
-}
+data bash_embedded_quote_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_embedded_quote_concrete_tokens()
+)
+
+data bash_embedded_quote_source_text: String = "'a'\\''b'"
 
 fn bash_embedded_quote_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: bash_embedded_quote_grammar_production())
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: bash_embedded_quote_emitted_command
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_embedded_quote_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_lhs_exact_relation_row_node(
+    lhs: ^bash_production_embedded_quote_lit,
+    tokens: bash_embedded_quote_concrete_tokens(),
+    emitted: bash_embedded_quote_emitted_command
+  )
 }
 
 // =========================================================================
@@ -341,20 +322,6 @@ fn bash_embedded_quote_grammar_relation_row_node() -> Node {
 // modulo the sidecar's trailing newline (immaterial to `sh -c`).
 // =========================================================================
 
-data bash_source_root_ingest_gate_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_bash) },
-    Edge {
-      label: Positional,
-      target: bash_word_atom(id: ^bash_word_source_root_ingest_gate_sh)
-    }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
-
 fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_word_bash },
@@ -362,45 +329,18 @@ fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_source_root_ingest_gate_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: grammar_expr_terminal(token_class: ^bash_token_word_bash),
-    right: grammar_expr_terminal(token_class: ^bash_token_word_source_root_ingest_gate_sh)
-  }
-}
+data bash_source_root_ingest_gate_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_source_root_ingest_gate_concrete_tokens()
+)
 
-fn bash_source_root_ingest_gate_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_source_root_ingest_gate,
-    expression: bash_source_root_ingest_gate_grammar_expression(),
-    emitted: bash_word_atom(id: ^bash_surface_source_root_ingest_gate)
-  }
-}
+data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
 
 fn bash_source_root_ingest_gate_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(
-          production: bash_source_root_ingest_gate_grammar_production()
-        )
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: bash_source_root_ingest_gate_emitted_command
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_source_root_ingest_gate_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_lhs_exact_relation_row_node(
+    lhs: ^bash_production_source_root_ingest_gate,
+    tokens: bash_source_root_ingest_gate_concrete_tokens(),
+    emitted: bash_source_root_ingest_gate_emitted_command
+  )
 }
 
 fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
@@ -418,93 +358,9 @@ fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
 
 // =========================================================================
 // Slice 4 — AndOr / Pipe / WithRedir (POSIX §2.9 lists / compound commands).
-// Shared helpers: bash_arrow_emitted_from_words, bash_grammar_sequence_from_tokens.
+// Shared helper: bash_conj_emitted_from_tokens.
 // Each row is byte-identical to serialize_bash for the matching ShellStmt fixture.
 // =========================================================================
-
-fn bash_fixed_tokens_grammar_relation_row(
-  production: GrammarProduction,
-  emitted: Node,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: production)
-      ),
-      bash_named_edge(name: ^grammar_relation_field_emitted, target: emitted),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: tokens,
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_arrow_emitted_from_words(ids: List<Symbol>) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: fold_list(
-      xs: ids,
-      empty: Empty,
-      cons: fn(acc, sym) {
-        list_snoc_item(
-          xs: acc,
-          item: Edge { label: Positional, target: bash_word_atom(id: sym) }
-        )
-      }
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-type BashGramSeqBuild
-  = BashGramSeqInit
-  | BashGramSeqReady { expr: GrammarExpr }
-
-// Left-nested Sequence spine from a concrete-token row (shared by slice-4 fixtures).
-fn bash_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
-  match fold_list(
-    xs: tokens,
-    empty: BashGramSeqInit,
-    cons: fn(state, token) {
-      match state {
-        BashGramSeqInit =>
-          BashGramSeqReady {
-            expr: grammar_expr_terminal(
-              token_class: concrete_syntax_token_class(token: token)
-            )
-          }
-        BashGramSeqReady { expr: acc } =>
-          BashGramSeqReady {
-            expr: Sequence {
-              left: acc,
-              right: grammar_expr_terminal(
-                token_class: concrete_syntax_token_class(token: token)
-              )
-            }
-          }
-      }
-    }
-  ) {
-    BashGramSeqInit =>
-      grammar_expr_terminal(token_class: ^bash_token_word_git)
-    BashGramSeqReady { expr: result } => result
-  }
-}
-
-// AndOr { AndThen } — `'true' && 'false'`
-data bash_and_then_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [^bash_word_true, ^bash_surface_and_then, ^bash_word_false]
-)
-
-data bash_and_then_source_text: String = "'true' && 'false'"
 
 fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -514,13 +370,12 @@ fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_and_then_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_and_then,
-    expression: bash_grammar_sequence_from_tokens(tokens: bash_and_then_concrete_tokens()),
-    emitted: bash_word_atom(id: ^bash_surface_and_then_stmt)
-  }
-}
+// AndOr { AndThen } — `'true' && 'false'`
+data bash_and_then_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_and_then_concrete_tokens()
+)
+
+data bash_and_then_source_text: String = "'true' && 'false'"
 
 fn bash_and_then_translation_rules_node() -> Node {
   Node {
@@ -528,23 +383,16 @@ fn bash_and_then_translation_rules_node() -> Node {
     children: [
       bash_named_edge(
         name: ^bash_relation_rule_and_then,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_and_then_grammar_production(),
-          emitted: bash_and_then_emitted,
-          tokens: bash_and_then_concrete_tokens()
+        target: bash_lhs_exact_relation_row_node(
+          lhs: ^bash_production_and_then,
+          tokens: bash_and_then_concrete_tokens(),
+          emitted: bash_and_then_emitted
         )
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
-
-// AndOr { OrElse } — `'true' || 'false'`
-data bash_or_else_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [^bash_word_true, ^bash_surface_or_else, ^bash_word_false]
-)
-
-data bash_or_else_source_text: String = "'true' || 'false'"
 
 fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -554,13 +402,12 @@ fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_or_else_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_or_else,
-    expression: bash_grammar_sequence_from_tokens(tokens: bash_or_else_concrete_tokens()),
-    emitted: bash_word_atom(id: ^bash_surface_or_else_stmt)
-  }
-}
+// AndOr { OrElse } — `'true' || 'false'`
+data bash_or_else_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_or_else_concrete_tokens()
+)
+
+data bash_or_else_source_text: String = "'true' || 'false'"
 
 fn bash_or_else_translation_rules_node() -> Node {
   Node {
@@ -568,28 +415,16 @@ fn bash_or_else_translation_rules_node() -> Node {
     children: [
       bash_named_edge(
         name: ^bash_relation_rule_or_else,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_or_else_grammar_production(),
-          emitted: bash_or_else_emitted,
-          tokens: bash_or_else_concrete_tokens()
+        target: bash_lhs_exact_relation_row_node(
+          lhs: ^bash_production_or_else,
+          tokens: bash_or_else_concrete_tokens(),
+          emitted: bash_or_else_emitted
         )
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
-
-// WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
-data bash_with_redir_stderr_null_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [
-    ^bash_word_git,
-    ^bash_word_rev_parse,
-    ^bash_word_show_toplevel,
-    ^bash_surface_redir_stderr_null
-  ]
-)
-
-data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
 
 fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -600,15 +435,12 @@ fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_with_redir_stderr_null_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_with_redir_stderr_null,
-    expression: bash_grammar_sequence_from_tokens(
-      tokens: bash_with_redir_stderr_null_concrete_tokens()
-    ),
-    emitted: bash_word_atom(id: ^bash_surface_with_redir_stderr_null)
-  }
-}
+// WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
+data bash_with_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_with_redir_stderr_null_concrete_tokens()
+)
+
+data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
 
 fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
   Node {
@@ -616,29 +448,16 @@ fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
     children: [
       bash_named_edge(
         name: ^bash_relation_rule_with_redir_stderr_null,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_with_redir_stderr_null_grammar_production(),
-          emitted: bash_with_redir_stderr_null_emitted,
-          tokens: bash_with_redir_stderr_null_concrete_tokens()
+        target: bash_lhs_exact_relation_row_node(
+          lhs: ^bash_production_with_redir_stderr_null,
+          tokens: bash_with_redir_stderr_null_concrete_tokens(),
+          emitted: bash_with_redir_stderr_null_emitted
         )
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
-
-// Pipe — `'echo' 'hi' | 'wc' '-c'`
-data bash_pipe_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [
-    ^bash_word_echo,
-    ^bash_word_hi,
-    ^bash_surface_pipe,
-    ^bash_word_wc,
-    ^bash_word_minus_c
-  ]
-)
-
-data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
 
 fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -650,13 +469,12 @@ fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_pipe_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_pipe,
-    expression: bash_grammar_sequence_from_tokens(tokens: bash_pipe_concrete_tokens()),
-    emitted: bash_word_atom(id: ^bash_surface_pipe_stmt)
-  }
-}
+// Pipe — `'echo' 'hi' | 'wc' '-c'`
+data bash_pipe_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_pipe_concrete_tokens()
+)
+
+data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
 
 fn bash_pipe_translation_rules_node() -> Node {
   Node {
@@ -664,31 +482,16 @@ fn bash_pipe_translation_rules_node() -> Node {
     children: [
       bash_named_edge(
         name: ^bash_relation_rule_pipe,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_pipe_grammar_production(),
-          emitted: bash_pipe_emitted,
-          tokens: bash_pipe_concrete_tokens()
+        target: bash_lhs_exact_relation_row_node(
+          lhs: ^bash_production_pipe,
+          tokens: bash_pipe_concrete_tokens(),
+          emitted: bash_pipe_emitted
         )
       )
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
-
-// host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
-// Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
-data bash_or_else_with_redir_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [
-    ^bash_word_git,
-    ^bash_word_rev_parse,
-    ^bash_word_show_toplevel,
-    ^bash_surface_redir_stderr_null,
-    ^bash_surface_or_else,
-    ^bash_word_pwd
-  ]
-)
-
-data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
 
 fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -701,15 +504,13 @@ fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_or_else_with_redir_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_or_else_with_redir,
-    expression: bash_grammar_sequence_from_tokens(
-      tokens: bash_or_else_with_redir_concrete_tokens()
-    ),
-    emitted: bash_word_atom(id: ^bash_surface_or_else_with_redir)
-  }
-}
+// host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
+// Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
+data bash_or_else_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_or_else_with_redir_concrete_tokens()
+)
+
+data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
 
 fn bash_or_else_with_redir_translation_rules_node() -> Node {
   Node {
@@ -717,10 +518,10 @@ fn bash_or_else_with_redir_translation_rules_node() -> Node {
     children: [
       bash_named_edge(
         name: ^bash_relation_rule_or_else_with_redir,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_or_else_with_redir_grammar_production(),
-          emitted: bash_or_else_with_redir_emitted,
-          tokens: bash_or_else_with_redir_concrete_tokens()
+        target: bash_lhs_exact_relation_row_node(
+          lhs: ^bash_production_or_else_with_redir,
+          tokens: bash_or_else_with_redir_concrete_tokens(),
+          emitted: bash_or_else_with_redir_emitted
         )
       )
     ],
