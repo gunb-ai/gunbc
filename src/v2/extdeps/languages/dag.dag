@@ -456,6 +456,7 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_slash, text: "/"),
       dag_literal_lex_rule(token_class: ^dag_token_percent, text: "%"),
       dag_literal_lex_rule(token_class: ^dag_token_bang, text: "!"),
+      dag_literal_lex_rule(token_class: ^dag_token_caret, text: "^"),
       dag_literal_lex_rule(token_class: ^dag_token_eq, text: "="),
       dag_literal_lex_rule(token_class: ^dag_token_colon, text: ":"),
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ","),
@@ -1098,6 +1099,13 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_primary_expr,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_string_literal)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^dag_production_primary_expr,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_caret),
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
@@ -2236,7 +2244,25 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   )
 }
 
+// `^IDENT` opaque Symbol literal — mirrors v1's parse_caret_expr ShIdent arm
+// (src/v1/stage0/src/v1_compiler_parse.rs), where `^` is a standalone token the
+// parser combines with the following ident into a symbol literal. The `^(Expr)`
+// discriminant-sugar form is added separately.
+fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_caret),
+    right: dag_grammar_terminal(token_class: ^dag_token_ident)
+  )
+}
+
 fn dag_grammar_primary_expr_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_caret_symbol_expr(),
+    right: dag_grammar_primary_expr_core()
+  )
+}
+
+fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_ident),
