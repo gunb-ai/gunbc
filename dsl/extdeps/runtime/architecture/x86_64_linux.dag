@@ -1,6 +1,6 @@
 // extdeps/runtime/architecture/x86_64_linux.dag — x86-64 Linux architecture profile (cited facts).
 //
-// Scope: Slice-1 inhabitant of std.architecture_profile.ArchitectureProfile — TargetArchitecture::X86_64
+// Scope: Slice-1 inhabitant of std.architecture_profile.ArchitectureProfile — Architecture::X86_64
 // with cited machine facts, sysv_amd64 syscall convention, and downward stack.
 //
 // Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (§3.2.2 stack; §3.4.1 alignment)

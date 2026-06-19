@@ -2,7 +2,7 @@
 //
 // Scope: cited machine facts + CallingConvention + StackLayout — the arch-specific execution
 // substrate before format and invocation-surface composition (exec-contract §4).
-// M9: `architecture` attaches to extdeps.cpu.types.CpuArchitecture (no parallel arch notion).
+// M9: `architecture` attaches to extdeps.toolchain.types.Architecture (no parallel arch notion).
 // Per-arch cited inhabitants live in extdeps/runtime/architecture/*.dag (M3).
 
 module std.architecture_profile
@@ -10,18 +10,13 @@ module std.architecture_profile
 import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
 import std.measure { BitWidth, ByteSize }
 import std.os.invocation { StableInvocationSurface }
-import std.types { TargetArchitecture }
-
-// 🟡 feature:cpu-architecture-unification — bind os-exec-contract-layer §5 v2 gate on extdeps.cpu.types
-// Option import. `import extdeps.cpu.types { CpuArchitecture }` resolves the module graph but claim-run
-// fails: extdeps.cpu.types imports named Option from std.types (unexported on v2; snappy-stag-903).
-// Dissolve-on: repoint architecture to CpuArchitecture when Option-repoint lands (flip-SHA).
+import extdeps.toolchain.types { Architecture }
 
 // 🟢 TERMINAL coproduct — irreducible machine byte-order distinction (little vs big endian).
 type Endianness = LittleEndian | BigEndian
 
 type ArchitectureProfile {
-  architecture: TargetArchitecture
+  architecture: Architecture
   // 🟡 feature:L-8-fixed-width-words — bind os-exec-contract-layer L-8 — dissolve-on: enforced
   // fixed-width word carriers in std.bit replace Measure<Information, One> width fields.
   word_width: BitWidth

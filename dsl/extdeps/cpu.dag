@@ -6,7 +6,7 @@
 
 module extdeps.cpu
 
-import extdeps.cpu.types { CpuArchitecture, CpuFacts }
+import extdeps.cpu.types { Architecture, CpuFacts }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import std.measure { HardwareThreadCount, Hertz }
@@ -23,7 +23,7 @@ fn cpu_facts_threads(cpu: CpuFacts) -> HardwareThreadCount {
   cpu.catalog.threads
 }
 
-fn cpu_facts_architecture(cpu: CpuFacts) -> CpuArchitecture {
+fn cpu_facts_architecture(cpu: CpuFacts) -> Architecture {
   cpu.catalog.architecture
 }
 

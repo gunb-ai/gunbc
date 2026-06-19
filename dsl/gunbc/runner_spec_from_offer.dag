@@ -8,7 +8,7 @@ module gunbc.runner_spec_from_offer
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 import product.compute_fabric { ComputeOffer, compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_architecture }
-import extdeps.cpu.types { CpuArchitecture }
+import extdeps.toolchain.types { Architecture }
 import std.os.types { KernelFamily }
 
 fn kernel_runner_label(kernel: KernelFamily) -> String {
@@ -20,7 +20,7 @@ fn kernel_runner_label(kernel: KernelFamily) -> String {
   }
 }
 
-fn cpu_architecture_runner_label(arch: CpuArchitecture) -> String {
+fn cpu_architecture_runner_label(arch: Architecture) -> String {
   match arch {
     Aarch64 => "arm64"
     X86_64 => "x64"

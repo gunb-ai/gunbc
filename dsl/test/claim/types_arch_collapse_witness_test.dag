@@ -1,7 +1,7 @@
-// By-execution witnesses for std/types.dag Arch + Platform nickname collapse (§3).
+// By-execution witnesses for Architecture dissolution to extdeps/toolchain (§3).
 //
-// Discriminating: GOARCH wire decode still round-trips via extdeps.container.oci.types
-// ImageConfigArchitecture; Armv7 stays unrepresentable on egress (fail-closed label).
+// Discriminating: GOARCH wire decode round-trips via extdeps.container.oci.types;
+// Armv7 stays unrepresentable on egress (fail-closed label).
 //
 // Run via:
 //   gunbc run --source-root dsl --entry dsl/test/claim/types_arch_collapse_witness_test.dag \

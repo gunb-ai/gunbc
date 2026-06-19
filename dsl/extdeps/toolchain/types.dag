@@ -1,0 +1,43 @@
+// extdeps/toolchain/types.dag — GNU/LLVM triple vocabulary (single Architecture authority).
+//
+// Toolchain target facts are domain models downstream of std, not universal frameworks.
+// Dissolves former std Arch/TargetArchitecture, extdeps.cpu.types.CpuArchitecture, and
+// extdeps.container.oci.types.ImageConfigArchitecture nicknames into one 11-variant axis.
+//
+// Anchor: https://wiki.debian.org/ArchitectureSpecificsMemo
+// Anchor: https://clang.llvm.org/docs/CrossCompilation.html#target-triple
+
+module extdeps.toolchain.types
+
+import std.types { FilePath, String }
+
+// Single ISA authority — hardware cpu rows, OCI GOARCH wire, and target triples share this axis.
+type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
+
+// Triple vendor axis (renamed from std.types.Vendor — distinct from extdeps.vendor.Vendor<Domain>).
+type TripleVendor = UnknownVendor | Pc | Apple | W64
+type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
+type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf
+type ExecutionEnv = Native | Wsl | Container | Ci | Emulator
+
+type TargetTriple {
+  arch: Architecture
+  vendor: TripleVendor
+  os: Os
+  env: AbiEnv?
+}
+
+type RuntimePlatform {
+  host: TargetTriple
+  env: ExecutionEnv
+}
+
+type CodegenTarget {
+  name: String
+  path: FilePath
+  backend: CodegenBackend?
+  target: TargetTriple?
+  runtime_env: ExecutionEnv?
+}
+
+type CodegenBackend = Rust | Go | C | Mips
