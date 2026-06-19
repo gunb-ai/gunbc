@@ -357,6 +357,7 @@ fn run_discovery_batch_node(
         ExecutionMode::Wet,
         DiscoveryCorpusOptions {
             skip_unaffected_node_frontier,
+            explicit_roster_only: false,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {

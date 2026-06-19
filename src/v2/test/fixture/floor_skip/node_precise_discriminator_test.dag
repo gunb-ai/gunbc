@@ -1,6 +1,7 @@
 // §5 discriminating fixture: two independent nodes A/B in ONE file; witness W's
-// evaluation closure references A only. Node-precise skip must RUN W when a diff
-// hunk overlaps A's claim span and SKIP W when the hunk overlaps B's claim only.
+// evaluation closure references A only (via claim_on_a). Node-precise skip must
+// RUN W when a diff hunk overlaps A's span and SKIP W when the hunk overlaps B's
+// node span only (B is not a TestClaim — file-level skip would still run W).
 // DISSOLUTION TRIGGER: host path→node bootstrap replaced by
 // affected_set_reading_from_git_diff_provenance whole-tree producer (Lane 3a ingest).
 
@@ -9,6 +10,7 @@ module v2.test.fixture.floor_skip.node_precise_discriminator
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
   EqualsClaim,
+  TestClaim,
   ManualAnchorAbsent,
   TestClassification,
   Tier1,
@@ -29,19 +31,11 @@ data floor_disc_node_b: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data floor_disc_claim_on_a: EqualsClaim = EqualsClaim {
+data floor_disc_claim_on_a: TestClaim = EqualsClaim {
   label: "floor_disc: claim on node A",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: floor_disc_node_a,
   rhs: floor_disc_node_a,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data floor_disc_claim_on_b: EqualsClaim = EqualsClaim {
-  label: "floor_disc: claim on node B",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: floor_disc_node_b,
-  rhs: floor_disc_node_b,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

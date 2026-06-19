@@ -2513,19 +2513,28 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
+/// Node-precise skip seeds from git unified-diff line ranges.
+struct NodeFrontierSeeds {
+    nodes: Vec<v1_interpreter::Value>,
+    /// `(repo-relative file, data item name)` for TestClaim declarations whose spans overlap.
+    overlapping_test_claims: HashSet<(String, String)>,
+}
+
 /// Node-precise frontier: substrate evaluation nodes from TestClaim `data` items whose
 /// declaration spans overlap git unified-diff line ranges (not whole changed files).
-fn collect_frontier_nodes_from_diff_line_ranges(
+fn collect_frontier_seeds_from_diff_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
     execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<Vec<v1_interpreter::Value>, String> {
+) -> Result<NodeFrontierSeeds, String> {
     let mut frontier = Vec::new();
     let mut seen = HashSet::new();
+    let mut overlapping_test_claims = HashSet::new();
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
             continue;
         }
+        let file_norm = normalize_repo_path(file_path);
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
             Ok(pair) => pair,
             Err(_) => continue,
@@ -2555,6 +2564,7 @@ fn collect_frontier_nodes_from_diff_line_ranges(
             if !value_is_test_claim(&val, &ctx) {
                 continue;
             }
+            overlapping_test_claims.insert((file_norm.clone(), name.clone()));
             match call_test_claim_fn_nodes(&ctx, &val) {
                 Ok(Some(nodes)) => {
                     for node in nodes {
@@ -2573,7 +2583,34 @@ fn collect_frontier_nodes_from_diff_line_ranges(
             }
         }
     }
-    Ok(frontier)
+    Ok(NodeFrontierSeeds {
+        nodes: frontier,
+        overlapping_test_claims,
+    })
+}
+
+fn entry_touches_frontier_seeds(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    seeds: &NodeFrontierSeeds,
+) -> Result<bool, String> {
+    let entry_norm = normalize_repo_path(entry_path);
+    for name in ctx.item_registry.keys() {
+        if overlapping_test_claims_contains(seeds, &entry_norm, name) {
+            return Ok(true);
+        }
+    }
+    entry_claims_touch_frontier(ctx, &list_value_from_vec(seeds.nodes.clone()))
+}
+
+fn overlapping_test_claims_contains(
+    seeds: &NodeFrontierSeeds,
+    entry_norm: &str,
+    claim_name: &str,
+) -> bool {
+    seeds
+        .overlapping_test_claims
+        .contains(&(entry_norm.to_string(), claim_name.to_string()))
 }
 
 fn entry_claims_touch_frontier(
@@ -2701,24 +2738,29 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
     };
-    let (skip_enabled, frontier_nodes) = if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
-        match collect_frontier_nodes_from_diff_line_ranges(
+    let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
+        match collect_frontier_seeds_from_diff_line_ranges(
             &index,
             &line_ranges_by_file,
             execution_mode,
         ) {
-            Ok(nodes) => (true, nodes),
+            Ok(seeds) => (true, seeds),
             Err(msg) => {
                 eprintln!(
                     "claim_executor: node-frontier population failed ({msg}) — fail-closed, running full corpus"
                 );
-                (false, Vec::new())
+                (false, NodeFrontierSeeds {
+                    nodes: Vec::new(),
+                    overlapping_test_claims: HashSet::new(),
+                })
             }
         }
     } else {
-        (false, Vec::new())
+        (false, NodeFrontierSeeds {
+            nodes: Vec::new(),
+            overlapping_test_claims: HashSet::new(),
+        })
     };
-    let frontier_value = list_value_from_vec(frontier_nodes.clone());
 
     // Group by entry (rows are sorted by (entry, function)), resolve each entry
     // once, run its witnesses against the shared graph.
@@ -2754,7 +2796,7 @@ pub fn run_discovery_corpus_with_options(
             current_closure_subject = Some(closure_subject);
             let entry_ctx = make_eval_context(&graph, source_indices, execution_mode);
             current_entry_touches = if skip_enabled {
-                entry_claims_touch_frontier(&entry_ctx, &frontier_value)?
+                entry_touches_frontier_seeds(&entry_ctx, &row.entry, &frontier_seeds)?
             } else {
                 true
             };
@@ -2798,8 +2840,8 @@ pub fn run_discovery_corpus_with_options(
 #[cfg(test)]
 mod floor_skip_frontier_tests {
     use super::{
-        build_multi_entry_index, collect_frontier_nodes_from_diff_line_ranges,
-        entry_claims_touch_frontier, list_value_from_vec, parse_unified_diff_line_ranges,
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        entry_touches_frontier_seeds, parse_unified_diff_line_ranges,
         span_overlaps_line_ranges, FileLineRange,
     };
     use crate::std_types::SourceSpan;
@@ -2823,7 +2865,7 @@ mod floor_skip_frontier_tests {
 
     fn data_item_line(
         fixture: &str,
-        source_indices: &HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+        source_indices: &std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
         graph: &std::rc::Rc<ResolvedGraph>,
         name: &str,
     ) -> i64 {
@@ -2835,7 +2877,7 @@ mod floor_skip_frontier_tests {
                 if authored_name_at(source_indices.clone(), item.clone()) != name {
                     continue;
                 }
-                let span = item.span.as_ref().expect("data item span");
+                let span = &item.span;
                 let index = source_indices.get(&span.file).expect("newline index");
                 return byte_to_line_col(index.clone(), span.start).line;
             }
@@ -2896,6 +2938,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     #[test]
     fn node_precise_same_file_ab_frontier_discriminates() {
         let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
         let fixture = fixture_path();
         let roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
@@ -2914,7 +2957,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             &fixture,
             &source_indices,
             &graph,
-            "floor_disc_claim_on_b",
+            "floor_disc_node_b",
         );
         assert_ne!(
             line_a, line_b,
@@ -2924,13 +2967,17 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
         let ranges_a = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_a));
-        let frontier_a = collect_frontier_nodes_from_diff_line_ranges(
+        let seeds_a = collect_frontier_seeds_from_diff_line_ranges(
             &index,
             &ranges_a,
             ExecutionMode::Wet,
         )
         .expect("frontier for A-line diff");
-        let touches_a = entry_claims_touch_frontier(&ctx, &list_value_from_vec(frontier_a))
+        assert!(
+            !seeds_a.nodes.is_empty(),
+            "A-line diff must seed a non-empty frontier (line_a={line_a}, line_b={line_b})"
+        );
+        let touches_a = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_a)
             .expect("touch check for A-line diff");
         assert!(
             touches_a,
@@ -2938,18 +2985,54 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
 
         let ranges_b = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_b));
-        let frontier_b = collect_frontier_nodes_from_diff_line_ranges(
+        let seeds_b = collect_frontier_seeds_from_diff_line_ranges(
             &index,
             &ranges_b,
             ExecutionMode::Wet,
         )
         .expect("frontier for B-line diff");
-        let touches_b = entry_claims_touch_frontier(&ctx, &list_value_from_vec(frontier_b))
+        let touches_b = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_b)
             .expect("touch check for B-line diff");
         assert!(
             !touches_b,
             "diff on B's claim span only must NOT touch witness W (skip assumed-green)"
         );
+    }
+
+    /// VERIFIER repro: does the unwrapped eval_data path actually raise the
+    /// reported `fold ... got Variant` error, and does the with_active_context
+    /// wrap fix it? Exercises the timeseries fixture the proposal cites.
+    #[test]
+    fn verifier_repro_eval_data_initializer_active_ctx() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let fixture =
+            "src/v2/compiler/manual/timeseries_passive_map_fold_anchor_test.dag".to_string();
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
+            .expect("timeseries fixture resolves");
+        let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
+
+        // Unwrapped: exactly the current cli_run.rs:2621 call.
+        let unwrapped = crate::v1_interpreter::eval_data_initializer_values(&ctx);
+        eprintln!("UNWRAPPED eval_data_initializer_values => {:?}", unwrapped.as_ref().map(|v| v.len()));
+        if let Err(e) = &unwrapped {
+            eprintln!("UNWRAPPED ERROR: {e}");
+        }
+
+        // Wrapped: the proposed fix.
+        let wrapped = crate::v1_interpreter::with_active_context(&ctx, || {
+            crate::v1_interpreter::eval_data_initializer_values(&ctx)
+        });
+        eprintln!("WRAPPED eval_data_initializer_values => {:?}", wrapped.as_ref().map(|v| v.len()));
+        if let Err(e) = &wrapped {
+            eprintln!("WRAPPED ERROR: {e}");
+        }
+        assert!(wrapped.is_ok(), "wrapped must succeed");
     }
 }
 
