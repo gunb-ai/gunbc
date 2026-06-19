@@ -14,7 +14,7 @@ import v2.compiler.source_authority {
   SourceRootIngest,
   source_root_set_from_ingest
 }
-import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { Cons, Empty, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree, source_root_set_contains }
@@ -44,7 +44,7 @@ data phase_c_ingest: SourceRootIngest = Cons {
 fn witness_ingest_fold_threads_grounded_binding_holds() -> Bool {
   match module_roots_and_bindings_from_source_root_ingest(
     ingest: phase_c_ingest,
-    lm: dag_language_model_surface_empty_prelude()
+    lm: dag_language_model_wave1()
   ) {
     Accepted { value: fold, diagnostics: _ } =>
       (length(xs: fold.bindings) == 1)
