@@ -432,28 +432,13 @@ fn work_demand_shard_count(demand: WorkDemand) -> Int {
 }
 
 // Width projection: min(shard_count, PlacementSupplyRow.hardware_threads) — single authority.
+// Eligibility is NOT rejected when demand exceeds supply — the peripheral host fold caps
+// fan-out; satisfies records DemandParallelism as proven when IndependentShards is present.
 fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> HardwareThreadCount {
   bounded_host_spawn_width(
     shard_count: work_demand_shard_count(demand: demand),
     supply: supply
   )
-}
-
-fn parallelism_width_satisfies(supply: PlacementSupplyRow, demand: WorkDemand) -> Bool {
-  match demand.parallelism {
-    IndependentShards { shard_count: _ } =>
-      hardware_thread_count_value(
-        t: placement_spawn_width(supply: supply, demand: demand)
-      ) >= 1
-    SingleWorkItem => true
-    DependencyGraphParallel { graph: _ } => true
-    PartitionedReduce {
-      partitioner: _,
-      map: _,
-      reduce: _,
-      laws: _,
-    } => true
-  }
 }
 
 // --- §1.2 demand -------------------------------------------------------------
@@ -648,13 +633,6 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
             reason: MissingDemandFact {
               dimension: DemandMemory,
               required: "min_bytes",
-            },
-          }
-        } else if !parallelism_width_satisfies(supply: row, demand: demand) {
-          Rejected {
-            reason: MissingDemandFact {
-              dimension: DemandParallelism,
-              required: "spawn_width",
             },
           }
         } else {

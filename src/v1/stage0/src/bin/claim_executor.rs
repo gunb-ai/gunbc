@@ -476,12 +476,16 @@ fn run_walk(
             width
         );
         for chunk in batch.chunks(width) {
+            // Divide spawn budget across chunk siblings so DiscoveryBatch internal
+            // sharding + batch-level concurrency never exceeds the .dag width authority.
+            let per_runnable_width = (width / chunk.len()).max(1);
             let handles: Vec<_> = chunk
                 .iter()
                 .map(|runnable| {
                     let roots = source_roots.to_vec();
                     let runnable = runnable.clone();
-                    thread::spawn(move || run_one_runnable(roots, runnable, width))
+                    let slot_width = per_runnable_width;
+                    thread::spawn(move || run_one_runnable(roots, runnable, slot_width))
                 })
                 .collect();
             for handle in handles {
