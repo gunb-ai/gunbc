@@ -1,0 +1,9 @@
+// RED perturb fixture — extdeps module without formal anchor (not in shipped roster).
+
+module extdeps.fixture.stable_authority_missing
+
+import std.logic { Bool }
+
+fn noop() -> Bool {
+  true
+}

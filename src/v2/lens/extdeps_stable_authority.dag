@@ -1,88 +1,121 @@
 // src/v2/lens/extdeps_stable_authority.dag
 // Scope: extdeps module stable-authority anchor guard (DESIGN.md §3 grounding).
 // Every extdeps/ module must declare `data extdeps_stable_authority_anchor:
-// StableAuthority` with a structured Uri (scheme + locator) — no string prefix tests.
-// Internal stable authorities (file:, repo docs) are VALID.
-// Consumer: tools.extdeps_stable_authority_gate → lens-unit + staged corpus witnesses.
+// StableAuthority` — external (Uri scheme+locator) OR internal (document+section).
+// Consumer: tools.extdeps_stable_authority_gate (slice 1: advisory) + witnesses.
 //
-// Projection: NODE-TREE over parsed data-decl values (same cohort as
-// extdeps_shape_transport_policy / layering_imports). NO Rust text-scanner;
-// live-tree builtin deferred until Source: SourceRootIngest (#5126).
+// Projection: structural parse bridge in extdeps_shape_transport_policy_project.rs
+// (dissolve-on #5126 — same cohort as extdeps_shape_transport_policy). NO string
+// prefix tests; scheme decode is exhaustive constructor-identity equality only.
 
 module v2.lens.extdeps_stable_authority
 
-import extdeps.stable_authority { StableAuthority }
-import extdeps.uri { uri_scheme_is_recognized }
+import extdeps.uri {
+  Http,
+  Https,
+  File,
+  Ftp,
+  UriScheme
+}
 import v2.std.algebra {
   fold_list,
   is_empty,
   length,
   list_snoc_item
 }
-import v2.std.collection { List }
+import v2.std.collection { List, Optional, Present, Absent }
 import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
 type ExtdepsStableAuthorityAnchorStatus
   = AnchorAbsent
-  | AnchorPresent { authority: StableAuthority }
-  | AnchorMalformed
-
-type ExtdepsStableAuthorityFact {
-  path: String
-  module: String
-  status: ExtdepsStableAuthorityAnchorStatus
-}
+  | AnchorExternal { scheme_identity: String }
+  | AnchorInternal
 
 type ExtdepsStableAuthorityViolation
-  = MissingFormalAnchor { path: String, module: String }
-  | MalformedStableAuthority { path: String, module: String }
+  = MissingFormalAnchor { module: QualifiedName }
+  | UnrecognizedAnchorScheme { module: QualifiedName, raw_scheme: String }
 
 data empty_extdeps_stable_authority_violations: List<ExtdepsStableAuthorityViolation> = []
 
-fn extdeps_stable_authority_uri_recognized(authority: StableAuthority) -> Bool {
-  uri_scheme_is_recognized(s: authority.uri.scheme)
+fn anchor_kind_is_absent(kind: String) -> Bool {
+  kind == "absent"
 }
 
-fn extdeps_stable_authority_fact_violation(
-  fact: ExtdepsStableAuthorityFact
+fn anchor_kind_is_internal(kind: String) -> Bool {
+  kind == "internal"
+}
+
+fn anchor_kind_is_external(kind: String) -> Bool {
+  kind == "external"
+}
+
+// Exhaustive constructor-identity decode — the ONLY place raw scheme strings are inspected.
+fn decode_uri_scheme(raw: String) -> Optional<UriScheme> {
+  if raw == "Http" {
+    Present { value: Http }
+  } else if raw == "Https" {
+    Present { value: Https }
+  } else if raw == "File" {
+    Present { value: File }
+  } else if raw == "Ftp" {
+    Present { value: Ftp }
+  } else {
+    Absent
+  }
+}
+
+fn extdeps_stable_authority_status_for_module(
+  module: QualifiedName
+) -> ExtdepsStableAuthorityAnchorStatus {
+  let kind = extdeps_stable_authority_anchor_kind_for_qualified_name(module: module)
+  if anchor_kind_is_absent(kind: kind) {
+    AnchorAbsent
+  } else if anchor_kind_is_internal(kind: kind) {
+    AnchorInternal
+  } else {
+    AnchorExternal {
+      scheme_identity: extdeps_stable_authority_scheme_identity_for_qualified_name(module: module)
+    }
+  }
+}
+
+fn extdeps_stable_authority_violations_for_module(
+  module: QualifiedName
 ) -> List<ExtdepsStableAuthorityViolation> {
-  match fact.status {
+  match extdeps_stable_authority_status_for_module(module: module) {
     AnchorAbsent => [
-      MissingFormalAnchor {
-        path: fact.path,
-        module: fact.module
-      }
+      MissingFormalAnchor { module: module }
     ]
-    AnchorMalformed => [
-      MalformedStableAuthority {
-        path: fact.path,
-        module: fact.module
-      }
-    ]
-    AnchorPresent { authority: a } =>
-      if extdeps_stable_authority_uri_recognized(authority: a) {
-        empty_extdeps_stable_authority_violations
-      } else {
-        [
-          MalformedStableAuthority {
-            path: fact.path,
-            module: fact.module
-          }
+    AnchorInternal => empty_extdeps_stable_authority_violations
+    AnchorExternal { scheme_identity: raw } =>
+      match decode_uri_scheme(raw: raw) {
+        Present { value: _ } => empty_extdeps_stable_authority_violations
+        Absent => [
+          UnrecognizedAnchorScheme { module: module, raw_scheme: raw }
         ]
       }
   }
 }
 
-fn scan_extdeps_stable_authority_facts(
-  facts: List<ExtdepsStableAuthorityFact>
+fn extdeps_stable_authority_violation_count_for_module(module: QualifiedName) -> Int {
+  length(xs: extdeps_stable_authority_violations_for_module(module: module))
+}
+
+fn extdeps_stable_authority_clean_for_module(module: QualifiedName) -> Bool {
+  extdeps_stable_authority_violation_count_for_module(module: module) == 0
+}
+
+fn scan_extdeps_stable_authority_modules(
+  modules: List<QualifiedName>
 ) -> List<ExtdepsStableAuthorityViolation> {
   fold_list(
-    xs: facts,
+    xs: modules,
     empty: empty_extdeps_stable_authority_violations,
-    cons: fn(acc, fact) {
+    cons: fn(acc, module) {
       fold_list(
-        xs: extdeps_stable_authority_fact_violation(fact: fact),
+        xs: extdeps_stable_authority_violations_for_module(module: module),
         empty: acc,
         cons: fn(inner, v) { list_snoc_item(xs: inner, item: v) }
       )
@@ -90,26 +123,32 @@ fn scan_extdeps_stable_authority_facts(
   )
 }
 
-fn extdeps_stable_authority_clean_holds(
-  facts: List<ExtdepsStableAuthorityFact>
+fn extdeps_stable_authority_clean_holds(modules: List<QualifiedName>) -> Bool {
+  is_empty(xs: scan_extdeps_stable_authority_modules(modules: modules))
+}
+
+fn extdeps_stable_authority_violation_count(modules: List<QualifiedName>) -> Int {
+  length(xs: scan_extdeps_stable_authority_modules(modules: modules))
+}
+
+fn extdeps_stable_authority_has_missing_formal_anchor(
+  module: QualifiedName
 ) -> Bool {
-  is_empty(xs: scan_extdeps_stable_authority_facts(facts: facts))
+  extdeps_stable_authority_violation_count_for_module(module: module) == 1
+    && anchor_kind_is_absent(
+      kind: extdeps_stable_authority_anchor_kind_for_qualified_name(module: module)
+    )
 }
 
-fn extdeps_stable_authority_clean_nonvacuous_holds(
-  facts: List<ExtdepsStableAuthorityFact>
+fn extdeps_stable_authority_has_unrecognized_scheme(
+  module: QualifiedName
 ) -> Bool {
-  (is_empty(xs: facts) == false) && extdeps_stable_authority_clean_holds(facts: facts)
-}
-
-fn extdeps_stable_authority_violation_count(
-  facts: List<ExtdepsStableAuthorityFact>
-) -> Int {
-  length(xs: scan_extdeps_stable_authority_facts(facts: facts))
-}
-
-fn extdeps_stable_authority_module_count(
-  facts: List<ExtdepsStableAuthorityFact>
-) -> Int {
-  length(xs: facts)
+  match extdeps_stable_authority_status_for_module(module: module) {
+    AnchorExternal { scheme_identity: raw } =>
+      match decode_uri_scheme(raw: raw) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    _ => false
+  }
 }

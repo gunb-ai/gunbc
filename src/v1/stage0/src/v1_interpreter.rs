@@ -5667,6 +5667,30 @@ fn eval_builtin(
             )))
         }
 
+        "extdeps_stable_authority_anchor_kind_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_stable_authority_anchor_kind_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::stable_authority_anchor_kind_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_stable_authority_scheme_identity_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_stable_authority_scheme_identity_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::stable_authority_scheme_identity_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

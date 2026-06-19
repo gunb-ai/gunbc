@@ -13,11 +13,16 @@
 module extdeps.stable_authority
 
 import std.types { NonEmptyStr }
-import extdeps.uri { Uri, File }
+import extdeps.uri { Uri }
 
-type StableAuthority {
-  uri: Uri
+type InternalAuthority {
+  document: NonEmptyStr
+  section: NonEmptyStr
 }
+
+type StableAuthority
+  = ExternalUri { uri: Uri }
+  | Internal { authority: InternalAuthority }
 
 // Field-level override: a specific fact cites a finer locator than the module
 // root (e.g. a page fragment on a PDF). Absent ⇒ inherit module root.
@@ -26,9 +31,9 @@ type FactAuthorityOverride {
   authority: StableAuthority
 }
 
-data extdeps_stable_authority_anchor: StableAuthority = StableAuthority {
-  uri: Uri {
-    scheme: File
-    locator: "DESIGN.md#3-single-authority"
+data extdeps_stable_authority_anchor: StableAuthority = Internal {
+  authority: InternalAuthority {
+    document: "DESIGN.md"
+    section: "3-single-authority"
   }
 }

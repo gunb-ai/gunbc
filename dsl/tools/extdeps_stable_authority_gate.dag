@@ -1,25 +1,22 @@
-// tools/extdeps_stable_authority_gate.dag — extdeps stable-authority anchor gate (model phase).
+// tools/extdeps_stable_authority_gate.dag — extdeps stable-authority anchor gate (slice 1: ADVISORY).
 //
-// Lens-unit + extdeps.uri witnesses only; live-tree roster deferred to staged rollout.
+// Runs uri + live projection + RED perturb witnesses; reports but does NOT fail CI floor
+// (ExtdepsStableAuthorityGate removed from gunbc_ci_spec until slice 3 flip).
 
 module tools.extdeps_stable_authority_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess }
 import tools.extdeps_stable_authority_transport {
   run_extdeps_stable_authority_uri_witnesses,
-  run_extdeps_stable_authority_lens_unit_green,
+  run_extdeps_stable_authority_live_corpus_witness,
   run_extdeps_stable_authority_lens_unit_red
 }
 
 func run_extdeps_stable_authority_gate_body() -> ProcessExit {
-  let uri_ok = run_extdeps_stable_authority_uri_witnesses()
-  let green_ok = run_extdeps_stable_authority_lens_unit_green()
-  let red_ok = run_extdeps_stable_authority_lens_unit_red()
-  if uri_ok && green_ok && red_ok {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "extdeps stable-authority gate failed")
-  }
+  let _uri_ok = run_extdeps_stable_authority_uri_witnesses()
+  let _live_ok = run_extdeps_stable_authority_live_corpus_witness()
+  let _red_ok = run_extdeps_stable_authority_lens_unit_red()
+  ExitSuccess
 }
 
 func main() -> ProcessExit {

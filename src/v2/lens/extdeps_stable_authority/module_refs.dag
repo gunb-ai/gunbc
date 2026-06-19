@@ -1,0 +1,26 @@
+// Scope: canonical QualifiedName identities for extdeps_stable_authority witnesses.
+
+module v2.lens.extdeps_stable_authority.module_refs
+
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+
+data extdeps_stable_authority_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^stable_authority, tail: QnEmpty }
+}
+
+data extdeps_fixture_missing_anchor_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^stable_authority_missing, tail: QnEmpty }
+  }
+}
+
+data extdeps_fixture_bogus_scheme_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^stable_authority_bogus_scheme, tail: QnEmpty }
+  }
+}

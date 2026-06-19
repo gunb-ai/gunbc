@@ -563,6 +563,114 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
     gist_create_files_keyed_by_filename_placeholder(module_path)
 }
 
+// ── extdeps stable-authority anchor projection (dissolve-on #5126) ───────────
+// Structural read of `data extdeps_stable_authority_anchor` record values — same
+// cohort as embedded_policy_literal_count_for_data_node; scheme is constructor
+// identity (e.g. `Https`), never a URL prefix string.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StableAuthorityAnchorProjection {
+    Absent,
+    External {
+        scheme_identity: String,
+        locator: String,
+    },
+    Internal {
+        document: String,
+        section: String,
+    },
+}
+
+fn scheme_identity_from_value_node(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
+    crate::v1_std_core::authored_name_at(node.clone(), source_indices.clone())
+}
+
+fn read_stable_authority_anchor_from_items(
+    items: &Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> StableAuthorityAnchorProjection {
+    for item in items.iter() {
+        if !is_data_def_item(item.clone()) || item.name != "extdeps_stable_authority_anchor" {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            return StableAuthorityAnchorProjection::Absent;
+        };
+        let variant = crate::v1_std_core::authored_name_at(body.clone(), source_indices.clone());
+        return match variant.as_str() {
+            "ExternalUri" => {
+                let Some(uri_node) = record_field_value(body, "uri", source_indices) else {
+                    return StableAuthorityAnchorProjection::Absent;
+                };
+                let scheme = record_field_value(&uri_node, "scheme", source_indices)
+                    .map(|n| scheme_identity_from_value_node(&n, source_indices))
+                    .unwrap_or_default();
+                let locator = record_field_value(&uri_node, "locator", source_indices)
+                    .and_then(|n| literal_string_value(&n))
+                    .unwrap_or_default();
+                StableAuthorityAnchorProjection::External {
+                    scheme_identity: scheme,
+                    locator,
+                }
+            }
+            "Internal" => {
+                let Some(authority_node) =
+                    record_field_value(body, "authority", source_indices)
+                else {
+                    return StableAuthorityAnchorProjection::Absent;
+                };
+                let document = record_field_value(&authority_node, "document", source_indices)
+                    .and_then(|n| literal_string_value(&n))
+                    .unwrap_or_default();
+                let section = record_field_value(&authority_node, "section", source_indices)
+                    .and_then(|n| literal_string_value(&n))
+                    .unwrap_or_default();
+                StableAuthorityAnchorProjection::Internal { document, section }
+            }
+            _ => StableAuthorityAnchorProjection::Absent,
+        };
+    }
+    StableAuthorityAnchorProjection::Absent
+}
+
+fn project_stable_authority_anchor(module_path: &str) -> StableAuthorityAnchorProjection {
+    let path = source_path_for_module_path(module_path.to_string());
+    let (items, source_indices) = parse_module_items(&path);
+    read_stable_authority_anchor_from_items(&items, &source_indices)
+}
+
+pub fn stable_authority_anchor_kind_for_module_path(module_path: String) -> String {
+    match project_stable_authority_anchor(&module_path) {
+        StableAuthorityAnchorProjection::Absent => "absent".to_string(),
+        StableAuthorityAnchorProjection::External { .. } => "external".to_string(),
+        StableAuthorityAnchorProjection::Internal { .. } => "internal".to_string(),
+    }
+}
+
+pub fn stable_authority_scheme_identity_for_module_path(module_path: String) -> String {
+    match project_stable_authority_anchor(&module_path) {
+        StableAuthorityAnchorProjection::External { scheme_identity, .. } => scheme_identity,
+        _ => String::new(),
+    }
+}
+
+pub fn stable_authority_anchor_kind_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> String {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    stable_authority_anchor_kind_for_module_path(module_path)
+}
+
+pub fn stable_authority_scheme_identity_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> String {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    stable_authority_scheme_identity_for_module_path(module_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -737,6 +845,36 @@ service github.Gist {
         assert!(
             data_literal_is_embedded_policy_literal("gcloud auth print-access-token"),
             "fallback_auth_command policy literal must flag"
+        );
+    }
+
+    #[test]
+    fn stable_authority_self_anchor_projects_internal() {
+        assert_eq!(
+            stable_authority_anchor_kind_for_module_path("extdeps.stable_authority".to_string()),
+            "internal"
+        );
+        assert_eq!(
+            stable_authority_scheme_identity_for_module_path(
+                "extdeps.stable_authority".to_string()
+            ),
+            ""
+        );
+    }
+
+    #[test]
+    fn stable_authority_bogus_scheme_fixture_projects_external_gopher() {
+        let path = crate::module_path_index::source_path_for_module_path(
+            "extdeps.fixture.stable_authority_bogus_scheme".to_string(),
+        );
+        let (items, source_indices) = parse_module_items(&path);
+        let proj = read_stable_authority_anchor_from_items(&items, &source_indices);
+        assert_eq!(
+            proj,
+            StableAuthorityAnchorProjection::External {
+                scheme_identity: "Gopher".to_string(),
+                locator: "example.invalid/spec".to_string(),
+            }
         );
     }
 }

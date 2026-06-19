@@ -1,0 +1,13 @@
+// Scope: live-tree GREEN — extdeps.stable_authority self-anchor projects Internal, lens clean.
+
+module v2.test.extdeps_stable_authority.corpus.self_anchor_live_clean
+
+import v2.lens.extdeps_stable_authority {
+  extdeps_stable_authority_clean_for_module
+}
+import v2.lens.extdeps_stable_authority.module_refs { extdeps_stable_authority_module }
+import v2.std.logic { Bool }
+
+test fn corpus_self_anchor_live_clean_holds() -> Bool {
+  extdeps_stable_authority_clean_for_module(module: extdeps_stable_authority_module)
+}

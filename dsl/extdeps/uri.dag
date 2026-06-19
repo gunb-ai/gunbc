@@ -5,6 +5,9 @@
 //   IANA URI scheme registry: https://www.rfc-editor.org/rfc/rfc7595
 //
 // Uri is an extdeps concept (external authority), not std business logic.
+// Carrier caveat (§3): v2.std.network also models Url/UriScheme with a different
+// shape/layer — this closed-sum UriScheme shares the RFC 3986 anchor but does NOT
+// fork network.Url (two-carrier split; operator may consolidate later).
 // §6 dissolution: locator is opaque NonEmptyStr for now; fuller RFC 3986
 // authority / path / query / fragment decomposition deferred until field-level
 // FactAuthorityOverride needs granular fragments (e.g. #page=12 on a PDF).

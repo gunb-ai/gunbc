@@ -1,24 +1,17 @@
-// Scope: lens-unit RED — module missing extdeps_stable_authority_anchor.
+// Scope: RED perturb — fixture module missing extdeps_stable_authority_anchor.
 
 module v2.test.extdeps_stable_authority.lens_unit.missing_anchor_red
 
 import v2.lens.extdeps_stable_authority {
-  AnchorAbsent,
-  ExtdepsStableAuthorityFact,
-  extdeps_stable_authority_violation_count
+  extdeps_stable_authority_has_missing_formal_anchor
 }
-import v2.std.collection { List }
+import v2.lens.extdeps_stable_authority.module_refs {
+  extdeps_fixture_missing_anchor_module
+}
 import v2.std.logic { Bool }
-import v2.std.text { String }
 
-data missing_anchor_facts: List<ExtdepsStableAuthorityFact> = [
-  ExtdepsStableAuthorityFact {
-    path: "dsl/extdeps/fixture/plant.dag",
-    module: "extdeps.fixture.plant",
-    status: AnchorAbsent
-  }
-]
-
-test fn missing_anchor_is_red_holds() -> Bool {
-  extdeps_stable_authority_violation_count(facts: missing_anchor_facts) == 1
+test fn missing_anchor_fixture_is_red_holds() -> Bool {
+  extdeps_stable_authority_has_missing_formal_anchor(
+    module: extdeps_fixture_missing_anchor_module
+  )
 }

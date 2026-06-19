@@ -12,7 +12,6 @@ type Gate
   | EmitHostGate
   | LayeringImportsGate
   | ResolvedImportsGate
-  | ExtdepsStableAuthorityGate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate

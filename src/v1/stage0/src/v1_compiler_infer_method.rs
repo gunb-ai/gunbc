@@ -249,6 +249,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "extdeps_stable_authority_anchor_kind_for_qualified_name".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_stable_authority_scheme_identity_for_qualified_name".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),
             int_type(),
         );
