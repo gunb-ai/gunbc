@@ -6,9 +6,11 @@
 // VerdictTree = Leaf | Decomposed is the recursive carrier (rose tree of
 // ReduceVerdict). settle_verdict_tree recurses depth-first; sibling verdicts
 // fold via reduce_verdicts_located (Semigroup over List = FreeMonoid<ReduceVerdict>).
-// CONSUME-BY-CORRESPONDENCE of compute_fabric.PartitionedReduce — no
-// compute_fabric import (dissolution trigger). Name avoids collision with
-// extdeps.github.actions.Workflow (GitHub Actions YAML carrier).
+// CONSUME-BY-CORRESPONDENCE of product.compute_fabric.PartitionedReduce.reduce
+// side (DESIGN.md §3) — no compute_fabric import.
+// Dissolution trigger (DESIGN.md §6): delete when VerdictTree binds literal
+// PartitionedReduce fields or product.compute_fabric imports std.workflow_recursive.
+// Name avoids collision with extdeps.github.actions.Workflow (GitHub Actions carrier).
 
 module std.workflow_recursive
 

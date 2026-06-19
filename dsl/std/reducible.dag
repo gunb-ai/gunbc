@@ -1,9 +1,11 @@
 // std/reducible.dag — fail-closed three-valued reduction verdict (objective primitive).
 //
 // Promoted from ctrl plans.reducible (gunb-ai/ctrl #1716 relocation target).
-// CONSUMES compute_fabric.PartitionedReduce by correspondence only — declares
-// NO map/reduce types; binding literal PartitionedReduce fields is a dissolution
-// trigger (snappy-stag: Option-in-v2 + Measure G1).
+// CONSUMES product.compute_fabric.PartitionedReduce by correspondence only
+// (DESIGN.md §3 single authority) — declares NO map/reduce types.
+// Dissolution trigger (DESIGN.md §6): delete correspondence scaffold when this
+// module binds literal PartitionedReduce fields (partitioner/map/reduce/laws) via
+// product import or a std Realization row lands.
 //
 // VERDICT (DESIGN.md §5):
 //   Reduced { last_parts }  — decomposed / progressed (rightmost decisive leaf count)
@@ -43,6 +45,9 @@ fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
   Semigroup { op: reduce_verdict_combine }
 }
 
+// dissolve-on: derived structural == on ReduceVerdict (closed coproduct equality)
+// replaces this hand-rolled predicate; interim owner: workflow_recursive witnesses.
+// std has no Eq derivation lane yet — witnesses are the only consumers.
 fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
   match a {
     Reduced { last_parts: pa } => match b {
