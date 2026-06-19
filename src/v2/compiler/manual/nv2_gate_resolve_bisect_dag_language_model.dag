@@ -1,0 +1,9 @@
+// Throwaway: trivial entry importing ONLY nv2 gate direct import dag_language_model_wave1.
+module v2.test.manual.nv2_gate_resolve_bisect_dag_language_model
+
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.logic { Bool }
+
+fn bisect() -> Bool {
+  true
+}

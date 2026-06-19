@@ -1,0 +1,9 @@
+// Throwaway: trivial entry importing ONLY nv2 gate direct import rust_mvp1_target_model.
+module v2.test.manual.nv2_gate_resolve_bisect_rust_target_model
+
+import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.std.logic { Bool }
+
+fn bisect() -> Bool {
+  true
+}

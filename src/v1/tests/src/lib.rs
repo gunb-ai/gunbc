@@ -106,6 +106,9 @@ mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
 #[cfg(test)]
+#[cfg(test)]
+mod nv2_gate_resolve_bisect_test;
+#[cfg(test)]
 mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
 mod value_carrier_swap_test;

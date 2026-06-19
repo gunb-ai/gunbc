@@ -1,0 +1,13 @@
+// Throwaway: trivial entry importing ONLY nv2 gate direct import host manifest stub.
+module v2.test.manual.nv2_gate_resolve_bisect_host_manifest_stub
+
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
+  host_source_root_ingest,
+  host_source_root_ingest_coverage_receipt
+}
+import v2.std.logic { Bool }
+
+fn bisect() -> Bool {
+  true
+}
