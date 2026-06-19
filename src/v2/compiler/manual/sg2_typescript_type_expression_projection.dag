@@ -161,7 +161,7 @@ fn ts_sg2_serialized_text(emitted: Node) -> String {
     target: ts_sg2_type_expr_target_model(),
     emitted: emitted
   ) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => ts_sg2_fail_text
   }
 }

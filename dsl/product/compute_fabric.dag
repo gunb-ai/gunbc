@@ -15,6 +15,11 @@ module product.compute_fabric
 
 import std.nat { Nat }
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, List }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
+import extdeps.vendor.ampere { ampere }
 import std.os.types {
   FileSystemSemantics,
   Linux,
@@ -31,11 +36,9 @@ import std.measure {
   Currency,
   Micro,
   One,
+  Nano,
   ByteSize,
   MoneyAmount,
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -44,6 +47,8 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+// Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
 import std.content_hash {
@@ -52,14 +57,14 @@ import std.content_hash {
   content_hash_tagged,
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
-import std.cpu {
+import extdeps.cpu {
   CpuFacts,
   CpuArchitecture,
   cpu_facts_architecture,
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads,
 }
-import std.cpu.types {
+import extdeps.cpu.types {
   CpuArchitecture,
   CpuDeploymentFacts,
   CpuModelCatalogRow,
@@ -71,7 +76,7 @@ import std.cpu.types {
   Riscv64,
   Wasm32,
 }
-import std.placement_supply { HostIdentity, PlacementSupplyRow }
+import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
@@ -120,6 +125,9 @@ type Duration = Measure<Time, One, Nat>
 // Demanded by Hetzner cost quotes whose source data is `*_eur_micros` (e.g. 50500
 // micro-EUR/hour); micros are finer than the EUR minor unit (cent), so a minor-unit
 // `<One>` carrier could not hold them losslessly.
+// dissolution-trigger: collapse with std.measure.MoneyAmountMicro once v2 parametric-
+// in-field-position eval lands — both aliases dissolve to `MoneyAmount<Micro>` (see
+// std/measure.dag header on the dual-alias pair).
 type MoneyMicros = MoneyAmount<Micro>
 
 fn money_micros(count: Nat) -> MoneyMicros {
@@ -147,62 +155,63 @@ type StorageMount {
   lifecycle: PersistenceKind
 }
 
-// CpuFacts authority: std.cpu (identity + deployment); catalog invariants
+// CpuFacts authority: extdeps.cpu (identity + deployment); catalog invariants
 // project via cpu_facts_* helpers — not duplicated fields here.
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
-// 🟡 grounded, NOT terminal. Closed GPU-vendor surface — kills the stringly anemia. Overlaps
-// std.cpu.CpuVendor on shared entities (AMD/Intel/Apple/Qualcomm).
-// dissolution-trigger: fold into a single shared Vendor authority with std.cpu.CpuVendor pending
-// the parked, operator-gated std-conflation vendor-unification decision.
-type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
-
 // NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
-// major/minor magnitudes, not a marketplace label string.
+// major/minor magnitudes, not a marketplace label string. `vendor` is the single
+// Vendor<Hardware> authority (extdeps/vendor/) — GPU-maker validity is enforced
+// fail-closed at the label projection below, not by a forked GPU-only vendor enum.
 type GpuComputeCapability {
-  vendor: GpuVendor
+  vendor: Vendor<Hardware>
   major: Int
   minor: Int
 }
 
-type UnsubstantiatedGpuCapabilityLabel { vendor: GpuVendor }
+type UnsubstantiatedGpuCapabilityLabel { vendor: Vendor<Hardware> }
 
 type GpuCapabilityLabelOutcome
   = GpuCapabilityLabelOk { label: String }
   | GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel }
 
 // Fail-closed capability label projection: only NVIDIA sm_X_Y and AMD gfxXY are
-// substantiated wire conventions; Intel/Apple/Qualcomm refuse rather than fabricate.
+// substantiated wire conventions. Dispatch is by vendor IDENTITY (the cited entity),
+// not an enum match — any vendor that is neither nvidia nor amd (a non-GPU maker, or
+// a GPU maker with no published sm/gfx scheme) refuses rather than fabricate a label.
+// The fail-closed `else` reports whichever vendor it was, so no per-vendor arm is
+// hand-listed (DESIGN §5; the realization selector lives here, peripheral, not in the
+// Vendor interface — §3). The vendor-specific sm/gfx scheme itself is a candidate to
+// migrate to a per-vendor cited GPU-ISA fact in extdeps/vendor/ (follow-up).
 fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
-  match cap.vendor {
-    Nvidia => GpuCapabilityLabelOk {
+  if cap.vendor == nvidia {
+    GpuCapabilityLabelOk {
       label: concat("sm_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
     }
-    Amd => GpuCapabilityLabelOk {
-      label: concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
-    }
-    Intel => GpuCapabilityLabelRejected {
-      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Intel }
-    }
-    Apple => GpuCapabilityLabelRejected {
-      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Apple }
-    }
-    Qualcomm => GpuCapabilityLabelRejected {
-      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Qualcomm }
+  } else {
+    if cap.vendor == amd {
+      GpuCapabilityLabelOk {
+        label: concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+      }
+    } else {
+      GpuCapabilityLabelRejected {
+        reason: UnsubstantiatedGpuCapabilityLabel { vendor: cap.vendor }
+      }
     }
   }
 }
 
 type GpuFacts {
-  vendor: GpuVendor
+  vendor: Vendor<Hardware>
   model: NonEmptyStr
   compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }
 
-type AcceleratorFacts { vendor: NonEmptyStr, model: NonEmptyStr }
+// vendor grounds onto the single Vendor<Hardware> authority (was a stringly NonEmptyStr).
+type AcceleratorFacts { vendor: Vendor<Hardware>, model: NonEmptyStr }
 
 type MemoryDevice {
   capacity: ByteSize
@@ -287,6 +296,26 @@ type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 //     `NonEmptyStr`.
 type CostEstimate { model: CostModel, unit_price: MoneyMicros, currency: CurrencyCode }
 
+// Per-second billed cloud quote — the product-side $/billing axis consumer for a
+// vendor hourly rate carried as `MoneyMicros` (Measure<Currency, Micro>). The vendor
+// catalog (extdeps.cloud.hetzner) owns the cited micro-EUR rows; this function is
+// vendor-agnostic — it projects any hourly `MoneyMicros` + ISO currency into the
+// `CostEstimate` shape the placement/isolation lattice reads via `ComputeOffer.cost_quote`.
+fn per_second_billed_cost_quote(unit_price: MoneyMicros, currency: CurrencyCode) -> CostEstimate {
+  CostEstimate {
+    model: CostModel {
+      cost_class: PerSecondBilled,
+      rates: ProviderCostModel { placeholder: true },
+    },
+    unit_price: unit_price,
+    currency: currency,
+  }
+}
+
+fn cost_estimate_unit_price_micros(quote: CostEstimate) -> Nat {
+  money_micros_count(m: quote.unit_price)
+}
+
 type ComputeOffer {
   provider: ProviderIdentity
   supply: ComputeSupplyFacts
@@ -314,7 +343,7 @@ fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyS
 
 // --- §1.4b placement projection (derived — NOT a parallel authority) ----------
 //
-// PlacementSupplyRow authority: std.placement_supply. ram_bytes_total is a
+// PlacementSupplyRow authority: product.placement_supply. ram_bytes_total is a
 // value-typed ByteSize projection — Measure carriers now have inhabitants via
 // std.measure, so this consumer is migrated in step with the census (the
 // prior P-CF-BYTESIZE bare-Int stopgap here is dissolved).
@@ -658,6 +687,12 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
+  // NANOSECOND scale CHOICE (relocated here per DESIGN §3): the realization /
+  // measurement framework (std.realization_measurement / std.realization_schedule) is
+  // scale-AGNOSTIC; this consumer — the host wall-clock observation boundary — OWNS the
+  // decision to denominate measured cost in nanoseconds, because that is the resolution
+  // the host clock observes elapsed wall time at. The framework rolls up whatever scale
+  // arrives; nanosecond is named here, once, where it is measured.
   wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
@@ -678,7 +713,9 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 
 // Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
 // → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
-fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
+// The scale-agnostic roll-up is instantiated at `CostAccount<Nano>` HERE (this consumer's
+// owned ns choice), inferred from the NanosecondDuration wall_duration.
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
 }
 
@@ -887,7 +924,7 @@ fn witness_vm_offer_admits_vm_demand() -> Bool {
 data example_resource_cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
   oem_listing_id: none,
-  vendor: Ampere,
+  vendor: ampere,
   architecture: Aarch64,
   cores: 64,
   threads: hardware_thread_count(64),
@@ -1015,7 +1052,7 @@ fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
   content_hash_atom(value: isolation_boundary_label(boundary: boundary))
 }
 
-// File-scoped arch label for digest only — lift to std/cpu/types.cpu_architecture_label
+// File-scoped arch label for digest only — lift to extdeps/cpu/types.cpu_architecture_label
 // if a second consumer appears (§3 single authority).
 fn cpu_architecture_digest(arch: CpuArchitecture) -> ContentHash {
   match arch {

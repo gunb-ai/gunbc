@@ -61,7 +61,7 @@ fn program_assembly_read_to_normalized_root(
     SourceFile =>
       bind_outcome(
         o: tokenize(
-          text: read.source,
+          text: read.source.carried,
           file: read.compilation_unit,
           rules: lm.lex
         ),

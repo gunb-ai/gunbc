@@ -234,7 +234,8 @@ fn python_same_language_parse_bridge_holds() -> Bool {
 }
 
 // Real python source -> parse -> bridge -> emit(py) recovers canonical python_mvp1_source_text.
-fn python_same_language_source_emit_round_trip_holds() -> Bool {
+// Bundles real-tree foreign-rules discrimination (grammar rows drive recovery, not fabrication).
+test fn python_same_language_source_emit_round_trip_holds() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -243,7 +244,8 @@ fn python_same_language_source_emit_round_trip_holds() -> Bool {
         target_model: python_mvp1_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>
-          source == python_mvp1_source_text
+          (source.carried == python_mvp1_source_text)
+            && python_same_language_discriminates_on_real_tree()
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

@@ -1,9 +1,9 @@
 // extdeps/memory/jedec.dag — JEDEC SDRAM generation catalog (cited spec authority).
 //
 // Per-generation monolithic die-density ceilings and standard document ids, as
-// std.memory.types.JedecDdrGenerationCatalogRow values. JEDEC publishes the spec;
+// extdeps.memory.types.JedecDdrGenerationCatalogRow values. JEDEC publishes the spec;
 // it is an external dependency: it lives in extdeps/, importing the catalog SHAPE
-// from std/memory. std/memory owns only the shape + the generation taxonomy; it does
+// from extdeps/memory. extdeps/memory owns only the shape + the generation taxonomy; it does
 // not carry cited JEDEC document ids or per-generation ceiling magnitudes.
 //
 // Dispatch lives here (DESIGN §3: product → cited catalog row → std projection).
@@ -11,7 +11,7 @@
 module extdeps.memory.jedec
 
 import std.measure { byte_size }
-import std.memory.types {
+import extdeps.memory.types {
   DoubleDataRate,
   DramGeneration,
   JedecDdrGenerationCatalogRow,

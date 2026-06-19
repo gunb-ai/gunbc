@@ -1,0 +1,160 @@
+// src/v2/std/cross_tree/resolution.dag
+//
+// Route C Phase B — QualifiedName-grounded cross-tree resolution helpers.
+// Bridges name_resolve admission to import_model without String module-path interim.
+// Consumers: v2.compiler.name_resolve (namespace_for_subject cross-tree gate).
+//
+// SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback
+// dissolve-on (grounded source_root at ingest): add source_root: SourceRootRef to
+//   DagSourceReadWitness (src/v2/compiler/source_authority.dag); host tags by which
+//   --source-root the file came from; delete source_root_ref_from_qualified_name and
+//   source_root_set_from_module_roots QN-prefix fallback.
+// ACTIVATION GATE (hard): supplying a non-Unknown TreeFundamentalityOrder for real
+//   compilation (cross-tree direction-flip) MUST NOT land until grounded source_root
+//   tagging replaces this fallback. INERT Unknown-default is allowed; relying on QN-prefix
+//   for admitted cross-tree edges is forbidden (DESIGN §4).
+
+module v2.std.cross_tree.resolution
+
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import v2.std.cross_tree.import_model {
+  CrossTreeAdmitted,
+  CrossTreeAdmissionVerdict,
+  CrossTreeDenied,
+  CrossTreeImport,
+  DslTree,
+  SourceRootRef,
+  TreeFundamentalityOrder,
+  V2Tree,
+  cross_tree_import_admitted,
+  source_root_ref_eq,
+  source_root_set_contains
+}
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixCompiler,
+  LayerPrefixExtdeps,
+  LayerPrefixStd,
+  LayerPrefixWorkflow
+}
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty }
+import v2.std.text { String }
+
+
+// ── Source-tree tagging (QN-prefix fallback — see module header dissolve-on) ───
+
+// 🟡 SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback — bind dissolve-on above.
+// KNOWN LIMITATION: cross-tree-overlaid module paths (e.g. extdeps.shell in BOTH
+// dsl/extdeps/shell/shell.dag and src/v2/extdeps/shell.dag) mis-tag as DslTree even when
+// witness_layer_roots overlay makes the v2 copy authoritative. QN materialization does NOT
+// fix this — the path stays extdeps.shell in both trees. Harmless while FundamentalityUnknown
+// denies all cross-tree edges (floor-verified inert); forbidden: admitting cross-tree edges
+// through this fallback after direction-flip activation.
+fn source_root_ref_from_qualified_name(qn: QualifiedName) -> SourceRootRef {
+  match qn {
+    QnEmpty => DslTree
+    QnCons { head: h, tail: _ } =>
+      if h == ^v2 {
+        V2Tree
+      } else {
+        DslTree
+      }
+  }
+}
+
+
+// Layer tier from module QualifiedName — mirrors DESIGN.md §3 four-tier DAG.
+fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
+  match qn {
+    QnEmpty => LayerPrefixStd
+    QnCons { head: h, tail: t } =>
+      if h == ^v2 {
+        match t {
+          QnEmpty => LayerPrefixStd
+          QnCons { head: h2, tail: _ } =>
+            if h2 == ^std {
+              LayerPrefixStd
+            } else if h2 == ^extdeps {
+              LayerPrefixExtdeps
+            } else if h2 == ^compiler {
+              LayerPrefixCompiler
+            } else if h2 == ^workflow {
+              LayerPrefixWorkflow
+            } else if h2 == ^lens {
+              LayerPrefixCompiler
+            } else if h2 == ^test {
+              LayerPrefixCompiler
+            } else {
+              LayerPrefixCompiler
+            }
+        }
+      } else if h == ^extdeps {
+        LayerPrefixExtdeps
+      } else if h == ^gunbc {
+        LayerPrefixWorkflow
+      } else if h == ^tools {
+        LayerPrefixWorkflow
+      } else {
+        LayerPrefixStd
+      }
+  }
+}
+
+
+fn source_root_set_insert(
+  roots: FreeMonoid<SourceRootRef>,
+  r: SourceRootRef
+) -> FreeMonoid<SourceRootRef> {
+  if source_root_set_contains(roots: roots, r: r) {
+    roots
+  } else {
+    Cons { head: r, tail: roots }
+  }
+}
+
+
+// Derive the active source-root set from a pool of qualified names.
+fn source_root_set_from_module_roots(qns: FreeMonoid<QualifiedName>) -> FreeMonoid<SourceRootRef> {
+  fold_list(
+    xs: qns,
+    empty: Empty,
+    cons: fn(acc, qn) {
+      source_root_set_insert(roots: acc, r: source_root_ref_from_qualified_name(qn: qn))
+    }
+  )
+}
+
+
+// Interim empty module-path strings — CrossTreeImport admission ignores them;
+// dissolve-on: bold-bee 3a.2 QualifiedName materialization replaces with QN render.
+data cross_tree_module_path_interim: String = ""
+
+// QualifiedName-grounded cross-tree admission (Phase B wiring surface).
+fn cross_tree_import_admitted_qualified(
+  from_qn: QualifiedName,
+  to_qn: QualifiedName,
+  roots: FreeMonoid<SourceRootRef>,
+  order: TreeFundamentalityOrder
+) -> CrossTreeAdmissionVerdict {
+  cross_tree_import_admitted(
+    edge: CrossTreeImport {
+      from_tree: source_root_ref_from_qualified_name(qn: from_qn),
+      from_layer: layer_prefix_from_qualified_name(qn: from_qn),
+      from_module: cross_tree_module_path_interim,
+      to_tree: source_root_ref_from_qualified_name(qn: to_qn),
+      to_layer: layer_prefix_from_qualified_name(qn: to_qn),
+      to_module: cross_tree_module_path_interim
+    },
+    roots: roots,
+    order: order
+  )
+}
+
+
+fn cross_tree_import_is_same_tree(from_qn: QualifiedName, to_qn: QualifiedName) -> Bool {
+  source_root_ref_eq(
+    a: source_root_ref_from_qualified_name(qn: from_qn),
+    b: source_root_ref_from_qualified_name(qn: to_qn)
+  )
+}

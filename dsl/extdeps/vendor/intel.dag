@@ -1,0 +1,8 @@
+// extdeps/vendor/intel.dag — Intel as a cited hardware-vendor entity.
+// Anchor: https://en.wikipedia.org/wiki/Intel
+module extdeps.vendor.intel
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+data intel: Vendor<Hardware> = Vendor { legal_name: "Intel Corporation" }
