@@ -34,14 +34,10 @@ fn content_hash_order_conj_ab() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^content_hash_order_field_a },
-        target: content_hash_order_leaf()
-      },
-      Edge {
-        label: Named { name: ^content_hash_order_field_b },
-        target: content_hash_order_leaf()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_order_field_b },
+        target: content_hash_order_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -51,14 +47,10 @@ fn content_hash_order_conj_ba() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^content_hash_order_field_b },
-        target: content_hash_order_leaf()
-      },
-      Edge {
-        label: Named { name: ^content_hash_order_field_a },
-        target: content_hash_order_leaf()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_order_field_b },
+        target: content_hash_order_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -89,10 +81,8 @@ fn content_hash_nested_conj_ab() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^content_hash_order_field_a },
-        target: content_hash_order_conj_ab()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_conj_ab() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -102,10 +92,8 @@ fn content_hash_nested_conj_ba() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^content_hash_order_field_a },
-        target: content_hash_order_conj_ba()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_order_field_a },
+        target: content_hash_order_conj_ba() }
     ],
     occurrence_id: SyntheticOccurrence
 }

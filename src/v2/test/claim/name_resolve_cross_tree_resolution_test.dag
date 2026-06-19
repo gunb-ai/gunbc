@@ -79,14 +79,12 @@ fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> No
         name: ^dag_surface_module_header_qualified_name,
         target: qn_spine
       ),
-      Edge {
-        label: Named { name: export_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -108,14 +106,12 @@ fn ct_subject_with_import_use(
         name: ^dag_surface_module_header_qualified_name,
         target: qn_spine
       ),
-      Edge {
-        label: Named { name: import_use_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }

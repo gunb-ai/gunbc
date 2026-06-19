@@ -368,7 +368,7 @@ fn neutralize_edges_for_target(
               Accepted {
                 value: list_snoc_item(
                   xs: rebuilt_edges,
-                  item: Edge { label: edge.label, target: neutralized_target }
+                  item: Edge { label: edge.label, role: edge.role, target: neutralized_target }
                 ),
                 diagnostics: ad
               }

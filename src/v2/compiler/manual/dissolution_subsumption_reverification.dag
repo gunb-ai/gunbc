@@ -144,22 +144,14 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
       Node {
         kind: ComputationNode { behavior: Value },
         children: [
-          Edge {
-            label: Named { name: ^subsumption_root_fix_edge },
-            target: subsumption_symbol_node(s: row.root_fix.id)
-          },
-          Edge {
-            label: Named { name: ^subsumption_first_leaf_edge },
-            target: subsumption_template_leaf_node(row: row)
-          },
-          Edge {
-            label: Named { name: ^subsumption_second_leaf_edge },
-            target: subsumption_name_dispatch_leaf_node(row: row)
-          },
-          Edge {
-            label: Named { name: ^subsumption_mechanical_claim_edge },
-            target: subsumption_symbol_node(s: claim.id)
-          }
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_root_fix_edge },
+            target: subsumption_symbol_node(s: row.root_fix.id) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_first_leaf_edge },
+            target: subsumption_template_leaf_node(row: row) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_second_leaf_edge },
+            target: subsumption_name_dispatch_leaf_node(row: row) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_mechanical_claim_edge },
+            target: subsumption_symbol_node(s: claim.id) }
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -172,22 +164,14 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
     children: [
-      Edge {
-        label: Named { name: ^subsumption_root_fix_edge },
-        target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix)
-      },
-      Edge {
-        label: Named { name: ^subsumption_first_leaf_edge },
-        target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix)
-      },
-      Edge {
-        label: Named { name: ^subsumption_second_leaf_edge },
-        target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix)
-      },
-      Edge {
-        label: Named { name: ^subsumption_mechanical_claim_edge },
-        target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_root_fix_edge },
+        target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_first_leaf_edge },
+        target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_second_leaf_edge },
+        target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^subsumption_mechanical_claim_edge },
+        target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim) }
     ],
     occurrence_id: SyntheticOccurrence
 }

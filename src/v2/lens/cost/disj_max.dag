@@ -36,8 +36,7 @@ data disj_max_cheap_body: Node = Node {
 data disj_max_expensive_body: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge {
-      label: Positional,
+    Edge { role: Containment { inheritable: false }, label: Positional,
       target: Node {
         kind: ComputationNode { behavior: Transform },
         children: [
@@ -51,8 +50,7 @@ data disj_max_expensive_body: Node = Node {
           }
         ],
         occurrence_id: SyntheticOccurrence
-      }
-    }
+      } }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -60,8 +58,8 @@ data disj_max_expensive_body: Node = Node {
 data disj_max_input: Node = Node {
   kind: TypeNode { connective: Disj },
   children: [
-    Edge { label: Positional, target: disj_max_cheap_body },
-    Edge { label: Positional, target: disj_max_expensive_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: disj_max_cheap_body },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: disj_max_expensive_body }
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -389,10 +389,8 @@ fn resolve_transform_children(
                   }
                 Accepted { value: resolved_target, diagnostics: ed } =>
                   Accepted {
-                    value: list_snoc_item(xs: done, item: Edge {
-                      label: e.label,
-                      target: resolved_target
-                    }),
+                    value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                      target: resolved_target }),
                     diagnostics: diagnostics_merge(outer: ad, inner: ed)
                   }
               }
@@ -409,10 +407,8 @@ fn resolve_transform_children(
                   }
                 Accepted { value: resolved_target, diagnostics: ed } =>
                   Accepted {
-                    value: list_snoc_item(xs: done, item: Edge {
-                      label: e.label,
-                      target: resolved_target
-                    }),
+                    value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                      target: resolved_target }),
                     diagnostics: diagnostics_merge(outer: ad, inner: ed)
                   }
               }
@@ -430,10 +426,8 @@ fn resolve_transform_children(
                 }
               Accepted { value: resolved_target, diagnostics: ed } =>
                 Accepted {
-                  value: list_snoc_item(xs: done, item: Edge {
-                    label: e.label,
-                    target: resolved_target
-                  }),
+                  value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                    target: resolved_target }),
                   diagnostics: diagnostics_merge(outer: ad, inner: ed)
                 }
             }
@@ -531,7 +525,7 @@ fn resolve_child_edge(
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
             Accepted {
-              value: Edge { label: e.label, target: resolved_target },
+              value: Edge { label: e.label, role: e.role, target: resolved_target },
               diagnostics: d
             }
         }
@@ -550,7 +544,7 @@ fn resolve_child_edge(
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: resolved_target, diagnostics: d } =>
             Accepted {
-              value: Edge { label: e.label, target: resolved_target },
+              value: Edge { label: e.label, role: e.role, target: resolved_target },
               diagnostics: d
             }
         }
@@ -640,10 +634,8 @@ fn resolve_edges_first_outer_then_inner(
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: resolved_target
-                          }),
+                        value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                            target: resolved_target }),
                         diagnostics: diagnostics_merge(outer: ad, inner: ed)
                       }
                     }
@@ -666,10 +658,8 @@ fn resolve_edges_first_outer_then_inner(
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: resolved_target
-                          }),
+                        value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                            target: resolved_target }),
                         diagnostics: diagnostics_merge(outer: ad, inner: ed)
                       }
                     }
@@ -731,10 +721,8 @@ fn resolve_bind_edges(
                     BindEdgeAccMk {
                       idx: i + 1,
                       acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: rt
-                          }),
+                        value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                            target: rt }),
                         diagnostics: diagnostics_merge(outer: ad, inner: ed)
                       }
                     }
@@ -758,10 +746,8 @@ fn resolve_bind_edges(
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: Accepted {
-                          value: list_snoc_item(xs: done, item: Edge {
-                              label: e.label,
-                              target: rt
-                            }),
+                          value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                              target: rt }),
                           diagnostics: diagnostics_merge(outer: ad, inner: ed)
                         }
                       }
@@ -784,10 +770,8 @@ fn resolve_bind_edges(
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: Accepted {
-                          value: list_snoc_item(xs: done, item: Edge {
-                              label: e.label,
-                              target: rt
-                            }),
+                          value: list_snoc_item(xs: done, item: Edge { role: Containment { inheritable: false }, label: e.label,
+                              target: rt }),
                           diagnostics: diagnostics_merge(outer: ad, inner: ed)
                         }
                       }

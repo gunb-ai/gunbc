@@ -37,10 +37,8 @@ data int_leaf_target_bitwidth: Node = Node {
 data bitwidth_flat_scalar_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^pointer_width },
-      target: int_leaf_target_bitwidth
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^pointer_width },
+      target: int_leaf_target_bitwidth }
   ],
   occurrence_id: SyntheticOccurrence
 }

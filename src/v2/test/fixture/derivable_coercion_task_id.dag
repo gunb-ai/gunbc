@@ -34,13 +34,11 @@ fn task_id_semantic_core_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^task_id_encoding_opaque_symbol,
           carrier: ^task_id_carrier_symbol_identity
-        )
-      }
+        ) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -50,14 +48,10 @@ fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^task_id_encoding_core_field_representation },
-        target: task_id_inhabitant_atom(id: representation)
-      },
-      Edge {
-        label: Named { name: ^task_id_encoding_core_field_carrier },
-        target: task_id_inhabitant_atom(id: carrier)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^task_id_encoding_core_field_representation },
+        target: task_id_inhabitant_atom(id: representation) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^task_id_encoding_core_field_carrier },
+        target: task_id_inhabitant_atom(id: carrier) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -67,17 +61,13 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^task_id_encoding_opaque_symbol,
           carrier: ^task_id_carrier_symbol_identity
-        )
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: task_id_inhabitant_atom(id: surface_nickname)
-      }
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: task_id_inhabitant_atom(id: surface_nickname) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -102,17 +92,13 @@ fn account_id_wrong_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^account_id_encoding_numeric,
           carrier: ^account_id_carrier_machine_int
-        )
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: task_id_inhabitant_atom(id: ^account_id_nickname_surface)
-      }
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: task_id_inhabitant_atom(id: ^account_id_nickname_surface) }
     ],
     occurrence_id: SyntheticOccurrence
 }

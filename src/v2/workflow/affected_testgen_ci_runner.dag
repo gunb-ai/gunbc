@@ -62,10 +62,8 @@ data affected_testgen_generated_claim_input: Node = Node {
 data affected_testgen_source_dependency: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_testgen_source_dependency_symbol } },
   children: [
-    Edge {
-      label: Named { name: ^affected_testgen_source_dependency_edge_symbol },
-      target: affected_testgen_generated_claim_input
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_testgen_source_dependency_edge_symbol },
+      target: affected_testgen_generated_claim_input }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -74,10 +72,8 @@ data affected_testgen_source_dependency: Node = Node {
 data affected_testgen_graph_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^affected_testgen_graph_edge_symbol },
-      target: affected_testgen_source_dependency
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_testgen_graph_edge_symbol },
+      target: affected_testgen_source_dependency }
   ],
   occurrence_id: SyntheticOccurrence
 }

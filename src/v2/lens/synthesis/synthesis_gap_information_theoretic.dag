@@ -44,7 +44,7 @@ data synthesis_gap_it_leaf: Node = Node {
 data synthesis_gap_it_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: synthesis_gap_it_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: synthesis_gap_it_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -52,7 +52,7 @@ data synthesis_gap_it_body: Node = Node {
 data synthesis_gap_it_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: synthesis_gap_it_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: synthesis_gap_it_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -61,7 +61,7 @@ data synthesis_gap_it_inner: Node = Node {
 data synthesis_gap_it_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: synthesis_gap_it_inner }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: synthesis_gap_it_inner }
   ],
   occurrence_id: SyntheticOccurrence
 }

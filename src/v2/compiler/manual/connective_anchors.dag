@@ -60,8 +60,8 @@ data stub_empty_conj: Node = Node {
 data stub_arrow_pair: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: stub_empty_conj },
-    Edge { label: Positional, target: stub_empty_conj }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: stub_empty_conj },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: stub_empty_conj }
   ],
   occurrence_id: SyntheticOccurrence
 }

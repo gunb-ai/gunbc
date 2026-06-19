@@ -44,10 +44,8 @@ data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_ato
 data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^l1_go_receipt_slice_edge },
-      target: phase1_l1_go_compiler_slice_subject_slice_binding
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^l1_go_receipt_slice_edge },
+      target: phase1_l1_go_compiler_slice_subject_slice_binding }
   ],
   occurrence_id: SyntheticOccurrence
 }

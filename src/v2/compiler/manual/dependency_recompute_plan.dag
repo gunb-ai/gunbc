@@ -36,10 +36,8 @@ data refinement_new_field_node: Node = Node {
 data refinement_after_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^refinement_new_field_symbol },
-      target: refinement_new_field_node
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_new_field_symbol },
+      target: refinement_new_field_node }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -65,18 +63,12 @@ data target_test_projection_node: Node = Node {
 data dependency_projection_subgraph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^testclaim_lens_symbol },
-      target: testclaim_lens_node
-    },
-    Edge {
-      label: Named { name: ^boundary_test_lens_symbol },
-      target: boundary_test_lens_node
-    },
-    Edge {
-      label: Named { name: ^target_test_projection_symbol },
-      target: target_test_projection_node
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^testclaim_lens_symbol },
+      target: testclaim_lens_node },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^boundary_test_lens_symbol },
+      target: boundary_test_lens_node },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^target_test_projection_symbol },
+      target: target_test_projection_node }
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -137,10 +137,8 @@ fn surface_only_node(surface: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -160,8 +158,7 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
@@ -175,8 +172,7 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
             }
           ],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -199,8 +195,7 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
@@ -214,8 +209,7 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
             }
           ],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -252,10 +246,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
   source_facts: Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
 },
@@ -264,10 +256,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
       Node {
         kind: TypeNode { connective: Disj },
         children: [
-          Edge {
-            label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
-          }
+          Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence } }
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -275,10 +265,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     closedness_evidence: Node {
       kind: TypeNode { connective: Disj },
       children: [
-        Edge {
-          label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
-        }
+        Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence } }
       ],
       occurrence_id: SyntheticOccurrence
 }
@@ -286,10 +274,8 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
   derivation_algebra: Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
 },
@@ -307,17 +293,13 @@ fn i32_value_set_interval_first() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^integer_value_set_field_interval },
-        target: integer_interval_spec_node(spec: int32_interval_spec())
-      },
-      Edge {
-        label: Named { name: ^integer_value_set_field_kind },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^integer_value_set_field_interval },
+        target: integer_interval_spec_node(spec: int32_interval_spec()) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^integer_value_set_field_kind },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_interval } },
           children: []
-        }
-      }
+        } }
     ]
   }
 }
@@ -354,20 +336,16 @@ fn unbounded_value_set_with_extra_field() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^integer_value_set_field_kind },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^integer_value_set_field_kind },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
           children: []
-        }
-      },
-      Edge {
-        label: Named { name: ^integer_value_set_field_extra },
+        } },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^integer_value_set_field_extra },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
           children: []
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
 }

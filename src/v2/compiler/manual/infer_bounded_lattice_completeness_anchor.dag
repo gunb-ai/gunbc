@@ -53,7 +53,7 @@ fn anchor_fn_node() -> Node {
 
 
 fn anchor_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 

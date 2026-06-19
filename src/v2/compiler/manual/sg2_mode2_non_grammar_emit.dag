@@ -220,22 +220,18 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      },
-      Edge {
-        label: Positional,
+} },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }

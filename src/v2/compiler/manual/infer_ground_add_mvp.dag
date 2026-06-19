@@ -351,8 +351,7 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^fixture_add_name },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^fixture_add_name },
         target: Node {
           kind: TypeNode { connective: Arrow },
           children: [
@@ -370,8 +369,7 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
             }
           ],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }

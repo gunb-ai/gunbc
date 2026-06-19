@@ -1475,8 +1475,8 @@ fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: locator },
-      Edge { label: Positional, target: payload }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: locator },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: payload }
     ],
     occurrence_id: SyntheticOccurrence
   }

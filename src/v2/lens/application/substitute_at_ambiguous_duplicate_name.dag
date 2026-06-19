@@ -36,14 +36,10 @@ data substitute_ambiguous_replacement: Node = Node {
 data substitute_ambiguous_duplicate_name_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^substitute_ambiguous_dup_step },
-      target: substitute_ambiguous_leaf_a
-    },
-    Edge {
-      label: Named { name: ^substitute_ambiguous_dup_step },
-      target: substitute_ambiguous_leaf_b
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^substitute_ambiguous_dup_step },
+      target: substitute_ambiguous_leaf_a },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^substitute_ambiguous_dup_step },
+      target: substitute_ambiguous_leaf_b }
   ],
   occurrence_id: SyntheticOccurrence
 }

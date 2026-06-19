@@ -38,26 +38,16 @@ fn refinement_widening_predicate_algebra_for_value_sets(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^refinement_widening_field_source },
-        target: source
-      },
-      Edge {
-        label: Named { name: ^refinement_widening_field_candidate },
-        target: candidate
-      },
-      Edge {
-        label: Named { name: ^refinement_widening_field_source_facts },
-        target: source
-      },
-      Edge {
-        label: Named { name: ^refinement_widening_field_source_value_set },
-        target: source_value_set
-      },
-      Edge {
-        label: Named { name: ^refinement_widening_field_candidate_value_set },
-        target: candidate_value_set
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_widening_field_source },
+        target: source },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_widening_field_candidate },
+        target: candidate },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_widening_field_source_facts },
+        target: source },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_widening_field_source_value_set },
+        target: source_value_set },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_widening_field_candidate_value_set },
+        target: candidate_value_set }
     ],
     occurrence_id: SyntheticOccurrence
 }

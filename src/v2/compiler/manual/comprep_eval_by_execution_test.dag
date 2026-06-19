@@ -254,9 +254,9 @@ fn comprep_eval_lazy_arm_branch_node() -> Node {
     kind: ComputationNode { behavior: Branch },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_literal_two_node() },
-      Edge { label: Positional, target: comprep_eval_literal_five_node() },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_two_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_five_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) }
     ]
   }
 }
@@ -410,9 +410,9 @@ fn comprep_eval_add_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: comprep_eval_literal_two_node() },
-      Edge { label: Positional, target: comprep_eval_literal_three_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: callee },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_two_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_three_node() }
     ]
   }
 }
@@ -422,8 +422,8 @@ fn comprep_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^comprep_eval_actual }, target: call },
-      Edge { label: Named { name: ^comprep_eval_expected }, target: expected }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^comprep_eval_actual }, target: call },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^comprep_eval_expected }, target: expected }
     ]
   }
 }
@@ -494,9 +494,9 @@ fn comprep_swapped_operand_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
     ]
   }
 }
@@ -506,10 +506,10 @@ fn comprep_swapped_add_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_swapped_operand_body() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge }, target: comprep_swapped_operand_body() }
     ]
   }
 }
@@ -522,11 +522,11 @@ fn comprep_excess_signature_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_eval_canonical_body() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge }, target: comprep_eval_canonical_body() }
     ]
   }
 }
@@ -537,9 +537,9 @@ fn comprep_eval_canonical_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) }
     ]
   }
 }
@@ -551,10 +551,10 @@ fn comprep_excess_body_arrow() -> Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: comprep_excess_body() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge }, target: comprep_excess_body() }
     ]
   }
 }
@@ -564,10 +564,10 @@ fn comprep_excess_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
-      Edge { label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_token_plus) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_y) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^dag_binding_param_x) }
     ]
   }
 }
@@ -580,10 +580,10 @@ fn comprep_excess_actual_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: comprep_eval_literal_two_node() },
-      Edge { label: Positional, target: comprep_eval_literal_three_node() },
-      Edge { label: Positional, target: comprep_eval_literal_two_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: callee },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_two_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_three_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_literal_two_node() }
     ]
   }
 }
@@ -779,11 +779,9 @@ fn comprep_eval_lazy_arm_loop_node() -> Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) },
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: comprep_eval_atom(s: ^comprep_eval_loop_measure_literal)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: comprep_eval_atom(s: ^comprep_eval_unknown_arm_literal) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: comprep_eval_atom(s: ^comprep_eval_loop_measure_literal) }
     ]
   }
 }

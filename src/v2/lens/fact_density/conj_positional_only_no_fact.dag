@@ -31,7 +31,7 @@ data conj_positional_only_child: Node = Node {
 data conj_positional_only_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Positional, target: conj_positional_only_child }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: conj_positional_only_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

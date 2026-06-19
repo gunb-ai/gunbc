@@ -219,7 +219,7 @@ fn cpp_atom(id: Symbol) -> Node {
 }
 
 fn cpp_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn cpp_signed_integer_spelling_node(spelling: CppSignedIntegerSurfaceSpelling) -> Node {
@@ -1059,9 +1059,9 @@ fn cpp_mvp1_emitted_add_fn_node(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
-      Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
     ],
     occurrence_id: SyntheticOccurrence
 }

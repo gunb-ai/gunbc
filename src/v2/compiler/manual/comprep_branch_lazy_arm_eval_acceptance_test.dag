@@ -275,7 +275,7 @@ fn lazy_arm_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
   match list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        Edge { label: _, target: arm } => outcome_accepted(value: arm)
+        Edge { role: Containment { inheritable: false }, label: _, target: arm } => outcome_accepted(value: arm)
       }
     Absent => outcome_rejected(d: lazy_arm_diagnostic(n: node))
   }
@@ -379,9 +379,9 @@ fn lazy_arm_bind_node(
     kind: ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: key_decl },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: key_decl },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: value },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: body }
     ]
   }
 }
@@ -403,9 +403,9 @@ fn lazy_arm_branch_body(
     kind: ComputationNode { behavior: Branch },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: condition },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: then_arm },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: else_arm }
     ]
   }
 }
@@ -414,7 +414,7 @@ fn lazy_arm_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
-    children: [Edge { label: Positional, target: callee }]
+    children: [Edge { role: Containment { inheritable: false }, label: Positional, target: callee }]
   }
 }
 
@@ -423,17 +423,15 @@ fn lazy_arm_arrow_with_body(body: Node) -> Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Conj },
           occurrence_id: SyntheticOccurrence,
           children: []
-        }
-      },
-      Edge { label: Positional, target: lazy_arm_i64() },
-      Edge { label: Positional, target: lazy_arm_i64() },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+        } },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: lazy_arm_i64() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: lazy_arm_i64() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge }, target: body }
     ]
   }
 }
@@ -443,8 +441,8 @@ fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^lazy_arm_actual }, target: call },
-      Edge { label: Named { name: ^lazy_arm_expected }, target: expected }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^lazy_arm_actual }, target: call },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^lazy_arm_expected }, target: expected }
     ]
   }
 }

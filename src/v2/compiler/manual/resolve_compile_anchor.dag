@@ -46,16 +46,14 @@ fn service_atom_conj_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -80,26 +78,22 @@ fn anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols() -> Outcome<Resol
     tree: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
-          label: Named { name: ^anchor_decl_first },
+        Edge { role: Containment { inheritable: false }, label: Named { name: ^anchor_decl_first },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: ^dag_c3_surface_sugar_service }
             },
             children: [],
             occurrence_id: SyntheticOccurrence
-          }
-        },
-        Edge {
-          label: Named { name: ^anchor_decl_second },
+          } },
+        Edge { role: Containment { inheritable: false }, label: Named { name: ^anchor_decl_second },
           target: Node {
             kind: TypeNode {
               connective: Atom { identity: ^dag_c3_surface_sugar_type }
             },
             children: [],
             occurrence_id: SyntheticOccurrence
-          }
-        }
+          } }
       ],
       occurrence_id: SyntheticOccurrence
 },
@@ -112,8 +106,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
     tree: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
-          label: Named { name: ^anchor_decl_first },
+        Edge { role: Containment { inheritable: false }, label: Named { name: ^anchor_decl_first },
           target: Node {
             kind: ComputationNode { behavior: Bind },
             children: [
@@ -149,8 +142,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
               }
             ],
             occurrence_id: SyntheticOccurrence
-          }
-        }
+          } }
       ],
       occurrence_id: SyntheticOccurrence
 },
@@ -199,16 +191,14 @@ fn resolve_imported_module_root() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: resolve_imported_qn_node()
       ),
-      Edge {
-        label: Named { name: ^anchor_imported_decl },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^anchor_imported_decl },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -256,10 +246,8 @@ fn resolve_subject_module_root_with_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: resolve_subject_qn_node()
       ),
-      Edge {
-        label: Named { name: ^anchor_subject_import_use },
-        target: resolve_imported_use_tree()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^anchor_subject_import_use },
+        target: resolve_imported_use_tree() }
     ],
     occurrence_id: SyntheticOccurrence
 }

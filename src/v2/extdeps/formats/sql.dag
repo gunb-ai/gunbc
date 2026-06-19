@@ -239,7 +239,7 @@ fn sql_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn sql_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {

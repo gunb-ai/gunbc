@@ -21,7 +21,7 @@ fn exact_structural_zip_fold_init(n: Node) -> Node {
 fn exact_structural_zip_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, role: edge.role, target: child })
   )
 }
 fn exact_structural_zip_fold_algebra() -> NodeFold<Node> {

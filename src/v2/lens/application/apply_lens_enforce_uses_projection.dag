@@ -33,10 +33,8 @@ data projection_test_section: Node = Node {
 data projection_test_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^projection_test_symbol } },
   children: [
-    Edge {
-      label: Named { name: ^projection_section_step },
-      target: projection_test_section
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^projection_section_step },
+      target: projection_test_section }
   ],
   occurrence_id: SyntheticOccurrence
 }

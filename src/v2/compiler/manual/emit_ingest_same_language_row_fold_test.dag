@@ -60,14 +60,10 @@ fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> 
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
-              label: Named { name: ^grammar_relation_field_emitted },
-              target: emitted
-            },
-            Edge {
-              label: Named { name: ^grammar_relation_field_tokens },
-              target: tokens_root
-            }
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^grammar_relation_field_emitted },
+              target: emitted },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^grammar_relation_field_tokens },
+              target: tokens_root }
           ],
           occurrence_id: SyntheticOccurrence
         }
@@ -80,8 +76,8 @@ fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
-      Edge { label: Named { name: ^emit_ingest_fold_row_label_python }, target: python_row }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^emit_ingest_fold_row_label_python }, target: python_row }
     ],
     occurrence_id: SyntheticOccurrence
   }

@@ -41,7 +41,7 @@ data sr_unbound_use: Node = sr_unbound_claim_atom(s: ^sr_unbound_use_symbol)
 data sr_unbound_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
+    Edge { role: Reference, label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -14,6 +14,7 @@ import v2.std.node {
   Connective,
   Edge,
   EdgeLabel,
+  EdgeRole,
   EdgeShape,
   Named,
   Node,
@@ -24,19 +25,20 @@ import v2.std.node {
   Symbol,
   SyntheticOccurrence,
   TypeNode,
+  edge_shape_containment,
   node_with_occurrence_id
 }
 
-fn edge_shape(label: EdgeLabel, target: NodeShape) -> EdgeShape {
-  EdgeShape { label: label, target: target }
+fn edge_shape(label: EdgeLabel, target: NodeShape, role: EdgeRole) -> EdgeShape {
+  EdgeShape { label: label, target: target, role: role }
 }
 
 fn named_edge_shape(name: Symbol, target: NodeShape) -> EdgeShape {
-  edge_shape(label: Named { name: name }, target: target)
+  edge_shape_containment(label: Named { name: name }, target: target)
 }
 
 fn positional_edge_shape(target: NodeShape) -> EdgeShape {
-  edge_shape(label: Positional, target: target)
+  edge_shape_containment(label: Positional, target: target)
 }
 
 fn node_shape(kind: NodeKind, children: List<EdgeShape>) -> NodeShape {
@@ -56,7 +58,7 @@ fn computation_shape(behavior: Behavior, children: List<EdgeShape>) -> NodeShape
 }
 
 fn stamp_edge_shape(e: EdgeShape) -> Edge {
-  Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target) }
+  Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target), role: e.role }
 }
 
 fn stamp_edge_shape_list(shapes: List<EdgeShape>) -> List<Edge> {

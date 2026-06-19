@@ -3750,7 +3750,7 @@ fn translate_type_expression_children_in_node(
             o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
             f: fn(projected) {
               outcome_accepted(
-                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })
+                list_snoc_item(xs: edges, item: Edge { label: e.label, role: e.role, target: projected })
               )
             }
           )
@@ -3866,7 +3866,7 @@ fn translate_fold_step(
               n: parent,
               children: list_snoc_item(
                 xs: parent.children,
-                item: Edge { label: edge.label, target: translated_child }
+                item: Edge { label: edge.label, role: edge.role, target: translated_child }
               )
             ),
             diagnostics: diagnostics_merge(outer: ad, inner: cd)

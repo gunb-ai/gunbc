@@ -47,9 +47,9 @@ data loop_illegal_named_extra_leaf: Node = Node {
 data loop_illegal_named_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_illegal_named_body_leaf },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_illegal_named_measure_leaf },
-    Edge { label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: loop_illegal_named_body_leaf },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge }, target: loop_illegal_named_measure_leaf },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }

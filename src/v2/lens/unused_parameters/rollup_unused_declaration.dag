@@ -27,7 +27,7 @@ data rollup_parameter: Node = claim_atom_node(s: ^rollup_parameter_symbol)
 data rollup_function: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rollup_function_symbol } },
   children: [
-    Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
   ],
   occurrence_id: SyntheticOccurrence
 }

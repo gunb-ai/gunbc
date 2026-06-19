@@ -36,14 +36,12 @@ fn spine_normalize_service_parse_tree() -> Node {
       connective: Atom { identity: ^dag_c3_surface_sugar_service }
     },
     children: [
-      Edge {
-        label: Named { name: ^spine_normalize_service_decl },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^spine_normalize_service_decl },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -60,10 +58,8 @@ fn spine_normalize_nested_service_parse_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^spine_normalize_nested_field },
-        target: spine_normalize_service_parse_tree()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^spine_normalize_nested_field },
+        target: spine_normalize_service_parse_tree() }
     ],
     occurrence_id: SyntheticOccurrence
   }

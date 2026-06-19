@@ -57,7 +57,7 @@ fn sg1b_fc_boundary_param_with_children() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
     children: [
-      Edge { label: Positional, target: sg1b_fc_probe_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: sg1b_fc_probe_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

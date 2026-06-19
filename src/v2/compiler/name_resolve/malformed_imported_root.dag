@@ -70,14 +70,12 @@ fn malformed_root_node() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: malformed_qn_node()
       ),
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }

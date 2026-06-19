@@ -718,22 +718,14 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: llvm_inhabitant_atom(id: facts.surface_spelling)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
-        target: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
-      },
-      Edge {
-        label: Named { name: ^llvm_facts_field_std_projection },
-        target: llvm_inhabitant_atom(id: facts.std_projection)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: llvm_inhabitant_atom(id: facts.surface_spelling) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        target: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^llvm_facts_field_std_projection },
+        target: llvm_inhabitant_atom(id: facts.std_projection) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -743,18 +735,12 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: llvm_inhabitant_atom(id: facts.surface_spelling)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: llvm_wave1_float_kind_node(kind: facts.kind)
-      },
-      Edge {
-        label: Named { name: ^llvm_facts_field_std_projection },
-        target: llvm_inhabitant_atom(id: facts.std_projection)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: llvm_inhabitant_atom(id: facts.surface_spelling) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: llvm_wave1_float_kind_node(kind: facts.kind) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^llvm_facts_field_std_projection },
+        target: llvm_inhabitant_atom(id: facts.std_projection) }
     ],
     occurrence_id: SyntheticOccurrence
 }

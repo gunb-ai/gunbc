@@ -192,22 +192,14 @@ fn bootstrap_seed_capability_inventory_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^bootstrap_construct_source_language_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
-      },
-      Edge {
-        label: Named { name: ^bootstrap_construct_target_model_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset)
-      },
-      Edge {
-        label: Named { name: ^bootstrap_construct_runtime_model_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset)
-      },
-      Edge {
-        label: Named { name: ^bootstrap_construct_lowering_subset },
-        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_construct_source_language_subset },
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_construct_target_model_subset },
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_construct_runtime_model_subset },
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_construct_lowering_subset },
+        target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -392,18 +384,14 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^bootstrap_projection_hash_pin_slot_edge },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_hash_pin_slot_edge },
         target: Node {
           kind: TypeNode { connective: Atom { identity: pin } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      },
-      Edge {
-        label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },
-        target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
-      }
+} },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },
+        target: bootstrap_hash_digest_fixture_atom_node(digest: digest) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -498,26 +486,16 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_root_edge },
-        target: inputs.snapshot.root
-      },
-      Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
-        target: language_model_to_node(lm: inputs.snapshot.language_model)
-      },
-      Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
-        target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin)
-      },
-      Edge {
-        label: Named { name: ^bootstrap_projection_target_bundle_edge },
-        target: inputs.target_model.bundle
-      },
-      Edge {
-        label: Named { name: ^bootstrap_projection_runtime_identity_edge },
-        target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_snapshot_root_edge },
+        target: inputs.snapshot.root },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
+        target: language_model_to_node(lm: inputs.snapshot.language_model) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
+        target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_target_bundle_edge },
+        target: inputs.target_model.bundle },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bootstrap_projection_runtime_identity_edge },
+        target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model) }
     ],
     occurrence_id: SyntheticOccurrence
 }

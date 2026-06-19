@@ -43,9 +43,9 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
-      Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
-      Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
     ],
     occurrence_id: SyntheticOccurrence
 }

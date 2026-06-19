@@ -76,16 +76,14 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: seg)
       ),
-      Edge {
-        label: Named { name: export_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: export_sym },
         target: Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -122,14 +120,12 @@ fn fc_malformed_subject_root() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: ^fc_malformed_seg)
       ),
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }

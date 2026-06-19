@@ -42,7 +42,7 @@ data while_loop_body_leaf: Node = Node {
 data while_external_condition_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: while_loop_body_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: while_loop_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }

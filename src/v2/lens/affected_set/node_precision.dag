@@ -19,7 +19,7 @@ data affected_set_leaf: Node = claim_atom_node(s: ^affected_set_leaf_symbol)
 data affected_set_mid: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_set_mid_symbol } },
   children: [
-    Edge { label: Named { name: ^affected_set_mid_edge_symbol }, target: affected_set_leaf }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_set_mid_edge_symbol }, target: affected_set_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -27,7 +27,7 @@ data affected_set_mid: Node = Node {
 data affected_set_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_set_root_symbol } },
   children: [
-    Edge { label: Named { name: ^affected_set_root_edge_symbol }, target: affected_set_mid }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_set_root_edge_symbol }, target: affected_set_mid }
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -36,7 +36,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
           n: acc,
           children: list_snoc_item(
             xs: acc.children,
-            item: Edge { label: edge.label, target: projected_target }
+            item: Edge { label: edge.label, role: edge.role, target: projected_target }
           )
         )
       }
@@ -45,7 +45,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
         n: acc,
         children: list_snoc_item(
           xs: acc.children,
-          item: Edge { label: edge.label, target: projected_target }
+          item: Edge { label: edge.label, role: edge.role, target: projected_target }
         )
       )
   }

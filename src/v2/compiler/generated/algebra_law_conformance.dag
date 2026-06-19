@@ -40,8 +40,8 @@ fn algebra_law_generated_nat_value(value: Nat) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
-          Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -53,10 +53,10 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
-      Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
-      Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
-      Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_generated_left_field }, target: left },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_generated_right_field }, target: right },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
     ],
     occurrence_id: SyntheticOccurrence
 }

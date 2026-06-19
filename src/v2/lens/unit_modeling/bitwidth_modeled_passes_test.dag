@@ -43,10 +43,8 @@ data bitwidth_carrier_target: Node = Node {
 data bitwidth_modeled_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^pointer_width },
-      target: bitwidth_carrier_target
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^pointer_width },
+      target: bitwidth_carrier_target }
   ],
   occurrence_id: SyntheticOccurrence
 }

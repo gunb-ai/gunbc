@@ -39,8 +39,8 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^operation_field }, target: atom_node(s: op) },
-      Edge { label: Named { name: ^witness_field }, target: atom_node(s: witness) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^operation_field }, target: atom_node(s: op) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_field }, target: atom_node(s: witness) },
     ],
     occurrence_id: SyntheticOccurrence
 }

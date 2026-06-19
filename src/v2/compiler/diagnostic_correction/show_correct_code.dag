@@ -43,8 +43,8 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
-      Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^correction_left }, target: atom_node(s: left) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^correction_right }, target: atom_node(s: right) },
     ],
     occurrence_id: SyntheticOccurrence
 }

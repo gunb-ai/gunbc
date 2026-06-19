@@ -54,7 +54,7 @@ data nested_body_leaf: Node = Node {
 data nested_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: nested_body_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: nested_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -62,7 +62,7 @@ data nested_body: Node = Node {
 data nested_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: nested_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: nested_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -70,7 +70,7 @@ data nested_inner: Node = Node {
 data nested_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: nested_inner }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: nested_inner }
   ],
   occurrence_id: SyntheticOccurrence
 }

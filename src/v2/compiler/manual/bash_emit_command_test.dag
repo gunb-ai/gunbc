@@ -102,30 +102,24 @@ fn bash_arrow_emitted_red_fixture() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Positional,
+        } },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Positional,
+        } },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }

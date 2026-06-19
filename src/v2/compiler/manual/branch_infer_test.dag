@@ -62,9 +62,9 @@ fn branch_infer_if_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: condition },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: then_arm },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: else_arm }
     ],
     occurrence_id: SyntheticOccurrence
   }

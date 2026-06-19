@@ -371,7 +371,7 @@ fn wasm_float_inhabitant_for_facts(facts: WasmFloatPrimitiveFacts) -> Node {
 }
 
 fn wasm_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn wasm_int_numeric_immediate_node(
@@ -508,9 +508,9 @@ fn wasm_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: wasm_inhabitant_i32_node() },
-      Edge { label: Positional, target: wasm_inhabitant_i32_node() },
-      Edge { label: Positional, target: wasm_inhabitant_i32_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: wasm_inhabitant_i32_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: wasm_inhabitant_i32_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: wasm_inhabitant_i32_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

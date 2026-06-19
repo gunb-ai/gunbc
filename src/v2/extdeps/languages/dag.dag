@@ -490,17 +490,13 @@ fn dag_grammar_atom(id: Symbol) -> Node {
 }
 
 fn dag_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge {
-    label: Named { name: name },
-    target: target
-  }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name },
+    target: target }
 }
 
 fn dag_positional_edge(target: Node) -> Edge {
-  Edge {
-    label: Positional,
-    target: target
-  }
+  Edge { role: Containment { inheritable: false }, label: Positional,
+    target: target }
 }
 
 // T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it through
@@ -3294,9 +3290,9 @@ data dag_mvp1_fixture_int_inhabitant: Node = dag_int_inhabitant_node()
 data dag_mvp1_fixture_emitted_add_fn: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant },
-    Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant },
-    Edge { label: Positional, target: dag_mvp1_fixture_int_inhabitant }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: dag_mvp1_fixture_int_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: dag_mvp1_fixture_int_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: dag_mvp1_fixture_int_inhabitant }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -4213,14 +4209,10 @@ fn dag_mvp1_loop_body_from_literal(lit: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: lit)
-      },
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: dag_mvp1_loop_measure_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: lit) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: dag_mvp1_loop_measure_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4238,22 +4230,14 @@ fn dag_mvp1_loop_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_loop_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_loop_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4263,22 +4247,14 @@ fn dag_mvp1_loop_arrow_with_body_wrong_value_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_loop_body_wrong_value_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_loop_body_wrong_value_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4351,10 +4327,8 @@ fn dag_mvp1_arrow_domain_conj_node() -> Node {
     cons: fn(acc, binding_id) {
       list_snoc_item(
         xs: acc,
-        item: Edge {
-          label: Named { name: binding_id },
-          target: dag_mvp1_type_atom_node(identity: dag_mvp1_int_type_binding())
-        }
+        item: Edge { role: Containment { inheritable: false }, label: Named { name: binding_id },
+          target: dag_mvp1_type_atom_node(identity: dag_mvp1_int_type_binding()) }
       )
     }
   )
@@ -4369,15 +4343,11 @@ fn dag_mvp1_binary_body_node(operator: Node, left_binding: Symbol, right_binding
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: operator },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: left_binding)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: right_binding)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: operator },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: left_binding) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: right_binding) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4387,18 +4357,12 @@ fn dag_mvp1_add_arrow_signature_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4424,22 +4388,14 @@ fn dag_mvp1_add_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_add_binary_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_add_binary_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4449,22 +4405,14 @@ fn dag_mvp1_add_arrow_with_body_swapped_operands_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_add_binary_body_swapped_operands_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_add_binary_body_swapped_operands_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4492,9 +4440,9 @@ fn dag_mvp1_pick_if_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: condition },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: then_arm },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: else_arm }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4520,22 +4468,14 @@ fn dag_mvp1_pick_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_pick_if_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_pick_if_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4545,22 +4485,14 @@ fn dag_mvp1_pick_arrow_with_body_swapped_arms_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_pick_if_body_swapped_arms_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_pick_if_body_swapped_arms_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4598,9 +4530,9 @@ fn dag_mvp1_match_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge { label: Positional, target: scrutinee },
-      Edge { label: Positional, target: true_arm },
-      Edge { label: Positional, target: false_arm }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: scrutinee },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: true_arm },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: false_arm }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4638,22 +4570,14 @@ fn dag_mvp1_match_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_match_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_match_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4663,22 +4587,14 @@ fn dag_mvp1_match_arrow_with_body_swapped_arms_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_match_body_swapped_arms_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_match_body_swapped_arms_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4711,22 +4627,14 @@ fn dag_mvp1_rec_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_rec_construct_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_rec_construct_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4740,18 +4648,12 @@ fn dag_mvp1_field_access_body_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_dot)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_param_r)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_rec_v)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_token_dot) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_param_r) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_rec_v) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4761,10 +4663,8 @@ fn dag_mvp1_field_access_arrow_domain_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_r },
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^dag_binding_param_r },
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_rec) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4774,22 +4674,14 @@ fn dag_mvp1_field_access_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_field_access_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_field_access_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_field_access_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_field_access_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4807,18 +4699,12 @@ fn dag_mvp1_bind_let_body_from_parts(
   Node {
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: key_binding)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: value_lit)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: body_binding)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: key_binding) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: value_lit) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: body_binding) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4844,22 +4730,14 @@ fn dag_mvp1_bind_arrow_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_bind_let_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_bind_let_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -4869,22 +4747,14 @@ fn dag_mvp1_bind_arrow_with_body_wrong_value_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_pick_arrow_domain_conj_node()
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int)
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: dag_mvp1_bind_let_body_wrong_value_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: dag_mvp1_bind_let_body_wrong_value_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -5902,7 +5772,7 @@ fn dag_round_trip_atom(s: Symbol) -> Node {
 }
 
 fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 // 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-readiness-receipt-node — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces Node/Atom axis witnesses in claim input; eval authority is dag_round_trip_wave1_authorities_ready only; forbidden: eval reading embedded ready atoms.

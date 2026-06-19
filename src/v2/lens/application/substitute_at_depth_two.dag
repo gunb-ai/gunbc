@@ -30,10 +30,8 @@ data substitute_replacement_leaf: Node = Node {
 data substitute_middle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^substitute_step_b },
-      target: substitute_original_leaf
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^substitute_step_b },
+      target: substitute_original_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -41,10 +39,8 @@ data substitute_middle: Node = Node {
 data substitute_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^substitute_step_a },
-      target: substitute_middle
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^substitute_step_a },
+      target: substitute_middle }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -52,8 +48,7 @@ data substitute_root: Node = Node {
 data substitute_expected_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^substitute_step_a },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^substitute_step_a },
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -63,8 +58,7 @@ data substitute_expected_root: Node = Node {
           }
         ],
         occurrence_id: SyntheticOccurrence
-}
-    }
+} }
   ],
   occurrence_id: SyntheticOccurrence
 }

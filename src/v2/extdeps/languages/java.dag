@@ -532,7 +532,7 @@ fn java_void_declared_inhabitant_node() -> Node {
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 // Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
@@ -566,9 +566,9 @@ fn java_mvp1_emitted_add_method_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: java_inhabitant_int_node() },
-      Edge { label: Positional, target: java_inhabitant_int_node() },
-      Edge { label: Positional, target: java_inhabitant_int_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: java_inhabitant_int_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: java_inhabitant_int_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: java_inhabitant_int_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

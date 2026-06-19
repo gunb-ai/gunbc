@@ -170,12 +170,12 @@ fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   )
   let left = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child }],
+    children: [Edge { role: Containment { inheritable: false }, label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m0.id)
   )
   let right = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child }],
+    children: [Edge { role: Containment { inheritable: false }, label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m1.id)
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
@@ -199,11 +199,11 @@ fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   )
   let left = node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child_left }]
+    children: [Edge { role: Containment { inheritable: false }, label: Positional, target: child_left }]
   )
   let right = node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child_right }]
+    children: [Edge { role: Containment { inheritable: false }, label: Positional, target: child_right }]
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)

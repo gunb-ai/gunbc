@@ -38,8 +38,8 @@ fn effect_subject(signature: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: signature },
-      Edge { label: Positional, target: body },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: signature },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: body },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -49,14 +49,10 @@ fn effect_subject(signature: Node, body: Node) -> Node {
 data effect_derived_from_signature_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^effect_read_subject_field },
-      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
-    },
-    Edge {
-      label: Named { name: ^effect_write_subject_field },
-      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
-    },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_read_subject_field },
+      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol)) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_write_subject_field },
+      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol)) },
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -68,8 +64,8 @@ data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_
 data falsification_redundant_read: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
-    Edge { label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }

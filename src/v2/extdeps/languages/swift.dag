@@ -387,7 +387,7 @@ fn swift_atom(id: Symbol) -> Node {
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {
@@ -563,9 +563,9 @@ fn swift_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: swift_inhabitant_int32_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: swift_inhabitant_int32_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: swift_inhabitant_int32_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

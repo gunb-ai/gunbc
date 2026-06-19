@@ -34,7 +34,7 @@ data unused_parameters_non_use_child: Node = claim_atom_node(s: ^unused_paramete
 data unused_parameters_non_use_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^unused_parameters_non_use_root_symbol } },
   children: [
-    Edge { label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^unused_parameters_non_use_edge_symbol }, target: unused_parameters_non_use_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

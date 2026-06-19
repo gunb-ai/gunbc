@@ -366,7 +366,7 @@ fn kotlin_atom(id: Symbol) -> Node {
 }
 
 fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
@@ -1018,9 +1018,9 @@ fn kotlin_mvp1_add_fn_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: kotlin_inhabitant_int_node() },
-      Edge { label: Positional, target: kotlin_inhabitant_int_node() },
-      Edge { label: Positional, target: kotlin_inhabitant_int_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: kotlin_inhabitant_int_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: kotlin_inhabitant_int_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: kotlin_inhabitant_int_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

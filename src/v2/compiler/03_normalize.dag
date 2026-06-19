@@ -71,7 +71,7 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> 
               n: shell,
               children: list_snoc_item(
                 xs: shell.children,
-                item: Edge { label: edge.label, target: child_node }
+                item: Edge { label: edge.label, role: edge.role, target: child_node }
               )
             ),
             diagnostics: diagnostics_merge(outer: ad, inner: cd)

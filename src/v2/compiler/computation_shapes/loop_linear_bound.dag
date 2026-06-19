@@ -42,7 +42,7 @@ data loop_linear_bound_measure_leaf: Node = loop_linear_bound_leaf(s: ^loop_line
 data loop_linear_bound_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: loop_linear_bound_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -51,8 +51,8 @@ data loop_linear_bound_body: Node = Node {
 data loop_linear_bound_subject: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: loop_linear_bound_body },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -100,8 +100,8 @@ data claim_loop_linear_bound_equals_refl: TestClaim = EqualsClaim {
 data loop_linear_bound_subject_rebuilt: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: loop_linear_bound_body },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -110,7 +110,7 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
 data loop_linear_bound_subject_unbounded: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: loop_linear_bound_body }
   ],
   occurrence_id: SyntheticOccurrence
 }

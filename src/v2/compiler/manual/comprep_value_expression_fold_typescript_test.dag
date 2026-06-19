@@ -65,7 +65,7 @@ import v2.std.verification {
 }
 
 fn comprep_fold_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn comprep_fold_add_operator_row_minus() -> Node {

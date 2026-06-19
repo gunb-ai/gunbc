@@ -68,14 +68,12 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
         name: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: seg)
       ),
-      Edge {
-        label: Named { name: export_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -93,14 +91,12 @@ fn pa_subject_with_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: ^pa_subject_seg)
       ),
-      Edge {
-        label: Named { name: ^pa_import_use_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^pa_import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }

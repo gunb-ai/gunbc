@@ -123,26 +123,31 @@ type DependencyFoldState {
 }
 
 // 🟡 gated — feature:dependency-usage-classifier-consumes-resolve-ground-facts — dissolve-on: T-9 resolve stamps ^dependency_binds_to_edge / module / bootstrap labels inline
-fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
+fn classify_named_reference_edge(parent: Node, sym: Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
-    match parent.kind {
-      ComputationNode { behavior: Bind } => Contains
-      _ => BindsTo
-    }
+    BindsTo
   } else if sym == ^dependency_module_import_edge {
     ModuleDependsOn
   } else if sym == ^dependency_bootstrap_depends_edge {
     BootstrapDependsOn
   } else {
-    Contains
+    TypeDependsOn
+  }
+}
+
+fn dependency_kind_from_edge(parent: Node, edge: Edge) -> DependencyKind {
+  match edge.role {
+    Containment { inheritable: _ } => Contains
+    Reference =>
+      match edge.label {
+        Named { name: sym } => classify_named_reference_edge(parent: parent, sym: sym)
+        Positional => TypeDependsOn
+      }
   }
 }
 
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
-  match edge.label {
-    Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
-    Positional => Contains
-  }
+  dependency_kind_from_edge(parent: parent, edge: edge)
 }
 
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {

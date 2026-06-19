@@ -79,9 +79,9 @@ fn call_carrier_call_node() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: call_carrier_callee_ref() },
-      Edge { label: Positional, target: call_carrier_arg_x() },
-      Edge { label: Positional, target: call_carrier_arg_y() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: call_carrier_callee_ref() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: call_carrier_arg_x() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: call_carrier_arg_y() }
     ]
   )
 }
@@ -98,8 +98,8 @@ fn call_carrier_callee_free_transform() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: call_carrier_value_node() },
-      Edge { label: Positional, target: call_carrier_value_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: call_carrier_value_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: call_carrier_value_node() }
     ]
   )
 }

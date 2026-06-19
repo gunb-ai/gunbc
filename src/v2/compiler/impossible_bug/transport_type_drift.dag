@@ -38,8 +38,8 @@ fn atom_node(s: Symbol) -> Node {
 data shared_wire_contract_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^client_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
-    Edge { label: Named { name: ^server_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^client_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^server_field }, target: atom_node(s: ^shared_wire_contract_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -48,8 +48,8 @@ data shared_wire_contract_input: Node = Node {
 data falsification_wire_contract_drift: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
-    Edge { label: Named { name: ^server_field }, target: atom_node(s: ^server_field_string_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^server_field }, target: atom_node(s: ^server_field_string_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -58,8 +58,8 @@ data falsification_wire_contract_drift: Node = Node {
 data falsification_target_contract_drift: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
-    Edge { label: Named { name: ^target_field }, target: atom_node(s: ^target_field_bool_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^client_field }, target: atom_node(s: ^client_field_int_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^target_field }, target: atom_node(s: ^target_field_bool_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }

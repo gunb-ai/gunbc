@@ -34,7 +34,7 @@ data synthesis_no_tech_leaf: Node = Node {
 data synthesis_no_tech_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: synthesis_no_tech_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: synthesis_no_tech_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -42,7 +42,7 @@ data synthesis_no_tech_body: Node = Node {
 data synthesis_no_tech_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: synthesis_no_tech_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: synthesis_no_tech_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -51,7 +51,7 @@ data synthesis_no_tech_inner: Node = Node {
 data synthesis_no_tech_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: synthesis_no_tech_inner }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: synthesis_no_tech_inner }
   ],
   occurrence_id: SyntheticOccurrence
 }

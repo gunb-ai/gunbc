@@ -74,7 +74,7 @@ fn bool_fact_atom(id: Symbol) -> Node {
 
 
 fn bool_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 

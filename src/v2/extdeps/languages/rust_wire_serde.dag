@@ -126,14 +126,12 @@ data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(nam
 data rust_wire_serde_review_event_emitted: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge {
-      label: Positional,
+    Edge { role: Containment { inheritable: false }, label: Positional,
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
         children: [],
         occurrence_id: SyntheticOccurrence
-      }
-    }
+      } }
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -51,7 +51,7 @@ data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
 data parallelism_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^parallelism_root_symbol } },
   children: [
-    Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

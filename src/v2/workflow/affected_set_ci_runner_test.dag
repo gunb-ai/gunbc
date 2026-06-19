@@ -69,10 +69,8 @@ data ci_runner_shape_b_node: Node = Node {
 data ci_runner_conj_wrapped_touched_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Positional,
-      target: ci_runner_touched_node
-    }
+    Edge { role: Containment { inheritable: false }, label: Positional,
+      target: ci_runner_touched_node }
   ],
   occurrence_id: SyntheticOccurrence
 }

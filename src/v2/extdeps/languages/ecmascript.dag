@@ -282,7 +282,7 @@ fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn ecmascript_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn ecmascript_number_facts_node(facts: EcmascriptNumberPrimitiveFacts) -> Node {
@@ -842,9 +842,9 @@ fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
-      Edge { label: Positional, target: ecmascript_number_inhabitant_node() },
-      Edge { label: Positional, target: ecmascript_number_inhabitant_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ecmascript_number_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ecmascript_number_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ecmascript_number_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

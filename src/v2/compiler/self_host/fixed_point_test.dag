@@ -51,9 +51,9 @@ fn stage_reference_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -62,9 +62,9 @@ fn stage_candidate_equal_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -74,8 +74,8 @@ fn stage_candidate_perturbed_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: stage_emission_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }

@@ -239,7 +239,7 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
   match sugar_first_atom_identity_optional(node: variant) {
     Present { value: name } =>
       Accepted {
-        value: Edge { label: Named { name: name }, target: variant },
+        value: Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: variant },
         diagnostics: None
       }
     Absent =>

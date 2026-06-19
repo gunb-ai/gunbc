@@ -255,7 +255,7 @@ fn comprep_loop_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: callee }
     ]
   }
 }
@@ -265,8 +265,8 @@ fn comprep_loop_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^comprep_loop_actual }, target: call },
-      Edge { label: Named { name: ^comprep_loop_expected }, target: expected }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^comprep_loop_actual }, target: call },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^comprep_loop_expected }, target: expected }
     ]
   }
 }

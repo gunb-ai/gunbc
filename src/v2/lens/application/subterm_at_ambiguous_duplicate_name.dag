@@ -30,14 +30,10 @@ data ambiguous_leaf_b: Node = Node {
 data ambiguous_duplicate_name_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^ambiguous_dup_step },
-      target: ambiguous_leaf_a
-    },
-    Edge {
-      label: Named { name: ^ambiguous_dup_step },
-      target: ambiguous_leaf_b
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^ambiguous_dup_step },
+      target: ambiguous_leaf_a },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^ambiguous_dup_step },
+      target: ambiguous_leaf_b }
   ],
   occurrence_id: SyntheticOccurrence
 }

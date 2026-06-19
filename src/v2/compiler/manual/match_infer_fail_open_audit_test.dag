@@ -51,17 +51,13 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
-      },
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: dag_mvp1_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_mvp1_pick_lit_one
-        )
-      }
+        ) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -78,31 +74,23 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true)
-      },
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: dag_mvp1_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_mvp1_pick_lit_one
-        )
-      },
-      Edge {
-        label: Positional,
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: dag_mvp1_match_arm_node(
           pattern_lit: ^dag_token_kw_false,
           body_lit: ^dag_mvp1_pick_lit_one
-        )
-      },
-      Edge {
-        label: Positional,
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: dag_mvp1_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_mvp1_pick_lit_two
-        )
-      }
+        ) }
     ],
     occurrence_id: SyntheticOccurrence
   }

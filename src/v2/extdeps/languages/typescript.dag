@@ -274,7 +274,7 @@ fn ts_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn ts_number_arithmetic_semantics_node() -> Node {
@@ -508,9 +508,9 @@ fn ts_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_number_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_number_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_number_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -521,18 +521,12 @@ fn ts_mvp1_add_binary_body_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
-        label: Positional,
-        target: ts_inhabitant_atom(id: ^dag_token_plus)
-      },
-      Edge {
-        label: Positional,
-        target: ts_inhabitant_atom(id: ^dag_binding_param_x)
-      },
-      Edge {
-        label: Positional,
-        target: ts_inhabitant_atom(id: ^dag_binding_param_y)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: ts_inhabitant_atom(id: ^dag_token_plus) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: ts_inhabitant_atom(id: ^dag_binding_param_x) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: ts_inhabitant_atom(id: ^dag_binding_param_y) }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -542,13 +536,11 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: ts_mvp1_add_binary_body_node()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_number_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_number_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_number_node() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+        target: ts_mvp1_add_binary_body_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -836,7 +828,7 @@ fn ts_wave2a_type_annotation_name_emitted(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: binding) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: binding) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -846,8 +838,8 @@ fn ts_wave2a_record_field_emitted(field_binding: Symbol, type_child: Node) -> No
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
-      Edge { label: Positional, target: type_child }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: field_binding) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: type_child }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -857,7 +849,7 @@ fn ts_wave2a_record_fields_single_emitted(field: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: field }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: field }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -867,8 +859,8 @@ fn ts_wave2a_record_fields_pair_emitted(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: left },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: right }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -878,8 +870,7 @@ fn ts_wave2a_record_type_task_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: ts_wave2a_record_fields_pair_emitted(
           left: ts_wave2a_record_fields_pair_emitted(
             left: ts_wave2a_record_fields_single_emitted(
@@ -897,8 +888,7 @@ fn ts_wave2a_record_type_task_emitted() -> Node {
             field_binding: ^ts_binding_field_status,
             type_child: ts_wave2a_type_annotation_name_emitted(binding: ^ts_binding_type_task_status)
           )
-        )
-      }
+        ) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -908,7 +898,7 @@ fn ts_wave2a_type_annotation_task_record_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_wave2a_record_type_task_emitted() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_wave2a_record_type_task_emitted() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -918,8 +908,8 @@ fn ts_wave2a_type_alias_decl_emitted(name_binding: Symbol, type_child: Node) -> 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding) },
-      Edge { label: Positional, target: type_child }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: name_binding) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: type_child }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1113,8 +1103,8 @@ fn ts_pr3_identity_typed_param_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
-      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1124,7 +1114,7 @@ fn ts_pr3_identity_typed_params_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_pr3_identity_typed_param_emitted() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1134,7 +1124,7 @@ fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_pr3_identity_typed_params_emitted() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1144,10 +1134,10 @@ fn ts_pr3_identity_typed_fn_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity) },
-      Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
-      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1770,30 +1760,24 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_foobar } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Positional,
+        } },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Positional,
+        } },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1865,8 +1849,8 @@ fn ts_sg2_arrow_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1883,7 +1867,7 @@ fn ts_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
     ],
     occurrence_id: SyntheticOccurrence
 }

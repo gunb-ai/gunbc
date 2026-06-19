@@ -431,30 +431,18 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: mc_inhabitant_atom(id: facts.surface_spelling)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
-        target: mc_int_kind_node(kind: facts.kind)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
-        target: mc_int_width_node(width: facts.width)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
-        target: mc_overflow_node(overflow: facts.overflow_release)
-      },
-      Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: mc_inhabitant_atom(id: ^mc_repr_twos_complement)
-      },
-      Edge {
-        label: Named { name: ^mc_facts_field_std_projection },
-        target: mc_inhabitant_atom(id: facts.std_projection)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: mc_inhabitant_atom(id: facts.surface_spelling) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisSignedness {}) },
+        target: mc_int_kind_node(kind: facts.kind) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        target: mc_int_width_node(width: facts.width) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisOverflowDisposition {}) },
+        target: mc_overflow_node(overflow: facts.overflow_release) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: mc_inhabitant_atom(id: ^mc_repr_twos_complement) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^mc_facts_field_std_projection },
+        target: mc_inhabitant_atom(id: facts.std_projection) }
     ],
     occurrence_id: SyntheticOccurrence
 }

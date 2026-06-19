@@ -60,9 +60,9 @@ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: operator },
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: operator },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: left },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: right }
     ]
   )
 }
@@ -78,9 +78,9 @@ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: condition },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: then_arm },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: else_arm }
     ]
   )
 }
@@ -90,8 +90,8 @@ fn lower_loop(value: Node, bound: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: value },
-      Edge { label: Named { name: ^loop_bound_edge }, target: bound }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: value },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge }, target: bound }
     ]
   )
 }
@@ -101,9 +101,9 @@ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge { label: Positional, target: key_binding },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body_binding }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: key_binding },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: value },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: body_binding }
     ]
   )
 }
@@ -113,9 +113,9 @@ fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Match },
     children: list_append(
-      left: [Edge { label: Positional, target: scrutinee }],
+      left: [Edge { role: Containment { inheritable: false }, label: Positional, target: scrutinee }],
       right: fold(arms, init: Empty, f: fn(acc, arm) {
-        list_snoc_item(xs: acc, item: Edge { label: Positional, target: arm })
+        list_snoc_item(xs: acc, item: Edge { role: Containment { inheritable: false }, label: Positional, target: arm })
       })
     )
   )

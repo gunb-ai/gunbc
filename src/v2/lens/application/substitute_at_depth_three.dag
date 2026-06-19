@@ -30,10 +30,8 @@ data depth_three_replacement_leaf: Node = Node {
 data depth_three_inner: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^depth_three_step_c },
-      target: depth_three_original_leaf
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^depth_three_step_c },
+      target: depth_three_original_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -41,10 +39,8 @@ data depth_three_inner: Node = Node {
 data depth_three_middle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^depth_three_step_b },
-      target: depth_three_inner
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^depth_three_step_b },
+      target: depth_three_inner }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -52,10 +48,8 @@ data depth_three_middle: Node = Node {
 data depth_three_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^depth_three_step_a },
-      target: depth_three_middle
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^depth_three_step_a },
+      target: depth_three_middle }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -63,8 +57,7 @@ data depth_three_root: Node = Node {
 data depth_three_expected_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^depth_three_step_a },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^depth_three_step_a },
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
@@ -83,8 +76,7 @@ data depth_three_expected_root: Node = Node {
           }
         ],
         occurrence_id: SyntheticOccurrence
-      }
-    }
+      } }
   ],
   occurrence_id: SyntheticOccurrence
 }

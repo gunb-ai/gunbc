@@ -50,8 +50,8 @@ fn idempotency_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
-      Edge { label: Named { name: ^idempotency_body_field }, target: body },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotency_position_field }, target: atom_node(s: ^idempotent_position_symbol) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotency_body_field }, target: body },
     ],
     occurrence_id: SyntheticOccurrence
 }

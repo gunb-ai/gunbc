@@ -99,7 +99,7 @@ data comprep_ts_emit_catalog_minus_source_text: String = "function add(x: number
 
 // §4.5 discriminating-red perturb fixtures — local to comprep; extdeps carries only fidelity rows.
 fn comprep_ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn comprep_ts_add_operator_row_minus() -> Node {

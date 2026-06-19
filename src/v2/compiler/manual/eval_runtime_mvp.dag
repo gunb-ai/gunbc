@@ -126,8 +126,8 @@ data eval_mvp2_two_literal: Node = Node {
 data eval_mvp2_add_subgraph_node: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: eval_mvp2_two_literal },
-    Edge { label: Positional, target: eval_mvp2_two_literal }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: eval_mvp2_two_literal },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: eval_mvp2_two_literal }
   ],
   occurrence_id: SyntheticOccurrence
 }

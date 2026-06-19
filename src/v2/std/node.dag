@@ -274,6 +274,42 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   })
 }
 
+type NodeFoldFiltered<R> {
+  include_edge: fn(Edge) -> Bool
+  init: fn(Node) -> R
+  step: fn(R, Edge, R) -> R
+}
+fn fold_node_filtered<R>(n: Node, algebra: NodeFoldFiltered<R>) -> R {
+  fold(
+    filter(n.children, predicate: fn(e) { algebra.include_edge(e: e) }),
+    init: algebra.init(n),
+    f: fn(acc, e) {
+      algebra.step(acc, e, fold_node_filtered(n: e.target, algebra: algebra))
+    }
+  )
+}
+fn fold_containment<R>(n: Node, algebra: NodeFold<R>) -> R {
+  fold_node_filtered(
+    n: n,
+    algebra: NodeFoldFiltered {
+      include_edge: edge_is_containment,
+      init: algebra.init,
+      step: algebra.step
+    }
+  )
+}
+
+// Preorder listing of containment-role Nodes only (reference edges excluded — fail-closed grant scope).
+fn containment_subtree_nodes(root: Node) -> List<Node> {
+  fold_containment(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { [self] },
+      step: fn(acc, _edge, sub) { concat(acc, sub) }
+    }
+  )
+}
+
 // Preorder listing of every Node in the subtree rooted at root (root first).
 // init includes self; step appends each child's recursive result — do not re-snoc edge.target
 // (sub already contains it). Sibling to node_subtree_count in 06_translate.dag.
@@ -772,6 +808,16 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
         b: atom_identity_hash(s: sym)
       )
     Positional => atom_identity_hash(s: ^canonical_tag_positional_edge)
+  }
+}
+
+fn canonical_hash_of_edge_role(role: EdgeRole) -> Hash {
+  match role {
+    Containment { inheritable: false } =>
+      atom_identity_hash(s: ^canonical_tag_edge_role_containment)
+    Containment { inheritable: true } =>
+      atom_identity_hash(s: ^canonical_tag_edge_role_containment_inheritable)
+    Reference => atom_identity_hash(s: ^canonical_tag_edge_role_reference)
   }
 }
 
@@ -1370,7 +1416,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
 
 
 fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  named_containment_edge(name: name, target: target)
 }
 
 
@@ -1593,7 +1639,10 @@ fn content_hash(n: Node) -> Hash {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
       step: fn(acc, e, child_hash) {
         hash_combine(
-          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+          a: hash_combine(
+            a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+            b: canonical_hash_of_edge_role(role: e.role)
+          ),
           b: child_hash
         )
       }

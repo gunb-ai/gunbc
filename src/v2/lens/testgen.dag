@@ -525,11 +525,9 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
-          Edge {
-            label: Named { name: ^refinement_preservation_list_tail_edge },
-            target: tail_node
-          }
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^refinement_preservation_list_tail_edge },
+            target: tail_node }
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -817,9 +815,9 @@ fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -829,8 +827,8 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -849,11 +847,9 @@ fn witness_validity_predicate_node(p: PreservationPredicate) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
-      Edge {
-        label: Named { name: ^witness_validity_field_preservation_rule },
-        target: witness_validity_symbol_atom_node(s: p.preservation_rule)
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_preservation_rule },
+        target: witness_validity_symbol_atom_node(s: p.preservation_rule) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -863,11 +859,9 @@ fn witness_validity_witness_node(w: StructuralPropertyWitness) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^witness_validity_field_property },
-        target: witness_validity_symbol_atom_node(s: w.property)
-      },
-      Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_property },
+        target: witness_validity_symbol_atom_node(s: w.property) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -901,20 +895,14 @@ fn witness_validity_subject_node(
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
-            Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
-            Edge {
-              label: Named { name: ^witness_validity_field_predicate },
-              target: witness_validity_predicate_node(p: predicate)
-            },
-            Edge {
-              label: Named { name: ^witness_validity_field_witness },
-              target: witness_validity_witness_node(w: witness)
-            },
-            Edge {
-              label: Named { name: ^witness_validity_field_oracle_outcome },
-              target: oracle_outcome
-            }
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_candidate }, target: candidate },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_predicate },
+              target: witness_validity_predicate_node(p: predicate) },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_witness },
+              target: witness_validity_witness_node(w: witness) },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_field_oracle_outcome },
+              target: oracle_outcome }
           ],
           occurrence_id: SyntheticOccurrence
 },
@@ -941,7 +929,7 @@ fn witness_validity_correction_node(c: Correction) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -949,10 +937,8 @@ fn witness_validity_correction_node(c: Correction) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^witness_validity_correction_tag_unavailable },
-            target: witness_validity_no_correction_reason_node(r: r)
-          }
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_correction_tag_unavailable },
+            target: witness_validity_no_correction_reason_node(r: r) }
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -983,8 +969,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
           value: Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
-                label: Named { name: ^witness_validity_locus_tag_textual },
+              Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_locus_tag_textual },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
@@ -998,8 +983,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
                     }
                   ],
                   occurrence_id: SyntheticOccurrence
-}
-              }
+} }
             ],
             occurrence_id: SyntheticOccurrence
 },
@@ -1011,7 +995,7 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
           ],
           occurrence_id: SyntheticOccurrence
 },
@@ -1022,10 +1006,8 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
-              label: Named { name: ^witness_validity_locus_tag_port },
-              target: witness_validity_symbol_atom_node(s: a.at)
-            }
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_locus_tag_port },
+              target: witness_validity_symbol_atom_node(s: a.at) }
           ],
           occurrence_id: SyntheticOccurrence
 },
@@ -1040,18 +1022,12 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
       value: Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^witness_validity_diag_field_reason },
-            target: witness_validity_symbol_atom_node(s: d.reason)
-          },
-          Edge {
-            label: Named { name: ^witness_validity_diag_field_at },
-            target: at_node
-          },
-          Edge {
-            label: Named { name: ^witness_validity_diag_field_correction },
-            target: witness_validity_correction_node(c: d.correction)
-          }
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_diag_field_reason },
+            target: witness_validity_symbol_atom_node(s: d.reason) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_diag_field_at },
+            target: at_node },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_diag_field_correction },
+            target: witness_validity_correction_node(c: d.correction) }
         ],
         occurrence_id: SyntheticOccurrence
 },
@@ -1075,8 +1051,8 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
-                Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
+                Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_list_cons_head }, target: hn },
+                Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ],
               occurrence_id: SyntheticOccurrence
 },
@@ -1095,14 +1071,10 @@ fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Outcom
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
-              label: Named { name: ^witness_validity_diags_field_head },
-              target: hn
-            },
-            Edge {
-              label: Named { name: ^witness_validity_diags_field_tail },
-              target: tn
-            }
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_diags_field_head },
+              target: hn },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_diags_field_tail },
+              target: tn }
           ],
           occurrence_id: SyntheticOccurrence
 },
@@ -1125,10 +1097,8 @@ fn witness_validity_diagnostics_node(ds: Diagnostics) -> Outcome<Node> {
           value: Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
-                label: Named { name: ^witness_validity_diagnostics_tag_some },
-                target: ndn
-              }
+              Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_diagnostics_tag_some },
+                target: ndn }
             ],
             occurrence_id: SyntheticOccurrence
 },
@@ -1146,8 +1116,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
           value: Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
-                label: Named { name: ^witness_validity_outcome_holds },
+              Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_outcome_holds },
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
@@ -1161,8 +1130,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                     }
                   ],
                   occurrence_id: SyntheticOccurrence
-}
-              }
+} }
             ],
             occurrence_id: SyntheticOccurrence
 },
@@ -1175,10 +1143,8 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
           value: Node {
             kind: TypeNode { connective: Conj },
             children: [
-              Edge {
-                label: Named { name: ^witness_validity_outcome_violates },
-                target: dn
-              }
+              Edge { role: Containment { inheritable: false }, label: Named { name: ^witness_validity_outcome_violates },
+                target: dn }
             ],
             occurrence_id: SyntheticOccurrence
 },
@@ -1649,12 +1615,10 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
       connective: Atom { identity: ^coproduct_exhaustiveness_testclaim_variant }
     },
     children: [
-      Edge {
-        label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
-        )
-      }
+        ) }
     ],
     occurrence_id: SyntheticOccurrence
 }

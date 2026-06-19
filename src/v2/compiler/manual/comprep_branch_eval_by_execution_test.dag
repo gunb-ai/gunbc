@@ -230,7 +230,7 @@ fn comprep_branch_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
   match list_at_optional(xs: node.children, index: wanted) {
     Present { value: child } =>
       match child {
-        Edge { label: _, target: arm } =>
+        Edge { role: Containment { inheritable: false }, label: _, target: arm } =>
           outcome_accepted(value: arm)
       }
     Absent =>
@@ -317,7 +317,7 @@ fn comprep_branch_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: callee }
     ]
   }
 }
@@ -327,8 +327,8 @@ fn comprep_branch_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^comprep_branch_actual }, target: call },
-      Edge { label: Named { name: ^comprep_branch_expected }, target: expected }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^comprep_branch_actual }, target: call },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^comprep_branch_expected }, target: expected }
     ]
   }
 }

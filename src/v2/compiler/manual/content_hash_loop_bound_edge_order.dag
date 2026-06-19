@@ -45,7 +45,7 @@ fn content_hash_loop_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -55,8 +55,8 @@ fn content_hash_loop_body_two() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_leaf() },
-      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -66,11 +66,9 @@ fn content_hash_loop_bound_last() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body() },
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: content_hash_loop_measure_leaf()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -80,11 +78,9 @@ fn content_hash_loop_bound_first() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: content_hash_loop_measure_leaf()
-      },
-      Edge { label: Positional, target: content_hash_loop_body() }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -94,12 +90,10 @@ fn content_hash_loop_bound_middle() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_two() },
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: content_hash_loop_measure_leaf()
-      },
-      Edge { label: Positional, target: content_hash_loop_body_two() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_two() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_two() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -109,12 +103,10 @@ fn content_hash_loop_bound_last_two_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_two() },
-      Edge { label: Positional, target: content_hash_loop_body_two() },
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: content_hash_loop_measure_leaf()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_two() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body_two() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -139,15 +131,11 @@ fn content_hash_loop_with_extra_named() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body() },
-      Edge {
-        label: Named { name: ^loop_bound_edge },
-        target: content_hash_loop_measure_leaf()
-      },
-      Edge {
-        label: Named { name: ^content_hash_loop_extra_named_sym },
-        target: content_hash_loop_body_leaf()
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: content_hash_loop_body() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^content_hash_loop_extra_named_sym },
+        target: content_hash_loop_body_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }

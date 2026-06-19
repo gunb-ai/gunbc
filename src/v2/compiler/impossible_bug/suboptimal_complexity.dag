@@ -51,8 +51,8 @@ fn complexity_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
-      Edge { label: Named { name: ^complexity_body_field }, target: body },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^complexity_body_field }, target: body },
     ],
     occurrence_id: SyntheticOccurrence
 }

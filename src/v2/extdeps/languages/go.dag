@@ -448,7 +448,7 @@ fn go_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn go_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn go_int_kind_node(kind: GoIntKind) -> Node {
@@ -1573,9 +1573,9 @@ fn go_int64_falsifier_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1586,8 +1586,8 @@ fn go_declared_inhabitants_root() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: ^go_inhabitant_field_int, target: go_int_inhabitant_node()),
-      Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
-      Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int_additive_numeric_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -1675,9 +1675,9 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       go_named_edge(name: ^go_surface_fn_item, target: go_inhabitant_atom(id: ^go_surface_fn_item)),
-      Edge { label: Positional, target: go_int_inhabitant_node() },
-      Edge { label: Positional, target: go_int_inhabitant_node() },
-      Edge { label: Positional, target: go_int_inhabitant_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: go_int_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

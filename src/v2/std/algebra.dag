@@ -129,8 +129,8 @@ fn fold_list_node<T>(
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^fold_list_node_head }, target: item_node(item) },
-          Edge { label: Named { name: ^fold_list_node_tail }, target: tail_node },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^fold_list_node_head }, target: item_node(item) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^fold_list_node_tail }, target: tail_node },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -155,7 +155,7 @@ fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
     algebra: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
+        Edge { role: Containment { inheritable: false }, label: Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
       ],
       occurrence_id: SyntheticOccurrence
 },
@@ -168,21 +168,19 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
-      Edge {
-        label: Named { name: ^free_monoid_variant_cons },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^free_monoid_variant_cons },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^free_monoid_field_head }, target: inhabitant },
+            Edge { role: Containment { inheritable: false }, label: Named { name: ^free_monoid_field_head }, target: inhabitant },
             Edge {
               label: Named { name: ^free_monoid_field_tail },
               target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
             },
           ],
           occurrence_id: SyntheticOccurrence
-},
-      },
+}, },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -193,9 +191,9 @@ fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: codomain },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: domain },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: domain },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: codomain },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -206,8 +204,8 @@ fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: domain },
-      Edge { label: Positional, target: codomain },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: domain },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: codomain },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -218,9 +216,9 @@ fn ordering_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -231,10 +229,8 @@ fn magma_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^magma_field_op },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^magma_field_op },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -245,7 +241,7 @@ fn semigroup_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -256,8 +252,8 @@ fn monoid_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^monoid_field_identity }, target: inhabitant },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^monoid_field_identity }, target: inhabitant },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -268,7 +264,7 @@ fn commutative_monoid_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -279,11 +275,9 @@ fn group_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
-      Edge {
-        label: Named { name: ^group_field_inverse },
-        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^group_field_inverse },
+        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -294,7 +288,7 @@ fn abelian_group_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -305,8 +299,8 @@ fn semiring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -317,7 +311,7 @@ fn commutative_semiring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -328,8 +322,8 @@ fn ring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -340,7 +334,7 @@ fn commutative_ring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -351,11 +345,9 @@ fn ordered_ring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
-      Edge {
-        label: Named { name: ^ordered_ring_field_compare },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^ordered_ring_field_compare },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node()) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -366,8 +358,8 @@ fn field_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -390,24 +382,16 @@ fn approximate_field_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^approximate_field_field_add },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge { label: Named { name: ^approximate_field_field_zero }, target: inhabitant },
-      Edge {
-        label: Named { name: ^approximate_field_field_negate },
-        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge {
-        label: Named { name: ^approximate_field_field_mul },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge { label: Named { name: ^approximate_field_field_one }, target: inhabitant },
-      Edge {
-        label: Named { name: ^approximate_field_field_compare },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^approximate_field_field_add },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^approximate_field_field_zero }, target: inhabitant },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^approximate_field_field_negate },
+        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^approximate_field_field_mul },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^approximate_field_field_one }, target: inhabitant },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^approximate_field_field_compare },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node()) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -418,14 +402,10 @@ fn lattice_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^lattice_field_meet },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-      Edge {
-        label: Named { name: ^lattice_field_join },
-        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^lattice_field_meet },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^lattice_field_join },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -436,9 +416,9 @@ fn bounded_lattice_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
-      Edge { label: Named { name: ^bounded_lattice_field_top }, target: inhabitant },
-      Edge { label: Named { name: ^bounded_lattice_field_bottom }, target: inhabitant },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bounded_lattice_field_top }, target: inhabitant },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^bounded_lattice_field_bottom }, target: inhabitant },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -449,14 +429,10 @@ fn boolean_algebra_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^boolean_algebra_field_bounded_lattice },
-        target: bounded_lattice_type_node(inhabitant: inhabitant)
-      },
-      Edge {
-        label: Named { name: ^boolean_algebra_field_complement },
-        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^boolean_algebra_field_bounded_lattice },
+        target: bounded_lattice_type_node(inhabitant: inhabitant) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^boolean_algebra_field_complement },
+        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -467,8 +443,8 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^algebra_edge }, target: algebra },
-      Edge { label: Named { name: ^inhabitant_edge }, target: inhabitant },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^algebra_edge }, target: algebra },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^inhabitant_edge }, target: inhabitant },
     ],
     occurrence_id: SyntheticOccurrence
 }

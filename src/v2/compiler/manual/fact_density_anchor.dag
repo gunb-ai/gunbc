@@ -23,14 +23,10 @@ data fact_density_anchor_hollow_alias: Node = Node {
 data fact_density_anchor_fact_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^fact_density_anchor_width_field },
-      target: fact_density_anchor_hollow_alias
-    },
-    Edge {
-      label: Named { name: ^fact_density_anchor_signedness_field },
-      target: fact_density_anchor_hollow_alias
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^fact_density_anchor_width_field },
+      target: fact_density_anchor_hollow_alias },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^fact_density_anchor_signedness_field },
+      target: fact_density_anchor_hollow_alias }
   ],
   occurrence_id: SyntheticOccurrence
 }

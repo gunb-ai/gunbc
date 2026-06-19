@@ -87,9 +87,9 @@ data mvp1_ts_number_inhabitant: Node = ts_inhabitant_number_node()
 data mvp1_ts_emitted_root: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: mvp1_ts_number_inhabitant },
-    Edge { label: Positional, target: mvp1_ts_number_inhabitant },
-    Edge { label: Positional, target: mvp1_ts_number_inhabitant }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp1_ts_number_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp1_ts_number_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp1_ts_number_inhabitant }
   ],
   occurrence_id: SyntheticOccurrence
 }

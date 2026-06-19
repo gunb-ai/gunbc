@@ -28,10 +28,8 @@ data hollow_alias_nested_child: Node = Node {
 data hollow_alias_nested_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^hollow_alias_nested_child_edge },
-      target: hollow_alias_nested_child
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^hollow_alias_nested_child_edge },
+      target: hollow_alias_nested_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

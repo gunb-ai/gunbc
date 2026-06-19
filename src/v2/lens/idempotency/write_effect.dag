@@ -51,7 +51,7 @@ data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
 data idempotency_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^idempotency_root_symbol } },
   children: [
-    Edge { label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

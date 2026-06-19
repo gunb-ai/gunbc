@@ -273,7 +273,7 @@ fn python_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn python_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
@@ -994,9 +994,9 @@ fn python_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: python_int_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: python_int_inhabitant_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: python_int_inhabitant_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

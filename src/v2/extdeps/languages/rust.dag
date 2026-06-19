@@ -913,7 +913,7 @@ fn rust_inhabitant_never_node() -> Node {
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 // Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
@@ -993,9 +993,9 @@ data rust_mvp1_fixture_i32_inhabitant: Node = rust_inhabitant_i32_node()
 data rust_mvp1_fixture_emitted_add_fn: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
-    Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
-    Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: rust_mvp1_fixture_i32_inhabitant }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -3607,8 +3607,8 @@ fn rust_sg5_set_non_ordable_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Cardinality },
     children: [
-      Edge { label: Positional, target: target_collection_set_carrier_node() },
-      Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: target_collection_set_carrier_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: rust_sg5_non_ordable_type_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -3648,30 +3648,24 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_foobar } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      },
-      Edge {
-        label: Positional,
+} },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_x } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      },
-      Edge {
-        label: Positional,
+} },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_y } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      }
+} }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -3681,18 +3675,14 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_rc } },
           children: [],
           occurrence_id: SyntheticOccurrence
-}
-      },
-      Edge {
-        label: Positional,
-        target: rust_sg2_foobar_xy_inner_instantiation_node()
-      }
+} },
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: rust_sg2_foobar_xy_inner_instantiation_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -3732,8 +3722,8 @@ fn rust_sg2_arrow_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -3750,7 +3740,7 @@ fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -3909,10 +3899,8 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
     kind: base.kind,
     children: list_snoc_item(
       xs: base.children,
-      item: Edge {
-        label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
-      }
+      item: Edge { role: Containment { inheritable: false }, label: Positional,
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ),
     occurrence_id: SyntheticOccurrence
 }
@@ -3960,10 +3948,8 @@ fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
     kind: base.kind,
     children: list_snoc_item(
       xs: base.children,
-      item: Edge {
-        label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
-      }
+      item: Edge { role: Containment { inheritable: false }, label: Positional,
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ),
     occurrence_id: SyntheticOccurrence
 }
@@ -3975,10 +3961,8 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
     kind: base.kind,
     children: list_snoc_item(
       xs: base.children,
-      item: Edge {
-        label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
-      }
+      item: Edge { role: Containment { inheritable: false }, label: Positional,
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ),
     occurrence_id: SyntheticOccurrence
 }

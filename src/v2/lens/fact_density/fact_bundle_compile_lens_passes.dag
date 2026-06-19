@@ -33,10 +33,8 @@ data fact_bundle_cl_child: Node = Node {
 data fact_bundle_cl_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^fact_bundle_cl_field_name },
-      target: fact_bundle_cl_child
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^fact_bundle_cl_field_name },
+      target: fact_bundle_cl_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

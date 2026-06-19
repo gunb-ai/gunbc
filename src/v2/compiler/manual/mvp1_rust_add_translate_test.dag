@@ -111,9 +111,9 @@ fn mvp_int_node() -> Node {
 data mvp_add_arrow_node: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: mvp_int_node() },
-    Edge { label: Positional, target: mvp_int_node() },
-    Edge { label: Positional, target: mvp_int_node() }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp_int_node() },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp_int_node() },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp_int_node() }
   ],
   occurrence_id: SyntheticOccurrence
 }

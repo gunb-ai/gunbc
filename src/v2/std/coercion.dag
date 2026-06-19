@@ -233,9 +233,9 @@ fn coercion_homomorphism_evidence(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source.node },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^coercion_homomorphism_evidence_source }, target: source.node },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
     ],
     occurrence_id: SyntheticOccurrence
 }

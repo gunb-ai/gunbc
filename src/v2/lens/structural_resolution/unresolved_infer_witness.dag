@@ -42,7 +42,7 @@ data sr_infer_use: Node = sr_infer_claim_atom(s: ^sr_infer_use_symbol)
 data sr_infer_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
+    Edge { role: Reference, label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
   ],
   occurrence_id: SyntheticOccurrence
 }

@@ -64,10 +64,8 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^rung34_roundtrip_module_axis },
-        target: fixture_subject
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^rung34_roundtrip_module_axis },
+        target: fixture_subject }
     ],
     occurrence_id: SyntheticOccurrence
 }

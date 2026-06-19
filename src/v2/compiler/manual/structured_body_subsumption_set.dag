@@ -65,9 +65,9 @@ fn mvp1_int_pair_arrow_signature() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: dag_mvp1_pick_arrow_domain_conj_node() },
-      Edge { label: Positional, target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: dag_mvp1_pick_arrow_domain_conj_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: dag_mvp1_type_atom_node(identity: ^dag_binding_type_int) }
     ]
   )
 }

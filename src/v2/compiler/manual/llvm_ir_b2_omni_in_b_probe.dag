@@ -110,10 +110,10 @@ fn llvm_probe_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^llvm_probe_result_symbol }, target: llvm_probe_atom(s: ^llvm_probe_pass_symbol) },
-      Edge { label: Named { name: ^llvm_probe_ssa_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_phi_result_symbol) },
-      Edge { label: Named { name: ^llvm_probe_phi_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_phi_axis_symbol) },
-      Edge { label: Named { name: ^llvm_probe_cfg_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_cfg_axis_symbol) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^llvm_probe_result_symbol }, target: llvm_probe_atom(s: ^llvm_probe_pass_symbol) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^llvm_probe_ssa_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_phi_result_symbol) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^llvm_probe_phi_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_phi_axis_symbol) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^llvm_probe_cfg_axis_symbol }, target: llvm_probe_atom(s: ^llvm_probe_cfg_axis_symbol) },
     ],
     occurrence_id: SyntheticOccurrence
 }

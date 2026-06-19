@@ -40,7 +40,7 @@ data sr_mod_imported: Node = sr_mod_claim_atom(s: ^sr_mod_child_symbol)
 data sr_mod_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
+    Edge { role: Reference, label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
   ],
   occurrence_id: SyntheticOccurrence
 }

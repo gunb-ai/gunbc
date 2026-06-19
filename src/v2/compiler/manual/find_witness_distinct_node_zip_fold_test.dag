@@ -75,9 +75,9 @@ fn distinct_source_add_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_source_leaf() },
-      Edge { label: Positional, target: distinct_source_leaf() },
-      Edge { label: Positional, target: distinct_source_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_source_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_source_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_source_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -86,9 +86,9 @@ fn distinct_target_add_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -97,8 +97,8 @@ fn distinct_wrong_arity_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_wrong_leaf() },
-      Edge { label: Positional, target: distinct_wrong_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_wrong_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_wrong_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -107,9 +107,9 @@ fn distinct_wrong_subtree_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_wrong_arity_node() },
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_wrong_arity_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_leaf() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -118,8 +118,8 @@ fn distinct_source_nested_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_source_add_node() },
-      Edge { label: Positional, target: distinct_source_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_source_add_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_source_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -128,8 +128,8 @@ fn distinct_target_nested_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_target_add_node() },
-      Edge { label: Positional, target: distinct_target_leaf() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_add_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: distinct_target_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }

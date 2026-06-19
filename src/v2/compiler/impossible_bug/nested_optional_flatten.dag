@@ -41,16 +41,14 @@ data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
 data falsification_nested_optional: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge {
-      label: Positional,
+    Edge { role: Containment { inheritable: false }, label: Positional,
       target: Node {
         kind: TypeNode { connective: Cardinality },
         children: [
-          Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
+          Edge { role: Containment { inheritable: false }, label: Positional, target: atom_node(s: ^optional_value_symbol) },
         ],
         occurrence_id: SyntheticOccurrence
-}
-    },
+} },
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -59,7 +57,7 @@ data falsification_nested_optional: Node = Node {
 data falsification_optional_double_unwrap: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }

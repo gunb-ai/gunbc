@@ -83,27 +83,21 @@ fn comprep_swapped_operand_body() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_token_plus } },
           children: []
-        )
-      },
-      Edge {
-        label: Positional,
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_param_y } },
           children: []
-        )
-      },
-      Edge {
-        label: Positional,
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_param_x } },
           children: []
-        )
-      }
+        ) }
     ]
   )
 }
@@ -118,34 +112,26 @@ fn comprep_arrow_with_atom_body_rejects() -> Bool {
   let arrow = node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
-        )
-      },
-      Edge {
-        label: Positional,
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
-        )
-      },
-      Edge {
-        label: Positional,
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
           children: []
-        )
-      },
-      Edge {
-        label: Named { name: ^arrow_body_edge },
+        ) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^comprep_body_producer_fail } },
           children: []
-        )
-      }
+        ) }
     ]
   )
   !well_formed(n: arrow)

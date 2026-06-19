@@ -28,7 +28,7 @@ data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
 data ownership_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
   children: [
-    Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
   ],
   occurrence_id: SyntheticOccurrence
 }

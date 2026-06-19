@@ -326,10 +326,8 @@ fn grammar_atom(identity: Symbol) -> Node {
 
 
 fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge {
-    label: Named { name: name },
-    target: target
-  }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name },
+    target: target }
 }
 
 
@@ -493,7 +491,7 @@ fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
     cons: fn(acc, symbol) {
       list_snoc_item(
         xs: acc,
-        item: Edge { label: Positional, target: formal_grammar_symbol_to_node(symbol: symbol) }
+        item: Edge { role: Containment { inheritable: false }, label: Positional, target: formal_grammar_symbol_to_node(symbol: symbol) }
       )
     }
   )
@@ -834,10 +832,8 @@ fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> No
       cons: fn(acc, production) {
         list_snoc_item(
           xs: acc,
-          item: Edge {
-            label: Positional,
-            target: formal_production_to_node(production: production)
-          }
+          item: Edge { role: Containment { inheritable: false }, label: Positional,
+            target: formal_production_to_node(production: production) }
         )
       }
     ),
@@ -945,15 +941,11 @@ fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> No
 fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
   match binding {
     Present { value: binding } =>
-      Edge {
-        label: Positional,
-        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding) }
     Absent =>
-      Edge {
-        label: Positional,
-        target: grammar_concrete_fixed_token_node(token_class: terminal.identity)
-      }
+      Edge { role: Containment { inheritable: false }, label: Positional,
+        target: grammar_concrete_fixed_token_node(token_class: terminal.identity) }
   }
 }
 
@@ -1952,7 +1944,7 @@ fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
       cons: fn(acc, child) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: child }
+          item: Edge { role: Containment { inheritable: false }, label: Positional, target: child }
         )
       }
     ),

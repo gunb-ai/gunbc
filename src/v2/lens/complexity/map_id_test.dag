@@ -39,7 +39,7 @@ data map_id_body_leaf: Node = Node {
 data map_id_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: map_id_body_leaf }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: map_id_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -47,7 +47,7 @@ data map_id_body: Node = Node {
 data map_id_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: map_id_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: map_id_body }
   ],
   occurrence_id: SyntheticOccurrence
 }

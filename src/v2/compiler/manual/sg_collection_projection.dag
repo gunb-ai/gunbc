@@ -59,8 +59,8 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_carrier_free_monoid_node() },
-      Edge { label: Positional, target: target_carrier_node_node() }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: target_carrier_free_monoid_node() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: target_carrier_node_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }

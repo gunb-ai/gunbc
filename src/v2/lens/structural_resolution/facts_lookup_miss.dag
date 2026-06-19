@@ -41,7 +41,7 @@ data sr_lookup_use: Node = sr_lookup_claim_atom(s: ^sr_lookup_use_symbol)
 data sr_lookup_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
+    Edge { role: Reference, label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
   ],
   occurrence_id: SyntheticOccurrence
 }

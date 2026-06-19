@@ -18,7 +18,7 @@ data closure_deep_chain_leaf: Node = claim_atom_node(s: ^closure_deep_chain_leaf
 data closure_deep_chain_n06: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_n06_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_n06_edge_symbol }, target: closure_deep_chain_leaf }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_n06_edge_symbol }, target: closure_deep_chain_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -26,7 +26,7 @@ data closure_deep_chain_n06: Node = Node {
 data closure_deep_chain_n05: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_n05_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_n05_edge_symbol }, target: closure_deep_chain_n06 }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_n05_edge_symbol }, target: closure_deep_chain_n06 }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -34,7 +34,7 @@ data closure_deep_chain_n05: Node = Node {
 data closure_deep_chain_n04: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_n04_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_n04_edge_symbol }, target: closure_deep_chain_n05 }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_n04_edge_symbol }, target: closure_deep_chain_n05 }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -42,7 +42,7 @@ data closure_deep_chain_n04: Node = Node {
 data closure_deep_chain_n03: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_n03_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_n03_edge_symbol }, target: closure_deep_chain_n04 }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_n03_edge_symbol }, target: closure_deep_chain_n04 }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -50,7 +50,7 @@ data closure_deep_chain_n03: Node = Node {
 data closure_deep_chain_n02: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_n02_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_n02_edge_symbol }, target: closure_deep_chain_n03 }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_n02_edge_symbol }, target: closure_deep_chain_n03 }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -58,7 +58,7 @@ data closure_deep_chain_n02: Node = Node {
 data closure_deep_chain_n01: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_n01_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_n01_edge_symbol }, target: closure_deep_chain_n02 }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_n01_edge_symbol }, target: closure_deep_chain_n02 }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -66,7 +66,7 @@ data closure_deep_chain_n01: Node = Node {
 data closure_deep_chain_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^closure_deep_chain_root_symbol } },
   children: [
-    Edge { label: Named { name: ^closure_deep_chain_root_edge_symbol }, target: closure_deep_chain_n01 }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^closure_deep_chain_root_edge_symbol }, target: closure_deep_chain_n01 }
   ],
   occurrence_id: SyntheticOccurrence
 }

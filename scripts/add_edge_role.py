@@ -22,6 +22,20 @@ def infer_role(block: str) -> str:
     return DEFAULT_CONTAINMENT
 
 
+def is_literal_start(content: str, i: int, type_name: str) -> bool:
+    prefix = f"{type_name} {{"
+    if not content.startswith(prefix, i):
+        return False
+    if i > 0 and (content[i - 1].isalnum() or content[i - 1] == "_"):
+        return False
+    j = i - 1
+    while j >= 0 and content[j] in " \t":
+        j -= 1
+    if j >= 1 and content[j - 1 : j + 1] == "->":
+        return False
+    return True
+
+
 def transform_content(content: str) -> str:
     result: list[str] = []
     i = 0
@@ -29,8 +43,7 @@ def transform_content(content: str) -> str:
     while i < n:
         matched = None
         for type_name in ("EdgeShape", "Edge"):
-            prefix = f"{type_name} {{"
-            if content.startswith(prefix, i):
+            if is_literal_start(content, i, type_name):
                 matched = type_name
                 break
         if matched is None:
@@ -39,7 +52,7 @@ def transform_content(content: str) -> str:
             continue
 
         start = i
-        i += len(matched) + 2  # past "Type {"
+        i += len(matched) + 2
         depth = 1
         body_start = i
         while i < n and depth > 0:

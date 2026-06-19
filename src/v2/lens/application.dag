@@ -220,7 +220,7 @@ fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
 }
 
 fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
-  Edge { label: e.label, target: replacement }
+  Edge { label: e.label, role: e.role, target: replacement }
 }
 
 type PathSplit {

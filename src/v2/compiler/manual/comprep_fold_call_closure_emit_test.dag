@@ -68,11 +68,11 @@ fn fold_call_atom(id: Symbol) -> Node {
 }
 
 fn fold_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn fold_call_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { role: Containment { inheritable: false }, label: Positional, target: target }
 }
 
 // Arrow domain Conj: one Named edge per param binding (name = binding, target = Int type atom).

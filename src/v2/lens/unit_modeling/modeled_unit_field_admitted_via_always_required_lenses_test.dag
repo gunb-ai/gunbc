@@ -53,10 +53,8 @@ data unit_ar_pass_carrier_target: Node = Node {
 data unit_ar_pass_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^ram_bytes },
-      target: unit_ar_pass_carrier_target
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^ram_bytes },
+      target: unit_ar_pass_carrier_target }
   ],
   occurrence_id: SyntheticOccurrence
 }

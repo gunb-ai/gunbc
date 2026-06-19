@@ -86,9 +86,9 @@ data mvp1_python_int_inhabitant: Node = python_int_inhabitant_node()
 data mvp1_python_emitted_root: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: mvp1_python_int_inhabitant },
-    Edge { label: Positional, target: mvp1_python_int_inhabitant },
-    Edge { label: Positional, target: mvp1_python_int_inhabitant }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp1_python_int_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp1_python_int_inhabitant },
+    Edge { role: Containment { inheritable: false }, label: Positional, target: mvp1_python_int_inhabitant }
   ],
   occurrence_id: SyntheticOccurrence
 }

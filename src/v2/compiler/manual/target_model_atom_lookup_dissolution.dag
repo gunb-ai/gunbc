@@ -132,14 +132,12 @@ fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
     catalog: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: atom_lookup_dissolution_probe_node() },
-        Edge {
-          label: Positional,
+        Edge { role: Containment { inheritable: false }, label: Positional, target: atom_lookup_dissolution_probe_node() },
+        Edge { role: Containment { inheritable: false }, label: Positional,
           target: target_atom_realization_to_node(
             row: ts_target_atom_realization_bool,
             host_bundle: ts_sg2_type_expr_target_model_node()
-          )
-        }
+          ) }
       ],
       occurrence_id: SyntheticOccurrence
     },

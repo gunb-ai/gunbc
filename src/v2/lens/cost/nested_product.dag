@@ -35,7 +35,7 @@ data nested_product_body: Node = Node {
 data nested_product_inner: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: nested_product_body }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: nested_product_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -43,7 +43,7 @@ data nested_product_inner: Node = Node {
 data nested_product_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: nested_product_inner }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: nested_product_inner }
   ],
   occurrence_id: SyntheticOccurrence
 }

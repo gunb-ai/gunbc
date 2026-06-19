@@ -222,18 +222,12 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^model_core_wave1_law_field_subject },
-        target: model_core_wave1_bool_inhabitance_witness()
-      },
-      Edge {
-        label: Named { name: ^model_core_wave1_law_field_algebra },
-        target: model_core_wave1_bool_algebra_node()
-      },
-      Edge {
-        label: Named { name: ^model_core_wave1_law_field_kind },
-        target: model_core_wave1_atom(id: discriminant(v: key))
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^model_core_wave1_law_field_subject },
+        target: model_core_wave1_bool_inhabitance_witness() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^model_core_wave1_law_field_algebra },
+        target: model_core_wave1_bool_algebra_node() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^model_core_wave1_law_field_kind },
+        target: model_core_wave1_atom(id: discriminant(v: key)) },
     ],
     occurrence_id: SyntheticOccurrence
 }

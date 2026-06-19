@@ -102,10 +102,8 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
           n: arrow,
           children: list_snoc_item(
             xs: arrow.children,
-            item: Edge {
-              label: Named { name: ^arrow_body_edge },
-              target: body
-            }
+            item: Edge { role: Containment { inheritable: false }, label: Named { name: ^arrow_body_edge },
+              target: body }
           )
         )
       )
@@ -198,14 +196,10 @@ fn body_producer_arrow_domain_conj_from_binding_ids(bindings: List<Symbol>) -> O
             value: node_synthetic(
               kind: TypeNode { connective: Conj },
               children: [
-                Edge {
-                  label: Named { name: left_binding },
-                  target: type_atom_node(identity: dag_mvp1_int_type_binding())
-                },
-                Edge {
-                  label: Named { name: right_binding },
-                  target: type_atom_node(identity: dag_mvp1_int_type_binding())
-                }
+                Edge { role: Containment { inheritable: false }, label: Named { name: left_binding },
+                  target: type_atom_node(identity: dag_mvp1_int_type_binding()) },
+                Edge { role: Containment { inheritable: false }, label: Named { name: right_binding },
+                  target: type_atom_node(identity: dag_mvp1_int_type_binding()) }
               ]
             )
           )
@@ -239,15 +233,11 @@ fn body_producer_transform_body_from_bindings(
             value: node_synthetic(
               kind: ComputationNode { behavior: Transform },
               children: [
-                Edge { label: Positional, target: operator },
-                Edge {
-                  label: Positional,
-                  target: computation_param_ref_node(identity: left_binding)
-                },
-                Edge {
-                  label: Positional,
-                  target: computation_param_ref_node(identity: right_binding)
-                }
+                Edge { role: Containment { inheritable: false }, label: Positional, target: operator },
+                Edge { role: Containment { inheritable: false }, label: Positional,
+                  target: computation_param_ref_node(identity: left_binding) },
+                Edge { role: Containment { inheritable: false }, label: Positional,
+                  target: computation_param_ref_node(identity: right_binding) }
               ]
             )
           )
@@ -428,18 +418,12 @@ fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcom
                                     value: node_synthetic(
                                       kind: TypeNode { connective: Arrow },
                                       children: [
-                                        Edge {
-                                          label: Positional,
-                                          target: domain
-                                        },
-                                        Edge {
-                                          label: Positional,
-                                          target: type_atom_node(identity: codomain_binding)
-                                        },
-                                        Edge {
-                                          label: Positional,
-                                          target: type_atom_node(identity: codomain_binding)
-                                        }
+                                        Edge { role: Containment { inheritable: false }, label: Positional,
+                                          target: domain },
+                                        Edge { role: Containment { inheritable: false }, label: Positional,
+                                          target: type_atom_node(identity: codomain_binding) },
+                                        Edge { role: Containment { inheritable: false }, label: Positional,
+                                          target: type_atom_node(identity: codomain_binding) }
                                       ]
                                     )
                                   )
@@ -565,10 +549,8 @@ fn produce_mvp1_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
         value: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
-              label: Named { name: fn_name },
-              target: arrow_with_body
-            }
+            Edge { role: Containment { inheritable: false }, label: Named { name: fn_name },
+              target: arrow_with_body }
           ]
         )
       )
@@ -596,9 +578,9 @@ fn body_producer_branch_if_body(
     value: node_synthetic(
       kind: ComputationNode { behavior: Branch },
       children: [
-        Edge { label: Positional, target: condition },
-        Edge { label: Positional, target: then_arm },
-        Edge { label: Positional, target: else_arm }
+        Edge { role: Containment { inheritable: false }, label: Positional, target: condition },
+        Edge { role: Containment { inheritable: false }, label: Positional, target: then_arm },
+        Edge { role: Containment { inheritable: false }, label: Positional, target: else_arm }
       ]
     )
   )
@@ -711,21 +693,15 @@ fn produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: Node) -> Ou
                 value: node_synthetic(
                   kind: TypeNode { connective: Arrow },
                   children: [
-                    Edge {
-                      label: Positional,
+                    Edge { role: Containment { inheritable: false }, label: Positional,
                       target: node_synthetic(
                         kind: TypeNode { connective: Conj },
                         children: []
-                      )
-                    },
-                    Edge {
-                      label: Positional,
-                      target: type_atom_node(identity: codomain_binding)
-                    },
-                    Edge {
-                      label: Positional,
-                      target: type_atom_node(identity: codomain_binding)
-                    }
+                      ) },
+                    Edge { role: Containment { inheritable: false }, label: Positional,
+                      target: type_atom_node(identity: codomain_binding) },
+                    Edge { role: Containment { inheritable: false }, label: Positional,
+                      target: type_atom_node(identity: codomain_binding) }
                   ]
                 )
               )
@@ -805,9 +781,9 @@ fn body_producer_match_if_body(
     value: node_synthetic(
       kind: ComputationNode { behavior: Match },
       children: [
-        Edge { label: Positional, target: scrutinee },
-        Edge { label: Positional, target: true_arm },
-        Edge { label: Positional, target: false_arm }
+        Edge { role: Containment { inheritable: false }, label: Positional, target: scrutinee },
+        Edge { role: Containment { inheritable: false }, label: Positional, target: true_arm },
+        Edge { role: Containment { inheritable: false }, label: Positional, target: false_arm }
       ]
     )
   )
@@ -830,9 +806,9 @@ fn body_producer_bind_let_body(
     value: node_synthetic(
       kind: ComputationNode { behavior: Bind },
       children: [
-        Edge { label: Positional, target: type_atom_node(identity: key_binding) },
-        Edge { label: Positional, target: value },
-        Edge { label: Positional, target: body }
+        Edge { role: Containment { inheritable: false }, label: Positional, target: type_atom_node(identity: key_binding) },
+        Edge { role: Containment { inheritable: false }, label: Positional, target: value },
+        Edge { role: Containment { inheritable: false }, label: Positional, target: body }
       ]
     )
   )
@@ -901,8 +877,8 @@ fn body_producer_loop_body(body_lit: Node, measure: Node) -> Outcome<Node> {
     value: node_synthetic(
       kind: ComputationNode { behavior: Loop },
       children: [
-        Edge { label: Positional, target: body_lit },
-        Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+        Edge { role: Containment { inheritable: false }, label: Positional, target: body_lit },
+        Edge { role: Containment { inheritable: false }, label: Named { name: ^loop_bound_edge }, target: measure }
       ]
     )
   )
@@ -1034,21 +1010,15 @@ fn produce_mvp1_loop_arrow_signature_from_resolved(resolved_root: Node) -> Outco
                 value: node_synthetic(
                   kind: TypeNode { connective: Arrow },
                   children: [
-                    Edge {
-                      label: Positional,
+                    Edge { role: Containment { inheritable: false }, label: Positional,
                       target: node_synthetic(
                         kind: TypeNode { connective: Conj },
                         children: []
-                      )
-                    },
-                    Edge {
-                      label: Positional,
-                      target: type_atom_node(identity: codomain_binding)
-                    },
-                    Edge {
-                      label: Positional,
-                      target: type_atom_node(identity: codomain_binding)
-                    }
+                      ) },
+                    Edge { role: Containment { inheritable: false }, label: Positional,
+                      target: type_atom_node(identity: codomain_binding) },
+                    Edge { role: Containment { inheritable: false }, label: Positional,
+                      target: type_atom_node(identity: codomain_binding) }
                   ]
                 )
               )
@@ -1082,21 +1052,15 @@ fn produce_mvp1_bind_arrow_signature_from_resolved(resolved_root: Node) -> Outco
                 value: node_synthetic(
                   kind: TypeNode { connective: Arrow },
                   children: [
-                    Edge {
-                      label: Positional,
+                    Edge { role: Containment { inheritable: false }, label: Positional,
                       target: node_synthetic(
                         kind: TypeNode { connective: Conj },
                         children: []
-                      )
-                    },
-                    Edge {
-                      label: Positional,
-                      target: type_atom_node(identity: codomain_binding)
-                    },
-                    Edge {
-                      label: Positional,
-                      target: type_atom_node(identity: codomain_binding)
-                    }
+                      ) },
+                    Edge { role: Containment { inheritable: false }, label: Positional,
+                      target: type_atom_node(identity: codomain_binding) },
+                    Edge { role: Containment { inheritable: false }, label: Positional,
+                      target: type_atom_node(identity: codomain_binding) }
                   ]
                 )
               )

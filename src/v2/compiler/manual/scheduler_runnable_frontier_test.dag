@@ -60,9 +60,9 @@ data scheduler_missing_source_node: Node = Node {
 data scheduler_fixture_graph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^scheduler_build_symbol }, target: scheduler_build_node },
-    Edge { label: Named { name: ^scheduler_test_symbol }, target: scheduler_test_node },
-    Edge { label: Named { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^scheduler_build_symbol }, target: scheduler_build_node },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^scheduler_test_symbol }, target: scheduler_test_node },
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
   ],
   occurrence_id: SyntheticOccurrence
 }

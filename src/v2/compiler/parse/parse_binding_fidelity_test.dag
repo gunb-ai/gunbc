@@ -213,14 +213,12 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: seg)
       ),
-      Edge {
-        label: Named { name: export_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -238,14 +236,12 @@ fn pbf_subject_with_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
-      Edge {
-        label: Named { name: ^pbf_import_use_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^pbf_import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -291,14 +287,12 @@ fn pbf_unbound_atom_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Positional,
+      Edge { role: Containment { inheritable: false }, label: Positional,
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -326,14 +320,12 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
-      Edge {
-        label: Named { name: ^pbf_ambiguous_export_sym },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^pbf_ambiguous_export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
-        }
-      }
+        } }
     ],
     occurrence_id: SyntheticOccurrence
   }

@@ -75,10 +75,8 @@ data irt1_public_malformed_pure_boundary_receipt: Node = Node {
 data irt1_public_pure_boundary_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
-      target: irt1_public_pure_boundary_receipt
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_set_boundary_pure_receipt_edge },
+      target: irt1_public_pure_boundary_receipt }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -86,10 +84,8 @@ data irt1_public_pure_boundary_node: Node = Node {
 data irt1_public_malformed_pure_boundary_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^affected_set_boundary_pure_receipt_edge },
-      target: irt1_public_malformed_pure_boundary_receipt
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_set_boundary_pure_receipt_edge },
+      target: irt1_public_malformed_pure_boundary_receipt }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -132,10 +128,8 @@ data irt1_public_mismatched_dimension_not_read_receipt_node: Node = Node {
 data irt1_public_receipted_usage_site: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
-      target: irt1_public_dimension_not_read_receipt_node
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
+      target: irt1_public_dimension_not_read_receipt_node }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -143,10 +137,8 @@ data irt1_public_receipted_usage_site: Node = Node {
 data irt1_public_mismatched_receipted_usage_site: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
-      target: irt1_public_mismatched_dimension_not_read_receipt_node
-    }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^affected_set_dimension_not_read_receipt_edge },
+      target: irt1_public_mismatched_dimension_not_read_receipt_node }
   ],
   occurrence_id: SyntheticOccurrence
 }

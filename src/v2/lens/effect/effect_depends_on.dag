@@ -64,7 +64,7 @@ data effect_child: Node = claim_atom_node(s: ^effect_child_symbol)
 data effect_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^effect_root_symbol } },
   children: [
-    Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
+    Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_edge_symbol }, target: effect_child }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -127,10 +127,8 @@ fn lens_effect_marker_node(marker: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
     children: [
-      Edge {
-        label: Named { name: marker },
-        target: effect_root
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: marker },
+        target: effect_root }
     ],
     occurrence_id: SyntheticOccurrence
 }

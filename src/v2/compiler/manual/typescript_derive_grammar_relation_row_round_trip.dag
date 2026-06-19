@@ -80,9 +80,9 @@ fn ts_wave2a_task_type_alias_emitted_surplus_conj_slot() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
-      Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
+      Edge { role: Containment { inheritable: false }, label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
     occurrence_id: SyntheticOccurrence
 }

@@ -109,7 +109,7 @@ fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
           BoundToken { binding: binding, token_class: _ } =>
             list_snoc_item(
               xs: acc,
-              item: Edge { label: Positional, target: bash_word_atom(id: binding) }
+              item: Edge { role: Containment { inheritable: false }, label: Positional, target: bash_word_atom(id: binding) }
             )
           FixedToken { token_class: _ } => acc
         }
@@ -247,7 +247,7 @@ fn bash_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 }
 
 fn bash_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 // =========================================================================

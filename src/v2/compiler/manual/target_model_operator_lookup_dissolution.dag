@@ -57,14 +57,10 @@ fn operator_catalog_with_malformed_and_valid_rows() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^target_operator_realization_row_edge },
-        target: operator_lookup_dissolution_probe_node()
-      },
-      Edge {
-        label: Named { name: ^target_operator_realization_row_edge },
-        target: ts_add_operator_realization_row()
-      }
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^target_operator_realization_row_edge },
+        target: operator_lookup_dissolution_probe_node() },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^target_operator_realization_row_edge },
+        target: ts_add_operator_realization_row() }
     ],
     occurrence_id: SyntheticOccurrence
   }

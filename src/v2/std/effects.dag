@@ -244,14 +244,10 @@ fn key_source_node(key_source: KeySource) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^key_source_path_param_field },
-            target: atom_node(s: ^key_source_path_param_field)
-          },
-          Edge {
-            label: Named { name: ^key_source_path_param_value_field },
-            target: atom_node(s: p)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^key_source_path_param_field },
+            target: atom_node(s: ^key_source_path_param_field) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^key_source_path_param_value_field },
+            target: atom_node(s: p) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -259,14 +255,10 @@ fn key_source_node(key_source: KeySource) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^key_source_input_field_field },
-            target: atom_node(s: ^key_source_input_field_field)
-          },
-          Edge {
-            label: Named { name: ^key_source_input_value_field },
-            target: atom_node(s: f)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^key_source_input_field_field },
+            target: atom_node(s: ^key_source_input_field_field) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^key_source_input_value_field },
+            target: atom_node(s: f) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -281,14 +273,10 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_variant_upsert },
-            target: atom_node(s: ^effect_shape_variant_upsert)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_key_source_field },
-            target: key_source_node(key_source: key_source)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_variant_upsert },
+            target: atom_node(s: ^effect_shape_variant_upsert) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_key_source_field },
+            target: key_source_node(key_source: key_source) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -296,14 +284,10 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_variant_delete },
-            target: atom_node(s: ^effect_shape_variant_delete)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_key_source_field },
-            target: key_source_node(key_source: key_source)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_variant_delete },
+            target: atom_node(s: ^effect_shape_variant_delete) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_key_source_field },
+            target: key_source_node(key_source: key_source) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -311,14 +295,10 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_variant_create_if_absent },
-            target: atom_node(s: ^effect_shape_variant_create_if_absent)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_key_source_field },
-            target: key_source_node(key_source: key_source)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_variant_create_if_absent },
+            target: atom_node(s: ^effect_shape_variant_create_if_absent) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_key_source_field },
+            target: key_source_node(key_source: key_source) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -330,14 +310,10 @@ fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^effect_shape_is_idempotent_field },
-        target: atom_node(s: ^effect_shape_is_idempotent_field)
-      },
-      Edge {
-        label: Named { name: ^effect_shape_inner_field },
-        target: idempotent_shape_node(shape: shape)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_is_idempotent_field },
+        target: atom_node(s: ^effect_shape_is_idempotent_field) },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_inner_field },
+        target: idempotent_shape_node(shape: shape) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -348,10 +324,8 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^idempotent_operation_callable_field },
-        target: atom_node(s: operation.callable)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_callable_field },
+        target: atom_node(s: operation.callable) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -362,14 +336,10 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
-        label: Named { name: ^idempotent_apply_state_field },
-        target: state
-      },
-      Edge {
-        label: Named { name: ^idempotent_apply_operation_field },
-        target: idempotent_operation_witness_node(subject: subject)
-      },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_apply_state_field },
+        target: state },
+      Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_apply_operation_field },
+        target: idempotent_operation_witness_node(subject: subject) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -395,14 +365,10 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: ReadEffect)
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_inner_field },
+            target: classified_idempotent_effect_node(shape: ReadEffect) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_callable_field },
+            target: idempotent_operation_ref_node(operation: operation) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -410,14 +376,10 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: UpsertEffect { key_source: key_source })
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_inner_field },
+            target: classified_idempotent_effect_node(shape: UpsertEffect { key_source: key_source }) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_callable_field },
+            target: idempotent_operation_ref_node(operation: operation) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -425,14 +387,10 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: DeleteEffect { key_source: key_source })
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
-          },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_inner_field },
+            target: classified_idempotent_effect_node(shape: DeleteEffect { key_source: key_source }) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_callable_field },
+            target: idempotent_operation_ref_node(operation: operation) },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -440,16 +398,12 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
-            label: Named { name: ^effect_shape_inner_field },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^effect_shape_inner_field },
             target: classified_idempotent_effect_node(
               shape: CreateIfAbsentEffect { key_source: key_source }
-            )
-          },
-          Edge {
-            label: Named { name: ^idempotent_operation_callable_field },
-            target: idempotent_operation_ref_node(operation: operation)
-          },
+            ) },
+          Edge { role: Containment { inheritable: false }, label: Named { name: ^idempotent_operation_callable_field },
+            target: idempotent_operation_ref_node(operation: operation) },
         ],
         occurrence_id: SyntheticOccurrence
 }

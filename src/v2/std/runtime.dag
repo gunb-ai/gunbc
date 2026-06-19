@@ -158,7 +158,7 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
 // eval-output Nodes must interchange with source literal nodes — avoid silent
 // parallel-representation debt.
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { role: Containment { inheritable: false }, label: Named { name: name }, target: target }
 }
 
 fn runtime_value_conj_node(children: List<Edge>) -> Node {

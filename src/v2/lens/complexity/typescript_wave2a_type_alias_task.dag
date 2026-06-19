@@ -23,7 +23,7 @@ type LensComplexityClaim {
 data ts_wave2a_task_complexity_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: ts_wave2a_task_type_alias_emitted() }
+    Edge { role: Containment { inheritable: false }, label: Positional, target: ts_wave2a_task_type_alias_emitted() }
   ],
   occurrence_id: SyntheticOccurrence
 }
