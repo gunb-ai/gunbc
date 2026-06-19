@@ -1,0 +1,73 @@
+// extdeps/cache/sccache.dag — sccache local-disk cache catalog (cited facts).
+//
+// Spec: https://github.com/mozilla/sccache/blob/main/docs/Configuration.md
+
+module extdeps.cache.sccache
+
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  RustcInvocation,
+  ToolchainSpec,
+  SccacheInternalEncoding,
+}
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  NativeInternalHash,
+  NativeInternalLookup,
+  WriteThenRename,
+  MissThenCreate,
+  RawBytes,
+  PerHostFilesystem,
+  Lru,
+  FilesystemPerms,
+  LocalDiskUs,
+  ReadYourWrites,
+  VendorCitation,
+  ManualPurge,
+  ToolchainChange,
+  Org,
+}
+
+data sccache_local_id: CacheInterfaceId = "sccache_local"
+
+data sccache_local_facts: CacheInterfaceCatalogFacts = {
+  identity: sccache_local_id
+  backing_surface: "sccache-local-disk"
+  transport_encoding: SccacheInternalEncoding
+  key_derivation: {
+    classification: NativeInternalHash
+    inputs_considered: [RustcInvocation, ToolchainSpec]
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Org
+    invalidation_triggers: [ManualPurge, ToolchainChange]
+  }
+  lookup_semantics: NativeInternalLookup
+  write_semantics: WriteThenRename
+  miss_semantics: MissThenCreate
+  value_shape: RawBytes
+  locality: PerHostFilesystem
+  // sccache max cache size is operator-configured (sccache.conf), not a fixed substrate fact.
+  eviction: Lru
+  atomicity: WriteThenRename
+  auth: FilesystemPerms
+  read_latency: LocalDiskUs
+  consistency: ReadYourWrites
+  evidence: [
+    {
+      field: "lookup_semantics"
+      evidence: VendorCitation {
+        source: "sccache storage backends"
+        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md"
+      }
+    },
+    {
+      field: "eviction"
+      evidence: VendorCitation {
+        source: "sccache cache size and LRU eviction policy"
+        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md#cache-size"
+      }
+    },
+  ]
+}

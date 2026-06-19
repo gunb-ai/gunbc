@@ -1,0 +1,78 @@
+// extdeps/cache/github_actions.dag — GitHub Actions cache catalog (cited facts).
+//
+// Spec: https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows
+
+module extdeps.cache.github_actions
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  OpaqueStringEncoding,
+  HandAuthoredString,
+  UpsertSubject,
+  FilePaths,
+  PrefixFallback,
+  WriteThenCommit,
+  MissThenCreate,
+  TarArchive,
+  CrossHostNetwork,
+  Lru,
+  ApiKey,
+  WanTensMs,
+  Eventual,
+  VendorCitation,
+  ManualPurge,
+  ToolchainChange,
+  DependencyChange,
+  Repo,
+}
+
+data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
+
+data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
+  identity: gha_actions_cache_id
+  backing_surface: "github-actions-cache-api"
+  transport_encoding: OpaqueStringEncoding
+  key_derivation: {
+    classification: HandAuthoredString
+    inputs_considered: [UpsertSubject, FilePaths]
+    overwritable: true
+    prefix_fallback_allowed: true
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
+  }
+  lookup_semantics: PrefixFallback {
+    ordered_prefixes: [
+      "exact-subject-digest",
+      "toolchain-pinned",
+      "lockfile-pinned",
+      "runner-scoped",
+    ]
+  }
+  write_semantics: WriteThenCommit
+  miss_semantics: MissThenCreate
+  value_shape: TarArchive
+  locality: CrossHostNetwork
+  eviction: Lru
+  atomicity: WriteThenCommit
+  auth: ApiKey
+  read_latency: WanTensMs
+  consistency: Eventual
+  evidence: [
+    {
+      field: "lookup_semantics"
+      evidence: VendorCitation {
+        source: "GitHub Actions cache restore-key behavior"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
+      }
+    },
+    {
+      field: "key_derivation"
+      evidence: VendorCitation {
+        source: "GitHub Actions cache key input"
+        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
+      }
+    },
+  ]
+}
