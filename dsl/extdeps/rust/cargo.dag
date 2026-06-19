@@ -10,6 +10,7 @@
 
 module extdeps.cargo
 
+import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
 import std.types { FilePathParts }
 
 // -- Edition -------------------------------------------------------
@@ -35,11 +36,15 @@ fn rust_edition_str(edition: RustEdition) -> String {
 
 data default_rust_edition: RustEdition = Edition2021
 
+// Minimum cargo for edition 2021 (Cargo Reference: "The edition field").
+// Pinned toolchain stays rust-toolchain.toml — this is the honest floor.
+data min_cargo_version: CargoToolVersionFloor = ">= 1.56"
+
 // -- Package model -------------------------------------------------
 
 type CargoPackage {
   name: String
-  version: String
+  version: CargoPackageVersion
   edition: RustEdition
   path: String
 }
@@ -51,7 +56,7 @@ type CargoPackage {
 // version (with optional features); a path dependency points at a local
 // crate directory. (Git/other sources extend this coproduct when needed.)
 type CargoDepSource
-  = RegistryDep  { version: String, features: List<String> }
+  = RegistryDep  { version: CargoVersionRequirement, features: List<String> }
   | LocalPathDep { path: String }
 
 type CargoDependency {

@@ -68,6 +68,8 @@ mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;
 #[cfg(test)]
+mod languages_consumer_census_lens_test;
+#[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_lookup_dual_dispatch_test;
