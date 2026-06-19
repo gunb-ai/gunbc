@@ -9,9 +9,10 @@ import ctrl.pr_workflow {
   PrLifecycleFacts, PrLifecycleStage, PrNodeBinding, PrLifecycleTransitionRequest,
   PrLifecycleEventTag, MarkReadyForReview, RecordMergeReady,
   PrOpen, PrUnderReview, PrMergeReady, PrMerged, PrClosed,
-  PrDraftBlocksReview, PrDigestNotReady, PrPolicyNotPermitted,
+  PrDraftBlocksReview, PrDigestNotReady, PrPolicyNotPermitted, PrMissingReviewTally,
+  PrHeadShaMismatch,
   CanTransition, TransitionRefused,
-  is_terminal_stage, decide_lifecycle_transition, github_terminal_anchor,
+  is_terminal_stage, decide_lifecycle_transition, classify_github_terminal_anchor,
 }
 import ctrl.pr_digests { Ready, NotReady }
 import ctrl.review_verdict { MergeReadinessTally }
@@ -127,6 +128,40 @@ fn witness_merge_ready_requires_policy() -> Bool {
     }
   ) {
     TransitionRefused { refusal: PrPolicyNotPermitted } => true
+    _ => false
+  }
+}
+
+fn witness_missing_tally_blocks_merge_ready() -> Bool {
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_facts(stage: PrUnderReview),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: RecordMergeReady,
+      digest: Present { value: Ready },
+      tally: none,
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: PrMissingReviewTally } => true
+    _ => false
+  }
+}
+
+fn witness_stale_tally_head_sha_blocks() -> Bool {
+  let mut tally = witness_tally_green()
+  tally.head_sha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_facts(stage: PrUnderReview),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: RecordMergeReady,
+      digest: Present { value: Ready },
+      tally: Present { value: tally },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: PrHeadShaMismatch { expected: _, actual: _ } } => true
     _ => false
   }
 }

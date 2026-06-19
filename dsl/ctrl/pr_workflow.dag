@@ -68,6 +68,8 @@ type PrLifecycleRefusal
   | PrDraftBlocksReview
   | PrGitHubNotOpen
   | PrMissingHeadSha
+  | PrHeadShaMismatch { expected: CommitSha, actual: CommitSha }
+  | PrMissingReviewTally
   | PrDigestNotReady { first_reason: String }
   | PrTallyRequestChanges { count: Int }
   | PrTallyBlockingFindings { count: Int }
@@ -184,6 +186,7 @@ fn evaluate_mark_ready_for_review(
 
 fn evaluate_record_merge_ready(
   facts: PrLifecycleFacts,
+  pr: PullRequest,
   digest: MergeReadinessVerdict?,
   tally: MergeReadinessTally?,
   policy_permitted: Bool?,
@@ -203,6 +206,25 @@ fn evaluate_record_merge_ready(
       }
     Present { value: to } => {}
   }
+  if pr.draft {
+    return TransitionRefused { refusal: PrDraftBlocksReview }
+  }
+  match pr.state {
+    Open => {}
+    Closed =>
+      return TransitionRefused { refusal: PrGitHubNotOpen }
+  }
+  match facts.head_sha {
+    Absent =>
+      return TransitionRefused { refusal: PrMissingHeadSha }
+    Present { value: head_sha } => {
+      if pr.head.sha != head_sha {
+        return TransitionRefused {
+          refusal: PrHeadShaMismatch { expected: head_sha, actual: pr.head.sha }
+        }
+      }
+    }
+  }
   match digest {
     Absent =>
       return TransitionRefused {
@@ -219,10 +241,17 @@ fn evaluate_record_merge_ready(
   }
   match tally {
     Absent =>
-      return TransitionRefused {
-        refusal: PrDigestNotReady { first_reason: "missing review tally" }
-      }
+      return TransitionRefused { refusal: PrMissingReviewTally }
     Present { value: t } => {
+      match facts.head_sha {
+        Present { value: head_sha } =>
+          if t.head_sha != head_sha {
+            return TransitionRefused {
+              refusal: PrHeadShaMismatch { expected: head_sha, actual: t.head_sha }
+            }
+          }
+        Absent => {}
+      }
       if t.request_changes_count > 0 {
         return TransitionRefused {
           refusal: PrTallyRequestChanges { count: t.request_changes_count }
@@ -274,6 +303,10 @@ fn evaluate_terminal_record(
   CanTransition { to: to }
 }
 
+fn classify_github_terminal_anchor(pr: PullRequest) -> PrLifecycleStage? {
+  github_terminal_anchor(pr: pr)
+}
+
 fn decide_lifecycle_transition(request: PrLifecycleTransitionRequest) -> PrLifecycleDecision {
   match request.event {
     MarkReadyForReview =>
@@ -281,6 +314,7 @@ fn decide_lifecycle_transition(request: PrLifecycleTransitionRequest) -> PrLifec
     RecordMergeReady =>
       evaluate_record_merge_ready(
         facts: request.facts,
+        pr: request.pr,
         digest: request.digest,
         tally: request.tally,
         policy_permitted: request.policy_permitted,
