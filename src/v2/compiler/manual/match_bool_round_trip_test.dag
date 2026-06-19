@@ -4,7 +4,7 @@ module v2.test.manual.match_bool_round_trip
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate {
   coerce_grounded_node,
   grammar_inverse_source_validated,
@@ -152,11 +152,11 @@ data match_bool_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn match_bool_emit_accepts() -> Outcome<TargetSource> {
+fn match_bool_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: match_bool_inferred_tree, target: match_bool_target_model)
 }
 
-data match_bool_emit_receipt: Outcome<TargetSource> = match_bool_emit_accepts()
+data match_bool_emit_receipt: Outcome<Medium<String>> = match_bool_emit_accepts()
 
 fn match_bool_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {

@@ -23,7 +23,7 @@ import v2.compiler.eval {
   run_test_claim,
   test_claim_cache_receipt_node
 }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Medium }
 import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
@@ -115,7 +115,7 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
 
 fn emit_host_receipt_from_source(
   target: TargetModel,
-  source: TargetSource,
+  source: Medium<String>,
   exit: HostExit,
   stdout_bytes: ByteString,
   stderr_bytes: ByteString,
@@ -123,7 +123,7 @@ fn emit_host_receipt_from_source(
 ) -> EmitHostRunReceipt {
   EmitHostRunReceipt {
     target: target,
-    source_text: source,
+    source_text: source.carried,
     exit: exit,
     logical_run: host_logical_run_from_exit(exit: exit, stdout_bytes: stdout_bytes),
     stderr_bytes: stderr_bytes,
@@ -149,7 +149,7 @@ fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
 fn run_host_process(
   row: EmitHostRuntimeRow,
   target: TargetModel,
-  source: TargetSource,
+  source: Medium<String>,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   let _transport = row.transport
@@ -160,7 +160,7 @@ fn run_host_process(
 
 fn run_emit_host(
   target: TargetModel,
-  source: TargetSource,
+  source: Medium<String>,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   bind_outcome(

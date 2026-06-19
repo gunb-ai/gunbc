@@ -12,6 +12,8 @@ import v2.compiler.name_resolve {
   ImportVisible,
   admit_import_entry
 }
+import v2.std.cross_tree.import_model { FundamentalityUnknown }
+import v2.std.cross_tree.resolution { source_root_set_from_module_roots }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge
@@ -106,13 +108,21 @@ fn admit_result_is_rejected(state: AdmissionState) -> Bool {
   }
 }
 
-data witness_malformed_root_is_rejected: Bool = admit_result_is_rejected(
-  state: admit_import_entry(
-    roots: roots_with_malformed_entry(),
-    import_edge: import_edge_for_malformed(),
-    state: initial_admission_state()
+fn witness_malformed_root_is_rejected_holds() -> Bool {
+  let roots = roots_with_malformed_entry()
+  admit_result_is_rejected(
+    state: admit_import_entry(
+      roots: roots,
+      import_edge: import_edge_for_malformed(),
+      state: initial_admission_state(),
+      subject_qn: malformed_entry_name(),
+      order: FundamentalityUnknown,
+      active_roots: source_root_set_from_module_roots(roots: roots)
+    )
   )
-)
+}
+
+data witness_malformed_root_is_rejected: Bool = witness_malformed_root_is_rejected_holds()
 
 data claim_admit_malformed_root_is_rejected: TestClaim = CompilesClaim {
   label: "name_resolve/admit_import_entry: malformed module root is rejected",

@@ -34,7 +34,7 @@ fn rust_ws_serialize_accepts(target: TargetModel, emitted: Node) -> Bool {
 
 fn rust_ws_serialized_text(target: TargetModel, emitted: Node) -> String {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => ""
   }
 }

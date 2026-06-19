@@ -46,7 +46,7 @@ import v2.std.compilers.target_model {
 import v2.compiler.compile { CoreNode }
 import v2.compiler.infer { infer }
 import v2.compiler.emit { emit }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Medium }
 import v2.compiler.translate {
   coerce_grounded_node,
   target_bundle_child
@@ -413,7 +413,7 @@ fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
   target_model: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   bind_outcome(
     o: parse_tree_to_target_model_bridge(parse_tree: parse_tree, source_model: source_model),
     f: fn(core) {
