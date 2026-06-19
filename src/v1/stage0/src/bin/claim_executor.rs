@@ -294,6 +294,7 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
         }
     };
     // Context scoped to this claim's graph: its `data` cache drops with it.
+    // Effectful gate transports (shell.Exec, Filesystem.*) require Wet dispatch.
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
     match run_claim(&ctx, &function) {
         ClaimOutcome::Pass => ClaimResult {
@@ -334,6 +335,10 @@ fn run_discovery_batch_node(
         explicit_entries.len(),
         spawn_width.max(1),
     );
+    // CI floor discovery still dispatches Wet: many roster witnesses (e.g.
+    // dsl_compile_clean_witnesses) shell out via shell.Exec.Run and need live
+    // transport shape. claim_batch CLI default is Hermetic (P3c); executor flip
+    // waits on full-corpus wet==hermetic equivalence, not just mock_totality.
     match run_discovery_corpus(
         &source_roots,
         &scan_dirs,
@@ -383,7 +388,7 @@ fn eval_plan(
 ) -> Result<Vec<Vec<Runnable>>, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
         format!(
             "plan eval failed ({}::{}): {}",

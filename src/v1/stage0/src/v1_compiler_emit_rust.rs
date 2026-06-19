@@ -12221,6 +12221,37 @@ pub fn emit_typed_call(
                 return ts_result;
             }
         }
+        if (func.clone().as_str() == "utf8_decode_bytes".to_string().as_str()) {
+            {
+                let decode_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
+                let decode_result = match decode_args.first().cloned() {
+                    Some(value_arg) => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "String::from_utf8(".to_string(),
+                                emit_typed_expr(
+                                    arg_value(value_arg.clone()),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                    1024,
+                                ),
+                            ),
+                            ".clone()).map_err(|e| format!(\"invalid UTF-8 in access payload: {e}\"))?"
+                                .to_string(),
+                        ),
+                        "".to_string(),
+                    ),
+                    None => {
+                        "compile_error!(\"utf8_decode_bytes call missing value argument\")"
+                            .to_string()
+                    }
+                };
+                return decode_result;
+            }
+        }
         if (func.clone().as_str() == "discriminant".to_string().as_str()) {
             {
                 let disc_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
