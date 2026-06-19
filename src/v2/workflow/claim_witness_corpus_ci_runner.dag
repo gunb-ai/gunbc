@@ -246,6 +246,13 @@ data corpus_ci_gate_row_witness_rust_wire_serde_naming_discriminates: ClaimWitne
   expected: ExpectPass
 }
 
+data corpus_ci_gate_row_cwc_nary_coproduct_normalize: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "n-ary coproduct type-alias RHS folds to kernel Disj",
+  entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
+  function: "cwc_nary_coproduct_normalize_boundary_holds",
+  expected: ExpectPass
+}
+
 data corpus_ci_gate_row_witness_sg2_arrow: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "self-gen arrow type-expression projection",
   entry: "src/v2/compiler/manual/sg2_type_expression_projection.dag",
@@ -556,6 +563,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_witness_rust_wire_serde_screaming_snake,
   corpus_ci_gate_row_witness_rust_wire_serde_snake_case,
   corpus_ci_gate_row_witness_rust_wire_serde_naming_discriminates,
+  corpus_ci_gate_row_cwc_nary_coproduct_normalize,
   corpus_ci_gate_row_witness_sg2_arrow,
   corpus_ci_gate_row_effect_io_pure_file,
   corpus_ci_gate_row_effect_io_pure_http,

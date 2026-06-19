@@ -7,6 +7,7 @@
 
 module test.claim.realization_width_witness
 
+import std.nat { Nat }
 import std.measure { HardwareThreadCount, Nano, hardware_thread_count, hardware_thread_count_value }
 import std.realization_schedule {
   RealizationPlan,
@@ -24,6 +25,10 @@ import std.realization {
   witness_measured_cost_affects_shard_balance,
 }
 
+fn synthetic_plan_total() -> CostAccount<Nano> {
+  cost_account_predicted_zero()
+}
+
 data compile_gate_fn: String = "dsl_compile_clean_gate_passes"
 data gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
 
@@ -33,10 +38,6 @@ fn witness_threads_64() -> HardwareThreadCount {
 
 fn witness_threads_4() -> HardwareThreadCount {
   hardware_thread_count(4)
-}
-
-fn synthetic_plan_total() -> CostAccount<Nano> {
-  cost_account_predicted_zero()
 }
 
 fn synthetic_plan() -> RealizationPlan<Nano> {

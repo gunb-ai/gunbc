@@ -1,0 +1,38 @@
+// By-execution witnesses for extdeps.version.semver (slice 2).
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_version_semver_witness_test.dag \
+//     --function extdeps_version_semver_witnesses --claim-run
+
+module test.claim.extdeps_version_semver
+
+import extdeps.version.semver { SemVerIdentity, SemVerConstraint, semver_scheme }
+import std.algebra { Equal }
+
+fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
+fn semver_constraint_caret() -> SemVerConstraint { "^1.2" }
+fn semver_identity_1_0_0() -> SemVerIdentity { "1.0.0" }
+fn semver_constraint_one() -> SemVerConstraint { "1" }
+
+fn w_semver_identity_inhabits_version_identity() -> Bool {
+  semver_identity_1_2_3() == "1.2.3"
+}
+
+fn w_semver_constraint_inhabits_version_constraint() -> Bool {
+  semver_constraint_caret() == "^1.2"
+}
+
+fn w_identity_distinct_from_constraint() -> Bool {
+  semver_identity_1_0_0() != semver_constraint_one()
+}
+
+fn w_semver_scheme_equality_compare() -> Bool {
+  semver_scheme.compare("1.0.0", "1.0.0") == Equal
+}
+
+test fn extdeps_version_semver_witnesses() -> Bool {
+  w_semver_identity_inhabits_version_identity()
+    && w_semver_constraint_inhabits_version_constraint()
+    && w_identity_distinct_from_constraint()
+    && w_semver_scheme_equality_compare()
+}
