@@ -8,17 +8,16 @@
 module v2.test.layering_imports.lens_unit.std_to_extdeps_fixture
 
 import v2.lens.layering_imports {
-  LayerExtdeps,
   LayerImportFact,
-  LayerStd,
   layering_imports_violation_count
 }
 import v2.std.collection { List }
+import v2.std.layer { LayerPrefixExtdeps, LayerPrefixStd }
 import v2.std.logic { Bool }
 
 data std_to_extdeps_fixture_facts: List<LayerImportFact> = [
   LayerImportFact {
-    layer: LayerStd,
+    layer: LayerPrefixStd,
     path: "dsl/std/_perturb_std_to_extdeps.dag",
     import_module: "extdeps.shell"
   }
@@ -31,7 +30,7 @@ fn detects_std_to_extdeps_import_holds() -> Bool {
 // Negative control: extdeps importing extdeps is the correct direction → ZERO violations.
 data extdeps_to_extdeps_control_facts: List<LayerImportFact> = [
   LayerImportFact {
-    layer: LayerExtdeps,
+    layer: LayerPrefixExtdeps,
     path: "dsl/extdeps/_perturb_extdeps_to_extdeps.dag",
     import_module: "extdeps.shell"
   }

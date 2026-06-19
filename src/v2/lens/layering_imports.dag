@@ -23,7 +23,14 @@ import v2.std.algebra {
   list_snoc_item
 }
 import v2.std.collection { List }
-import v2.std.layer { LayerPrefix }
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixCompiler,
+  LayerPrefixExtdeps,
+  LayerPrefixOther,
+  LayerPrefixStd,
+  LayerPrefixWorkflow
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
@@ -65,10 +72,13 @@ fn is_std_importing_extdeps(module: String) -> Bool {
     || is_prefix_of(prefix: forbidden_std_extdeps_prefix, xs: module, eq: char_eq)
 }
 
-fn is_std_layer(layer: LayerLabel) -> Bool {
+fn is_std_layer(layer: LayerPrefix) -> Bool {
   match layer {
-    LayerStd => true
-    LayerExtdeps => false
+    LayerPrefixStd => true
+    LayerPrefixExtdeps => false
+    LayerPrefixCompiler => false
+    LayerPrefixWorkflow => false
+    LayerPrefixOther => false
   }
 }
 
