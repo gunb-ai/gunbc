@@ -273,61 +273,22 @@ type CacheWriteRejectReason
 // cf. realization.dag Materialization = Share); an existing key offered DIFFERENT content fails
 // closed (WriteRejected { WriteOnceConflict }). Splitting committed / idempotent / rejected keeps
 // the write state-space named, never a Bool conflating "present" with "I just wrote it".
+// WriteSkippedIdempotent's receipt.content_digest equals the existing key's BY CONSTRUCTION — that
+// equality is enforced at the write fold that constructs this variant (step 3, where a real
+// consumer compares the offered content against the stored hit before collapsing to idempotent),
+// not by this declaration. It is a comment-level invariant here, like CachedArtifactReceipt's other
+// digest correspondences, until the fold lands.
 type CacheWriteResult<T>
   = Written { receipt: CachedArtifactReceipt<T> }
   | WriteSkippedIdempotent { receipt: CachedArtifactReceipt<T> }
   | WriteRejected { reason: CacheWriteRejectReason }
 
-// --- §1.7 outcome classifiers (total readers over the lookup/write coproducts) -------
-
-// A lookup may be trusted iff it is an honored Hit; Miss and every RejectedHit fail closed.
-fn cache_lookup_honored<T>(result: CacheLookupResult<T>) -> Bool {
-  match result {
-    Hit { receipt: _ } => true
-    Miss => false
-    RejectedHit { reason: _ } => false
-  }
-}
-
-// A staleness refusal is the freshness-window expiry of a present hit (loud, not a silent miss).
-fn cache_reject_is_staleness(reason: CacheRejectReason) -> Bool {
-  match reason {
-    FreshnessExpired => true
-    SubjectDigestMismatch => false
-    ContentDigestMismatch => false
-    ProducerReceiptMissing => false
-    BackendKeyMalformed => false
-    BackendUnauthorized => false
-    BackendUnavailable => false
-    TransportFaithfulnessFailure { reason: _ } => false
-  }
-}
-
-// After a write the artifact is durably present iff it committed fresh or was the idempotent no-op.
-fn cache_write_artifact_present<T>(result: CacheWriteResult<T>) -> Bool {
-  match result {
-    Written { receipt: _ } => true
-    WriteSkippedIdempotent { receipt: _ } => true
-    WriteRejected { reason: _ } => false
-  }
-}
-
-// The cache-purity oracle: a WriteOnce key was re-offered DIFFERENT content for the same subject.
-fn cache_write_reject_is_purity_violation(reason: CacheWriteRejectReason) -> Bool {
-  match reason {
-    WriteOnceConflict => true
-    WriteUnfaithful { reason: _ } => false
-    BackendWriteRejected { backend_reason: _ } => false
-  }
-}
-
-fn cache_write_is_purity_violation<T>(result: CacheWriteResult<T>) -> Bool {
-  match result {
-    WriteRejected { reason: r } => cache_write_reject_is_purity_violation(reason: r)
-    Written { receipt: _ } => false
-    WriteSkippedIdempotent { receipt: _ } => false
-  }
-}
+// No outcome eliminators are minted here: classifying these coproducts is naming their variants,
+// which `match` already does at the consumer. The lookup/write folds (recorded_fixture.rs
+// FixtureError collapse / v2 05_eval) are the canonical consumers and arrive in step 3-4 (held for
+// operator sign-off); any fold over CacheLookupResult / CacheWriteResult is born WITH them, not as
+// per-question Bool readers in std/ (predicate-dissolution rule). These types parallel the existing
+// un-consumed CacheLookupResult above — terminal vocabulary awaiting its fold.
 
 // --- §1.8 cache-layer planner (catalog-parameterized; rows live in extdeps/cache/*) ---
 
