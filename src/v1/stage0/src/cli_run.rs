@@ -2308,9 +2308,10 @@ enum FloorGitDiffOutcome {
 
 /// New-side inclusive line range from one unified-diff hunk (`git diff -U0`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FileLineRange {
-    start: i64,
-    end: i64,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileLineRange {
+    pub start: i64,
+    pub end: i64,
 }
 
 fn floor_git_diff_range() -> Result<String, String> {
@@ -2420,6 +2421,14 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
         ),
         _ => false,
     }
+}
+
+fn value_is_substrate_node(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
+    matches!(
+        val,
+        v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.resolve(*variant_name).as_str() == "Node"
+    )
 }
 
 fn call_test_claim_fn_bool(
@@ -2548,23 +2557,27 @@ fn collect_frontier_nodes_from_diff_line_ranges(
             else {
                 continue;
             };
-            if !value_is_test_claim(&val, &ctx) {
-                continue;
-            }
-            match call_test_claim_fn_nodes(&ctx, &val) {
-                Ok(Some(nodes)) => {
-                    for node in nodes {
-                        let key = ctx.format_value(&node);
-                        if seen.insert(key) {
-                            frontier.push(node);
+            if value_is_test_claim(&val, &ctx) {
+                match call_test_claim_fn_nodes(&ctx, &val) {
+                    Ok(Some(nodes)) => {
+                        for node in nodes {
+                            let key = ctx.format_value(&node);
+                            if seen.insert(key) {
+                                frontier.push(node);
+                            }
                         }
                     }
+                    Ok(None) => {}
+                    Err(msg) => {
+                        return Err(format!(
+                            "frontier node extraction failed for `{name}` in {file_path}: {msg}"
+                        ));
+                    }
                 }
-                Ok(None) => {}
-                Err(msg) => {
-                    return Err(format!(
-                        "frontier node extraction failed for `{name}` in {file_path}: {msg}"
-                    ));
+            } else if value_is_substrate_node(&val, &ctx) {
+                let key = ctx.format_value(&val);
+                if seen.insert(key) {
+                    frontier.push(val);
                 }
             }
         }
@@ -2699,6 +2712,12 @@ pub fn run_discovery_corpus_with_options(
             &line_ranges_by_file,
             execution_mode,
         ) {
+            Ok(nodes) if nodes.is_empty() => {
+                eprintln!(
+                    "claim_executor: diff produced line ranges but empty node frontier — fail-closed, running full corpus"
+                );
+                (false, Vec::new())
+            }
             Ok(nodes) => (true, nodes),
             Err(msg) => {
                 eprintln!(
@@ -2785,6 +2804,36 @@ pub fn run_discovery_corpus_with_options(
         }
     }
     Ok(summary)
+}
+
+/// §5 host receipt hook: unified diff text → line ranges → node frontier → entry touch predicate.
+/// Returns `None` when diff observation is empty or frontier population fail-closes to run-all.
+#[doc(hidden)]
+pub fn floor_skip_entry_touches_unified_diff(
+    source_roots: &[String],
+    entry: &str,
+    unified_diff: &str,
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<Option<bool>, String> {
+    let line_ranges_by_file = parse_unified_diff_line_ranges(unified_diff);
+    if line_ranges_by_file.is_empty() {
+        return Ok(None);
+    }
+    let index = build_multi_entry_index(source_roots);
+    let frontier_nodes = match collect_frontier_nodes_from_diff_line_ranges(
+        &index,
+        &line_ranges_by_file,
+        execution_mode,
+    ) {
+        Ok(nodes) if nodes.is_empty() => return Ok(None),
+        Ok(nodes) => nodes,
+        Err(msg) => return Err(msg),
+    };
+    let frontier_value = list_value_from_vec(frontier_nodes);
+    let (graph, source_indices) = resolve_entry_with_index(&index, entry)
+        .map_err(|msg| format!("resolve failed for {entry}: {msg}"))?;
+    let entry_ctx = make_eval_context(&graph, source_indices, execution_mode);
+    entry_claims_touch_frontier(&entry_ctx, &frontier_value).map(Some)
 }
 
 #[cfg(test)]

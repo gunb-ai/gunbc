@@ -1,0 +1,47 @@
+// dsl/test/claim/floor_skip_node_precision_fixture.dag — §5 same-file node-precision discriminator.
+//
+// Independent substrate nodes A and B in one file; witness claim references A only.
+// Host receipt `floor_skip_same_file_node_precision_holds` drives real unified-diff
+// → frontier → touch path (not synthetic frontier literals).
+//
+// dissolve-on: floor_skip_same_file_node_precision_holds green by execution in v1-tests.
+
+module test.claim.floor_skip_node_precision_fixture
+
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data floor_skip_precision_node_a: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^floor_skip_precision_symbol_a } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+// --- separator: independent declaration span for node B (same-file discriminator) ---
+
+data floor_skip_precision_node_b: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^floor_skip_precision_symbol_b } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data floor_skip_precision_witness_claim: TestClaim = EqualsClaim {
+  label: "floor_skip_precision: witness on node A only",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: floor_skip_precision_node_a,
+  rhs: floor_skip_precision_node_a,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test fn floor_skip_precision_witness_holds() -> Bool {
+  true
+}
