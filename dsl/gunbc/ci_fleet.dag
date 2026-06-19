@@ -115,8 +115,8 @@ fn gunbc_ci_floor_placement_supply() -> PlacementSupplyRow? {
   offer_placement_supply_row(offer: gunbc_ci_fleet_offer)
 }
 
-// Host spawn-width authority: claim_executor reads this, never decides width.
-fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
+// Host spawn-width authority for the CI fleet offer + corpus WorkDemand.
+fn ci_fleet_floor_spawn_width() -> HardwareThreadCount {
   match gunbc_ci_floor_placement_supply() {
     Absent => hardware_thread_count(1)
     Present { value: row } =>

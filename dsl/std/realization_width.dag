@@ -136,6 +136,7 @@ fn witness_measured_cost_affects_shard_balance() -> Bool {
   let high = cost_account_measured(time: nanosecond_duration(count: 100))
   let low = cost_account_measured(time: nanosecond_duration(count: 10))
   let baseline = cost_account_predicted_zero()
-  shard_balance_slot_for_cost(cost: high, baseline: baseline)
-    != shard_balance_slot_for_cost(cost: low, baseline: baseline)
+  let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
+  let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
+  left != right
 }

@@ -37,7 +37,7 @@ import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
-import gunbc.ci_fleet { gunbc_ci_floor_spawn_width as fleet_spawn_width }
+import gunbc.ci_fleet { ci_fleet_floor_spawn_width }
 import std.types { ContentHash }
 import std.measure { HardwareThreadCount }
 import std.realization_width { width_fold_objective_goals }
@@ -209,5 +209,5 @@ fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
 
 // claim_executor spawn-width companion (feature:scheduler-width-budget scaffold).
 fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
-  fleet_spawn_width()
+  ci_fleet_floor_spawn_width()
 }
