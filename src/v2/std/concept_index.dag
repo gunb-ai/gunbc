@@ -1,0 +1,48 @@
+// src/v2/std/concept_index.dag
+// Scope: corpus-level enumeration of declared concepts (the "concept index").
+//        Where v2.std.node.resolve_type_node reads ONE concept BY NAME, this enumerates
+//        EVERY declared concept across the compiled corpus — the substrate primitive a
+//        namespace/concept index DFS (DESIGN.md §2 "DFS the concept DAG first") and the
+//        consolidation/DISPOSE authority (DESIGN.md §3 single-authority dedup) both build on.
+// Consumes: std/node.dag, std/qualified_name.dag, std/collection.dag.
+// Single authority (DESIGN.md §3): QualifiedConcept / ConceptStruct are minted HERE, in gunbc
+//        std, and consumed downstream (e.g. ctrl plans.namespace_index). Do NOT fork a parallel
+//        concept-index carrier in a consumer — import this one.
+
+module v2.std.concept_index
+
+
+import v2.std.collection { List }
+import v2.std.node { Node, Symbol }
+import v2.std.qualified_name { QualifiedName }
+
+
+// A single declared concept's substrate: its authored (unqualified) name and its structural
+// definition Node — the same resolved Node v2.std.node.resolve_type_node returns for that name.
+// "ConceptStruct" rather than a bare Node so the index row carries the concept's identity (name)
+// alongside its structure without re-resolving.
+type ConceptStruct {
+  name: Symbol
+  definition: Node
+}
+
+// One row of the concept index: a concept located by its module-qualified name. qualified_name is
+// the module-path segments followed by the concept's own name (e.g. v2 . std . node . Connective),
+// so two same-named concepts in different modules are distinct rows under DESIGN.md §3.
+type QualifiedConcept {
+  qualified_name: QualifiedName
+  concept: ConceptStruct
+}
+
+
+// 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival: v2
+// compile-graph access lets this enumerate the resolved graph in .dag (one walk over every
+// module's items), replacing the Rust intercept; sibling to v2.std.node.resolve_type_node, which
+// dissolves on the same trigger. forbidden: parallel corpus enumeration in Rust outside this
+// intercept, or a parallel concept-index carrier in a consumer (DESIGN.md §3).
+//
+// Enumerates every TypeItem declared across the compiled corpus, one QualifiedConcept per concept,
+// in module-then-declaration order. Total: a corpus with no concepts yields the empty list.
+fn enumerate_concepts() -> List<QualifiedConcept> {
+  enumerate_concepts()
+}

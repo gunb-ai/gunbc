@@ -451,6 +451,105 @@ pub fn eval_resolve_type_node(
     marshal_disj_type_item(ctx, item)
 }
 
+// ---------------------------------------------------------------------------
+// v2.std.concept_index — corpus enumeration bridge (sibling to resolve_type_node).
+// Where resolve_type_node reads ONE concept BY NAME, enumerate_concepts walks EVERY
+// declared TypeItem across the compiled corpus, one QualifiedConcept per concept.
+// Dissolves on the same trigger as resolve_type_node (v2 compile-graph access).
+// ---------------------------------------------------------------------------
+
+/// Build a `v2.std.qualified_name.QualifiedName` Value (QnEmpty / QnCons spine) from ordered
+/// segments — module-path parts followed by the concept's own name.
+fn qualified_name_value(ctx: &InterpContext, segments: &[String]) -> Value {
+    let mut qn = Value::Variant {
+        type_name: ctx.sym("QualifiedName"),
+        variant_name: ctx.sym("QnEmpty"),
+        fields: Rc::new(HashMap::new()),
+    };
+    for seg in segments.iter().rev() {
+        qn = Value::Variant {
+            type_name: ctx.sym("QualifiedName"),
+            variant_name: ctx.sym("QnCons"),
+            fields: Rc::new(HashMap::from([
+                (ctx.sym("head"), Value::Str(seg.clone())),
+                (ctx.sym("tail"), qn),
+            ])),
+        };
+    }
+    qn
+}
+
+/// The concept's structural definition Node. Closed coproducts (Disj) marshal to their full
+/// arm structure (same as resolve_type_node) — the case the §3 nickname/DISPOSE comparison
+/// most needs (e.g. CpuArchitecture vs TargetArchitecture byte-identical enums). Non-Disj
+/// concepts marshal to an Atom self-reference TypeNode naming the concept — a faithful minimal
+/// node, NOT a fabricated body.
+///
+/// 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival: a
+/// general type-item marshaller (records/aliases expand structurally) lands with v2 compile-graph
+/// access. forbidden: fabricating non-Disj internal structure here.
+fn concept_definition_node(ctx: &InterpContext, item: &Rc<Node>, name: &str) -> InterpResult<Value> {
+    if item.connective == Connective::Disj {
+        marshal_disj_type_item(ctx, item)
+    } else {
+        Ok(node_record(
+            ctx,
+            node_kind_type_node(ctx, atom_connective_variant(ctx, name)),
+            vec![],
+        ))
+    }
+}
+
+pub fn eval_enumerate_concepts(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            // Per-module registry: the item's module is unambiguous here (no cross-module
+            // name collision, unlike the global registry).
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::TypeItem {
+                continue;
+            }
+            let mut segments: Vec<String> = info
+                .module_name
+                .split('.')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            segments.push(name.clone());
+            let qualified_name = qualified_name_value(ctx, &segments);
+            let definition = concept_definition_node(ctx, item, &name)?;
+            let concept = Value::Record {
+                type_name: ctx.sym("ConceptStruct"),
+                fields: Rc::new(HashMap::from([
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("definition"), definition),
+                ])),
+            };
+            rows.push(Value::Record {
+                type_name: ctx.sym("QualifiedConcept"),
+                fields: Rc::new(HashMap::from([
+                    (ctx.sym("qualified_name"), qualified_name),
+                    (ctx.sym("concept"), concept),
+                ])),
+            });
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
