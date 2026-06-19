@@ -24,8 +24,8 @@ pub struct LayerImportFactRaw {
     pub import_module: String,
 }
 
-const LAYER_STD: &str = "LayerStd";
-const LAYER_EXTDEPS: &str = "LayerExtdeps";
+const LAYER_STD: &str = "LayerPrefixStd";
+const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
