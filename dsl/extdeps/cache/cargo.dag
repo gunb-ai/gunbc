@@ -25,6 +25,7 @@ import std.cache_interface {
   LocalDiskUs,
   ReadYourWrites,
   VendorCitation,
+  ManualPurge,
   ToolchainChange,
   DependencyChange,
   Repo,
