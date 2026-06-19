@@ -10970,10 +10970,24 @@ pub fn infer_items(
     items: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
+    let __probe = std::env::var("NV2_STAGE_TIMING").is_ok();
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
-            __result.push(infer_item(item.clone(), scope.clone()));
+            let __it0 = std::time::Instant::now();
+            let __r = infer_item(item.clone(), scope.clone());
+            if __probe {
+                let __e = __it0.elapsed();
+                if __e.as_millis() > 200 {
+                    eprintln!(
+                        "ITEM {}::{} infer_item={:?}",
+                        scope.module_name.clone(),
+                        authored_name_at(scope.type_env.clone().source_indices.clone(), item.clone()),
+                        __e
+                    );
+                }
+            }
+            __result.push(__r);
         }
         __result
     })
