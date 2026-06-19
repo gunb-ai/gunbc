@@ -237,6 +237,23 @@ fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
   m.count
 }
 
+// Generic time-measure constructor: a `Time` magnitude at ANY scale `<S>`, magnitude
+// fixed at the concrete `Nat` node. This is the scale-AGNOSTIC surface the realization /
+// measurement framework (std.realization_measurement) builds its roll-up algebra on —
+// it names no particular scale, so the framework carries no scale CHOICE (DESIGN §3: the
+// agnostic shape stays central, the scale CHOICE sits peripheral at the consumer). A
+// consumer pins `<S>` (e.g. `Nano` for measured wall-clock) at its own boundary.
+//
+// `<M>` is fixed at `Nat` here, NOT generic: a magnitude-generic roll-up would need `+`/
+// `max` over `<M>`, and algebra-inhabitance resolves only on concrete numeric nodes —
+// the same where-clause substrate gap `GroupCompletion<M>` and the `Measure`
+// constrained-inhabitance note above already carry. **Dissolution trigger:** when
+// parametric where-clause syntax lands, widen to `<M> where M : CommutativeMonoid` and
+// the roll-up algebra generalizes with it.
+fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
+  Measure { count: count }
+}
+
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 
@@ -255,8 +272,13 @@ type Hertz = Measure<Frequency, One, Nat>
 // Schedulable hardware thread count (std.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One, Nat>
 
-// Time magnitude at nanosecond scale — realization `CostAccount.time` consumer
-// (Q-Unit-5 minted-with-consumer; aligns with comment reserve for Duration/Milliseconds).
+// Time magnitude at nanosecond scale — a neutral dimensional alias (parallel to `Hertz`
+// / `Watt` / `ByteSize`), NOT a framework-level scale choice. The realization /
+// measurement framework (std.realization_measurement, std.realization_schedule) is now
+// scale-AGNOSTIC over `time_measure<S>` and `Measure<Time, S, Nat>` / `CostAccount<S>`;
+// the CHOICE to denominate measured realization cost in nanoseconds + its reason live at
+// the CONSUMER boundary that observes wall-clock (product.compute_fabric.PerformanceReceipt
+// / `CostAccount<Nano>` instantiation), not here and not in the framework (DESIGN §3).
 type NanosecondDuration = Measure<Time, Nano, Nat>
 
 fn nanosecond_duration(count: Nat) -> NanosecondDuration {

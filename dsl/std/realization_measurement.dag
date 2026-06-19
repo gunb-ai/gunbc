@@ -13,19 +13,19 @@
 module std.realization_measurement
 
 import std.types { ContentHash, Bool, String, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_max }
 import std.measure {
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
-  nanosecond_duration_max,
+  Measure,
+  Time,
+  time_measure,
+  measure_count,
 }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
   cost_account_measured,
   cost_account_predicted_zero,
-  cost_account_time_nanos,
+  cost_account_time_count,
 }
 
 // Host-effect shape: observe elapsed wall time at a cache-subject boundary.
@@ -38,14 +38,20 @@ type RealizationMeasureEffect
     }
 
 // --- Pure roll-up lens: observations → CostAccount.time --------------------
+//
+// Scale-AGNOSTIC over `<S>`: the algebra below is pure add / max over a `Time` magnitude
+// at ANY scale (DESIGN §3 — the framework carries no scale CHOICE). A consumer pins `<S>`
+// (e.g. `Nano`) at its own boundary; nothing here names a particular scale. `<M>` is fixed
+// at `Nat` (magnitude-genericity needs `+`/`max` over `<M>`, the documented where-clause
+// substrate gap — see `std.measure.time_measure`).
 
-fn cost_account_measured_from_time(time: NanosecondDuration) -> CostAccount {
+fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   cost_account_measured(time: time)
 }
 
-fn nanosecond_duration_list_total(times: List<NanosecondDuration>) -> NanosecondDuration {
-  nanosecond_duration(
-    count: fold(times, init: 0, f: (acc, t) => acc + nanosecond_duration_count(d: t))
+fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+  time_measure(
+    count: fold(times, init: 0, f: (acc, t) => acc + measure_count(m: t))
   )
 }
 
@@ -56,78 +62,81 @@ fn nanosecond_duration_list_total(times: List<NanosecondDuration>) -> Nanosecond
 // CostMax) at complexity.dag:3754-3771. Do NOT fork a second span semantics here;
 // these are the concrete NanosecondDuration realizations of that proof vocabulary.
 
-fn nanosecond_duration_is_zero(d: NanosecondDuration) -> Bool {
-  nanosecond_duration_count(d: d) == 0
+fn time_measure_is_zero<S>(d: Measure<Time, S, Nat>) -> Bool {
+  measure_count(m: d) == 0
 }
 
-fn nanosecond_duration_seq(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
-  if nanosecond_duration_is_zero(d: a) {
+fn time_measure_seq<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Measure<Time, S, Nat> {
+  if time_measure_is_zero(d: a) {
     b
-  } else if nanosecond_duration_is_zero(d: b) {
+  } else if time_measure_is_zero(d: b) {
     a
   } else {
-    nanosecond_duration(
-      count: nanosecond_duration_count(d: a) + nanosecond_duration_count(d: b)
+    time_measure(
+      count: measure_count(m: a) + measure_count(m: b)
     )
   }
 }
 
-fn nanosecond_duration_par(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
-  if nanosecond_duration_is_zero(d: a) {
+fn time_measure_par<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Measure<Time, S, Nat> {
+  if time_measure_is_zero(d: a) {
     b
-  } else if nanosecond_duration_is_zero(d: b) {
+  } else if time_measure_is_zero(d: b) {
     a
   } else {
-    nanosecond_duration_max(a: a, b: b)
+    time_measure(
+      count: nat_max(a: measure_count(m: a), b: measure_count(m: b))
+    )
   }
 }
 
-fn nanosecond_duration_list_par(times: List<NanosecondDuration>) -> NanosecondDuration {
+fn time_measure_list_par<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
   fold(
     times,
-    init: nanosecond_duration(count: 0),
-    f: (acc, t) => nanosecond_duration_par(a: acc, b: t)
+    init: time_measure(count: 0),
+    f: (acc, t) => time_measure_par(a: acc, b: t)
   )
 }
 
 // One schedule batch (parallel runnables) → max wall time; zero identity matches cost_par.
-fn schedule_batch_critical_path(batch_times: List<NanosecondDuration>) -> NanosecondDuration {
-  nanosecond_duration_list_par(times: batch_times)
+fn schedule_batch_critical_path<S>(batch_times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+  time_measure_list_par(times: batch_times)
 }
 
 // Schedule topology `List<List<…>>`: sequential across batches, parallel within batch.
-fn schedule_critical_path_time(batch_times: List<List<NanosecondDuration>>) -> NanosecondDuration {
+fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, Nat>>>) -> Measure<Time, S, Nat> {
   fold(
     batch_times,
-    init: nanosecond_duration(count: 0),
-    f: (acc, batch) => nanosecond_duration_seq(
+    init: time_measure(count: 0),
+    f: (acc, batch) => time_measure_seq(
       a: acc,
       b: schedule_batch_critical_path(batch_times: batch)
     )
   )
 }
 
-fn cost_account_measured_from_schedule_critical_path(
-  batch_times: List<List<NanosecondDuration>>
-) -> CostAccount {
+fn cost_account_measured_from_schedule_critical_path<S>(
+  batch_times: List<List<Measure<Time, S, Nat>>>
+) -> CostAccount<S> {
   cost_account_measured_from_time(time: schedule_critical_path_time(batch_times: batch_times))
 }
 
-fn cost_account_measured_from_time_list(times: List<NanosecondDuration>) -> CostAccount {
-  cost_account_measured_from_time(time: nanosecond_duration_list_total(times: times))
+fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, Nat>>) -> CostAccount<S> {
+  cost_account_measured_from_time(time: time_measure_list_total(times: times))
 }
 
 // Discriminating lens: non-zero measured roll-up must differ from predicted_zero
-// and preserve nanosecond count (§5 — goes red if roll-up aliases or drops time).
-fn witness_measured_rollup_differs_from_predicted_zero(wall_time: NanosecondDuration) -> Bool {
-  if nanosecond_duration_count(d: wall_time) == 0 {
+// and preserve the magnitude count (§5 — goes red if roll-up aliases or drops time).
+// Scale-agnostic: holds at whatever scale `<S>` the consumer supplies.
+fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Time, S, Nat>) -> Bool {
+  if measure_count(m: wall_time) == 0 {
     false
   } else {
-    let measured_nanos = cost_account_time_nanos(
+    let measured_count = cost_account_time_count(
       account: cost_account_measured_from_time(time: wall_time)
     )
-    let predicted_nanos = cost_account_time_nanos(account: cost_account_predicted_zero())
-    measured_nanos != predicted_nanos
-      && measured_nanos == nanosecond_duration_count(d: wall_time)
+    let predicted_count = cost_account_time_count(account: cost_account_predicted_zero())
+    measured_count != predicted_count
+      && measured_count == measure_count(m: wall_time)
   }
 }
