@@ -36,7 +36,7 @@ import std.realization_schedule {
   CostAccount,
   cost_account_measured,
   cost_account_predicted_zero,
-  cost_account_time_nanos,
+  cost_account_time_count,
   schedule_lens_verdict_for_ci_floor,
   schedule_generates_same_batch_count,
   schedule_generates_identical_schedule,
@@ -51,7 +51,7 @@ import std.realization_measurement {
   cost_account_measured_from_schedule_critical_path,
   schedule_critical_path_time,
   schedule_batch_critical_path,
-  nanosecond_duration_list_total,
+  time_measure_list_total,
 }
 
 // --- Independence classifier (fail-closed) ------------------------------------
@@ -103,16 +103,18 @@ type Placement = LocalInProcess | LocalFilesystem | RemoteNetwork
 
 type Materialization = Recompute | Memoize | Share
 
-type RealizedStep {
+// `<S>` is the consumer-pinned time scale of the carried cost ledger (CostAccount<S>);
+// reconcile never inspects the scale — it only threads it (DESIGN §3: framework agnostic).
+type RealizedStep<S> {
   shape: EffectShape
   placement: Placement
   materialization: Materialization
-  cost: CostAccount
+  cost: CostAccount<S>
 }
 
 // Mark every accumulator step whose effect is the same-KeySource create-if-absent
 // twin of `s` as Share (s collapses INTO the shared materialization; not appended).
-fn mark_collapsible_share(acc: List<RealizedStep>, s: RealizedStep) -> List<RealizedStep> {
+fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
   acc |> map(e =>
     if create_double_init_collapsible(a: e.shape, b: s.shape) {
       RealizedStep {
@@ -128,7 +130,7 @@ fn mark_collapsible_share(acc: List<RealizedStep>, s: RealizedStep) -> List<Real
 }
 
 // Does `s` have a same-KeySource create-if-absent twin already in `acc`?
-fn has_collapsible_peer(acc: List<RealizedStep>, s: RealizedStep) -> Bool {
+fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
   let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
   !((peers |> length) == 0)
 }
@@ -138,7 +140,7 @@ fn has_collapsible_peer(acc: List<RealizedStep>, s: RealizedStep) -> Bool {
 // materialization is Share; distinct identities (or non-create effects) stay separate.
 // The collapse decision is create_double_init_collapsible (std.effects, KeySource-keyed) —
 // reconcile only consumes it, never re-derives KeySource equality (§3 single authority).
-fn reconcile(steps: List<RealizedStep>) -> List<RealizedStep> {
+fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
   steps |> fold(init: [], f: (acc, s) =>
     if has_collapsible_peer(acc: acc, s: s) {
       mark_collapsible_share(acc: acc, s: s)

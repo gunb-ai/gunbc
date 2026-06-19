@@ -3,6 +3,7 @@
 // Scope: SPICE netlist model — direction-agnostic. Analog circuit
 //        description: components, nodes, .model cards, directives. A flat
 //        component + connection graph — NO control flow.
+// Anchor: https://ngspice.sourceforge.io/docs/ngspice-manual.pdf — maintained SPICE3 netlist reference.
 // Anchor: "SPICE3 Version 3f5 User's Guide" (Quarles et al., UC Berkeley
 //         ERL, 1993) — the canonical versioned netlist-format spec the
 //         worker models against; the ngspice User's Manual (pin a
@@ -78,22 +79,16 @@ type NodeRef
   | Named { node: NamedNode }
 
 
+// Below-boundary unparsed netlist lexical carrier (`lexeme` is the sanctioned raw
+// Shape-B token spelling — no lexeme→count parse path until T-3 Dimension lands).
+// 🟡 needs-more-work — feature:spice-lexeme-dimensional-substrate — dissolve-on:
+//   T-3 std/ exact-real / Dimension substrate supplies typed exact-carrier beside
+//   this lexeme scaffold · ledger: T-4
+// Approximate-voltage projection: v2.std.timeseries_signal.ApproxVoltage (not here).
 type SpiceValue {
   lexeme: String
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type SpiceVoltUnit {}
-
-// 🟡 needs-more-work — feature:spice-approx-voltage-consumer — dissolve-on: NodeVoltageBinding consumer projects through SpiceApproxVoltage (T-4 wave-2) · ledger: T-4
-type SpiceApproxVoltage {
-  magnitude_lexeme: String
-  unit: SpiceVoltUnit
-}
-
-// 🟡 needs-more-work — feature:spice-exact-voltage-gap — dissolve-on: std/ exact-real / Dimension substrate (T-3) · ledger: T-4
-type SpiceExactVoltageGap {}
 type Parameter {
   name: Symbol
   value: SpiceValue

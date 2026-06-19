@@ -1311,6 +1311,8 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
 
 
 // 🟡 gated — feature:grammar-inverse-lhs-exact-selection — owner/lane: T-11 typescript ext PR-1.5b
+// Bash (v2.extdeps.languages.bash) is the first PRODUCTION emit consumer of this path; on
+// parser-convergence dissolution, migrate bash FormalProduction rows together with typescript's.
 // (DESIGN-2) — dissolve-on: parser-derived production selection replaces this hand-rolled
 // lhs+emitted-shape walk in formal_production_for_lhs_exact (same commit train as
 // v2.compiler.parse substrate convergence). Interim: filter by emitted-slot arity, then walk

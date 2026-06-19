@@ -485,7 +485,7 @@ data corpus_ci_gate_row_timeseries_capacitor_zero_rating_rejects: ClaimWitnessCo
 
 data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 spice Resistor projects ResistorPassive topology",
-  entry: "src/v2/std/timeseries_signal_passives.dag",
+  entry: "src/v2/extdeps/formats/spice_passive_projection_test.dag",
   function: "spice_resistor_projects_resistor_passive_topology_holds",
   expected: ExpectPass
 }
