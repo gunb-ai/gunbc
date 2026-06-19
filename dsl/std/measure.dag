@@ -51,9 +51,8 @@
 
 module std.measure
 
-import std.nat { Nat, nat_compare, nat_max, nat_min }
+import std.nat { Nat }
 import std.types { Int }
-import std.algebra { Ordering }
 
 // --- Quantity: what is being measured -------------------------------------
 //
@@ -272,47 +271,14 @@ type Hertz = Measure<Frequency, One, Nat>
 // Schedulable hardware thread count (std.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One, Nat>
 
-// Time magnitude at nanosecond scale — a neutral dimensional alias (parallel to `Hertz`
-// / `Watt` / `ByteSize`), NOT a framework-level scale choice. The realization /
-// measurement framework (std.realization_measurement, std.realization_schedule) is now
-// scale-AGNOSTIC over `time_measure<S>` and `Measure<Time, S, Nat>` / `CostAccount<S>`;
-// the CHOICE to denominate measured realization cost in nanoseconds + its reason live at
-// the CONSUMER boundary that observes wall-clock (product.compute_fabric.PerformanceReceipt
-// / `CostAccount<Nano>` instantiation), not here and not in the framework (DESIGN §3).
-type NanosecondDuration = Measure<Time, Nano, Nat>
-
-fn nanosecond_duration(count: Nat) -> NanosecondDuration {
-  NanosecondDuration { count: count }
-}
-
-fn nanosecond_duration_count(d: NanosecondDuration) -> Nat {
-  d.count
-}
-
-fn nanosecond_duration_compare(a: NanosecondDuration, b: NanosecondDuration) -> Ordering {
-  nat_compare(
-    a: nanosecond_duration_count(d: a),
-    b: nanosecond_duration_count(d: b)
-  )
-}
-
-fn nanosecond_duration_max(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
-  nanosecond_duration(
-    count: nat_max(
-      a: nanosecond_duration_count(d: a),
-      b: nanosecond_duration_count(d: b)
-    )
-  )
-}
-
-fn nanosecond_duration_min(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
-  nanosecond_duration(
-    count: nat_min(
-      a: nanosecond_duration_count(d: a),
-      b: nanosecond_duration_count(d: b)
-    )
-  )
-}
+// NOTE: the scale-FIXED nanosecond time alias `NanosecondDuration = Measure<Time, Nano,
+// Nat>` is deliberately NOT defined here. A scale-fixed alias is a CHOICE, not generic
+// dimensional vocabulary — it is parallel to `Milliwatt` (`Measure<Power, Milli, Nat>`,
+// homed at its product consumer in #5235), not to the base SI units `Watt` / `Hertz`
+// that stay below. std.measure keeps only the generic `Measure<Time, S, M>` carrier +
+// `time_measure<S>`; the nanosecond CHOICE + its reason live at the timing-authority
+// CONSUMER (std.verification), per DESIGN §3 (the agnostic shape stays central; the
+// scale that selects a realization sits peripheral).
 
 // Power magnitude at unit scale — the plain watt (SI derived: W = J/s). The dimension
 // TDP specs, PSU ratings, and live draw are all quoted in. A power rating carries the

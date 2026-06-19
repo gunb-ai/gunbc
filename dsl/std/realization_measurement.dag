@@ -60,7 +60,8 @@ fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Tim
 // Authority: v1.compiler.complexity — `span` is critical-path length under DAG
 // dependency structure; `cost_seq` (sequential = add) and `cost_par` (parallel =
 // CostMax) at complexity.dag:3754-3771. Do NOT fork a second span semantics here;
-// these are the concrete NanosecondDuration realizations of that proof vocabulary.
+// these are the concrete, scale-AGNOSTIC `Measure<Time, S, Nat>` realizations of that
+// proof vocabulary (a consumer pins `<S>`, e.g. `Nano`; the algebra names no scale).
 
 fn time_measure_is_zero<S>(d: Measure<Time, S, Nat>) -> Bool {
   measure_count(m: d) == 0

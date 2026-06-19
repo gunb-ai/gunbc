@@ -34,9 +34,6 @@ import std.measure {
   Nano,
   ByteSize,
   MoneyAmount,
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -45,6 +42,8 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+// Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
 import std.content_hash {

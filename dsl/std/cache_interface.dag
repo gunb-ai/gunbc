@@ -9,7 +9,10 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
-import std.measure { Nano, ByteSize, NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+import std.measure { Nano, ByteSize }
+// NanosecondDuration scale CHOICE imported from its timing-authority home (std.verification,
+// DESIGN §3), not re-coined here: cache read-latency costs are the consumer's nanosecond facts.
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.pareto {
   AxisComparison,
   DominanceVerdict,

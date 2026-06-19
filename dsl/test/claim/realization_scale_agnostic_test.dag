@@ -1,0 +1,62 @@
+// dsl/test/claim/realization_scale_agnostic_test.dag
+//
+// §5 discriminating witness: the realization measurement framework
+// (std.realization_measurement / std.realization_schedule) is scale-AGNOSTIC. It is
+// exercised here at the MILLI scale — a scale the framework never names. If any roll-up
+// fn or CostAccount field had stayed hardcoded to NanosecondDuration (Measure<Time,Nano>),
+// these Milli-scale instantiations would fail to resolve / type-check. Green here means
+// the scale CHOICE genuinely lives at the consumer, not in the framework.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function realization_scale_agnostic_witnesses --claim-run
+
+module test.claim.realization_scale_agnostic
+
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.measure { Measure, Time, Milli, time_measure, measure_count }
+import std.realization_schedule { CostAccount, cost_account_time_count }
+import std.realization_measurement {
+  time_measure_seq,
+  time_measure_par,
+  schedule_critical_path_time,
+  cost_account_measured_from_schedule_critical_path,
+  witness_measured_rollup_differs_from_predicted_zero,
+}
+
+// Consumer-pinned scale anchor: MILLI (NOT nanosecond). Proves the framework names no scale.
+fn milli(count: Nat) -> Measure<Time, Milli, Nat> {
+  time_measure(count: count)
+}
+
+// seq = add, par = max — at Milli scale.
+fn witness_milli_seq_and_par() -> Bool {
+  let a = milli(count: 30)
+  let b = milli(count: 12)
+  (measure_count(m: time_measure_seq(a: a, b: b)) == 42)
+    && (measure_count(m: time_measure_par(a: a, b: b)) == 30)
+}
+
+// critical path (seq across batches, max within batch) at Milli scale: max(10,40) + max(5) = 45.
+fn witness_milli_critical_path() -> Bool {
+  let batches = [[milli(count: 10), milli(count: 40)], [milli(count: 5)]]
+  measure_count(m: schedule_critical_path_time(batch_times: batches)) == 45
+}
+
+// CostAccount<Milli> bridges through the roll-up; ledger preserves the Milli count.
+fn witness_milli_cost_account() -> Bool {
+  let batches = [[milli(count: 7)], [milli(count: 8)]]
+  let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
+  cost_account_time_count(account: account) == 15
+}
+
+// The discriminating roll-up lens holds at Milli too (scale-parametric witness).
+fn witness_milli_rollup_discriminates() -> Bool {
+  witness_measured_rollup_differs_from_predicted_zero(wall_time: milli(count: 99))
+}
+
+test fn realization_scale_agnostic_witnesses() -> Bool {
+  witness_milli_seq_and_par()
+    && witness_milli_critical_path()
+    && witness_milli_cost_account()
+    && witness_milli_rollup_discriminates()
+}
