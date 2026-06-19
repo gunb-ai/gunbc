@@ -5,6 +5,7 @@ module v2.test.manual.bash_emit_command
 // Slice 1: fixed-token command (#5155). Slice 2: bound-word emit-time quoting.
 // Slice 3: source-root-ingest gate fixed two-word command (live transport migration).
 // Slice 4: AndOr / Pipe / WithRedir compound constructs.
+// Slice 5a: Conj-positional emitted + FormalProduction lhs-exact structural rows.
 //
 // Run:
 //   gunbc run --source-root src/v2 \
@@ -61,9 +62,9 @@ import v2.std.diagnostic {
 import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 import v2.std.witness { Violates, Witness }
 
-// The bash emit anchor matches its grammar relation row by exact fixture equality, so `translate`'s
-// grammar-first short-circuit returns the node raw and NEVER consults facts. This lookup is
-// therefore never called; it fails-closed (Violates) so any unexpected facts consultation surfaces
+// Bash emit uses lhs-exact Conj-positional emitted rows; `translate`'s grammar-first
+// short-circuit returns the node raw without consulting facts. This lookup is therefore
+// never called; it fails-closed (Violates) so any unexpected facts consultation surfaces
 // as a rejection rather than fabricated data.
 fn bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {

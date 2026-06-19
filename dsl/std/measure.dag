@@ -80,8 +80,8 @@ type Quantity =
   // a consuming fold (total_power_watts = Σ component Watt) that COMPUTES a power total,
   // green-by-execution in dsl/test/claim/power_watt_witness.dag. Named demand is plural
   // and real — PSU sizing (Σ component draw) + perf-per-watt in product.hardware_selection,
-  // and std.cpu CpuModelCatalogRow.tdp_watts is presently a bare Int (anemic for exactly
-  // this missing Power dimension; migration is a std.cpu follow-up). Energy (the joule,
+  // and extdeps.cpu CpuModelCatalogRow.tdp_watts is presently a bare Int (anemic for exactly
+  // this missing Power dimension; migration is a extdeps.cpu follow-up). Energy (the joule,
   // power × time) is NOT minted here — no consuming fold demands it yet (no carrier ahead
   // of demand). Anchor: https://en.wikipedia.org/wiki/Watt  (P = dE/dt; 1 W = 1 J/s)
   | Power
@@ -252,7 +252,7 @@ type BitWidth = Measure<Information, One, Nat>
 // Dimensional alias for sustained per-thread clock rate (SI hertz).
 type Hertz = Measure<Frequency, One, Nat>
 
-// Schedulable hardware thread count (std.cpu catalog/deployment authority).
+// Schedulable hardware thread count (extdeps.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One, Nat>
 
 // Time magnitude at nanosecond scale — realization `CostAccount.time` consumer
