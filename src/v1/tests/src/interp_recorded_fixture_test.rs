@@ -520,6 +520,88 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
     let _ = fs::remove_dir_all(&scratch);
 }
 
+// §5 discriminating pair for the filesystem_read builtin hermetic gate. The builtin must route
+// through modeled Filesystem.Read — NOT v1_rt::filesystem_read — so hermetic runs honor the
+// same record/replay / fail-closed gate as service ops.
+#[test]
+fn filesystem_read_hermetic_without_fixture_fails_closed() {
+    let ws = workspace_root();
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        ws.join("dsl/test/claim/filesystem_read_hermetic_witness.dag")
+            .to_str()
+            .expect("entry"),
+        "--function",
+        "witness_read_via_builtin_roundtrip",
+        "--hermetic",
+    ]);
+    assert!(
+        !hermetic.status.success(),
+        "filesystem_read in Hermetic without fixture store must fail closed (no silent disk read)"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("no mock_response")
+            || combined.contains("refusing to fabricate")
+            || combined.contains("refusing direct disk read"),
+        "expected fail-closed hermetic diagnostic, got:\n{combined}"
+    );
+}
+
+#[test]
+fn filesystem_read_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("fs-read-builtin-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let dsl_root = ws.join("dsl");
+    let entry = ws.join("dsl/test/claim/filesystem_read_hermetic_witness.dag");
+    let store_path = store_dir.to_str().expect("store path");
+
+    let common = |mode_flag: &str| -> std::process::Output {
+        run_claim_batch(&[
+            "--source-root",
+            ws.to_str().expect("workspace"),
+            "--source-root",
+            dsl_root.to_str().expect("dsl root"),
+            "--entry",
+            entry.to_str().expect("entry"),
+            "--function",
+            "witness_read_via_builtin_roundtrip",
+            "--fixture-store",
+            store_path,
+            mode_flag,
+        ])
+    };
+
+    let record = common("--record");
+    assert!(
+        record.status.success(),
+        "record capture must pass (wet I/O via Filesystem.Read gate); stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+    assert!(
+        store_dir.join("Filesystem__Read").is_dir() || !fixture_files(&store_dir).is_empty(),
+        "record must write fixture files under {:?}",
+        store_dir
+    );
+
+    let hermetic = common("--hermetic");
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic replay of filesystem_read must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
 // M4 hermetic-realization fold: the PUBLISHED mock corpus is the single authority the runtime
 // reads to decide hermetic realizability — the SAME model the M2 mock_totality_lens reads. This is
 // the §5 discriminating pair (a real consumer GREEN by execution PLUS a discriminating input that

@@ -4958,6 +4958,68 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
     })
 }
 
+/// `filesystem_read` builtin adapter — routes through modeled `Filesystem.Read` so the
+/// hermetic ExecutionMode gate (record/replay via RecordedFixture / published corpus)
+/// applies. Direct `v1_rt::filesystem_read` was a §5 faithfulness hole: hermetic runs
+/// still touched disk. Dissolves the §3 fork onto the single Filesystem service authority.
+fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResult<Value> {
+    if !ctx.service_ops.contains_key("Filesystem.Read") {
+        return Err(if ctx.execution_mode.is_hermetic() {
+            InterpError::TypeError {
+                msg: "hermetic mode: filesystem_read requires Filesystem.Read in the import \
+                      closure (import extdeps.filesystem.filesystem_io) — refusing direct disk read"
+                    .to_string(),
+            }
+        } else {
+            InterpError::Unimplemented {
+                what: "filesystem_read requires Filesystem.Read in the import closure \
+                       (import extdeps.filesystem.filesystem_io)"
+                    .to_string(),
+            }
+        });
+    }
+
+    let args = [(Some("path".to_string()), Value::Str(path))];
+    let result = eval_service_call("Filesystem", "Read", &args, &Env::empty(), ctx)?;
+
+    let (content, success, error) = match result {
+        Value::Record { fields, .. } => {
+            let success = matches!(ctx.field(&fields, "success"), Some(Value::Bool(true)));
+            let content = match ctx.field(&fields, "content") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+            let error = match ctx.field(&fields, "error") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+            (content, success, error)
+        }
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: "filesystem_read: Filesystem.Read returned non-record".to_string(),
+            });
+        }
+    };
+
+    if !success {
+        return Err(InterpError::TypeError {
+            msg: if error.is_empty() {
+                "filesystem_read: read failed".to_string()
+            } else {
+                format!("filesystem_read: {error}")
+            },
+        });
+    }
+
+    let mut out_fields = HashMap::new();
+    out_fields.insert(ctx.sym("content"), Value::Str(content));
+    Ok(Value::Record {
+        type_name: ctx.sym("FilesystemReadResult"),
+        fields: Rc::new(out_fields),
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Built-in functions (v1_rt equivalents)
 // ---------------------------------------------------------------------------
@@ -5335,13 +5397,7 @@ fn eval_builtin(
 
         "filesystem_read" => {
             let path = expect_str(positional.first().copied(), "filesystem_read")?;
-            let result = v1_rt::filesystem_read(path);
-            let mut fields = HashMap::new();
-            fields.insert(ctx.sym("content"), Value::Str(result.content));
-            Ok(Some(Value::Record {
-                type_name: ctx.sym("FilesystemReadResult"),
-                fields: Rc::new(fields),
-            }))
+            Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
 
         "layer_import_facts" => {
