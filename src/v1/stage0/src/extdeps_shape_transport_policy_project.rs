@@ -607,36 +607,22 @@ fn read_stable_authority_anchor_from_items(
             return StableAuthorityAnchorProjection::Absent;
         };
         let variant = crate::v1_std_core::authored_name_at(source_indices.clone(), body.clone());
-        return match variant.as_str() {
-            "ExternalUri" => {
-                let Some(uri_node) = record_field_value(body, "uri", source_indices) else {
-                    return StableAuthorityAnchorProjection::Absent;
-                };
-                let scheme = record_field_value(&uri_node, "scheme", source_indices)
-                    .map(|n| scheme_identity_from_value_node(&n, source_indices))
-                    .unwrap_or_default();
-                let locator = record_field_value(&uri_node, "locator", source_indices)
-                    .and_then(|n| literal_string_value(&n))
-                    .unwrap_or_default();
-                StableAuthorityAnchorProjection::External {
-                    scheme_identity: scheme,
-                    locator,
-                }
-            }
-            "Internal" => {
-                let Some(authority_node) = record_field_value(body, "authority", source_indices)
-                else {
-                    return StableAuthorityAnchorProjection::Absent;
-                };
-                let document = record_field_value(&authority_node, "document", source_indices)
-                    .and_then(|n| literal_string_value(&n))
-                    .unwrap_or_default();
-                let section = record_field_value(&authority_node, "section", source_indices)
-                    .and_then(|n| literal_string_value(&n))
-                    .unwrap_or_default();
-                StableAuthorityAnchorProjection::Internal { document, section }
-            }
-            _ => StableAuthorityAnchorProjection::Absent,
+        let Some(uri_node) = uri_record_from_anchor_body(body, variant.as_str(), source_indices)
+        else {
+            return StableAuthorityAnchorProjection::Absent;
+        };
+        let scheme = record_field_value(&uri_node, "scheme", source_indices)
+            .map(|n| scheme_identity_from_value_node(&n, source_indices))
+            .unwrap_or_default();
+        let locator = record_field_value(&uri_node, "locator", source_indices)
+            .and_then(|n| literal_string_value(&n))
+            .unwrap_or_default();
+        if scheme.is_empty() {
+            return StableAuthorityAnchorProjection::Absent;
+        }
+        return StableAuthorityAnchorProjection::Present {
+            scheme_identity: scheme,
+            locator,
         };
     }
     StableAuthorityAnchorProjection::Absent
@@ -651,14 +637,13 @@ fn project_stable_authority_anchor(module_path: &str) -> StableAuthorityAnchorPr
 pub fn stable_authority_anchor_kind_for_module_path(module_path: String) -> String {
     match project_stable_authority_anchor(&module_path) {
         StableAuthorityAnchorProjection::Absent => "absent".to_string(),
-        StableAuthorityAnchorProjection::External { .. } => "external".to_string(),
-        StableAuthorityAnchorProjection::Internal { .. } => "internal".to_string(),
+        StableAuthorityAnchorProjection::Present { .. } => "present".to_string(),
     }
 }
 
 pub fn stable_authority_scheme_identity_for_module_path(module_path: String) -> String {
     match project_stable_authority_anchor(&module_path) {
-        StableAuthorityAnchorProjection::External {
+        StableAuthorityAnchorProjection::Present {
             scheme_identity, ..
         } => scheme_identity,
         _ => String::new(),
@@ -857,21 +842,27 @@ service github.Gist {
     }
 
     #[test]
-    fn stable_authority_self_anchor_projects_internal() {
+    fn stable_authority_self_anchor_projects_file_with_fragment() {
         assert_eq!(
             stable_authority_anchor_kind_for_module_path("extdeps.stable_authority".to_string()),
-            "internal"
+            "present"
         );
         assert_eq!(
             stable_authority_scheme_identity_for_module_path(
                 "extdeps.stable_authority".to_string()
             ),
-            ""
+            "File"
         );
+        match project_stable_authority_anchor("extdeps.stable_authority") {
+            StableAuthorityAnchorProjection::Present { locator, .. } => {
+                assert_eq!(locator, "DESIGN.md#3-single-authority");
+            }
+            other => panic!("expected present file anchor, got {other:?}"),
+        }
     }
 
     #[test]
-    fn stable_authority_bogus_scheme_fixture_projects_external_gopher() {
+    fn stable_authority_bogus_scheme_fixture_projects_present_gopher() {
         let path = crate::module_path_index::source_path_for_module_path(
             "extdeps.fixture.stable_authority_bogus_scheme".to_string(),
         );
@@ -879,7 +870,7 @@ service github.Gist {
         let proj = read_stable_authority_anchor_from_items(&items, &source_indices);
         assert_eq!(
             proj,
-            StableAuthorityAnchorProjection::External {
+            StableAuthorityAnchorProjection::Present {
                 scheme_identity: "Gopher".to_string(),
                 locator: "example.invalid/spec".to_string(),
             }

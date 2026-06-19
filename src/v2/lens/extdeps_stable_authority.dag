@@ -1,7 +1,8 @@
 // src/v2/lens/extdeps_stable_authority.dag
-// Scope: extdeps module stable-authority anchor guard (DESIGN.md §3 grounding).
+// Scope: extdeps module stable-authority anchor guard (DESIGN §3 grounding).
 // Every extdeps/ module must declare `data extdeps_stable_authority_anchor:
-// StableAuthority` — external (Uri scheme+locator) OR internal (document+section).
+// StableAuthority { uri: Uri }` — external http(s)/ftp or internal file: (section in
+// locator fragment, e.g. "DESIGN.md#3-single-authority").
 // Consumer: tools.extdeps_stable_authority_gate (slice 1: advisory) + witnesses.
 //
 // Projection: structural parse bridge in extdeps_shape_transport_policy_project.rs
@@ -17,6 +18,7 @@ import extdeps.uri {
   Ftp,
   UriScheme
 }
+import v2.lens.extdeps_stable_authority.module_refs { extdeps_stable_authority_module }
 import v2.std.algebra {
   fold_list,
   is_empty,
@@ -30,8 +32,7 @@ import v2.std.text { String }
 
 type ExtdepsStableAuthorityAnchorStatus
   = AnchorAbsent
-  | AnchorExternal { scheme_identity: String }
-  | AnchorInternal
+  | AnchorPresent { scheme_identity: String }
 
 type ExtdepsStableAuthorityViolation
   = MissingFormalAnchor { module: QualifiedName }
@@ -43,12 +44,8 @@ fn anchor_kind_is_absent(kind: String) -> Bool {
   kind == "absent"
 }
 
-fn anchor_kind_is_internal(kind: String) -> Bool {
-  kind == "internal"
-}
-
-fn anchor_kind_is_external(kind: String) -> Bool {
-  kind == "external"
+fn anchor_kind_is_present(kind: String) -> Bool {
+  kind == "present"
 }
 
 // Exhaustive constructor-identity decode — the ONLY place raw scheme strings are inspected.
@@ -68,10 +65,8 @@ fn extdeps_stable_authority_status_for_module(
   let kind = extdeps_stable_authority_anchor_kind_for_qualified_name(module: module)
   if anchor_kind_is_absent(kind: kind) {
     AnchorAbsent
-  } else if anchor_kind_is_internal(kind: kind) {
-    AnchorInternal
   } else {
-    AnchorExternal {
+    AnchorPresent {
       scheme_identity: extdeps_stable_authority_scheme_identity_for_qualified_name(module: module)
     }
   }
@@ -84,8 +79,7 @@ fn extdeps_stable_authority_violations_for_module(
     AnchorAbsent => [
       MissingFormalAnchor { module: module }
     ]
-    AnchorInternal => empty_extdeps_stable_authority_violations
-    AnchorExternal { scheme_identity: raw } =>
+    AnchorPresent { scheme_identity: raw } =>
       match decode_uri_scheme(raw: raw) {
         Present { value: _ } => empty_extdeps_stable_authority_violations
         Absent => [
@@ -140,11 +134,23 @@ fn extdeps_stable_authority_has_unrecognized_scheme(
   module: QualifiedName
 ) -> Bool {
   match extdeps_stable_authority_status_for_module(module: module) {
-    AnchorExternal { scheme_identity: raw } =>
+    AnchorPresent { scheme_identity: raw } =>
       match decode_uri_scheme(raw: raw) {
         Absent => true
         Present { value: _ } => false
       }
     _ => false
   }
+}
+
+// Live projection roster: extdeps modules that currently declare formal anchors.
+// Slice 2 backfill expands this list; slice 1 proves projection over real corpus rows.
+fn extdeps_stable_authority_live_anchored_modules() -> List<QualifiedName> {
+  [extdeps_stable_authority_module]
+}
+
+fn extdeps_stable_authority_live_anchored_modules_clean_holds() -> Bool {
+  extdeps_stable_authority_clean_holds(
+    modules: extdeps_stable_authority_live_anchored_modules()
+  )
 }

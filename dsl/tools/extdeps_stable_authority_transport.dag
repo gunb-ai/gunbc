@@ -13,8 +13,14 @@ import tools.host_prelude { ensure_gunbc_built }
 data uri_witness_entry: String = "dsl/test/claim/uri_witness_test.dag"
 data uri_witness_fn: String = "uri_witnesses"
 
-data live_corpus_entry: String = "src/v2/compiler/extdeps_stable_authority/corpus/self_anchor_live_clean_test.dag"
-data live_corpus_fn: String = "corpus_self_anchor_live_clean_holds"
+data live_corpus_entry: String = "src/v2/compiler/extdeps_stable_authority/corpus/live_anchored_modules_clean_test.dag"
+data live_corpus_fn: String = "corpus_live_anchored_modules_clean_holds"
+
+data clean_file_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/clean_file_anchor_live_test.dag"
+data clean_file_fn: String = "clean_file_anchor_live_is_green_holds"
+
+data clean_https_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/clean_https_anchor_live_test.dag"
+data clean_https_fn: String = "clean_https_anchor_live_is_green_holds"
 
 data missing_red_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/missing_anchor_red_test.dag"
 data missing_red_fn: String = "missing_anchor_fixture_is_red_holds"
@@ -52,7 +58,11 @@ fn run_extdeps_stable_authority_uri_witnesses() -> Bool {
 }
 
 fn run_extdeps_stable_authority_live_corpus_witness() -> Bool {
-  esa_run_claims(stmts: [esa_gunbc_claim_run(entry: live_corpus_entry, function: live_corpus_fn)])
+  esa_run_claims(stmts: [
+    esa_gunbc_claim_run(entry: live_corpus_entry, function: live_corpus_fn),
+    esa_gunbc_claim_run(entry: clean_file_entry, function: clean_file_fn),
+    esa_gunbc_claim_run(entry: clean_https_entry, function: clean_https_fn)
+  ])
 }
 
 fn run_extdeps_stable_authority_lens_unit_red() -> Bool {

@@ -24,3 +24,11 @@ data extdeps_fixture_bogus_scheme_module: QualifiedName = QnCons {
     tail: QnCons { head: ^stable_authority_bogus_scheme, tail: QnEmpty }
   }
 }
+
+data extdeps_fixture_clean_https_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^stable_authority_clean_https, tail: QnEmpty }
+  }
+}
