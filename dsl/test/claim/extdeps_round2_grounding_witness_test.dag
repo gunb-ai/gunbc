@@ -1,0 +1,188 @@
+// By-execution witnesses for extdeps round-2 Part B grounding.
+// Discriminating: each witness goes RED if a field reverts to bare String.
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_round2_grounding_witness_test.dag \
+//     --function extdeps_round2_grounding_witnesses --claim-run
+
+module test.claim.extdeps_round2_grounding_witness
+
+import extdeps.sql.migration {
+  SqlDialect,
+  Postgres,
+  Mysql,
+  Sqlite,
+  SqlMigrationStep,
+  CreateTable,
+  sql_dialect_wire_label,
+}
+import extdeps.http.server {
+  HttpContentType,
+  TextHtmlUtf8,
+  TextPlainUtf8,
+  http_content_type_wire_label,
+  ServedStaticRoute,
+}
+import extdeps.cloud.cloud {
+  CloudAuthScheme,
+  SigV4,
+  Protocol,
+  OidcToken,
+  AwsRegion,
+  AwsService,
+  UsEast1,
+  S3,
+  aws_region_wire_label,
+  aws_service_wire_label,
+}
+import extdeps.cloud.gcp.gcp {
+  GcpApiEndpoint,
+  GcpStorage,
+  GcpSts,
+  gcp_service_wire_label,
+}
+import product.compute_fabric {
+  GpuFacts,
+  GpuVendor,
+  Nvidia,
+  Amd,
+  Intel,
+  GpuComputeCapability,
+  GpuCapabilityLabelOk,
+  GpuCapabilityLabelRejected,
+  UnsubstantiatedGpuCapabilityLabel,
+  gpu_compute_capability_sm_label,
+  MemoryFacts,
+  MemoryKind,
+  Hbm,
+}
+import std.http_path { PathTemplate }
+import std.measure { byte_size }
+import std.types { GET }
+
+fn w_sql_dialect_postgres_label() -> Bool {
+  sql_dialect_wire_label(Postgres) == "postgres"
+}
+
+fn w_sql_dialect_mysql_not_postgres() -> Bool {
+  sql_dialect_wire_label(Mysql) == "mysql"
+    && sql_dialect_wire_label(Mysql) != sql_dialect_wire_label(Postgres)
+}
+
+fn w_sql_migration_step_carries_dialect_enum() -> Bool {
+  let step = SqlMigrationStep {
+    name: "init",
+    operation: CreateTable,
+    dialect: Sqlite,
+    statement: "CREATE TABLE t(id INT);",
+    reversible: false,
+  }
+  step.dialect == Sqlite
+}
+
+fn w_http_content_type_html_label() -> Bool {
+  http_content_type_wire_label(TextHtmlUtf8) == "text/html; charset=utf-8"
+}
+
+fn w_http_content_type_plain_not_html() -> Bool {
+  http_content_type_wire_label(TextPlainUtf8) == "text/plain; charset=utf-8"
+    && http_content_type_wire_label(TextPlainUtf8) != http_content_type_wire_label(TextHtmlUtf8)
+}
+
+fn w_served_static_route_content_type_enum() -> Bool {
+  let row = ServedStaticRoute {
+    method: GET,
+    path_pattern: PathTemplate { tokens: [] },
+    body: "<html></html>",
+    content_type: TextHtmlUtf8,
+    status_on_hit: 200,
+  }
+  row.content_type == TextHtmlUtf8
+}
+
+fn w_sigv4_grounded_region_service() -> Bool {
+  aws_region_wire_label(UsEast1) == "us-east-1"
+    && aws_service_wire_label(S3) == "s3"
+}
+
+fn w_sigv4_auth_scheme_carries_enums() -> Bool {
+  match SigV4 { region: UsEast1, service: S3 } {
+    SigV4 => true
+    Protocol => false
+    OidcToken => false
+  }
+}
+
+fn w_gcp_api_endpoint_service_enum() -> Bool {
+  let endpoint = GcpApiEndpoint {
+    service: GcpStorage,
+    base_url: "https://storage.googleapis.com/storage/v1",
+    version: "v1",
+  }
+  endpoint.service == GcpStorage
+    && gcp_service_wire_label(GcpStorage) == "storage"
+    && gcp_service_wire_label(GcpSts) == "sts"
+}
+
+fn w_gpu_compute_capability_sm_label() -> Bool {
+  let cap = GpuComputeCapability { vendor: Nvidia, major: 8, minor: 9 }
+  match gpu_compute_capability_sm_label(cap) {
+    GpuCapabilityLabelOk { label: label } => label == "sm_8_9"
+    GpuCapabilityLabelRejected { reason: _ } => false
+  }
+}
+
+fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
+  let cap = GpuComputeCapability { vendor: Amd, major: 11, minor: 0 }
+  match gpu_compute_capability_sm_label(cap) {
+    GpuCapabilityLabelOk { label: label } => label == "gfx110"
+    GpuCapabilityLabelRejected { reason: _ } => false
+  }
+}
+
+fn w_intel_capability_label_refuses_fail_closed() -> Bool {
+  let cap = GpuComputeCapability { vendor: Intel, major: 1, minor: 0 }
+  match gpu_compute_capability_sm_label(cap) {
+    GpuCapabilityLabelOk { label: _ } => false
+    GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Intel },
+    } => true
+    GpuCapabilityLabelRejected { reason: _ } => false
+  }
+}
+
+fn w_gpu_facts_structured_compute_capability() -> Bool {
+  let gpu = GpuFacts {
+    vendor: Nvidia,
+    model: "H100",
+    compute_capability: GpuComputeCapability { vendor: Nvidia, major: 9, minor: 0 },
+    memory: MemoryFacts {
+      capacity: byte_size(80),
+      memory_kind: Hbm,
+    },
+    supported_runtimes: [],
+  }
+  gpu.vendor == Nvidia
+    && match gpu_compute_capability_sm_label(
+      GpuComputeCapability { vendor: Nvidia, major: 9, minor: 0 }
+    ) {
+      GpuCapabilityLabelOk { label: label } => label == "sm_9_0"
+      GpuCapabilityLabelRejected { reason: _ } => false
+    }
+}
+
+test fn extdeps_round2_grounding_witnesses() -> Bool {
+  w_sql_dialect_postgres_label()
+    && w_sql_dialect_mysql_not_postgres()
+    && w_sql_migration_step_carries_dialect_enum()
+    && w_http_content_type_html_label()
+    && w_http_content_type_plain_not_html()
+    && w_served_static_route_content_type_enum()
+    && w_sigv4_grounded_region_service()
+    && w_sigv4_auth_scheme_carries_enums()
+    && w_gcp_api_endpoint_service_enum()
+    && w_gpu_compute_capability_sm_label()
+    && w_gpu_amd_label_distinct_from_nvidia()
+    && w_intel_capability_label_refuses_fail_closed()
+    && w_gpu_facts_structured_compute_capability()
+}

@@ -7,8 +7,8 @@
 // JSONL lines consumed by `jq` (same `{"test":...,"policy":"warn"}` shape as
 // the retired hand-only manifest). Single edit surface: add/remove rows here.
 //
-// Related: `TestNodeCostDimension` + `TestNodeRef` in `dsl/std/verification.dag`
-// (gate #101 substrate); this table names the same libtest tokens until every
+// Phase-0 convergence: `TestNodeCostDimension.budget_time` / `measured_time` use
+// `NanosecondDuration` (std.measure); this table names libtest tokens until every
 // slow test is either sped up or modeled with explicit budget/measured facts.
 
 module gunbc.test_node_wall_clock_ratchet
