@@ -6,6 +6,7 @@ module v2.test.manual.bash_emit_command
 // Slice 3: source-root-ingest gate fixed two-word command (live transport migration).
 // Slice 4: AndOr / Pipe / WithRedir compound constructs.
 // Slice 5a: Conj-positional emitted + FormalProduction lhs-exact structural rows.
+// Slice 5b: If / Subshell / Heredoc + pipe|precedence brace-group keystone.
 //
 // Run:
 //   gunbc run --source-root src/v2 \
@@ -47,7 +48,25 @@ import v2.extdeps.languages.bash {
   bash_pipe_target_model,
   bash_or_else_with_redir_emitted,
   bash_or_else_with_redir_source_text,
-  bash_or_else_with_redir_target_model
+  bash_or_else_with_redir_target_model,
+  bash_if_true_then_false_emitted,
+  bash_if_true_then_false_source_text,
+  bash_if_true_then_false_target_model,
+  bash_heredoc_simple_emitted,
+  bash_heredoc_simple_source_text,
+  bash_heredoc_simple_target_model,
+  bash_subshell_true_emitted,
+  bash_subshell_true_source_text,
+  bash_subshell_true_target_model,
+  bash_subshell_and_or_nested_emitted,
+  bash_subshell_and_or_nested_source_text,
+  bash_subshell_and_or_nested_target_model,
+  bash_pipe_and_or_brace_grouped_emitted,
+  bash_pipe_and_or_brace_grouped_source_text,
+  bash_pipe_and_or_brace_grouped_target_model,
+  bash_pipe_and_or_flat_wrong_emitted,
+  bash_pipe_and_or_flat_wrong_source_text,
+  bash_pipe_and_or_flat_wrong_target_model
 }
 import v2.std.collection { Map, empty_map }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -314,4 +333,79 @@ test fn bash_emit_or_else_with_redir_holds() -> Bool {
     source_text: bash_or_else_with_redir_source_text,
     target: bash_or_else_with_redir_target_model()
   )
+}
+
+// Slice 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone.
+
+test fn bash_emit_subshell_true_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_subshell_true_emitted,
+    source_text: bash_subshell_true_source_text,
+    target: bash_subshell_true_target_model()
+  )
+}
+
+test fn bash_emit_if_true_then_false_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_if_true_then_false_emitted,
+    source_text: bash_if_true_then_false_source_text,
+    target: bash_if_true_then_false_target_model()
+  )
+}
+
+test fn bash_emit_heredoc_simple_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_heredoc_simple_emitted,
+    source_text: bash_heredoc_simple_source_text,
+    target: bash_heredoc_simple_target_model()
+  )
+}
+
+// Subshell nesting AndOr — recursion fixture (not a precedence case).
+test fn bash_emit_subshell_and_or_nested_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_subshell_and_or_nested_emitted,
+    source_text: bash_subshell_and_or_nested_source_text,
+    target: bash_subshell_and_or_nested_target_model()
+  )
+}
+
+// Pipe { AndOr{a,&&,b}, c } — | binds tighter than &&; brace-group wrap is mandatory.
+test fn bash_emit_pipe_and_or_brace_grouped_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_pipe_and_or_brace_grouped_emitted,
+    source_text: bash_pipe_and_or_brace_grouped_source_text,
+    target: bash_pipe_and_or_brace_grouped_target_model()
+  )
+}
+
+// Discriminating — flat ungrouped bytes mis-parse the pipe|&& precedence.
+test fn bash_emit_pipe_and_or_flat_ne_brace_grouped_holds() -> Bool {
+  bash_pipe_and_or_flat_wrong_source_text != bash_pipe_and_or_brace_grouped_source_text
+}
+
+// RED — flat-wrong model emits the mis-grouped bytes (proves the wrong fixture is real).
+test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_pipe_and_or_flat_wrong_emitted,
+    source_text: bash_pipe_and_or_flat_wrong_source_text,
+    target: bash_pipe_and_or_flat_wrong_target_model()
+  )
+}
+
+// RED — brace-grouped emitted through the flat-wrong target model must not fabricate grouped bytes.
+fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
+  let tree = InferredTree {
+    root: bash_pipe_and_or_brace_grouped_emitted,
+    facts: Map { lookup: bash_facts_lookup }
+  }
+  match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried != bash_pipe_and_or_brace_grouped_source_text) && (d == None)
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects_holds() -> Bool {
+  bash_emit_pipe_brace_grouped_wrong_flat_model_rejects()
 }

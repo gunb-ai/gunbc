@@ -16,7 +16,7 @@
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { Timestamp, Url, HttpMethod, AuthScheme }
+import std.types { CommitSha, FilePath, GitRef, Timestamp, Url, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text, CoproductWireContract, StringVariant, SnakeCase, ScreamingSnakeCase }
@@ -49,8 +49,8 @@ data review_event_wire_contract: CoproductWireContract = {
 // -- Pull request model -----------------------------------------------
 
 type PullRequestRef {
-  ref: String
-  sha: String
+  ref: GitRef
+  sha: CommitSha
   label: String
 }
 
@@ -230,7 +230,7 @@ service github.Pulls {
       owner: String
       repo: String
       pull_number: Int
-      commit_id: String
+      commit_id: CommitSha
       body: String
       event: ReviewEvent = Comment
       comments: Json
@@ -284,7 +284,7 @@ type PullReview {
   id: Int
   body: String
   state: ReviewState
-  commit_id: String
+  commit_id: CommitSha
   html_url: Url
 }
 
@@ -295,7 +295,7 @@ data structural_coverage_gap_github_pull_review_response_residual: List<String> 
 type ReviewComment {
   id: Int
   node_id: String
-  path: String
+  path: FilePath
   line: Int?
   original_line: Int?
   body: String
