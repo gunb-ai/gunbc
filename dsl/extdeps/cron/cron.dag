@@ -10,6 +10,24 @@
 
 module extdeps.cron
 
+// Co-locate the PUBLISHED mock corpus into this service's import closure (DESIGN.md §3: which
+// cron.Tab operations are hermetically realizable is a fact ABOUT the cron service, so it belongs
+// in the service's closure). Any consumer that imports extdeps.cron now transitively pulls the
+// corpus, so the v1 runtime's eval_service_call (the M4 hermetic-realization fold) resolves the
+// published-key set from item_registry — cron.Tab.List/Replace are GOVERNED in production via the
+// same single model the M2 mock_totality_lens reads. (Bare import: the closure membership is the
+// point, not a bound symbol — cf. filesystem_io.dag importing extdeps.filesystem.mock_corpus.)
+// 🟡 gated — feature:m4-universal-hermetic-corpus-load — bind node://adhoc-2d1fb71c-1f4
+// dissolve-on-arrival: M4.1 (fierce-crab-852) makes the runtime load the whole-tree published
+// corpus independent of the entry's import closure (governance universal not opt-in); this
+// per-service co-location import then deletes.
+import extdeps.cron.mock_corpus
+
+// 🟡 dissolved — feature:cron-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus above (extdeps.cron.mock_corpus) now governs
+// WHICH cron.Tab ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service cron.Tab {
   operation List {
     input {}
@@ -19,9 +37,6 @@ service cron.Tab {
     exit {
       0 => Unit
       1 => Unit "No crontab for user"
-    }
-    mock_response {
-      0 => { entries: "*/30 * * * * /usr/bin/review-agent run # tag:review-agent" } "Existing crontab"
     }
   }
 
@@ -36,9 +51,6 @@ service cron.Tab {
     exit {
       0 => Unit
       nonzero => String "Crontab install failed"
-    }
-    mock_response {
-      0 => { exit_success: true, stdout: "", stderr: "" } "Install succeeded"
     }
   }
 }

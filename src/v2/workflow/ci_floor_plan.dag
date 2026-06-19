@@ -62,6 +62,8 @@ data ci_floor_compile_gate_fn: String = "dsl_compile_clean_gate_passes"
 
 data floor_gate_witness_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
 
+data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
+
 // The discovery-corpus node (one fixed identity).
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
@@ -89,7 +91,10 @@ fn gate_runnable(g: Gate) -> Runnable {
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
-    SourceRootIngestGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "source_root_ingest_gate_passes" }
+    SourceRootIngestGate => RunnableSingleClaim {
+      entry: floor_source_root_ingest_gate_entry,
+      function: "source_root_ingest_gate_passes"
+    }
   }
 }
 

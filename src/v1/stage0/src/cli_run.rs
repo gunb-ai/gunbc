@@ -122,11 +122,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-                if let Some(existing) = index.insert(module_path.clone(), rel.clone()) {
-                    panic!(
-                        "build_module_path_index: duplicate module path '{module_path}': {existing} vs {rel}"
-                    );
-                }
+                // Co-root overlay: later `source_roots` win on duplicate module paths
+                // (same last-wins policy as `build_module_index`). TRANSITIONAL (slice 3):
+                // enables v2 overlay without panic while dsl+src/v2 coexist. DISSOLUTION
+                // RESTORE (final slice): when witness_layer_roots reverts to a single root and
+                // dsl/extdeps/shell is deleted, restore fail-closed panic on duplicate module_path
+                // so an accidental name collision is loud again (§5).
+                index.insert(module_path.clone(), rel);
             }
         }
     }
@@ -795,12 +797,81 @@ pub fn make_eval_context_with_fixture_store(
     execution_mode: v1_interpreter::ExecutionMode,
     fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
 ) -> v1_interpreter::InterpContext {
-    v1_interpreter::InterpContext::with_fixture_store(
+    make_eval_context_with_runtime_options(
         graph,
         source_indices,
         execution_mode,
         fixture_store,
+        None,
     )
+}
+
+/// Like [`make_eval_context_with_fixture_store`], but threads M4.1 whole-tree precomputed
+/// published-mock keys so hermetic governance is independent of the entry import closure.
+pub fn make_eval_context_with_runtime_options(
+    graph: &v1_compiler_compile::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+) -> v1_interpreter::InterpContext {
+    v1_interpreter::InterpContext::with_runtime_options(
+        graph,
+        source_indices,
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    )
+}
+
+/// Source roots that name a `dsl/` tree (whole-tree published-mock-corpus authority for M4.1).
+fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
+    let mut dsl: Vec<String> = source_roots
+        .iter()
+        .filter(|r| {
+            let p = Path::new(r.as_str());
+            p.ends_with("dsl") || p.file_name().is_some_and(|n| n == "dsl")
+        })
+        .cloned()
+        .collect();
+    // Workspace-only `--source-root <repo>` still indexes dsl/ via build_multi_entry_index;
+    // include `<root>/dsl` when present so universal corpus precompute matches.
+    for root in source_roots {
+        let child = Path::new(root).join("dsl");
+        if child.is_dir() {
+            dsl.push(child.to_string_lossy().into_owned());
+        }
+    }
+    dsl.sort();
+    dsl.dedup();
+    dsl
+}
+
+/// Precompute the published mock corpus operation-key set from the whole dsl/ source tree.
+/// Independent of any witness entry's import closure — the SAME authority the M2
+/// `mock_totality_lens` reads module-by-module.
+pub fn precompute_whole_tree_published_mock_keys(
+    source_roots: &[String],
+) -> Result<std::collections::HashSet<String>, String> {
+    let dsl_roots = dsl_source_roots(source_roots);
+    if dsl_roots.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let index = build_module_index(&dsl_roots);
+    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
+    if all_sources.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
+    let ctx = v1_interpreter::InterpContext::with_runtime_options(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+        None,
+        None,
+    );
+    v1_interpreter::resolve_published_mock_keys(&ctx)
+        .map_err(|e| format!("whole-tree published mock corpus precompute: {e}"))
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
@@ -2044,7 +2115,7 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
     "host_source_root_ingest_manifest.dag",
-    // Gate-only: requires host manifest overlay (tools.source_root_ingest_gate).
+    // Gate-only: requires host manifest overlay (v2.workflow.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
     // Gate-only: N_v2 substrate witnesses (scripts/v2-compiler-closure-nv2-gate.sh).
     "compiler_closure_emit_from_ingest_gate.dag",
