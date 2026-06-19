@@ -28,8 +28,9 @@
 // Bash is the first PRODUCTION consumer of the T-11-gated lhs-exact path
 // (feature:grammar-inverse-lhs-exact-selection); on parser-convergence dissolution, migrate
 // these bash FormalProduction rows together with typescript's.
-// MIGRATION SLICE 5b — If / Subshell / Heredoc + subshell brace-group over AndOr (POSIX §2.9
-// compound commands). Byte-identical to serialize_bash; witnesses in bash_emit_command_test.
+// MIGRATION SLICE 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone
+// (`Pipe { AndOr left }` must emit `{ a && b; } | c`, not flat `a && b | c`). Subshell
+// nesting AndOr is a separate recursion fixture. Witnesses in bash_emit_command_test.
 // Next slices: Assign/EnvPrefixed/Exit → migrate sidecar consumers → delete program.dag.
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
@@ -476,11 +477,10 @@ fn bash_or_else_with_redir_translation_rules_node() -> Node {
 }
 
 // =========================================================================
-// Slice 5b — If / Subshell / Heredoc + subshell brace-group over AndOr.
-// Byte-identical to serialize_bash(program.dag) for each fixture; the subshell-grouped
-// AndOr row is discriminating against the slice-4 flat AndOr row (parentheses change bytes
-// even when shell precedence would parse both the same — the brace-group precedence bug was
-// collapsing grouped subshell intent onto the flat AndOr production).
+// Slice 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone.
+// Pipe binds tighter than &&: flat `'true' && 'false' | 'true'` mis-groups as
+// `'true' && ('false' | 'true')`. Correct emit wraps the AndOr operand: `{ 'true' && 'false'; } | 'true'`.
+// Authority: program.dag BraceGroup + Pipe fixture (not the sidecar's flat Pipe concat).
 // =========================================================================
 
 fn bash_subshell_true_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -559,7 +559,9 @@ fn bash_heredoc_simple_translation_rules_node() -> Node {
   )
 }
 
-fn bash_subshell_and_or_grouped_concrete_tokens() -> List<ConcreteSyntaxToken> {
+// Subshell nesting AndOr — recursion test only (|| has equal precedence to &&; parens
+// change bytes but not parse grouping). `'(' 'true' && 'false' ')' || 'true'`
+fn bash_subshell_and_or_nested_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_lparen },
     FixedToken { token_class: ^bash_token_word_true },
@@ -571,20 +573,65 @@ fn bash_subshell_and_or_grouped_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-data bash_subshell_and_or_grouped_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_subshell_and_or_grouped_concrete_tokens()
+data bash_subshell_and_or_nested_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_subshell_and_or_nested_concrete_tokens()
 )
 
-data bash_subshell_and_or_grouped_source_text: String = "('true' && 'false') || 'true'"
+data bash_subshell_and_or_nested_source_text: String = "('true' && 'false') || 'true'"
 
-fn bash_subshell_and_or_grouped_translation_rules_node() -> Node {
+fn bash_subshell_and_or_nested_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_subshell_and_or_grouped,
-    lhs: ^bash_production_subshell_and_or_grouped,
-    tokens: bash_subshell_and_or_grouped_concrete_tokens(),
-    emitted: bash_subshell_and_or_grouped_emitted
+    rule_name: ^bash_relation_rule_subshell_and_or_nested,
+    lhs: ^bash_production_subshell_and_or_nested,
+    tokens: bash_subshell_and_or_nested_concrete_tokens(),
+    emitted: bash_subshell_and_or_nested_emitted
   )
 }
+
+// Pipe { AndOr{a,&&,b}, c } — brace-group wrap is mandatory because | binds tighter than &&.
+// Correct: `{ 'true' && 'false'; } | 'true'`. Wrong flat concat: `'true' && 'false' | 'true'`.
+fn bash_pipe_and_or_brace_grouped_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_lbrace },
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_and_then },
+    FixedToken { token_class: ^bash_token_word_false },
+    FixedToken { token_class: ^bash_token_semicolon_rbrace },
+    FixedToken { token_class: ^bash_token_pipe },
+    FixedToken { token_class: ^bash_token_word_true }
+  ]
+}
+
+data bash_pipe_and_or_brace_grouped_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_pipe_and_or_brace_grouped_concrete_tokens()
+)
+
+data bash_pipe_and_or_brace_grouped_source_text: String = "{ 'true' && 'false'; } | 'true'"
+
+fn bash_pipe_and_or_brace_grouped_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_pipe_and_or_brace_grouped,
+    lhs: ^bash_production_pipe_and_or_brace_grouped,
+    tokens: bash_pipe_and_or_brace_grouped_concrete_tokens(),
+    emitted: bash_pipe_and_or_brace_grouped_emitted
+  )
+}
+
+fn bash_pipe_and_or_flat_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_and_then },
+    FixedToken { token_class: ^bash_token_word_false },
+    FixedToken { token_class: ^bash_token_pipe },
+    FixedToken { token_class: ^bash_token_word_true }
+  ]
+}
+
+data bash_pipe_and_or_flat_wrong_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_pipe_and_or_flat_wrong_concrete_tokens()
+)
+
+data bash_pipe_and_or_flat_wrong_source_text: String = "'true' && 'false' | 'true'"
 
 fn bash_subshell_true_lex() -> LexRules {
   ModeledLexRules {
@@ -662,7 +709,7 @@ fn bash_heredoc_simple_target_model() -> TargetModel {
   )
 }
 
-fn bash_subshell_and_or_grouped_lex() -> LexRules {
+fn bash_subshell_and_or_nested_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
@@ -678,14 +725,75 @@ fn bash_subshell_and_or_grouped_lex() -> LexRules {
   }
 }
 
-fn bash_subshell_and_or_grouped_target_model() -> TargetModel {
+fn bash_subshell_and_or_nested_target_model() -> TargetModel {
   bash_make_fixed_tokens_target_model(
-    rules: bash_subshell_and_or_grouped_translation_rules_node(),
-    source_literal: ^bash_subshell_and_or_grouped_source_literal,
-    production_name: ^bash_production_subshell_and_or_grouped,
-    tokens: bash_subshell_and_or_grouped_concrete_tokens(),
-    source_text: bash_subshell_and_or_grouped_source_text,
-    lex: bash_subshell_and_or_grouped_lex()
+    rules: bash_subshell_and_or_nested_translation_rules_node(),
+    source_literal: ^bash_subshell_and_or_nested_source_literal,
+    production_name: ^bash_production_subshell_and_or_nested,
+    tokens: bash_subshell_and_or_nested_concrete_tokens(),
+    source_text: bash_subshell_and_or_nested_source_text,
+    lex: bash_subshell_and_or_nested_lex()
+  )
+}
+
+fn bash_pipe_and_or_brace_grouped_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_lbrace, text: "{ "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_and_then, text: " && "),
+        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'"),
+        bash_lex_rule(token_class: ^bash_token_semicolon_rbrace, text: "; }"),
+        bash_lex_rule(token_class: ^bash_token_pipe, text: " | "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'")
+      ]
+    }
+  }
+}
+
+fn bash_pipe_and_or_brace_grouped_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_pipe_and_or_brace_grouped_translation_rules_node(),
+    source_literal: ^bash_pipe_and_or_brace_grouped_source_literal,
+    production_name: ^bash_production_pipe_and_or_brace_grouped,
+    tokens: bash_pipe_and_or_brace_grouped_concrete_tokens(),
+    source_text: bash_pipe_and_or_brace_grouped_source_text,
+    lex: bash_pipe_and_or_brace_grouped_lex()
+  )
+}
+
+fn bash_pipe_and_or_flat_wrong_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_and_then, text: " && "),
+        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'"),
+        bash_lex_rule(token_class: ^bash_token_pipe, text: " | "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'")
+      ]
+    }
+  }
+}
+
+fn bash_pipe_and_or_flat_wrong_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_pipe_and_or_flat_wrong,
+    lhs: ^bash_production_pipe_and_or_flat_wrong,
+    tokens: bash_pipe_and_or_flat_wrong_concrete_tokens(),
+    emitted: bash_pipe_and_or_flat_wrong_emitted
+  )
+}
+
+fn bash_pipe_and_or_flat_wrong_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_pipe_and_or_flat_wrong_translation_rules_node(),
+    source_literal: ^bash_pipe_and_or_flat_wrong_source_literal,
+    production_name: ^bash_production_pipe_and_or_flat_wrong,
+    tokens: bash_pipe_and_or_flat_wrong_concrete_tokens(),
+    source_text: bash_pipe_and_or_flat_wrong_source_text,
+    lex: bash_pipe_and_or_flat_wrong_lex()
   )
 }
 

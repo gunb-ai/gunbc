@@ -6,7 +6,7 @@ module v2.test.manual.bash_emit_command
 // Slice 3: source-root-ingest gate fixed two-word command (live transport migration).
 // Slice 4: AndOr / Pipe / WithRedir compound constructs.
 // Slice 5a: Conj-positional emitted + FormalProduction lhs-exact structural rows.
-// Slice 5b: If / Subshell / Heredoc + subshell brace-group over AndOr.
+// Slice 5b: If / Subshell / Heredoc + pipe|precedence brace-group keystone.
 //
 // Run:
 //   gunbc run --source-root src/v2 \
@@ -58,9 +58,16 @@ import v2.extdeps.languages.bash {
   bash_subshell_true_emitted,
   bash_subshell_true_source_text,
   bash_subshell_true_target_model,
-  bash_subshell_and_or_grouped_emitted,
-  bash_subshell_and_or_grouped_source_text,
-  bash_subshell_and_or_grouped_target_model
+  bash_subshell_and_or_nested_emitted,
+  bash_subshell_and_or_nested_source_text,
+  bash_subshell_and_or_nested_target_model,
+  bash_pipe_and_or_brace_grouped_emitted,
+  bash_pipe_and_or_brace_grouped_source_text,
+  bash_pipe_and_or_brace_grouped_target_model,
+  bash_pipe_and_or_flat_wrong_concrete_tokens,
+  bash_pipe_and_or_flat_wrong_emitted,
+  bash_pipe_and_or_flat_wrong_source_text,
+  bash_pipe_and_or_flat_wrong_target_model
 }
 import v2.std.collection { Map, empty_map }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -329,7 +336,7 @@ test fn bash_emit_or_else_with_redir_holds() -> Bool {
   )
 }
 
-// Slice 5b — If / Subshell / Heredoc + subshell brace-group over AndOr.
+// Slice 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone.
 
 test fn bash_emit_subshell_true_holds() -> Bool {
   bash_emit_slice4_holds(
@@ -355,33 +362,58 @@ test fn bash_emit_heredoc_simple_holds() -> Bool {
   )
 }
 
-test fn bash_emit_subshell_and_or_grouped_holds() -> Bool {
+// Subshell nesting AndOr — recursion fixture (not a precedence case).
+test fn bash_emit_subshell_and_or_nested_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_subshell_and_or_grouped_emitted,
-    source_text: bash_subshell_and_or_grouped_source_text,
-    target: bash_subshell_and_or_grouped_target_model()
+    emitted: bash_subshell_and_or_nested_emitted,
+    source_text: bash_subshell_and_or_nested_source_text,
+    target: bash_subshell_and_or_nested_target_model()
   )
 }
 
-// Brace-group precedence — subshell-grouped bytes must not collapse to flat AndOr (slice 4).
-test fn bash_emit_subshell_grouped_ne_flat_and_or_holds() -> Bool {
-  bash_subshell_and_or_grouped_source_text != bash_and_then_source_text
+// Pipe { AndOr{a,&&,b}, c } — | binds tighter than &&; brace-group wrap is mandatory.
+test fn bash_emit_pipe_and_or_brace_grouped_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_pipe_and_or_brace_grouped_emitted,
+    source_text: bash_pipe_and_or_brace_grouped_source_text,
+    target: bash_pipe_and_or_brace_grouped_target_model()
+  )
 }
 
-// RED — subshell-grouped emitted through the flat AndThen target model must not fabricate
-// grouped bytes (brace-group precedence: grouped intent must not collapse to slice-4 AndOr).
-fn bash_emit_subshell_grouped_wrong_and_then_model_rejects() -> Bool {
+// Discriminating — flat ungrouped bytes mis-parse the pipe|&& precedence.
+test fn bash_emit_pipe_and_or_flat_ne_brace_grouped_holds() -> Bool {
+  bash_pipe_and_or_flat_wrong_source_text != bash_pipe_and_or_brace_grouped_source_text
+}
+
+// RED — flat wrong bytes must not lhs-exact-match the brace-grouped production.
+fn bash_lhs_exact_pipe_flat_wrong_rejects_brace_grouped_lhs() -> Bool {
+  match bash_lhs_exact_relation_row_witness(
+    lhs: ^bash_production_pipe_and_or_brace_grouped,
+    tokens: bash_pipe_and_or_flat_wrong_concrete_tokens(),
+    emitted: bash_pipe_and_or_flat_wrong_emitted
+  ) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
+
+test fn bash_emit_pipe_flat_wrong_rejects_brace_grouped_lhs_holds() -> Bool {
+  bash_lhs_exact_pipe_flat_wrong_rejects_brace_grouped_lhs()
+}
+
+// RED — brace-grouped emitted through the flat-wrong target model must not fabricate grouped bytes.
+fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
   let tree = InferredTree {
-    root: bash_subshell_and_or_grouped_emitted,
+    root: bash_pipe_and_or_brace_grouped_emitted,
     facts: Map { lookup: bash_facts_lookup }
   }
-  match emit(tree: tree, target: bash_and_then_target_model()) {
+  match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried != bash_subshell_and_or_grouped_source_text) && (d == None)
+      (source.carried != bash_pipe_and_or_brace_grouped_source_text) && (d == None)
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn bash_emit_subshell_grouped_wrong_and_then_model_rejects_holds() -> Bool {
-  bash_emit_subshell_grouped_wrong_and_then_model_rejects()
+test fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects_holds() -> Bool {
+  bash_emit_pipe_brace_grouped_wrong_flat_model_rejects()
 }
