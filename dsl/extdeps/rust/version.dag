@@ -1,0 +1,38 @@
+// extdeps/rust/version.dag — Cargo version carriers (SemVer + version requirements).
+//
+// Fidelity — extdeps invariant (cite source; DESIGN.md §3):
+//   Spec: https://doc.rust-lang.org/cargo/reference/manifest.html
+//   Package version field: SemVer 2.0.0 (manifest.md#the-version-field).
+//   Dependency version field: semver version requirement
+//   (specifying-dependencies.md#specifying-dependencies) — caret/tilde/comparator
+//   syntax, not a bare published version.
+//
+// `SemVer` lives in `std.types` (see also `extdeps/version.dag`); this module aliases
+// it for crate manifests and brands the distinct dependency-requirement carrier.
+// Do not re-mint semver parsing here.
+//
+// Consumers:
+//   extdeps/rust/cargo.dag — `CargoPackage`, `RegistryDep`
+
+module extdeps.cargo_version
+
+import std.types { NonEmptyStr, SemVer }
+
+// Published crate version in `[package].version` (crates.io / workspace manifests).
+type CargoPackageVersion = SemVer
+
+// Dependency version requirement in `[dependencies].crate = "…"` — semver `VersionReq`
+// wire text (e.g. `"1"`, `"^1.2"`, `"=1.2.3"`), not a published `SemVer`.
+type CargoVersionRequirement = NonEmptyStr where brand("CargoVersionRequirement")
+
+// Single authority for the stage0/bootstrap crate package version token.
+data default_stage0_package_version: CargoPackageVersion = "0.1.0"
+
+// Render helpers exercised by witnesses (manifest emission reuses these tokens).
+fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
+  concat("version = \"", version, "\"")
+}
+
+fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String {
+  concat("\"", req, "\"")
+}

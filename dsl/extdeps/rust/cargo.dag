@@ -10,6 +10,7 @@
 
 module extdeps.cargo
 
+import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement }
 import std.types { FilePathParts }
 
 // -- Edition -------------------------------------------------------
@@ -39,7 +40,7 @@ data default_rust_edition: RustEdition = Edition2021
 
 type CargoPackage {
   name: String
-  version: String
+  version: CargoPackageVersion
   edition: RustEdition
   path: String
 }
@@ -51,7 +52,7 @@ type CargoPackage {
 // version (with optional features); a path dependency points at a local
 // crate directory. (Git/other sources extend this coproduct when needed.)
 type CargoDepSource
-  = RegistryDep  { version: String, features: List<String> }
+  = RegistryDep  { version: CargoVersionRequirement, features: List<String> }
   | LocalPathDep { path: String }
 
 type CargoDependency {
