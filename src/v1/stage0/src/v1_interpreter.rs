@@ -5085,6 +5085,31 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
+        "import_resolution_facts" => {
+            let pool_roots = expect_str_list(positional.first().copied(), "import_resolution_facts")?;
+            let importer_roots =
+                expect_str_list(positional.get(1).copied(), "import_resolution_facts")?;
+            let exclude_substrings =
+                expect_str_list(positional.get(2).copied(), "import_resolution_facts")?;
+            let facts = crate::import_resolution_project::import_resolution_facts(
+                &pool_roots,
+                &importer_roots,
+                &exclude_substrings,
+            );
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
+                fields.insert(ctx.sym("target_declared"), Value::Bool(f.target_declared));
+                items.push(Value::Record {
+                    type_name: ctx.sym("ImportResolutionFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
             crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
