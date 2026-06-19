@@ -2885,6 +2885,8 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
         (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
         (v, "String") => Ok(Value::Str(format!("{}", v))),
+        // Secret = nominal_opaque String — alias cast is identity (std/coercion.dag).
+        (Value::Str(s), "Secret") => Ok(Value::Str(s.clone())),
         (v, t) => Err(InterpError::TypeError {
             msg: format!("cannot cast {} to {}", v.type_label(), t),
         }),
