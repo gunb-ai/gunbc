@@ -148,11 +148,14 @@ fn ci_rust_gate_clippy_command() -> String {
 }
 
 fn ci_rust_gate_test_command() -> String {
-  // Two OR'd name filters (cargo runs a test if its name contains EITHER): the
-  // recorded-fixture purity suite + the resolve_expr_types redundant-re-traversal
-  // structural guard (the #5146-class O(2^depth) regression guard). The rest of
-  // v1-compiler-tests carries pre-existing reds, so CI pins the known-green subset.
-  "cargo test -p v1-compiler-tests interp_recorded_fixture resolve_expr_types_retraversal"
+  // Two name filters passed to libtest after `--` (a test runs if its name
+  // contains EITHER): the recorded-fixture purity suite + the resolve_expr_types
+  // redundant-re-traversal structural guard (the #5146-class O(2^depth) regression
+  // guard). The rest of v1-compiler-tests carries pre-existing reds, so CI pins the
+  // known-green subset. The `--` is required: `cargo test` accepts a single
+  // positional TESTNAME, so a second bare filter errors ("unexpected argument");
+  // multiple substring filters must follow `--` to reach the test binary.
+  "cargo test -p v1-compiler-tests -- interp_recorded_fixture resolve_expr_types_retraversal"
 }
 
 fn claim_executor_bin_shell() -> String {
