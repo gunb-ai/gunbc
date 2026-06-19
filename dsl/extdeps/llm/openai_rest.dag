@@ -13,6 +13,11 @@ import extdeps.llm.openai {
 }
 import extdeps.llm.openai_errors { OpenAiErrorShape }
 
+// 🟡 dissolved — feature:llm-openai-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
+// llm.OpenAI ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service llm.OpenAI {
   config {
     endpoint: "https://api.openai.com"
@@ -53,12 +58,6 @@ service llm.OpenAI {
       429 => OpenAiErrorShape
       5xx => OpenAiErrorShape
     }
-    mock_response {
-      200 => { id: "chatcmpl-mock123", object: "chat.completion", created: 1710000000, choices: [{ index: 0, message: { role: "assistant", content: "Mock response from GPT" }, finish_reason: "stop" }], model: "gpt-4o", usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } "Successful completion",
-      400 => { error: { message: "Invalid request", type: "invalid_request_error", code: null } } "Invalid request",
-      401 => { error: { message: "Incorrect API key provided", type: "invalid_api_key", code: "invalid_api_key" } } "Invalid API key",
-      429 => { error: { message: "Rate limit reached", type: "rate_limit_exceeded", code: "rate_limit_exceeded" } } "Rate limited"
-    }
   }
 
   operation Responses {
@@ -88,12 +87,6 @@ service llm.OpenAI {
       404 => OpenAiErrorShape
       429 => OpenAiErrorShape
       5xx => OpenAiErrorShape
-    }
-    mock_response {
-      200 => { id: "resp_mock123", object: "response", output: [{ type: "message", content: [{ type: "text", text: "Mock response" }] }], model: "gpt-4o", usage: { input_tokens: 15, output_tokens: 5 } } "Successful response",
-      400 => { error: { message: "Invalid request", type: "invalid_request_error", code: null } } "Invalid request",
-      401 => { error: { message: "Incorrect API key", type: "invalid_api_key", code: "invalid_api_key" } } "Invalid API key",
-      429 => { error: { message: "Rate limit reached", type: "rate_limit_exceeded", code: "rate_limit_exceeded" } } "Rate limited"
     }
   }
 }
