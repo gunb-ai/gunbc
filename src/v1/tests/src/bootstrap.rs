@@ -112,6 +112,12 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "resolved_graph_cache.rs",
         "v1_compiler_dag_collect.rs",
         "v1_compiler_dag_collect_support.rs",
+        "recorded_fixture.rs",
+        "extdeps_shape_transport_policy_project.rs",
+        "fact_cardinality_census.rs",
+        "layering_imports_project.rs",
+        "transport_script_position_project.rs",
+        "module_path_index.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
