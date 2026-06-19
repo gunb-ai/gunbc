@@ -667,6 +667,8 @@ fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) ->
 // Host-side v1 interpreter provider row for SingleSample witness measurements.
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
 
+// SCAFFOLD — dissolve-on: detected-host execution surface (extdeps/os host probe stamps
+// measurement_context from runtime; delete this hardcoded Linux/Posix constant).
 data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
   os: OperatingSystemSurface {
     kernel: Linux,

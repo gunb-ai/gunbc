@@ -2000,12 +2000,6 @@ pub struct DiscoverySummary {
     pub total_measured_nanos: u128,
 }
 
-/// CostAccount.time roll-up for a completed discovery run: Measured basis, nanoseconds
-/// from per-runnable PerformanceReceipt wall times (not resolve — resolve is separate).
-pub fn discovery_summary_cost_account_time_nanos(summary: &DiscoverySummary) -> u128 {
-    summary.total_measured_nanos
-}
-
 /// Default exclude set for floor discovery. Manifest/law files that import the
 /// ephemeral discovery output would otherwise re-enter discovery acyclically;
 /// the manual lane (`test/manual/`) carries its own ExpectPass|ExpectFail
