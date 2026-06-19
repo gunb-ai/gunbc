@@ -293,6 +293,26 @@ type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 //     `NonEmptyStr`.
 type CostEstimate { model: CostModel, unit_price: MoneyMicros, currency: CurrencyCode }
 
+// Per-second billed cloud quote — the product-side $/billing axis consumer for a
+// vendor hourly rate carried as `MoneyMicros` (Measure<Currency, Micro>). The vendor
+// catalog (extdeps.cloud.hetzner) owns the cited micro-EUR rows; this function is
+// vendor-agnostic — it projects any hourly `MoneyMicros` + ISO currency into the
+// `CostEstimate` shape the placement/isolation lattice reads via `ComputeOffer.cost_quote`.
+fn per_second_billed_cost_quote(unit_price: MoneyMicros, currency: CurrencyCode) -> CostEstimate {
+  CostEstimate {
+    model: CostModel {
+      cost_class: PerSecondBilled,
+      rates: ProviderCostModel { placeholder: true },
+    },
+    unit_price: unit_price,
+    currency: currency,
+  }
+}
+
+fn cost_estimate_unit_price_micros(quote: CostEstimate) -> Nat {
+  money_micros_count(m: quote.unit_price)
+}
+
 type ComputeOffer {
   provider: ProviderIdentity
   supply: ComputeSupplyFacts
