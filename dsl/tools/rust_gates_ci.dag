@@ -3,6 +3,7 @@
 // Realizes the three dependents of the Rust monolith (cargo fmt, cargo clippy, cargo test)
 // selected by `tools.rust_stage0_gates`. `git diff` is extdeps.git; cargo invocations use
 // `gunbc.ci_spec` EAGAIN retry scripts via shell.Exec (workflow policy, §3 — not dispatch_shell).
+// Nested func calls serialize host shell transports (parallel bindings race under batch-2 load).
 // the gate logic is `.dag` authority, the only Rust left is the `gunbc` interpreter seed.
 //
 // Run in CI: gunbc run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
@@ -26,22 +27,54 @@ import gunbc.ci_spec {
   ci_rust_gate_test_command,
 }
 
-// Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
-// pass iff all three succeed.
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+func run_fmt_check() -> ProcessExit {
+  fmt = shell.Exec.Run(
+    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
+  )
+  if fmt.success {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "cargo fmt --all --check failed" }
+  }
+}
+
+func run_clippy_check() -> ProcessExit {
+  clippy = shell.Exec.Run(
+    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_clippy_command())
+  )
+  if clippy.success {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "cargo clippy --all-targets -- -D warnings failed" }
+  }
+}
+
+func run_interp_fixture_test() -> ProcessExit {
+  test = shell.Exec.Run(
+    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_test_command())
+  )
+  if test.success {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "cargo test -p v1-compiler-tests interp_recorded_fixture failed" }
+  }
+}
+
+// Run cargo fmt, clippy, and test sequentially via separate func calls (all evaluated —
+// no short-circuit, so every failure surfaces). Parallel effect bindings in one func
+// body race under batch-2 load; nested func calls serialize host shell transports.
 // SCAFFOLD — gate scope: hermetic seam discriminators only (interp_recorded_fixture).
 // Dissolve-on: promote to extra_args ["--workspace"] when v1-compiler --lib self_* quartet
 // and full v1-compiler-tests package are green without ignored tests (§6 named trigger).
 func run_gates() -> ProcessExit {
-  fmt = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
-  )
-  clippy = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_clippy_command())
-  )
-  test = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_test_command())
-  )
-  return if fmt.success && clippy.success && test.success {
+  let fmt = run_fmt_check()
+  let clippy = run_clippy_check()
+  let test = run_interp_fixture_test()
+  return if exit_ok(e: fmt) && exit_ok(e: clippy) && exit_ok(e: test) {
     ExitSuccess
   } else {
     ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo test (hermetic discriminators)" }

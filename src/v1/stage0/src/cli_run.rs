@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::rc::Rc;
 
 use crate::std_node::compiler_recursive_types;
@@ -31,7 +32,9 @@ use serde::Serialize;
 
 use crate::resolved_graph_cache::{
     lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    write as cross_process_write, CacheLookupResult,
+    witness_baseline_cache_root_from_env, witness_baseline_lookup,
+    witness_baseline_record_verified_green, write as cross_process_write, CacheLookupResult,
+    WitnessBaselineLookup,
 };
 
 /// Module that owns `UnifiedTestClaim` and its registration arms.
@@ -439,7 +442,7 @@ pub fn resolve_entry_with_index(
     ),
     String,
 > {
-    resolve_entry_with_parse_cache(index, entry_file)
+    resolve_entry_with_parse_cache(index, entry_file, None)
 }
 
 fn resolve_entry_graph_with_index(
@@ -472,6 +475,7 @@ fn resolve_entry_graph_with_index(
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
+    preloaded_sources: Option<Vec<Rc<v1_compiler_compile::SourceFile>>>,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -479,7 +483,10 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
-    let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
+    let sources = match preloaded_sources {
+        Some(sources) => sources,
+        None => load_sources_for_entry_with_index(&index.source_files, entry_file)?,
+    };
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
@@ -2074,10 +2081,12 @@ pub struct EntryResolveReceipt {
 }
 
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
-/// many passed, and a rendered failure line per non-pass (empty on full green).
+/// many passed, how many were skipped (verified-green baseline), and a rendered
+/// failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
+    pub skipped: usize,
     pub failures: Vec<String>,
     /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
@@ -2087,6 +2096,25 @@ pub struct DiscoverySummary {
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
     pub total_measured_nanos: u128,
+}
+
+/// CostAccount.time roll-up for a completed discovery run: Measured basis, nanoseconds
+/// from per-runnable PerformanceReceipt wall times (not resolve — resolve is separate).
+pub fn discovery_summary_cost_account_time_nanos(summary: &DiscoverySummary) -> u128 {
+    summary.total_measured_nanos
+}
+
+/// Phase 1.5a — affected-set floor skip policy (mirrors RunnableDiscoveryBatch).
+pub struct DiscoveryCorpusOptions {
+    pub skip_unaffected_verified_baseline: bool,
+}
+
+impl Default for DiscoveryCorpusOptions {
+    fn default() -> Self {
+        Self {
+            skip_unaffected_verified_baseline: false,
+        }
+    }
 }
 
 /// Default exclude set for floor discovery. Manifest/law files that import the
@@ -2280,6 +2308,99 @@ pub fn discover_floor_corpus_rows(
     Ok(rows)
 }
 
+/// Default diff policy — witness-gated to `floor_skip_git_diff_policy()` /
+/// `gunbc.ci_spec.diff_policy` (`floor_runner_host_diff_policy_matches_ci_spec_holds`).
+const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
+const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
+
+/// Git diff transport outcome for floor skip policy (mirrors `FloorDiffObservation`).
+/// Observation failure is untrustworthy → fail-closed run-all. Successful empty diff
+/// is valid input; content-addressed baseline match is the skip safety guard.
+enum FloorGitDiffOutcome {
+    ObservationFailClosed,
+    PathsProduced(Vec<String>),
+}
+
+/// Git name-only diff for CI floor skip.
+/// Defaults from [`FLOOR_CI_DIFF_POLICY_BASE`] / [`FLOOR_CI_DIFF_POLICY_HEAD`]
+/// (projected from `gunbc.ci_spec.diff_policy`; witness-gated, not consulted live).
+/// Host override: `GUNBC_CI_DIFF_BASE` / `_HEAD` / `_MERGE_BASE`.
+/// Fail-closed: any git error returns Err so callers run the full corpus.
+pub fn floor_git_diff_name_only_paths() -> Result<Vec<String>, String> {
+    let base = std::env::var("GUNBC_CI_DIFF_BASE")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
+    let head = std::env::var("GUNBC_CI_DIFF_HEAD")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_HEAD.to_string());
+    let merge_base = std::env::var("GUNBC_CI_DIFF_MERGE_BASE")
+        .map(|v| v != "0" && v != "false")
+        .unwrap_or(true);
+    let range = if merge_base {
+        format!("{base}...{head}")
+    } else {
+        format!("{base} {head}")
+    };
+    let output = Command::new("git")
+        .args(["diff", "--name-only", &range])
+        .output()
+        .map_err(|e| format!("git diff spawn failed: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git diff --name-only {range} failed: {stderr}"));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut paths: Vec<String> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.replace('\\', "/"))
+        .collect();
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+/// Entry/closure diff touch — `/`-bounded prefix (mirrors
+/// `v2.workflow.affected_set_floor_runner.floor_path_touched_by_changed`).
+/// SCAFFOLD git-diff intersection; dissolves with affected_set_reading node-frontier.
+fn floor_path_touched_by_diff(path: &str, changed_paths: &[String]) -> bool {
+    changed_paths.iter().any(|changed| {
+        path == changed.as_str()
+            || (path.len() > changed.len()
+                && path.starts_with(changed.as_str())
+                && path.as_bytes().get(changed.len()) == Some(&b'/'))
+            || (changed.len() > path.len()
+                && changed.starts_with(path)
+                && changed.as_bytes().get(path.len()) == Some(&b'/'))
+    })
+}
+
+fn floor_entry_closure_touched_from_sources(
+    entry: &str,
+    changed_paths: &[String],
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+) -> bool {
+    if floor_path_touched_by_diff(entry, changed_paths) {
+        return true;
+    }
+    sources
+        .iter()
+        .any(|source| floor_path_touched_by_diff(&source.path, changed_paths))
+}
+
+fn floor_witness_should_skip(
+    function: &str,
+    closure_digest: &String,
+    baseline_cache: Option<&Path>,
+) -> bool {
+    let Some(cache_root) = baseline_cache else {
+        return false;
+    };
+    match witness_baseline_lookup(cache_root, closure_digest, function) {
+        WitnessBaselineLookup::VerifiedGreen => true,
+        WitnessBaselineLookup::Miss | WitnessBaselineLookup::RejectedMalformed => false,
+    }
+}
+
 /// Run the whole floor discovery corpus through one shared module index
 /// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
 /// are appended to the discovered roster with `(entry, function)` dedup — exactly
@@ -2293,6 +2414,22 @@ pub fn run_discovery_corpus(
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    run_discovery_corpus_with_options(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        DiscoveryCorpusOptions::default(),
+    )
+}
+
+pub fn run_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
     let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
@@ -2321,11 +2458,41 @@ pub fn run_discovery_corpus(
     }
     let index = build_multi_entry_index(source_roots);
 
+    let diff_outcome = if options.skip_unaffected_verified_baseline {
+        match floor_git_diff_name_only_paths() {
+            Ok(paths) => FloorGitDiffOutcome::PathsProduced(paths),
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: git diff unavailable ({msg}) — fail-closed, running full corpus"
+                );
+                FloorGitDiffOutcome::ObservationFailClosed
+            }
+        }
+    } else {
+        FloorGitDiffOutcome::PathsProduced(Vec::new())
+    };
+    let (skip_enabled, changed_paths) = match diff_outcome {
+        FloorGitDiffOutcome::ObservationFailClosed => (false, Vec::new()),
+        FloorGitDiffOutcome::PathsProduced(paths) => {
+            (options.skip_unaffected_verified_baseline, paths)
+        }
+    };
+    // SCAFFOLD — thin host transport feeding `v2.workflow.affected_set_floor_runner`
+    // (`floor_witness_run_disposition`). Dissolve-on: host reads git/cache only;
+    // kernel decides skip (ROADMAP.md — affected-set floor skip kernel consumption).
+    // Paired witness: `floor_runner_host_kernel_skip_equivalent_holds`.
+    let baseline_cache = if skip_enabled {
+        witness_baseline_cache_root_from_env()
+    } else {
+        None
+    };
+
     // Group by entry (rows are sorted by (entry, function)), resolve each entry
     // once, run its witnesses against the shared graph.
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
+        skipped: 0,
         failures: Vec::new(),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
@@ -2335,14 +2502,23 @@ pub fn run_discovery_corpus(
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
+    let mut current_entry_closure_touched = true;
     for row in &rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
-                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let (graph, source_indices) = if skip_enabled {
+                current_entry_closure_touched =
+                    floor_entry_closure_touched_from_sources(&row.entry, &changed_paths, &sources);
+                resolve_entry_with_parse_cache(&index, &row.entry, Some(sources))
+                    .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?
+            } else {
+                current_entry_closure_touched = true;
+                resolve_entry_with_index(&index, &row.entry)
+                    .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?
+            };
             let resolve_nanos = resolve_started.elapsed().as_nanos();
             summary.total_resolve_nanos += resolve_nanos;
             summary.entry_resolve_receipts.push(EntryResolveReceipt {
@@ -2354,15 +2530,36 @@ pub fn run_discovery_corpus(
             ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
             current_entry = Some(row.entry.clone());
         }
-        let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
-            .as_deref()
-            .expect("closure subject set above");
-        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+            .as_ref()
+            .expect("closure subject set on entry resolve above");
+        if skip_enabled
+            && !current_entry_closure_touched
+            && floor_witness_should_skip(&row.function, closure_subject, baseline_cache.as_deref())
+        {
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [verified-green baseline] {} ({})",
+                row.function, row.entry
+            );
+            continue;
+        }
+        let ctx_ref = ctx.as_ref().expect("ctx set above");
+        let (outcome, receipt) =
+            run_claim_measured(ctx_ref, closure_subject.as_str(), &row.function);
         summary.total_measured_nanos += receipt.wall_nanos;
         summary.performance_receipts.push(receipt);
         match outcome {
-            ClaimOutcome::Pass => summary.passed += 1,
+            ClaimOutcome::Pass => {
+                summary.passed += 1;
+                if let Some(cache_root) = baseline_cache.as_deref() {
+                    let _ = witness_baseline_record_verified_green(
+                        cache_root,
+                        closure_subject,
+                        &row.function,
+                    );
+                }
+            }
             ClaimOutcome::Fail => summary.failures.push(format!(
                 "{} ({}) returned Bool(false)",
                 row.function, row.entry

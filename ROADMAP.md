@@ -22,6 +22,9 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
     - root-cause: H1 missing resolve memo (maybe bypassed `resolved_graph_cache`) vs H2 generic-instantiation
 - Phase 0 measurement keystone (#5176) — v1 hand-Rust proving handler for `RealizationMeasureEffect`;
   P5 receipts in `docs/plans/realization-measurement-loop.md` Phase 0 table; dissolve-on v2 eval fold
+- Phase 1.5a affected-set floor skip kernel consumption (#5179) — `floor_witness_run_disposition`
+  is policy authority; host thins to git/cache transport + feeds kernel; dissolve-on
+  `affected_set_reading` node-frontier replaces entry-closure git-diff intersection
 - Lens universalization + host-language ban — in flight (quiet-swift-814)
   - host-language ban: enforcement via `shell.Exec.Run.script` String→ShellProgram typecheck (#5147 landed; type-flip capstone warm-badger); #5132 substring lens retired TERMINAL
   - GO B interim guard: `v2.lens.host_language_transport_script` + hand-Rust parse bridge `src/v1/stage0/src/transport_script_position_project.rs` (receipt: same `*_count_for_path` builtin lane as `extdeps_shape_transport_policy_project` — registered in `04_method.dag`, corpus `host_language_transport_script/corpus/migrated_transports_clean_test.dag`)

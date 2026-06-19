@@ -38,6 +38,8 @@ mod effects;
 #[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
+mod floor_skip_discovery_host_test;
+#[cfg(test)]
 mod extdeps_shape_transport_policy_lens_test;
 #[cfg(test)]
 mod fact_cardinality_lens_test;

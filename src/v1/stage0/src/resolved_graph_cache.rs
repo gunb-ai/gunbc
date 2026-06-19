@@ -372,3 +372,104 @@ pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> R
     }
     Ok(())
 }
+
+// ── Witness verified-green baseline (Phase 1.5a affected-set floor skip) ─────
+
+pub const WITNESS_BASELINE_VERSION: &str = "witness-baseline-v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WitnessBaselineLookup {
+    VerifiedGreen,
+    Miss,
+    RejectedMalformed,
+}
+
+pub fn witness_baseline_cache_root_from_env() -> Option<PathBuf> {
+    std::env::var_os("GUNBC_WITNESS_BASELINE_CACHE_DIR").map(PathBuf::from)
+}
+
+fn witness_subject_digest(closure_digest: &Hash, function: &str) -> Hash {
+    let mut digest = closure_digest.clone();
+    digest = v1_rt::hash_combine(
+        digest,
+        v1_rt::atom_identity_hash(WITNESS_BASELINE_VERSION.to_string()),
+    );
+    v1_rt::hash_combine(digest, v1_rt::atom_identity_hash(function.to_string()))
+}
+
+fn witness_baseline_artifact_path(cache_root: &Path, subject_digest: &str) -> PathBuf {
+    let prefix = if subject_digest.len() >= 2 {
+        &subject_digest[..2]
+    } else {
+        subject_digest
+    };
+    cache_root
+        .join(prefix)
+        .join(format!("{subject_digest}.wbl"))
+}
+
+pub fn witness_baseline_lookup(
+    cache_root: &Path,
+    closure_digest: &Hash,
+    function: &str,
+) -> WitnessBaselineLookup {
+    let subject = witness_subject_digest(closure_digest, function);
+    let subject_str = subject.to_string();
+    if !v1_rt::is_hash_digest(&subject_str) {
+        return WitnessBaselineLookup::RejectedMalformed;
+    }
+    let path = witness_baseline_artifact_path(cache_root, &subject_str);
+    if !path.is_file() {
+        return WitnessBaselineLookup::Miss;
+    }
+    let mut file = match File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return WitnessBaselineLookup::Miss,
+    };
+    let mut stored = String::new();
+    if file.read_to_string(&mut stored).is_err() {
+        return WitnessBaselineLookup::Miss;
+    }
+    if stored.trim() == subject_str {
+        // Tombstone integrity: path is keyed by subject_digest; body re-states it so
+        // corruption, partial writes, or wrong-file-at-path fail closed (SCAFFOLD —
+        // not an independent witness payload; dissolve-on with kernel consumption).
+        WitnessBaselineLookup::VerifiedGreen
+    } else {
+        WitnessBaselineLookup::RejectedMalformed
+    }
+}
+
+pub fn witness_baseline_record_verified_green(
+    cache_root: &Path,
+    closure_digest: &Hash,
+    function: &str,
+) -> Result<(), String> {
+    let subject = witness_subject_digest(closure_digest, function);
+    let subject_str = subject.to_string();
+    if !v1_rt::is_hash_digest(&subject_str) {
+        return Err("witness baseline subject digest malformed".to_string());
+    }
+    let final_path = witness_baseline_artifact_path(cache_root, &subject_str);
+    if final_path.is_file() {
+        return Ok(());
+    }
+    if let Some(parent) = final_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("witness baseline mkdir {:?}: {e}", parent))?;
+    }
+    let tmp = final_path.with_extension(format!("{}.tmp", std::process::id()));
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .map_err(|e| format!("witness baseline temp write {:?}: {e}", tmp))?;
+        file.write_all(subject_str.as_bytes())
+            .map_err(|e| format!("witness baseline write: {e}"))?;
+        file.sync_all()
+            .map_err(|e| format!("witness baseline sync: {e}"))?;
+    }
+    fs::rename(&tmp, &final_path).map_err(|e| format!("witness baseline rename: {e}"))?;
+    Ok(())
+}

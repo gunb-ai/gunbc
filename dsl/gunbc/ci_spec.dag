@@ -82,7 +82,7 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
     concat(
       concat(
         concat(
-          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' \"$BUILD_LOG\"; then\n",
+          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$BUILD_LOG\"; then\n",
           "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
         ),
         concat(

@@ -1,0 +1,365 @@
+// v2/workflow/affected_set_floor_runner_test.dag
+// Phase 1.5a witnesses — skip policy fail-closed + verified-green baseline.
+
+module v2.test.workflow.affected_set_floor_runner
+
+import std.types { ContentHash }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.affected_set_floor_runner {
+  BaselineMiss,
+  BaselineLookupFailClosed,
+  DiffObservationFailClosed,
+  DiffPathsProduced,
+  FloorDiffObservation,
+  FloorWitnessRow,
+  RunWitness,
+  SkipVerifiedGreen,
+  VerifiedGreenBaseline,
+  WitnessBaselineLookup,
+  floor_closure_path_in_diff,
+  floor_path_touched_by_changed,
+  floor_path_touched_by_diff,
+  floor_host_scaffold_would_skip,
+  floor_scaffold_kernel_skip_from_host_signals,
+  floor_kernel_would_skip,
+  floor_skip_git_diff_policy,
+  floor_witness_run_disposition
+}
+import gunbc.ci_spec { DiffMergeBase, DiffTwoDot }
+
+data floor_test_baseline_digest: ContentHash = "floor-test-baseline-v1"
+
+data floor_test_untouched_entry: String = "src/v2/workflow/affected_set_floor_runner_test.dag"
+
+data floor_test_touched_entry: String = "src/v2/lens/affected_set.dag"
+
+data floor_test_prefix_parent_entry: String = "src/v2/workflow"
+
+data floor_test_prefix_child_path: String = "src/v2/workflow/affected_set_floor_runner.dag"
+
+data floor_test_false_prefix_sibling: String = "src/v2/workflow/affected_set_floor_runner_test.dag.bak"
+
+data floor_test_row_untouched: FloorWitnessRow = FloorWitnessRow {
+  label: "floor_runner: untouched witness",
+  entry: floor_test_untouched_entry,
+  function: "floor_test_untouched_witness_holds"
+}
+
+data floor_test_row_touched: FloorWitnessRow = FloorWitnessRow {
+  label: "floor_runner: touched witness",
+  entry: floor_test_touched_entry,
+  function: "floor_test_touched_witness_holds"
+}
+
+data floor_test_row_prefix_parent: FloorWitnessRow = FloorWitnessRow {
+  label: "floor_runner: prefix-parent witness",
+  entry: floor_test_prefix_parent_entry,
+  function: "floor_test_prefix_parent_witness_holds"
+}
+
+data floor_test_diff_untouched: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: [floor_test_touched_entry]
+}
+
+data floor_test_diff_prefix_child: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: [floor_test_prefix_child_path]
+}
+
+data floor_test_diff_empty: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: []
+}
+
+data floor_test_diff_fail_closed: FloorDiffObservation = DiffObservationFailClosed {
+  reason: "git diff unavailable"
+}
+
+data floor_test_closure_only_path: String = "src/v2/workflow/affected_set_floor_runner.dag"
+
+data floor_test_verified_baseline: WitnessBaselineLookup = VerifiedGreenBaseline {
+  subject_digest: floor_test_baseline_digest
+}
+
+fn floor_test_unaffected_with_baseline_skips_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_untouched,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: floor_test_verified_baseline
+  ) {
+    SkipVerifiedGreen { baseline: digest } => digest == floor_test_baseline_digest
+    RunWitness { reason: _ } => false
+  }
+}
+
+fn floor_test_baseline_miss_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_untouched,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: BaselineMiss
+  ) {
+    RunWitness { reason: reason } => reason == "baseline miss"
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_diff_touched_entry_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_touched,
+    diff: floor_test_diff_untouched,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: floor_test_verified_baseline
+  ) {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_diff_fail_closed_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_fail_closed,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: floor_test_verified_baseline
+  ) {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_affected_set_fail_closed_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_empty,
+    affected_fail_closed: true,
+    row_touched_by_closure: false,
+    baseline: floor_test_verified_baseline
+  ) {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_empty_diff_verified_green_skips_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_empty,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: floor_test_verified_baseline
+  ) {
+    SkipVerifiedGreen { baseline: digest } => digest == floor_test_baseline_digest
+    RunWitness { reason: _ } => false
+  }
+}
+
+fn floor_test_closure_touch_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_empty,
+    affected_fail_closed: false,
+    row_touched_by_closure: true,
+    baseline: floor_test_verified_baseline
+  ) {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_baseline_lookup_fail_closed_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_untouched,
+    diff: floor_test_diff_untouched,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: BaselineLookupFailClosed { reason: "cache unreadable" }
+  ) {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_should_run_projection_holds() -> Bool {
+  match RunWitness { reason: "baseline miss" } {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+    && !match SkipVerifiedGreen { baseline: floor_test_baseline_digest } {
+      RunWitness { reason: _ } => true
+      SkipVerifiedGreen { baseline: _ } => false
+    }
+}
+
+fn floor_test_slash_bounded_prefix_touch_holds() -> Bool {
+  let paths = [floor_test_touched_entry]
+  floor_path_touched_by_changed(
+    path: floor_test_touched_entry,
+    changed: floor_test_touched_entry
+  )
+    && floor_path_touched_by_changed(
+      path: floor_test_prefix_parent_entry,
+      changed: floor_test_prefix_child_path
+    )
+    && !floor_path_touched_by_changed(
+      path: floor_test_untouched_entry,
+      changed: floor_test_touched_entry
+    )
+    && !floor_path_touched_by_changed(
+      path: floor_test_untouched_entry,
+      changed: floor_test_false_prefix_sibling
+    )
+    && floor_path_touched_by_diff(path: floor_test_touched_entry, changed_paths: paths)
+    && floor_closure_path_in_diff(path: floor_test_prefix_parent_entry, changed_paths: [
+      floor_test_prefix_child_path
+    ])
+}
+
+fn floor_test_prefix_parent_entry_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    row: floor_test_row_prefix_parent,
+    diff: floor_test_diff_prefix_child,
+    affected_fail_closed: false,
+    row_touched_by_closure: false,
+    baseline: floor_test_verified_baseline
+  ) {
+    RunWitness { reason: _ } => true
+    SkipVerifiedGreen { baseline: _ } => false
+  }
+}
+
+fn floor_test_host_diff_policy_matches_ci_spec_holds() -> Bool {
+  let policy = floor_skip_git_diff_policy()
+  policy.base == "origin/main" &&
+    policy.head == "HEAD" &&
+    match policy.mode {
+      DiffMergeBase => true
+      DiffTwoDot => false
+    }
+}
+
+fn floor_test_host_kernel_skip_equivalent_holds() -> Bool {
+  let paths_touched = [floor_test_touched_entry]
+  let paths_child = [floor_test_prefix_child_path]
+  let paths_closure_only = [floor_test_closure_only_path]
+  floor_host_scaffold_would_skip(
+    entry_closure_touched: false,
+    baseline: floor_test_verified_baseline
+  ) == floor_scaffold_kernel_skip_from_host_signals(
+    row: floor_test_row_untouched,
+    changed_paths: paths_touched,
+    entry_closure_touched: false,
+    baseline: floor_test_verified_baseline
+  )
+    && floor_host_scaffold_would_skip(
+      entry_closure_touched: true,
+      baseline: floor_test_verified_baseline
+    ) == floor_scaffold_kernel_skip_from_host_signals(
+      row: floor_test_row_touched,
+      changed_paths: paths_touched,
+      entry_closure_touched: true,
+      baseline: floor_test_verified_baseline
+    )
+    && floor_host_scaffold_would_skip(
+      entry_closure_touched: true,
+      baseline: floor_test_verified_baseline
+    ) == floor_scaffold_kernel_skip_from_host_signals(
+      row: floor_test_row_prefix_parent,
+      changed_paths: paths_child,
+      entry_closure_touched: true,
+      baseline: floor_test_verified_baseline
+    )
+    && floor_host_scaffold_would_skip(
+      entry_closure_touched: true,
+      baseline: floor_test_verified_baseline
+    ) == floor_scaffold_kernel_skip_from_host_signals(
+      row: floor_test_row_untouched,
+      changed_paths: paths_closure_only,
+      entry_closure_touched: true,
+      baseline: floor_test_verified_baseline
+    )
+    && floor_host_scaffold_would_skip(
+      entry_closure_touched: false,
+      baseline: BaselineMiss
+    ) == floor_scaffold_kernel_skip_from_host_signals(
+      row: floor_test_row_untouched,
+      changed_paths: paths_touched,
+      entry_closure_touched: false,
+      baseline: BaselineMiss
+    )
+    && floor_host_scaffold_would_skip(
+      entry_closure_touched: false,
+      baseline: BaselineLookupFailClosed { reason: "cache unreadable" }
+    ) == floor_scaffold_kernel_skip_from_host_signals(
+      row: floor_test_row_untouched,
+      changed_paths: paths_touched,
+      entry_closure_touched: false,
+      baseline: BaselineLookupFailClosed { reason: "cache unreadable" }
+    )
+    && floor_host_scaffold_would_skip(
+      entry_closure_touched: false,
+      baseline: floor_test_verified_baseline
+    ) == floor_scaffold_kernel_skip_from_host_signals(
+      row: floor_test_row_untouched,
+      changed_paths: [],
+      entry_closure_touched: false,
+      baseline: floor_test_verified_baseline
+    )
+}
+
+test fn floor_runner_unaffected_verified_green_skips_holds() -> Bool {
+  floor_test_unaffected_with_baseline_skips_holds()
+}
+
+test fn floor_runner_baseline_miss_runs_holds() -> Bool {
+  floor_test_baseline_miss_runs_holds()
+}
+
+test fn floor_runner_diff_touched_entry_runs_holds() -> Bool {
+  floor_test_diff_touched_entry_runs_holds()
+}
+
+test fn floor_runner_diff_fail_closed_runs_holds() -> Bool {
+  floor_test_diff_fail_closed_runs_holds()
+}
+
+test fn floor_runner_affected_set_fail_closed_runs_holds() -> Bool {
+  floor_test_affected_set_fail_closed_runs_holds()
+}
+
+test fn floor_runner_empty_diff_verified_green_skips_holds() -> Bool {
+  floor_test_empty_diff_verified_green_skips_holds()
+}
+
+test fn floor_runner_closure_touch_runs_holds() -> Bool {
+  floor_test_closure_touch_runs_holds()
+}
+
+test fn floor_runner_baseline_lookup_fail_closed_runs_holds() -> Bool {
+  floor_test_baseline_lookup_fail_closed_runs_holds()
+}
+
+test fn floor_runner_slash_bounded_prefix_touch_holds() -> Bool {
+  floor_test_slash_bounded_prefix_touch_holds()
+}
+
+test fn floor_runner_prefix_parent_entry_runs_holds() -> Bool {
+  floor_test_prefix_parent_entry_runs_holds()
+}
+
+test fn floor_runner_host_diff_policy_matches_ci_spec_holds() -> Bool {
+  floor_test_host_diff_policy_matches_ci_spec_holds()
+}
+
+test fn floor_runner_host_kernel_skip_equivalent_holds() -> Bool {
+  floor_test_host_kernel_skip_equivalent_holds()
+}
+
+test fn floor_runner_should_run_projection_holds() -> Bool {
+  floor_test_should_run_projection_holds()
+}

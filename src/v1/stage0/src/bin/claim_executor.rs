@@ -38,8 +38,8 @@ use std::process::ExitCode;
 use std::thread;
 
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus, run_value,
-    ClaimOutcome,
+    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
+    run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
@@ -66,6 +66,7 @@ enum Runnable {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
+        skip_unaffected_verified_baseline: bool,
     },
 }
 
@@ -218,10 +219,24 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => Vec::new(),
             };
+            let skip_unaffected_verified_baseline =
+                match ctx.field(fields, "skip_unaffected_verified_baseline") {
+                    Some(v) => match v {
+                        Value::Bool(b) => *b,
+                        other => {
+                            return Err(format!(
+                        "RunnableDiscoveryBatch.skip_unaffected_verified_baseline is {}, not Bool",
+                        ctx.format_value(other)
+                    ))
+                        }
+                    },
+                    None => false,
+                };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
+                skip_unaffected_verified_baseline,
             })
         }
         other => Err(format!(
@@ -262,7 +277,13 @@ fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResul
             source_roots: roots,
             scan_dirs,
             explicit_entries,
-        } => run_discovery_batch_node(roots, scan_dirs, explicit_entries),
+            skip_unaffected_verified_baseline,
+        } => run_discovery_batch_node(
+            roots,
+            scan_dirs,
+            explicit_entries,
+            skip_unaffected_verified_baseline,
+        ),
     }
 }
 
@@ -322,17 +343,26 @@ fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
+    skip_unaffected_verified_baseline: bool,
 ) -> ClaimResult {
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit]",
+        "discovery-corpus[{} root(s)+{} explicit{}]",
         source_roots.len(),
-        explicit_entries.len()
+        explicit_entries.len(),
+        if skip_unaffected_verified_baseline {
+            ", affected-set skip"
+        } else {
+            ""
+        }
     );
-    match run_discovery_corpus(
+    match run_discovery_corpus_with_options(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
         ExecutionMode::Wet,
+        DiscoveryCorpusOptions {
+            skip_unaffected_verified_baseline,
+        },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
@@ -343,7 +373,12 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos,
             );
             ClaimResult {
-                function: format!("{label} ({} witnesses)", summary.total),
+                function: format!(
+                    "{label} ({} ran, {} skipped of {} witnesses)",
+                    summary.passed + summary.failures.len(),
+                    summary.skipped,
+                    summary.total
+                ),
                 ok: true,
                 detail: String::new(),
             }
@@ -621,10 +656,12 @@ fn run_perturb_check(
                         source_roots: roots,
                         scan_dirs,
                         explicit_entries,
+                        skip_unaffected_verified_baseline,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
+                        skip_unaffected_verified_baseline: *skip_unaffected_verified_baseline,
                     },
                 })
                 .collect()

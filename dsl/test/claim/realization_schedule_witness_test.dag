@@ -31,6 +31,7 @@ fn synthetic_correct_schedule() -> List<List<Runnable>> {
         source_roots: ["dsl"]
         scan_dirs: []
         explicit_entries: []
+        skip_unaffected_verified_baseline: false
       },
       RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes" }
     ]

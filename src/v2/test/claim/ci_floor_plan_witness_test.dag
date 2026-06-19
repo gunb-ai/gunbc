@@ -25,7 +25,7 @@ data corpus_sentinel: String = "__corpus__"
 fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => corpus_sentinel
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_verified_baseline: _ } => corpus_sentinel
   }
 }
 
@@ -65,7 +65,7 @@ fn witness_independent_jobs_parallelize() -> Bool {
 // Scan dirs are carried by the plan discovery batch — authority from ci_layer_roots.
 fn witness_discovery_scan_dirs_in_plan() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_verified_baseline: _ } =>
       list_contains_str(xs: dirs, target: "dsl/test/claim")
     _ => false
   }
@@ -73,8 +73,17 @@ fn witness_discovery_scan_dirs_in_plan() -> Bool {
 
 fn witness_scan_dirs_match_layer_authority() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_verified_baseline: _ } =>
       list_contains_str(xs: dirs, target: witness_discovery_scan_dirs.first())
+    _ => false
+  }
+}
+
+// Phase 1.5a: corpus discovery batch enables affected-set skip (fail-closed on miss).
+fn witness_corpus_skip_unaffected_enabled() -> Bool {
+  match corpus_runnable() {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_verified_baseline: skip } =>
+      skip
     _ => false
   }
 }
@@ -83,7 +92,7 @@ fn witness_scan_dirs_match_layer_authority() -> Bool {
 // is marker-driven only — no hand-listed explicit_entries (§3/§5).
 fn witness_corpus_has_no_explicit_entries() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries } =>
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_verified_baseline: skip } =>
       (length(xs: entries) == 0) &&
         list_contains_str(xs: roots, target: "src/v2") &&
         list_contains_str(xs: roots, target: "dsl") &&
@@ -99,5 +108,6 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_independent_jobs_parallelize() &&
     witness_discovery_scan_dirs_in_plan() &&
     witness_scan_dirs_match_layer_authority() &&
-    witness_corpus_has_no_explicit_entries()
+    witness_corpus_has_no_explicit_entries() &&
+    witness_corpus_skip_unaffected_enabled()
 }

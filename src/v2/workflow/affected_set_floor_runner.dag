@@ -1,0 +1,176 @@
+// v2/workflow/affected_set_floor_runner.dag
+// Scope: Phase 1.5a — CI floor witness skip policy authority (affected-set lane).
+// Status: models fail-closed run vs verified-green baseline skip for diff-unaffected
+//   discovery-corpus rows. Host transport: cli_run::run_discovery_corpus reads
+//   RunnableDiscoveryBatch.skip_unaffected_verified_baseline; git diff defaults
+//   MUST match gunbc.ci_spec.diff_policy via floor_skip_git_diff_policy() projection;
+//   host cli_run FLOOR_CI_DIFF_POLICY_* defaults are witness-gated to that projection
+//   (floor_runner_host_diff_policy_matches_ci_spec_holds); env GUNBC_CI_DIFF_* overrides
+//   at the host boundary — .dag is not consulted at runtime by the executor).
+// Dissolution trigger: per-witness node-frontier disposition reified from
+//   affected_set_reading (full lens) replaces entry-closure diff intersection.
+// §7 scaffold receipt (checkable): ROADMAP.md Phase 1.5a kernel-consumption row;
+//   interim gate floor_runner_host_kernel_skip_equivalent_holds (host skip slice ↔ kernel).
+
+module v2.workflow.affected_set_floor_runner
+
+import std.types { ContentHash }
+import gunbc.ci_spec { gunbc_ci_spec, DiffMergeBase, DiffPolicy }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// Host git-diff transport outcome — fail-closed arms force RunAll.
+type FloorDiffObservation
+  = DiffPathsProduced { changed_paths: List<String> }
+  | DiffObservationFailClosed { reason: String }
+
+// Baseline lookup for one witness row (content-addressed subject + function).
+type WitnessBaselineLookup
+  = VerifiedGreenBaseline { subject_digest: ContentHash }
+  | BaselineMiss
+  | BaselineLookupFailClosed { reason: String }
+
+// Per-row disposition — Skip only on VerifiedGreenBaseline when unaffected.
+type WitnessRunDisposition
+  = RunWitness { reason: String }
+  | SkipVerifiedGreen { baseline: ContentHash }
+
+type FloorWitnessRow {
+  label: String
+  entry: String
+  function: String
+}
+
+// `/`-bounded prefix touch — mirrors cli_run::floor_path_touched_by_diff (what ships).
+fn floor_path_touched_by_changed(path: String, changed: String) -> Bool {
+  if path == changed {
+    true
+  } else {
+    starts_with(s: path, prefix: concat(changed, "/"))
+      || starts_with(s: changed, prefix: concat(path, "/"))
+  }
+}
+
+fn floor_path_touched_by_diff(path: String, changed_paths: List<String>) -> Bool {
+  fold(changed_paths, init: false, f: fn(acc, changed) {
+    acc || floor_path_touched_by_changed(path: path, changed: changed)
+  })
+}
+
+fn floor_entry_path_in_diff(entry: String, changed_paths: List<String>) -> Bool {
+  floor_path_touched_by_diff(path: entry, changed_paths: changed_paths)
+}
+
+// Host closure-path touch uses the same prefix rule as entry (SCAFFOLD git-diff
+// intersection; row_touched_by_closure in floor_witness_run_disposition).
+fn floor_closure_path_in_diff(path: String, changed_paths: List<String>) -> Bool {
+  floor_path_touched_by_diff(path: path, changed_paths: changed_paths)
+}
+
+fn floor_witness_row_affected_by_diff(
+  row: FloorWitnessRow,
+  changed_paths: List<String>
+) -> Bool {
+  floor_entry_path_in_diff(entry: row.entry, changed_paths: changed_paths)
+}
+
+// Single-authority projection for host git-diff defaults (cli_run FLOOR_CI_DIFF_POLICY_*).
+fn floor_skip_git_diff_policy() -> DiffPolicy {
+  gunbc_ci_spec.diff_policy
+}
+
+// Policy kernel — fail-closed (Run) on ambiguous diff, affected-set fail-closed,
+// baseline miss, or any diff/closure touch; skip ONLY on verified-green baseline match.
+fn floor_witness_run_disposition(
+  row: FloorWitnessRow,
+  diff: FloorDiffObservation,
+  affected_fail_closed: Bool,
+  row_touched_by_closure: Bool,
+  baseline: WitnessBaselineLookup
+) -> WitnessRunDisposition {
+  if affected_fail_closed {
+    RunWitness { reason: "fail-closed: affected-set ambiguous" }
+  } else {
+    match diff {
+      DiffObservationFailClosed { reason: reason } =>
+        RunWitness { reason: reason }
+      DiffPathsProduced { changed_paths: paths } =>
+        if floor_witness_row_affected_by_diff(row: row, changed_paths: paths)
+          || row_touched_by_closure
+        {
+          RunWitness { reason: "entry or closure touched by diff" }
+        } else {
+          match baseline {
+            VerifiedGreenBaseline { subject_digest: digest } =>
+              SkipVerifiedGreen { baseline: digest }
+            BaselineMiss =>
+              RunWitness { reason: "baseline miss" }
+            BaselineLookupFailClosed { reason: reason } =>
+              RunWitness { reason: reason }
+          }
+        }
+    }
+  }
+}
+
+fn floor_kernel_would_skip(
+  row: FloorWitnessRow,
+  changed_paths: List<String>,
+  affected_fail_closed: Bool,
+  row_touched_by_closure: Bool,
+  baseline: WitnessBaselineLookup
+) -> Bool {
+  match floor_witness_run_disposition(
+    row: row,
+    diff: DiffPathsProduced { changed_paths: changed_paths },
+    affected_fail_closed: affected_fail_closed,
+    row_touched_by_closure: row_touched_by_closure,
+    baseline: baseline
+  ) {
+    SkipVerifiedGreen { baseline: _ } => true
+    RunWitness { reason: _ } => false
+  }
+}
+
+// Host transport oracle (cli_run skip_enabled branch): merged entry+closure touch +
+// verified-green baseline tombstone hit.
+fn floor_host_scaffold_would_skip(
+  entry_closure_touched: Bool,
+  baseline: WitnessBaselineLookup
+) -> Bool {
+  match baseline {
+    VerifiedGreenBaseline { subject_digest: _ } => !entry_closure_touched
+    _ => false
+  }
+}
+
+// Decompose merged host touch into kernel entry-affected vs closure-only arms.
+fn floor_scaffold_closure_only_touch(
+  row: FloorWitnessRow,
+  changed_paths: List<String>,
+  entry_closure_touched: Bool
+) -> Bool {
+  entry_closure_touched
+    && !floor_witness_row_affected_by_diff(row: row, changed_paths: changed_paths)
+}
+
+// Bridge host 2-input signals onto kernel 5-input disposition (skip_enabled slice only).
+fn floor_scaffold_kernel_skip_from_host_signals(
+  row: FloorWitnessRow,
+  changed_paths: List<String>,
+  entry_closure_touched: Bool,
+  baseline: WitnessBaselineLookup
+) -> Bool {
+  floor_kernel_would_skip(
+    row: row,
+    changed_paths: changed_paths,
+    affected_fail_closed: false,
+    row_touched_by_closure: floor_scaffold_closure_only_touch(
+      row: row,
+      changed_paths: changed_paths,
+      entry_closure_touched: entry_closure_touched
+    ),
+    baseline: baseline
+  )
+}
