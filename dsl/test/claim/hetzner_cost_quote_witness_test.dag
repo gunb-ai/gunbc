@@ -15,17 +15,19 @@ module test.claim.hetzner_cost_quote_witness
 import std.logic { Bool }
 import std.nat { Nat }
 import std.currency { Eur }
+import std.measure { money_amount_micro_count }
 import extdeps.cloud.hetzner { cax41_catalog }
 import product.compute_fabric {
   per_second_billed_cost_quote,
   cost_estimate_unit_price_micros,
   PerSecondBilled,
+  money_micros,
 }
 
 fn hetzner_cax41_hourly_micros() -> Nat {
   cost_estimate_unit_price_micros(
     quote: per_second_billed_cost_quote(
-      unit_price: cax41_catalog.hourly_eur,
+      unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly_eur)),
       currency: Eur,
     ),
   )
@@ -33,7 +35,7 @@ fn hetzner_cax41_hourly_micros() -> Nat {
 
 fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
   let quote = per_second_billed_cost_quote(
-    unit_price: cax41_catalog.hourly_eur,
+    unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly_eur)),
     currency: Eur,
   )
   match quote.model.cost_class {

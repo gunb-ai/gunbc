@@ -9,7 +9,7 @@
 module extdeps.cloud.hetzner
 
 import extdeps.cpu.types { CpuArchitecture }
-import product.compute_fabric { MoneyMicros, money_micros }
+import std.measure { MoneyAmountMicro, money_amount_micro }
 import std.types { Int, NonEmptyStr }
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
@@ -18,13 +18,15 @@ type HetznerCloudServerCatalogRow {
   server_type: HetznerCloudServerType
   // P-CF-BYTESIZE: shared raw-Int stopgap (operator_fleet + Hetzner) — NOT a parallel
   // representation. Dissolves when Measure value-typing lands (ByteSize, thread count);
-  // converts BOTH operator_fleet and Hetzner catalog rows. Money fields migrated to
-  // `MoneyMicros` (Measure<Currency, Micro>) — the Hetzner source quotes micro-EUR.
+  // converts BOTH operator_fleet and Hetzner catalog rows.
+  // `MoneyAmountMicro` (= MoneyAmount<Micro> = Measure<Currency, Micro>) — the Hetzner
+  // source quotes micro-EUR. Scale-fixed alias `MoneyMicros` stays in product for
+  // CostEstimate consumers.
   vcpus: Int
   memory_bytes: Int
   disk_bytes: Int
-  hourly_eur: MoneyMicros
-  monthly_cap_eur: MoneyMicros
+  hourly_eur: MoneyAmountMicro
+  monthly_cap_eur: MoneyAmountMicro
   pricing_citation: NonEmptyStr
   cpu_architecture: CpuArchitecture
 }
@@ -36,8 +38,8 @@ data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow 
   vcpus: 16,
   memory_bytes: 34359738368,
   disk_bytes: 343597383680,
-  hourly_eur: money_micros(count: 50500),
-  monthly_cap_eur: money_micros(count: 31490000),
+  hourly_eur: money_amount_micro(count: 50500),
+  monthly_cap_eur: money_amount_micro(count: 31490000),
   pricing_citation: "docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/ GE-D9256 CAX41 Germany/Finland €0.0505/hr €31.49/mo ex-VAT effective 2026-04-01",
   cpu_architecture: Aarch64,
 }
