@@ -40,6 +40,7 @@ fn gunbc_claim_run(function: String) -> ShellStmt {
   command(words: [
     var_ref(name: "GUNBC"), lit(text: "run"),
     lit(text: "--source-root"), lit(text: ingest_source_root),
+    lit(text: "--source-root"), lit(text: "dsl"),
     lit(text: "--source-root"), lit(text: ingest_manifest_dir),
     lit(text: "--entry"), lit(text: ingest_entry),
     lit(text: "--function"), lit(text: function),
