@@ -1,0 +1,200 @@
+// test/claim/pr_workflow_witness_test.dag — §5 witnesses for ctrl.pr_workflow.
+//
+// Fail-closed lifecycle: terminal stages refuse advancement; draft blocks
+// review; merge-ready requires digest+tally+external policy permission.
+
+module test.claim.pr_workflow_witness_test
+
+import ctrl.pr_workflow {
+  PrLifecycleFacts, PrLifecycleStage, PrNodeBinding, PrLifecycleTransitionRequest,
+  PrLifecycleEventTag, MarkReadyForReview, RecordMergeReady,
+  PrOpen, PrUnderReview, PrMergeReady, PrMerged, PrClosed,
+  PrDraftBlocksReview, PrDigestNotReady, PrPolicyNotPermitted,
+  CanTransition, TransitionRefused,
+  is_terminal_stage, decide_lifecycle_transition, github_terminal_anchor,
+}
+import ctrl.pr_digests { Ready, NotReady }
+import ctrl.review_verdict { MergeReadinessTally }
+import ctrl.process_algebra { ProcessNodeId }
+import extdeps.github.pulls {
+  PullRequest, PullRequestRef, PullRequestState, Open, Closed,
+}
+import extdeps.github.github { GitHubUser, User }
+import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
+
+data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
+data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
+data witness_node: ProcessNodeId = "session-calm-swift-738"
+
+fn witness_open_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
+  PullRequest {
+    number: 1,
+    title: "witness",
+    body: none,
+    state: state,
+    html_url: witness_pr_url,
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef {
+      ref: "feature",
+      sha: witness_head_sha,
+      label: "gunb-ai:feature",
+    },
+    base: PullRequestRef {
+      ref: "main",
+      sha: "def456789012345678901234567890abcdef12",
+      label: "gunb-ai:main",
+    },
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T00:00:00Z",
+    merged_at: merged_at,
+    draft: draft,
+  }
+}
+
+fn witness_binding() -> PrNodeBinding {
+  PrNodeBinding {
+    node_id: witness_node,
+    repo: witness_repo,
+    pr_number: 1,
+    pr_url: witness_pr_url,
+  }
+}
+
+fn witness_facts(stage: PrLifecycleStage) -> PrLifecycleFacts {
+  PrLifecycleFacts {
+    binding: witness_binding(),
+    stage: stage,
+    head_sha: Present { value: witness_head_sha },
+    marked_ready_at: none,
+    merge_ready_at: none,
+    merged_at: none,
+    closed_at: none,
+  }
+}
+
+fn witness_tally_green() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 0,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_terminal_stages_refuse() -> Bool {
+  fold(
+    [
+      is_terminal_stage(stage: PrMerged),
+      is_terminal_stage(stage: PrClosed),
+      !is_terminal_stage(stage: PrOpen),
+    ],
+    init: true,
+    f: fn(acc, v) { acc && v }
+  )
+}
+
+fn witness_draft_blocks_mark_ready() -> Bool {
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_facts(stage: PrOpen),
+      pr: witness_open_pr(draft: true, state: Open, merged_at: none),
+      event: MarkReadyForReview,
+      digest: none,
+      tally: none,
+      policy_permitted: none,
+    }
+  ) {
+    TransitionRefused { refusal: PrDraftBlocksReview } => true
+    _ => false
+  }
+}
+
+fn witness_merge_ready_requires_policy() -> Bool {
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_facts(stage: PrUnderReview),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: RecordMergeReady,
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: none,
+    }
+  ) {
+    TransitionRefused { refusal: PrPolicyNotPermitted } => true
+    _ => false
+  }
+}
+
+fn witness_merge_ready_green_with_policy() -> Bool {
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_facts(stage: PrUnderReview),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: RecordMergeReady,
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    CanTransition { to: PrMergeReady } => true
+    _ => false
+  }
+}
+
+fn witness_digest_not_ready_blocks() -> Bool {
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_facts(stage: PrUnderReview),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: RecordMergeReady,
+      digest: Present { value: NotReady { first_reason: "draft", more_reasons: [] } },
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: PrDigestNotReady { first_reason: "draft" } } => true
+    _ => false
+  }
+}
+
+fn witness_merged_anchor_from_github() -> Bool {
+  match github_terminal_anchor(
+    pr: witness_open_pr(
+      draft: false,
+      state: Open,
+      merged_at: Present { value: witness_merged_at },
+    )
+  ) {
+    Present { value: PrMerged } => true
+    _ => false
+  }
+}
+
+fn witness_closed_anchor_from_github() -> Bool {
+  match github_terminal_anchor(
+    pr: witness_open_pr(draft: false, state: Closed, merged_at: none)
+  ) {
+    Present { value: PrClosed } => true
+    _ => false
+  }
+}
+
+fn all_pr_workflow_witnesses() -> Bool {
+  witness_terminal_stages_refuse()
+    && witness_draft_blocks_mark_ready()
+    && witness_merge_ready_requires_policy()
+    && witness_merge_ready_green_with_policy()
+    && witness_digest_not_ready_blocks()
+    && witness_merged_anchor_from_github()
+    && witness_closed_anchor_from_github()
+}
+
+test fn pr_workflow_witnesses() -> Bool {
+  all_pr_workflow_witnesses()
+}

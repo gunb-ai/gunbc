@@ -1,0 +1,323 @@
+// ctrl/pr_workflow.dag — internal dashboard PR lifecycle (node-bound FSM).
+//
+// Current runtime authority remains in gunb-ai/ctrl:
+//   scripts/session-dashboard/dag_api.mjs
+//   scripts/session-dashboard/lib/shadow_facts.mjs
+//   scripts/session-dashboard/public/work_unit_state.mjs
+//   scripts/session-dashboard/public/sidebar_pr_picker.mjs
+//   scripts/session-dashboard/pr_merge_ready_digest.mjs
+//
+// STAGED → AUTHORITY trigger: ctrl PR cut-over deleting the WHOLE lifecycle
+// projection files above once emission + parity land. This file is the
+// substrate contract only; policy thresholds (approval counts, provider
+// diversity, nag intervals) stay in gunbc.workflow — ctrl consumes a
+// `policy_permitted: Bool` parameter and declares NO policy types.
+//
+// Trio convergence (gating precondition for cut-over dispatch, not the flip):
+//   (a) review-verdict authority — `ctrl.review_verdict` (MergeReadinessTally)
+//   (b) digest authority — `ctrl.pr_digests` (MergeReadinessVerdict)
+//   (c) named parity-harness gate green over this lifecycle surface
+
+module ctrl.pr_workflow
+
+import ctrl.process_algebra { ProcessNodeId }
+import ctrl.pr_digests { MergeReadinessVerdict, Ready, NotReady }
+import ctrl.review_verdict { MergeReadinessTally }
+import extdeps.github.pulls { PullRequest, Open, Closed }
+import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
+
+// 🟢 TERMINAL — internal ctrl PR lifecycle stages. Distinct from
+// extdeps.github.pulls.PullRequestState (wire open/closed) and from
+// gunbc.workflow.types policy surfaces. Forward-only bookends are
+// PrMerged / PrClosed; intermediate stages are repairable only via
+// explicit regress events modeled outside this narrowed Phase-1.5 slice.
+type PrLifecycleStage
+  = PrOpen
+  | PrUnderReview
+  | PrMergeReady
+  | PrMerged
+  | PrClosed
+
+// 🟢 TERMINAL — binds a process-graph node to a GitHub PR coordinate.
+// The node id is the dashboard authority key; URL/number are lineage.
+type PrNodeBinding {
+  node_id: ProcessNodeId
+  repo: NonEmptyStr
+  pr_number: Int
+  pr_url: Url
+}
+
+// 🟡 STAGED — lifecycle facts for one PR node. Stage and timestamps are
+// ctrl-owned; head_sha tracks review affiliation across benign advances.
+// Dissolution trigger: emitted from the dashboard event log instead of
+// hand-authored refresh payloads.
+type PrLifecycleFacts {
+  binding: PrNodeBinding
+  stage: PrLifecycleStage
+  head_sha: CommitSha?
+  marked_ready_at: Timestamp?
+  merge_ready_at: Timestamp?
+  merged_at: Timestamp?
+  closed_at: Timestamp?
+}
+
+// 🟢 TERMINAL — fail-closed refusal reasons. Each variant is a distinct
+// repair path; no optional-reason product can represent success+refusal.
+type PrLifecycleRefusal
+  = PrAlreadyTerminal { stage: PrLifecycleStage }
+  | PrDraftBlocksReview
+  | PrGitHubNotOpen
+  | PrMissingHeadSha
+  | PrDigestNotReady { first_reason: String }
+  | PrTallyRequestChanges { count: Int }
+  | PrTallyBlockingFindings { count: Int }
+  | PrNotMergeableClean
+  | PrPolicyNotPermitted
+  | PrInvalidSuccessor { from: PrLifecycleStage, event: PrLifecycleEventTag }
+
+// 🟢 TERMINAL — lifecycle transition events without policy payloads.
+// Policy permission is a separate Bool parameter on merge-ready evaluation.
+type PrLifecycleEventTag
+  = MarkReadyForReview
+  | RecordMergeReady
+  | RecordMerged
+  | RecordClosed
+
+type PrLifecycleDecision
+  = CanTransition { to: PrLifecycleStage }
+  | TransitionRefused { refusal: PrLifecycleRefusal }
+
+type PrLifecycleTransitionRequest {
+  facts: PrLifecycleFacts
+  pr: PullRequest
+  event: PrLifecycleEventTag
+  digest: MergeReadinessVerdict?
+  tally: MergeReadinessTally?
+  policy_permitted: Bool?
+}
+
+fn is_terminal_stage(stage: PrLifecycleStage) -> Bool {
+  match stage {
+    PrOpen => false
+    PrUnderReview => false
+    PrMergeReady => false
+    PrMerged => true
+    PrClosed => true
+  }
+}
+
+fn successor_stage(from: PrLifecycleStage, event: PrLifecycleEventTag) -> PrLifecycleStage? {
+  match from {
+    PrOpen =>
+      match event {
+        MarkReadyForReview => Present { value: PrUnderReview }
+        RecordClosed => Present { value: PrClosed }
+        RecordMergeReady => Absent
+        RecordMerged => Absent
+      }
+    PrUnderReview =>
+      match event {
+        RecordMergeReady => Present { value: PrMergeReady }
+        RecordClosed => Present { value: PrClosed }
+        MarkReadyForReview => Absent
+        RecordMerged => Absent
+      }
+    PrMergeReady =>
+      match event {
+        RecordMerged => Present { value: PrMerged }
+        RecordClosed => Present { value: PrClosed }
+        MarkReadyForReview => Absent
+        RecordMergeReady => Absent
+      }
+    PrMerged => Absent
+    PrClosed => Absent
+  }
+}
+
+// Anchor projection from GitHub source facts only. Cannot recover
+// UnderReview / MergeReady without ctrl-persisted stage facts.
+fn github_terminal_anchor(pr: PullRequest) -> PrLifecycleStage? {
+  match pr.merged_at {
+    Present { value: _ } => Present { value: PrMerged }
+    Absent =>
+      match pr.state {
+        Closed => Present { value: PrClosed }
+        Open => Absent
+      }
+  }
+}
+
+fn evaluate_mark_ready_for_review(
+  facts: PrLifecycleFacts,
+  pr: PullRequest,
+) -> PrLifecycleDecision {
+  if is_terminal_stage(stage: facts.stage) {
+    return TransitionRefused {
+      refusal: PrAlreadyTerminal { stage: facts.stage }
+    }
+  }
+  match successor_stage(from: facts.stage, event: MarkReadyForReview) {
+    Absent =>
+      return TransitionRefused {
+        refusal: PrInvalidSuccessor {
+          from: facts.stage,
+          event: MarkReadyForReview,
+        }
+      }
+    Present { value: to } => {}
+  }
+  if pr.draft {
+    return TransitionRefused { refusal: PrDraftBlocksReview }
+  }
+  match pr.state {
+    Open => {}
+    Closed =>
+      return TransitionRefused { refusal: PrGitHubNotOpen }
+  }
+  match facts.head_sha {
+    Present { value: _ } => {}
+    Absent =>
+      return TransitionRefused { refusal: PrMissingHeadSha }
+  }
+  CanTransition { to: PrUnderReview }
+}
+
+fn evaluate_record_merge_ready(
+  facts: PrLifecycleFacts,
+  digest: MergeReadinessVerdict?,
+  tally: MergeReadinessTally?,
+  policy_permitted: Bool?,
+) -> PrLifecycleDecision {
+  if is_terminal_stage(stage: facts.stage) {
+    return TransitionRefused {
+      refusal: PrAlreadyTerminal { stage: facts.stage }
+    }
+  }
+  match successor_stage(from: facts.stage, event: RecordMergeReady) {
+    Absent =>
+      return TransitionRefused {
+        refusal: PrInvalidSuccessor {
+          from: facts.stage,
+          event: RecordMergeReady,
+        }
+      }
+    Present { value: to } => {}
+  }
+  match digest {
+    Absent =>
+      return TransitionRefused {
+        refusal: PrDigestNotReady { first_reason: "missing digest verdict" }
+      }
+    Present { value: verdict } =>
+      match verdict {
+        Ready => {}
+        NotReady { first_reason, more_reasons: _ } =>
+          return TransitionRefused {
+            refusal: PrDigestNotReady { first_reason: first_reason }
+          }
+      }
+  }
+  match tally {
+    Absent =>
+      return TransitionRefused {
+        refusal: PrDigestNotReady { first_reason: "missing review tally" }
+      }
+    Present { value: t } => {
+      if t.request_changes_count > 0 {
+        return TransitionRefused {
+          refusal: PrTallyRequestChanges { count: t.request_changes_count }
+        }
+      }
+      if t.blocking_finding_count > 0 {
+        return TransitionRefused {
+          refusal: PrTallyBlockingFindings { count: t.blocking_finding_count }
+        }
+      }
+      if !t.mergeable_clean {
+        return TransitionRefused { refusal: PrNotMergeableClean }
+      }
+    }
+  }
+  match policy_permitted {
+    Absent =>
+      return TransitionRefused { refusal: PrPolicyNotPermitted }
+    Present { value: permitted } =>
+      if !permitted {
+        return TransitionRefused { refusal: PrPolicyNotPermitted }
+      }
+  }
+  CanTransition { to: PrMergeReady }
+}
+
+fn evaluate_terminal_record(
+  facts: PrLifecycleFacts,
+  event: PrLifecycleEventTag,
+  to: PrLifecycleStage,
+) -> PrLifecycleDecision {
+  if is_terminal_stage(stage: facts.stage) {
+    return TransitionRefused {
+      refusal: PrAlreadyTerminal { stage: facts.stage }
+    }
+  }
+  match successor_stage(from: facts.stage, event: event) {
+    Absent =>
+      return TransitionRefused {
+        refusal: PrInvalidSuccessor { from: facts.stage, event: event }
+      }
+    Present { value: expected } =>
+      if expected != to {
+        return TransitionRefused {
+          refusal: PrInvalidSuccessor { from: facts.stage, event: event }
+        }
+      }
+  }
+  CanTransition { to: to }
+}
+
+fn decide_lifecycle_transition(request: PrLifecycleTransitionRequest) -> PrLifecycleDecision {
+  match request.event {
+    MarkReadyForReview =>
+      evaluate_mark_ready_for_review(facts: request.facts, pr: request.pr)
+    RecordMergeReady =>
+      evaluate_record_merge_ready(
+        facts: request.facts,
+        digest: request.digest,
+        tally: request.tally,
+        policy_permitted: request.policy_permitted,
+      )
+    RecordMerged =>
+      evaluate_terminal_record(
+        facts: request.facts,
+        event: RecordMerged,
+        to: PrMerged,
+      )
+    RecordClosed =>
+      evaluate_terminal_record(
+        facts: request.facts,
+        event: RecordClosed,
+        to: PrClosed,
+      )
+  }
+}
+
+service ctrl.PrWorkflow {
+  operation ClassifyGitHubTerminalAnchor {
+    input {
+      pr: PullRequest
+    }
+    output {
+      anchor: PrLifecycleStage?
+    }
+    readonly
+  }
+
+  operation DecideTransition {
+    input {
+      request: PrLifecycleTransitionRequest
+    }
+    output {
+      decision: PrLifecycleDecision
+    }
+    readonly
+  }
+}

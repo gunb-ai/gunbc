@@ -27,6 +27,7 @@ The migration project plan and the manager brief that define these gates live in
 
 - [`review_verdict.dag`](review_verdict.dag) — PR review verdict / tally staging (`ctrl.review_verdict`).
 - [`pr_digests.dag`](pr_digests.dag) — PR digest helpers staging (`ctrl.pr_digests`), catalog #8.
+- [`pr_workflow.dag`](pr_workflow.dag) — internal PR node lifecycle FSM staging (`ctrl.pr_workflow`), catalog M2-PR.
 - [`process_algebra.dag`](process_algebra.dag) — process decomposition algebra staging (`ctrl.process_algebra`).
 
 ## Discipline carry-overs
