@@ -2658,6 +2658,52 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
+    pub source_root: SourceRootTag,
+}
+
+/// Closed coproduct mirror of `v2.std.cross_tree.import_model.SourceRootRef`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SourceRootTag {
+    V2Tree,
+    DslTree,
+}
+
+impl SourceRootTag {
+    fn dag_emit(self) -> &'static str {
+        match self {
+            SourceRootTag::V2Tree => "V2Tree",
+            SourceRootTag::DslTree => "DslTree",
+        }
+    }
+}
+
+fn source_root_tag_for_path(path: &str, source_roots: &[String]) -> Result<SourceRootTag, String> {
+    let normalized = path.replace('\\', "/");
+    for root in source_roots {
+        let root_norm = root.replace('\\', "/");
+        let prefix = if root_norm.ends_with('/') {
+            root_norm.clone()
+        } else {
+            format!("{root_norm}/")
+        };
+        if normalized == root_norm || normalized.starts_with(&prefix) {
+            return Ok(match root_norm.as_str() {
+                "src/v2" => SourceRootTag::V2Tree,
+                "dsl" => SourceRootTag::DslTree,
+                other if other.starts_with("src/v2") => SourceRootTag::V2Tree,
+                _ => SourceRootTag::DslTree,
+            });
+        }
+    }
+    if normalized.starts_with("src/v2/") || normalized == "src/v2" {
+        return Ok(SourceRootTag::V2Tree);
+    }
+    if normalized.starts_with("dsl/") || normalized == "dsl" {
+        return Ok(SourceRootTag::DslTree);
+    }
+    Err(format!(
+        "discover_source_root_ingest: cannot ground source_root for path '{normalized}' (source_roots={source_roots:?})"
+    ))
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
@@ -2817,6 +2863,8 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push('\0');
         material.push_str(&rec.source);
         material.push('\0');
+        material.push_str(rec.source_root.dag_emit());
+        material.push('\0');
     }
     let mut hash = 0xcbf29ce484222325u64;
     for byte in material.as_bytes() {
@@ -2881,10 +2929,12 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
+        let source_root = source_root_tag_for_path(&rel_forward, source_roots)?;
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: content,
+            source_root,
         });
     }
 
@@ -2924,10 +2974,12 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
+        let source_root = source_root_tag_for_path(&rel_forward, source_roots)?;
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
+            source_root,
         });
     }
 
@@ -2939,9 +2991,10 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
+        rec.source_root.dag_emit(),
     ))
 }
 
@@ -2989,6 +3042,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.cross_tree.import_model { DslTree, V2Tree }\n");
     out.push_str("import v2.std.text { String }\n");
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");

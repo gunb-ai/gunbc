@@ -1,0 +1,75 @@
+// Scope: Route C Phase C witnesses — grounded source_root on DagSourceReadWitness at ingest.
+//
+// GREEN: ingest fold threads host-tagged source_root into ModuleSourceRootBinding rows.
+// GREEN: source_root_set_from_ingest derives active roots from witness tags (not QN-prefix).
+
+module v2.test.claim.program_assembly.grounded_source_root_phase_c
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.program_assembly {
+  module_roots_and_bindings_from_source_root_ingest
+}
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_root_set_from_ingest
+}
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree, source_root_set_contains }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+
+data phase_c_stub_source: Medium<String> = Medium { carried: "module phase_c_stub", fidelity: Lossless }
+
+data phase_c_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: phase_c_stub_source,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^phase_c_artifact,
+    file_path: "src/v2/test/fixture/phase_c_stub.dag"
+  },
+  compilation_unit: ^phase_c_cu,
+  source_root: V2Tree
+}
+
+data phase_c_ingest: SourceRootIngest = Cons {
+  head: phase_c_read,
+  tail: Empty
+}
+
+
+fn witness_ingest_fold_threads_grounded_binding_holds() -> Bool {
+  match module_roots_and_bindings_from_source_root_ingest(
+    ingest: phase_c_ingest,
+    lm: dag_language_model_surface_empty_prelude()
+  ) {
+    Accepted { value: fold, diagnostics: _ } =>
+      (length(xs: fold.bindings) == 1)
+        && (length(xs: fold.roots) == 1)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn witness_source_root_set_from_ingest_holds() -> Bool {
+  let roots = source_root_set_from_ingest(ingest: phase_c_ingest)
+  source_root_set_contains(roots: roots, r: V2Tree)
+    && (length(xs: roots) == 1)
+}
+
+
+test fn grounded_source_root_ingest_fold_witness() -> Bool {
+  witness_ingest_fold_threads_grounded_binding_holds()
+}
+
+test fn grounded_source_root_set_from_ingest_witness() -> Bool {
+  witness_source_root_set_from_ingest_holds()
+}
+
+test fn grounded_source_root_phase_c_witnesses() -> Bool {
+  witness_ingest_fold_threads_grounded_binding_holds()
+    && witness_source_root_set_from_ingest_holds()
+}

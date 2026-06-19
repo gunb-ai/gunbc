@@ -80,6 +80,10 @@ type ModuleSourceRootBinding {
   source_root: SourceRootRef
 }
 
+type SourceRootBindingLookupState
+  = SourceRootBindingLookupAbsent
+  | SourceRootBindingLookupFound { value: SourceRootRef }
+
 
 // 🟢 coproduct dissolution — T-28-B admission visibility is a closed alternative: a declared import is either admitted into the subject namespace or rejected as hidden; no third visibility state is modeled.
 type ImportVisibility
@@ -439,19 +443,21 @@ fn source_root_for_qn_in_bindings(
 ) -> Outcome<SourceRootRef> {
   match fold_list(
     xs: bindings,
-    empty: Absent,
+    empty: SourceRootBindingLookupAbsent,
     cons: fn(found, binding) {
-      if optional_present(opt: found) {
-        found
-      } else if qualified_name_eq(a: binding.module_qn, b: qn) {
-        optional_present(value: binding.source_root)
-      } else {
-        found
+      match found {
+        SourceRootBindingLookupFound { value: _ } => found
+        SourceRootBindingLookupAbsent =>
+          if qualified_name_eq(a: binding.module_qn, b: qn) {
+            SourceRootBindingLookupFound { value: binding.source_root }
+          } else {
+            SourceRootBindingLookupAbsent
+          }
       }
     }
   ) {
-    Present { value: tree } => outcome_accepted(value: tree)
-    Absent =>
+    SourceRootBindingLookupFound { value: tree } => outcome_accepted(value: tree)
+    SourceRootBindingLookupAbsent =>
       outcome_rejected(
         d: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
       )
@@ -534,6 +540,7 @@ fn admit_import_entry(
                 order: order,
                 active_roots: active_roots
               )
+          }
       }
   }
 }
