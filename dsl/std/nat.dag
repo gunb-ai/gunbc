@@ -28,7 +28,22 @@
 
 module std.nat
 
-import std.algebra { CommutativeSemiring }
+import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
 import std.magnitude { Magnitude }
 
 type Nat = CommutativeSemiring<Magnitude>
+
+// Total order on ℕ (non-negative counting magnitudes). std.algebra lists compare/min/max
+// as OrderedRing-derived operations; Nat stops at CommutativeSemiring, so these are the
+// minimal producers critical-path span roll-up needs (pareto.dag compare_int pattern).
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn nat_max(a: Nat, b: Nat) -> Nat {
+  if a > b { a } else { b }
+}
+
+fn nat_min(a: Nat, b: Nat) -> Nat {
+  if a < b { a } else { b }
+}

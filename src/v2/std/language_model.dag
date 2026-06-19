@@ -25,8 +25,11 @@ import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurre
 
 
 // Canonical LanguageModel fact-bundle (Shape A — lex/grammar/identity/symbols/core).
-// Per-language *LanguageModel types in extdeps/languages/*.dag are spec-authored inhabitants
-// of this carrier shape; compiler ingest authority is this std/ type, not Node.
+// Per-language constructors in extdeps/languages/*.dag (e.g. `rust_language_model_wave1`) are
+// spec-authored inhabitants of this single carrier — the 13 per-language *LanguageModel type forks
+// were dissolved into it (Wave 3a-C). A language that has not yet modeled a field supplies the
+// canonical void/empty inhabitant (VoidLexRules / VoidGrammar / language_model_empty_canonical_symbols /
+// wave1_void), never a smaller forked type. Compiler ingest authority is this std/ type, not Node.
 type LanguageModel {
   lex: LexRules
   grammar: ParseGrammar

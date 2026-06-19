@@ -1,0 +1,48 @@
+// std/workflow_recursive.dag — recursive VerdictTree fold (catamorphism + located latch).
+//
+// Pure std layer: imports only std.reducible + std.types. Application witnesses
+// and spine subsumption proofs live in dsl/test/claim/.
+//
+// VerdictTree = Leaf | Decomposed is the recursive carrier (rose tree of
+// ReduceVerdict). settle_verdict_tree recurses depth-first; sibling verdicts
+// fold via reduce_verdicts_located (Semigroup over List = FreeMonoid<ReduceVerdict>).
+// CONSUME-BY-CORRESPONDENCE of product.compute_fabric.PartitionedReduce.reduce
+// side (DESIGN.md §3) — no compute_fabric import.
+// Dissolution trigger (DESIGN.md §6): delete when VerdictTree binds literal
+// PartitionedReduce fields or product.compute_fabric imports std.workflow_recursive.
+// Name avoids collision with extdeps.github.actions.Workflow (GitHub Actions carrier).
+
+module std.workflow_recursive
+
+import std.types { List }
+import std.reducible { ReduceVerdict, reduce_verdicts_located }
+
+type VerdictTree
+  = Leaf { verdict: ReduceVerdict }
+  | Decomposed { children: List<VerdictTree> }
+
+fn settle_verdict_tree(w: VerdictTree) -> ReduceVerdict {
+  match w {
+    Leaf { verdict: v } => v
+    Decomposed { children: cs } => settle_verdict_children(cs)
+  }
+}
+
+fn settle_verdict_children(cs: List<VerdictTree>) -> ReduceVerdict {
+  reduce_verdicts_located(
+    verdicts: map(
+      collection: cs,
+      f: fn(w) { settle_verdict_tree(w: w) }
+    ),
+    empty_missing: "verdict-tree:empty-decomposition"
+  )
+}
+
+fn linearize_verdicts(verdicts: List<ReduceVerdict>) -> VerdictTree {
+  Decomposed {
+    children: map(
+      collection: verdicts,
+      f: fn(v) { Leaf { verdict: v } }
+    )
+  }
+}

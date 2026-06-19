@@ -1,0 +1,78 @@
+// dsl/test/claim/reviewer_source_witness_test.dag
+//
+// §5 discriminating proof for ctrl.review_verdict.reviewer_source — source kind
+// is structural per Reviewer arm; ProviderOther lifts to UnattributedReviewer.
+
+module test.claim.reviewer_source_witness_test
+
+import ctrl.review_verdict { reviewer_source }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { NonEmptyStr }
+
+data witness_policy_id: NonEmptyStr = "sec-1"
+data witness_policy_version: NonEmptyStr = "v2"
+data witness_jane_qa: NonEmptyStr = "jane-qa"
+data witness_policy_string: NonEmptyStr = "policy"
+
+fn witness_agent_claude_is_llm() -> Bool {
+  match reviewer_source(reviewer: AgentReviewer { provider: Claude }) {
+    Llm => true
+    _ => false
+  }
+}
+
+fn witness_human_seat_reviewer_is_human() -> Bool {
+  match reviewer_source(reviewer: HumanSeatReviewer) {
+    Human => true
+    _ => false
+  }
+}
+
+fn witness_unattributed_jane_qa_is_unattributed() -> Bool {
+  match reviewer_source(
+    reviewer: UnattributedReviewer { provider_name: witness_jane_qa }
+  ) {
+    Unattributed => true
+    _ => false
+  }
+}
+
+fn witness_unattributed_policy_string_is_unattributed() -> Bool {
+  match reviewer_source(
+    reviewer: UnattributedReviewer { provider_name: witness_policy_string }
+  ) {
+    Unattributed => true
+    _ => false
+  }
+}
+
+fn witness_policy_reviewer_is_policy() -> Bool {
+  match reviewer_source(
+    reviewer: PolicyReviewer {
+      policy: PolicyRef { id: witness_policy_id, version: witness_policy_version }
+    }
+  ) {
+    Policy => true
+    _ => false
+  }
+}
+
+fn all_reviewer_source_witnesses() -> Bool {
+  witness_agent_claude_is_llm()
+    && witness_human_seat_reviewer_is_human()
+    && witness_unattributed_jane_qa_is_unattributed()
+    && witness_unattributed_policy_string_is_unattributed()
+    && witness_policy_reviewer_is_policy()
+}
+
+test fn reviewer_source_witnesses() -> Bool {
+  all_reviewer_source_witnesses()
+}
+
+func reviewer_source_witness_gate() -> ProcessExit {
+  return if all_reviewer_source_witnesses() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "reviewer_source witness failed")
+  }
+}
