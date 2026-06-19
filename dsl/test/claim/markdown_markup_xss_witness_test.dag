@@ -1,0 +1,324 @@
+// dsl/test/claim/markdown_markup_xss_witness_test.dag
+//
+// By-execution witnesses for std.markdown CommonMark consumer: reduces to
+// std.markup.Fragment, serializes through the ONE serialize_fragment fold
+// (CoC=1 with html/react), and scheme-allowlists link/image URLs fail-closed.
+//
+// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
+
+module test.claim.markdown_markup_xss_witness
+
+import std.markup {
+  escape_url,
+  serialize_fragment,
+  DangerousScheme,
+  DataScheme,
+  JavascriptScheme,
+  RejectedHref,
+  SafeHref,
+  validate_href,
+}
+import std.markdown {
+  CodeBlock,
+  CodeInline,
+  EmphasisInline,
+  HeadingBlock,
+  H1,
+  H2,
+  ImageInline,
+  LinkInline,
+  MarkdownBlock,
+  MarkdownDocument,
+  MarkdownInline,
+  MarkdownListItem,
+  OrderedListBlock,
+  ParagraphBlock,
+  Rejected,
+  Serialized,
+  StrongInline,
+  TextInline,
+  UnorderedListBlock,
+  markdown_document_to_fragment,
+  serialize_markdown_document,
+  try_serialize_markdown_document,
+}
+
+fn sample_readme_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      HeadingBlock {
+        level: H1,
+        inlines: [ TextInline { text: "README" } ],
+      },
+      ParagraphBlock {
+        inlines: [
+          TextInline { text: "Visit " },
+          LinkInline {
+            inlines: [ TextInline { text: "home" } ],
+            url: "https://gunbc.dev",
+          },
+          TextInline { text: " for docs." },
+        ],
+      },
+      UnorderedListBlock {
+        items: [
+          MarkdownListItem {
+            blocks: [
+              ParagraphBlock {
+                inlines: [
+                  StrongInline {
+                    inlines: [ TextInline { text: "bold" } ],
+                  },
+                  TextInline { text: " and " },
+                  EmphasisInline {
+                    inlines: [ TextInline { text: "italic" } ],
+                  },
+                ],
+              },
+            ],
+          },
+          MarkdownListItem {
+            blocks: [
+              ParagraphBlock {
+                inlines: [
+                  TextInline { text: "inline " },
+                  CodeInline { text: "fn main()" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      CodeBlock { code: "let x = 1;\n" },
+    ],
+  }
+}
+
+fn witness_markdown_reduces_and_serializes() -> Bool {
+  match try_serialize_markdown_document(doc: sample_readme_doc()) {
+    Serialized { html: h } =>
+      h == concat(
+        concat(
+          concat(
+            concat(
+              "<div><h1>README</h1><p>Visit <a href=\"https://gunbc.dev\">home</a> for docs.</p>",
+              "<ul><li><p><strong>bold</strong> and <em>italic</em></p></li>",
+            ),
+            "<li><p>inline <code>fn main()</code></p></li></ul>",
+          ),
+          "<pre><code>let x = 1;\n</code></pre>",
+        ),
+        "</div>"
+      )
+    Rejected { reason: _ } => false
+  }
+}
+
+fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
+  let via_consumer = serialize_markdown_document(doc: sample_readme_doc())
+  let via_fold = serialize_fragment(
+    frag: markdown_document_to_fragment(doc: sample_readme_doc())
+  )
+  via_consumer == via_fold
+}
+
+fn witness_ordered_list_serializes() -> Bool {
+  let doc = MarkdownDocument {
+    blocks: [
+      OrderedListBlock {
+        items: [
+          MarkdownListItem {
+            blocks: [
+              ParagraphBlock {
+                inlines: [ TextInline { text: "one" } ],
+              },
+            ],
+          },
+          MarkdownListItem {
+            blocks: [
+              ParagraphBlock {
+                inlines: [ TextInline { text: "two" } ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  match try_serialize_markdown_document(doc: doc) {
+    Serialized { html: h } => h == "<div><ol><li><p>one</p></li><li><p>two</p></li></ol></div>"
+    Rejected { reason: _ } => false
+  }
+}
+
+fn witness_image_serializes() -> Bool {
+  let doc = MarkdownDocument {
+    blocks: [
+      ParagraphBlock {
+        inlines: [
+          ImageInline { alt: "logo", url: "/static/logo.png" },
+        ],
+      },
+    ],
+  }
+  match try_serialize_markdown_document(doc: doc) {
+    Serialized { html: h } =>
+      h == "<div><p><img src=\"/static/logo.png\" alt=\"logo\"></img></p></div>"
+    Rejected { reason: _ } => false
+  }
+}
+
+fn witness_heading_levels_map_to_tags() -> Bool {
+  let doc = MarkdownDocument {
+    blocks: [
+      HeadingBlock { level: H2, inlines: [ TextInline { text: "sub" } ] },
+    ],
+  }
+  match try_serialize_markdown_document(doc: doc) {
+    Serialized { html: h } => h == "<div><h2>sub</h2></div>"
+    Rejected { reason: _ } => false
+  }
+}
+
+// -- XSS reject-witness: link and image URLs ----------------------------------
+
+fn javascript_link_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      ParagraphBlock {
+        inlines: [
+          LinkInline {
+            inlines: [ TextInline { text: "click" } ],
+            url: "javascript:alert(1)",
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn data_image_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      ParagraphBlock {
+        inlines: [
+          ImageInline {
+            alt: "x",
+            url: "data:text/html,<script>alert(1)</script>",
+          },
+        ],
+      },
+    ],
+  }
+}
+
+fn witness_javascript_link_rejects() -> Bool {
+  match try_serialize_markdown_document(doc: javascript_link_doc()) {
+    Rejected { reason: _ } => true
+    Serialized { html: _ } => false
+  }
+}
+
+fn witness_data_image_rejects() -> Bool {
+  match try_serialize_markdown_document(doc: data_image_doc()) {
+    Rejected { reason: _ } => true
+    Serialized { html: _ } => false
+  }
+}
+
+fn witness_escape_url_passes_javascript_scheme() -> Bool {
+  escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
+}
+
+fn witness_javascript_link_reject_discriminates_from_char_escape() -> Bool {
+  let unchecked = serialize_markdown_document(doc: javascript_link_doc())
+  witness_javascript_link_rejects()
+    && witness_escape_url_passes_javascript_scheme()
+    && unchecked == "<div><p><a href=\"javascript:alert(1)\">click</a></p></div>"
+}
+
+fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
+  witness_data_image_rejects()
+    && starts_with(
+      s: serialize_markdown_document(doc: data_image_doc()),
+      prefix: "<div><p><img src=\"data:"
+    )
+}
+
+fn witness_validate_href_javascript_rejects() -> Bool {
+  match validate_href(url: "javascript:alert(1)") {
+    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } } => true
+    _ => false
+  }
+}
+
+fn witness_validate_href_data_rejects() -> Bool {
+  match validate_href(url: "data:text/html,x") {
+    RejectedHref { reason: DangerousScheme { scheme: DataScheme } } => true
+    _ => false
+  }
+}
+
+fn witness_relative_link_accepted() -> Bool {
+  match validate_href(url: "/safe/path") {
+    SafeHref { url: u } => u == "/safe/path"
+    _ => false
+  }
+}
+
+fn witness_https_link_serializes() -> Bool {
+  let doc = MarkdownDocument {
+    blocks: [
+      ParagraphBlock {
+        inlines: [
+          LinkInline {
+            inlines: [ TextInline { text: "home" } ],
+            url: "https://gunbc.dev",
+          },
+        ],
+      },
+    ],
+  }
+  match try_serialize_markdown_document(doc: doc) {
+    Serialized { html: h } =>
+      h == "<div><p><a href=\"https://gunbc.dev\">home</a></p></div>"
+    Rejected { reason: _ } => false
+  }
+}
+
+fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
+  let doc = MarkdownDocument {
+    blocks: [
+      ParagraphBlock {
+        inlines: [
+          LinkInline {
+            inlines: [],
+            url: "x\"&<y onmouseover=z",
+          },
+        ],
+      },
+    ],
+  }
+  match try_serialize_markdown_document(doc: doc) {
+    Serialized { html: h } =>
+      h == "<div><p><a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a></p></div>"
+    Rejected { reason: _ } => false
+  }
+}
+
+test fn markdown_markup_xss_keystone_holds() -> Bool {
+  witness_markdown_reduces_and_serializes()
+    && witness_markdown_uses_one_serialize_fragment_fold()
+    && witness_ordered_list_serializes()
+    && witness_image_serializes()
+    && witness_heading_levels_map_to_tags()
+    && witness_javascript_link_rejects()
+    && witness_data_image_rejects()
+    && witness_javascript_link_reject_discriminates_from_char_escape()
+    && witness_data_image_reject_discriminates_from_char_escape()
+    && witness_validate_href_javascript_rejects()
+    && witness_validate_href_data_rejects()
+    && witness_relative_link_accepted()
+    && witness_https_link_serializes()
+    && witness_req_a_hostile_href_still_emits_with_escaping()
+}

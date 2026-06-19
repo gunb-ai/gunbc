@@ -159,9 +159,9 @@ type GrammarExprCornerFold {
 // algebra handler returns a parse thunk; sequence/choice/optional/repeat compose thunks with
 // correct token threading; Nonterminal delegates to parse_nonterminal_memoized (leaf).
 
-// Authority facts (dissolve-on: import std.cache_interface when v2 compiler layer resolves std):
+// Authority facts (dissolve-on: import extdeps.realization.parse_table_memo when v2 compiler layer resolves extdeps):
 //   dsl/std/cache_identity.dag: parse_table_artifact_kind = "parse_table"
-//   dsl/std/cache_interface.dag: parse_table_memo_id = "parse_table_memo_cache"
+//   extdeps/realization/parse_table_memo.dag: parse_table_memo_id = "parse_table_memo_cache"
 // Tracked scaffold — Symbol mirrors until v2 compiler layer imports std (dissolution receipt:
 // that layer-resolution landing, not a follow-up). Do not fork ids.
 data parse_table_artifact_kind: Symbol = ^parse_table
@@ -172,7 +172,7 @@ type ParsePositionKey {
   production: Symbol
 }
 
-// ParseTable Realization carrier — spec projects through cache_interface facts; in-process
+// ParseTable Realization carrier — spec projects through extdeps realization catalog facts; in-process
 // handler is v1_interpreter `parse_table_memo` (dissolves hand-rolled Map-only threading).
 // grammar_digest: content_hash of the validated grammar root — stable across files sharing lm.grammar.
 // token_stream_digest: content-address of the parse_production token stream — memo cells are

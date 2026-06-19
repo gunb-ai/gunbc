@@ -1,0 +1,72 @@
+// extdeps/cache/cargo.dag — Cargo target-directory cache catalog (cited facts).
+//
+// Spec: https://doc.rust-lang.org/cargo/guide/build-cache.html
+
+module extdeps.cache.cargo
+
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  RustcInvocation,
+  ToolchainSpec,
+  CargoFingerprintEncoding,
+}
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  NativeInternalHash,
+  FilePaths,
+  NativeInternalLookup,
+  ProviderInternal,
+  MissThenCreate,
+  FileTree,
+  PerRunnerFilesystem,
+  Manual,
+  PerFile,
+  FilesystemPerms,
+  LocalDiskUs,
+  ReadYourWrites,
+  VendorCitation,
+  ManualPurge,
+  ToolchainChange,
+  DependencyChange,
+  Repo,
+}
+
+data cargo_target_dir_id: CacheInterfaceId = "cargo_target_dir"
+
+data cargo_target_dir_facts: CacheInterfaceCatalogFacts = {
+  identity: cargo_target_dir_id
+  backing_surface: "cargo-target-directory"
+  transport_encoding: CargoFingerprintEncoding
+  key_derivation: {
+    classification: NativeInternalHash
+    inputs_considered: [RustcInvocation, FilePaths, ToolchainSpec]
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ToolchainChange, DependencyChange, ManualPurge]
+  }
+  io: {
+    lookup_semantics: NativeInternalLookup
+    write_semantics: ProviderInternal
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: FileTree
+    locality: PerRunnerFilesystem
+    eviction: Manual
+    atomicity: PerFile
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: ReadYourWrites
+  }
+  evidence: [
+    {
+      field: "locality"
+      evidence: VendorCitation {
+        source: "Cargo build artifacts in target/"
+        url: "https://doc.rust-lang.org/cargo/guide/build-cache.html"
+      }
+    },
+  ]
+}

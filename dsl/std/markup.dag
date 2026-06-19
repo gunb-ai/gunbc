@@ -12,7 +12,7 @@
 // imports std.unicode, whose `fn f() -> T = expr` surface the v2 interpreter does
 // not parse, so nothing importing render.dag is by-execution-witnessable. This
 // module imports only the v2-clean string/char substrate so the serializer can be
-// proven by execution (see dsl/test/claim/markup_serializer_witness.dag).
+// proven by execution (see dsl/test/claim/markup_serializer_witness_test.dag).
 //
 // PURITY: the serializer is a pure fold over the element tree. Markup is built by
 // folding children and concatenating tag/attribute/child text -- never by string

@@ -113,6 +113,11 @@ data default_branch_names: List<String> = ["main", "master"]
 
 // -- Service: shell transport wiring -----------------------------
 
+// 🟡 dissolved — feature:git-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.git.mock_corpus) now governs WHICH
+// git.Core ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -122,9 +127,6 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Not a git repository"
-    }
-    mock_response {
-      0 => { branch: "main" } "Current branch"
     }
   }
 
@@ -137,9 +139,6 @@ service git.Core {
       0 => Unit
       128 => String "Not a git repository"
     }
-    mock_response {
-      0 => { branches: ["origin/main", "origin/feature-x"] } "Remote branches"
-    }
   }
 
   operation LsFiles {
@@ -151,9 +150,6 @@ service git.Core {
       0 => Unit
       128 => String "Not a git repository"
     }
-    mock_response {
-      0 => { files: ["README.md", "src/main.rs"] } "Tracked files"
-    }
   }
 
   operation Diff {
@@ -164,9 +160,6 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
-    }
-    mock_response {
-      0 => { diff: "" } "Empty diff"
     }
   }
 
@@ -186,9 +179,6 @@ service git.Core {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
     }
-    mock_response {
-      0 => { paths: [], success: true } "No changed files"
-    }
   }
 
   // Three-dot (merge-base) name-only diff: paths changed on `head` since it
@@ -205,9 +195,6 @@ service git.Core {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
     }
-    mock_response {
-      0 => { paths: [], success: true } "No changed files"
-    }
   }
 
   operation RevList {
@@ -218,9 +205,6 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
-    }
-    mock_response {
-      0 => { commits: ["abc1234"] } "Commits since"
     }
   }
 
@@ -233,9 +217,6 @@ service git.Core {
       0 => Unit
       128 => String "Invalid date expression or not a git repository"
     }
-    mock_response {
-      0 => { base_ref: "def5678" } "Base ref before date"
-    }
   }
 
   operation Show {
@@ -246,9 +227,6 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"
-    }
-    mock_response {
-      0 => { content: "mock file content" } "File content at ref"
     }
   }
 }

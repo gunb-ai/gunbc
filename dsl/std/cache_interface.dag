@@ -1,9 +1,10 @@
 // std/cache_interface.dag — Elastic cache interface (Worksheet B / exploration §4.0f cases 9–19).
 //
-// Authority: this module (.dag self-authoritative; worksheet refs retired).
+// Authority: agnostic interface shape + projection helpers (projection-only; no cited rows).
+// Cited vendor catalog rows + product dispatch live in extdeps/cache/* (§3).
 // Composition: compute via ExecutionReceiptRef<T> digest only — MUST NOT import compute_fabric.
 //
-// CacheInterfaceFacts rows are first authority; CacheStoreView is a derived projection only.
+// CacheInterfaceFacts rows are first authority in extdeps; CacheStoreView is a derived projection only.
 
 module std.cache_interface
 
@@ -118,12 +119,11 @@ type KeyDerivationClass
   | HandAuthoredString
   | NativeInternalHash
 
-// 🟡 STAGED — §1.4 key derivation axis (gate: header above).
+// 🟡 STAGED — §1.4 key derivation axis (gate: header above). Agnostic inputs only;
+// rustc/toolchain axes live in extdeps.cache.types.CatalogInputSurface.
 type InputSurface
   = UpsertSubject
   | FilePaths
-  | RustcInvocation
-  | ToolchainSpec
 
 // 🟡 STAGED — §1.4 key derivation axis (gate: header above).
 type VisibilityScope = Repo | Org | Network | World
@@ -138,6 +138,9 @@ type InvalidationTrigger
 type KeyDerivationFacts {
   classification: KeyDerivationClass
   inputs_considered: List<InputSurface>
+  // True when cited catalog rows include vendor-only axes (rustc/toolchain) not
+  // representable in InputSurface; agnostic projection omits them from inputs_considered.
+  vendor_only_key_inputs_omitted: Bool
   overwritable: Bool
   prefix_fallback_allowed: Bool
   content_verified_on_read: Bool
@@ -159,17 +162,19 @@ type CacheEvidence {
   evidence: CacheRowEvidence
 }
 
-// 🟢 TERMINAL — per-row transport encoding authority (case 12 / 14); projection reads only.
+// 🟢 TERMINAL — per-row transport encoding authority (case 12 / 14); agnostic variants only.
+// Vendor-specific encodings (sccache/cargo) live in extdeps.cache.types.CatalogProviderKeyEncoding.
 type ProviderKeyEncoding
   = OpaqueStringEncoding
-  | SccacheInternalEncoding
   | CasContentEncoding
-  | CargoFingerprintEncoding
+  | NativeInternalEncoding
 
 type CacheInterfaceFacts {
   identity: CacheInterfaceId
   backing_surface: StorageSurface
   transport_encoding: ProviderKeyEncoding
+  // True when cited catalog encoding is not 1:1 in ProviderKeyEncoding (e.g. cargo fingerprint → CAS).
+  vendor_transport_encoding_collapsed: Bool
   key_derivation: KeyDerivationFacts
   lookup_semantics: CacheLookupSemantics
   write_semantics: CacheWriteSemantics
@@ -195,19 +200,17 @@ type ArtifactIdentity<T> {
   artifact_kind: ArtifactKindId
 }
 
-// 🟢 TERMINAL — backend-specific transport carriers (exploration §4.0g ~830–832).
+// 🟢 TERMINAL — backend-specific transport carriers (agnostic variants only).
 type ProviderKey
   = OpaqueStringKey { key: NonEmptyStr }
-  | SccacheInternalHash { digest: ContentHash }
   | CasContentDigest { digest: ContentHash }
-  | CargoFingerprint { digest: ContentHash }
 
 type BackendCacheKey {
   store: CacheInterfaceId
   key: ProviderKey
 }
 
-// Semantic binding only — transport is derived via cache_key_projection_transport (case 17).
+// Semantic binding only — transport projection lives in extdeps.cache.cache (case 17).
 type CacheKeyProjection<T> {
   artifact: ArtifactIdentity<T>
   backend: CacheInterfaceFacts
@@ -227,8 +230,7 @@ type ProducerReceipt<T>
   | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
   | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
 
-// Hit receipts: construct only via cache_verified_hit_receipt (backend_key derived
-// from artifact + backend.transport_encoding; subject match is artifact.subject_digest).
+// Hit receipts: backend_key is supplied by extdeps.cache.cache transport projection.
 type CachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: BackendCacheKey
@@ -242,324 +244,7 @@ type CacheLookupResult<T>
   | Miss
   | RejectedHit { reason: CacheRejectReason }
 
-// --- §1.8 canonical backend fact rows (cases 9–13, 19) ------------------------
-
-data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
-
-data gha_actions_cache_facts: CacheInterfaceFacts = {
-  identity: gha_actions_cache_id
-  backing_surface: "github-actions-cache-api"
-  transport_encoding: OpaqueStringEncoding
-  key_derivation: {
-    classification: HandAuthoredString
-    inputs_considered: [UpsertSubject, FilePaths]
-    overwritable: true
-    prefix_fallback_allowed: true
-    content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
-  }
-  lookup_semantics: PrefixFallback {
-    ordered_prefixes: [
-      "exact-subject-digest",
-      "toolchain-pinned",
-      "lockfile-pinned",
-      "runner-scoped",
-    ]
-  }
-  write_semantics: WriteThenCommit
-  miss_semantics: MissThenCreate
-  value_shape: TarArchive
-  locality: CrossHostNetwork
-  eviction: Lru
-  atomicity: WriteThenCommit
-  auth: ApiKey
-  read_latency: WanTensMs
-  consistency: Eventual
-  evidence: [
-    {
-      field: "lookup_semantics"
-      evidence: VendorCitation {
-        source: "GitHub Actions cache restore-key behavior"
-        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
-      }
-    },
-    {
-      field: "key_derivation"
-      evidence: VendorCitation {
-        source: "GitHub Actions cache key input"
-        url: "https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#usage-limits-and-eviction-policy"
-      }
-    },
-  ]
-}
-
-data sccache_local_id: CacheInterfaceId = "sccache_local"
-
-data sccache_local_facts: CacheInterfaceFacts = {
-  identity: sccache_local_id
-  backing_surface: "sccache-local-disk"
-  transport_encoding: SccacheInternalEncoding
-  key_derivation: {
-    classification: NativeInternalHash
-    inputs_considered: [RustcInvocation, ToolchainSpec]
-    overwritable: true
-    prefix_fallback_allowed: false
-    content_verified_on_read: true
-    visibility_scope: Org
-    invalidation_triggers: [ManualPurge, ToolchainChange]
-  }
-  lookup_semantics: NativeInternalLookup
-  write_semantics: WriteThenRename
-  miss_semantics: MissThenCreate
-  value_shape: RawBytes
-  locality: PerHostFilesystem
-  // sccache max cache size is operator-configured (sccache.conf), not a fixed substrate fact.
-  eviction: Lru
-  atomicity: WriteThenRename
-  auth: FilesystemPerms
-  read_latency: LocalDiskUs
-  consistency: ReadYourWrites
-  evidence: [
-    {
-      field: "lookup_semantics"
-      evidence: VendorCitation {
-        source: "sccache storage backends"
-        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md"
-      }
-    },
-    {
-      field: "eviction"
-      evidence: VendorCitation {
-        source: "sccache cache size and LRU eviction policy"
-        url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md#cache-size"
-      }
-    },
-  ]
-}
-
-data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
-
-data buildbuddy_cas_facts: CacheInterfaceFacts = {
-  identity: buildbuddy_cas_id
-  backing_surface: "buildbuddy-remote-cas"
-  transport_encoding: CasContentEncoding
-  key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
-    overwritable: false
-    prefix_fallback_allowed: false
-    content_verified_on_read: true
-    visibility_scope: Network
-    invalidation_triggers: [ManualPurge]
-  }
-  lookup_semantics: ContentAddressLookup
-  write_semantics: WriteOnce
-  miss_semantics: MissThenCreate
-  value_shape: RawBytes
-  locality: CrossHostNetwork
-  eviction: Never
-  atomicity: WriteThenCommit
-  auth: ApiKey
-  read_latency: LanMs
-  consistency: Strong
-  evidence: [
-    {
-      field: "lookup_semantics"
-      evidence: VendorCitation {
-        source: "BuildBuddy remote cache content-addressed artifacts"
-        url: "https://www.buildbuddy.io/docs/remote-cache"
-      }
-    },
-    {
-      field: "write_semantics"
-      evidence: VendorCitation {
-        source: "BuildBuddy CAS blobs are content-addressed and not overwritten in place"
-        url: "https://www.buildbuddy.io/docs/remote-cache"
-      }
-    },
-    {
-      field: "atomicity"
-      evidence: VendorCitation {
-        source: "CAS upload commit visibility (orthogonal to write-once key semantics)"
-        url: "https://www.buildbuddy.io/docs/remote-cache"
-      }
-    },
-  ]
-}
-
-data cargo_target_dir_id: CacheInterfaceId = "cargo_target_dir"
-
-data cargo_target_dir_facts: CacheInterfaceFacts = {
-  identity: cargo_target_dir_id
-  backing_surface: "cargo-target-directory"
-  transport_encoding: CargoFingerprintEncoding
-  key_derivation: {
-    classification: NativeInternalHash
-    inputs_considered: [RustcInvocation, FilePaths, ToolchainSpec]
-    overwritable: true
-    prefix_fallback_allowed: false
-    content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ToolchainChange, DependencyChange, ManualPurge]
-  }
-  lookup_semantics: NativeInternalLookup
-  write_semantics: ProviderInternal
-  miss_semantics: MissThenCreate
-  value_shape: FileTree
-  locality: PerRunnerFilesystem
-  eviction: Manual
-  atomicity: PerFile
-  auth: FilesystemPerms
-  read_latency: LocalDiskUs
-  consistency: ReadYourWrites
-  evidence: [
-    {
-      field: "locality"
-      evidence: VendorCitation {
-        source: "Cargo build artifacts in target/"
-        url: "https://doc.rust-lang.org/cargo/guide/build-cache.html"
-      }
-    },
-  ]
-}
-
-data rustup_toolchain_store_id: CacheInterfaceId = "rustup_toolchain_store"
-
-data rustup_toolchain_store_facts: CacheInterfaceFacts = {
-  identity: rustup_toolchain_store_id
-  backing_surface: "rustup-toolchains-dir"
-  transport_encoding: OpaqueStringEncoding
-  key_derivation: {
-    classification: NativeInternalHash
-    inputs_considered: [ToolchainSpec]
-    overwritable: false
-    prefix_fallback_allowed: false
-    content_verified_on_read: true
-    visibility_scope: Org
-    invalidation_triggers: [ToolchainChange, ManualPurge]
-  }
-  lookup_semantics: NativeInternalLookup
-  write_semantics: ProviderInternal
-  miss_semantics: MissThenCreate
-  value_shape: FileTree
-  locality: PerHostFilesystem
-  eviction: Never
-  atomicity: PerFile
-  auth: FilesystemPerms
-  read_latency: LocalDiskUs
-  consistency: Strong
-  evidence: [
-    {
-      field: "key_derivation"
-      evidence: VendorCitation {
-        source: "rustup toolchain installation layout"
-        url: "https://rust-lang.github.io/rustup/overrides.html"
-      }
-    },
-  ]
-}
-
-data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
-
-data resolved_graph_cache_facts: CacheInterfaceFacts = {
-  identity: resolved_graph_cache_id
-  backing_surface: "gunbc-resolved-graph-per-host-cache"
-  transport_encoding: CasContentEncoding
-  key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
-    overwritable: false
-    prefix_fallback_allowed: false
-    content_verified_on_read: true
-    visibility_scope: Org
-    invalidation_triggers: [ToolchainChange, ManualPurge]
-  }
-  lookup_semantics: ContentAddressLookup
-  write_semantics: WriteOnce
-  miss_semantics: MissThenCreate
-  value_shape: StructuredArtifact
-  locality: PerHostFilesystem
-  eviction: SizeBounded { cap_bytes: 10737418240 }
-  atomicity: WriteThenRename
-  auth: FilesystemPerms
-  read_latency: LocalDiskUs
-  consistency: ReadYourWrites
-  evidence: [
-    {
-      field: "atomicity"
-      evidence: OperatorObserved {
-        note: "resolved_graph_cache.rs temp-file + rename write path (WriteOnce under race)"
-        observed_at: 0
-      }
-    },
-    {
-      field: "lookup_semantics"
-      evidence: OperatorObserved {
-        note: "subject_digest = closure content + resolve-logic version + intern-seed version"
-        observed_at: 0
-      }
-    },
-  ]
-}
-
-data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
-
-// In-process parse memo: content-addressed (grammar_digest × token_stream_digest × position × production).
-// Grammar scopes the in-process store; token_stream_digest prevents cross-source cell reuse.
-// (Realization carrier for v2.compiler.parse ParseTable — dissolves hand-rolled Map threading).
-data parse_table_memo_facts: CacheInterfaceFacts = {
-  identity: parse_table_memo_id
-  backing_surface: "gunbc-parse-table-in-process"
-  transport_encoding: CasContentEncoding
-  key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
-    overwritable: true
-    prefix_fallback_allowed: false
-    content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge]
-  }
-  lookup_semantics: ContentAddressLookup
-  write_semantics: OverwriteAllowed
-  miss_semantics: MissThenCreate
-  value_shape: StructuredArtifact
-  locality: InProcess
-  eviction: Never
-  atomicity: PerFile
-  auth: None
-  read_latency: InProcessNs
-  consistency: Strong
-  evidence: [
-    {
-      field: "locality"
-      evidence: OperatorObserved {
-        note: "scoped to InterpContext; drops with evaluation — within-run memo (design-recompute-memoization §4.1)"
-        observed_at: 0
-      }
-    },
-    {
-      field: "key_derivation"
-      evidence: OperatorObserved {
-        note: "ParseTableSubject = grammar_digest + token_stream_digest (full stream content-address incl. lexemes) + position + production"
-        observed_at: 0
-      }
-    },
-  ]
-}
-
-// --- §1.8 cache-layer planner (first catalog consumer) -----------------------
-
-data cache_catalog_rows: List<CacheInterfaceFacts> = [
-  parse_table_memo_facts,
-  cargo_target_dir_facts,
-  sccache_local_facts,
-  resolved_graph_cache_facts,
-  rustup_toolchain_store_facts,
-  buildbuddy_cas_facts,
-  gha_actions_cache_facts,
-]
+// --- §1.8 cache-layer planner (catalog-parameterized; rows live in extdeps/cache/*) ---
 
 // Locality rank — nearer stores probe first (L1 in-process → L2 host → L3 WAN).
 fn persistence_locality_rank(locality: PersistenceLocality) -> Int {
@@ -607,8 +292,12 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
   }
 }
 
-fn cache_reach_candidate_probe(id: CacheInterfaceId, recompute: CostAccount) -> CacheReachCandidate {
-  let facts = cache_facts_for_id(id: id)
+fn cache_reach_candidate_probe(
+  id: CacheInterfaceId,
+  catalog: List<CacheInterfaceFacts>,
+  recompute: CostAccount,
+) -> CacheReachCandidate {
+  let facts = cache_facts_for_id(id: id, catalog: catalog)
   let fetch = read_latency_cost(facts: facts)
   CacheReachCandidate {
     layer: Present { value: id }
@@ -644,18 +333,26 @@ fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> Domi
 
 // Layer is worth probing when measured recompute exceeds representative fetch cost
 // (recompute path does not dominate the probe on fetch+saved axes at cheap grain).
-fn cache_layer_cost_justified(id: CacheInterfaceId, recompute: CostAccount) -> Bool {
-  nanosecond_duration_count(d: recompute.time) >= nanosecond_duration_count(d: read_latency_cost(facts: cache_facts_for_id(id: id)))
+fn cache_layer_cost_justified(
+  id: CacheInterfaceId,
+  catalog: List<CacheInterfaceFacts>,
+  recompute: CostAccount,
+) -> Bool {
+  nanosecond_duration_count(d: recompute.time) >= nanosecond_duration_count(d: read_latency_cost(facts: cache_facts_for_id(id: id, catalog: catalog)))
 }
 
-fn cache_layer_beats_recompute_path(id: CacheInterfaceId, recompute: CostAccount) -> Bool {
-  let probe = cache_reach_candidate_probe(id: id, recompute: recompute)
+fn cache_layer_beats_recompute_path(
+  id: CacheInterfaceId,
+  catalog: List<CacheInterfaceFacts>,
+  recompute: CostAccount,
+) -> Bool {
+  let probe = cache_reach_candidate_probe(id: id, catalog: catalog, recompute: recompute)
   match cache_reach_dominates(
     a: cache_reach_candidate_recompute(),
     b: probe,
   ) {
     Dominates => false
-    _ => cache_layer_cost_justified(id: id, recompute: recompute)
+    _ => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
   }
 }
 
@@ -678,23 +375,16 @@ fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: CacheInterfaceId) -> B
     )
 }
 
-// Default probe order: in-process memo → runner target dir → host sccache/resolved-graph
-// → toolchain store → remote CAS (BuildBuddy) → GHA actions cache.
-data cache_layer_default_order: List<CacheInterfaceId> = [
-  parse_table_memo_id,
-  cargo_target_dir_id,
-  sccache_local_id,
-  resolved_graph_cache_id,
-  rustup_toolchain_store_id,
-  buildbuddy_cas_id,
-  gha_actions_cache_id,
-]
-
-fn plan_cache_layers(deployment: CacheDeploymentBackends, recompute: CostAccount) -> CacheLayerPlan {
+fn plan_cache_layers(
+  deployment: CacheDeploymentBackends,
+  recompute: CostAccount,
+  catalog: List<CacheInterfaceFacts>,
+  default_order: List<CacheInterfaceId>,
+) -> CacheLayerPlan {
   CacheLayerPlan {
-    layers: cache_layer_default_order
+    layers: default_order
       |> filter(id => cache_interface_id_available(id: id, available: deployment.available))
-      |> filter(id => cache_layer_beats_recompute_path(id: id, recompute: recompute)),
+      |> filter(id => cache_layer_beats_recompute_path(id: id, catalog: catalog, recompute: recompute)),
   }
 }
 
@@ -706,27 +396,29 @@ fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
   plan.layers.skip(n: 1).first()
 }
 
-fn cache_facts_for_id(id: CacheInterfaceId) -> CacheInterfaceFacts {
-  cache_catalog_rows
+fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
+  catalog
     |> filter(facts => facts.identity == id)
     |> first()
 }
 
 fn cache_layer_ids_respect_locality(
   layers: List<CacheInterfaceId>,
+  catalog: List<CacheInterfaceFacts>,
   last_rank: Int,
 ) -> Bool {
   if layers.length() == 0 {
     true
   } else {
     let id = layers.first()
-    let facts = cache_facts_for_id(id: id)
+    let facts = cache_facts_for_id(id: id, catalog: catalog)
     let rank = persistence_locality_rank(locality: facts.locality)
     if rank < last_rank {
       false
     } else {
       cache_layer_ids_respect_locality(
         layers: layers.skip(n: 1),
+        catalog: catalog,
         last_rank: rank,
       )
     }
@@ -735,11 +427,15 @@ fn cache_layer_ids_respect_locality(
 
 // Cost-aware reach: measured recompute vs read_latency fetch cost (Phase 0 CostAccount).
 // dissolve-on: resolved_graph_cache re-key consumes this fold; p(miss) term when probe lands.
-fn cache_layer_plan_respects_locality_order(plan: CacheLayerPlan) -> Bool {
-  cache_layer_ids_respect_locality(layers: plan.layers, last_rank: -1)
+fn cache_layer_plan_respects_locality_order(
+  plan: CacheLayerPlan,
+  catalog: List<CacheInterfaceFacts>,
+) -> Bool {
+  cache_layer_ids_respect_locality(layers: plan.layers, catalog: catalog, last_rank: -1)
 }
 
 // --- §1.9 projection + view helpers ------------------------------------------
+
 
 fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
   CacheStoreView { facts: facts }
@@ -747,29 +443,4 @@ fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
 
 fn cache_key_projection<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> CacheKeyProjection<T> {
   CacheKeyProjection { artifact: artifact, backend: backend }
-}
-
-fn cache_key_projection_transport<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> BackendCacheKey {
-  BackendCacheKey {
-    store: backend.identity
-    key: cache_key_projection_provider_key(artifact: artifact, backend: backend),
-  }
-}
-
-fn cache_key_projection_provider_key<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts) -> ProviderKey {
-  match backend.transport_encoding {
-    OpaqueStringEncoding => OpaqueStringKey { key: artifact.subject_digest }
-    SccacheInternalEncoding => SccacheInternalHash { digest: artifact.subject_digest }
-    CasContentEncoding => CasContentDigest { digest: artifact.subject_digest }
-    CargoFingerprintEncoding => CargoFingerprint { digest: artifact.subject_digest }
-  }
-}
-
-fn cache_verified_hit_receipt<T>(artifact: ArtifactIdentity<T>, backend: CacheInterfaceFacts, producer: ProducerReceipt<T>, content_digest: ContentHash) -> CachedArtifactReceipt<T> {
-  CachedArtifactReceipt {
-    artifact: artifact
-    backend_key: cache_key_projection_transport(artifact: artifact, backend: backend)
-    producer: producer
-    content_digest: content_digest
-  }
 }
