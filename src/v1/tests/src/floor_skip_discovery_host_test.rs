@@ -143,9 +143,7 @@ fn baseline_cache_env_guard(path: Option<&std::path::Path>) -> BaselineCacheEnvG
 impl Drop for BaselineCacheEnvGuard {
     fn drop(&mut self) {
         match &self.prior {
-            Some(v) => unsafe {
-                std::env::set_var("GUNBC_WITNESS_BASELINE_CACHE_DIR", v)
-            },
+            Some(v) => unsafe { std::env::set_var("GUNBC_WITNESS_BASELINE_CACHE_DIR", v) },
             None => unsafe { std::env::remove_var("GUNBC_WITNESS_BASELINE_CACHE_DIR") },
         }
     }
