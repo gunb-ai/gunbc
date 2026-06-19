@@ -3796,14 +3796,19 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
 // **SCAFFOLD (DESIGN.md §7)** — host string materialization at shell/REST `{param}` templates.
 //
 // Hand-Rust scaffold receipt (P5 / §7):
-// - **Gap:** v2 `emit(_, Bash)` returns `TargetSource` (`FreeMonoid<Char>` Cons chains); shell
-//   transport `argv: ["sh","-c","{script}"]` interpolated via `format!("{}", val)` printed Cons
-//   debug text instead of script bytes (slice 3 gate red-by-execution).
+// - **Deleted wrong path:** `scripts/source-root-ingest-gate.sh` (deleted on main); slice-3 gate
+//   transport now emits `TargetSource` via row-driven bash emit (`src/v2/workflow/
+//   source_root_ingest_transport.dag`) instead of the retired sidecar script.
+// - **Red-by-execution (pre-scaffold):** `format!("{}", val)` on `FreeMonoid<Char>` Cons chains at
+//   `substitute_template` / `push_shell_argv_tokens` printed Cons debug text, not script bytes —
+//   `source_root_ingest_gate_passes` went RED on the CI floor until this flatten landed.
+// - **Green witnesses:** `v2.compiler.manual.bash_emit_command_test.bash_emit_source_root_ingest_gate_holds`
+//   (emit-time byte identity) + floor-plan `source_root_ingest_gate_passes` (Wet claim-run legs).
 // - **This site:** `value_as_host_string` / `value_to_host_string` flatten FreeMonoid chains at
-//   `eval_string_interp` and `substitute_template` (and `push_shell_argv_tokens` for direct argv).
-// - **Dissolve-on:** `TargetSource` (or `String`) gains a substrate/host coercion to flat Unicode
-//   text at the shell boundary, or transports take `ShellProgram` not raw emit output — delete these
-//   helpers when the coercion lives in `.dag` or the emit carrier is host-flat by construction.
+//   `eval_string_interp`, `substitute_template`, and `push_shell_argv_tokens`.
+// - **Dissolve-on (ROADMAP):** `ROADMAP.md` Now → Lane 3a `SourceRootIngest` (#5126 / #5155 slice 3) —
+//   delete these helpers when `TargetSource` gains a substrate coercion to flat Unicode at the shell
+//   boundary, or transports take `ShellProgram` not raw emit output.
 
 fn value_as_host_string(val: &Value) -> Option<String> {
     if let Value::Str(s) = val {
