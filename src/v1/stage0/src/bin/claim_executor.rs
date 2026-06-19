@@ -329,11 +329,15 @@ fn run_discovery_batch_node(
         source_roots.len(),
         explicit_entries.len()
     );
+    // CI floor discovery still dispatches Wet: many roster witnesses (e.g.
+    // dsl_compile_clean_witnesses) shell out via shell.Exec.Run and need live
+    // transport shape. claim_batch CLI default is Hermetic (P3c); executor flip
+    // waits on full-corpus wet==hermetic equivalence, not just mock_totality.
     match run_discovery_corpus(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
-        ExecutionMode::Hermetic,
+        ExecutionMode::Wet,
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
