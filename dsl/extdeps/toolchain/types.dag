@@ -9,7 +9,7 @@
 
 module extdeps.toolchain.types
 
-import std.types { FilePath, String }
+import std.types { String }
 
 // Single ISA authority — hardware cpu rows, OCI GOARCH wire, and target triples share this axis.
 type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
@@ -31,13 +31,3 @@ type RuntimePlatform {
   host: TargetTriple
   env: ExecutionEnv
 }
-
-type CodegenTarget {
-  name: String
-  path: FilePath
-  backend: CodegenBackend?
-  target: TargetTriple?
-  runtime_env: ExecutionEnv?
-}
-
-type CodegenBackend = Rust | Go | C | Mips
