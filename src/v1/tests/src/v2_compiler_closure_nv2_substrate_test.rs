@@ -246,6 +246,54 @@ fn nv2_manifest_resolve_timing_probe() {
     let _ = fs::remove_dir_all(&temp);
 }
 
+#[test]
+#[ignore] // Scaling probe: typecheck cost vs manifest record count N (super-linearity curve).
+fn nv2_manifest_resolve_scaling_probe() {
+    use std::time::Instant;
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry = ws.join(COMPILER_ENTRY);
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let records = discover_source_root_reads_for_entry(
+        &roots,
+        entry.to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover");
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+    let gate_entry = ws.join(NV2_GATE_ENTRY);
+    let ns: Vec<usize> = std::env::var("NV2_SCALE_NS")
+        .unwrap_or_else(|_| "2,5,10,20".to_string())
+        .split(',')
+        .map(|s| s.trim().parse().expect("usize"))
+        .collect();
+    for n in ns {
+        let n = n.min(records.len());
+        let temp = unique_temp_dir(&format!("nv2-scale-{n}"));
+        fs::create_dir_all(&temp).expect("temp");
+        let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
+        emit_source_root_ingest_manifest(&manifest_path, &records[..n], Some(&admission))
+            .expect("emit");
+        let bytes = fs::metadata(&manifest_path).map(|m| m.len()).unwrap_or(0);
+        let manifest_dir = manifest_path.parent().expect("parent");
+        let scale_roots = vec![
+            v2_root.to_string_lossy().to_string(),
+            manifest_dir.to_string_lossy().to_string(),
+        ];
+        let start = Instant::now();
+        let result =
+            resolve_entry_graph(&scale_roots, gate_entry.to_str().expect("entry utf8"));
+        eprintln!(
+            "SCALE n={n} bytes={bytes} resolve={:?} ok={}",
+            start.elapsed(),
+            result.is_ok()
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+}
+
 fn tail_lines(text: &str, n: usize) -> String {
     let lines: Vec<&str> = text.lines().collect();
     lines
