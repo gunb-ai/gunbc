@@ -41,7 +41,7 @@ import v2.test.manual.sg2_type_expression_projection {
   sg2_project_instantiation_emitted,
   sg2_type_expr_target
 }
-import v2.std.algebra { bag_eq, fold, length, list_snoc_item }
+import v2.std.algebra { bag_eq, length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Behavior, Symbol }
@@ -63,18 +63,21 @@ fn translate_diagnostic_reason_inhabitant_discriminants(inhabitants: List<Behavi
 }
 
 
+fn translate_diagnostic_reason_symbol_round_trips(sym: Symbol) -> Bool {
+  match translate_diagnostic_reason_from_symbol(sym: sym) {
+    Present { value: reason } => translate_diagnostic_reason_symbol(reason: reason) == sym
+    Absent => false
+  }
+}
+
+
 fn translate_diagnostic_reason_from_symbol_round_trips_inhabitants(
   inhabitants: List<Behavior>
 ) -> Bool {
   fold(inhabitants, init: true, f: fn(acc, inhabitant) {
-    acc && match translate_diagnostic_reason_from_symbol(
+    acc && translate_diagnostic_reason_symbol_round_trips(
       sym: translate_diagnostic_reason_symbol(reason: inhabitant)
-    ) {
-      Present { value: reason } =>
-        translate_diagnostic_reason_symbol(reason: reason)
-          == translate_diagnostic_reason_symbol(reason: inhabitant)
-      Absent => false
-    }
+    )
   })
 }
 
