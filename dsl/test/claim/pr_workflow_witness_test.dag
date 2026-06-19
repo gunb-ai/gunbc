@@ -148,16 +148,27 @@ fn witness_missing_tally_blocks_merge_ready() -> Bool {
   }
 }
 
+fn witness_tally_stale_head() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 0,
+    mergeable_clean: true,
+  }
+}
+
 fn witness_stale_tally_head_sha_blocks() -> Bool {
-  let mut tally = witness_tally_green()
-  tally.head_sha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
       facts: witness_facts(stage: PrUnderReview),
       pr: witness_open_pr(draft: false, state: Open, merged_at: none),
       event: RecordMergeReady,
       digest: Present { value: Ready },
-      tally: Present { value: tally },
+      tally: Present { value: witness_tally_stale_head() },
       policy_permitted: Present { value: true },
     }
   ) {
@@ -199,7 +210,7 @@ fn witness_digest_not_ready_blocks() -> Bool {
 }
 
 fn witness_merged_anchor_from_github() -> Bool {
-  match github_terminal_anchor(
+  match classify_github_terminal_anchor(
     pr: witness_open_pr(
       draft: false,
       state: Open,
@@ -212,7 +223,7 @@ fn witness_merged_anchor_from_github() -> Bool {
 }
 
 fn witness_closed_anchor_from_github() -> Bool {
-  match github_terminal_anchor(
+  match classify_github_terminal_anchor(
     pr: witness_open_pr(draft: false, state: Closed, merged_at: none)
   ) {
     Present { value: PrClosed } => true
@@ -224,6 +235,8 @@ fn all_pr_workflow_witnesses() -> Bool {
   witness_terminal_stages_refuse()
     && witness_draft_blocks_mark_ready()
     && witness_merge_ready_requires_policy()
+    && witness_missing_tally_blocks_merge_ready()
+    && witness_stale_tally_head_sha_blocks()
     && witness_merge_ready_green_with_policy()
     && witness_digest_not_ready_blocks()
     && witness_merged_anchor_from_github()
