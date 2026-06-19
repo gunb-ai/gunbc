@@ -253,7 +253,11 @@ struct ClaimResult {
     detail: String,
 }
 
-fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResult {
+fn run_one_runnable(
+    source_roots: Vec<String>,
+    runnable: Runnable,
+    spawn_width: usize,
+) -> ClaimResult {
     match runnable {
         Runnable::SingleClaim { entry, function } => {
             run_single_claim(&source_roots, entry, function)
@@ -262,7 +266,7 @@ fn run_one_runnable(source_roots: Vec<String>, runnable: Runnable) -> ClaimResul
             source_roots: roots,
             scan_dirs,
             explicit_entries,
-        } => run_discovery_batch_node(roots, scan_dirs, explicit_entries),
+        } => run_discovery_batch_node(roots, scan_dirs, explicit_entries, spawn_width),
     }
 }
 
@@ -322,17 +326,20 @@ fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
+    spawn_width: usize,
 ) -> ClaimResult {
     let label = format!(
-        "discovery-corpus[{} root(s)+{} explicit]",
+        "discovery-corpus[{} root(s)+{} explicit, width={}]",
         source_roots.len(),
-        explicit_entries.len()
+        explicit_entries.len(),
+        spawn_width.max(1),
     );
     match run_discovery_corpus(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
         ExecutionMode::Wet,
+        spawn_width,
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
@@ -391,6 +398,51 @@ fn eval_plan(
     Ok(batches)
 }
 
+/// Companion naming: `gunbc_ci_floor_batches` → `gunbc_ci_floor_spawn_width`.
+fn spawn_width_function_name(plan_function: &str) -> Option<String> {
+    plan_function
+        .strip_suffix("_batches")
+        .map(|prefix| format!("{prefix}_spawn_width"))
+}
+
+fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Result<usize, String> {
+    match value {
+        Value::Record { fields, .. } => match ctx.field(fields, "count") {
+            Some(Value::Int(n)) => Ok((*n).max(1) as usize),
+            Some(other) => Err(format!(
+                "HardwareThreadCount.count is {}, not Int",
+                ctx.format_value(other)
+            )),
+            None => Err("HardwareThreadCount missing `count` field".to_string()),
+        },
+        other => Err(format!(
+            "expected HardwareThreadCount record, got {}",
+            other.type_label_public()
+        )),
+    }
+}
+
+/// Evaluate peripheral spawn width from the `.dag` plan entry (host never decides width).
+fn eval_spawn_width(
+    source_roots: &[String],
+    plan_entry: &str,
+    plan_function: &str,
+) -> Result<usize, String> {
+    let Some(width_fn) = spawn_width_function_name(plan_function) else {
+        return Ok(1);
+    };
+    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
+        .map_err(|msg| format!("resolve failed for spawn width {}:\n{}", plan_entry, msg))?;
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
+    let width_value = run_value(&plan_ctx, &width_fn).map_err(|msg| {
+        format!(
+            "spawn width eval failed ({}::{}): {}",
+            plan_entry, width_fn, msg
+        )
+    })?;
+    hardware_thread_count_from_value(&width_value, &plan_ctx)
+}
+
 /// Outcome of walking the executor-decided batches: whether any claim failed and
 /// how many batches actually started executing (the walk halts at a failed batch,
 /// so `batches_run < batches.len()` witnesses that the halt fired).
@@ -399,43 +451,59 @@ struct WalkOutcome {
     batches_run: usize,
 }
 
-/// Run batch by batch (executor ordering); claims within a batch in parallel. The
-/// batch boundary is a barrier: batch N+1 starts only after every claim in batch N
+/// Run batch by batch (executor ordering); claims within a batch in parallel up to
+/// `spawn_width` concurrent threads (peripheral width realization — `.dag` authority).
+/// The batch boundary is a barrier: batch N+1 starts only after every claim in batch N
 /// has reported. A failed batch halts the walk before its dependents. The batch
 /// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
-fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>]) -> WalkOutcome {
+fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
+    let width = spawn_width.max(1);
     let mut any_failed = false;
     let mut batches_run = 0usize;
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
-        eprintln!("claim_executor: batch {} — {} node(s)", bi + 1, batch.len());
-        let handles: Vec<_> = batch
-            .iter()
-            .map(|runnable| {
-                let roots = source_roots.to_vec();
-                let runnable = runnable.clone();
-                thread::spawn(move || run_one_runnable(roots, runnable))
-            })
-            .collect();
-        for handle in handles {
-            match handle.join() {
-                Ok(result) => {
-                    if result.ok {
-                        println!("PASS [batch {}] {}", bi + 1, result.function);
-                    } else {
-                        println!(
-                            "FAIL [batch {}] {} ({})",
-                            bi + 1,
-                            result.function,
-                            result.detail
-                        );
+        eprintln!(
+            "claim_executor: batch {} — {} node(s), spawn_width={}",
+            bi + 1,
+            batch.len(),
+            width
+        );
+        for chunk in batch.chunks(width) {
+            // Divide spawn budget across chunk siblings so DiscoveryBatch internal
+            // sharding + batch-level concurrency never exceeds the .dag width authority.
+            let per_runnable_width = (width / chunk.len()).max(1);
+            let handles: Vec<_> = chunk
+                .iter()
+                .map(|runnable| {
+                    let roots = source_roots.to_vec();
+                    let runnable = runnable.clone();
+                    let slot_width = per_runnable_width;
+                    thread::spawn(move || run_one_runnable(roots, runnable, slot_width))
+                })
+                .collect();
+            for handle in handles {
+                match handle.join() {
+                    Ok(result) => {
+                        if result.ok {
+                            println!("PASS [batch {}] {}", bi + 1, result.function);
+                        } else {
+                            println!(
+                                "FAIL [batch {}] {} ({})",
+                                bi + 1,
+                                result.function,
+                                result.detail
+                            );
+                            any_failed = true;
+                        }
+                    }
+                    Err(_) => {
+                        println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
                         any_failed = true;
                     }
                 }
-                Err(_) => {
-                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
-                    any_failed = true;
-                }
+            }
+            if any_failed {
+                break;
             }
         }
         // Fail closed at the barrier: if a gating batch failed, do not run the
@@ -635,7 +703,7 @@ fn run_perturb_check(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
         gating_function
     );
-    let outcome = run_walk(&[temp_root], &remapped);
+    let outcome = run_walk(&[temp_root], &remapped, 1);
     let _ = fs::remove_dir_all(&tmp);
 
     // Receipt: the planted gating failure must fail the run closed AND halt the
@@ -738,8 +806,24 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
+    let spawn_width = match eval_spawn_width(&source_roots, &plan_entry, &plan_function) {
+        Ok(w) => w,
+        Err(msg) => {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
+    eprintln!(
+        "claim_executor: spawn_width={} from {}::{}",
+        spawn_width,
+        plan_entry,
+        spawn_width_function_name(&plan_function)
+            .as_deref()
+            .unwrap_or("<serial>")
+    );
+
     // 2. Run batch by batch (executor ordering), claims within a batch in parallel.
-    let outcome = run_walk(&source_roots, &batches);
+    let outcome = run_walk(&source_roots, &batches, spawn_width);
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
