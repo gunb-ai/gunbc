@@ -15,25 +15,6 @@ data extdeps_stable_authority_module: QualifiedName = QnCons {
   tail: QnCons { head: ^stable_authority, tail: QnEmpty }
 }
 
-// Anchor-machinery modules: RFC/header-grounded (uri) or self-anchoring (stable_authority).
-// Exempt from MissingFormalAnchor — requiring a row on uri would force a grounding cycle.
-data extdeps_stable_authority_anchor_machinery_exempt_modules: List<QualifiedName> = [
-  extdeps_uri_module,
-  extdeps_stable_authority_module
-]
-
-// Slice-1 enrolled modules: real extdeps rows that MUST declare anchors before backfill lands.
-data extdeps_stable_authority_anchor_enrolled_modules: List<QualifiedName> = [
-  extdeps_fixture_clean_https_module
-]
-
-// RED perturb fixtures excluded from live clean-tree roster (would false-RED the gate).
-data extdeps_stable_authority_clean_tree_roster_exclusions: List<QualifiedName> = [
-  extdeps_fixture_bogus_scheme_module,
-  extdeps_fixture_missing_anchor_module,
-  extdeps_fixture_clean_https_no_anchor_module
-]
-
 data extdeps_fixture_missing_anchor_module: QualifiedName = QnCons {
   head: ^extdeps,
   tail: QnCons {
@@ -66,3 +47,22 @@ data extdeps_fixture_clean_https_no_anchor_module: QualifiedName = QnCons {
     tail: QnCons { head: ^stable_authority_clean_https_no_anchor, tail: QnEmpty }
   }
 }
+
+// Anchor-machinery modules: RFC/header-grounded (uri) or self-anchoring (stable_authority).
+// Exempt from MissingFormalAnchor — requiring a row on uri would force a grounding cycle.
+data extdeps_stable_authority_anchor_machinery_exempt_modules: List<QualifiedName> = [
+  extdeps_uri_module,
+  extdeps_stable_authority_module
+]
+
+// Slice-1 enrolled modules: real extdeps rows that MUST declare anchors before backfill lands.
+data extdeps_stable_authority_anchor_enrolled_modules: List<QualifiedName> = [
+  extdeps_fixture_clean_https_module
+]
+
+// RED perturb fixtures excluded from live clean-tree roster (would false-RED the gate).
+data extdeps_stable_authority_clean_tree_roster_exclusions: List<QualifiedName> = [
+  extdeps_fixture_bogus_scheme_module,
+  extdeps_fixture_missing_anchor_module,
+  extdeps_fixture_clean_https_no_anchor_module
+]

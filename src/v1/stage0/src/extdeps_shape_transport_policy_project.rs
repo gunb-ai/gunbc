@@ -671,9 +671,7 @@ pub fn stable_authority_locator_for_module_path(module_path: String) -> String {
     }
 }
 
-pub fn stable_authority_locator_for_qualified_name(
-    qn: &crate::v1_interpreter::Value,
-) -> String {
+pub fn stable_authority_locator_for_qualified_name(qn: &crate::v1_interpreter::Value) -> String {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
     stable_authority_locator_for_module_path(module_path)
 }

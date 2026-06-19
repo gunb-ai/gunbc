@@ -8,8 +8,7 @@ import extdeps.uri {
   Https,
   File,
   uri_is_url,
-  uri_scheme_is_http,
-  uri_scheme_is_recognized
+  uri_scheme_is_http
 }
 import std.logic { Bool }
 
@@ -29,14 +28,9 @@ test fn uri_is_url_file_not_url_holds() -> Bool {
   uri_is_url(uri: Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
 }
 
-test fn uri_scheme_file_is_recognized_holds() -> Bool {
-  uri_scheme_is_recognized(s: File)
-}
-
 test fn uri_witnesses() -> Bool {
   uri_scheme_is_http_matches_https_holds()
     && uri_scheme_is_http_rejects_file_holds()
     && uri_is_url_https_projection_holds()
     && uri_is_url_file_not_url_holds()
-    && uri_scheme_file_is_recognized_holds()
 }

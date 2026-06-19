@@ -28,6 +28,9 @@ type Uri {
   locator: NonEmptyStr
 }
 
+// 🟢 TERMINAL — closed-sum membership: Http|Https vs File|Ftp (discriminating witness
+// surface for the extdeps.uri carrier; scheme recognition for live anchors lives in
+// v2.lens.extdeps_stable_authority.decode_uri_scheme over projected constructor identity).
 fn uri_scheme_is_http(s: UriScheme) -> Bool {
   match s {
     Http => true
@@ -37,18 +40,8 @@ fn uri_scheme_is_http(s: UriScheme) -> Bool {
   }
 }
 
-fn uri_scheme_is_recognized(s: UriScheme) -> Bool {
-  match s {
-    Http => true
-    Https => true
-    File => true
-    Ftp => true
-  }
-}
-
-// Url (std.types) is the legacy http(s) String projection carrier.
-// [Url] ⊂ { uri | uri_scheme_is_http(uri.scheme) } — relation only; Url=String
-// consumer migration is a separate follow-up.
+// 🟢 TERMINAL — documents [Url] ⊂ { uri | uri_scheme_is_http(uri.scheme) } relation only;
+// Url=String consumer migration is a separate follow-up.
 fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }

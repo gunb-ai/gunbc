@@ -158,6 +158,29 @@ fn extdeps_stable_authority_live_violations_for_module(
   }
 }
 
+// Perturb receipt: apply enrolled missing-anchor semantics to a single module (anchor-drop RED).
+fn extdeps_stable_authority_live_violations_if_enrolled(
+  module: QualifiedName
+) -> List<ExtdepsStableAuthorityViolation> {
+  match extdeps_stable_authority_status_for_module(module: module) {
+    AnchorAbsent =>
+      if extdeps_stable_authority_is_anchor_machinery_exempt(module: module) {
+        empty_extdeps_stable_authority_violations
+      } else {
+        [
+          MissingFormalAnchor { module: module }
+        ]
+      }
+    AnchorPresent { scheme_identity: raw, locator: _ } =>
+      match decode_uri_scheme(raw: raw) {
+        Present { value: _ } => empty_extdeps_stable_authority_violations
+        Absent => [
+          UnrecognizedAnchorScheme { module: module, raw_scheme: raw }
+        ]
+      }
+  }
+}
+
 fn extdeps_stable_authority_violation_count_for_module(module: QualifiedName) -> Int {
   length(xs: extdeps_stable_authority_violations_for_module(module: module))
 }
@@ -247,7 +270,9 @@ fn extdeps_stable_authority_live_anchored_modules_clean_holds() -> Bool {
 fn extdeps_stable_authority_live_enrolled_anchor_drop_is_red(
   module: QualifiedName
 ) -> Bool {
-  extdeps_stable_authority_live_violation_count_for_module(module: module) > 0
+  length(
+    xs: extdeps_stable_authority_live_violations_if_enrolled(module: module)
+  ) > 0
     && anchor_kind_is_absent(
       kind: extdeps_stable_authority_anchor_kind_for_qualified_name(module: module)
     )
