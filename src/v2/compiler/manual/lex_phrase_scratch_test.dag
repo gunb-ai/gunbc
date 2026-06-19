@@ -1,0 +1,25 @@
+module v2.test.manual.lex_phrase_scratch
+
+// SCRATCH — delete before commit. Proves the LexicalPhrase de-dup is byte-identical:
+// each derived source_text == the literal it replaced. Imports bash + std only (no emit/
+// translate), so it sidesteps the pre-existing emit-test resolution cycle.
+
+import v2.extdeps.languages.bash {
+  bash_mvp1_source_text,
+  bash_source_root_ingest_gate_source_text,
+  bash_and_then_source_text,
+  bash_or_else_source_text,
+  bash_with_redir_stderr_null_source_text,
+  bash_pipe_source_text,
+  bash_or_else_with_redir_source_text
+}
+
+test fn lex_phrase_source_text_byte_identical() -> Bool {
+  (bash_mvp1_source_text == "'git' 'rev-parse' '--show-toplevel'") &&
+  (bash_source_root_ingest_gate_source_text == "'bash' 'scripts/source-root-ingest-gate.sh'") &&
+  (bash_and_then_source_text == "'true' && 'false'") &&
+  (bash_or_else_source_text == "'true' || 'false'") &&
+  (bash_with_redir_stderr_null_source_text == "'git' 'rev-parse' '--show-toplevel' 2>/dev/null") &&
+  (bash_pipe_source_text == "'echo' 'hi' | 'wc' '-c'") &&
+  (bash_or_else_with_redir_source_text == "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'")
+}

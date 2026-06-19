@@ -5,7 +5,7 @@
 
 module v2.std.compilers.lexing
 
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { Empty, fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
@@ -58,6 +58,84 @@ type LexRuleSet {
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }
+
+
+// ── LexicalPhrase: the single authority for a fixed-token phrase ───────────
+// A fixed-token phrase (one with a literal spelling — no emit-time bound words) was
+// historically authored THREE times that could silently disagree: a LexRuleSet of
+// (token_class, literal-text) rules, a parallel ConcreteSyntaxToken sequence repeating
+// the same token classes, and a whole-phrase source-text string equal to the rule texts
+// concatenated. LexicalPhrase collapses those into one carrier (§2 horizontal — one
+// concept, derive every use): an ordered list of (token_class, fragment) spans whose
+// fragments concatenate, in order, to the source text.
+//
+// Author it so the `fragment:` column reads top-to-bottom AS the sentence being formed —
+// the authored form IS the phrase. The lex rule set, the source text, and (in
+// target_model, which knows ConcreteSyntaxToken) the concrete-token sequence all PROJECT
+// from this one value, so the concat == source_text identity holds by construction and
+// the three can no longer drift (§5: the redundancy is removed, not merely checked).
+//
+// 🟡 layout-in-fragments interim — feature:t6-token-layout — bind gunbc#4761 (T-6 TokenLayout/
+// TriviaPolicy) — dissolve-on-arrival: `fragment` splits into (lexeme, trivia) once T-6
+// supplies a TriviaPolicy so inter-token layout is interleaved structurally rather than baked
+// into each span's text; forbidden: a second whole-phrase source-text authority alongside
+// `phrase_to_source_text`. Bound-word phrases (emit-time spelling resolved from a binding) are
+// NOT yet expressible — a binding-carrying span is the migration-time extension, not this PR.
+type TokenSpan {
+  token_class: Symbol
+  fragment: String
+}
+
+
+type LexicalPhrase {
+  spans: List<TokenSpan>
+}
+
+
+fn span(token_class: Symbol, fragment: String) -> TokenSpan {
+  TokenSpan { token_class: token_class, fragment: fragment }
+}
+
+
+fn phrase(spans: List<TokenSpan>) -> LexicalPhrase {
+  LexicalPhrase { spans: spans }
+}
+
+
+// Projection 1 — the fixed-token LexRuleSet: each span is a TokenRule over a LiteralPattern
+// of its fragment, in source order (maximal-munch order preserved from `spans`).
+fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
+  LexRuleSet {
+    rules: fold_list(
+      xs: p.spans,
+      empty: Empty,
+      cons: fn(acc, s) {
+        list_snoc_item(
+          xs: acc,
+          item: TokenRule {
+            token_class: s.token_class,
+            pattern: LiteralPattern { text: s.fragment }
+          }
+        )
+      }
+    )
+  }
+}
+
+
+fn phrase_to_lex_rules(p: LexicalPhrase) -> LexRules {
+  ModeledLexRules { root: phrase_to_lex_rule_set(p: p) }
+}
+
+
+// Projection 2 — the source text: the fragments concatenated in order.
+fn phrase_to_source_text(p: LexicalPhrase) -> String {
+  fold_list(
+    xs: p.spans,
+    empty: "",
+    cons: fn(acc, s) { concat(acc, s.fragment) }
+  )
+}
 
 
 type Token {

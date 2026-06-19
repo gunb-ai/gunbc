@@ -47,18 +47,19 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.lexing {
-  LexRule,
-  LexRuleSet,
   LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule
+  LexicalPhrase,
+  phrase,
+  phrase_to_lex_rules,
+  phrase_to_source_text,
+  span
 }
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
+  phrase_to_fixed_concrete_tokens,
   target_model_emit_transforms_empty,
   target_model_make_with_emit_transforms,
   concrete_syntax_token_to_node
@@ -219,20 +220,93 @@ fn bash_relation_translation_rules_node(
 }
 
 
+// =========================================================================
+// Lexical phrases — one authority per fixed-token phrase (DESIGN.md §3).
+//
+// Each phrase is authored ONCE here as an ordered list of (token_class, fragment)
+// spans: read the `fragment:` column top-to-bottom and it spells the shell text the
+// phrase emits. The lex rule set, the concrete-token sequence, and the source-text
+// string all PROJECT from these (phrase_to_lex_rules / phrase_to_fixed_concrete_tokens /
+// phrase_to_source_text), so the three can no longer drift (DESIGN.md §2 horizontal:
+// one concept, derive every use). The byte-identity to serialize_bash is proven by
+// execution in bash_emit_command_test.
+//
+// Bound-word phrases (bash_bound_words / bash_embedded_quote) are spelled at emit time
+// from a binding, not a literal fragment, so they are NOT LexicalPhrases yet — a
+// binding-carrying span is the migration-time extension (see lexing.dag T-6 note).
+// =========================================================================
+
+fn bash_mvp1_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_git,           fragment: "'git'"),
+    span(token_class: ^bash_token_word_rev_parse,     fragment: " 'rev-parse'"),
+    span(token_class: ^bash_token_word_show_toplevel, fragment: " '--show-toplevel'")
+  ])
+}
+
+fn bash_source_root_ingest_gate_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_bash,                      fragment: "'bash'"),
+    span(token_class: ^bash_token_word_source_root_ingest_gate_sh, fragment: " 'scripts/source-root-ingest-gate.sh'")
+  ])
+}
+
+fn bash_and_then_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_true,  fragment: "'true'"),
+    span(token_class: ^bash_token_and_then,   fragment: " && "),
+    span(token_class: ^bash_token_word_false, fragment: "'false'")
+  ])
+}
+
+fn bash_or_else_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_true,  fragment: "'true'"),
+    span(token_class: ^bash_token_or_else,    fragment: " || "),
+    span(token_class: ^bash_token_word_false, fragment: "'false'")
+  ])
+}
+
+fn bash_with_redir_stderr_null_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_git,           fragment: "'git'"),
+    span(token_class: ^bash_token_word_rev_parse,     fragment: " 'rev-parse'"),
+    span(token_class: ^bash_token_word_show_toplevel, fragment: " '--show-toplevel'"),
+    span(token_class: ^bash_token_redir_stderr_null,  fragment: " 2>/dev/null")
+  ])
+}
+
+fn bash_pipe_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_echo,    fragment: "'echo'"),
+    span(token_class: ^bash_token_word_hi,      fragment: " 'hi'"),
+    span(token_class: ^bash_token_pipe,         fragment: " | "),
+    span(token_class: ^bash_token_word_wc,      fragment: "'wc'"),
+    span(token_class: ^bash_token_word_minus_c, fragment: " '-c'")
+  ])
+}
+
+fn bash_or_else_with_redir_phrase() -> LexicalPhrase {
+  phrase(spans: [
+    span(token_class: ^bash_token_word_git,           fragment: "'git'"),
+    span(token_class: ^bash_token_word_rev_parse,     fragment: " 'rev-parse'"),
+    span(token_class: ^bash_token_word_show_toplevel, fragment: " '--show-toplevel'"),
+    span(token_class: ^bash_token_redir_stderr_null,  fragment: " 2>/dev/null"),
+    span(token_class: ^bash_token_or_else,            fragment: " || "),
+    span(token_class: ^bash_token_word_pwd,           fragment: "'pwd'")
+  ])
+}
+
 // The canonical shell text emit must produce (POSIX single-quoted words). Byte-identical to
 // `serialize_bash(command([lit("git"), lit("rev-parse"), lit("--show-toplevel")]))`.
-data bash_mvp1_source_text: String = "'git' 'rev-parse' '--show-toplevel'"
+data bash_mvp1_source_text: String = phrase_to_source_text(p: bash_mvp1_phrase())
 
 // =========================================================================
 // Concrete tokens — every word a FixedToken (no bound/dynamic words in slice 1).
 // =========================================================================
 
 fn bash_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_git },
-    FixedToken { token_class: ^bash_token_word_rev_parse },
-    FixedToken { token_class: ^bash_token_word_show_toplevel }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_mvp1_phrase())
 }
 
 data bash_mvp1_emitted_command: Node = bash_conj_emitted_from_tokens(
@@ -320,17 +394,14 @@ data bash_embedded_quote_source_text: String = "'a'\\''b'"
 // =========================================================================
 
 fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_bash },
-    FixedToken { token_class: ^bash_token_word_source_root_ingest_gate_sh }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_source_root_ingest_gate_phrase())
 }
 
 data bash_source_root_ingest_gate_emitted_command: Node = bash_conj_emitted_from_tokens(
   tokens: bash_source_root_ingest_gate_concrete_tokens()
 )
 
-data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
+data bash_source_root_ingest_gate_source_text: String = phrase_to_source_text(p: bash_source_root_ingest_gate_phrase())
 
 fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -348,11 +419,7 @@ fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
 // =========================================================================
 
 fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_true },
-    FixedToken { token_class: ^bash_token_and_then },
-    FixedToken { token_class: ^bash_token_word_false }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_and_then_phrase())
 }
 
 // AndOr { AndThen } — `'true' && 'false'`
@@ -360,7 +427,7 @@ data bash_and_then_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_and_then_concrete_tokens()
 )
 
-data bash_and_then_source_text: String = "'true' && 'false'"
+data bash_and_then_source_text: String = phrase_to_source_text(p: bash_and_then_phrase())
 
 fn bash_and_then_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -372,11 +439,7 @@ fn bash_and_then_translation_rules_node() -> Node {
 }
 
 fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_true },
-    FixedToken { token_class: ^bash_token_or_else },
-    FixedToken { token_class: ^bash_token_word_false }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_or_else_phrase())
 }
 
 // AndOr { OrElse } — `'true' || 'false'`
@@ -384,7 +447,7 @@ data bash_or_else_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_or_else_concrete_tokens()
 )
 
-data bash_or_else_source_text: String = "'true' || 'false'"
+data bash_or_else_source_text: String = phrase_to_source_text(p: bash_or_else_phrase())
 
 fn bash_or_else_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -396,12 +459,7 @@ fn bash_or_else_translation_rules_node() -> Node {
 }
 
 fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_git },
-    FixedToken { token_class: ^bash_token_word_rev_parse },
-    FixedToken { token_class: ^bash_token_word_show_toplevel },
-    FixedToken { token_class: ^bash_token_redir_stderr_null }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_with_redir_stderr_null_phrase())
 }
 
 // WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
@@ -409,7 +467,7 @@ data bash_with_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_with_redir_stderr_null_concrete_tokens()
 )
 
-data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
+data bash_with_redir_stderr_null_source_text: String = phrase_to_source_text(p: bash_with_redir_stderr_null_phrase())
 
 fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -421,13 +479,7 @@ fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
 }
 
 fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_echo },
-    FixedToken { token_class: ^bash_token_word_hi },
-    FixedToken { token_class: ^bash_token_pipe },
-    FixedToken { token_class: ^bash_token_word_wc },
-    FixedToken { token_class: ^bash_token_word_minus_c }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_pipe_phrase())
 }
 
 // Pipe — `'echo' 'hi' | 'wc' '-c'`
@@ -435,7 +487,7 @@ data bash_pipe_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_pipe_concrete_tokens()
 )
 
-data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
+data bash_pipe_source_text: String = phrase_to_source_text(p: bash_pipe_phrase())
 
 fn bash_pipe_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -447,14 +499,7 @@ fn bash_pipe_translation_rules_node() -> Node {
 }
 
 fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_word_git },
-    FixedToken { token_class: ^bash_token_word_rev_parse },
-    FixedToken { token_class: ^bash_token_word_show_toplevel },
-    FixedToken { token_class: ^bash_token_redir_stderr_null },
-    FixedToken { token_class: ^bash_token_or_else },
-    FixedToken { token_class: ^bash_token_word_pwd }
-  ]
+  phrase_to_fixed_concrete_tokens(p: bash_or_else_with_redir_phrase())
 }
 
 // host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
@@ -463,7 +508,7 @@ data bash_or_else_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_or_else_with_redir_concrete_tokens()
 )
 
-data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
+data bash_or_else_with_redir_source_text: String = phrase_to_source_text(p: bash_or_else_with_redir_phrase())
 
 fn bash_or_else_with_redir_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -591,30 +636,14 @@ fn bash_embedded_quote_target_model_bundle() -> Node {
 }
 
 // =========================================================================
-// Lex — POSIX single-quoting + token-adjacent layout baked into each literal (interim policy,
-// dissolves with rust.dag's T-6 TokenLayout). `'git'` then ` 'rev-parse'` then ` '--show-toplevel'`
-// concatenate to the canonical source text.
+// Lex — each rule set PROJECTS from its LexicalPhrase (above) via phrase_to_lex_rules.
+// POSIX single-quoting + token-adjacent layout still ride inside each span's fragment
+// (interim policy, dissolves with the T-6 TokenLayout note in lexing.dag); the phrase's
+// fragment column IS the canonical source text the rules accept.
 // =========================================================================
 
-fn bash_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule {
-    token_class: token_class,
-    pattern: LiteralPattern { text: text }
-  }
-}
-
-fn bash_mvp1_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      bash_lex_rule(token_class: ^bash_token_word_git, text: "'git'"),
-      bash_lex_rule(token_class: ^bash_token_word_rev_parse, text: " 'rev-parse'"),
-      bash_lex_rule(token_class: ^bash_token_word_show_toplevel, text: " '--show-toplevel'")
-    ]
-  }
-}
-
 fn bash_mvp1_lex() -> LexRules {
-  ModeledLexRules { root: bash_mvp1_lex_rules() }
+  phrase_to_lex_rules(p: bash_mvp1_phrase())
 }
 
 fn bash_mvp1_target_model() -> TargetModel {
@@ -665,20 +694,8 @@ fn bash_source_root_ingest_gate_target_model_bundle() -> Node {
   )
 }
 
-fn bash_source_root_ingest_gate_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: [
-      bash_lex_rule(token_class: ^bash_token_word_bash, text: "'bash'"),
-      bash_lex_rule(
-        token_class: ^bash_token_word_source_root_ingest_gate_sh,
-        text: " 'scripts/source-root-ingest-gate.sh'"
-      )
-    ]
-  }
-}
-
 fn bash_source_root_ingest_gate_lex() -> LexRules {
-  ModeledLexRules { root: bash_source_root_ingest_gate_lex_rules() }
+  phrase_to_lex_rules(p: bash_source_root_ingest_gate_phrase())
 }
 
 fn bash_source_root_ingest_gate_target_model() -> TargetModel {
@@ -718,15 +735,7 @@ fn bash_make_fixed_tokens_target_model(
 }
 
 fn bash_and_then_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
-        bash_lex_rule(token_class: ^bash_token_and_then, text: " && "),
-        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: bash_and_then_phrase())
 }
 
 fn bash_and_then_target_model() -> TargetModel {
@@ -741,15 +750,7 @@ fn bash_and_then_target_model() -> TargetModel {
 }
 
 fn bash_or_else_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
-        bash_lex_rule(token_class: ^bash_token_or_else, text: " || "),
-        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: bash_or_else_phrase())
 }
 
 fn bash_or_else_target_model() -> TargetModel {
@@ -764,16 +765,7 @@ fn bash_or_else_target_model() -> TargetModel {
 }
 
 fn bash_with_redir_stderr_null_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_word_git, text: "'git'"),
-        bash_lex_rule(token_class: ^bash_token_word_rev_parse, text: " 'rev-parse'"),
-        bash_lex_rule(token_class: ^bash_token_word_show_toplevel, text: " '--show-toplevel'"),
-        bash_lex_rule(token_class: ^bash_token_redir_stderr_null, text: " 2>/dev/null")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: bash_with_redir_stderr_null_phrase())
 }
 
 fn bash_with_redir_stderr_null_target_model() -> TargetModel {
@@ -788,17 +780,7 @@ fn bash_with_redir_stderr_null_target_model() -> TargetModel {
 }
 
 fn bash_pipe_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_word_echo, text: "'echo'"),
-        bash_lex_rule(token_class: ^bash_token_word_hi, text: " 'hi'"),
-        bash_lex_rule(token_class: ^bash_token_pipe, text: " | "),
-        bash_lex_rule(token_class: ^bash_token_word_wc, text: "'wc'"),
-        bash_lex_rule(token_class: ^bash_token_word_minus_c, text: " '-c'")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: bash_pipe_phrase())
 }
 
 fn bash_pipe_target_model() -> TargetModel {
@@ -813,18 +795,7 @@ fn bash_pipe_target_model() -> TargetModel {
 }
 
 fn bash_or_else_with_redir_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_word_git, text: "'git'"),
-        bash_lex_rule(token_class: ^bash_token_word_rev_parse, text: " 'rev-parse'"),
-        bash_lex_rule(token_class: ^bash_token_word_show_toplevel, text: " '--show-toplevel'"),
-        bash_lex_rule(token_class: ^bash_token_redir_stderr_null, text: " 2>/dev/null"),
-        bash_lex_rule(token_class: ^bash_token_or_else, text: " || "),
-        bash_lex_rule(token_class: ^bash_token_word_pwd, text: "'pwd'")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: bash_or_else_with_redir_phrase())
 }
 
 fn bash_or_else_with_redir_target_model() -> TargetModel {
