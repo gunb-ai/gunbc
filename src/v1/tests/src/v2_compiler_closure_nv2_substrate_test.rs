@@ -212,6 +212,40 @@ fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     );
 }
 
+#[test]
+#[ignore] // Timing probe for the N_v2 resolve hang root-cause; not a gate.
+fn nv2_manifest_resolve_timing_probe() {
+    use std::time::Instant;
+    let temp = unique_temp_dir("nv2-timing");
+    fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
+    write_nv2_manifest(&manifest_path);
+    let manifest_src = fs::read_to_string(&manifest_path).expect("read manifest");
+    eprintln!(
+        "PROBE manifest bytes={} lines={}",
+        manifest_src.len(),
+        manifest_src.lines().count()
+    );
+    eprintln!("--- PROBE manifest source ---\n{manifest_src}\n--- end ---");
+
+    let ws = workspace_root();
+    let entry = ws.join(NV2_GATE_ENTRY);
+    let manifest_dir = manifest_path.parent().expect("manifest parent");
+    let roots = vec![
+        ws.join("src/v2").to_string_lossy().to_string(),
+        manifest_dir.to_string_lossy().to_string(),
+    ];
+    eprintln!("PROBE resolve_entry_graph (manifest overlay) starting...");
+    let start = Instant::now();
+    let result = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"));
+    eprintln!(
+        "PROBE resolve_entry_graph done in {:?} -> {:?}",
+        start.elapsed(),
+        result.as_ref().map(|_| "Ok").map_err(|e| e.as_str())
+    );
+    let _ = fs::remove_dir_all(&temp);
+}
+
 fn tail_lines(text: &str, n: usize) -> String {
     let lines: Vec<&str> = text.lines().collect();
     lines
