@@ -313,6 +313,16 @@ pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {
     }
 }
 
+pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
+    if (name.clone().as_str() == "Json".to_string().as_str())
+        || (name.clone().as_str() == "Bytes".to_string().as_str())
+    {
+        Some(coerce_primitive_type(RenderTarget::Rust, name.clone()))
+    } else {
+        None
+    }
+}
+
 pub fn rust_named_type_base(name: String) -> String {
     if ((name.clone().as_str() == "Witness".to_string().as_str())
         || (name.clone().as_str() == "witness".to_string().as_str()))
@@ -622,6 +632,8 @@ pub fn render_rust_alias_rhs_type(
         {
             if name.clone().as_str() == "String".to_string().as_str() {
                 render_rust_text_carrier(shared_types.clone())
+            } else if let Some(carrier) = rust_opaque_kernel_alias_carrier(name.clone()) {
+                carrier
             } else {
                 rust_render_type_leaf_name(
                     name.clone(),
@@ -2678,7 +2690,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod import_resolution_project;\npub mod layering_imports_project;\npub mod module_path_index;\npub mod transport_script_position_project;".to_string()
         } else {
             "".to_string()
         };
@@ -10430,6 +10442,8 @@ pub fn rust_render_type_leaf_name(
 ) -> String {
     if is_phantom_unit_variant_type_arg(env, name.clone()) {
         name
+    } else if let Some(carrier) = rust_opaque_kernel_alias_carrier(name.clone()) {
+        carrier
     } else {
         rust_qualify_type_leaf_name(name, variant_to_enum)
     }

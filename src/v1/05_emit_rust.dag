@@ -1182,7 +1182,10 @@ fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>
   if is_phantom_unit_variant_type_arg(env: env, variant_name: name) {
     name
   } else {
-    rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    match rust_opaque_kernel_alias_carrier(name: name) {
+      Present { value: carrier } => carrier
+      Absent => rust_qualify_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+    }
   }
 }
 
