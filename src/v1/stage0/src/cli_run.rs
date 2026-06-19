@@ -2100,14 +2100,91 @@ pub struct DiscoverySummary {
     pub total_measured_nanos: u128,
 }
 
+/// Enrolled witness `.dag` carrying the scaffold roster entry-prefix authority.
+pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
+    "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
+/// `data` binding name for the single-authority roster entry prefix (§3).
+pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
+    "wet_hermetic_equivalence_representative_prefix";
+
+fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Result<String, String> {
+    let path = Path::new(entry);
+    if path.is_file() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    for root in source_roots {
+        let root_path = Path::new(root);
+        let root_name = root_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if !root_name.is_empty() {
+            let prefix = format!("{root_name}/");
+            if let Some(suffix) = entry.strip_prefix(&prefix) {
+                let candidate = root_path.join(suffix);
+                if candidate.is_file() {
+                    return Ok(candidate.to_string_lossy().into_owned());
+                }
+            }
+        }
+        let candidate = root_path.join(entry);
+        if candidate.is_file() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(format!(
+        "entry file does not exist or is not a file: {}",
+        entry
+    ))
+}
+
+/// Load the scaffold roster entry-prefix from the enrolled witness `.dag` data
+/// binding. Rust filter code must use this — no parallel substring authority.
+pub fn wet_hermetic_scaffold_roster_entry_prefix(
+    source_roots: &[String],
+) -> Result<String, String> {
+    let entry = resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
+    let (graph, source_indices) = resolve_entry_graph(source_roots, &entry)?;
+    let sources = load_sources_for_entry(source_roots, &entry)?;
+    let entry_source = sources
+        .iter()
+        .find(|s| s.path == entry || s.path.ends_with(WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY))
+        .ok_or_else(|| format!("{entry}: missing from entry closure"))?;
+    let entry_module = extract_module_path(&entry_source.content)
+        .ok_or_else(|| format!("{entry}: missing module declaration"))?;
+    let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
+    let si = Rc::new((*source_indices).clone());
+    for item in typed_module.items.iter() {
+        if item.body.is_none() {
+            continue;
+        }
+        let decl_name = authored_name_at(si.clone(), item.clone());
+        if decl_name != WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA {
+            continue;
+        }
+        let body = item.body.as_ref().ok_or_else(|| {
+            format!("{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' missing body")
+        })?;
+        return literal_string_from_expr(body).ok_or_else(|| {
+            format!(
+                "{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' must be a string literal"
+            )
+        });
+    }
+    Err(format!(
+        "{entry}: missing data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}'"
+    ))
+}
+
 /// Scaffold roster filter: one discoverable `test fn` per extdeps layer with a
-/// published mock corpus (`src/v2/test/lens_mock_totality/*`). These witnesses
-/// exercise the M4 hermetic-realization *model* in pure `.dag` — they do NOT
-/// traverse `eval_service_call` under either Wet or Hermetic, so they cannot
-/// observe mock-vs-live faithfulness. Dissolution: replace with witnesses that
-/// dispatch live transport under Wet and published-mock under Hermetic.
-pub fn is_governed_service_representative_row(row: &DiscoveryRow) -> bool {
-    row.entry.contains("lens_mock_totality/")
+/// published mock corpus under `prefix` (from
+/// `wet_hermetic_scaffold_roster_entry_prefix`). These witnesses exercise the M4
+/// hermetic-realization *model* in pure `.dag` — they do NOT traverse
+/// `eval_service_call` under either Wet or Hermetic, so they cannot observe
+/// mock-vs-live faithfulness. Dissolution: replace with witnesses that dispatch
+/// live transport under Wet and published-mock under Hermetic.
+pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
+    !prefix.is_empty() && row.entry.contains(prefix)
 }
 
 /// Row-for-row outcome comparator for the P3c scaffold gate. Returns divergence

@@ -12,7 +12,8 @@
 
 use v1_compiler::cli_run::{
     discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
-    wet_hermetic_discovery_outcome_divergences, ClaimOutcome, DiscoveryWitnessOutcome,
+    wet_hermetic_discovery_outcome_divergences, wet_hermetic_scaffold_roster_entry_prefix,
+    ClaimOutcome, DiscoveryRow, DiscoveryWitnessOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -89,12 +90,14 @@ fn ci_witness_scan_dirs() -> Vec<String> {
 
 fn governed_service_representative_explicit_entries() -> Vec<(String, String)> {
     let roots = ci_witness_layer_roots();
+    let prefix = wet_hermetic_scaffold_roster_entry_prefix(&roots)
+        .expect("load scaffold roster prefix from witness .dag authority");
     let scan_dirs = ci_witness_scan_dirs();
     let rows = discover_floor_corpus_rows(&roots, &scan_dirs)
         .expect("discover floor corpus for governed-service representative roster");
     let rep: Vec<(String, String)> = rows
         .iter()
-        .filter(|r| is_governed_service_representative_row(r))
+        .filter(|r| is_governed_service_representative_row(r, &prefix))
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
     assert!(
@@ -102,6 +105,44 @@ fn governed_service_representative_explicit_entries() -> Vec<(String, String)> {
         "governed-service representative roster must be non-empty (lens_mock_totality witnesses)"
     );
     rep
+}
+
+#[test]
+fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
+    let roots = ci_witness_layer_roots();
+    let prefix = wet_hermetic_scaffold_roster_entry_prefix(&roots)
+        .expect("load scaffold roster prefix from witness .dag authority");
+    assert!(
+        prefix.contains("lens_mock_totality/"),
+        "dag authority prefix must select lens_mock_totality tree: {prefix}"
+    );
+    let scan_dirs = ci_witness_scan_dirs();
+    let rows = discover_floor_corpus_rows(&roots, &scan_dirs)
+        .expect("discover floor corpus for prefix authority check");
+    let rep: Vec<&DiscoveryRow> = rows
+        .iter()
+        .filter(|r| is_governed_service_representative_row(r, &prefix))
+        .collect();
+    assert!(
+        !rep.is_empty(),
+        "dag authority prefix must match at least one discovered witness row"
+    );
+    for row in &rep {
+        assert!(
+            row.entry.contains(&prefix),
+            "filtered row must contain dag authority prefix (got entry={} prefix={prefix})",
+            row.entry
+        );
+    }
+    let outsider = DiscoveryRow {
+        label: "outsider".into(),
+        entry: "dsl/test/claim/unrelated_witness_test.dag".into(),
+        function: "witness_holds".into(),
+    };
+    assert!(
+        !is_governed_service_representative_row(&outsider, &prefix),
+        "rows outside the dag prefix must not match the scaffold filter"
+    );
 }
 
 /// Vacuous-by-construction scaffold: lens_mock_totality witnesses do not
