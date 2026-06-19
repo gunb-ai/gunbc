@@ -38,7 +38,7 @@ type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: Vendor<Hardware>
   // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
-  // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in std.memory with
+  // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in extdeps.memory with
   // a +/- claim — then capacity = die_density × (64 / bit_width_count(chip_width)) ×
   // rank_count (DATA chips only — marketed capacity excludes ECC silicon; see
   // dram_data_chips_per_rank) and memory.dag's reader calls it. A PN-certain stored 16GB beats

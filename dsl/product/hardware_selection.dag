@@ -24,7 +24,7 @@
 // marker, never hardcoded as if grounded. The two calibration points the operator named —
 // a SKU's power coefficient (W/chip) and the board downclock thresholds — are marked 🟡.
 //
-// Authority: this module (the decision model). Component catalog SHAPES: std.cpu / std.memory.
+// Authority: this module (the decision model). Component catalog SHAPES: extdeps.cpu / extdeps.memory.
 // Measure carriers: std.measure (ByteSize, Watt, Milliwatt, MoneyMicros) + product.compute_fabric
 // (Bandwidth — reused, NOT a forked rate carrier).
 
@@ -49,8 +49,8 @@ import std.measure {
   money_micros_count
 }
 import product.compute_fabric { Bandwidth }
-import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width }
+import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
+import extdeps.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width }
 import std.pareto {
   AxisComparison,
   DominanceVerdict,
@@ -95,22 +95,22 @@ type Platform {
   memory_channels: Int
   slots_per_channel: Int
   // 🟡 DDR transfer rate in MT/s — carried as a bare Int ON PURPOSE, not forked to a Measure
-  // here. The AUTHORITY for "DDR data rate" is std.memory.types.DramModuleCatalogRow
+  // here. The AUTHORITY for "DDR data rate" is extdeps.memory.types.DramModuleCatalogRow
   // .data_rate_mts (also Int), which effective_data_rate_mts / memory_bandwidth min_int this
   // ceiling against. Re-carrying ONLY the platform ceiling as a Measure while the module rate
   // stays Int would split one concept across two representations (DESIGN §3 single authority).
   // So it dissolves WITH the authority, not ahead of it:
   //   feature: ddr-data-rate-measure-carrier
-  //   dissolve-on: std.memory.types.DramModuleCatalogRow.data_rate_mts re-carried as a shared
+  //   dissolve-on: extdeps.memory.types.DramModuleCatalogRow.data_rate_mts re-carried as a shared
   //     std.measure rate (Measure<Frequency, Mega, Nat> — MT/s is mega-transfers/s, the Hertz
   //     family's dimension); this field AND the 2400/2933 downclock thresholds then adopt that
-  //     same carrier in one coordinated migration (std.memory owns the trigger).
+  //     same carrier in one coordinated migration (extdeps.memory owns the trigger).
   max_data_rate_mts: Int
 }
 
-// Bytes per transfer per channel = the JEDEC data bus width (std.memory.dram_data_word_width,
+// Bytes per transfer per channel = the JEDEC data bus width (extdeps.memory.dram_data_word_width,
 // 64 bits) / 8 bits-per-byte. Derived from the SINGLE data-bus-width authority that
-// std.memory.dram_data_chips_per_rank also keys on — so the 64-bit bus is modeled once (as a
+// extdeps.memory.dram_data_chips_per_rank also keys on — so the 64-bit bus is modeled once (as a
 // BitWidth, the same width concept as chip_width), not duplicated as a separate 8-byte constant.
 fn dram_channel_bus_bytes() -> Int {
   bit_width_count(b: dram_data_word_width) / 8
@@ -125,7 +125,7 @@ fn dram_channel_bus_bytes() -> Int {
 // the dual-rank downclock eats 2Rx8's bandwidth edge, so 1Rx8 nearly matches it at half the
 // power. Anchor: JEDEC DDR4 2DPC derating / mainboard QVL speed tables.
 //
-// rank_count is the std.memory.types axis (a plain Int 1/2/4 — the magnitude the downclock
+// rank_count is the extdeps.memory.types axis (a plain Int 1/2/4 — the magnitude the downclock
 // keys on directly, no enum to peel). At 1DPC the bus runs at the platform max; at 2DPC it
 // derates, FURTHER for higher rank counts (more bus load): a generic 3200 platform holds
 // 3200 for single-rank, 2933 for dual, 2400 for quad — all capped by the platform max.
@@ -152,7 +152,7 @@ fn min_int(a: Int, b: Int) -> Int {
 // === RAM: a chosen DIMM population on a platform =========================
 //
 // The module carries its own grounded axes (capacity, data rate, rank_count, chip_width,
-// buffering) — std.memory.types authority. The config adds the population choice (DPC).
+// buffering) — extdeps.memory.types authority. The config adds the population choice (DPC).
 type MemoryConfig {
   module: DramModuleCatalogRow
   dimms_per_channel: Int
@@ -201,7 +201,7 @@ fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> Bandwidth {
 }
 
 // DRAM device count per stick, DERIVED from the grounded axes (DESIGN §2 derive-don't-store):
-// chips_per_rank (the 72/width authority now lives in std.memory.types, shared with the
+// chips_per_rank (the 72/width authority now lives in extdeps.memory.types, shared with the
 // realizability derivation — no fork) × rank_count.
 fn chips_per_rank(module: DramModuleCatalogRow) -> Int {
   dram_chips_per_rank(module: module)
@@ -244,7 +244,7 @@ type CpuCandidate {
 // === Motherboard ==========================================================
 //
 // The board pins how many memory channels/DPC are even available and draws its own power
-// (chipset + VRM). socket reuses std.cpu.types.CpuSocket (the LGA4926 decomposition) rather
+// (chipset + VRM). socket reuses extdeps.cpu.types.CpuSocket (the LGA4926 decomposition) rather
 // than a fresh socket vocabulary.
 type Motherboard {
   label: NonEmptyStr
@@ -333,7 +333,7 @@ fn config_axes(cfg: SystemConfig) -> HardwareAxes {
   }
 }
 
-// A config is REALIZABLE iff its DIMM is a part that can physically exist (std.memory owns the
+// A config is REALIZABLE iff its DIMM is a part that can physically exist (extdeps.memory owns the
 // DDR4 die-density physics; this is the selection-time filter, fail-closed like
 // psu_is_adequate — a non-existent SKU must never reach the Pareto front, §5).
 fn config_is_realizable(cfg: SystemConfig) -> Bool {

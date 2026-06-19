@@ -22,8 +22,10 @@ module test.claim.hardware_selection
 import std.logic { Bool }
 import std.types { Int, List }
 import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, milliwatt, money_micros, hardware_thread_count, hertz }
-import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density }
+import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
+import extdeps.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density }
+import extdeps.vendor.sk_hynix { sk_hynix }
+import extdeps.vendor.ampere { ampere }
 import std.pareto { verdict_dominates, verdict_is_incomparable }
 import product.hardware_selection {
   Platform,
@@ -60,7 +62,7 @@ data stick_16g: ByteSize = byte_size(count: 17179869184)
 
 data mod_1rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "GENERIC-16G-1RX8-3200",
-  manufacturer: SkHynix,
+  manufacturer: sk_hynix,
   capacity_bytes: stick_16g,
   data_rate_mts: 3200,
   ecc: true,
@@ -72,7 +74,7 @@ data mod_1rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
 // 2Rx8: same 16GB part organized as two ranks of x8 — needs only 8Gbit dies, also realizable.
 data mod_2rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "GENERIC-16G-2RX8-3200",
-  manufacturer: SkHynix,
+  manufacturer: sk_hynix,
   capacity_bytes: stick_16g,
   data_rate_mts: 3200,
   ecc: true,
@@ -87,7 +89,7 @@ data mod_2rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
 // which yields a non-existent 7.11 Gibit die).
 data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
-  manufacturer: SkHynix,
+  manufacturer: sk_hynix,
   capacity_bytes: stick_16g,
   data_rate_mts: 2666,
   ecc: true,
@@ -100,7 +102,7 @@ data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
 // in a single rank of x8 devices needs 32Gbit dies, which DDR4 does not have.
 data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "FAKE-32G-1RX8-3200",
-  manufacturer: SkHynix,
+  manufacturer: sk_hynix,
   capacity_bytes: byte_size(count: 34359738368),
   data_rate_mts: 3200,
   ecc: true,
@@ -125,7 +127,7 @@ data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
 data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
   oem_listing_id: none,
-  vendor: Ampere,
+  vendor: ampere,
   architecture: Aarch64,
   cores: 64,
   threads: hardware_thread_count(64),

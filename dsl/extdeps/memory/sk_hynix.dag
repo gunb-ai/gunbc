@@ -1,6 +1,6 @@
 // extdeps/memory/sk_hynix.dag — SK Hynix DDR4 module catalog (vendor data authority).
 //
-// SK Hynix's published DDR4 modules, as std.memory DramModuleCatalogRow values.
+// SK Hynix's published DDR4 modules, as extdeps.memory DramModuleCatalogRow values.
 // Vendor hardware is an external dependency: it lives in extdeps/, importing the
 // catalog SHAPE from std/memory. std/memory owns only the shape + the manufacturer
 // taxonomy; it does not enumerate any one vendor's parts. Which specific modules a
@@ -12,7 +12,8 @@
 module extdeps.memory.sk_hynix
 
 import std.measure { ByteSize, byte_size, bit_width }
-import std.memory.types { DramModuleCatalogRow }
+import extdeps.memory.types { DramModuleCatalogRow }
+import extdeps.vendor.sk_hynix { sk_hynix }
 
 // 16 GiB per stick (1×16GB, 2Gx72). The "PC4-21300" / "PC4-2666V" JEDEC class is
 // data_rate_mts (2666) × 8 bytes rounded to the label — derivable, so not stored.
@@ -28,7 +29,7 @@ data stick_capacity_bytes: ByteSize = byte_size(17179869184)
 //   WIDTH / ORGANIZATION / SPEED fields); rank per datasheet Rev.1.7 ordering table.
 data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
-  manufacturer: SkHynix,
+  manufacturer: sk_hynix,
   capacity_bytes: stick_capacity_bytes,
   data_rate_mts: 2666,
   ecc: true,
