@@ -72,9 +72,68 @@ data standard_symbols: List<SymbolEntry> = [
   { id: ConnectorCornerTopLeft,    emoji: "+",  unicode: "+",  ascii: "+",  color: Dim }
 ]
 
+fn symbol_id_eq(a: SymbolId, b: SymbolId) -> Bool {
+  match a {
+    NodePending     => match b { NodePending     => true  _ => false }
+    NodeRunning     => match b { NodeRunning     => true  _ => false }
+    NodeCompleted   => match b { NodeCompleted   => true  _ => false }
+    NodeFailed      => match b { NodeFailed      => true  _ => false }
+    NodeSkipped     => match b { NodeSkipped     => true  _ => false }
+    NodeIntercepted => match b { NodeIntercepted => true  _ => false }
+    EdgeIdle        => match b { EdgeIdle        => true  _ => false }
+    EdgeFlowing     => match b { EdgeFlowing     => true  _ => false }
+    EdgeDone        => match b { EdgeDone        => true  _ => false }
+    EdgeDead        => match b { EdgeDead        => true  _ => false }
+    DagNotStarted   => match b { DagNotStarted   => true  _ => false }
+    DagRunning      => match b { DagRunning      => true  _ => false }
+    DagCompleted    => match b { DagCompleted    => true  _ => false }
+    DagFailed       => match b { DagFailed       => true  _ => false }
+    BoundaryMarker  => match b { BoundaryMarker  => true  _ => false }
+    Spinner0        => match b { Spinner0        => true  _ => false }
+    Spinner1        => match b { Spinner1        => true  _ => false }
+    Spinner2        => match b { Spinner2        => true  _ => false }
+    Spinner3        => match b { Spinner3        => true  _ => false }
+    Spinner4        => match b { Spinner4        => true  _ => false }
+    Spinner5        => match b { Spinner5        => true  _ => false }
+    Spinner6        => match b { Spinner6        => true  _ => false }
+    Spinner7        => match b { Spinner7        => true  _ => false }
+    Spinner8        => match b { Spinner8        => true  _ => false }
+    Spinner9        => match b { Spinner9        => true  _ => false }
+    StatusSuccess   => match b { StatusSuccess   => true  _ => false }
+    StatusFailure   => match b { StatusFailure   => true  _ => false }
+    StatusWarning   => match b { StatusWarning   => true  _ => false }
+    StatusInfo      => match b { StatusInfo      => true  _ => false }
+    DataList        => match b { DataList        => true  _ => false }
+    DataMap         => match b { DataMap         => true  _ => false }
+    DataSecret      => match b { DataSecret      => true  _ => false }
+    DataUrl         => match b { DataUrl         => true  _ => false }
+    DataTimer       => match b { DataTimer       => true  _ => false }
+    ConnectorHorizontal      => match b { ConnectorHorizontal      => true  _ => false }
+    ConnectorVertical        => match b { ConnectorVertical        => true  _ => false }
+    ConnectorTeeDown           => match b { ConnectorTeeDown           => true  _ => false }
+    ConnectorTeeUp             => match b { ConnectorTeeUp             => true  _ => false }
+    ConnectorCornerBottomLeft  => match b { ConnectorCornerBottomLeft  => true  _ => false }
+    ConnectorCornerTopLeft     => match b { ConnectorCornerTopLeft     => true  _ => false }
+  }
+}
+
+fn lookup_symbol_entry(id: SymbolId) -> SymbolEntry? {
+  fold(standard_symbols,
+    init: none,
+    f: (acc, e) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if symbol_id_eq(a: e.id, b: id) {
+          Present { value: e }
+        } else {
+          none
+        }
+    }
+  )
+}
+
 fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
-  let matches = filter(standard_symbols, e => e.id == id)
-  match matches |> first {
+  match lookup_symbol_entry(id: id) {
     Present { value: entry } =>
       match tier {
         Emoji   => Present { value: entry.emoji }
@@ -86,8 +145,7 @@ fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
 }
 
 fn symbol_color(id: SymbolId) -> SemanticColor? {
-  let matches = filter(standard_symbols, e => e.id == id)
-  match matches |> first {
+  match lookup_symbol_entry(id: id) {
     Present { value: entry } => Present { value: entry.color }
     Absent => none
   }

@@ -25,10 +25,30 @@ data ansi_mappings: List<AnsiMapping> = [
   { color: Accent,  code: "\x1b[38;5;75m"    }
 ]
 
-fn ansi_code(c: SemanticColor) -> String? {
-  let matches = filter(ansi_mappings, m => m.color == c)
-  match matches |> first {
-    Present { value: mapping } => Present { value: mapping.code }
-    Absent => none
+fn semantic_color_eq(a: SemanticColor, b: SemanticColor) -> Bool {
+  match a {
+    Default => match b { Default => true  _ => false }
+    Success => match b { Success => true  _ => false }
+    Warning => match b { Warning => true  _ => false }
+    Error   => match b { Error   => true  _ => false }
+    Info    => match b { Info    => true  _ => false }
+    Dim     => match b { Dim     => true  _ => false }
+    Active  => match b { Active  => true  _ => false }
+    Accent  => match b { Accent  => true  _ => false }
   }
+}
+
+fn ansi_code(c: SemanticColor) -> String? {
+  fold(ansi_mappings,
+    init: none,
+    f: (acc, m) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if semantic_color_eq(a: m.color, b: c) {
+          Present { value: m.code }
+        } else {
+          none
+        }
+    }
+  )
 }
