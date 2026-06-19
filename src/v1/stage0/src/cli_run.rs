@@ -2693,8 +2693,7 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
     };
-    let skip_enabled = options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty();
-    let (skip_enabled, frontier_nodes) = if skip_enabled {
+    let (skip_enabled, frontier_nodes) = if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
         match collect_frontier_nodes_from_diff_line_ranges(
             &index,
             &line_ranges_by_file,
