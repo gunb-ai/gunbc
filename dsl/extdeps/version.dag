@@ -10,9 +10,10 @@
 // bundle version, crate manifests). Do not re-mint semver here.
 //
 // Consumers:
-//   extdeps/cron/schedule_model.dag — `UpstreamSpecCitation`
+//   extdeps/cron/schedule_model.dag   — `UpstreamSpecCitation`
 //   extdeps/llm/anthropic.dag         — `RestApiVersionHeader`
 //   extdeps/github/github.dag         — `RestApiVersionHeader`
+//   extdeps/cloud/gcp/gcp.dag         — `RestApiPathVersion`
 
 module extdeps.version
 

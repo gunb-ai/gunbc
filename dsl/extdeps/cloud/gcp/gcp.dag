@@ -16,6 +16,7 @@
 module extdeps.cloud.gcp.gcp
 
 import extdeps.cloud.cloud { ServiceEndpoint }
+import extdeps.version { RestApiPathVersion }
 import std.types { FilePath, NonEmptyStr, Secret, HttpMethod, AuthScheme }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 
@@ -111,16 +112,16 @@ fn gcp_service_wire_label(service: GcpService) -> String {
 type GcpApiEndpoint {
   service: GcpService
   base_url: String
-  version: String
+  version: RestApiPathVersion
 }
 
 data api_endpoints: List<GcpApiEndpoint> = [
-  { service: GcpStorage, base_url: "https://storage.googleapis.com/storage/v1", version: "v1" },
-  { service: GcpIam, base_url: "https://iam.googleapis.com/v1", version: "v1" },
-  { service: GcpSecretManager, base_url: "https://secretmanager.googleapis.com/v1", version: "v1" },
-  { service: GcpCloudRun, base_url: "https://run.googleapis.com/v2", version: "v2" },
-  { service: GcpPubsub, base_url: "https://pubsub.googleapis.com/v1", version: "v1" },
-  { service: GcpSts, base_url: "https://sts.googleapis.com/v1", version: "v1" }
+  { service: GcpStorage, base_url: "https://storage.googleapis.com/storage/v1", version: { segment: "v1" } },
+  { service: GcpIam, base_url: "https://iam.googleapis.com/v1", version: { segment: "v1" } },
+  { service: GcpSecretManager, base_url: "https://secretmanager.googleapis.com/v1", version: { segment: "v1" } },
+  { service: GcpCloudRun, base_url: "https://run.googleapis.com/v2", version: { segment: "v2" } },
+  { service: GcpPubsub, base_url: "https://pubsub.googleapis.com/v1", version: { segment: "v1" } },
+  { service: GcpSts, base_url: "https://sts.googleapis.com/v1", version: { segment: "v1" } }
 ]
 
 // -- Regions -------------------------------------------------------

@@ -7,6 +7,7 @@
 
 module test.claim.extdeps_version_witness
 
+import extdeps.cloud.gcp.gcp { GcpApiEndpoint, GcpCloudRun, GcpStorage }
 import extdeps.cron.schedule_model { posix_crontab_spec }
 import extdeps.github.github { default_rest_api_version }
 import extdeps.llm.anthropic { current_api_version }
@@ -30,9 +31,27 @@ fn w_distinct_api_version_labels() -> Bool {
   current_api_version.version != default_rest_api_version.version
 }
 
+// GCP path versions: goes RED if GcpApiEndpoint.version reverts to bare String.
+fn w_gcp_path_version_typed() -> Bool {
+  let run_ep = GcpApiEndpoint {
+    service: GcpCloudRun,
+    base_url: "https://run.googleapis.com/v2",
+    version: { segment: "v2" },
+  }
+  let storage_ep = GcpApiEndpoint {
+    service: GcpStorage,
+    base_url: "https://storage.googleapis.com/storage/v1",
+    version: { segment: "v1" },
+  }
+  run_ep.version.segment == "v2"
+    && storage_ep.version.segment == "v1"
+    && run_ep.version.segment != storage_ep.version.segment
+}
+
 test fn extdeps_version_witnesses() -> Bool {
   w_posix_crontab_spec_citation()
     && w_anthropic_api_version_header()
     && w_github_api_version_header()
     && w_distinct_api_version_labels()
+    && w_gcp_path_version_typed()
 }

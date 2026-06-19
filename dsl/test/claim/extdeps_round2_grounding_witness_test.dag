@@ -120,7 +120,7 @@ fn w_gcp_api_endpoint_service_enum() -> Bool {
   let endpoint = GcpApiEndpoint {
     service: GcpStorage,
     base_url: "https://storage.googleapis.com/storage/v1",
-    version: "v1",
+    version: { segment: "v1" },
   }
   endpoint.service == GcpStorage
     && gcp_service_wire_label(GcpStorage) == "storage"
