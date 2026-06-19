@@ -318,7 +318,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         name
-      } else if n.connective == NoConnective && n.children |> count == 0 {
+      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none {
         if name == "String" {
           render_rust_text_carrier(shared_types: shared_types)
         } else {
