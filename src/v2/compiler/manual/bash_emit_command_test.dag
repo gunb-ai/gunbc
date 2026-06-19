@@ -3,6 +3,7 @@ module v2.test.manual.bash_emit_command
 
 // Execution witness for the bash emit TARGET (src/v2/extdeps/languages/bash.dag).
 // Slice 1: fixed-token command (#5155). Slice 2: bound-word emit-time quoting.
+// Slice 3: source-root-ingest gate fixed two-word command (live transport migration).
 //
 // Run:
 //   gunbc run --source-root src/v2 \
@@ -24,7 +25,10 @@ import v2.extdeps.languages.bash {
   bash_bound_words_emitted_command,
   bash_bound_words_source_text,
   bash_embedded_quote_emitted_command,
-  bash_embedded_quote_source_text
+  bash_embedded_quote_source_text,
+  bash_source_root_ingest_gate_emitted_command,
+  bash_source_root_ingest_gate_source_text,
+  bash_source_root_ingest_gate_target_model
 }
 import v2.std.collection { Map, empty_map }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -153,6 +157,33 @@ test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source == bash_embedded_quote_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data bash_source_root_ingest_gate_emit_inferred_tree: InferredTree = InferredTree {
+  root: bash_source_root_ingest_gate_emitted_command,
+  facts: Map {
+    lookup: bash_facts_lookup
+  }
+}
+
+fn anchor_bash_source_root_ingest_gate_emit() -> Outcome<TargetSource> {
+  emit(
+    tree: bash_source_root_ingest_gate_emit_inferred_tree,
+    target: bash_source_root_ingest_gate_target_model()
+  )
+}
+
+data bash_source_root_ingest_gate_emit_receipt: Outcome<TargetSource> = anchor_bash_source_root_ingest_gate_emit()
+
+// Slice 3 keystone — first live transport command via row-driven bash emit.
+// Byte-identical to serialize_bash(command([lit("bash"), lit("scripts/source-root-ingest-gate.sh")]))
+// modulo the sidecar trailing newline.
+test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
+  match bash_source_root_ingest_gate_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      (source == bash_source_root_ingest_gate_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
