@@ -7916,7 +7916,7 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
         result.files.len()
     );
     eprintln!(
-        "N_v1 headline: v1-emits-v2 scoped 00_compile closure ({module_count} modules) → {error_count} cargo-check errors; top codes: E0308≈2776 E0282≈271 E0425≈203 E0277≈166 E0599≈100"
+        "N_v1 headline: v1-emits-v2 scoped 00_compile closure ({module_count} modules) → {error_count} cargo-check errors; top codes: E0308≈2944 E0282≈288 E0425≈214 E0277≈187 E0599≈104"
     );
     if !check.status.success() {
         eprintln!("--- cargo check stdout ---\n{stdout}");
