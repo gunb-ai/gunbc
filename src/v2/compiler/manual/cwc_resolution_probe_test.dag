@@ -1,50 +1,30 @@
-// BOUNDARY-RECEIPT — v2 front-end n-ary-coproduct normalization gap (blocks C.i).
+// BOUNDARY-RECEIPT — v2 front-end n-ary-coproduct normalization (unblocks C.i emit slice).
 //
-// WHAT THIS PROVES (green by execution today): the v2 front-end
-// (tokenize→parse→normalize) lowers a coproduct `type` decl with **≤2 variants** but
-// **rejects 3+ variants**. So no resolver-produced tree can carry a real multi-variant
-// enum (e.g. github ReviewEvent = Approve|RequestChanges|Comment|Pending) — which is the
-// input C.i ("v2 emit: module enum through fold into serde rename_all", node
-// adhoc-e6f251cb-02a) needs to flow a real enum + its CoproductWireContract through the
-// 06_translate fold into the rust_wire_serde serialize. C.i is therefore blocked UPSTREAM.
+// WHAT THIS PROVES: tokenize→parse→normalize folds a multi-variant coproduct `type`
+// alias RHS (`A | B | C | …`) into a single kernel Disj (not a parse Conj/pipe chain).
+// C.i ("module enum through fold into serde rename_all") needs this Disj to flow a real
+// enum + CoproductWireContract through 06_translate into rust_wire_serde serialize.
 //
-// THE GAP IS NOT a Disj well_formedness cap — Disj already accepts n-ary LabeledEdges with
-// no arity bound (src/v2/std/node.dag:466). The gap is the coproduct-RHS lowering of the
-// right-recursive `|` chain: dag_production_type_alias_rhs +
-// dag_production_type_alias_rhs_repeat_suffix (src/v2/extdeps/languages/dag.dag:1496-1517)
-// is NOT folded into a single n-ary Disj. Fix home: a normalize/sugar reduction in
-// 03_normalize.dag / std.compilers.sugar (sugar_rule_type's SugarUnwrapPositionalChild
-// unwraps the single RHS child and is NOT the arity gate).
-//
-// DISSOLUTION TRIGGER: when this witness flips RED, the chain→Disj fold has landed and 3+
-// variant coproducts now normalize => C.i is UNBLOCKED. That red is EXPECTED, not a
-// regression: go re-enable C.i (real enum + CoproductWireContract through the translate
-// fold arm), then delete this receipt. (Probe receipt for the gate-conclusion under PR
-// #5195; full method: drive tokenize→parse→normalize from a Source string via
-// dag_language_model_wave1().)
+// Fix home: std.compilers.sugar `sugar_fold_coproduct_pipe_chain`, invoked from
+// v2.compiler.normalize when the parse production identity is dag_surface_type_alias_rhs.
 
 module v2.test.manual.cwc_resolution_probe
 
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag {
-  dag_language_model_wave1,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
-  parse_subtree_find_production_captured
-}
-import v2.std.compilers.sugar { sugar_all_coproduct_variants, sugar_fold_coproduct_pipe_chain }
-import v2.std.algebra { length }
+import v2.compiler.resolve { resolve }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
 
-// ≤2-variant coproducts normalize; 3+ do not (the boundary this receipt locks).
+// Multi-variant coproduct sources exercised by the n-ary Disj fold witnesses below.
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
 data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
-data cwc_src_type_four: String = "module probe\ntype T = A | B | C | D\n"
 data cwc_src_type_review: String = "module probe\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\n"
+
+data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -71,10 +51,6 @@ test fn cwc_norm_two_variant_accepts() -> Bool {
 
 test fn cwc_norm_three_variant_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_three)
-}
-
-test fn cwc_norm_four_variant_accepts() -> Bool {
-  cwc_norm_accepts(src: cwc_src_type_four)
 }
 
 fn cwc_tree_has_disj(n: Node) -> Bool {
@@ -123,45 +99,21 @@ test fn cwc_norm_review_event_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_review)
 }
 
-test fn cwc_review_alias_rhs_found() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } =>
-      match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_type_alias_rhs) {
-        ParseSubtreeFound { captured: _ } => true
-        ParseSubtreeAbsent => false
+fn cwc_resolve_accepts(src: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match cwc_norm_of(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match resolve(tree: tree, lm: lm) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn cwc_review_alias_rhs_variant_count() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } =>
-      match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_type_alias_rhs) {
-        ParseSubtreeFound { captured: captured } => length(xs: sugar_all_coproduct_variants(captured: captured)) == 4
-        ParseSubtreeAbsent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_review_fold_produces_disj() -> Bool {
-  match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } =>
-      match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_type_alias_rhs) {
-        ParseSubtreeFound { captured: captured } =>
-          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: root) {
-            Accepted { value: result, diagnostics: _ } =>
-              match result.kind {
-                TypeNode { connective: Disj } => true
-                _ => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        ParseSubtreeAbsent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
+// C.i gate: full module with enum + CoproductWireContract resolves after n-ary Disj fold.
+test fn cwc_cwc_module_resolve_accepts() -> Bool {
+  cwc_resolve_accepts(src: cwc_src_cwc_module)
 }
 
 test fn cwc_review_normalized_has_disj() -> Bool {
@@ -178,10 +130,11 @@ test fn cwc_review_disj_has_four_arms() -> Bool {
   }
 }
 
-// GREEN today (no Disj fold yet); flips when chain→Disj fold lands (see header).
+// GREEN when chain→Disj fold lands: multi-variant coproduct normalizes to kernel Disj.
 test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
   cwc_norm_two_variant_accepts()
     && cwc_norm_three_variant_accepts()
-    && (cwc_review_normalized_has_disj() == false)
-    && (cwc_review_disj_has_four_arms() == false)
+    && cwc_review_normalized_has_disj()
+    && cwc_review_disj_has_four_arms()
+    && cwc_cwc_module_resolve_accepts()
 }

@@ -215,12 +215,20 @@ fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
   }
 }
 
+fn sugar_unwrap_production_shell(node: Node) -> Node {
+  match sugar_named_child_optional(root: node, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } => sugar_unwrap_production_shell(node: captured)
+    Absent => node
+  }
+}
+
 fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
-  match node_atom_identity_optional(node: node) {
+  let stripped = sugar_unwrap_production_shell(node: node)
+  match node_atom_identity_optional(node: stripped) {
     Present { value: sym } => optional_present(value: sym)
     Absent =>
       fold(
-        node.children,
+        stripped.children,
         init: optional_absent(),
         f: fn(acc, e) {
           match acc {
@@ -233,10 +241,11 @@ fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
 }
 
 fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
-  match sugar_first_atom_identity_optional(node: variant_node) {
+  let variant = sugar_unwrap_production_shell(node: variant_node)
+  match sugar_first_atom_identity_optional(node: variant) {
     Present { value: name } =>
       Accepted {
-        value: Edge { label: Named { name: name }, target: variant_node },
+        value: Edge { label: Named { name: name }, target: variant },
         diagnostics: None
       }
     Absent =>
