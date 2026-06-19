@@ -5439,20 +5439,11 @@ fn eval_builtin(
             param_bindings.insert("bin".to_string(), Value::Str(bin));
             param_bindings.insert(
                 "args".to_string(),
-                list_value(
-                    extra_args
-                        .into_iter()
-                        .map(Value::Str)
-                        .collect::<Vec<_>>(),
-                ),
+                list_value(extra_args.into_iter().map(Value::Str).collect::<Vec<_>>()),
             );
-            let argv = materialize_shell_argv_for_operation(
-                path,
-                service,
-                operation,
-                param_bindings,
-            )
-            .map_err(|e| InterpError::TypeError { msg: e })?;
+            let argv =
+                materialize_shell_argv_for_operation(path, service, operation, param_bindings)
+                    .map_err(|e| InterpError::TypeError { msg: e })?;
             Ok(Some(list_value(
                 argv.into_iter().map(Value::Str).collect::<Vec<_>>(),
             )))
