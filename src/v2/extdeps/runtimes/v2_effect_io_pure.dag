@@ -347,7 +347,7 @@ fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHa
 
 fn effect_io_pure_fixture_store(
   backend: EffectIoResourceBackend,
-  entries: Map<Symbol, RuntimeValue>
+  entries: Map<Hash, RuntimeValue>
 ) -> EffectIoFixtureStore {
   EffectIoFixtureStore {
     backend: backend,
