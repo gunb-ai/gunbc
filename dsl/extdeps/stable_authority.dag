@@ -2,27 +2,22 @@
 //
 // extdeps modules cite a STABLE AUTHORITY — an API, vendor spec, standard, or
 // stable internal interface that likely will not change. Not exclusively external;
-// internal stable docs are valid anchors.
+// internal stable docs are valid anchors (file: Uri — section in locator fragment).
 //
 // Canonical module-level data row name (projection + lens match literally):
 //   data extdeps_stable_authority_anchor: StableAuthority = ...
 //
-// Self-anchor: this module's convention is grounded on DESIGN.md §3 (internal,
-// valid under the dropped external-only rule).
+// Internal authority confirm: DESIGN.md §3 → file: locator "DESIGN.md#3-single-authority"
+// (document path + fragment preserves the section anchor).
 
 module extdeps.stable_authority
 
 import std.types { NonEmptyStr }
-import extdeps.uri { Uri }
+import extdeps.uri { Uri, File }
 
-type InternalAuthority {
-  document: NonEmptyStr
-  section: NonEmptyStr
+type StableAuthority {
+  uri: Uri
 }
-
-type StableAuthority
-  = ExternalUri { uri: Uri }
-  | Internal { authority: InternalAuthority }
 
 // Field-level override: a specific fact cites a finer locator than the module
 // root (e.g. a page fragment on a PDF). Absent ⇒ inherit module root.
@@ -31,9 +26,9 @@ type FactAuthorityOverride {
   authority: StableAuthority
 }
 
-data extdeps_stable_authority_anchor: StableAuthority = Internal {
-  authority: InternalAuthority {
-    document: "DESIGN.md"
-    section: "3-single-authority"
+data extdeps_stable_authority_anchor: StableAuthority = StableAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "DESIGN.md#3-single-authority"
   }
 }

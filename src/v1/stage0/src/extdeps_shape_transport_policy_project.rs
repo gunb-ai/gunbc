@@ -571,14 +571,21 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StableAuthorityAnchorProjection {
     Absent,
-    External {
+    Present {
         scheme_identity: String,
         locator: String,
     },
-    Internal {
-        document: String,
-        section: String,
-    },
+}
+
+fn uri_record_from_anchor_body(
+    body: &Rc<Node>,
+    variant: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match variant {
+        "StableAuthority" | "ExternalUri" => record_field_value(body, "uri", source_indices),
+        _ => None,
+    }
 }
 
 fn scheme_identity_from_value_node(
