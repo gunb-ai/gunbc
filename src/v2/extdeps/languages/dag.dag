@@ -5,6 +5,8 @@
 // Anchor: docs/v3-spec.md
 
 module v2.extdeps.languages.dag
+import v2.std.model_core { wave1_void }
+import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.collection {
@@ -310,12 +312,6 @@ fn dag_mvp1_field_access_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-type DagLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-}
 
 
 fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
@@ -340,7 +336,7 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
 
 // shell: `lm` reserved for PR-T-FINISH translate_algebra §1.5 model-derived table; wave-1 delegates to _member.
 fn dag_surface_operator_canonicalization_lookup(
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   surface_token: Symbol
 ) -> Outcome<CanonicalOperation> {
   dag_surface_operator_canonicalization_member(surface_token: surface_token)
@@ -2995,35 +2991,38 @@ fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_wave1_void() -> DagLanguageModel {
-  DagLanguageModel {
+fn dag_language_model_wave1_void() -> LanguageModel {
+  LanguageModel {
     lex: dag_wave1_lex(),
     grammar: dag_wave1_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_surface_prelude_atoms()
+    canonical_symbols: dag_language_model_surface_prelude_atoms(),
+    core: wave1_void()
   }
 }
 
-fn dag_language_model_wave1() -> DagLanguageModel {
-  DagLanguageModel {
+fn dag_language_model_wave1() -> LanguageModel {
+  LanguageModel {
     lex: dag_wave1_lex(),
     grammar: dag_wave1_grammar(),
     language_identity: ^dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_wave1_canonical_symbols()
+    canonical_symbols: dag_language_model_wave1_canonical_symbols(),
+    core: wave1_void()
   }
 }
 
 // compile-anchor empty prelude; same language_identity as wave1_void (TASKS T-8 / CP-1b bucket C).
-fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
-  DagLanguageModel {
+fn dag_language_model_surface_empty_prelude() -> LanguageModel {
+  LanguageModel {
     lex: dag_wave1_lex(),
     grammar: dag_wave1_g0_void_grammar(),
     language_identity: ^dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_empty_canonical_symbol_set()
+    canonical_symbols: dag_language_model_empty_canonical_symbol_set(),
+    core: wave1_void()
   }
 }
 
-fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
+fn dag_language_model_canonical_symbols(lm: LanguageModel) -> Set<Symbol> {
   lm.canonical_symbols
 }
 
@@ -3048,7 +3047,7 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
 }
 
 // Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
-fn dag_language_model_wave1_modeled() -> DagLanguageModel {
+fn dag_language_model_wave1_modeled() -> LanguageModel {
   dag_language_model_wave1()
 }
 
@@ -5874,7 +5873,7 @@ fn dag_round_trip_lex_ready() -> Bool {
 }
 
 // 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-grammar-readiness — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive grammar_carries_symbol Bool; forbidden: parallel wave-1 grammar readiness classifier outside this authority cluster.
-fn dag_round_trip_grammar_ready(lm: DagLanguageModel) -> Bool {
+fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module_header) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
