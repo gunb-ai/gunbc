@@ -139,6 +139,18 @@ fn extdeps_shape_transport_policy_lens_parses_and_runs_witnesses() {
             "module_path_rename_unknown_qn_does_not_resolve_holds",
         ),
         (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_local_red_test.dag",
+            "module_source_nickname_literal_local_red_is_red_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_coverage_domain_green_test.dag",
+            "module_source_nickname_literal_coverage_domain_is_green_holds",
+        ),
+        (
+            "src/v2/compiler/extdeps_shape_transport_policy/lens_unit/module_source_nickname_literal_absent_green_test.dag",
+            "module_source_nickname_literal_exempt_literals_is_green_holds",
+        ),
+        (
             "src/v2/compiler/extdeps_shape_transport_policy/corpus/cargo_clippy_dead_param_test.dag",
             "corpus_cargo_clippy_dead_param_defused_holds",
         ),
@@ -200,4 +212,103 @@ fn extdeps_embedded_policy_projection_catches_pre_5109_class() {
         ),
         0
     );
+}
+
+#[test]
+fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path_string() {
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    use v1_compiler::v1_compiler_compile::compile_to_resolved;
+    use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
+
+    fn build_qn(ctx: &InterpContext, segments: &[&str]) -> Value {
+        let mut qn = Value::Variant {
+            type_name: ctx.sym("QualifiedName"),
+            variant_name: ctx.sym("QnEmpty"),
+            fields: Rc::new(HashMap::new()),
+        };
+        for seg in segments.iter().rev() {
+            let mut fields = HashMap::new();
+            fields.insert(ctx.sym("head"), Value::Str((*seg).to_string()));
+            fields.insert(ctx.sym("tail"), qn);
+            qn = Value::Variant {
+                type_name: ctx.sym("QualifiedName"),
+                variant_name: ctx.sym("QnCons"),
+                fields: Rc::new(fields),
+            };
+        }
+        qn
+    }
+
+    let entry = "src/v2/lens/extdeps_shape_transport_policy/module_refs.dag";
+    let content = std::fs::read_to_string(workspace_root().join(entry))
+        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
+    let resolved = compile_to_resolved(Rc::new(resolve_imports_transitively_with_source_roots(
+        entry,
+        &content,
+        &v2_source_roots(),
+    )));
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    let ctx = InterpContext::new(
+        graph,
+        resolved.source_indices.clone(),
+        ExecutionMode::Hermetic,
+    );
+
+    let green_qn = build_qn(
+        &ctx,
+        &[
+            "v2",
+            "test",
+            "extdeps_shape_transport_policy",
+            "lens_unit",
+            "module_source_nickname_literal_green",
+        ],
+    );
+    let coverage_qn = build_qn(
+        &ctx,
+        &[
+            "v2",
+            "test",
+            "extdeps_shape_transport_policy",
+            "coverage_domain_equivalence",
+        ],
+    );
+    let local_red_qn = build_qn(
+        &ctx,
+        &[
+            "v2",
+            "test",
+            "extdeps_shape_transport_policy",
+            "lens_unit",
+            "module_source_nickname_literal_local_red",
+        ],
+    );
+
+    v1_interpreter::with_active_context(&ctx, || {
+        // Exempt fixture: non-index-member literals -> zero.
+        assert_eq!(
+            extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
+                &green_qn,
+            ),
+            0
+        );
+        // Slice 2 migrated coverage_domain to QualifiedName -> no path nicknames -> zero.
+        assert_eq!(
+            extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
+                &coverage_qn,
+            ),
+            0
+        );
+        // Dedicated RED fixture embeds a real index-member nickname -> goes red.
+        assert!(
+            extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
+                &local_red_qn,
+            ) > 0
+        );
+    });
 }

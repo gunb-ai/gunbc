@@ -51,8 +51,9 @@
 
 module std.measure
 
-import std.nat { Nat }
+import std.nat { Nat, nat_compare, nat_max, nat_min }
 import std.types { Int }
+import std.algebra { Ordering }
 
 // --- Quantity: what is being measured -------------------------------------
 //
@@ -213,7 +214,8 @@ fn scale_exponent(s: Scale) -> Int {
 // `Measure<ElectricPotential, Micro, Int>.count : Int`) resolves + evaluates on the v2
 // interpreter today (verified by execution post-#4885 G3 + multi-hop): M=Nat via the
 // single-hop alias projection, signed M=Int via a direct record literal, and a two-hop
-// alias chain (`MoneyMicros.count`) all round-trip — dsl/test/claim/measure_magnitude_carrier.dag.
+// alias chain (product.compute_fabric.MoneyMicros.count) all round-trip —
+// dsl/test/claim/measure_magnitude_carrier.dag.
 // GATE1 signed SPICE *execution* (negative magnitude through map/fold, value asserted):
 // gunbc#4942 class-4 deciding artifact = ENROLLED shard-b
 // `timeseries_signed_magnitude_capacitor_fold_holds` (Form-B signed int_mul/int_add
@@ -265,6 +267,31 @@ fn nanosecond_duration_count(d: NanosecondDuration) -> Nat {
   d.count
 }
 
+fn nanosecond_duration_compare(a: NanosecondDuration, b: NanosecondDuration) -> Ordering {
+  nat_compare(
+    a: nanosecond_duration_count(d: a),
+    b: nanosecond_duration_count(d: b)
+  )
+}
+
+fn nanosecond_duration_max(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
+  nanosecond_duration(
+    count: nat_max(
+      a: nanosecond_duration_count(d: a),
+      b: nanosecond_duration_count(d: b)
+    )
+  )
+}
+
+fn nanosecond_duration_min(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
+  nanosecond_duration(
+    count: nat_min(
+      a: nanosecond_duration_count(d: a),
+      b: nanosecond_duration_count(d: b)
+    )
+  )
+}
+
 // Power magnitude at unit scale — the plain watt (SI derived: W = J/s). The dimension
 // TDP specs, PSU ratings, and live draw are all quoted in. A power rating carries the
 // Power dimension rather than a bare Int (the anemic-leaf trap, DESIGN §2): a sum of
@@ -279,22 +306,6 @@ fn watt(count: Nat) -> Watt {
 }
 
 fn watt_count(w: Watt) -> Nat {
-  w.count
-}
-
-// Power magnitude at MILLI scale — the milliwatt (10^-3 W). Same Power dimension as `Watt`,
-// denominated at a sub-watt SI `Scale` exactly as `MoneyMicros` denominates `Currency` at
-// `Micro` (the storage-scale pattern, NOT a new dimension or scale). The demand: a single
-// component drawing a fraction of a watt (a DRAM device ~0.4 W) rounds to nothing as an Int
-// watt, so the per-device coefficient is carried at milli scale and the aggregate folds up to
-// whole `Watt`s. Consumer: product.hardware_selection MemoryConfig.power_per_chip.
-type Milliwatt = Measure<Power, Milli, Nat>
-
-fn milliwatt(count: Nat) -> Milliwatt {
-  Milliwatt { count: count }
-}
-
-fn milliwatt_count(w: Milliwatt) -> Nat {
   w.count
 }
 
@@ -321,30 +332,12 @@ fn milliwatt_count(w: Milliwatt) -> Nat {
 // specific currency carries the pair `(CurrencyCode, MoneyAmount<S>)` --
 // e.g. `product.compute_fabric.CostEstimate { unit_price, currency }`.
 //
-// `MoneyAmount` is a MULTI-HOP alias (MoneyMicros = MoneyAmount<Micro> =
-// Measure<Currency, Micro, Nat>); reading its `.count` is the multi-hop alias
-// field-access case, which now resolves + evaluates on v2 (G3 + multi-hop landed
-// in gunbc#4885, alias-chain peel) -- verified by execution, see
-// measure_two_hop_alias_count_roundtrip_holds. `std.currency` (a plain enum)
-// evaluates on v2 today.
+// Scale-fixed money aliases (e.g. `MoneyMicros = MoneyAmount<Micro>`) live in
+// product consumers — std keeps the abstract `MoneyAmount<S>` only; a consumer
+// fixes its own storage scale (operator decision, measure §3). Multi-hop alias
+// field-access (G3 + multi-hop, gunbc#4885) is verified by execution via
+// product.compute_fabric.MoneyMicros — see measure_two_hop_alias_count_roundtrip_holds.
 type MoneyAmount<S> = Measure<Currency, S, Nat>
-
-// Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
-// Demanded by Hetzner cost quotes, whose source data is `*_eur_micros`
-// (e.g. 50500 micro-EUR/hour) -- micros are finer than the EUR minor unit
-// (cent), so a minor-unit `<One>` carrier could not hold them losslessly.
-type MoneyMicros = MoneyAmount<Micro>
-
-fn money_micros(count: Nat) -> MoneyMicros {
-  MoneyMicros { count: count }
-}
-
-// Dissolved gunbc#4885 (G3 + multi-hop alias field-access landed, alias-chain peel):
-// the param is the `MoneyMicros` alias directly; v2 resolves the two-hop `.count`
-// (verified by execution — see measure_two_hop_alias_count_roundtrip_holds).
-fn money_micros_count(m: MoneyMicros) -> Nat {
-  m.count
-}
 
 fn byte_size(count: Nat) -> ByteSize {
   ByteSize { count: count }

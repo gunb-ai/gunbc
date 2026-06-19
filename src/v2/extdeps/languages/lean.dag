@@ -3,6 +3,7 @@
 // Status: T-4.17 wave-2b inhabitance — AlgebraInhabitanceDecl fill (Signed→CommutativeRing, Unsigned→CommutativeRing, Bool→BooleanAlgebra); wave-2a lex/grammar — FormalProduction flat rhs authority + GrammarSchemaProbe (token-sequence only; #3796 pattern); wave-1 scalar fact-bundles + MVP-1 `def`+`termination_by`; ParseGrammar nested GrammarExpr is CP-1b interim; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 
 module v2.extdeps.languages.lean
+import v2.std.language_model { LanguageModel }
 
 import v2.std.grammar {
   StampClass,
@@ -263,13 +264,6 @@ type LeanPrimitiveFacts {
 }
 
 
-type LeanLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 data lean_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int8,
   scalar: IntScalar { kind: Signed, width: Bits8 },
@@ -798,8 +792,8 @@ fn lean_model_core_wave1() -> ModelCore {
 }
 
 
-fn lean_language_model_wave1() -> LeanLanguageModel {
-  LeanLanguageModel {
+fn lean_language_model_wave1() -> LanguageModel {
+  LanguageModel {
     lex: lean_wave1_lex(),
     grammar: lean_wave1_grammar(),
     language_identity: ^lean_language_model_surface_id,

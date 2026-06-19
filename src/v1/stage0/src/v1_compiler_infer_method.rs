@@ -218,6 +218,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "module_source_nickname_literal_count_for_qualified_name".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_policy_leak_count_for_qualified_name".to_string(),
             int_type(),
         );

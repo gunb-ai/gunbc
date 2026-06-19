@@ -6,6 +6,7 @@
 // Anchor: Branch H source-authority worksheet H.1-H.3/H.7.2; Branch B-min Bmin.4-Bmin.5.
 
 module v2.compiler.source_authority
+import v2.std.language_model { LanguageModel }
 
 
 import v2.compiler.normalize { normalize, NormalizedTree }
@@ -19,7 +20,6 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  DagLanguageModel,
   dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1_modeled
 }
@@ -142,7 +142,7 @@ fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
 fn parse_dag_source_ast_with_model(
   source: DagSource,
   compilation_unit: Symbol,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<DagSourceAst> {
   bind_outcome(
     o: tokenize(text: source, file: compilation_unit, rules: lm.lex),
@@ -177,7 +177,7 @@ fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst
 }
 
 
-fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> Outcome<DagSemanticIr> {
+fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: LanguageModel) -> Outcome<DagSemanticIr> {
   bind_outcome(
     o: normalize(parse_tree: ast.tree),
     f: fn(normalized) {
@@ -195,7 +195,7 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: DagLanguageModel) -> O
 fn semantic_ir_from_source_with_model(
   source: DagSource,
   compilation_unit: Symbol,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<DagSemanticIr> {
   bind_outcome(
     o: parse_dag_source_ast_with_model(
@@ -263,7 +263,7 @@ fn source_authority_parse_source_file_tokens(
 
 fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
     SourceFile =>
@@ -306,7 +306,7 @@ fn source_ir_artifact_provenance(
 
 fn source_ir_node_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<NodeArtifactProvenance> {
   match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
     Accepted { value: prov, diagnostics: _ } =>
@@ -334,7 +334,7 @@ fn source_ir_node_artifact_provenance(
 // Node-only per-read producer for whole-ingest fold (mvp1 fn-surface; no span_index).
 fn source_ir_node_artifact_provenance_mvp1_from_model(
   source_read: DagSourceReadWitness,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<NodeArtifactProvenance> {
   match source_read.artifact.kind {
     SourceFile =>
@@ -579,7 +579,7 @@ fn source_authority_law_from_parts(
 fn source_authority_round_trip_with_model(
   source: DagSource,
   canonical_source_target: TargetModel,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   bind_outcome(
     o: parse_dag_source_ast_with_model(

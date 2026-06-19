@@ -7,6 +7,7 @@
 // 🟡
 
 module v2.extdeps.languages.wasm
+import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
@@ -134,13 +135,6 @@ type WasmFloatPrimitiveFacts {
 }
 
 // 🟢 grounded.
-type WasmLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 
@@ -2083,8 +2077,8 @@ fn wasm_model_core_wave1() -> ModelCore {
   wasm_model_core_wave2b()
 }
 
-fn wasm_language_model_wave2b() -> WasmLanguageModel {
-  WasmLanguageModel {
+fn wasm_language_model_wave2b() -> LanguageModel {
+  LanguageModel {
     lex: wasm_wave1_lex(),
     grammar: wasm_wave1_grammar(),
     language_identity: ^wasm_language_model_surface_id,
@@ -2093,6 +2087,6 @@ fn wasm_language_model_wave2b() -> WasmLanguageModel {
   }
 }
 
-fn wasm_language_model_wave1() -> WasmLanguageModel {
+fn wasm_language_model_wave1() -> LanguageModel {
   wasm_language_model_wave2b()
 }

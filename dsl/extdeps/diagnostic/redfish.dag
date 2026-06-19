@@ -5,7 +5,10 @@ module extdeps.diagnostic.redfish
 
 import std.types { NonEmptyStr }
 
-service diagnostic.redfish.Http {
+// Service name is 2-segment (`redfish.Http`) so it is actually callable from a fn —
+// the prior `diagnostic.redfish.Http` (3-segment) could not be referenced as a call path
+// (and had zero callers; it was spec-without-execution).
+service redfish.Http {
   operation GetSensors {
     input { base_url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -19,6 +22,28 @@ service diagnostic.redfish.Http {
     }
     mock_response {
       0 => { body: "{\"@odata.type\":\"#SensorCollection.SensorCollection\"}", success: true } "Mock redfish sensors"
+    }
+  }
+
+  // Authenticated read of the system resource (power state, manufacturer, etc.) — the
+  // minimal "first contact" that proves the BMC is reachable AND the credentials work.
+  // Read-only / safe. `-k` accepts the BMC's self-signed cert (standard for OOB mgmt).
+  // NOTE: the password rides the curl argv here, acceptable ONLY because first contact
+  // uses the PUBLISHED factory default; a rotated Secret must move to --netrc/-K file
+  // (so it never lands in process args) when the rotation phase lands.
+  operation GetSystem {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-u", "{username}:{password}", "https://{bmc_host}/redfish/v1/Systems/system"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system GET failed"
+    }
+    mock_response {
+      0 => { body: "{\"PowerState\":\"On\",\"Manufacturer\":\"ASRockRack\"}", success: true } "Mock redfish system"
     }
   }
 }
