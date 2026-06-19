@@ -25,7 +25,7 @@ import v2.extdeps.languages.dag {
 import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v2.std.cross_tree.import_model { FundamentalityUnknown, MoreFundamental }
 import v2.std.cross_tree.resolution { source_root_set_from_module_roots }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, locus_eq, port_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -293,7 +293,12 @@ fn witness_cross_tree_unknown_order_denied_holds() -> Bool {
     admission: ct_cross_tree_admission()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: r } =>
+      (r.head.reason == ^resolve_cross_tree_import_denied)
+        && locus_eq(
+          a: r.head.at,
+          b: port_locus(port: ^resolve_cross_tree_import_denied)
+        )
   }
 }
 

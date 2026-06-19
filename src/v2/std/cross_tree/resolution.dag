@@ -3,6 +3,16 @@
 // Route C Phase B — QualifiedName-grounded cross-tree resolution helpers.
 // Bridges name_resolve admission to import_model without String module-path interim.
 // Consumers: v2.compiler.name_resolve (namespace_for_subject cross-tree gate).
+//
+// SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback
+// dissolve-on (grounded source_root at ingest): add source_root: SourceRootRef to
+//   DagSourceReadWitness (src/v2/compiler/source_authority.dag); host tags by which
+//   --source-root the file came from; delete source_root_ref_from_qualified_name and
+//   source_root_set_from_module_roots QN-prefix fallback.
+// ACTIVATION GATE (hard): supplying a non-Unknown TreeFundamentalityOrder for real
+//   compilation (cross-tree direction-flip) MUST NOT land until grounded source_root
+//   tagging replaces this fallback. INERT Unknown-default is allowed; relying on QN-prefix
+//   for admitted cross-tree edges is forbidden (DESIGN §4).
 
 module v2.std.cross_tree.resolution
 
@@ -35,9 +45,15 @@ import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty }
 import v2.std.text { String }
 
 
-// ── Source-tree tagging from QualifiedName (§3 — no host path literals) ───────
+// ── Source-tree tagging (QN-prefix fallback — see module header dissolve-on) ───
 
-// v2.* module paths live under src/v2/; all other declared module names are dsl-tree.
+// 🟡 SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback — bind dissolve-on above.
+// KNOWN LIMITATION: cross-tree-overlaid module paths (e.g. extdeps.shell in BOTH
+// dsl/extdeps/shell/shell.dag and src/v2/extdeps/shell.dag) mis-tag as DslTree even when
+// witness_layer_roots overlay makes the v2 copy authoritative. QN materialization does NOT
+// fix this — the path stays extdeps.shell in both trees. Harmless while FundamentalityUnknown
+// denies all cross-tree edges (floor-verified inert); forbidden: admitting cross-tree edges
+// through this fallback after direction-flip activation.
 fn source_root_ref_from_qualified_name(qn: QualifiedName) -> SourceRootRef {
   match qn {
     QnEmpty => DslTree
