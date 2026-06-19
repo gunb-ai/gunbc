@@ -52,7 +52,7 @@ data substitute_expected_root: Node = Node {
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          Edge { role: Containment { inheritable: false },
             label: Named { name: ^substitute_step_b },
             target: substitute_replacement_leaf
           }

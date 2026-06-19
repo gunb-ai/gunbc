@@ -58,7 +58,7 @@ fn computation_shape(behavior: Behavior, children: List<EdgeShape>) -> NodeShape
 }
 
 fn stamp_edge_shape(e: EdgeShape) -> Edge {
-  Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target), role: e.role }
+  Edge { label: e.label, role: e.role, target: stamp_node_shape_synthetic(shape: e.target), role: e.role }
 }
 
 fn stamp_edge_shape_list(shapes: List<EdgeShape>) -> List<Edge> {

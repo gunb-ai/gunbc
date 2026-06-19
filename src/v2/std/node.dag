@@ -244,7 +244,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child, role: edge.role }])
+    children: concat(acc.children, [Edge { label: edge.label, role: edge.role, target: child, role: edge.role }])
   )
 }
 

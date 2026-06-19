@@ -36,10 +36,11 @@ def is_literal_start(content: str, i: int, type_name: str) -> bool:
     return True
 
 
-def transform_content(content: str) -> str:
+def transform_content_once(content: str) -> str:
     result: list[str] = []
     i = 0
     n = len(content)
+    changed = False
     while i < n:
         matched = None
         for type_name in ("EdgeShape", "Edge"):
@@ -67,10 +68,21 @@ def transform_content(content: str) -> str:
         if "role:" in body:
             result.append(full)
         else:
+            changed = True
             role = infer_role(full)
             inner = body.strip()
             result.append(f"{matched} {{ role: {role}, {inner} }}")
-    return "".join(result)
+    if changed:
+        return "".join(result)
+    return content
+
+
+def transform_content(content: str) -> str:
+    while True:
+        updated = transform_content_once(content)
+        if updated == content:
+            return updated
+        content = updated
 
 
 def patch_edge_copies(content: str) -> str:

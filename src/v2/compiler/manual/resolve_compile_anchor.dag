@@ -110,7 +110,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
           target: Node {
             kind: ComputationNode { behavior: Bind },
             children: [
-              Edge {
+              Edge { role: Containment { inheritable: false },
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
@@ -120,7 +120,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                   occurrence_id: SyntheticOccurrence
                 }
               },
-              Edge {
+              Edge { role: Containment { inheritable: false },
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
@@ -130,7 +130,7 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
                   occurrence_id: SyntheticOccurrence
                 }
               },
-              Edge {
+              Edge { role: Containment { inheritable: false },
                 label: Positional,
                 target: Node {
                   kind: TypeNode {

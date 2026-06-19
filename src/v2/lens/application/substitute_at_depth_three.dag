@@ -61,12 +61,12 @@ data depth_three_expected_root: Node = Node {
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          Edge { role: Containment { inheritable: false },
             label: Named { name: ^depth_three_step_b },
             target: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge {
+                Edge { role: Containment { inheritable: false },
                   label: Named { name: ^depth_three_step_c },
                   target: depth_three_replacement_leaf
                 }

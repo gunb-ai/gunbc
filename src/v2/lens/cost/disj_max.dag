@@ -40,7 +40,7 @@ data disj_max_expensive_body: Node = Node {
       target: Node {
         kind: ComputationNode { behavior: Transform },
         children: [
-          Edge {
+          Edge { role: Containment { inheritable: false },
             label: Positional,
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_atom } },

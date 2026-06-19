@@ -174,7 +174,7 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
           kind: TypeNode { connective: Conj },
           children: [
             Edge { role: Containment { inheritable: false }, label: Named { name: ^free_monoid_field_head }, target: inhabitant },
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Named { name: ^free_monoid_field_tail },
               target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
             },

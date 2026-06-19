@@ -162,11 +162,11 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
               target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: SyntheticOccurrence }
             },
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
               target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
             }
@@ -199,11 +199,11 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
               target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: SyntheticOccurrence }
             },
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
               target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: SyntheticOccurrence }
             }

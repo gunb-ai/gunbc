@@ -355,15 +355,15 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
         target: Node {
           kind: TypeNode { connective: Arrow },
           children: [
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_int_atom)
             },
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_int_atom)
             },
-            Edge {
+            Edge { role: Containment { inheritable: false },
               label: Positional,
               target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
             }

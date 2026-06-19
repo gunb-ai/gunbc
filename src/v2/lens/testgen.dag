@@ -973,11 +973,11 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
-                    Edge {
+                    Edge { role: Containment { inheritable: false },
                       label: Named { name: ^witness_validity_locus_textual_file },
                       target: witness_validity_symbol_atom_node(s: f)
                     },
-                    Edge {
+                    Edge { role: Containment { inheritable: false },
                       label: Named { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
@@ -1120,11 +1120,11 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
                 target: Node {
                   kind: TypeNode { connective: Conj },
                   children: [
-                    Edge {
+                    Edge { role: Containment { inheritable: false },
                       label: Named { name: ^witness_validity_outcome_accepted_value },
                       target: witness_validity_witness_node(w: w)
                     },
-                    Edge {
+                    Edge { role: Containment { inheritable: false },
                       label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
