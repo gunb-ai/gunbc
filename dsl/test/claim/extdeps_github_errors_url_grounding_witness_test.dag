@@ -1,0 +1,48 @@
+// By-execution witness: GitHubErrorShape.documentation_url grounded on std.types.Url.
+// Discriminating: goes RED if the field reverts to bare String.
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_github_errors_url_grounding_witness_test.dag \
+//     --function extdeps_github_errors_url_grounding_witnesses --claim-run
+
+module test.claim.extdeps_github_errors_url_grounding_witness
+
+import extdeps.github.errors { GitHubErrorShape, github_error_example }
+import std.types { Url }
+
+data sample_docs_url: Url = "https://docs.github.com/rest"
+
+fn w_github_error_shape_documentation_url_grounded() -> Bool {
+  let row = GitHubErrorShape {
+    message: "Not Found",
+    documentation_url: Present { value: sample_docs_url },
+  }
+  match row.documentation_url {
+    Present { value: url } => url == sample_docs_url
+    Absent => false
+  }
+}
+
+fn w_github_error_example_inhabits_url() -> Bool {
+  match github_error_example.documentation_url {
+    Present { value: url } => url == sample_docs_url
+    Absent => false
+  }
+}
+
+fn w_github_error_shape_absent_documentation_url() -> Bool {
+  let row = GitHubErrorShape {
+    message: "Server Error",
+    documentation_url: none,
+  }
+  match row.documentation_url {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn extdeps_github_errors_url_grounding_witnesses() -> Bool {
+  w_github_error_shape_documentation_url_grounded()
+    && w_github_error_example_inhabits_url()
+    && w_github_error_shape_absent_documentation_url()
+}
