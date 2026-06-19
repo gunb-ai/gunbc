@@ -129,9 +129,20 @@ fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSeg
 
 fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNegativeInt>) -> Ordering {
   if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
-  else if a_rest.length() == 0 { Less }
-  else if b_rest.length() == 0 { Greater }
-  else {
+  else if a_rest.length() == 0 {
+    // PEP 440: shorter release tuples are zero-padded before comparison.
+    if b_rest.first() == 0 {
+      pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
+    } else {
+      Less
+    }
+  } else if b_rest.length() == 0 {
+    if a_rest.first() == 0 {
+      pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
+    } else {
+      Greater
+    }
+  } else {
     match pep440_compare_non_negative_int(a: a_rest.first(), b: b_rest.first()) {
       Equal => pep440_compare_release_rest(
         a_rest: a_rest.skip(n: 1),

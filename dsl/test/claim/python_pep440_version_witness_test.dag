@@ -28,6 +28,10 @@ import extdeps.version.pep440 {
   pep440_spec_label
 }
 
+fn release_1() -> Pep440ReleaseSegments {
+  Pep440ReleaseSegments { first: 1, rest: [] }
+}
+
 fn release_1_0() -> Pep440ReleaseSegments {
   Pep440ReleaseSegments { first: 1, rest: [0] }
 }
@@ -213,6 +217,25 @@ fn w_version_specifier_constraint_projection() -> Bool {
   ]) == ">= 1.0"
 }
 
+fn w_release_segments_zero_pad_equal() -> Bool {
+  pep440_compare_public(
+    a: Pep440PublicVersion {
+      epoch: 0,
+      release_segments: release_1(),
+      pre_release: none,
+      post_release: none,
+      dev_release: none
+    },
+    b: Pep440PublicVersion {
+      epoch: 0,
+      release_segments: release_1_0(),
+      pre_release: none,
+      post_release: none,
+      dev_release: none
+    }
+  ) == Equal
+}
+
 fn w_structural_alpha_before_final() -> Bool {
   pep440_compare_public(
     a: v_alpha_1_0a1().public,
@@ -269,6 +292,7 @@ test fn python_pep440_version_witnesses() -> Bool {
     && w_discriminates_pre_release_numbers()
     && w_version_identity_projection()
     && w_version_specifier_constraint_projection()
+    && w_release_segments_zero_pad_equal()
     && w_structural_alpha_before_final()
     && w_a2_dev1_greater_than_a1()
     && w_bare_dev_before_alpha()
