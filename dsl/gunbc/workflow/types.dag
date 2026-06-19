@@ -15,6 +15,7 @@ import std.types {
   Timestamp,
   Url
 }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 
 // --- Review model ------------------------------------------------------
 
@@ -297,8 +298,8 @@ type CredentialIntent
 
 type CredentialResolution
   = EnvVar { name: NonEmptyStr }
-  | SecretManagerRef { secret_id: NonEmptyStr, project_id: NonEmptyStr }
-  | WorkloadIdentity { service_account: NonEmptyStr, scopes: List<String> }
+  | SecretManagerRef { secret_id: NonEmptyStr, project_id: GcpProjectId }
+  | WorkloadIdentity { service_account: ServiceAccountEmail?, scopes: List<String> }
 
 type CredentialBinding {
   intent: CredentialIntent

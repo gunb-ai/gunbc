@@ -212,6 +212,62 @@ fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     );
 }
 
+// Manual RED->GREEN harness for the #5146-class resolve_expr_types O(2^depth)
+// fix (bind-once). Generates the host_source_root_ingest manifest at increasing
+// record counts N and times the gate resolve. PRE-FIX: 2^N — n=20 hung >800s.
+// POST-FIX (bind-once in 04_resolve.dag + v1_compiler_infer_resolve.rs): linear,
+// dominated by bounded front-end parse — n=20 ~87s, all ok=true. Not a CI gate
+// (wall-clock); the structural regression guard is
+// resolve_expr_types_has_no_redundant_child_retraversal (always-on).
+//   NV2_SCALE_NS=2,5,10,20 cargo test -p v1-compiler-tests \
+//     v2_compiler_closure_nv2_substrate_test::nv2_manifest_resolve_scaling_probe -- --ignored --nocapture
+#[test]
+#[ignore]
+fn nv2_manifest_resolve_scaling_probe() {
+    use std::time::Instant;
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2");
+    let entry = ws.join(COMPILER_ENTRY);
+    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let records = discover_source_root_reads_for_entry(
+        &roots,
+        entry.to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover");
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+    let gate_entry = ws.join(NV2_GATE_ENTRY);
+    let ns: Vec<usize> = std::env::var("NV2_SCALE_NS")
+        .unwrap_or_else(|_| "2,5,10,20".to_string())
+        .split(',')
+        .map(|s| s.trim().parse().expect("usize"))
+        .collect();
+    for n in ns {
+        let n = n.min(records.len());
+        let temp = unique_temp_dir(&format!("nv2-scale-{n}"));
+        fs::create_dir_all(&temp).expect("temp");
+        let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
+        emit_source_root_ingest_manifest(&manifest_path, &records[..n], Some(&admission))
+            .expect("emit");
+        let bytes = fs::metadata(&manifest_path).map(|m| m.len()).unwrap_or(0);
+        let manifest_dir = manifest_path.parent().expect("parent");
+        let scale_roots = vec![
+            v2_root.to_string_lossy().to_string(),
+            manifest_dir.to_string_lossy().to_string(),
+        ];
+        let start = Instant::now();
+        let result = resolve_entry_graph(&scale_roots, gate_entry.to_str().expect("entry utf8"));
+        eprintln!(
+            "SCALE n={n} bytes={bytes} resolve={:?} ok={}",
+            start.elapsed(),
+            result.is_ok()
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+}
+
 fn tail_lines(text: &str, n: usize) -> String {
     let lines: Vec<&str> = text.lines().collect();
     lines
