@@ -17,7 +17,7 @@ func main() -> ProcessExit {
   } else {
     ExitFailure {
       code: exit_code_general_error,
-      reason: "recursive Workflow fail-closed located fold witness failed — a descendant Unknown failed to latch its ancestors, lost its located axis, or the flat spine diverged from its linear instance",
+      reason: "recursive VerdictTree fail-closed located fold witness failed — a descendant Unknown failed to latch its ancestors, lost its located axis, or the flat spine diverged from its linear instance",
     }
   }
 }
