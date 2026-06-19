@@ -404,6 +404,7 @@ fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
 
 // =========================================================================
 // Slice 4 — AndOr / Pipe / WithRedir (POSIX §2.9 lists / compound commands).
+// Shared helpers: bash_arrow_emitted_from_words, bash_grammar_sequence_from_tokens.
 // Each row is byte-identical to serialize_bash for the matching ShellStmt fixture.
 // =========================================================================
 
