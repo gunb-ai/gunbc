@@ -404,7 +404,7 @@ pub enum ExecutionEnv {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetTriple {
-    pub arch: Arch,
+    pub arch: TargetArchitecture,
     pub vendor: Vendor,
     pub os: Os,
     pub env: Option<AbiEnv>,
