@@ -3984,6 +3984,68 @@ fn value_to_host_string(val: &Value) -> String {
     value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
+fn materialize_argv_expr_for_bindings(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, Value>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<Value, String> {
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => Ok(Value::Str(value.clone())),
+            other => Err(format!(
+                "shell argv materialize: unsupported literal {:?}",
+                other
+            )),
+        },
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            bindings
+                .get(&name)
+                .cloned()
+                .ok_or_else(|| format!("shell argv materialize: unbound param `{name}`"))
+        }
+        ExprData::ExprStringInterp => {
+            let parts = extract_string_interp_parts(node.clone());
+            let mut result = String::new();
+            for part in parts.iter() {
+                match part.as_ref() {
+                    StringPart::Text { value } => result.push_str(value),
+                    StringPart::Interpolation { expr } => {
+                        let val =
+                            materialize_argv_expr_for_bindings(expr, bindings, source_indices)?;
+                        result.push_str(&value_to_host_string(&val));
+                    }
+                }
+            }
+            Ok(Value::Str(result))
+        }
+        other => Err(format!(
+            "shell argv materialize: unsupported expr {:?}",
+            other
+        )),
+    }
+}
+
+/// Evaluate a shell transport's argv template with concrete param bindings — the same
+/// materialization `dispatch_shell` performs before `Command::new`, without executing.
+pub fn materialize_shell_argv_for_operation(
+    path: String,
+    service: String,
+    operation: String,
+    param_bindings: HashMap<String, Value>,
+) -> Result<Vec<String>, String> {
+    let (argv_nodes, source_indices) =
+        crate::extdeps_shape_transport_policy_project::shell_argv_nodes_for_operation(
+            path, service, operation,
+        );
+    let mut argv: Vec<String> = Vec::new();
+    for node in argv_nodes.iter() {
+        let val = materialize_argv_expr_for_bindings(node, &param_bindings, &source_indices)?;
+        push_shell_argv_tokens(&mut argv, val).map_err(|e| format!("{e:?}"))?;
+    }
+    Ok(argv)
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -5371,6 +5433,46 @@ fn eval_builtin(
                     path, service, operation,
                 );
             Ok(Some(Value::Int(count)))
+        }
+
+        "shell_materialize_argv_for_operation" => {
+            let path = expect_str(
+                positional.first().copied(),
+                "shell_materialize_argv_for_operation",
+            )?;
+            let service = expect_str(
+                positional.get(1).copied(),
+                "shell_materialize_argv_for_operation",
+            )?;
+            let operation = expect_str(
+                positional.get(2).copied(),
+                "shell_materialize_argv_for_operation",
+            )?;
+            let package = expect_str(
+                positional.get(3).copied(),
+                "shell_materialize_argv_for_operation",
+            )?;
+            let bin = expect_str(
+                positional.get(4).copied(),
+                "shell_materialize_argv_for_operation",
+            )?;
+            let extra_args = expect_str_list(
+                positional.get(5).copied(),
+                "shell_materialize_argv_for_operation",
+            )?;
+            let mut param_bindings = HashMap::new();
+            param_bindings.insert("package".to_string(), Value::Str(package));
+            param_bindings.insert("bin".to_string(), Value::Str(bin));
+            param_bindings.insert(
+                "args".to_string(),
+                list_value(extra_args.into_iter().map(Value::Str).collect::<Vec<_>>()),
+            );
+            let argv =
+                materialize_shell_argv_for_operation(path, service, operation, param_bindings)
+                    .map_err(|e| InterpError::TypeError { msg: e })?;
+            Ok(Some(list_value(
+                argv.into_iter().map(Value::Str).collect::<Vec<_>>(),
+            )))
         }
 
         "extdeps_dead_param_count_for_path" => {
