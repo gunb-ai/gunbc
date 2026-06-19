@@ -1,9 +1,9 @@
 // Status: compile-only anchor.
 
 module v2.test.manual.java_language_model_anchor
+import v2.std.language_model { LanguageModel }
 
 import v2.extdeps.languages.java {
-  JavaLanguageModel,
   java_inhabitant_int_node,
   java_language_model_wave1,
   java_language_model_wave2,
@@ -11,7 +11,7 @@ import v2.extdeps.languages.java {
 }
 import v2.std.node { Node }
 
-type java_anchor_language_model = JavaLanguageModel
+type java_anchor_language_model = LanguageModel
 
 data java_anchor_wave1: java_anchor_language_model = java_language_model_wave1()
 data java_anchor_wave2: java_anchor_language_model = java_language_model_wave2()

@@ -1,9 +1,9 @@
 // Status: compile-only anchor.
 
 module v2.test.manual.go_language_model_anchor
+import v2.std.language_model { LanguageModel }
 
 import v2.extdeps.languages.go {
-  GoLanguageModel,
   go_bool_algebra_inhabitance,
   go_facts_float64,
   go_facts_int,
@@ -23,7 +23,7 @@ import v2.std.collection { List }
 import v2.std.model_core { AlgebraInhabitanceDecl, ModelCore }
 import v2.std.node { Node }
 
-type go_anchor_language_model = GoLanguageModel
+type go_anchor_language_model = LanguageModel
 
 data go_anchor_wave1: go_anchor_language_model = go_language_model_wave1()
 data go_anchor_int: Node = go_int_inhabitant_node()

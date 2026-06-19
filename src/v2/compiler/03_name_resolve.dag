@@ -5,6 +5,7 @@
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v2.compiler.name_resolve
+import v2.std.language_model { LanguageModel }
 
 
 import v2.compiler.normalize { NormalizedTree }
@@ -16,7 +17,6 @@ import v2.compiler.resolve {
   try_edge_declared_binding
 }
 import v2.extdeps.languages.dag {
-  DagLanguageModel,
   dag_language_model_canonical_symbols,
   dag_surface_module_header_metadata_edge,
   qualified_name_from_module_node
@@ -455,7 +455,7 @@ fn admit_imports(
 }
 
 
-fn admission_namespace_base(lm: DagLanguageModel) -> Namespace {
+fn admission_namespace_base(lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: empty_map(),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
@@ -472,7 +472,7 @@ fn subject_module_root_for_name(
 
 
 fn namespace_for_subject(
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission
 ) -> Outcome<AdmittedSubject> {
@@ -529,7 +529,7 @@ fn namespace_for_subject(
 
 
 fn resolve_with_admission(
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission
 ) -> Outcome<ResolvedTree> {

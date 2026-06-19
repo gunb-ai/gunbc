@@ -1,0 +1,37 @@
+// dsl/test/fixture/m4_universal_governed_probe.dag
+//
+// Service-only module for M4.1 universal corpus governance proof. The published corpus lives in a
+// SEPARATE module (m4_universal_governed_corpus.dag) that witness entries deliberately do NOT
+// import — governance must come from the runtime's whole-tree corpus load, not closure co-location.
+
+module test.fixture.m4_universal_governed_probe
+
+service GovernedUniversalProbe {
+  operation Allowed {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "universal-published-realized" } "published op realizes hermetically"
+    }
+  }
+
+  operation Forbidden {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "must-never-be-returned" } "inline mock present but op is UNPUBLISHED"
+    }
+  }
+}
