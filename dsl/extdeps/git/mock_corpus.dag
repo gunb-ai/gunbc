@@ -11,7 +11,7 @@
 //
 // Rows inhabit std.hermetic_replay.PublishedMockCase. The operation set authority remains
 // dsl/extdeps/git/git.dag (`service git.Core`); per-case payloads live in the Phase-2
-// RecordedFixture store ONLY — rows carry the (operation_key, case_id) structural key.
+// RecordedFixture store ONLY — rows carry the (operation_key, service, operation, case_id) structural key.
 
 module extdeps.git.mock_corpus
 
