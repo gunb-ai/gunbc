@@ -16,6 +16,8 @@ import v2.compiler.name_resolve {
   resolve_with_admission,
   validate_module_roots
 }
+import v2.std.cross_tree.import_model { FundamentalityUnknown }
+import v2.std.cross_tree.resolution { source_root_set_from_module_roots }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
@@ -145,10 +147,14 @@ fn fc_initial_admission_state() -> AdmissionState {
 }
 
 fn admit_import_missing_module_is_rejected() -> Bool {
+  let roots = fc_single_found_root()
   match admit_import_entry(
-    roots: fc_single_found_root(),
+    roots: roots,
     import_edge: fc_import_missing_target(),
-    state: fc_initial_admission_state()
+    state: fc_initial_admission_state(),
+    subject_qn: fc_qn(seg: ^fc_subject_seg),
+    order: FundamentalityUnknown,
+    active_roots: source_root_set_from_module_roots(roots: roots)
   ) {
     AdmissionAccepted { bindings: _, origins: _ } => false
     AdmissionRejected { diagnostics: _ } => true
