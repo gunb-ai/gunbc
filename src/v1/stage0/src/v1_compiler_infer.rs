@@ -4453,18 +4453,6 @@ match bare_s {
                                         scope.module_name.clone(),
                                     )]),
                                 }
-                            } else if type_node_is_unresolved_generic(
-                                exp.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                Rc::new(vec![])
-                            } else if node_is_keyed_collection(
-                                exp.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                // Method-arg inference may thread the whole Map<K, V> as the
-                                // expected type for value args; empty [] is still valid for V.
-                                Rc::new(vec![])
                             } else {
                                 Rc::new(vec![inference_error(
                                     "empty list literal: expected type is not a collection"
@@ -10997,20 +10985,6 @@ pub fn is_type_variable_name(name: String) -> bool {
         || (name.clone().as_str() == "V".to_string().as_str()))
         || (name.clone().as_str() == "MappedElement".to_string().as_str()))
         || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
-}
-
-pub fn type_node_is_unresolved_generic(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { .. }) => true,
-        _ => {
-            ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) == 0))
-                && is_type_variable_name(type_node_label(n.clone(), source_indices.clone()))
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
