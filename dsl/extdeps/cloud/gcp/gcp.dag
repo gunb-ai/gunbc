@@ -19,10 +19,17 @@ import extdeps.cloud.cloud { ServiceEndpoint }
 import std.types { FilePath, NonEmptyStr, Secret, HttpMethod, AuthScheme }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 
+// -- Grounded identifier refinements --------------------------------
+// Cite: cloud.google.com/resource-manager/docs/creating-managing-projects
+// GcpProjectId: restore `where pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")` post-Q-Regex.
+type GcpProjectId = String where non_empty
+// ServiceAccountEmail: restore `where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")` post-Q-Regex.
+type ServiceAccountEmail = String
+
 // -- Projects ------------------------------------------------------
 
 type GcpProject {
-  project_id: String
+  project_id: GcpProjectId
   project_number: Int
   name: String
 }
@@ -30,11 +37,23 @@ type GcpProject {
 // -- Service accounts ----------------------------------------------
 
 type GcpServiceAccount {
-  email: String
+  email: ServiceAccountEmail
   unique_id: String
   display_name: String?
   disabled: Bool
 }
+
+// -- Credential acquisition (GCP-specific flows) -------------------
+// Provider-neutral flows live in std.credentials; Workload Identity Federation
+// and interactive gcloud OAuth are grounded here.
+
+type GcpCredentialFlow
+  = WorkloadIdentity {
+      audience: NonEmptyStr
+      service_account: ServiceAccountEmail?
+      scopes: List<String>
+    }
+  | InteractiveAuth { scopes: List<String> }
 
 // -- OAuth2 scopes -------------------------------------------------
 

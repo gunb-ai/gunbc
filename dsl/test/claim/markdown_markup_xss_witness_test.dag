@@ -1,4 +1,4 @@
-// dsl/test/claim/markdown_markup_xss_witness.dag
+// dsl/test/claim/markdown_markup_xss_witness_test.dag
 //
 // By-execution witnesses for std.markdown CommonMark consumer: reduces to
 // std.markup.Fragment, serializes through the ONE serialize_fragment fold
@@ -306,7 +306,7 @@ fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
   }
 }
 
-fn markdown_markup_xss_keystone_holds() -> Bool {
+test fn markdown_markup_xss_keystone_holds() -> Bool {
   witness_markdown_reduces_and_serializes()
     && witness_markdown_uses_one_serialize_fragment_fold()
     && witness_ordered_list_serializes()
