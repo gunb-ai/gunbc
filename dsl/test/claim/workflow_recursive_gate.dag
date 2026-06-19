@@ -1,0 +1,23 @@
+// test/claim/workflow_recursive_gate.dag — ProcessExit gate (ctrl gate parity).
+//
+// DISCRIMINATING (DESIGN.md §5): Bool false / ExitFailure when latch or axis wrong.
+
+module test.claim.workflow_recursive_gate
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
+import test.claim.workflow_recursive_witness {
+  workflow_kernel_witnessed,
+  workflow_kernel_all_verified,
+}
+
+func main() -> ProcessExit {
+  let w = workflow_kernel_witnessed()
+  if workflow_kernel_all_verified(w) {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "recursive VerdictTree fail-closed located fold witness failed — a descendant Unknown failed to latch its ancestors, lost its located axis, or the flat spine diverged from its linear instance",
+    }
+  }
+}

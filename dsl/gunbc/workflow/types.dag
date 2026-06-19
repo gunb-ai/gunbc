@@ -20,7 +20,6 @@ import std.types {
 
 type ArtifactKind = Design | Review | Plan | CiReport
 type AuthorSource = Llm | Human
-type ReviewSource = Llm | Human | Policy
 type SeverityLevel = Blocking | Suggestion | Info
 
 type ReviewDimension = Coherence | Quality | Requirements | Aspirational
@@ -86,7 +85,6 @@ type DesignReviewOutput {
   findings: List<DesignFinding>
   approved: Bool
   summary: String
-  source: ReviewSource
 }
 
 type DesignFinding {

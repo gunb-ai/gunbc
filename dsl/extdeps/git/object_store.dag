@@ -90,11 +90,6 @@ type RefTarget
   = DirectTarget { hash: ContentHash }
   | SymbolicTarget { ref_name: NonEmptyStr }
 
-type NamedRef {
-  name: NonEmptyStr
-  target: RefTarget
-}
-
 // Outcome of resolving a named ref chain to a concrete hash.
 // 🟢 TERMINAL — the three ref traversal outcomes; closed by the git ref model
 // (chain either resolves, does not exist, or contains a symbolic cycle).
