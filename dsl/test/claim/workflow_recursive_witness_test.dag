@@ -181,21 +181,20 @@ fn workflow_kernel_witnessed() -> WorkflowKernelWitnessed {
 }
 
 fn workflow_kernel_all_verified(w: WorkflowKernelWitnessed) -> Bool {
-  if w.semigroup_associativity.verified {
-    if w.semigroup_absorption_left.verified {
-      if w.semigroup_absorption_right.verified {
-        if w.deep_unknown_latches_located.verified {
-          if w.green_tree_settles_decisive.verified {
-            if w.review_blocks_located_in_tree.verified {
-              if w.linear_instance_green.verified {
-                w.linear_instance_unknown.verified
-              } else { false }
-            } else { false }
-          } else { false }
-        } else { false }
-      } else { false }
-    } else { false }
-  } else { false }
+  fold(
+    [
+      w.semigroup_associativity.verified,
+      w.semigroup_absorption_left.verified,
+      w.semigroup_absorption_right.verified,
+      w.deep_unknown_latches_located.verified,
+      w.green_tree_settles_decisive.verified,
+      w.review_blocks_located_in_tree.verified,
+      w.linear_instance_green.verified,
+      w.linear_instance_unknown.verified,
+    ],
+    init: true,
+    f: fn(acc, v) { acc && v }
+  )
 }
 
 test fn workflow_recursive_witnesses() -> Bool {

@@ -27,7 +27,8 @@ type ReduceVerdict
   | Unknown { missing: String }
 
 // Semigroup join: Unknown absorbs (leftmost axis wins); decisive siblings take
-// the right-hand verdict (last green child wins).
+// the right-hand verdict (last green child wins). Post-fold, Reduced.parts is
+// the rightmost decisive leaf's count — not an aggregate sum across siblings.
 fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   match a {
     Unknown { missing: ma } => Unknown { missing: ma }
