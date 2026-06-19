@@ -15,6 +15,11 @@ import extdeps.llm.anthropic {
 import extdeps.llm.anthropic_errors { AnthropicErrorShape }
 import std.credentials { EnvVar }
 
+// 🟡 dissolved — feature:llm-anthropic-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
+// llm.Anthropic ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service llm.Anthropic {
   config {
     endpoint: "https://api.anthropic.com"
@@ -59,13 +64,6 @@ service llm.Anthropic {
       529 => AnthropicErrorShape
       5xx => AnthropicErrorShape
     }
-    mock_response {
-      200 => { id: "msg_mock123", type: "message", role: "assistant", content: [{ type: "text", text: "Mock response from Claude" }], model: "claude-sonnet-4-6-20250929", stop_reason: "end_turn", usage: { input_tokens: 25, output_tokens: 10 } } "Successful completion",
-      400 => { type: "error", error: { type: "invalid_request_error", message: "messages: field required" } } "Invalid request body",
-      401 => { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } } "Invalid API key",
-      429 => { type: "error", error: { type: "rate_limit_error", message: "Rate limit exceeded" } } "Rate limited",
-      529 => { type: "error", error: { type: "overloaded_error", message: "Overloaded" } } "Server overloaded"
-    }
   }
 
   // Claude Code CLI — shell realization of the same Anthropic dependency.
@@ -97,9 +95,6 @@ service llm.Anthropic {
     exit {
       0 => Unit
       nonzero => String "Claude CLI failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "Code review complete.\n\nPR-COMMENT: Clean changes, no issues found.", stderr: "" } "Successful CLI prompt"
     }
   }
 }
