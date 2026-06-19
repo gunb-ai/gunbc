@@ -29,7 +29,7 @@ import product.compute_fabric {
   offer_placement_supply_row,
   placement_spawn_width,
 }
-import std.cpu.types { CpuFacts, CpuDeploymentFacts }
+import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure { byte_size, hertz, hardware_thread_count, HardwareThreadCount }
 import std.os.types {
   OperatingSystemSurface,

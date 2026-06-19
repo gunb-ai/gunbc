@@ -7,8 +7,8 @@ module gunbc.runner_spec_from_offer
 
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 import product.compute_fabric { ComputeOffer, compute_host_primary_cpu }
-import std.cpu { cpu_facts_architecture }
-import std.cpu.types { CpuArchitecture }
+import extdeps.cpu { cpu_facts_architecture }
+import extdeps.cpu.types { CpuArchitecture }
 import std.os.types { KernelFamily }
 
 fn kernel_runner_label(kernel: KernelFamily) -> String {
