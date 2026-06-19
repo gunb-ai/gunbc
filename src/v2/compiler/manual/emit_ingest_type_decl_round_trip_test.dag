@@ -314,6 +314,25 @@ fn type_decl_parse_from_emitted_source_holds(emitted: Node) -> Bool {
   }
 }
 
+// Wave 3c-F FINISH-LINE-A: REAL parse from surface text only (tokenize + forward row
+// selection) -> emit -> byte-identical source. Non-add construct (type decl).
+fn type_decl_source_text_emit_round_trip_holds(source: String) -> Bool {
+  match type_decl_reparse_emitted_from_source(source: source) {
+    Accepted { value: node, diagnostics: _ } =>
+      match type_decl_emit_source_text(emitted: node) {
+        Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn type_decl_real_source_round_trip_holds() -> Bool {
+  type_decl_source_text_emit_round_trip_holds(source: type_decl_point_source_text)
+    && type_decl_emit_structural_not_fixture_lookup_holds()
+    && type_decl_forward_class_spine_ambiguous_rejects_holds()
+}
+
 fn type_decl_derived_row_preserves_emitted_holds(emitted: Node) -> Bool {
   match grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
     Accepted { value: row, diagnostics: _ } =>

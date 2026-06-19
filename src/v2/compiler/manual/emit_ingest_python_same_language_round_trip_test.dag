@@ -234,7 +234,7 @@ fn python_same_language_parse_bridge_holds() -> Bool {
 }
 
 // Real python source -> parse -> bridge -> emit(py) recovers canonical python_mvp1_source_text.
-fn python_same_language_source_emit_round_trip_holds() -> Bool {
+test fn python_same_language_source_emit_round_trip_holds() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
       match cross_language_compile(
