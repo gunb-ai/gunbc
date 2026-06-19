@@ -1,16 +1,21 @@
 // src/v2/compiler/07_target_carriers.dag
 // Scope: Shared compile-stage language/source aliases — breaks compile ↔ emit import cycle.
 // Status: Wave-5-A — TargetModel authority lives in v2.std.compilers.target_model.
+//         Wave 3b-D — Source/TargetSource/DagSource String nicknames collapsed to Medium<String>.
 
 
 module v2.compiler.target_carriers
 
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.language_model { LanguageModel }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.text { String }
 
 // Hub route only — LanguageModel authority is v2.std.language_model (P2);
 // TargetModel authority is v2.std.compilers.target_model (P2); no local redeclare.
+// Recorded source text (ingest + emit) is Medium<String> — see extdeps.communication.medium.
 
-type TargetSource = String
+fn lossless_source(text: String) -> Medium<String> {
+  Medium { carried: text, fidelity: Lossless }
+}

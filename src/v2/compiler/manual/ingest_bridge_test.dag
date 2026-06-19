@@ -6,6 +6,7 @@
 module v2.test.manual.ingest_bridge
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.text { string_is_empty }
 import v2.std.algebra { Cons, Empty }
 import v2.compiler.ingest {
   cross_language_compile,
@@ -285,10 +286,7 @@ fn ingest_cross_language_compile_holds() -> Bool {
         target_model: dag_mvp1_target_model()
       ) {
         Accepted { value: source, diagnostics: _ } =>
-          match source {
-            Cons { head: _, tail: _ } => true
-            Empty => false
-          }
+          string_is_empty(s: source.carried) == false
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

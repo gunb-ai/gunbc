@@ -4,9 +4,9 @@
 
 module v2.test.lens_affected_set.provenance_producer
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority {
-  DagSource,
-  DagSourceReadWitness,
+    DagSourceReadWitness,
   SourceRootIngest,
   node_artifact_provenance_from_source_root,
   source_root_provenance_coverage_receipt
@@ -44,11 +44,10 @@ data provenance_producer_path_mid: RepoPath = "src/v2/lens/affected_set.dag"
 data provenance_producer_path_root: RepoPath = "src/v2/lens/affected_set_examples.dag"
 data provenance_producer_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 
-data provenance_producer_fixture_source: DagSource = dag_mvp1_source_text
-data provenance_producer_malformed_source: DagSource = "fn add(x:Int, y:Int) -> Int { x + "
+data provenance_producer_fixture_source: Medium<String> = Medium { carried: dag_mvp1_source_text, fidelity: Lossless }
+data provenance_producer_malformed_source: Medium<String> = Medium { carried: "fn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
 // Valid wave-1 module surface — outside mvp1 fn-only parse coverage (fn-surface under-read axis).
-data provenance_producer_module_surface_source: DagSource = "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }"
-
+data provenance_producer_module_surface_source: Medium<String> = Medium { carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
 data provenance_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^provenance_producer_fixture_artifact,

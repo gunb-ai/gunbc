@@ -8,7 +8,7 @@
 
 module extdeps.cloud.hetzner
 
-import std.cpu.types { CpuArchitecture }
+import extdeps.cpu.types { CpuArchitecture }
 import std.types { Int, NonEmptyStr }
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41

@@ -77,7 +77,7 @@ fn sg_collection_free_monoid_vec_rc_projection_holds() -> Bool {
         target: rust_sg2_type_expr_target_model(),
         emitted: projected
       ) {
-        Accepted { value: source, diagnostics: _ } => source == sg_collection_expected_vec_rc_node
+        Accepted { value: source, diagnostics: _ } => source.carried == sg_collection_expected_vec_rc_node
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

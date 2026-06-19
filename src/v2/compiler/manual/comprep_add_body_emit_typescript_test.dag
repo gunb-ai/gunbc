@@ -49,7 +49,7 @@ import v2.std.compilers.target_model {
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node, target_model_emit_transforms_empty}
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection { Map, empty_map }
 import v2.std.constraints {
@@ -417,7 +417,7 @@ fn comprep_ts_producer_swapped_inferred_tree() -> Outcome<InferredTree> {
   }
 }
 
-fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSource> {
+fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: comprep_ts_producer_inferred_tree(),
     f: fn(tree) {
@@ -426,7 +426,7 @@ fn comprep_ts_emit_from_producer_tree(target: TargetModel) -> Outcome<TargetSour
   )
 }
 
-fn comprep_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<TargetSource> {
+fn comprep_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: comprep_ts_producer_swapped_inferred_tree(),
     f: fn(tree) {
@@ -440,7 +440,7 @@ fn comprep_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<Ta
 test fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
   match comprep_ts_emit_from_producer_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source == ts_mvp1_source_text) && (d == None)
+      (source.carried == ts_mvp1_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -448,8 +448,8 @@ test fn comprep_ts_bodied_emit_add_fn_accepts_holds() -> Bool {
 test fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
   match comprep_ts_emit_from_producer_swapped_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source == comprep_ts_emit_operand_swap_source_text) &&
-      (source != ts_mvp1_source_text) &&
+      (source.carried == comprep_ts_emit_operand_swap_source_text) &&
+      (source.carried != ts_mvp1_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }
@@ -458,8 +458,8 @@ test fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
 test fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
   match comprep_ts_emit_from_producer_tree(target: comprep_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
-      (source == comprep_ts_emit_catalog_minus_source_text) &&
-      (source != ts_mvp1_source_text) &&
+      (source.carried == comprep_ts_emit_catalog_minus_source_text) &&
+      (source.carried != ts_mvp1_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }

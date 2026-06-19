@@ -14,29 +14,28 @@
 
 module v2.test.lens_mock_totality.cron_mock_totality
 
-import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
-// Single authority for the cron mock corpus lives in the dsl/ tree
-// (dsl/extdeps/cron/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does (M4
-// hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern (cf. the M4.0
-// filesystem witness importing extdeps.filesystem.mock_corpus).
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template {
+  mock_totality_green_holds,
+  mock_totality_red_on_omission_holds,
+  omit_consumer_handles,
+  outcome_accepted_p
+}
 import extdeps.cron.mock_corpus {
   PublishedMockCase,
   cron_published_mock_corpus
 }
-import v2.std.algebra { filter }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-// The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
-// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
 type MaterializedCronMock {
   tag: Symbol
 }
 
-// The REAL consumer: materializes ANY published cron case impl-blind, keyed on the operation_key;
-// fail-closes (the canonical `mock_unhandled_rejection`) for an unpublished op.
+data cron_red_omit_keys: List<String> = ["cron.Tab.Replace"]
+
 fn materialize_cron_mock(case: PublishedMockCase) -> Outcome<MaterializedCronMock> {
   if case.operation_key == "cron.Tab.List" {
     outcome_accepted(value: MaterializedCronMock { tag: ^materialized_list })
@@ -47,63 +46,28 @@ fn materialize_cron_mock(case: PublishedMockCase) -> Outcome<MaterializedCronMoc
   }
 }
 
-// The DELIBERATELY-INCOMPLETE consumer: omits `Replace` → fail-closes on the published Replace case.
-// This is the discriminating input that drives the lens RED on omission.
-fn materialize_cron_mock_omits_replace(case: PublishedMockCase) -> Outcome<MaterializedCronMock> {
-  if case.operation_key == "cron.Tab.List" {
-    outcome_accepted(value: MaterializedCronMock { tag: ^materialized_list })
-  } else {
-    mock_unhandled_rejection()
-  }
-}
-
-fn cron_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
-// Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
 fn cron_real_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_cron_mock(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  outcome_accepted_p(outcome: materialize_cron_mock(case: case))
 }
 
-// Did the DELIBERATELY-INCOMPLETE consumer (no `Replace` handler) materialize this case?
 fn cron_omits_replace_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_cron_mock_omits_replace(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  omit_consumer_handles(
+    case: case,
+    omit_keys: cron_red_omit_keys,
+    total_consumer_handles: cron_real_consumer_handles
+  )
 }
 
-// The handled set = the published members a consumer accepts, BY EXECUTION over the corpus.
-fn cron_handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
-  filter(xs: cron_published_mock_corpus, predicate: consumer_handles)
-}
-
-// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
 test fn cron_mock_consumer_is_total_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_green_holds(
     published: cron_published_mock_corpus,
-    handled: cron_handled_by(consumer_handles: cron_real_consumer_handles),
-    eq: cron_mock_case_eq
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+    consumer_handles: cron_real_consumer_handles
+  )
 }
 
-// RED-on-omission by execution: omit `Replace` from the consumer → the lens MUST fail-close.
-// GREEN here proves the lens has teeth (it rejects an unhandled published member); a vacuous
-// lens that accepted anyway would make this witness RED.
 test fn cron_mock_omitted_member_is_red_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_red_on_omission_holds(
     published: cron_published_mock_corpus,
-    handled: cron_handled_by(consumer_handles: cron_omits_replace_consumer_handles),
-    eq: cron_mock_case_eq
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
+    consumer_handles: cron_omits_replace_consumer_handles
+  )
 }

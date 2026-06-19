@@ -459,21 +459,27 @@ fn parse_stamp_terminal(
 }
 
 fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurrenceId) -> Node {
-  node_with_occurrence_id(
-    kind: TypeNode { connective: Conj },
-    children: fold_list(
-      xs: acc_nodes,
-      empty: Empty,
-      cons: fn(acc, n) {
-        list_snoc_item(
-          xs: acc,
-          item: Edge {
-            label: Named { name: ^grammar_repeat_element_node_projection },
-            target: n
-          }
-        )
+  let spine = fold_list_right(
+    xs: acc_nodes,
+    empty: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    },
+    snoc: fn(tail_node, item) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: item),
+          grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: tail_node)
+        ],
+        occurrence_id: SyntheticOccurrence
       }
-    ),
+    }
+  )
+  node_with_occurrence_id(
+    kind: spine.kind,
+    children: spine.children,
     occurrence_id: occurrence_id
   )
 }
