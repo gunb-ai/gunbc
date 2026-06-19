@@ -16,6 +16,7 @@ import extdeps.cargo {
 import extdeps.cargo_version {
   default_stage0_package_version,
   render_cargo_package_version_field,
+  render_cargo_package_header_prefix,
   render_cargo_version_requirement_toml,
 }
 
@@ -61,9 +62,14 @@ fn w_requirement_distinct_from_package_version() -> Bool {
   render_cargo_version_requirement_toml(req: "1") != render_cargo_package_version_field(version: "1.0.0")
 }
 
+fn w_emitter_header_prefix_uses_default() -> Bool {
+  render_cargo_package_header_prefix(name: "demo-crate") == "[package]\nname = \"demo-crate\"\nversion = \"0.1.0\""
+}
+
 test fn cargo_version_witnesses() -> Bool {
   w_stage0_default_package_version()
     && w_package_version_field_renders()
     && w_registry_dep_version_requirements()
     && w_requirement_distinct_from_package_version()
+    && w_emitter_header_prefix_uses_default()
 }
