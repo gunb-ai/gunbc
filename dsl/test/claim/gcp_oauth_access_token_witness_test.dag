@@ -1,8 +1,9 @@
 // dsl/test/claim/gcp_oauth_access_token_witness_test.dag
 //
 // §5 by-execution witnesses for gunbc.auth.credentials.gcp_oauth_access_token(strategy).
+// NOT discovery-roster enrolled (`test fn` would dispatch Wet in CI — no gcloud on runners).
 // Hermetic replay via committed fixtures under dsl/test/fixture/gcp_oauth_access_token_store/
-// (v1-compiler-tests `gcp_oauth_access_token_materializer_holds`).
+// (v1-compiler-tests `gcp_oauth_access_token_materializer_holds` → claim_batch --hermetic).
 //
 // Discriminating pair:
 //   GREEN — both strategies route to distinguishable fixture tokens.
@@ -77,14 +78,14 @@ fn witness_swapped_dispatch_adc_refresh_is_red() -> Bool {
   !secret_eq(a: r.token, b: token_adc_refresh)
 }
 
-test fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
+fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
   witness_gcloud_cli_strategy_holds()
     && witness_adc_refresh_absent_path_holds()
     && witness_adc_refresh_present_path_holds()
     && witness_adc_refresh_null_optional_path_holds()
 }
 
-test fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
+fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
   witness_swapped_dispatch_gcloud_cli_is_red()
     && witness_swapped_dispatch_adc_refresh_is_red()
 }
