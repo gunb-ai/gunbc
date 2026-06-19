@@ -23,9 +23,11 @@ module std.realization_width
 import std.types { Int, List }
 import std.measure {
   HardwareThreadCount,
-  NanosecondDuration,
   hardware_thread_count,
   hardware_thread_count_value,
+}
+import std.verification {
+  NanosecondDuration,
   nanosecond_duration,
 }
 import std.pareto { AxisGoal, LowerIsBetter }
@@ -38,7 +40,7 @@ import std.realization_schedule {
   schedule_eq,
   cost_account_measured,
   cost_account_predicted_zero,
-  cost_account_time_nanos,
+  cost_account_time_count,
 }
 
 fn int_min(a: Int, b: Int) -> Int {
@@ -125,8 +127,8 @@ fn witness_budget_ignoring_fold_fails(
 // Measured shard-balance scaffold: assignment must read CostAccount.basis=Measured.
 fn shard_balance_slot_for_cost(cost: CostAccount, baseline: CostAccount) -> Int {
   match cost.basis {
-    Measured => cost_account_time_nanos(account: cost)
-    Predicted => cost_account_time_nanos(account: baseline)
+    Measured => cost_account_time_count(account: cost)
+    Predicted => cost_account_time_count(account: baseline)
   }
 }
 
