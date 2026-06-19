@@ -1335,7 +1335,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_services = has_service_items(typed: typed)
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
-  let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services)
+  let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services, has_bootstrap_seed: has_pipeline)
   let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }

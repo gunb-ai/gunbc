@@ -50,6 +50,7 @@ data rust_container_templates: Map<String, String> = {
 
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
+  { method_name: "length",    template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
   { method_name: "join",      template: "\{recv\}.join(&\{arg\})",                                                                    wraps_result: false },
   { method_name: "split",     template: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",                         wraps_result: true },
   { method_name: "last",      template: "\{recv\}.last().cloned()",                                                                    wraps_result: false },
