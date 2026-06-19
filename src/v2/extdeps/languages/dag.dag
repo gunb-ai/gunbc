@@ -456,6 +456,7 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_slash, text: "/"),
       dag_literal_lex_rule(token_class: ^dag_token_percent, text: "%"),
       dag_literal_lex_rule(token_class: ^dag_token_bang, text: "!"),
+      dag_literal_lex_rule(token_class: ^dag_token_caret, text: "^"),
       dag_literal_lex_rule(token_class: ^dag_token_eq, text: "="),
       dag_literal_lex_rule(token_class: ^dag_token_colon, text: ":"),
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ","),
