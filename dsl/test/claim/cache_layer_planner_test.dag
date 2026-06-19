@@ -23,7 +23,9 @@ import extdeps.cache.cache {
   cache_layer_default_order,
   sccache_local_projected,
   parse_table_memo_projected,
+  cargo_target_dir_projected,
 }
+import std.cache_interface { NativeInternalEncoding }
 import extdeps.cache.github_actions { gha_actions_cache_id }
 import extdeps.cache.rustup { rustup_toolchain_store_id }
 import extdeps.cache.sccache { sccache_local_id }
@@ -122,6 +124,12 @@ fn witness_vendor_only_key_inputs_omission_is_explicit() -> Bool {
     && !parse_table_memo_projected.key_derivation.vendor_only_key_inputs_omitted
 }
 
+fn witness_vendor_transport_encoding_projection_is_honest() -> Bool {
+  sccache_local_projected.transport_encoding == NativeInternalEncoding
+    && !sccache_local_projected.vendor_transport_encoding_collapsed
+    && cargo_target_dir_projected.vendor_transport_encoding_collapsed
+}
+
 test fn cache_layer_planner_witnesses() -> Bool {
   witness_cheap_recompute_skips_wan_layers()
     && witness_expensive_recompute_reaches_wan_layers()
@@ -130,4 +138,5 @@ test fn cache_layer_planner_witnesses() -> Bool {
     && witness_unavailable_backends_omitted()
     && witness_empty_plan_means_recompute_only()
     && witness_vendor_only_key_inputs_omission_is_explicit()
+    && witness_vendor_transport_encoding_projection_is_honest()
 }

@@ -167,11 +167,14 @@ type CacheEvidence {
 type ProviderKeyEncoding
   = OpaqueStringEncoding
   | CasContentEncoding
+  | NativeInternalEncoding
 
 type CacheInterfaceFacts {
   identity: CacheInterfaceId
   backing_surface: StorageSurface
   transport_encoding: ProviderKeyEncoding
+  // True when cited catalog encoding is not 1:1 in ProviderKeyEncoding (e.g. cargo fingerprint → CAS).
+  vendor_transport_encoding_collapsed: Bool
   key_derivation: KeyDerivationFacts
   lookup_semantics: CacheLookupSemantics
   write_semantics: CacheWriteSemantics

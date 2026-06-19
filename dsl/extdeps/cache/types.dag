@@ -104,3 +104,12 @@ fn catalog_has_vendor_only_key_inputs(inputs: List<CatalogInputSurface>) -> Bool
     FilePaths => false
   })
 }
+
+fn catalog_transport_encoding_collapsed_in_std_projection(encoding: CatalogProviderKeyEncoding) -> Bool {
+  match encoding {
+    OpaqueStringEncoding => false
+    CasContentEncoding => false
+    SccacheInternalEncoding => false
+    CargoFingerprintEncoding => true
+  }
+}
