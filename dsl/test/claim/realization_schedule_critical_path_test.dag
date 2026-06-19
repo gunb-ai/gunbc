@@ -1,0 +1,72 @@
+// dsl/test/claim/realization_schedule_critical_path_test.dag
+//
+// Phase 1.5b §5: critical-path schedule total — parallel branches take CostMax
+// (v1.compiler.complexity span authority), sequential batches add. Discriminating:
+// a short runnable hidden under a parallel branch must not inflate total.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function realization_schedule_critical_path_witnesses --claim-run
+
+module test.claim.realization_schedule_critical_path
+
+import std.measure { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+import std.realization_measurement {
+  schedule_batch_critical_path,
+  schedule_critical_path_time,
+  cost_account_measured_from_schedule_critical_path,
+  nanosecond_duration_list_total,
+}
+import std.realization_schedule { CostBasis, cost_account_time_nanos }
+import std.nat { nat_compare, nat_max }
+import std.algebra { Greater, Equal }
+
+fn witness_parallel_batch_takes_max_not_sum() -> Bool {
+  let batch = [
+    nanosecond_duration(count: 100),
+    nanosecond_duration(count: 5),
+  ]
+  let critical = schedule_batch_critical_path(batch_times: batch)
+  let summed = nanosecond_duration_list_total(times: batch)
+  nanosecond_duration_count(d: critical) == 100
+    && nanosecond_duration_count(d: summed) == 105
+    && nanosecond_duration_count(d: critical) != nanosecond_duration_count(d: summed)
+}
+
+fn witness_sequential_batches_add_critical_paths() -> Bool {
+  let batches = [
+    [nanosecond_duration(count: 50)],
+    [
+      nanosecond_duration(count: 100),
+      nanosecond_duration(count: 5),
+    ],
+  ]
+  nanosecond_duration_count(d: schedule_critical_path_time(batch_times: batches)) == 150
+}
+
+fn witness_measured_total_uses_critical_path_basis() -> Bool {
+  let batches = [
+    [
+      nanosecond_duration(count: 200),
+      nanosecond_duration(count: 10),
+    ],
+  ]
+  let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
+  match account.basis {
+    Measured =>
+      cost_account_time_nanos(account: account) == 200
+    Predicted => false
+  }
+}
+
+fn witness_nat_ordering_supports_max() -> Bool {
+  match nat_compare(a: 7, b: 3) {
+    Greater => nat_max(a: 7, b: 3) == 7
+    _ => false
+  }
+}
+
+test fn realization_schedule_critical_path_witnesses() -> Bool {
+  witness_parallel_batch_takes_max_not_sum()
+    && witness_sequential_batches_add_critical_paths()
+    && witness_measured_total_uses_critical_path_basis()
+    && witness_nat_ordering_supports_max()
+}

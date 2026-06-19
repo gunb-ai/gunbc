@@ -1,5 +1,5 @@
 // Wave 3a-A foothold: first Medium<Node> instantiation in src/v2.
-// Proves cross-tree `import std.medium` resolves in v2 and Medium<Node> can be constructed.
+// Proves cross-tree `import extdeps.communication.medium` resolves in v2 and Medium<Node> can be constructed.
 //
 // GREEN: Medium<Node>{carried=bool_literal_pin, fidelity=Lossless} — both fields asserted by
 //        match/equality (not golden string). Lossy-tagged Medium<Node> correctly NOT-matches Lossless.
@@ -10,7 +10,7 @@
 
 module v2.test.manual.medium_node_instantiation
 
-import std.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_wave1_bool_literal_pin }

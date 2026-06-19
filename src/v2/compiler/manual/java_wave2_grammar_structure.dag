@@ -2,9 +2,9 @@
 // Status: manual structural TestClaim input for wave-2 grammar contracts.
 
 module v2.test.manual.java_wave2_grammar_structure
+import v2.std.language_model { LanguageModel }
 
 import v2.extdeps.languages.java {
-  JavaLanguageModel,
   java_language_model_wave2,
   java_wave2_lex_rules
 }
@@ -12,7 +12,7 @@ import v2.std.grammar { grammar_carries_symbol }
 import v2.std.compilers.lexing { lex_rule_set_token_class_member }
 import v2.std.logic { Bool }
 
-fn java_wave2_grammar_structure_satisfied(lm: JavaLanguageModel) -> Bool {
+fn java_wave2_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: java_wave2_lex_rules(), token_class: ^java_token_kw_void) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: ^java_production_result) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: ^java_production_method_declarator) &&

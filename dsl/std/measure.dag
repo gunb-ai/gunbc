@@ -51,8 +51,9 @@
 
 module std.measure
 
-import std.nat { Nat }
+import std.nat { Nat, nat_compare, nat_max, nat_min }
 import std.types { Int }
+import std.algebra { Ordering }
 
 // --- Quantity: what is being measured -------------------------------------
 //
@@ -263,6 +264,31 @@ fn nanosecond_duration(count: Nat) -> NanosecondDuration {
 
 fn nanosecond_duration_count(d: NanosecondDuration) -> Nat {
   d.count
+}
+
+fn nanosecond_duration_compare(a: NanosecondDuration, b: NanosecondDuration) -> Ordering {
+  nat_compare(
+    a: nanosecond_duration_count(d: a),
+    b: nanosecond_duration_count(d: b)
+  )
+}
+
+fn nanosecond_duration_max(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
+  nanosecond_duration(
+    count: nat_max(
+      a: nanosecond_duration_count(d: a),
+      b: nanosecond_duration_count(d: b)
+    )
+  )
+}
+
+fn nanosecond_duration_min(a: NanosecondDuration, b: NanosecondDuration) -> NanosecondDuration {
+  nanosecond_duration(
+    count: nat_min(
+      a: nanosecond_duration_count(d: a),
+      b: nanosecond_duration_count(d: b)
+    )
+  )
 }
 
 // Power magnitude at unit scale — the plain watt (SI derived: W = J/s). The dimension
