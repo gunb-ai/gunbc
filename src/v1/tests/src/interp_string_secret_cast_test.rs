@@ -55,3 +55,34 @@ test fn string_secret_cast_holds() -> Bool {
         other => panic!("expected true witness, got {other:?}"),
     }
 }
+
+#[test]
+fn int_to_secret_cast_stays_fail_closed() {
+    let src = r#"module test.int_secret_cast
+
+fn bad(n: Int) -> Secret {
+  n as Secret
+}
+
+test fn int_secret_cast_holds() -> Bool {
+  bad(42) == ""
+}
+"#;
+    let sources = resolve_imports_transitively("test/int_secret_cast.dag", src);
+    let resolved = compile_to_resolved(Rc::new(sources));
+    assert_resolved_no_hard_errors(&resolved);
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("graph after successful resolve");
+    match v1_interpreter::run(graph, resolved.source_indices.clone(), "int_secret_cast_holds") {
+        Err(v1_interpreter::InterpError::TypeError { msg }) => {
+            assert!(
+                msg.contains("cannot cast Int to Secret"),
+                "expected Int→Secret type error, got: {msg}"
+            );
+        }
+        Ok(other) => panic!("expected Int→Secret cast to fail closed, got {other:?}"),
+        Err(other) => panic!("expected TypeError for Int→Secret, got {other:?}"),
+    }
+}
