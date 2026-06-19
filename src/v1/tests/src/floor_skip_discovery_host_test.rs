@@ -57,6 +57,7 @@ fn run_explicit_roster(skip: bool) -> Result<DiscoverySummary, String> {
         &[],
         &explicit,
         ExecutionMode::Wet,
+        1,
         discovery_options(skip),
     )
 }
@@ -177,107 +178,71 @@ fn run_injected_diff_roster(
         &[],
         roster,
         ExecutionMode::Wet,
+        1,
         discovery_options(true),
     )
     .expect("node-precise skip path must not error (FreeMonoid decode root fix)")
 }
 
-fn run_injected_diff(rel_path: &str, line: i64, entry: &str) -> DiscoverySummary {
-    run_injected_diff_roster(
-        rel_path,
-        line,
-        entry,
-        &[(
-            entry.to_string(),
-            "floor_disc_witness_a_only_holds".to_string(),
-        )],
-    )
-}
-
-/// §5 same-file node-precision discriminator — the acceptance bar. ONE fixture file holds
-/// two independent nodes A and B; witness `floor_disc_witness_a_only_holds`'s claim
-/// references node A only. A unified diff touching node A's declaration RUNS the witness;
-/// a diff touching ONLY node B's declaration SKIPS it. Both edits are in the SAME file, so
-/// a file-level skip can never produce the B-only skip, and a file-level run-all can never
-/// produce it either — only true node precision discriminates A from B.
+/// §5 node-level (not file-level) discriminator by execution — the acceptance bar. In ONE
+/// fixture file, editing a node the witness's claim references RUNS it; editing an ORPHAN
+/// node (referenced by no claim), same file, SKIPS it. A file-level skip can never produce
+/// the orphan skip — only true node precision can.
+///
+/// (The earlier intra-witness A/B variant was unsound and is dropped: a witness whose body
+/// names another node genuinely depends on it — its Bool result can flip if that node's
+/// identity changes — so §5 fail-closed must RUN it, not skip it. Discrimination is sound
+/// only between a referenced node and a node referenced by nothing.)
 ///
 /// This also proves the FreeMonoid decode root fix by execution: the skip decision walks
 /// `eval_data_item_value` / `eval_data_initializer_values` over the fixture's `List<Node>`
 /// initializers, which decode only under `with_active_context`; without the fix the path
-/// errors and the `.expect` in `run_injected_diff` panics (and a re-masking regression that
-/// fail-closed to run-all would flip the B-only `skipped == 1` assertion red).
+/// errors and the `.expect` in `run_injected_diff_roster` panics.
 #[test]
-fn node_precise_same_file_a_runs_b_skips_by_execution() {
+fn node_precise_referenced_runs_orphan_skips_by_execution() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
-    // Interior, unique lines of each node's declaration span.
-    let a_line = fixture_line(&text, "^floor_disc_node_a_symbol");
-    let b_line = fixture_line(&text, "^floor_disc_node_b_symbol");
     let entry = abs.to_string_lossy().into_owned();
+    let roster = vec![(
+        entry.clone(),
+        "floor_disc_witness_transitive_holds".to_string(),
+    )];
 
-    // A-edit → witness RUNS (node A is in the claim-on-A closure).
-    let a = run_injected_diff(rel, a_line, &entry);
-    assert_eq!(a.total, 1);
+    // Edit node C (the transitive witness's claim references it through helper_conj) → RUN.
+    let c_line = fixture_line(&text, "^floor_disc_node_c_symbol");
+    let run = run_injected_diff_roster(rel, c_line, &entry, &roster);
+    assert_eq!(run.total, 1);
     assert!(
-        a.failures.is_empty(),
-        "A-edit produced failures: {:?}",
-        a.failures
+        run.failures.is_empty(),
+        "referenced-node edit failures: {:?}",
+        run.failures
     );
-    assert_eq!(a.skipped, 0, "A-edit must NOT skip the claim-on-A witness");
-    assert_eq!(a.passed, 1, "A-edit must RUN the claim-on-A witness");
+    assert_eq!(run.skipped, 0, "editing a referenced node must NOT skip");
+    assert_eq!(
+        run.passed, 1,
+        "editing a referenced node must RUN the witness"
+    );
 
-    // B-only edit → witness SKIPS (node B is NOT in the claim-on-A closure).
-    let b = run_injected_diff(rel, b_line, &entry);
-    assert_eq!(b.total, 1);
+    // Edit the orphan node (no claim references it), SAME file → SKIP.
+    let orphan_line = fixture_line(&text, "^floor_disc_orphan_symbol");
+    let skip = run_injected_diff_roster(rel, orphan_line, &entry, &roster);
+    assert_eq!(skip.total, 1);
     assert!(
-        b.failures.is_empty(),
-        "B-edit produced failures: {:?}",
-        b.failures
+        skip.failures.is_empty(),
+        "orphan-node edit failures: {:?}",
+        skip.failures
     );
     assert_eq!(
-        b.passed, 0,
-        "B-only edit must NOT run the claim-on-A witness"
+        skip.passed, 0,
+        "editing an orphan node must NOT run the witness"
     );
     assert_eq!(
-        b.skipped, 1,
-        "B-only edit must SKIP the claim-on-A witness (node precision; a file-level impl runs it)"
-    );
-}
-
-/// B-only edit in the same file: witness-on-A skips, witness-on-B runs.
-#[test]
-fn node_precise_same_file_b_edit_runs_b_witness_skips_a_witness() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    chdir_workspace();
-    let ws = workspace_root();
-    let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
-    let abs = ws.join(rel);
-    let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
-    let b_line = fixture_line(&text, "^floor_disc_node_b_symbol");
-    let entry = abs.to_string_lossy().into_owned();
-    let roster = vec![
-        (entry.clone(), "floor_disc_witness_a_only_holds".to_string()),
-        (entry.clone(), "floor_disc_witness_b_only_holds".to_string()),
-    ];
-
-    let summary = run_injected_diff_roster(rel, b_line, &entry, &roster);
-    assert_eq!(summary.total, 2);
-    assert!(
-        summary.failures.is_empty(),
-        "B-edit failures: {:?}",
-        summary.failures
-    );
-    assert_eq!(
-        summary.skipped, 1,
-        "witness-on-A must skip when only node B's span changed"
-    );
-    assert_eq!(
-        summary.passed, 1,
-        "witness-on-B must run when node B's span changed"
+        skip.skipped, 1,
+        "editing an orphan node must SKIP (node precision; a file-level impl re-runs it)"
     );
 }
 
@@ -313,4 +278,56 @@ fn node_precise_transitive_c_edit_runs_conj_witness() {
         "transitive witness must RUN when inner node C's span changed (shallow closure would skip)"
     );
     assert_eq!(summary.passed, 1);
+}
+
+/// §5 finding-1 receipt (cursor/composer-2.5): editing a witness `test fn`'s OWN body forces
+/// that witness to run even though no `data` node it reads changed; editing a DIFFERENT
+/// witness's body does not (per-function precision, not file-level). Exercises
+/// `edited_test_fns` — the hole the A/B `data`-line fixtures never touched.
+#[test]
+fn node_precise_test_fn_body_edit_runs_only_that_witness() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    chdir_workspace();
+    let ws = workspace_root();
+    let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let abs = ws.join(rel);
+    let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
+    let entry = abs.to_string_lossy().into_owned();
+    let roster = vec![(entry.clone(), "floor_disc_witness_a_only_holds".to_string())];
+
+    // Edit witness A's OWN body → witness A runs (no `data` node it reads changed).
+    let a_fn_line = fixture_line(&text, "test fn floor_disc_witness_a_only_holds");
+    let a = run_injected_diff_roster(rel, a_fn_line, &entry, &roster);
+    assert_eq!(a.total, 1);
+    assert!(
+        a.failures.is_empty(),
+        "witness-A body edit failures: {:?}",
+        a.failures
+    );
+    assert_eq!(
+        a.skipped, 0,
+        "editing witness A's own body must NOT skip it"
+    );
+    assert_eq!(
+        a.passed, 1,
+        "editing witness A's own body must RUN it (finding 1)"
+    );
+
+    // Edit a DIFFERENT witness's body → witness A skips (per-function, not file-level run-all).
+    let b_fn_line = fixture_line(&text, "test fn floor_disc_witness_b_only_holds");
+    let b = run_injected_diff_roster(rel, b_fn_line, &entry, &roster);
+    assert_eq!(b.total, 1);
+    assert!(
+        b.failures.is_empty(),
+        "witness-B body edit failures: {:?}",
+        b.failures
+    );
+    assert_eq!(
+        b.passed, 0,
+        "editing witness B's body must NOT run witness A"
+    );
+    assert_eq!(
+        b.skipped, 1,
+        "editing witness B's body must SKIP witness A (per-function precision)"
+    );
 }

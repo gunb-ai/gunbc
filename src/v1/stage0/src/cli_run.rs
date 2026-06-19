@@ -2145,8 +2145,20 @@ pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
 /// keyword, so the marker is detected in source text — same posture as the
 /// `data unified_claim_` scan).
 fn scan_test_decl_names(content: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    for line in content.lines() {
+    scan_test_decl_lines(content)
+        .into_iter()
+        .map(|(name, _line)| name)
+        .collect()
+}
+
+/// Like `scan_test_decl_names` but pairs each name with its 1-based declaration line. A
+/// `test fn` is not an AST `module.items` entry (the parser drops the contextual `test`
+/// keyword before the span is recorded), so the node-frontier partition gets its decl line
+/// from source text — the only way to bound a witness body the way an item span bounds a
+/// `data` decl.
+fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    for (i, line) in content.lines().enumerate() {
         let trimmed = line.trim_start();
         let rest = trimmed
             .strip_prefix("test fn ")
@@ -2157,11 +2169,11 @@ fn scan_test_decl_names(content: &str) -> Vec<String> {
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
                 .collect();
             if !name.is_empty() {
-                names.push(name);
+                out.push((name, (i + 1) as i64));
             }
         }
     }
-    names
+    out
 }
 
 /// Fail-closed filename hygiene: `.dag` basenames under the source roots must not
@@ -2405,21 +2417,6 @@ fn newline_index_for_span<'a>(
     })
 }
 
-fn span_overlaps_line_ranges(
-    span: &SourceSpan,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    ranges: &[FileLineRange],
-) -> bool {
-    let Some(index) = newline_index_for_span(span, source_indices) else {
-        return false;
-    };
-    let start_line = byte_to_line_col(index.clone(), span.start).line;
-    let end_line = byte_to_line_col(index.clone(), span.end).line;
-    ranges
-        .iter()
-        .any(|r| start_line <= r.end && end_line >= r.start)
-}
-
 /// Fuzzy repo-path equality (abs vs repo-relative): one path ends with the other after
 /// normalization. Mirrors the lookup in `newline_index_for_span`.
 fn span_file_matches(span_file: &str, target_norm: &str) -> bool {
@@ -2567,49 +2564,54 @@ fn collect_frontier_seeds_from_diff_line_ranges(
         // `test fn` is stripped of its `test` marker before parse, so the AST cannot tell a
         // witness from a plain `fn`; match names against the same text scan discovery uses.
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        // Every top-level declaration of this file, in source order. An item's own `span`
-        // is just its keyword/name token, so the full declaration of item[i] is
-        // [start_i .. start_{i+1} - 1] (EOF for the last); the −1 keeps the boundary off
-        // the next declaration's opening line.
-        let mut file_items: Vec<Rc<Node>> = Vec::new();
+        // Unified, source-ordered line partition of every top-level declaration. `data`/`fn`/
+        // `type`/`service` come from the AST (`module.items`) at their decl line; a `test fn`
+        // is NOT an AST item, so its decl line comes from the same text scan discovery uses.
+        // Both kinds are needed as boundaries: without the scanned `test fn` lines every
+        // witness body would fall into the *last* `data` item's trailing span, so a
+        // witness-body edit would be misattributed to that node and the witness could skip on
+        // a change to its own behavior — a fail-open hole (finding 1). Each declaration owns
+        // [its line .. next decl's line − 1] (EOF for the last), so every changed line maps to
+        // exactly one declaration. (line, name, is_data)
+        let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
-                if span_file_matches(&item.span.file, &file_norm) {
-                    file_items.push(item.clone());
+                if !span_file_matches(&item.span.file, &file_norm) {
+                    continue;
                 }
+                let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
+                    return Ok(NodeFrontierSeeds::run_all());
+                };
+                let line = byte_to_line_col(nl, item.span.start).line;
+                let name = authored_name_at(source_indices.clone(), item.clone());
+                let is_data = item_kind(item.clone()) == ItemKind::DataItem;
+                decls.push((line, name, is_data));
             }
         }
-        if file_items.is_empty() {
+        for (name, line) in scan_test_decl_lines(&content) {
+            if !decls.iter().any(|(_, n, _)| n == &name) {
+                decls.push((line, name, false));
+            }
+        }
+        if decls.is_empty() {
             return Ok(NodeFrontierSeeds::run_all());
         }
-        file_items.sort_by_key(|it| it.span.start);
+        decls.sort_by_key(|(line, _, _)| *line);
         // A change in the preamble (module decl / imports, before the first declaration)
         // can re-resolve every symbol in the file → unbounded effect → fail closed.
-        let Some(nl) = newline_index_for_span(&file_items[0].span, &source_indices).cloned() else {
-            return Ok(NodeFrontierSeeds::run_all());
-        };
-        let first_decl_line = byte_to_line_col(nl, file_items[0].span.start).line;
-        if ranges.iter().any(|r| r.start < first_decl_line) {
+        if ranges.iter().any(|r| r.start < decls[0].0) {
             return Ok(NodeFrontierSeeds::run_all());
         }
-        for (i, item) in file_items.iter().enumerate() {
-            let decl_end = file_items
-                .get(i + 1)
-                .map(|next| next.span.start - 1)
-                .unwrap_or(i64::MAX);
-            let decl_span = SourceSpan {
-                file: item.span.file.clone(),
-                start: item.span.start,
-                end: decl_end,
-            };
-            if !span_overlaps_line_ranges(&decl_span, &source_indices, ranges) {
+        for i in 0..decls.len() {
+            let (line, name, is_data) = &decls[i];
+            let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
+            if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
                 continue;
             }
-            let name = authored_name_at(source_indices.clone(), item.clone());
-            if test_fn_names.contains(&name) {
-                edited_test_fns.insert((file_norm.clone(), name));
-            } else if item_kind(item.clone()) == ItemKind::DataItem {
-                overlapping_data_items.insert((file_norm.clone(), name));
+            if test_fn_names.contains(name) {
+                edited_test_fns.insert((file_norm.clone(), name.clone()));
+            } else if *is_data {
+                overlapping_data_items.insert((file_norm.clone(), name.clone()));
             } else {
                 // A changed `fn`/`type`/`service` declaration can affect any dependent
                 // witness transitively; the node-frontier can't bound that → fail closed.
@@ -2633,8 +2635,13 @@ fn entry_frontier_nodes_from_seeds(
 ) -> Result<Vec<v1_interpreter::Value>, String> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for (file, name) in &seeds.overlapping_data_items {
-        if !diff_file_matches_entry(file, entry_path) {
+    for (_file, name) in &seeds.overlapping_data_items {
+        // A witness depends on a changed node whether it lives in the entry's OWN file or an
+        // imported one, so the gate is "does this entry's closure declare `name`?" — not
+        // "is the changed file the entry file?". The old file-equals-entry filter was a §5
+        // fail-open hole: an edit to a shared imported `.dag` (e.g. a std node) was invisible
+        // to every importing witness, which then skipped on a change it actually depends on.
+        if !ctx.item_registry.contains_key(name) {
             continue;
         }
         let Some(val) = v1_interpreter::with_active_context(ctx, || {
@@ -3011,13 +3018,12 @@ fn run_discovery_rows(
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
-        entry_touches_frontier_seeds, parse_unified_diff_line_ranges, span_overlaps_line_ranges,
+        entry_touches_frontier_seeds, parse_unified_diff_line_ranges, scan_test_decl_lines,
         FileLineRange,
     };
-    use crate::std_types::SourceSpan;
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
-    use crate::v1_std_core::{authored_name_at, build_newline_index, byte_to_line_col};
+    use crate::v1_std_core::{authored_name_at, byte_to_line_col};
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -3085,33 +3091,25 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
     }
 
+    /// `test fn`s are not AST items, so the partition gets their decl lines from source text.
+    /// Without these boundaries a witness-body edit would fall into the last `data` item's
+    /// trailing span (the finding-1 fail-open). Pin the 1-based line pairing.
     #[test]
-    fn span_overlap_requires_line_intersection_not_whole_file() {
-        let source = "a\nb\nc\n";
-        let index = build_newline_index("f.dag".to_string(), source.to_string());
-        let mut si = HashMap::new();
-        si.insert("f.dag".to_string(), index);
-        let span = SourceSpan {
-            file: "f.dag".to_string(),
-            start: 0,
-            end: 1,
-        };
-        assert!(span_overlaps_line_ranges(
-            &span,
-            &si,
-            &[FileLineRange { start: 1, end: 1 }]
-        ));
-        assert!(!span_overlaps_line_ranges(
-            &span,
-            &si,
-            &[FileLineRange { start: 3, end: 3 }]
-        ));
+    fn scan_test_decl_lines_pairs_names_with_1_based_lines() {
+        let source = "module m\n\ndata d: Int = 1\n\ntest fn witness_a() -> Bool { true }\n\ntest data witness_b: Int = 2\n";
+        let pairs = scan_test_decl_lines(source);
+        assert_eq!(
+            pairs,
+            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
+        );
     }
 
-    /// §5 discriminating receipt: same-file nodes A/B; witness W references A only.
-    /// Diff hunk overlapping A's claim span => entry runs; hunk on B only => entry skips.
+    /// §5 discriminating receipt: same FILE, two different nodes. A node a claim references
+    /// → the entry touches the frontier (runs). An ORPHAN node referenced by no claim → the
+    /// entry does NOT touch (skips). Same file, different nodes, different outcomes: only
+    /// true node precision (not file-level) can produce the orphan skip.
     #[test]
-    fn node_precise_same_file_ab_frontier_discriminates() {
+    fn node_precise_same_file_referenced_vs_orphan_discriminates() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let fixture = fixture_path();
@@ -3122,37 +3120,36 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let index = build_multi_entry_index(&roots);
         let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
             .expect("discriminator fixture resolves");
-        let line_a = data_item_line(&fixture, &source_indices, &graph, "floor_disc_claim_on_a");
-        let line_b = data_item_line(&fixture, &source_indices, &graph, "floor_disc_node_b");
+        let referenced_line =
+            data_item_line(&fixture, &source_indices, &graph, "floor_disc_node_c");
+        let orphan_line =
+            data_item_line(&fixture, &source_indices, &graph, "floor_disc_orphan_node");
         assert_ne!(
-            line_a, line_b,
-            "fixture must place A/B claims on distinct lines"
+            referenced_line, orphan_line,
+            "fixture must place the two nodes on distinct lines"
         );
 
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
-        let ranges_a = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_a));
-        let seeds_a = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_a)
-            .expect("frontier for A-line diff");
+        let referenced_ranges =
+            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, referenced_line));
+        let referenced_seeds =
+            collect_frontier_seeds_from_diff_line_ranges(&index, &referenced_ranges)
+                .expect("frontier for referenced-node diff");
         assert!(
-            !seeds_a.overlapping_data_items.is_empty(),
-            "A-line diff must seed a non-empty frontier (line_a={line_a}, line_b={line_b})"
-        );
-        let touches_a = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_a)
-            .expect("touch check for A-line diff");
-        assert!(
-            touches_a,
-            "diff on A's claim span must touch witness W (runs)"
+            entry_touches_frontier_seeds(&ctx, &fixture, &referenced_seeds)
+                .expect("touch check (referenced)"),
+            "a diff on a node some claim references must touch the entry (runs)"
         );
 
-        let ranges_b = parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, line_b));
-        let seeds_b = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges_b)
-            .expect("frontier for B-line diff");
-        let touches_b = entry_touches_frontier_seeds(&ctx, &fixture, &seeds_b)
-            .expect("touch check for B-line diff");
+        let orphan_ranges =
+            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, orphan_line));
+        let orphan_seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &orphan_ranges)
+            .expect("frontier for orphan-node diff");
         assert!(
-            !touches_b,
-            "diff on B's claim span only must NOT touch witness W (skip assumed-green)"
+            !entry_touches_frontier_seeds(&ctx, &fixture, &orphan_seeds)
+                .expect("touch check (orphan)"),
+            "a diff on an orphan node (no claim references it) must NOT touch the entry (skips)"
         );
     }
 }

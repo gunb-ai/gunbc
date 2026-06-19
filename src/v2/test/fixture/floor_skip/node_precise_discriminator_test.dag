@@ -38,6 +38,17 @@ data floor_disc_node_c: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
+// Orphan: a node in the SAME file that NO claim references. Editing its span produces a
+// node-precise frontier that touches nothing, so every witness in the entry skips — the
+// sound proof that the skip is NODE-level, not file-level (a file-level skip would re-run
+// on any edit to this file). The intra-witness A/B variant was unsound: a witness whose
+// body names another node genuinely depends on it (its result can flip), so §5 must run it.
+data floor_disc_orphan_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^floor_disc_orphan_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
 data floor_disc_helper_conj: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
