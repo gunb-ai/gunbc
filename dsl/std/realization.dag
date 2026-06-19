@@ -56,7 +56,6 @@ import std.realization_measurement {
 }
 import std.realization_width {
   bounded_host_spawn_width,
-  hardware_threads_int,
   shard_count_positive,
   witness_spawn_width_capped_by_hardware,
   width_fold_objective_goals,

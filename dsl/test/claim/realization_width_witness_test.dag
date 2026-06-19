@@ -7,9 +7,7 @@
 
 module test.claim.realization_width_witness
 
-import std.types { NonEmptyStr }
-import std.measure { hardware_thread_count, hardware_thread_count_value, hertz, byte_size }
-import product.placement_supply { HostIdentity, PlacementSupplyRow }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
@@ -25,26 +23,15 @@ import std.realization {
   witness_measured_cost_affects_shard_balance,
 }
 
-data test_host: HostIdentity = "width-witness-host"
 data compile_gate_fn: String = "dsl_compile_clean_gate_passes"
 data gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
 
-fn witness_supply_64_threads() -> PlacementSupplyRow {
-  PlacementSupplyRow {
-    identity: test_host
-    hardware_threads: hardware_thread_count(64)
-    clock_hz: hertz(3000000000)
-    ram_bytes: byte_size(68719476736)
-  }
+fn witness_threads_64() -> HardwareThreadCount {
+  hardware_thread_count(64)
 }
 
-fn witness_supply_4_threads() -> PlacementSupplyRow {
-  PlacementSupplyRow {
-    identity: test_host
-    hardware_threads: hardware_thread_count(4)
-    clock_hz: hertz(3000000000)
-    ram_bytes: byte_size(68719476736)
-  }
+fn witness_threads_4() -> HardwareThreadCount {
+  hardware_thread_count(4)
 }
 
 fn synthetic_plan() -> RealizationPlan {
@@ -64,7 +51,7 @@ fn synthetic_plan() -> RealizationPlan {
 fn witness_under_cap_uses_shard_count() -> Bool {
   witness_spawn_width_capped_by_hardware(
     shard_count: 8,
-    supply: witness_supply_64_threads(),
+    hardware_threads: witness_threads_64(),
     expected: 8
   )
 }
@@ -72,7 +59,7 @@ fn witness_under_cap_uses_shard_count() -> Bool {
 fn witness_over_cap_uses_hardware_threads() -> Bool {
   witness_spawn_width_capped_by_hardware(
     shard_count: 128,
-    supply: witness_supply_64_threads(),
+    hardware_threads: witness_threads_64(),
     expected: 64
   )
 }
@@ -80,7 +67,7 @@ fn witness_over_cap_uses_hardware_threads() -> Bool {
 fn witness_brief_green_8_shards_4_threads() -> Bool {
   witness_spawn_width_capped_by_hardware(
     shard_count: 8,
-    supply: witness_supply_4_threads(),
+    hardware_threads: witness_threads_4(),
     expected: 4
   )
 }
@@ -89,7 +76,7 @@ fn witness_topology_unchanged_by_width_fold() -> Bool {
   witness_width_fold_preserves_schedule_topology(
     plan: synthetic_plan(),
     shard_count: 8,
-    supply: witness_supply_4_threads()
+    hardware_threads: witness_threads_4()
   )
 }
 
@@ -97,7 +84,7 @@ fn witness_degenerate_shard_count_fail_closed_serial() -> Bool {
   hardware_thread_count_value(
     t: bounded_host_spawn_width(
       shard_count: 0,
-      supply: witness_supply_64_threads()
+      hardware_threads: witness_threads_64()
     )
   ) == 1
 }
@@ -105,7 +92,7 @@ fn witness_degenerate_shard_count_fail_closed_serial() -> Bool {
 fn witness_budget_ignoring_fold_red_on_8_4() -> Bool {
   witness_budget_ignoring_fold_fails(
     shard_count: 8,
-    supply: witness_supply_4_threads()
+    hardware_threads: witness_threads_4()
   )
 }
 

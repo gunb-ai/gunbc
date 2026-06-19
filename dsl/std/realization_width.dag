@@ -3,10 +3,11 @@
 // Schedule topology stays pure (std.realization_schedule); sharding width is a
 // PERIPHERAL host realization folded against placement supply (§3). Width =
 // min(shard_count, hardware_threads) — demand parallelism capped by what the
-// host provisions (PlacementSupplyRow), not a scheduler-local authority.
+// host provisions, not a scheduler-local authority.
 //
-// IndependentShards.shard_count lives in product.compute_fabric; this module takes
-// the grounded Int demand projection so std stays product-free (layer DAG).
+// IndependentShards.shard_count (product.compute_fabric) and the host's
+// HardwareThreadCount (extracted from product.placement_supply by the caller) both
+// arrive as grounded std carriers, so this module stays product-free (layer DAG).
 //
 // 🟡 SCAFFOLD — feature:scheduler-width-budget —
 // consumer: claim_executor run_walk spawn cap + run_discovery_corpus shard split —
@@ -27,7 +28,6 @@ import std.measure {
   hardware_thread_count_value,
   nanosecond_duration,
 }
-import product.placement_supply { PlacementSupplyRow }
 import std.pareto { AxisGoal, LowerIsBetter }
 import std.realization_schedule {
   Schedule,
@@ -50,19 +50,18 @@ fn shard_count_positive(shard_count: Int) -> Int {
   if shard_count <= 0 { 1 } else { shard_count }
 }
 
-fn hardware_threads_int(supply: PlacementSupplyRow) -> Int {
-  hardware_thread_count_value(supply.hardware_threads)
-}
-
-// Peripheral width fold: min(IndependentShards.shard_count, PlacementSupplyRow.hardware_threads).
+// Peripheral width fold: min(IndependentShards.shard_count, hardware_threads). Takes the
+// grounded HardwareThreadCount projection (a std.measure carrier) rather than the product
+// PlacementSupplyRow, so std stays product-free (layer DAG); the product caller extracts
+// supply.hardware_threads and threads it in.
 // GATE-0 Int↔Nat: shard_count is Int (IndependentShards carrier); hardware_thread_count(count:)
 // expects Nat. Nat⊂Int widening at the constructor is load-bearing and verified by witness
 // execution today (realization_width_witness_test.dag).
 //   feature:v2-nat-int-tightening — dissolve-on: explicit Nat projection when the checker
 //   stops auto-widening Int to Nat at measure constructors.
-fn bounded_host_spawn_width(shard_count: Int, supply: PlacementSupplyRow) -> HardwareThreadCount {
+fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCount) -> HardwareThreadCount {
   let demand = shard_count_positive(shard_count: shard_count)
-  let cores = hardware_threads_int(supply: supply)
+  let cores = hardware_thread_count_value(t: hardware_threads)
   let width = int_min(a: demand, b: cores)
   hardware_thread_count(count: width)
 }
@@ -81,23 +80,23 @@ type WidthBoundedRealization {
 fn width_bounded_realization(
   plan: RealizationPlan,
   shard_count: Int,
-  supply: PlacementSupplyRow
+  hardware_threads: HardwareThreadCount
 ) -> WidthBoundedRealization {
   WidthBoundedRealization {
     plan: plan
-    spawn_width: bounded_host_spawn_width(shard_count: shard_count, supply: supply)
+    spawn_width: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   }
 }
 
 fn witness_width_fold_preserves_schedule_topology(
   plan: RealizationPlan,
   shard_count: Int,
-  supply: PlacementSupplyRow
+  hardware_threads: HardwareThreadCount
 ) -> Bool {
   let bounded = width_bounded_realization(
     plan: plan,
     shard_count: shard_count,
-    supply: supply
+    hardware_threads: hardware_threads
   )
   schedule_eq(left: plan.schedule, right: bounded.plan.schedule)
 }
@@ -105,21 +104,21 @@ fn witness_width_fold_preserves_schedule_topology(
 // Discriminating lens: width must equal min(shard_count, cores), not the uncapped demand.
 fn witness_spawn_width_capped_by_hardware(
   shard_count: Int,
-  supply: PlacementSupplyRow,
+  hardware_threads: HardwareThreadCount,
   expected: Int
 ) -> Bool {
   hardware_thread_count_value(
-    t: bounded_host_spawn_width(shard_count: shard_count, supply: supply)
+    t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   ) == expected
 }
 
 // RED guard (a): a budget-ignoring fold that returns uncapped shard_count goes red here.
 fn witness_budget_ignoring_fold_fails(
   shard_count: Int,
-  supply: PlacementSupplyRow
+  hardware_threads: HardwareThreadCount
 ) -> Bool {
   hardware_thread_count_value(
-    t: bounded_host_spawn_width(shard_count: shard_count, supply: supply)
+    t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   ) != shard_count
 }
 

@@ -465,7 +465,7 @@ fn work_demand_shard_count(demand: WorkDemand) -> Int {
 fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> HardwareThreadCount {
   bounded_host_spawn_width(
     shard_count: work_demand_shard_count(demand: demand),
-    supply: supply
+    hardware_threads: supply.hardware_threads
   )
 }
 
