@@ -8,7 +8,7 @@
 
 module extdeps.render.unicode_glyph
 
-import std.unicode {}
+import std.unicode { string_display_width }
 
 type UnicodeGlyph = String where brand("UnicodeGlyph")
 
@@ -18,4 +18,9 @@ fn unicode_glyph(text: String) -> UnicodeGlyph {
 
 fn unicode_glyph_text(g: UnicodeGlyph) -> String {
   g
+}
+
+// Display-width dispatch for Unicode-tier glyphs defers to std.unicode (UAX #11).
+fn unicode_glyph_display_width(g: UnicodeGlyph) -> Int {
+  string_display_width(s: unicode_glyph_text(g: g))
 }
