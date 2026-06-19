@@ -24,9 +24,15 @@ fn cpu_architecture_runner_label(arch: Architecture) -> String {
   match arch {
     Aarch64 => "arm64"
     X86_64 => "x64"
+    X86 => "x86"
+    Arm => "arm"
     Armv7 => "arm"
     Riscv64 => "riscv64"
     Wasm32 => "wasm32"
+    Mips => "mips"
+    Mipsel => "mipsel"
+    Mips64 => "mips64"
+    Mips64el => "mips64el"
   }
 }
 

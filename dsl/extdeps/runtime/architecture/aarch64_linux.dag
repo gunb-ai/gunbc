@@ -20,6 +20,7 @@ import extdeps.runtime.abi.aapcs64 {
   aapcs64_linux_syscall_convention,
 }
 import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
+import extdeps.toolchain.types { Aarch64 }
 import std.abi { ArchitecturalRegister, StackLayout }
 import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
 import std.os.invocation { SyscallAbiSurface }
