@@ -4,6 +4,7 @@ module v2.test.manual.bash_emit_command
 // Execution witness for the bash emit TARGET (src/v2/extdeps/languages/bash.dag).
 // Slice 1: fixed-token command (#5155). Slice 2: bound-word emit-time quoting.
 // Slice 3: source-root-ingest gate fixed two-word command (live transport migration).
+// Slice 4: AndOr / Pipe / WithRedir compound constructs.
 //
 // Run:
 //   gunbc run --source-root src/v2 \
@@ -28,7 +29,22 @@ import v2.extdeps.languages.bash {
   bash_embedded_quote_source_text,
   bash_source_root_ingest_gate_emitted_command,
   bash_source_root_ingest_gate_source_text,
-  bash_source_root_ingest_gate_target_model
+  bash_source_root_ingest_gate_target_model,
+  bash_and_then_emitted,
+  bash_and_then_source_text,
+  bash_and_then_target_model,
+  bash_or_else_emitted,
+  bash_or_else_source_text,
+  bash_or_else_target_model,
+  bash_with_redir_stderr_null_emitted,
+  bash_with_redir_stderr_null_source_text,
+  bash_with_redir_stderr_null_target_model,
+  bash_pipe_emitted,
+  bash_pipe_source_text,
+  bash_pipe_target_model,
+  bash_or_else_with_redir_emitted,
+  bash_or_else_with_redir_source_text,
+  bash_or_else_with_redir_target_model
 }
 import v2.std.collection { Map, empty_map }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -186,4 +202,64 @@ test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
       (source == bash_source_root_ingest_gate_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn bash_emit_slice4_holds(
+  emitted: Node,
+  source_text: String,
+  target: TargetModel
+) -> Bool {
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } => (source == source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Slice 4 — AndOr { AndThen }: byte-identical to serialize_bash(AndOr { ... AndThen ... }).
+test fn bash_emit_and_then_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_and_then_emitted,
+    source_text: bash_and_then_source_text,
+    target: bash_and_then_target_model()
+  )
+}
+
+// Slice 4 — AndOr { OrElse }.
+test fn bash_emit_or_else_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_or_else_emitted,
+    source_text: bash_or_else_source_text,
+    target: bash_or_else_target_model()
+  )
+}
+
+// Slice 4 — WithRedir { StderrToNull }.
+test fn bash_emit_with_redir_stderr_null_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_with_redir_stderr_null_emitted,
+    source_text: bash_with_redir_stderr_null_source_text,
+    target: bash_with_redir_stderr_null_target_model()
+  )
+}
+
+// Slice 4 — Pipe.
+test fn bash_emit_pipe_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_pipe_emitted,
+    source_text: bash_pipe_source_text,
+    target: bash_pipe_target_model()
+  )
+}
+
+// Slice 4 — host_prelude-shaped OrElse over WithRedir (discriminating nested compound).
+test fn bash_emit_or_else_with_redir_holds() -> Bool {
+  bash_emit_slice4_holds(
+    emitted: bash_or_else_with_redir_emitted,
+    source_text: bash_or_else_with_redir_source_text,
+    target: bash_or_else_with_redir_target_model()
+  )
 }

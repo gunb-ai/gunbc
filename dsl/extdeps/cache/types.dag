@@ -1,0 +1,115 @@
+// extdeps/cache/types.dag — cited cache catalog types (vendor extensions to std shape).
+//
+// std.cache_interface owns the agnostic interface shape; vendor-specific encoding
+// variants, input surfaces, and transport keys live here (§3 — dispatch lives in
+// extdeps/, not std/).
+
+module extdeps.cache.types
+
+import extdeps.cache.catalog_io { CacheInterfaceCatalogIoSemantics }
+import extdeps.cache.catalog_placement { CacheInterfaceCatalogPlacement }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  StorageSurface,
+  KeyDerivationClass,
+  VisibilityScope,
+  InvalidationTrigger,
+  CacheEvidence,
+  OpaqueStringEncoding,
+  CasContentEncoding,
+  InputSurface,
+  UpsertSubject,
+  FilePaths,
+  OpaqueStringKey,
+  CasContentDigest,
+  ArtifactIdentity,
+  ProducerReceipt,
+}
+import std.types { ContentHash, NonEmptyStr, Bool }
+import std.list { List }
+
+// Vendor-specific §1.4 input surfaces (rustc/cargo/rustup toolchain axes).
+type CatalogInputSurface
+  = UpsertSubject
+  | FilePaths
+  | RustcInvocation
+  | ToolchainSpec
+
+// Vendor-specific §1.2 transport encodings (sccache/cargo realization handlers).
+type CatalogProviderKeyEncoding
+  = OpaqueStringEncoding
+  | CasContentEncoding
+  | SccacheInternalEncoding
+  | CargoFingerprintEncoding
+
+type CatalogProviderKey
+  = OpaqueStringKey { key: NonEmptyStr }
+  | SccacheInternalHash { digest: ContentHash }
+  | CasContentDigest { digest: ContentHash }
+  | CargoFingerprint { digest: ContentHash }
+
+type CatalogBackendCacheKey {
+  store: CacheInterfaceId
+  key: CatalogProviderKey
+}
+
+type CatalogKeyDerivationFacts {
+  classification: KeyDerivationClass
+  inputs_considered: List<CatalogInputSurface>
+  overwritable: Bool
+  prefix_fallback_allowed: Bool
+  content_verified_on_read: Bool
+  visibility_scope: VisibilityScope
+  invalidation_triggers: List<InvalidationTrigger>
+}
+
+// Cited vendor + realization catalog row (full enum surface for extdeps dispatch).
+type CacheInterfaceCatalogFacts {
+  identity: CacheInterfaceId
+  backing_surface: StorageSurface
+  transport_encoding: CatalogProviderKeyEncoding
+  key_derivation: CatalogKeyDerivationFacts
+  io: CacheInterfaceCatalogIoSemantics
+  placement: CacheInterfaceCatalogPlacement
+  evidence: List<CacheEvidence>
+}
+
+type CatalogCachedArtifactReceipt<T> {
+  artifact: ArtifactIdentity<T>
+  backend_key: CatalogBackendCacheKey
+  producer: ProducerReceipt<T>
+  content_digest: ContentHash
+}
+
+// Project catalog input surfaces onto std InputSurface (drop vendor-only axes).
+// Lives here (not cache.dag) to avoid imported InputSurface/CatalogInputSurface variant collision.
+fn std_input_surface_from_catalog(input: CatalogInputSurface) -> List<InputSurface> {
+  match input {
+    UpsertSubject => [UpsertSubject]
+    FilePaths => [FilePaths]
+    RustcInvocation => []
+    ToolchainSpec => []
+  }
+}
+
+fn agnostic_input_surfaces_from_catalog(inputs: List<CatalogInputSurface>) -> List<InputSurface> {
+  inputs |> flat_map(std_input_surface_from_catalog)
+}
+
+fn catalog_has_vendor_only_key_inputs(inputs: List<CatalogInputSurface>) -> Bool {
+  inputs |> any(input => match input {
+    RustcInvocation => true
+    ToolchainSpec => true
+    UpsertSubject => false
+    FilePaths => false
+  })
+}
+
+fn catalog_transport_encoding_collapsed_in_std_projection(encoding: CatalogProviderKeyEncoding) -> Bool {
+  match encoding {
+    OpaqueStringEncoding => false
+    CasContentEncoding => false
+    SccacheInternalEncoding => false
+    CargoFingerprintEncoding => true
+  }
+}

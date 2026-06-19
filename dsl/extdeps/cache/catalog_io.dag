@@ -1,0 +1,17 @@
+// extdeps/cache/catalog_io.dag — cache catalog IO semantics arm (lookup/write/miss).
+// Split from placement so AtomicityModel and CacheWriteSemantics variants do not
+// share a module namespace (homonymous WriteThenCommit / WriteThenRename).
+
+module extdeps.cache.catalog_io
+
+import std.cache_interface {
+  CacheLookupSemantics,
+  CacheWriteSemantics,
+  CacheMissSemantics,
+}
+
+type CacheInterfaceCatalogIoSemantics {
+  lookup_semantics: CacheLookupSemantics
+  write_semantics: CacheWriteSemantics
+  miss_semantics: CacheMissSemantics
+}

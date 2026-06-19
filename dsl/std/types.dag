@@ -357,13 +357,6 @@ type GitRef       = String where non_empty
 // Note: CommitSha <: GitRef <: String. A SHA is always a valid ref,
 // but a ref is not always a SHA (e.g., "main", "HEAD~1").
 
-// --- GCP / OIDC types (refinements for cloud identifiers) ----------------
-// GcpProjectId: restore `where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")` post-Q-Regex.
-// Pattern half dropped; non_empty half kept as it migrates via the registry.
-type GcpProjectId = String where non_empty
-// ServiceAccountEmail: restore `where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")` post-Q-Regex.
-type ServiceAccountEmail = String
-
 // Refinement chain example (transitive subtyping):
 //   [Url] < [NonEmptyStr] < [String] < [Json]
 // Each step narrows by predicate (subset comprehension).
@@ -380,22 +373,6 @@ type TopologyNodeKind = Pure | Transport | SubDag | Env
 type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
-
-// --- Credential model (Level 4: D-2 credential flow sum type) ---------
-// How to acquire a credential. Ported from the-gunbai.
-// The flow type drives the acquisition strategy; the provider is
-// resolved at compile time via profile binding.
-
-type CredentialFlow
-  = Stored { secret_name: NonEmptyStr }
-  | PlatformInjected { env_var: NonEmptyStr }
-  | WorkloadIdentity {
-      audience: NonEmptyStr
-      service_account: ServiceAccountEmail?
-      scopes: List<String>
-    }
-  | InteractiveAuth { scopes: List<String> }
-  | Chained { steps: List<CredentialFlow> }
 
 // Canonical platform/target vocabulary (aligned with core/ir::platform)
 type Arch = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32

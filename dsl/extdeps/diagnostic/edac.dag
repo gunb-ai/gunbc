@@ -3,6 +3,12 @@
 
 module extdeps.diagnostic.edac
 
+// 🟡 dissolved — feature:diagnostic-edac-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
+// WHICH diagnostic.edac.RasMcCtl ops are hermetically realizable, and the fixture store owns the
+// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
+// shapes.
 service diagnostic.edac.RasMcCtl {
   operation CorrectableCounts {
     input {}
@@ -12,9 +18,6 @@ service diagnostic.edac.RasMcCtl {
     exit {
       0 => Unit
       nonzero => String "ras-mc-ctl failed"
-    }
-    mock_response {
-      0 => { stdout: "CE count: 0\n", success: true } "Mock edac summary"
     }
   }
 }

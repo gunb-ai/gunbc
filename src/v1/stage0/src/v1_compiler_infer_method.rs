@@ -193,6 +193,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "shell_materialize_argv_for_operation".to_string(),
+            list_of_element(string_type()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_dead_param_count_for_path".to_string(),
             int_type(),
         );
@@ -250,6 +255,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "layer_import_facts".to_string(),
             list_of_type_variable("layer_import_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "import_resolution_facts".to_string(),
+            list_of_type_variable("import_resolution_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
