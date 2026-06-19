@@ -102,6 +102,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   SyntheticOccurrence,
+  is_empty_conj_root,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
@@ -6044,44 +6045,41 @@ fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<S
   }
 }
 
-fn parse_qn_repeat_suffixes_fold_step(
-  acc: Outcome<List<Symbol>>,
-  edge: Edge,
-  root: Node
-) -> Outcome<List<Symbol>> {
-  match acc {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prior, diagnostics: acc_diag } =>
-      match edge.label {
-        Named { name: n } =>
-          if n == ^grammar_repeat_element_node_projection {
-            match parse_qn_repeat_suffix_ident(sequence_capture: edge.target, root: root) {
-              Rejected { diagnostics: d } => Rejected { diagnostics: d }
-              Accepted { value: sym, diagnostics: step_diag } =>
-                outcome_accepted(
-                  value: list_append(
-                    left: prior,
-                    right: Cons { head: sym, tail: Empty }
-                  ),
-                  diagnostics: step_diag
-                )
-            }
-          } else {
-            Accepted { value: prior, diagnostics: acc_diag }
-          }
-        Positional => Accepted { value: prior, diagnostics: acc_diag }
-      }
-  }
-}
-
 fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
-  fold(
-    repeat_capture.children,
-    init: outcome_accepted(value: Empty),
-    f: fn(acc, edge) {
-      parse_qn_repeat_suffixes_fold_step(acc: acc, edge: edge, root: root)
+  // List<T> aliases FreeMonoid<T>; the checker does not unfold aliases for variant matching.
+  if is_empty_conj_root(n: repeat_capture) {
+    outcome_accepted(value: Empty)
+  } else {
+    match find_named_child(
+      root: repeat_capture,
+      name: ^grammar_sequence_left_node_projection
+    ) {
+      Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+      Accepted { value: head_sequence, diagnostics: _ } =>
+        match parse_qn_repeat_suffix_ident(sequence_capture: head_sequence, root: root) {
+          Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+          Accepted { value: sym, diagnostics: _ } =>
+            match find_named_child(
+              root: repeat_capture,
+              name: ^grammar_sequence_right_node_projection
+            ) {
+              Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+              Accepted { value: tail, diagnostics: _ } =>
+                match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
+                  Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                  Accepted { value: suffixes, diagnostics: tail_diag } =>
+                    outcome_accepted(
+                      value: list_append(
+                        left: Cons { head: sym, tail: Empty },
+                        right: suffixes
+                      ),
+                      diagnostics: tail_diag
+                    )
+                }
+            }
+        }
     }
-  )
+  }
 }
 
 fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {

@@ -7,7 +7,7 @@ module v2.test.manual.english_emit_add
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.parse { parse }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate {
   grammar_inverse_source_validated,
@@ -161,17 +161,17 @@ data english_emit_add_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_english_emit_add_accepts() -> Outcome<TargetSource> {
+fn anchor_english_emit_add_accepts() -> Outcome<Medium<String>> {
   emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model)
 }
 
-data english_emit_add_receipt: Outcome<TargetSource> = anchor_english_emit_add_accepts()
+data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add_accepts()
 
 // Execution witness — emit(add) must produce the canonical controlled-English prose.
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source == english_add_fn_source_text) && (d == None)
+      (source.carried == english_add_fn_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -204,9 +204,9 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
 
 // Ingest direction: tokenize the EMITTED prose with the unchanged wave-2a English lex,
 // parse as the six-sentence paragraph (sentences = unchanged wave-2a productions).
-fn english_emit_add_ingest_parse(source: TargetSource) -> Outcome<ParseTree> {
+fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<ParseTree> {
   match tokenize(
-    text: source,
+    text: source.carried,
     file: ^english_emit_add_round_trip_fixture_file,
     rules: english_wave1_lex()
   ) {

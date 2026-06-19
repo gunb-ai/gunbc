@@ -21,6 +21,11 @@ module extdeps.llm.cli
 // Codex reads prompt from stdin, executes in a working directory,
 // writes structured output. Uses OpenAI auth (OPENAI_API_KEY env var).
 
+// 🟡 dissolved — feature:llm-codex-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
+// llm.Codex ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service llm.Codex {
   operation Review {
     input {
@@ -48,9 +53,6 @@ service llm.Codex {
       0 => Unit
       nonzero => String "Codex CLI failed"
     }
-    mock_response {
-      0 => { success: true, stdout: "No significant issues found.\n\nPR-COMMENT: LGTM, clean implementation.", stderr: "" } "Successful review"
-    }
   }
 }
 
@@ -58,6 +60,11 @@ service llm.Codex {
 //
 // Gemini accepts prompt as a positional argument. Uses Google auth.
 
+// 🟡 dissolved — feature:llm-gemini-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
+// llm.Gemini ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service llm.Gemini {
   operation CliPrompt {
     input {
@@ -78,9 +85,6 @@ service llm.Gemini {
     exit {
       0 => Unit
       nonzero => String "Gemini CLI failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "Review summary.\n\nPR-COMMENT: Looks good.", stderr: "" } "Successful CLI prompt"
     }
   }
 }

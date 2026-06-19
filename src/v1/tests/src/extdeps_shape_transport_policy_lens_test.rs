@@ -1,5 +1,8 @@
 //! Parse + resolve receipts for `v2.lens.extdeps_shape_transport_policy`.
 
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use v1_compiler::extdeps_shape_transport_policy_project;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_interpreter::{self, Value};
@@ -45,6 +48,57 @@ fn assert_witness_true(entry: &str, witness_fn: &str) {
         Value::Bool(true) => {}
         other => panic!("expected {witness_fn} true, got {other:?}"),
     }
+}
+
+#[test]
+fn extdeps_argv_projection_cargo_run_defused_on_live_tree() {
+    assert_eq!(
+        extdeps_shape_transport_policy_project::dead_param_count_for_module_path(
+            "extdeps.cargo_build".to_string(),
+            "cargo.Build".to_string(),
+            "Run".to_string(),
+        ),
+        0
+    );
+}
+
+#[test]
+fn cargo_build_run_argv_materializes_bare_param_refs_by_execution() {
+    let argv = v1_interpreter::materialize_shell_argv_for_operation(
+        "dsl/extdeps/rust/cargo_build.dag".to_string(),
+        "cargo.Build".to_string(),
+        "Run".to_string(),
+        HashMap::from([
+            ("package".to_string(), Value::Str("v1-compiler".to_string())),
+            ("bin".to_string(), Value::Str("gunbc".to_string())),
+            (
+                "args".to_string(),
+                Value::List(Rc::new(
+                    vec![
+                        Value::Str("--".to_string()),
+                        Value::Str("compile".to_string()),
+                        Value::Str("--help".to_string()),
+                    ]
+                    .into(),
+                )),
+            ),
+        ]),
+    )
+    .expect("materialize cargo.Build.Run argv");
+    assert_eq!(
+        argv,
+        vec![
+            "cargo",
+            "run",
+            "-p",
+            "v1-compiler",
+            "--bin",
+            "gunbc",
+            "--",
+            "compile",
+            "--help"
+        ]
+    );
 }
 
 #[test]

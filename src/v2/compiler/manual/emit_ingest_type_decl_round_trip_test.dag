@@ -205,7 +205,12 @@ fn type_decl_emit_source_text(emitted: Node) -> Outcome<String> {
           bind_outcome(
             o: concrete_syntax_token_list_from_node(list_node: tokens_root),
             f: fn(tokens) {
-              serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens)
+              bind_outcome(
+                o: serialize_concrete_syntax_tokens_to_source(target: target, tokens: tokens),
+                f: fn(medium) {
+                  outcome_accepted(value: medium.carried)
+                }
+              )
             }
           )
         }

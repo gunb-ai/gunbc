@@ -1,0 +1,17 @@
+// Scope: scanner-execution receipt — the live transport-script projection must flag a planted
+//        let-bound string literal passed to script: position (LetBoundStringLiteral shape). The
+//        discriminating RED input that goes red when the detection breaks. Fixture committed at
+//        src/v2/test/fixture/transport_script_scan/let_bound_literal/plant.dag.
+
+module v2.test.host_language_transport_script.scanner.let_bound_literal
+
+import v2.lens.host_language_transport_script {
+  transport_script_live_literal_violation_count_for_path
+}
+import v2.std.logic { Bool }
+
+test fn scanner_let_bound_literal_red_detects_holds() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "src/v2/test/fixture/transport_script_scan/let_bound_literal/plant.dag"
+  ) == 1
+}

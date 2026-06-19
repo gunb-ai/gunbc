@@ -30,6 +30,7 @@ import v2.test.manual.ingest_bridge {
 }
 // The bridge fns themselves (v2.compiler.ingest) — applied to the REAL parsed python tree in the
 // heavy chain_status_holds (forward selection on the real frontier) and the real-tree discrimination.
+import v2.std.text { string_is_empty }
 import v2.std.algebra { Cons, Empty }
 import v2.compiler.ingest {
   cross_language_compile,
@@ -233,10 +234,7 @@ fn cross_language_compile_on_real_tree_holds(parse_tree: ParseTree) -> Bool {
     target_model: ts_mvp1_target_model()
   ) {
     Accepted { value: ts_source, diagnostics: _ } =>
-      match ts_source {
-        Cons { head: _, tail: _ } => true
-        Empty => false
-      }
+      string_is_empty(s: ts_source.carried) == false
     Rejected { diagnostics: _ } => false
   }
 }

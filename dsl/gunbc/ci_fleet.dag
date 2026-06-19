@@ -31,7 +31,7 @@ import std.os.types {
   Posix,
   PosixProcess,
 }
-import std.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity }
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 

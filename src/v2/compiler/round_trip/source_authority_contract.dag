@@ -5,11 +5,11 @@
 
 module v2.test.round_trip.source_authority_contract
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 
 import v2.compiler.source_authority {
   CanonicalDagSourceEmissionLaw,
-  DagSource,
   SourceAuthorityRoundTripLaw,
   canonical_dag_source_parse_print_law,
   source_authority_round_trip
@@ -30,9 +30,7 @@ import v2.std.verification {
   Integration,
   manual_claim_anchor
 }
-data source_authority_contract_source: DagSource = ""
-
-
+data source_authority_contract_source: Medium<String> = Medium { carried: "", fidelity: Lossless }
 data source_authority_contract_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
   children: [],
@@ -44,7 +42,7 @@ data source_authority_contract_target_model: TargetModel = TargetModel {
   lex: VoidLexRules,
   binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: source_authority_contract_source,
+  authority_source_text: source_authority_contract_source.carried,
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 

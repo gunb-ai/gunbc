@@ -1,0 +1,52 @@
+// v2/test/claim/cargo_build_run_argv_witness_test.dag
+//
+// DESIGN §5 green-by-execution consumer for cargo.Build.Run: the escaped-literal
+// defect (`"\{package\}"` / `"\{bin\}"`) produced static "{package}" tokens and left
+// the op unexercised. Lives under src/v2 (not dsl/) because shell_materialize_argv_for_operation
+// is a runtime projection builtin — dsl/ compile-clean must not see it.
+//
+// Hermetic floor witness only: materializes argv with concrete params and asserts the
+// exact token list (RED if substitution does not fire). Wet cargo.Build.Run execution
+// is intentionally out of the floor — non-hermetic and flake-prone under fleet cargo spawn.
+
+module v2.test.claim.cargo_build_run_argv_witness
+
+import std.logic { Bool }
+import std.types { List, Int }
+import v2.std.algebra { length }
+
+data cargo_build_run_path: String = "dsl/extdeps/rust/cargo_build.dag"
+data cargo_build_run_service: String = "cargo.Build"
+data cargo_build_run_operation: String = "Run"
+data cargo_build_run_package: String = "v1-compiler"
+data cargo_build_run_bin: String = "gunbc"
+data cargo_build_run_args: List<String> = ["--", "compile", "--help"]
+
+fn argv_token_at(argv: List<String>, index: Int) -> String {
+  argv.skip(n: index).first()
+}
+
+fn witness_cargo_build_run_argv_materializes() -> Bool {
+  let argv = shell_materialize_argv_for_operation(
+    cargo_build_run_path,
+    cargo_build_run_service,
+    cargo_build_run_operation,
+    cargo_build_run_package,
+    cargo_build_run_bin,
+    cargo_build_run_args
+  )
+  length(xs: argv) == 9
+    && argv_token_at(argv: argv, index: 0) == "cargo"
+    && argv_token_at(argv: argv, index: 1) == "run"
+    && argv_token_at(argv: argv, index: 2) == "-p"
+    && argv_token_at(argv: argv, index: 3) == cargo_build_run_package
+    && argv_token_at(argv: argv, index: 4) == "--bin"
+    && argv_token_at(argv: argv, index: 5) == cargo_build_run_bin
+    && argv_token_at(argv: argv, index: 6) == "--"
+    && argv_token_at(argv: argv, index: 7) == "compile"
+    && argv_token_at(argv: argv, index: 8) == "--help"
+}
+
+test fn cargo_build_run_argv_holds() -> Bool {
+  witness_cargo_build_run_argv_materializes()
+}

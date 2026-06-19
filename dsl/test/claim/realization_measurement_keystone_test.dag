@@ -16,9 +16,9 @@ import std.realization_schedule {
 }
 import std.realization_measurement {
   RealizationMeasureEffect,
-  v1_eval_expr_measure_handler_id,
   witness_measured_rollup_differs_from_predicted_zero,
 }
+import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }
 import product.compute_fabric {
   WorkUnitId,
   performance_receipt_host_single_sample,

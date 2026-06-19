@@ -3,7 +3,7 @@
 // Migrated from dsl/tools/source_root_ingest_transport (slice 3). The deleted
 // scripts/source-root-ingest-gate.sh wrapper is retired — legs are modeled as ONE computed
 // ShellProgram (serialize_bash today; dissolve-on: emit(intent, Bash)):
-//   (1) cargo run discover_source_root_ingest to emit the ephemeral host manifest;
+//   (1) invoke pre-built discover_source_root_ingest to emit the ephemeral host manifest;
 //   (2) run the three real_ingest witnesses (manifest overlay) via gunbc claim-runs.
 
 module v2.workflow.source_root_ingest_transport
@@ -15,7 +15,7 @@ import extdeps.languages.bash.program {
   Command, Lit, VarRef,
   lit, var_ref, command, serialize_bash
 }
-import tools.host_prelude { ensure_gunbc_built }
+import tools.host_prelude { ensure_discover_source_root_ingest_built, ensure_gunbc_built }
 
 data ingest_source_root: String = "src/v2"
 data ingest_scan_dir: String = "src/v2/test/fixture/program_assembly"
@@ -28,8 +28,7 @@ data ingest_witness_validate_red: String = "program_assembly_real_ingest_validat
 
 fn emit_manifest_stmt() -> ShellStmt {
   command(words: [
-    lit(text: "cargo"), lit(text: "run"), lit(text: "-p"), lit(text: "v1-compiler"),
-    lit(text: "--bin"), lit(text: "discover_source_root_ingest"), lit(text: "--release"), lit(text: "--"),
+    var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST"),
     lit(text: "--source-root"), lit(text: ingest_source_root),
     lit(text: "--scan-dir"), lit(text: ingest_scan_dir),
     lit(text: "--emit-dag-manifest"), lit(text: ingest_manifest_path)
@@ -40,6 +39,7 @@ fn gunbc_claim_run(function: String) -> ShellStmt {
   command(words: [
     var_ref(name: "GUNBC"), lit(text: "run"),
     lit(text: "--source-root"), lit(text: ingest_source_root),
+    lit(text: "--source-root"), lit(text: "dsl"),
     lit(text: "--source-root"), lit(text: ingest_manifest_dir),
     lit(text: "--entry"), lit(text: ingest_entry),
     lit(text: "--function"), lit(text: function),
@@ -50,7 +50,7 @@ fn gunbc_claim_run(function: String) -> ShellStmt {
 func run_real_ingest_gate() -> Bool {
   let prog = ShellProgram {
     set_e: true,
-    statements: concat(ensure_gunbc_built(), [
+    statements: concat(ensure_gunbc_built(), ensure_discover_source_root_ingest_built(), [
       command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
       emit_manifest_stmt(),
       gunbc_claim_run(function: ingest_witness_module_roots_parse),
