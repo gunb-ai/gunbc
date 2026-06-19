@@ -6,9 +6,11 @@
 //! (`find_module(module_index, import_path) == Absent`, src/v1/03_resolve.dag:170-173).
 //!
 //! Single authority (DESIGN §3): the declared-module pool REUSES the resolver's own
-//! `build_module_path_index` (the same module-name index the pipeline resolves against,
-//! which is itself fail-closed on duplicate module paths) rather than re-implementing a
-//! `module ` header scan; the import-line enumeration REUSES `extract_import_paths` and
+//! `build_module_path_index` (a resolver-owned primitive — the `module `-header path
+//! scan, itself fail-closed on duplicate module paths — NOT the live resolve symbol index,
+//! which keys on `authored_name_at`, `v1_compiler_resolve.rs:69-78`) rather than
+//! re-implementing a `module ` header scan; the import-line enumeration REUSES
+//! `extract_import_paths` and
 //! the tolerant `.dag` walk `collect_dag_files_tolerant` — exactly the primitives
 //! `layering_imports_project` shares. So this projection forks no enumeration logic; it
 //! only carries the structural import-resolution VERDICT that the parse-gated whole-tree
@@ -23,8 +25,10 @@
 //! finding), so it is a projection of the single authority, not a fork — whether or not the
 //! root parse-resilience fix ever lands.
 //!
-//! Pure + deterministic: output is sorted by (path, import order), so a Wet run is
-//! byte-identical across invocations. The importer-set policy (which paths are excluded,
+//! Pure + deterministic: within each importer root the `.dag` files are path-sorted and
+//! imports keep source order, and the roots are walked in caller order — so for a fixed
+//! `importer_roots` a Wet run is byte-identical across invocations (the ordering is
+//! per-root, not a single global path sort across roots). The importer-set policy (which paths are excluded,
 //! e.g. the `/test/fixture/` text fixtures that intentionally carry broken imports) is
 //! NOT decided here — the caller passes `exclude_substrings` (DESIGN §3 (c): the
 //! scan-scope policy is workflow, not a fact baked into the projection).
@@ -61,9 +65,10 @@ pub fn import_resolution_facts(
     importer_roots: &[String],
     exclude_substrings: &[String],
 ) -> Vec<ImportResolutionFactRaw> {
-    // build_module_path_index expects workspace-absolute roots (it strips the workspace
-    // prefix off each discovered path); the witness passes repo-relative roots, so anchor
-    // them to the workspace first. ws.join(abs) is idempotent if a root is already absolute.
+    // LOAD-BEARING anchoring (not benign glue): build_module_path_index strips the
+    // workspace prefix off each discovered path and PANICS if a path is not under `ws`, so
+    // it requires workspace-absolute roots. The witness passes repo-relative roots, so we
+    // must anchor them to the workspace first. ws.join(r) is idempotent if r is absolute.
     let ws = workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()

@@ -74,6 +74,20 @@ fn resolved_imports_clean_holds(facts: List<ImportResolutionFact>) -> Bool {
   is_empty(xs: scan_facts_for_unresolved(facts: facts))
 }
 
+// Number of import facts the projection actually visited (NOT the violation count).
+fn resolved_imports_fact_count(facts: List<ImportResolutionFact>) -> Int {
+  length(xs: facts)
+}
+
+// §5 SELF-DEFENSE (non-vacuous BY CONSTRUCTION, not reliant on the external perturb
+// fixture). `resolved_imports_clean_holds` is `is_empty(violations)`, so a scan that
+// visited ZERO imports (wrong CWD, deleted/empty tree, mis-rooted importer set) returns
+// `is_empty([]) == true` — a vacuous green. Floor it: a clean verdict counts only if the
+// scan actually saw at least one import. So this gate cannot silently relax to a no-op.
+fn resolved_imports_clean_nonvacuous_holds(facts: List<ImportResolutionFact>) -> Bool {
+  (is_empty(xs: facts) == false) && resolved_imports_clean_holds(facts: facts)
+}
+
 fn resolved_imports_violation_count(facts: List<ImportResolutionFact>) -> Int {
   length(xs: scan_facts_for_unresolved(facts: facts))
 }
