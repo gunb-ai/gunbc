@@ -23,6 +23,7 @@ module std.realization_width
 import std.types { Int, List }
 import std.measure {
   HardwareThreadCount,
+  Nano,
   hardware_thread_count,
   hardware_thread_count_value,
 }
@@ -74,13 +75,13 @@ fn width_fold_objective_goals() -> List<AxisGoal> {
 }
 
 type WidthBoundedRealization {
-  plan: RealizationPlan
+  plan: RealizationPlan<Nano>
   spawn_width: HardwareThreadCount
 }
 
 // Width is peripheral: the schedule topology is unchanged (§3 invariant).
 fn width_bounded_realization(
-  plan: RealizationPlan,
+  plan: RealizationPlan<Nano>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
 ) -> WidthBoundedRealization {
@@ -91,7 +92,7 @@ fn width_bounded_realization(
 }
 
 fn witness_width_fold_preserves_schedule_topology(
-  plan: RealizationPlan,
+  plan: RealizationPlan<Nano>,
   shard_count: Int,
   hardware_threads: HardwareThreadCount
 ) -> Bool {
@@ -125,7 +126,7 @@ fn witness_budget_ignoring_fold_fails(
 }
 
 // Measured shard-balance scaffold: assignment must read CostAccount.basis=Measured.
-fn shard_balance_slot_for_cost(cost: CostAccount, baseline: CostAccount) -> Int {
+fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Nano>) -> Int {
   match cost.basis {
     Measured => cost_account_time_count(account: cost)
     Predicted => cost_account_time_count(account: baseline)
@@ -134,9 +135,9 @@ fn shard_balance_slot_for_cost(cost: CostAccount, baseline: CostAccount) -> Int 
 
 // RED guard (b): asymmetric measured costs must yield different slot assignments.
 fn witness_measured_cost_affects_shard_balance() -> Bool {
-  let high = cost_account_measured(time: nanosecond_duration(count: 100))
-  let low = cost_account_measured(time: nanosecond_duration(count: 10))
-  let baseline = cost_account_predicted_zero()
+  let high = cost_account_measured<Nano>(time: nanosecond_duration(count: 100))
+  let low = cost_account_measured<Nano>(time: nanosecond_duration(count: 10))
+  let baseline = cost_account_predicted_zero<Nano>()
   let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
   let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
   left != right

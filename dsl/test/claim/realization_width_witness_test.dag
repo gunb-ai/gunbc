@@ -7,7 +7,7 @@
 
 module test.claim.realization_width_witness
 
-import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { HardwareThreadCount, Nano, hardware_thread_count, hardware_thread_count_value }
 import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
@@ -34,7 +34,7 @@ fn witness_threads_4() -> HardwareThreadCount {
   hardware_thread_count(4)
 }
 
-fn synthetic_plan() -> RealizationPlan {
+fn synthetic_plan() -> RealizationPlan<Nano> {
   RealizationPlan {
     target: "width-witness-target"
     objective: RealizationObjective { goals: [] }
@@ -44,7 +44,7 @@ fn synthetic_plan() -> RealizationPlan {
         RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes" }
       ]
     ]
-    total: cost_account_predicted_zero()
+    total: cost_account_predicted_zero<Nano>()
   }
 }
 
