@@ -13710,17 +13710,32 @@ pub fn typecheck_modules(
                 });
             }
             Some(resolved) => {
+                let __probe = std::env::var("NV2_STAGE_TIMING").is_ok();
+                let __pt0 = std::time::Instant::now();
                 let parent_result = collect_parent_envs(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
                 );
+                let __pe = __pt0.elapsed();
+                let __tt0 = std::time::Instant::now();
                 let tc_result = typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
+                if __probe {
+                    let __te = __tt0.elapsed();
+                    if __pe.as_millis() > 200 || __te.as_millis() > 200 {
+                        eprintln!(
+                            "TCMOD {} parent_envs={:?} typecheck_module={:?}",
+                            authored_name_at(source_indices.clone(), resolved.module.clone()),
+                            __pe,
+                            __te
+                        );
+                    }
+                }
                 let typed = tc_result.typed.clone();
                 let tc_diags = tc_result.diagnostics.clone();
                 {
