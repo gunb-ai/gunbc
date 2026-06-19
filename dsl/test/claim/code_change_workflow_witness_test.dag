@@ -10,6 +10,7 @@ import ctrl.code_change_workflow {
   CodeChangeActive, CodeChangeTerminal,
   ChangeDraftBlocksReview, CodeChangeDigestNotReady, CodeChangePolicyNotPermitted,
   CodeChangeMissingReviewTally, CodeChangeMissingDigestVerdict, CodeChangeHeadShaMismatch,
+  CodeChangeTallyRequestChanges, CodeChangeTallyBlockingFindings, CodeChangeNotMergeableClean,
   CodeChangeAlreadyTerminal,
   CanTransition, TransitionRefused,
   decide_code_change_transition, classify_github_pr_terminal_anchor,
@@ -214,6 +215,93 @@ fn witness_stale_tally_head_sha_blocks() -> Bool {
   }
 }
 
+fn witness_tally_request_changes() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 1,
+    blocking_finding_count: 0,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_tally_blocking_findings() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 1,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_tally_not_mergeable_clean() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 0,
+    mergeable_clean: false,
+  }
+}
+
+fn witness_tally_request_changes_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_request_changes() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeTallyRequestChanges { count: 1 } } => true
+    _ => false
+  }
+}
+
+fn witness_tally_blocking_findings_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_blocking_findings() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeTallyBlockingFindings { count: 1 } } => true
+    _ => false
+  }
+}
+
+fn witness_tally_not_mergeable_clean_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_not_mergeable_clean() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeNotMergeableClean } => true
+    _ => false
+  }
+}
+
 fn witness_merge_ready_green_with_policy() -> Bool {
   match decide_code_change_transition(
     request: CodeChangeTransitionRequest {
@@ -275,6 +363,9 @@ fn all_code_change_workflow_witnesses() -> Bool {
     && witness_missing_tally_blocks_merge_ready()
     && witness_missing_digest_blocks_merge_ready()
     && witness_stale_tally_head_sha_blocks()
+    && witness_tally_request_changes_blocks()
+    && witness_tally_blocking_findings_blocks()
+    && witness_tally_not_mergeable_clean_blocks()
     && witness_merge_ready_green_with_policy()
     && witness_digest_not_ready_blocks()
     && witness_merged_anchor_from_github()
