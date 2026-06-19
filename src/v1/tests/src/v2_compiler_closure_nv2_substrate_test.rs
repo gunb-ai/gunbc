@@ -412,9 +412,10 @@ fn emit_representative_slice_manifest() {
 fn probe_gap4_scoped_ingest_first_reject() {
     let ws = workspace_root();
     let v2_root = ws.join("src/v2").to_string_lossy().to_string();
+    let entry = ws.join(COMPILER_ENTRY);
     let records = discover_source_root_reads_for_entry(
         &[v2_root],
-        COMPILER_ENTRY,
+        entry.to_str().expect("entry utf8"),
         &["host_source_root_ingest_manifest.dag".to_string()],
     )
     .expect("discover scoped compiler closure reads");
