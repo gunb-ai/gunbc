@@ -1,0 +1,85 @@
+// src/v2/test/lens_mock_totality/witness_template.dag
+// Scope: §2 horizontal dedup for per-layer mock_totality witnesses — ONE parameterized
+//        cascade-minus-one omit-consumer instead of hand-rolling a second materialize_*_omits_*
+//        cascade per layer. The REAL consumer keeps its corpus-keyed operation_key lookup; the RED
+//        arm derives omit-handles from total-handles MINUS a configurable omit-key set.
+// Anchor: DESIGN.md §2 (derive-global) / §5 (discriminating RED-on-omission teeth preserved).
+
+module v2.test.lens_mock_totality.witness_template
+
+import v2.lens.mock_totality { mock_totality_lens }
+import v2.std.algebra { contains, filter }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.hermetic_replay { PublishedMockCase }
+import v2.std.logic { Bool }
+
+fn published_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
+  a.operation_key == b.operation_key && a.case_id == b.case_id
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn operation_key_in_omit_set(case: PublishedMockCase, omit_keys: List<String>) -> Bool {
+  contains(xs: omit_keys, item: case.operation_key, eq: string_eq)
+}
+
+// Cascade-minus-one omit consumer: total handles MINUS the configured omit-key set.
+fn omit_consumer_handles(
+  case: PublishedMockCase,
+  omit_keys: List<String>,
+  total_consumer_handles: fn(PublishedMockCase) -> Bool
+) -> Bool {
+  if operation_key_in_omit_set(case: case, omit_keys: omit_keys) {
+    false
+  } else {
+    total_consumer_handles(case: case)
+  }
+}
+
+// Collapse a per-case materialization verdict to the Bool predicate the lens witness runs.
+fn outcome_accepted_p<M>(outcome: Outcome<M>) -> Bool {
+  match outcome {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn mock_totality_handled_by(
+  published: List<PublishedMockCase>,
+  consumer_handles: fn(PublishedMockCase) -> Bool
+) -> List<PublishedMockCase> {
+  filter(xs: published, predicate: consumer_handles)
+}
+
+// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
+fn mock_totality_green_holds(
+  published: List<PublishedMockCase>,
+  consumer_handles: fn(PublishedMockCase) -> Bool
+) -> Bool {
+  match mock_totality_lens(
+    published: published,
+    handled: mock_totality_handled_by(published: published, consumer_handles: consumer_handles),
+    eq: published_mock_case_eq
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED-on-omission by execution: omit a published member → the lens MUST fail-close.
+fn mock_totality_red_on_omission_holds(
+  published: List<PublishedMockCase>,
+  consumer_handles: fn(PublishedMockCase) -> Bool
+) -> Bool {
+  match mock_totality_lens(
+    published: published,
+    handled: mock_totality_handled_by(published: published, consumer_handles: consumer_handles),
+    eq: published_mock_case_eq
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
