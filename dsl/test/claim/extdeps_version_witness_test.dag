@@ -1,0 +1,65 @@
+// dsl/test/claim/extdeps_version_witness_test.dag
+//
+// By-execution witnesses for extdeps.version base model (DESIGN.md §3).
+//
+// GREEN: VersionIdentity and VersionConstraint preserve their labels;
+//        Ordering from std.algebra is reused (not re-minted).
+// DISCRIMINATING (RED if wrong):
+//   w_distinct_identities_not_equal — breaks if equality is collapsed to a constant.
+//   w_constraint_label_preserved    — breaks if VersionConstraint drops its label.
+//   w_ordering_exhaustive_match     — breaks if Ordering is re-minted with wrong variants.
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_version_witness_test.dag \
+//     --function extdeps_version_base_witnesses --claim-run
+
+module test.claim.extdeps_version_base
+
+import extdeps.version { VersionIdentity, VersionConstraint }
+import std.algebra { Ordering, Less, Equal, Greater }
+
+// -- Test fixtures --------------------------------------------------
+
+fn identity_1_0_0() -> VersionIdentity { "1.0.0" }
+fn identity_2_0_0() -> VersionIdentity { "2.0.0" }
+fn constraint_ge_1() -> VersionConstraint { ">= 1.0.0" }
+
+// Helper: return Equal as a value to avoid match-subject ambiguity
+// (`match Equal { ... }` parses as record constructor; a call-result is unambiguous).
+fn mk_equal() -> Ordering { Equal }
+
+// -- Witnesses ------------------------------------------------------
+
+// VersionIdentity preserves its label exactly as declared.
+fn w_identity_label_preserved() -> Bool {
+  identity_1_0_0() == "1.0.0"
+}
+
+// Two distinct VersionIdentity labels are not equal.
+// DISCRIMINATING: breaks if compare collapses all identities to Equal.
+fn w_distinct_identities_not_equal() -> Bool {
+  identity_1_0_0() != identity_2_0_0()
+}
+
+// VersionConstraint preserves its predicate string as declared.
+// DISCRIMINATING: breaks if constraint label is dropped or mangled.
+fn w_constraint_label_preserved() -> Bool {
+  constraint_ge_1() == ">= 1.0.0"
+}
+
+// Ordering from std.algebra is reused — match exhausts all three variants.
+// DISCRIMINATING: breaks if Ordering is re-minted with renamed or collapsed variants.
+fn w_ordering_exhaustive_match() -> Bool {
+  match mk_equal() {
+    Less => false
+    Equal => true
+    Greater => false
+  }
+}
+
+test fn extdeps_version_base_witnesses() -> Bool {
+  w_identity_label_preserved()
+    && w_distinct_identities_not_equal()
+    && w_constraint_label_preserved()
+    && w_ordering_exhaustive_match()
+}

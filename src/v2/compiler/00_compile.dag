@@ -23,8 +23,8 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
-import extdeps.communication.medium { Medium }
-import v2.compiler.target_carriers { TargetModel, lossless_source }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.target_carriers { TargetModel }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -67,7 +67,7 @@ type CompileMode
 // 🟢 coproduct dissolution
 type CompileOutput
   = TranslateResult { source: Medium<String> }
-  | EvalResult { value: Node }
+  | EvalResult { value: Medium<Node> }
 
 
 type CompileLensOutcome = Outcome<Witness<Node>>
@@ -301,7 +301,11 @@ fn compile_inferred(
           inputs: inputs_root_only(root: runtime)
         ),
         f: fn(value) {
-          outcome_accepted(EvalResult { value: value })
+          outcome_accepted(
+            EvalResult {
+              value: Medium { carried: value, fidelity: Lossless }
+            }
+          )
         }
       )
   }

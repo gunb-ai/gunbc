@@ -27,9 +27,7 @@ import extdeps.cache.types { CacheInterfaceCatalogFacts }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
-  OpaqueStringEncoding,
   ContentAddressedByValue,
-  HandAuthoredString,
   UpsertSubject,
   ContentAddressLookup,
   ExactKeyOnly,
@@ -109,27 +107,27 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   ]
 }
 
-// --- Handler 2: v2 EffectIoFixtureStore (in-process; fork-side, key-derivation gap) --
+// --- Handler 2: v2 EffectIoFixtureStore (in-process; CONVERGED key derivation) --------
 //
-// v2_effect_io_pure.dag: Map<Symbol, RuntimeValue>. TODAY the locator identity is a single
-// declare-per-claim pin (^effect_io_pure_default_locator) that ignores the RuntimeValue arg —
-// so this handler is HandAuthoredString + content_verified_on_read:false, the fork the M5
-// design closes. dissolve-on-arrival: when effect_io_pure_locator_identity derives the key
-// from RuntimeValue->Node content_hash (the SAME content digest the file handler already uses),
-// these two fields flip to ContentAddressedByValue / true and the divergence is gone.
-// 🟡 gated — feature:effect-io-fixture-content-addressed-key — bind node://adhoc-3efc6449-ec5
-// — forbidden: marking this row ContentAddressedByValue before the locator-identity fold lands
-// (that would fabricate convergence; the in-process-fork witness fails closed if it is).
+// v2_effect_io_pure.dag: Map<Hash, RuntimeValue>. CONVERGED (node://adhoc-7e32be31-47c): the
+// locator identity is now content_hash(runtime_value_node_projection(arg)) — the SAME content
+// digest authority the v1 on-disk handler keys on — so this handler is ContentAddressedByValue +
+// content_verified_on_read (the content-addressed key IS the read verification: a hit means the
+// reified-input digests matched). The key-derivation fork the M5 design called out is GONE; the
+// remaining differences (InProcess locality, Never eviction, OverwriteAllowed) are genuine
+// placement facts, not the fork. Proven BY EXECUTION in effect_io_handler_claims_test.dag
+// (effect_io_pure_value_derived_key_discriminates_holds — distinct resources → distinct keys, RED
+// if reverted to the constant pin) and asserted in hermetic_fixture_realization_test.dag.
 data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_in_process_id
   backing_surface: "gunbc-effect-io-fixture-in-memory"
-  transport_encoding: OpaqueStringEncoding
+  transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: HandAuthoredString
+    classification: ContentAddressedByValue
     inputs_considered: [UpsertSubject]
     overwritable: true
     prefix_fallback_allowed: false
-    content_verified_on_read: false
+    content_verified_on_read: true
     visibility_scope: Repo
     invalidation_triggers: [ManualPurge]
   }
@@ -151,7 +149,7 @@ data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
     {
       field: "key_derivation"
       evidence: OperatorObserved {
-        note: "locator identity = ^effect_io_pure_default_locator constant pin (ignores RuntimeValue arg) — v2_effect_io_pure.dag effect_io_pure_locator_identity; fork closes when key derives from RuntimeValue->Node content_hash"
+        note: "locator identity = content_hash(runtime_value_node_projection(arg)) — v2_effect_io_pure.dag effect_io_pure_locator_identity; the same content digest the v1 on-disk handler keys on (converged node://adhoc-7e32be31-47c); RuntimeValue with no faithful reification fails closed"
         observed_at: 0
       }
     },
