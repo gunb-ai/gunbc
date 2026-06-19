@@ -96,16 +96,6 @@ type LexicalPhrase {
 }
 
 
-fn span(token_class: Symbol, fragment: String) -> TokenSpan {
-  TokenSpan { token_class: token_class, fragment: fragment }
-}
-
-
-fn phrase(spans: List<TokenSpan>) -> LexicalPhrase {
-  LexicalPhrase { spans: spans }
-}
-
-
 // zip_spans: pair the L→R `text` fragments with their `classes` in lockstep. Recurses to the
 // shorter list (a desync surfaces as a wrong projection caught RED by the emit witnesses).
 fn zip_spans(text: FreeMonoid<String>, classes: FreeMonoid<Symbol>) -> FreeMonoid<TokenSpan> {
@@ -124,9 +114,9 @@ fn zip_spans(text: FreeMonoid<String>, classes: FreeMonoid<Symbol>) -> FreeMonoi
 }
 
 
-// phrase_text: the cosmetic authoring form. `text` reads left-to-right as the sentence; each
-// fragment's token class is the same-position entry of `classes`. Equivalent to a list of
-// `span(class, fragment)` but lets the resulting phrase read as one line of text.
+// phrase_text: the authoring form. `text` reads left-to-right as the sentence; each fragment's
+// token class is the same-position entry of `classes` (paired by list order). A length/order
+// desync surfaces RED in the per-phrase emit witnesses, not as a silent zip-to-shorter.
 fn phrase_text(text: List<String>, classes: List<Symbol>) -> LexicalPhrase {
   LexicalPhrase { spans: zip_spans(text: text, classes: classes) }
 }
