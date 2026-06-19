@@ -2499,7 +2499,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             "v1_compiled".to_string()
         };
-        let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone());
+        let cargo = emit_cargo_toml(crate_name.clone(), has_services.clone(), has_pipeline.clone());
         let main_file = emit_main_rs(
             workflow_funcs.clone(),
             typed.modules.clone(),
@@ -20539,7 +20539,7 @@ pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) 
     }
 }
 
-pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
+pub fn emit_cargo_toml(crate_name: String, has_services: bool, has_bootstrap_seed: bool) -> Rc<TextFile> {
     {
         let header = v1_rt::concat(
             v1_rt::concat("[package]\nname = \"".to_string(), crate_name),
@@ -20561,6 +20561,18 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
             ),
             emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
         ]);
+        let bootstrap_deps = if has_bootstrap_seed {
+            Rc::new(vec![
+                emit_cargo_dep("im-rc".to_string(), "15.1".to_string(), Rc::new(vec![])),
+                emit_cargo_dep(
+                    "ureq".to_string(),
+                    "2".to_string(),
+                    Rc::new(vec!["json".to_string()]),
+                ),
+            ])
+        } else {
+            Rc::new(vec![])
+        };
         let async_deps = if has_services {
             Rc::new(vec![
                 emit_cargo_dep(
@@ -20582,7 +20594,7 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
         } else {
             Rc::new(vec![])
         };
-        let all_deps = v1_rt::concat(base_deps, async_deps);
+        let all_deps = v1_rt::concat(v1_rt::concat(base_deps, bootstrap_deps), async_deps);
         Rc::new(TextFile {
             path: "Cargo.toml".to_string(),
             content: v1_rt::concat(
