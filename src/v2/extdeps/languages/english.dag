@@ -5,6 +5,7 @@
 // 🟡 feature:english-wave2-vocabulary — scaffold:T-4.19-wave2; dissolve-on: closed vocabulary declared; ^english_token_word catch-all replaced with per-word keyword rules or typed word set.
 
 module v2.extdeps.languages.english
+import v2.std.language_model { LanguageModel, language_model_empty_canonical_symbols }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.extdeps.languages.fidelity { FidelityDisposition }
@@ -102,12 +103,6 @@ type FormalSentence
 
 
 // 🟢 grounded.
-type EnglishLanguageModel {
-  language_identity: Symbol
-  core: ModelCore
-  lex: LexRules
-  grammar: ParseGrammar
-}
 
 
 // 🟢 grounded.
@@ -281,8 +276,9 @@ fn english_model_core_wave1() -> ModelCore {
 }
 
 
-fn english_language_model_wave1() -> EnglishLanguageModel {
-  EnglishLanguageModel {
+fn english_language_model_wave1() -> LanguageModel {
+  LanguageModel {
+    canonical_symbols: language_model_empty_canonical_symbols(),
     language_identity: ^english_language_identity,
     core: english_model_core_wave1(),
     lex: english_wave1_lex(),
