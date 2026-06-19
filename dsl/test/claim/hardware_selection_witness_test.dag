@@ -21,7 +21,9 @@ module test.claim.hardware_selection
 
 import std.logic { Bool }
 import std.types { Int, List }
-import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, milliwatt, money_micros, hardware_thread_count, hertz }
+import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz }
+import product.compute_fabric { money_micros }
+import product.hardware_selection { milliwatt }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
 import std.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
 import extdeps.memory.jedec { ddr4_generation_catalog, jedec_ddr_generation_catalog_row }
