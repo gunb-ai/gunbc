@@ -5287,6 +5287,18 @@ fn eval_builtin(
             Ok(Some(Value::Int(count)))
         }
 
+        "module_source_nickname_literal_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "module_source_nickname_literal_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
+                    module,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
         "extdeps_policy_leak_count_for_qualified_name" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
                 msg: "extdeps_policy_leak_count_for_qualified_name requires a QualifiedName"
