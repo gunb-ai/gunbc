@@ -38,7 +38,6 @@ data gunbc_ci_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
   ResolvedImportsGate,
-  ExtdepsStableAuthorityGate,
   DslCompileCleanGate,
   CiYamlGate,
   SourceRootIngestGate

@@ -2,8 +2,13 @@
 
 module tools.extdeps_stable_authority_transport
 
-import std.logic { Bool }
-import tools.claim_runner { run_claim_witness }
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
 
 data uri_witness_entry: String = "dsl/test/claim/uri_witness_test.dag"
 data uri_witness_fn: String = "uri_witnesses"
@@ -17,15 +22,42 @@ data missing_red_fn: String = "missing_anchor_fixture_is_red_holds"
 data bogus_scheme_red_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/bogus_scheme_red_test.dag"
 data bogus_scheme_red_fn: String = "bogus_scheme_fixture_is_red_holds"
 
+fn esa_source_root_flags() -> List<ShellWord> {
+  [
+    lit(text: "--source-root"),
+    lit(text: "dsl"),
+    lit(text: "--source-root"),
+    lit(text: "src/v2")
+  ]
+}
+
+fn esa_gunbc_claim_run(entry: String, function: String) -> ShellStmt {
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], esa_source_root_flags()),
+    [lit(text: "--entry"), lit(text: entry), lit(text: "--function"), lit(text: function), lit(text: "--claim-run")]
+  ))
+}
+
+fn esa_run_claims(stmts: List<ShellStmt>) -> Bool {
+  let prog = ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), stmts)
+  }
+  let result = shell.Exec.Run(script: serialize_bash(p: prog))
+  result.success
+}
+
 fn run_extdeps_stable_authority_uri_witnesses() -> Bool {
-  run_claim_witness(entry: uri_witness_entry, function: uri_witness_fn)
+  esa_run_claims(stmts: [esa_gunbc_claim_run(entry: uri_witness_entry, function: uri_witness_fn)])
 }
 
 fn run_extdeps_stable_authority_live_corpus_witness() -> Bool {
-  run_claim_witness(entry: live_corpus_entry, function: live_corpus_fn)
+  esa_run_claims(stmts: [esa_gunbc_claim_run(entry: live_corpus_entry, function: live_corpus_fn)])
 }
 
 fn run_extdeps_stable_authority_lens_unit_red() -> Bool {
-  run_claim_witness(entry: missing_red_entry, function: missing_red_fn)
-    && run_claim_witness(entry: bogus_scheme_red_entry, function: bogus_scheme_red_fn)
+  esa_run_claims(stmts: [
+    esa_gunbc_claim_run(entry: missing_red_entry, function: missing_red_fn),
+    esa_gunbc_claim_run(entry: bogus_scheme_red_entry, function: bogus_scheme_red_fn)
+  ])
 }

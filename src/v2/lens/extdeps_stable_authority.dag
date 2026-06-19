@@ -53,16 +53,12 @@ fn anchor_kind_is_external(kind: String) -> Bool {
 
 // Exhaustive constructor-identity decode — the ONLY place raw scheme strings are inspected.
 fn decode_uri_scheme(raw: String) -> Optional<UriScheme> {
-  if raw == "Http" {
-    Present { value: Http }
-  } else if raw == "Https" {
-    Present { value: Https }
-  } else if raw == "File" {
-    Present { value: File }
-  } else if raw == "Ftp" {
-    Present { value: Ftp }
-  } else {
-    Absent
+  match raw {
+    "Http" => Present { value: Http }
+    "Https" => Present { value: Https }
+    "File" => Present { value: File }
+    "Ftp" => Present { value: Ftp }
+    _ => Absent
   }
 }
 
@@ -113,9 +109,9 @@ fn scan_extdeps_stable_authority_modules(
   fold_list(
     xs: modules,
     empty: empty_extdeps_stable_authority_violations,
-    cons: fn(acc, module) {
+    cons: fn(acc, mod_qn) {
       fold_list(
-        xs: extdeps_stable_authority_violations_for_module(module: module),
+        xs: extdeps_stable_authority_violations_for_module(module: mod_qn),
         empty: acc,
         cons: fn(inner, v) { list_snoc_item(xs: inner, item: v) }
       )

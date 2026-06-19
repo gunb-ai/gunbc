@@ -585,7 +585,7 @@ fn scheme_identity_from_value_node(
     node: &Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> String {
-    crate::v1_std_core::authored_name_at(node.clone(), source_indices.clone())
+    crate::v1_std_core::authored_name_at(source_indices.clone(), node.clone())
 }
 
 fn read_stable_authority_anchor_from_items(
@@ -599,7 +599,7 @@ fn read_stable_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return StableAuthorityAnchorProjection::Absent;
         };
-        let variant = crate::v1_std_core::authored_name_at(body.clone(), source_indices.clone());
+        let variant = crate::v1_std_core::authored_name_at(source_indices.clone(), body.clone());
         return match variant.as_str() {
             "ExternalUri" => {
                 let Some(uri_node) = record_field_value(body, "uri", source_indices) else {
@@ -637,7 +637,7 @@ fn read_stable_authority_anchor_from_items(
 }
 
 fn project_stable_authority_anchor(module_path: &str) -> StableAuthorityAnchorProjection {
-    let path = source_path_for_module_path(module_path.to_string());
+    let path = source_path_for_module_path(module_path);
     let (items, source_indices) = parse_module_items(&path);
     read_stable_authority_anchor_from_items(&items, &source_indices)
 }
