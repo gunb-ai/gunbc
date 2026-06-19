@@ -16,14 +16,14 @@ module tools.resolved_imports_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.resolved_imports_transport {
-  run_clean_tree_gate,
-  run_scanner_perturb_receipts
+  run_resolved_imports_clean_tree_gate,
+  run_resolved_imports_scanner_receipts
 }
 
 // Green pass + scanner-execution perturb receipt (no short-circuit).
 func run_gate() -> ProcessExit {
-  let clean = run_clean_tree_gate()
-  let perturb = run_scanner_perturb_receipts()
+  let clean = run_resolved_imports_clean_tree_gate()
+  let perturb = run_resolved_imports_scanner_receipts()
   return if clean && perturb {
     ExitSuccess
   } else {
