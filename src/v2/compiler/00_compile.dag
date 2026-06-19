@@ -23,7 +23,8 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.target_carriers { TargetModel, TargetSource }
+import extdeps.communication.medium { Medium }
+import v2.compiler.target_carriers { TargetModel, lossless_source }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -57,8 +58,6 @@ type CoreNode = Node
 // InterpretationAlgebra / EvalContext (Cut 4+); wave-1: eval input root pin only.
 type RuntimeTarget = Node
 
-type Source = String
-
 // 🟢 coproduct dissolution
 type CompileMode
   = TranslateTo { target: TargetModel }
@@ -67,7 +66,7 @@ type CompileMode
 
 // 🟢 coproduct dissolution
 type CompileOutput
-  = TranslateResult { source: TargetSource }
+  = TranslateResult { source: Medium<String> }
   | EvalResult { value: Node }
 
 
@@ -275,7 +274,7 @@ fn run_required_lens_gates_on_subtree(
 fn compile_inferred_translate(
   inferred: InferredTree,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   emit(tree: inferred, target: target)
 }
 
@@ -374,15 +373,15 @@ fn validate_then_compile(
 
 
 fn compile_ingest_with_admission(
-  source: Source,
+  source: Medium<String>,
   target: TargetModel,
   peer_roots: FreeMonoid<Node>,
   admission: Admission
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: source,
+      text: source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
@@ -435,7 +434,7 @@ fn compile_source_root_ingest_with_admission(
   ingest: SourceRootIngest,
   admission: Admission,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
@@ -464,11 +463,11 @@ fn compile_source_root_ingest_with_admission(
 }
 
 
-fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
+fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: source,
+      text: source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),

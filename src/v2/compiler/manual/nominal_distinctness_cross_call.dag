@@ -6,9 +6,7 @@
 module v2.test.manual.nominal_distinctness_cross_call
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.compile {
-  Source,
-  compile_ingest_staging
+import v2.compiler.compile {  compile_ingest_staging
 }
 import v2.compiler.eval {
   EvalContext,
@@ -23,7 +21,7 @@ import v2.compiler.infer {
   InferredFacts,
   InferredTree
 }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.rust {
   rust_mvp1_binding_spellings,
   rust_mvp1_target_model_node,
@@ -76,16 +74,13 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-data nominal_distinct_forbidden_authority_source_text: TargetSource = "nominal_distinct_forbidden_authority_source_text"
+data nominal_distinct_forbidden_authority_source_text: String = "nominal_distinct_forbidden_authority_source_text"
 
-data nominal_distinct_records_source: Source = "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n"
-
+data nominal_distinct_records_source: Medium<String> = Medium { carried: "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n", fidelity: Lossless }
 // Fresh-nominal-type desugar stand-in: IntentId/IssueId as distinct nominal records
 // over String (wave-1 `type ident { field: … }` only — `where brand` is not parseable).
-data nominal_distinct_brands_source: Source = "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n"
-
-data nominal_distinct_control_source: Source = "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n"
-
+data nominal_distinct_brands_source: Medium<String> = Medium { carried: "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n", fidelity: Lossless }
+data nominal_distinct_control_source: Medium<String> = Medium { carried: "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n", fidelity: Lossless }
 data nominal_distinct_compile_target: TargetModel = TargetModel {
   bundle: rust_mvp1_target_model_node(),
   lex: rust_wave1_lex(),
@@ -107,30 +102,30 @@ data nominal_distinct_records_input: Node = nominal_distinct_input_node(sym: ^no
 data nominal_distinct_brands_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_brands_input_symbol)
 data nominal_distinct_control_input: Node = nominal_distinct_input_node(sym: ^nominal_distinct_control_input_symbol)
 
-fn anchor_nominal_distinct_records_compile() -> Outcome<TargetSource> {
+fn anchor_nominal_distinct_records_compile() -> Outcome<Medium<String>> {
   compile_ingest_staging(
     source: nominal_distinct_records_source,
     target: nominal_distinct_compile_target
   )
 }
 
-fn anchor_nominal_distinct_brands_compile() -> Outcome<TargetSource> {
+fn anchor_nominal_distinct_brands_compile() -> Outcome<Medium<String>> {
   compile_ingest_staging(
     source: nominal_distinct_brands_source,
     target: nominal_distinct_compile_target
   )
 }
 
-fn anchor_nominal_distinct_control_compile() -> Outcome<TargetSource> {
+fn anchor_nominal_distinct_control_compile() -> Outcome<Medium<String>> {
   compile_ingest_staging(
     source: nominal_distinct_control_source,
     target: nominal_distinct_compile_target
   )
 }
 
-data nominal_distinct_records_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_records_compile()
-data nominal_distinct_brands_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_brands_compile()
-data nominal_distinct_control_compile_receipt: Outcome<TargetSource> = anchor_nominal_distinct_control_compile()
+data nominal_distinct_records_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_records_compile()
+data nominal_distinct_brands_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_brands_compile()
+data nominal_distinct_control_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_control_compile()
 
 fn nominal_distinct_cross_call_must_reject_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {

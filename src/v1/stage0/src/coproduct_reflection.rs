@@ -901,7 +901,12 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
-        assert_eq!(arms, vec!["Value", "Transform", "Branch", "Loop", "Bind"]);
+        // node.dag gained the `Match` behavior arm; this reflection test was stale (rust gate fires only
+        // on .rs touches, so it stayed hidden). Reflecting node.dag's actual arms.
+        assert_eq!(
+            arms,
+            vec!["Value", "Transform", "Branch", "Loop", "Bind", "Match"]
+        );
     }
 
     #[test]

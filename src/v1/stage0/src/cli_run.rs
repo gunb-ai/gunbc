@@ -2673,7 +2673,7 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: \"{}\",\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
     ))
@@ -2720,6 +2720,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
+    out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");

@@ -23,7 +23,7 @@ import v2.extdeps.languages.typescript {
   ts_pr3_identity_target_model_witness
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection { Map, empty_map }
@@ -134,7 +134,7 @@ data mvp1_ts_pr3_inferred_tree: InferredTree = InferredTree {
   facts: Map { lookup: mvp1_ts_pr3_facts_lookup }
 }
 
-fn anchor_mvp1_ts_pr3_emit_accepts() -> Outcome<TargetSource> {
+fn anchor_mvp1_ts_pr3_emit_accepts() -> Outcome<Medium<String>> {
   match mvp1_ts_pr3_target_model_for_emit() {
     Holds { value: target } => emit(tree: mvp1_ts_pr3_inferred_tree, target: target)
     Violates { diagnostic: d } =>
@@ -154,14 +154,14 @@ fn anchor_mvp1_ts_pr3_compile_inferred_accepts() -> Outcome<CompileOutput> {
   }
 }
 
-data mvp1_ts_pr3_emit_receipt: Outcome<TargetSource> = anchor_mvp1_ts_pr3_emit_accepts()
+data mvp1_ts_pr3_emit_receipt: Outcome<Medium<String>> = anchor_mvp1_ts_pr3_emit_accepts()
 
 data mvp1_ts_pr3_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_ts_pr3_compile_inferred_accepts()
 
 fn mvp1_ts_pr3_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_ts_pr3_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source == ts_pr3_identity_source_text) && (d == None) {
+      if (source.carried == ts_pr3_identity_source_text) && (d == None) {
         Accepted { value: mvp1_ts_pr3_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -183,7 +183,7 @@ fn mvp1_ts_pr3_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source == ts_pr3_identity_source_text) && (d == None) {
+          if (source.carried == ts_pr3_identity_source_text) && (d == None) {
             Accepted { value: mvp1_ts_pr3_emitted_root, diagnostics: None }
           } else {
             Rejected {
