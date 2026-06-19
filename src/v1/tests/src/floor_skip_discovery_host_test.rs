@@ -84,6 +84,48 @@ fn fixture_entry_abs() -> String {
         .into_owned()
 }
 
+fn data_decl_exclusive_line(data_name: &str) -> i64 {
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let entry_abs = fixture_entry_abs();
+    let (graph, si) = resolve_entry_with_index(&index, &entry_abs)
+        .unwrap_or_else(|e| panic!("resolve {entry_abs}: {e}"));
+    let mut spans: Vec<(String, i64, i64)> = Vec::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            if item_kind(item.clone()) != ItemKind::DataItem {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            let span = &*item.span;
+            let nl = si.get(&span.file).or_else(|| {
+                si.iter()
+                    .find(|(path, _)| {
+                        path.ends_with(&span.file) || span.file.ends_with(path.as_str())
+                    })
+                    .map(|(_, idx)| idx)
+            }).expect("newline index");
+            let start = byte_to_line_col(nl.clone(), span.start).line;
+            let end = byte_to_line_col(nl.clone(), span.end).line;
+            spans.push((name, start, end));
+        }
+    }
+    let (target_start, target_end) = spans
+        .iter()
+        .find(|(name, _, _)| name == data_name)
+        .map(|(_, s, e)| (*s, *e))
+        .unwrap_or_else(|| panic!("data item {data_name} not found"));
+    for line in target_start..=target_end {
+        let exclusive = spans.iter().all(|(name, start, end)| {
+            name == data_name || line < *start || line > *end
+        });
+        if exclusive {
+            return line;
+        }
+    }
+    panic!("no exclusive line in span for {data_name}: {spans:?}");
+}
+
 fn data_decl_mid_line(data_name: &str) -> i64 {
     let roots = floor_skip_source_roots();
     let index = build_multi_entry_index(&roots);
@@ -213,8 +255,8 @@ fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
 fn floor_skip_same_file_node_precision_holds() {
     let roots = floor_skip_source_roots();
     let entry = fixture_entry_abs();
-    let line_a = data_decl_mid_line("floor_skip_precision_node_a");
-    let line_b = data_decl_mid_line("floor_skip_precision_node_b");
+    let line_a = data_decl_exclusive_line("floor_skip_precision_node_a");
+    let line_b = data_decl_exclusive_line("floor_skip_precision_node_b");
     assert_ne!(
         line_a, line_b,
         "fixture must place A and B on distinct declaration lines"

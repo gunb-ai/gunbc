@@ -2345,6 +2345,29 @@ fn normalize_repo_path(path: &str) -> String {
         .replace('\\', "/")
 }
 
+/// Map a repo-relative `git diff` path onto the indexed absolute entry path.
+fn resolve_entry_for_diff_file(
+    index: &MultiEntryIndex,
+    file_path: &str,
+) -> Option<(
+    Rc<v1_compiler_compile::ResolvedGraph>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+)> {
+    let norm = normalize_repo_path(file_path);
+    if let Ok(pair) = resolve_entry_with_index(index, &norm) {
+        return Some(pair);
+    }
+    for src in index.source_files.values() {
+        let indexed = normalize_repo_path(&src.path);
+        if indexed == norm || indexed.ends_with(&norm) {
+            if let Ok(pair) = resolve_entry_with_index(index, &src.path) {
+                return Some(pair);
+            }
+        }
+    }
+    None
+}
+
 /// Parse unified diff output into new-side line ranges per repo-relative file path.
 fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
@@ -2534,9 +2557,9 @@ fn collect_frontier_nodes_from_diff_line_ranges(
         if !file_path.ends_with(".dag") {
             continue;
         }
-        let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
-            Ok(pair) => pair,
-            Err(_) => continue,
+        let (graph, source_indices) = match resolve_entry_for_diff_file(index, file_path) {
+            Some(pair) => pair,
+            None => continue,
         };
         let mut overlapping_data_names = Vec::new();
         for module in graph.modules.iter() {
@@ -2902,7 +2925,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let ws = manifest
             .ancestors()
-            .nth(2)
+            .nth(3)
             .expect("workspace root");
         let fixture = "dsl/test/claim/floor_skip_node_precision_fixture.dag";
         let roots = vec![
