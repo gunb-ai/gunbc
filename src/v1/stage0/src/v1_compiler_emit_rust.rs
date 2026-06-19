@@ -459,7 +459,7 @@ pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
             }
         }
     };
-    (binding.children.clone().len() as i64) == 0 && (binding.params.clone().len() as i64) == 0
+    (binding.params.clone().len() as i64) == 0
 }
 
 pub fn render_rust_fn_sig_type(
@@ -585,6 +585,17 @@ pub fn render_rust_alias_rhs_type(
                 } else {
                     name.clone()
                 };
+                if !is_container_type(name.clone())
+                    && rust_fn_sig_peel_closed_alias(scope.type_env.clone(), n.clone())
+                {
+                    if (v1_rt::set_contains(&shared_types, name.clone())
+                        && !rust_type_is_rc_wrapped(base.clone()))
+                    {
+                        wrap_shared_type(RenderTarget::Rust, base.clone())
+                    } else {
+                        base.clone()
+                    }
+                } else {
                 let args = Rc::new({
                     let mut __result = Vec::new();
                     for arg in n.children.clone().iter().cloned() {
@@ -616,6 +627,7 @@ pub fn render_rust_alias_rhs_type(
                     wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
                 } else {
                     applied_ty.clone()
+                }
                 }
             }
         } else {
