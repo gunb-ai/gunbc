@@ -1,0 +1,105 @@
+// gunbc/idea_pr_spine.dag — minimal flat spine for workflow_recursive witnesses.
+//
+// Slice of ctrl plans.idea_pr_spine relocated for gunbc harness re-proof.
+// Consumes std.reducible.ReduceVerdict (not re-minted).
+//
+// Layer direction: gunbc (product/workflow) imports ctrl.review_verdict — the
+// established review-authority substrate in dsl/ctrl (staged, v2-runnable).
+// No dsl/gunbc/*.dag imported ctrl.* before this slice; the direction is
+// intentional: review facts live in ctrl, idea→PR spine consumes them.
+
+module gunbc.idea_pr_spine
+
+import std.types { List }
+import std.reducible {
+  ReduceVerdict, Reduced, Irreducible, Unknown,
+  reduce_verdicts_located,
+}
+import ctrl.review_verdict {
+  ReviewVerdict, Approve, ApproveWithComments, RequestChanges,
+  NeedsHumanTriage, NoVerdict,
+  ReviewProvider, Claude, HumanReviewer, ProviderOther,
+}
+
+type WorkProduct
+  = DesignPlan
+  | DagModel
+  | Implementation
+  | IntentAlignment
+
+type Stage
+  = IdeaInput
+  | Produce { product: WorkProduct }
+  | ReviewOf { product: WorkProduct }
+  | ApprovalMerge
+
+type StageStep {
+  stage: Stage
+  verdict: ReduceVerdict
+}
+
+type Review {
+  subject: WorkProduct
+  reviewer: ReviewProvider
+  verdict: ReviewVerdict
+}
+
+fn work_tag(p: WorkProduct) -> String {
+  match p {
+    DesignPlan => "design-plan"
+    DagModel => "dag-model"
+    Implementation => "implementation"
+    IntentAlignment => "intent-alignment"
+  }
+}
+
+fn review_to_reduce(r: Review) -> ReduceVerdict {
+  match r.verdict {
+    Approve => Reduced { last_parts: 1 }
+    ApproveWithComments => Reduced { last_parts: 1 }
+    RequestChanges => Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":request-changes") }
+    NeedsHumanTriage => Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":needs-human-triage") }
+    NoVerdict => Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":no-verdict") }
+  }
+}
+
+fn produce_step(p: WorkProduct, verdict: ReduceVerdict) -> StageStep {
+  StageStep { stage: Produce { product: p }, verdict: verdict }
+}
+
+fn review_step(r: Review) -> StageStep {
+  StageStep { stage: ReviewOf { product: r.subject }, verdict: review_to_reduce(r) }
+}
+
+fn settle(spine: List<StageStep>) -> ReduceVerdict {
+  reduce_verdicts_located(
+    verdicts: map(collection: spine, f: fn(s) { s.verdict }),
+    empty_missing: "idea-pr:idea-input:no-stages"
+  )
+}
+
+fn demo_spine_green() -> List<StageStep> {
+  [
+    StageStep { stage: IdeaInput, verdict: Reduced { last_parts: 1 } },
+    produce_step(DesignPlan, Reduced { last_parts: 3 }),
+    produce_step(DagModel, Reduced { last_parts: 2 }),
+    review_step(Review { subject: DagModel, reviewer: Claude, verdict: Approve }),
+    produce_step(Implementation, Reduced { last_parts: 5 }),
+    review_step(Review { subject: Implementation, reviewer: ProviderOther { name: "policy" }, verdict: ApproveWithComments }),
+    review_step(Review { subject: IntentAlignment, reviewer: HumanReviewer, verdict: Approve }),
+    StageStep { stage: ApprovalMerge, verdict: Irreducible { witness: "ci-green" } },
+  ]
+}
+
+fn demo_spine_unknown() -> List<StageStep> {
+  [
+    StageStep { stage: IdeaInput, verdict: Reduced { last_parts: 1 } },
+    produce_step(DesignPlan, Reduced { last_parts: 3 }),
+    produce_step(DagModel, Reduced { last_parts: 2 }),
+    review_step(Review { subject: DagModel, reviewer: Claude, verdict: RequestChanges }),
+    produce_step(Implementation, Reduced { last_parts: 5 }),
+    review_step(Review { subject: Implementation, reviewer: ProviderOther { name: "policy" }, verdict: Approve }),
+    review_step(Review { subject: IntentAlignment, reviewer: HumanReviewer, verdict: Approve }),
+    StageStep { stage: ApprovalMerge, verdict: Irreducible { witness: "ci-green" } },
+  ]
+}

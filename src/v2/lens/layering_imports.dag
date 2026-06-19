@@ -1,6 +1,16 @@
 // src/v2/lens/layering_imports.dag
-// Scope: cross-layer import-direction lens — std/ and extdeps/ must not import
-//        v3.compiler.* or v2.compiler.* (layer DAG dependency-direction, DESIGN.md §3).
+// Scope: cross-layer import-direction lens (layer DAG dependency-direction, DESIGN.md §3 —
+//        "imports point toward std"). Two forbidden directions:
+//          (1) std/ and extdeps/ must not import v2.compiler.* (toward the compiler);
+//          (2) std/ must not import extdeps AT ALL (std is the ROOT of the layer DAG —
+//              `std ← extdeps ← compiler ← workflow`; a std→extdeps edge is the import arrow
+//              inverted). Rule (2) is what let `dsl/std/credentials.dag import extdeps.shell`
+//              pass undetected before this lens was tightened.
+//        Rule (2) is scoped to the dsl-tree `extdeps`/`extdeps.*` module form today. The
+//        `v2.extdeps.*` form is DEFERRED (🟡 dissolve-on: the pre-existing src/v2/std →
+//        v2.extdeps.* importers — timeseries_signal{,_passives}, qualified_name.from_module_node,
+//        grounding.terminal_gate_test — are migrated; widen `is_std_importing_extdeps` to also
+//        match the `v2.extdeps`/`v2.extdeps.*` form then).
 // Consumer: tools.layering_imports_gate → tools.layering_imports_transport host scan.
 
 module v2.lens.layering_imports
@@ -13,23 +23,26 @@ import v2.std.algebra {
   list_snoc_item
 }
 import v2.std.collection { List }
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixCompiler,
+  LayerPrefixExtdeps,
+  LayerPrefixStd,
+  LayerPrefixWorkflow
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
-// Layer label for files under std/ or extdeps/ roots (host classifies at enumeration).
-type LayerLabel
-  = LayerStd
-  | LayerExtdeps
-
 // One import line fact from host enumeration (path relative to repo root).
+// layer: LayerPrefix — §3 single authority; LayerLabel dissolved into LayerPrefix.
 type LayerImportFact {
-  layer: LayerLabel
+  layer: LayerPrefix
   path: String
   import_module: String
 }
 
 type LayeringImportViolation {
-  layer: LayerLabel
+  layer: LayerPrefix
   path: String
   import_module: String
 }
@@ -46,8 +59,31 @@ fn is_forbidden_compiler_import(module: String) -> Bool {
     || is_prefix_of(prefix: forbidden_compiler_prefix, xs: module, eq: char_eq)
 }
 
+// std/ is the ROOT of the layer DAG — it must never import extdeps (the import arrow points
+// TOWARD std, DESIGN.md §3). dsl-tree form only (`extdeps`/`extdeps.*`); the `v2.extdeps.*`
+// form is deferred per the header dissolution trigger. is_prefix_of("extdeps.", "v2.extdeps.x")
+// is false (the v2 form starts "v2."), so this cleanly excludes the deferred src/v2/std cases.
+data forbidden_std_extdeps_prefix: String = "extdeps."
+data forbidden_std_extdeps_exact: String = "extdeps"
+
+fn is_std_importing_extdeps(module: String) -> Bool {
+  module == forbidden_std_extdeps_exact
+    || is_prefix_of(prefix: forbidden_std_extdeps_prefix, xs: module, eq: char_eq)
+}
+
+fn is_std_layer(layer: LayerPrefix) -> Bool {
+  match layer {
+    LayerPrefixStd => true
+    LayerPrefixExtdeps => false
+    LayerPrefixCompiler => false
+    LayerPrefixWorkflow => false
+  }
+}
+
 fn is_layering_violation(fact: LayerImportFact) -> Bool {
   is_forbidden_compiler_import(module: fact.import_module)
+    || (is_std_layer(layer: fact.layer)
+        && is_std_importing_extdeps(module: fact.import_module))
 }
 
 data empty_layering_import_violations: List<LayeringImportViolation> = []

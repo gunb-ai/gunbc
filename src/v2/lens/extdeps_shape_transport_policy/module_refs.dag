@@ -37,3 +37,42 @@ data bogus_extdeps_module: QualifiedName = QnCons {
   head: ^extdeps,
   tail: QnCons { head: ^bogus_unknown_module_xyz, tail: QnEmpty }
 }
+
+data coverage_domain_equivalence_module: QualifiedName = QnCons {
+  head: ^v2,
+  tail: QnCons {
+    head: ^test,
+    tail: QnCons {
+      head: ^extdeps_shape_transport_policy,
+      tail: QnCons { head: ^coverage_domain_equivalence, tail: QnEmpty }
+    }
+  }
+}
+
+data module_source_nickname_literal_green_module: QualifiedName = QnCons {
+  head: ^v2,
+  tail: QnCons {
+    head: ^test,
+    tail: QnCons {
+      head: ^extdeps_shape_transport_policy,
+      tail: QnCons {
+        head: ^lens_unit,
+        tail: QnCons { head: ^module_source_nickname_literal_green, tail: QnEmpty }
+      }
+    }
+  }
+}
+
+data module_source_nickname_literal_local_red_module: QualifiedName = QnCons {
+  head: ^v2,
+  tail: QnCons {
+    head: ^test,
+    tail: QnCons {
+      head: ^extdeps_shape_transport_policy,
+      tail: QnCons {
+        head: ^lens_unit,
+        tail: QnCons { head: ^module_source_nickname_literal_local_red, tail: QnEmpty }
+      }
+    }
+  }
+}

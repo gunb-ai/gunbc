@@ -61,4 +61,10 @@ mod tests {
         let path = source_path_for_module_path("extdeps.git".to_string());
         assert_eq!(path, "dsl/extdeps/git/git.dag");
     }
+
+    #[test]
+    fn co_root_overlay_last_root_wins_on_duplicate_module_path() {
+        let path = source_path_for_module_path("extdeps.shell".to_string());
+        assert_eq!(path, "src/v2/extdeps/shell.dag");
+    }
 }

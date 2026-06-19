@@ -1,0 +1,202 @@
+// test/claim/workflow_recursive_witness_test.dag — by-execution witness for std.workflow_recursive.
+//
+// Test layer may import any layer (std, gunbc, ctrl). Re-proves ctrl
+// plans.workflow_recursive gate on gunbc's harness (DESIGN §5).
+
+module test.claim.workflow_recursive_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, List }
+import std.reducible {
+  ReduceVerdict, Reduced, Irreducible, Unknown,
+  reduce_verdict_combine, verdict_eq,
+}
+import std.workflow_recursive {
+  VerdictTree, Leaf, Decomposed,
+  settle_verdict_tree, linearize_verdicts,
+}
+import gunbc.idea_pr_spine {
+  StageStep, IdeaInput, DagModel, Review, review_step,
+  settle, demo_spine_green, demo_spine_unknown,
+}
+import ctrl.review_verdict { Claude, RequestChanges }
+
+fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
+  linearize_verdicts(
+    verdicts: map(collection: steps, f: fn(s) { s.verdict })
+  )
+}
+
+fn deep_unknown_tree() -> VerdictTree {
+  Decomposed { children: [
+    Leaf { verdict: Reduced { last_parts: 1 } },
+    Decomposed { children: [
+      Leaf { verdict: Reduced { last_parts: 2 } },
+      Leaf { verdict: Unknown { missing: "deep-axis" } },
+    ] },
+    Leaf { verdict: Reduced { last_parts: 3 } },
+  ] }
+}
+
+fn all_green_tree() -> VerdictTree {
+  Decomposed { children: [
+    Leaf { verdict: Reduced { last_parts: 1 } },
+    Decomposed { children: [
+      Leaf { verdict: Reduced { last_parts: 2 } },
+      Leaf { verdict: Reduced { last_parts: 3 } },
+    ] },
+  ] }
+}
+
+fn review_tree_blocks() -> VerdictTree {
+  Decomposed { children: [
+    Leaf { verdict: Reduced { last_parts: 1 } },
+    Leaf { verdict: review_step(Review { subject: DagModel, reviewer: Claude, verdict: RequestChanges }).verdict },
+    Leaf { verdict: Reduced { last_parts: 9 } },
+  ] }
+}
+
+type WorkflowLawWitness {
+  law_tag: NonEmptyStr
+  verified: Bool
+}
+
+type WorkflowKernelWitnessed {
+  semigroup_associativity: WorkflowLawWitness
+  semigroup_absorption_left: WorkflowLawWitness
+  semigroup_absorption_right: WorkflowLawWitness
+  deep_unknown_latches_located: WorkflowLawWitness
+  green_tree_settles_decisive: WorkflowLawWitness
+  review_blocks_located_in_tree: WorkflowLawWitness
+  linear_instance_green: WorkflowLawWitness
+  linear_instance_unknown: WorkflowLawWitness
+}
+
+fn witness_semigroup_associativity() -> WorkflowLawWitness {
+  let a = Reduced { last_parts: 1 }
+  let b = Unknown { missing: "axis-b" }
+  let c = Irreducible { witness: "w" }
+  WorkflowLawWitness {
+    law_tag: "reduce_verdict:semigroup_associativity",
+    verified: verdict_eq(
+      a: reduce_verdict_combine(
+        a: reduce_verdict_combine(a: a, b: b),
+        b: c
+      ),
+      b: reduce_verdict_combine(
+        a: a,
+        b: reduce_verdict_combine(a: b, b: c)
+      )
+    ),
+  }
+}
+
+fn witness_semigroup_absorption_left() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "reduce_verdict:unknown_absorbs_left",
+    verified: verdict_eq(
+      a: reduce_verdict_combine(
+        a: Unknown { missing: "latch-axis" },
+        b: Reduced { last_parts: 9 }
+      ),
+      b: Unknown { missing: "latch-axis" }
+    ),
+  }
+}
+
+fn witness_semigroup_absorption_right() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "reduce_verdict:unknown_absorbs_right",
+    verified: verdict_eq(
+      a: reduce_verdict_combine(
+        a: Reduced { last_parts: 9 },
+        b: Unknown { missing: "latch-axis" }
+      ),
+      b: Unknown { missing: "latch-axis" }
+    ),
+  }
+}
+
+fn witness_deep_unknown_latches_located() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "workflow:deep_unknown_latches_located",
+    verified: verdict_eq(
+      a: settle_verdict_tree(deep_unknown_tree()),
+      b: Unknown { missing: "deep-axis" }
+    ),
+  }
+}
+
+fn witness_green_tree_settles_decisive() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "workflow:green_tree_settles_decisive",
+    verified: verdict_eq(
+      a: settle_verdict_tree(all_green_tree()),
+      b: Reduced { last_parts: 3 }
+    ),
+  }
+}
+
+fn witness_review_blocks_located_in_tree() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "workflow:review_blocks_located_in_tree",
+    verified: verdict_eq(
+      a: settle_verdict_tree(review_tree_blocks()),
+      b: Unknown { missing: "idea-pr:review:dag-model:request-changes" }
+    ),
+  }
+}
+
+fn witness_linear_instance_green() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "workflow:linear_instance_equals_flat_settle_green",
+    verified: verdict_eq(
+      a: settle_verdict_tree(linearize_steps(demo_spine_green())),
+      b: settle(demo_spine_green())
+    ),
+  }
+}
+
+fn witness_linear_instance_unknown() -> WorkflowLawWitness {
+  WorkflowLawWitness {
+    law_tag: "workflow:linear_instance_equals_flat_settle_unknown",
+    verified: verdict_eq(
+      a: settle_verdict_tree(linearize_steps(demo_spine_unknown())),
+      b: settle(demo_spine_unknown())
+    ),
+  }
+}
+
+fn workflow_kernel_witnessed() -> WorkflowKernelWitnessed {
+  WorkflowKernelWitnessed {
+    semigroup_associativity: witness_semigroup_associativity(),
+    semigroup_absorption_left: witness_semigroup_absorption_left(),
+    semigroup_absorption_right: witness_semigroup_absorption_right(),
+    deep_unknown_latches_located: witness_deep_unknown_latches_located(),
+    green_tree_settles_decisive: witness_green_tree_settles_decisive(),
+    review_blocks_located_in_tree: witness_review_blocks_located_in_tree(),
+    linear_instance_green: witness_linear_instance_green(),
+    linear_instance_unknown: witness_linear_instance_unknown(),
+  }
+}
+
+fn workflow_kernel_all_verified(w: WorkflowKernelWitnessed) -> Bool {
+  fold(
+    [
+      w.semigroup_associativity.verified,
+      w.semigroup_absorption_left.verified,
+      w.semigroup_absorption_right.verified,
+      w.deep_unknown_latches_located.verified,
+      w.green_tree_settles_decisive.verified,
+      w.review_blocks_located_in_tree.verified,
+      w.linear_instance_green.verified,
+      w.linear_instance_unknown.verified,
+    ],
+    init: true,
+    f: fn(acc, v) { acc && v }
+  )
+}
+
+test fn workflow_recursive_witnesses() -> Bool {
+  workflow_kernel_all_verified(w: workflow_kernel_witnessed())
+}
