@@ -76,6 +76,10 @@ mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
+mod nv2_gate_manifest_resolve_bisect_test;
+#[cfg(test)]
+mod nv2_gate_resolve_bisect_test;
+#[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod parse_table_memo_amortization_test;
@@ -105,10 +109,6 @@ mod target_model_runtime_import_repro;
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
-#[cfg(test)]
-mod nv2_gate_manifest_resolve_bisect_test;
-#[cfg(test)]
-mod nv2_gate_resolve_bisect_test;
 #[cfg(test)]
 mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
