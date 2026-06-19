@@ -3211,27 +3211,93 @@ fn string_without_suffix(value: String, suffix: String) -> String? {
   }
 }
 
+fn string_index_of_from(haystack: String, needle: String, pos: Int) -> Int? {
+  if pos + string_length(s: needle) > string_length(s: haystack) {
+    none
+  } else if substring(s: haystack, start: pos, end: pos + string_length(s: needle)) == needle {
+    Present { value: pos }
+  } else {
+    string_index_of_from(haystack: haystack, needle: needle, pos: pos + 1)
+  }
+}
+
+fn string_index_of(haystack: String, needle: String) -> Int? {
+  string_index_of_from(haystack: haystack, needle: needle, pos: 0)
+}
+
+fn wire_variant_tag_for_policy(authored: String, policy: RustEnumWireSerde) -> String? {
+  if policy.error_message != none {
+    none
+  } else {
+    match policy.rename_style {
+      Present { value: style } =>
+        if style == "StripAffixAndSnakeCase" {
+          let without_prefix = match policy.rename_prefix {
+            Present { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+              Present { value: stripped } => stripped
+              Absent => return none
+            }
+            Absent => authored
+          }
+          let without_suffix = match policy.rename_suffix {
+            Present { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+              Present { value: stripped } => stripped
+              Absent => return none
+            }
+            Absent => without_prefix
+          }
+          Present { value: to_snake(name: without_suffix) }
+        } else {
+          none
+        }
+      Absent =>
+        if contains(policy.enum_attr, "rename_all = \"snake_case\"") {
+          Present { value: to_snake(name: authored) }
+        } else if policy.enum_attr == "" && policy.rename_prefix == none && policy.rename_suffix == none {
+          Present { value: authored }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn policy_serde_tag_field(policy: RustEnumWireSerde) -> String? {
+  let needle = "tag = \""
+  match string_index_of(haystack: policy.enum_attr, needle: needle) {
+    Present { value: start } =>
+      let after = start + string_length(s: needle)
+      match string_index_of_from(haystack: policy.enum_attr, needle: "\"", pos: after) {
+        Present { value: end } =>
+          Present { value: substring(s: policy.enum_attr, start: after, end: end) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn policy_is_untagged(policy: RustEnumWireSerde) -> Bool {
+  contains(policy.enum_attr, "untagged")
+}
+
+fn policy_is_string_variant(policy: RustEnumWireSerde) -> Bool {
+  !contains(policy.enum_attr, "tag =")
+    && policy.rename_prefix == none
+    && policy.rename_suffix == none
+    && policy.rename_style == none
+}
+
 fn wire_variant_rename_attr_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
-  match policy.rename_style {
-    Present { value: style } =>
-      if style == "StripAffixAndSnakeCase" {
-        let without_prefix = match policy.rename_prefix {
-          Present { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
-            Present { value: stripped } => stripped
-            Absent => return ""
+  match wire_variant_tag_for_policy(authored: authored, policy: policy) {
+    Present { value: tag } =>
+      match policy.rename_style {
+        Present { value: style } =>
+          if style == "StripAffixAndSnakeCase" {
+            concat("    #[serde(rename = \"", tag, "\")]\n")
+          } else {
+            ""
           }
-          Absent => authored
-        }
-        let without_suffix = match policy.rename_suffix {
-          Present { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
-            Present { value: stripped } => stripped
-            Absent => return ""
-          }
-          Absent => without_prefix
-        }
-        concat("    #[serde(rename = \"", to_snake(name: without_suffix), "\")]\n")
-      } else {
-        ""
+        Absent => ""
       }
     Absent => ""
   }
