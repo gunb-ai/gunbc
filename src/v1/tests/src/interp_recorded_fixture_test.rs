@@ -579,6 +579,45 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
     );
 }
 
+// §5 materializer witnesses for gunbc.auth.credentials.gcp_oauth_access_token(strategy):
+// GREEN runs both strategies hermetically (fixture store); RED perturbation proves dispatch
+// selects the correct leaf (swapped arms return distinguishable wrong tokens).
+#[test]
+fn gcp_oauth_access_token_materializer_holds() {
+    let ws = workspace_root();
+    let entry = ws.join("dsl/test/claim/gcp_oauth_access_token_witness_test.dag");
+    let store = ws.join("dsl/test/fixture/gcp_oauth_access_token_store");
+    let common = |func: &str| -> std::process::Output {
+        run_claim_batch(&[
+            "--source-root",
+            ws.to_str().expect("workspace"),
+            "--source-root",
+            ws.join("dsl").to_str().expect("dsl root"),
+            "--entry",
+            entry.to_str().expect("entry"),
+            "--function",
+            func,
+            "--hermetic",
+            "--fixture-store",
+            store.to_str().expect("fixture store"),
+        ])
+    };
+
+    let green = common("gcp_oauth_access_token_materializer_green_holds");
+    assert!(
+        green.status.success(),
+        "materializer green witness must pass hermetically; stderr={}",
+        String::from_utf8_lossy(&green.stderr)
+    );
+
+    let red = common("gcp_oauth_access_token_dispatch_discriminator_is_red_holds");
+    assert!(
+        red.status.success(),
+        "dispatch discriminator witness must pass (proves swapped arms are detectable); stderr={}",
+        String::from_utf8_lossy(&red.stderr)
+    );
+}
+
 // M4.1 universal corpus governance: the witness entry imports ONLY the service module — the
 // published corpus lives in a separate file (dsl/test/fixture/m4_universal_governed_corpus.dag)
 // that is NOT in the entry import closure. The runtime must precompute keys from the whole dsl/

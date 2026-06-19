@@ -16,7 +16,6 @@ import gunbc.auth.credentials {
   gcp_oauth_access_token_via_adc_refresh,
   gcp_oauth_access_token_via_gcloud
 }
-import std.collection { Absent, Present }
 import std.logic { Bool }
 import std.types { FilePath, Secret }
 
@@ -47,14 +46,21 @@ fn witness_adc_refresh_present_path_holds() -> Bool {
   secret_eq(a: r.token, b: token_adc_refresh)
 }
 
+// Literal-built optional null must not crash Present/Absent match (§5 execution gate).
+data null_adc_path: FilePath? = none
+
+fn witness_adc_refresh_null_optional_path_holds() -> Bool {
+  let r = gcp_oauth_access_token(strategy: AdcRefresh { adc_path: null_adc_path })
+  secret_eq(a: r.token, b: token_adc_refresh)
+}
+
 // Perturbation: swapped match arms — must NOT return the canonical strategy token.
 pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
   uses net: Network
 {
   node result = match strategy {
     GcloudCli => gcp_oauth_access_token_via_adc_refresh()
-    AdcRefresh { adc_path: Absent } => gcp_oauth_access_token_via_gcloud()
-    AdcRefresh { adc_path: Present { value: _path } } => gcp_oauth_access_token_via_gcloud()
+    AdcRefresh { adc_path: _path } => gcp_oauth_access_token_via_gcloud()
   }
   return { token: result.token }
 }
@@ -75,6 +81,7 @@ test fn gcp_oauth_access_token_materializer_green_holds() -> Bool {
   witness_gcloud_cli_strategy_holds()
     && witness_adc_refresh_absent_path_holds()
     && witness_adc_refresh_present_path_holds()
+    && witness_adc_refresh_null_optional_path_holds()
 }
 
 test fn gcp_oauth_access_token_dispatch_discriminator_is_red_holds() -> Bool {
