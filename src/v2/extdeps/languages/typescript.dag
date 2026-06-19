@@ -1223,7 +1223,7 @@ fn ts_exemplared_formal_productions_for_lhs(lhs: Symbol) -> List<FormalProductio
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
     ts_pr3_identity_formal_productions()
   } else {
-    Empty
+    []
   }
 }
 
