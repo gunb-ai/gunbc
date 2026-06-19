@@ -39,14 +39,8 @@ type MaterializedGcpMock {
   tag: Symbol
 }
 
-<<<<<<< HEAD
 data gcp_red_omit_keys: List<String> = ["gcp.SecretManager.AddVersion"]
 
-=======
-// The REAL consumer: materializes ANY published GCP case impl-blind, keyed on the operation_key
-// across all 13 published ops (9 services); fail-closes (canonical `mock_unhandled_rejection`)
-// for any unpublished op.
->>>>>>> f4589e6880 (WIP: gcp §3 transport-fork refactor (DESIGN.md §3 single-authority): collapse)
 fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
   if case.operation_key == "gcloud.Auth.Login" {
     outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
@@ -79,46 +73,6 @@ fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock>
   }
 }
 
-<<<<<<< HEAD
-=======
-// The DELIBERATELY-INCOMPLETE consumer: omits `gcp.SecretManager.AddVersion` → fail-closes on
-// that published case. This is the discriminating input that drives the lens RED on omission.
-fn materialize_gcp_mock_omits_add_version(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
-  if case.operation_key == "gcloud.Auth.Login" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
-  } else if case.operation_key == "gcloud.Auth.ReadADC" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_read_adc })
-  } else if case.operation_key == "oauth2.Google.Refresh" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_oauth2_google_refresh })
-  } else if case.operation_key == "shell.GCloud.AuthPrintAccessToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_auth_print_access_token })
-  } else if case.operation_key == "gcp.IAM.GenerateAccessToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_iam_generate_access_token })
-  } else if case.operation_key == "gcp.ResourceManager.GetIamPolicy" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_get_iam_policy })
-  } else if case.operation_key == "gcp.ResourceManager.SetIamPolicy" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_set_iam_policy })
-  } else if case.operation_key == "gcp.SecretManager.AccessVersion" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_access_version })
-  } else if case.operation_key == "gcp.SecretManager.CreateSecret" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_create_secret })
-  } else if case.operation_key == "gcp.STS.Exchange" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_sts_exchange })
-  } else if case.operation_key == "github.OIDC.GetToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_github_oidc_get_token })
-  } else if case.operation_key == "gcp.Metadata.GetIdentityToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_metadata_get_identity_token })
-  } else {
-    mock_unhandled_rejection()
-  }
-}
-
-fn gcp_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
-// Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
->>>>>>> f4589e6880 (WIP: gcp §3 transport-fork refactor (DESIGN.md §3 single-authority): collapse)
 fn gcp_real_consumer_handles(case: PublishedMockCase) -> Bool {
   outcome_accepted_p(outcome: materialize_gcp_mock(case: case))
 }
