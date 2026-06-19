@@ -36,11 +36,9 @@ import std.measure {
   Currency,
   Micro,
   One,
+  Nano,
   ByteSize,
   MoneyAmount,
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -49,6 +47,8 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+// Nanosecond timing CHOICE from its single authority (std.verification), not std.measure.
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_schedule { CostAccount }
 import std.realization_measurement { cost_account_measured_from_time }
 import std.content_hash {
@@ -125,6 +125,9 @@ type Duration = Measure<Time, One, Nat>
 // Demanded by Hetzner cost quotes whose source data is `*_eur_micros` (e.g. 50500
 // micro-EUR/hour); micros are finer than the EUR minor unit (cent), so a minor-unit
 // `<One>` carrier could not hold them losslessly.
+// dissolution-trigger: collapse with std.measure.MoneyAmountMicro once v2 parametric-
+// in-field-position eval lands — both aliases dissolve to `MoneyAmount<Micro>` (see
+// std/measure.dag header on the dual-alias pair).
 type MoneyMicros = MoneyAmount<Micro>
 
 fn money_micros(count: Nat) -> MoneyMicros {
@@ -292,6 +295,26 @@ type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 //   - `currency: CurrencyCode` — ISO 4217 closed-domain identity, not a free
 //     `NonEmptyStr`.
 type CostEstimate { model: CostModel, unit_price: MoneyMicros, currency: CurrencyCode }
+
+// Per-second billed cloud quote — the product-side $/billing axis consumer for a
+// vendor hourly rate carried as `MoneyMicros` (Measure<Currency, Micro>). The vendor
+// catalog (extdeps.cloud.hetzner) owns the cited micro-EUR rows; this function is
+// vendor-agnostic — it projects any hourly `MoneyMicros` + ISO currency into the
+// `CostEstimate` shape the placement/isolation lattice reads via `ComputeOffer.cost_quote`.
+fn per_second_billed_cost_quote(unit_price: MoneyMicros, currency: CurrencyCode) -> CostEstimate {
+  CostEstimate {
+    model: CostModel {
+      cost_class: PerSecondBilled,
+      rates: ProviderCostModel { placeholder: true },
+    },
+    unit_price: unit_price,
+    currency: currency,
+  }
+}
+
+fn cost_estimate_unit_price_micros(quote: CostEstimate) -> Nat {
+  money_micros_count(m: quote.unit_price)
+}
 
 type ComputeOffer {
   provider: ProviderIdentity
@@ -664,6 +687,12 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
+  // NANOSECOND scale CHOICE (relocated here per DESIGN §3): the realization /
+  // measurement framework (std.realization_measurement / std.realization_schedule) is
+  // scale-AGNOSTIC; this consumer — the host wall-clock observation boundary — OWNS the
+  // decision to denominate measured cost in nanoseconds, because that is the resolution
+  // the host clock observes elapsed wall time at. The framework rolls up whatever scale
+  // arrives; nanosecond is named here, once, where it is measured.
   wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
@@ -684,7 +713,9 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 
 // Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
 // → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
-fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
+// The scale-agnostic roll-up is instantiated at `CostAccount<Nano>` HERE (this consumer's
+// owned ns choice), inferred from the NanosecondDuration wall_duration.
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
 }
 

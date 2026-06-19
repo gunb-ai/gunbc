@@ -25,6 +25,9 @@
 // MIGRATION SLICE 5a — cross Arrow→Conj: Conj-positional emitted + FormalProduction flat rhs
 // on the lhs-exact structural path (`derive_grammar_relation_row_node`); dissolves slice-4's
 // `bash_fixed_tokens_grammar_relation_row` Arrow exact-equality scaffold.
+// Bash is the first PRODUCTION consumer of the T-11-gated lhs-exact path
+// (feature:grammar-inverse-lhs-exact-selection); on parser-convergence dissolution, migrate
+// these bash FormalProduction rows together with typescript's.
 // Next slices: If/Subshell/Heredoc → Assign/EnvPrefixed/Exit → migrate sidecar consumers →
 // delete program.dag.
 //
