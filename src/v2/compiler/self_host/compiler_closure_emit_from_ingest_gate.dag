@@ -1,6 +1,8 @@
 // Scope: N_v2 substrate gate — emit_compiler_import_closure_from_ingest on scoped
 //   host manifest overlay (v2 own emitter via emit_for_target).
 // Status: NOT auto-enrolled (no test fn); run via scripts/v2-compiler-closure-nv2-gate.sh only.
+// Roots: gunbc.ci_layer_roots.witness_layer_roots (carrier v2.compiler.self_host.closure_witness_layer_roots;
+//   shell projection scripts/lib/witness_layer_roots.sh).
 
 module v2.test.self_host.compiler_closure_emit_from_ingest_gate
 

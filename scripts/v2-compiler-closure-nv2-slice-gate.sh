@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# scripts/v2-compiler-closure-nv2-slice-gate.sh — bounded representative slice for Q1 correctness.
+# scripts/v2-compiler-closure-nv2-slice-gate.sh — DIAGNOSTIC bounded slice oracle (gap-lane).
 #
 # Exercises gap-1/2/3 constructs (caret, comma-optional lists, repeat cons-spine /
 # qualified names) plus normalize/infer pipeline modules — without the full 59-module
 # interpreter marathon (Q2 scale finding is separate).
+# Layer roots: gunbc.ci_layer_roots.witness_layer_roots (same as nv2-gate; not a fork).
 #
 # Usage: v2-compiler-closure-nv2-slice-gate.sh [repo_root]
 
@@ -11,6 +12,10 @@ set -euo pipefail
 
 ROOT="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "$ROOT"
+
+# shellcheck source=lib/witness_layer_roots.sh
+source "$ROOT/scripts/lib/witness_layer_roots.sh"
+witness_layer_roots_load "$ROOT"
 
 MANIFEST="$ROOT/target/v2-compiler-closure-slice-manifest.dag"
 MANIFEST_DIR="$(dirname "$MANIFEST")"
@@ -33,9 +38,13 @@ cargo test -p v1-compiler-tests emit_representative_slice_manifest -- --ignored 
 
 run_claim() {
   local fn="$1"
+  local -a root_args=()
+  local r
+  for r in "${WITNESS_LAYER_ROOTS[@]}"; do
+    root_args+=(--source-root "${ROOT}/${r}")
+  done
   "$GUNBC" run \
-    --source-root dsl \
-    --source-root src/v2 \
+    "${root_args[@]}" \
     --source-root "$MANIFEST_DIR" \
     --entry src/v2/compiler/self_host/compiler_closure_emit_from_ingest_gate.dag \
     --function "$fn" \

@@ -16,6 +16,23 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::workspace_root;
 
+fn witness_layer_root_paths(ws: &Path) -> Vec<String> {
+    let auth = ws.join("dsl/gunbc/ci_layer_roots.dag");
+    let text = fs::read_to_string(&auth).expect("read ci_layer_roots authority");
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("data witness_layer_roots:"))
+        .expect("witness_layer_roots row in ci_layer_roots.dag");
+    let start = line.find('[').expect("witness_layer_roots list open");
+    let end = line.rfind(']').expect("witness_layer_roots list close");
+    line[start + 1..end]
+        .split(',')
+        .map(|part| part.trim().trim_matches('"'))
+        .filter(|part| !part.is_empty())
+        .map(|rel| ws.join(rel).to_string_lossy().into_owned())
+        .collect()
+}
+
 fn cargo_binary() -> String {
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
 }
@@ -111,11 +128,8 @@ fn write_nv2_manifest(manifest_path: &Path) {
 fn nv2_eval_context(manifest_dir: &Path) -> Result<InterpContext, String> {
     let ws = workspace_root();
     let entry = ws.join(NV2_GATE_ENTRY);
-    let roots = vec![
-        ws.join("dsl").to_string_lossy().to_string(),
-        ws.join("src/v2").to_string_lossy().to_string(),
-        manifest_dir.to_string_lossy().to_string(),
-    ];
+    let mut roots = witness_layer_root_paths(&ws);
+    roots.push(manifest_dir.to_string_lossy().into_owned());
     let (graph, source_indices) = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))?;
     Ok(make_eval_context(
         &graph,
