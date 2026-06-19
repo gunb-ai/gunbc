@@ -3,6 +3,7 @@
 // Scope: SPICE netlist model — direction-agnostic. Analog circuit
 //        description: components, nodes, .model cards, directives. A flat
 //        component + connection graph — NO control flow.
+// Anchor: https://ngspice.sourceforge.io/docs/ngspice-manual.pdf — maintained SPICE3 netlist reference.
 // Anchor: "SPICE3 Version 3f5 User's Guide" (Quarles et al., UC Berkeley
 //         ERL, 1993) — the canonical versioned netlist-format spec the
 //         worker models against; the ngspice User's Manual (pin a
