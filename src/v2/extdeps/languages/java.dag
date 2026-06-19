@@ -4,6 +4,7 @@
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v2.extdeps.languages.java
+import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
@@ -156,13 +157,6 @@ type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
 
-type JavaLanguageModel {
-  lex: LexRules
-  grammar: ParseGrammar
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 
 // T-11 java grammar relation row: fixed terminals and bound terminals share
 // the Java grammar production instead of an operator string template.
@@ -1567,8 +1561,8 @@ fn java_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn java_language_model_wave2() -> JavaLanguageModel {
-  JavaLanguageModel {
+fn java_language_model_wave2() -> LanguageModel {
+  LanguageModel {
     lex: java_wave2_lex(),
     grammar: java_wave2_grammar(),
     language_identity: ^java_language_model_surface_id,
@@ -2071,8 +2065,8 @@ fn java_model_core_wave1() -> ModelCore {
   }
 }
 
-fn java_language_model_wave1() -> JavaLanguageModel {
-  JavaLanguageModel {
+fn java_language_model_wave1() -> LanguageModel {
+  LanguageModel {
     lex: java_wave1_lex(),
     grammar: java_wave1_grammar(),
     language_identity: ^java_language_model_surface_id,

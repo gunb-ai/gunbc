@@ -5,11 +5,11 @@
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v2.compiler.resolve
+import v2.std.language_model { LanguageModel }
 
 
 import v2.compiler.normalize { NormalizedTree }
 import v2.extdeps.languages.dag {
-  DagLanguageModel,
   dag_language_model_canonical_symbols,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
@@ -202,7 +202,7 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 }
 
 
-fn build_program_namespace(tree: NormalizedTree, lm: DagLanguageModel) -> Namespace {
+fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: harvest_direct_atom_binding(
       root: tree,
@@ -329,7 +329,7 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
 fn resolve_surface_operator_atom(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   identity: Symbol
 ) -> Outcome<Node> {
   match dag_surface_operator_canonicalization_lookup(lm: lm, surface_token: identity) {
@@ -352,7 +352,7 @@ fn resolve_surface_operator_atom(
 fn resolve_transform_operator_child(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<Node> {
   match n.kind {
@@ -365,7 +365,7 @@ fn resolve_transform_operator_child(
 fn resolve_transform_children(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<Node> {
   match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
@@ -452,7 +452,7 @@ fn resolve_transform_children(
 fn resolve_node(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<Node> {
   match n.kind {
@@ -511,7 +511,7 @@ fn resolve_node(
 fn resolve_child_edge(
   e: Edge,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<Edge> {
   match e.label {
@@ -562,7 +562,7 @@ fn resolve_child_edge(
 fn resolve_children_homogeneous_scope(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<Node> {
   let ctx = under_module_root || dag_node_is_module_root_conj(n: n)
@@ -603,7 +603,7 @@ fn resolve_edges_first_outer_then_inner(
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<List<Edge>> {
   match fold(
@@ -699,7 +699,7 @@ fn resolve_bind_edges(
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<List<Edge>> {
   match fold(
@@ -806,7 +806,7 @@ fn resolve_bind_edges(
 fn resolve_bind_node(
   n: Node,
   scope: Scope,
-  lm: DagLanguageModel,
+  lm: LanguageModel,
   under_module_root: Bool
 ) -> Outcome<Node> {
   if count(n.children) == 3 {
@@ -833,7 +833,7 @@ fn resolve_bind_node(
 }
 
 
-fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> {
+fn resolve(tree: NormalizedTree, lm: LanguageModel) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
     namespace: build_program_namespace(tree: tree, lm: lm),
@@ -845,7 +845,7 @@ fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> 
 fn resolve_with_namespace(
   tree: NormalizedTree,
   namespace: Namespace,
-  lm: DagLanguageModel
+  lm: LanguageModel
 ) -> Outcome<ResolvedTree> {
   if well_formed(n: tree) {
     resolve_node(
