@@ -33,3 +33,12 @@ fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
 fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String {
   concat("\"", req, "\"")
 }
+
+// `[package]` header through default_stage0_package_version — shared by
+// `stage0_crates.emit_stage0_crate_manifest` and `emit_rust.emit_cargo_toml`.
+fn render_cargo_package_header_prefix(name: String) -> String {
+  concat(
+    "[package]\nname = \"", name, "\"\n",
+    render_cargo_package_version_field(version: default_stage0_package_version)
+  )
+}
