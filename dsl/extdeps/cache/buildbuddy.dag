@@ -1,0 +1,80 @@
+// extdeps/cache/buildbuddy.dag — BuildBuddy remote CAS cache catalog (cited facts).
+//
+// Spec: https://www.buildbuddy.io/docs/remote-cache
+
+module extdeps.cache.buildbuddy
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  CasContentEncoding,
+  ContentAddressedByValue,
+  UpsertSubject,
+  ContentAddressLookup,
+  WriteOnce,
+  MissThenCreate,
+  RawBytes,
+  CrossHostNetwork,
+  Never,
+  WriteThenCommit,
+  ApiKey,
+  LanMs,
+  Strong,
+  VendorCitation,
+  ManualPurge,
+  Network,
+}
+
+data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
+
+data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
+  identity: buildbuddy_cas_id
+  backing_surface: "buildbuddy-remote-cas"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+    classification: ContentAddressedByValue
+    inputs_considered: [UpsertSubject]
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Network
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: RawBytes
+    locality: CrossHostNetwork
+    eviction: Never
+    atomicity: WriteThenCommit
+    auth: ApiKey
+    read_latency: LanMs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "lookup_semantics"
+      evidence: VendorCitation {
+        source: "BuildBuddy remote cache content-addressed artifacts"
+        url: "https://www.buildbuddy.io/docs/remote-cache"
+      }
+    },
+    {
+      field: "write_semantics"
+      evidence: VendorCitation {
+        source: "BuildBuddy CAS blobs are content-addressed and not overwritten in place"
+        url: "https://www.buildbuddy.io/docs/remote-cache"
+      }
+    },
+    {
+      field: "atomicity"
+      evidence: VendorCitation {
+        source: "CAS upload commit visibility (orthogonal to write-once key semantics)"
+        url: "https://www.buildbuddy.io/docs/remote-cache"
+      }
+    },
+  ]
+}
