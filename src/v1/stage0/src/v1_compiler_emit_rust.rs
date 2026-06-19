@@ -459,7 +459,7 @@ pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
             }
         }
     };
-    (binding.params.clone().len() as i64) == 0
+    (binding.children.clone().len() as i64) == 0 && (binding.params.clone().len() as i64) == 0
 }
 
 pub fn render_rust_fn_sig_type(
@@ -469,17 +469,19 @@ pub fn render_rust_fn_sig_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> String {
-    let name = authored_name_at(source_indices.clone(), n.clone());
-    if ((n.connective.clone() == Connective::NoConnective)
-        && ((n.children.clone().len() as i64) > 0)
-        && !is_container_type(name.clone())
-        && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
-    {
-        render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
-    } else if ((generic_param_names.clone().len() as i64) > 0) {
+    if ((generic_param_names.clone().len() as i64) > 0) {
         render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
     } else {
-        render_rust_fn_sig_type_applied_binding(n, shared_types, source_indices, env)
+        let name = authored_name_at(source_indices.clone(), n.clone());
+        if ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0)
+            && !is_container_type(name.clone())
+            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+        {
+            render_rust_shared_type_if_needed(name.clone(), name, shared_types.clone())
+        } else {
+            render_rust_fn_sig_type_applied_binding(n, shared_types, source_indices, env)
+        }
     }
 }
 
@@ -583,49 +585,37 @@ pub fn render_rust_alias_rhs_type(
                 } else {
                     name.clone()
                 };
-                if !is_container_type(name.clone())
-                    && rust_fn_sig_peel_closed_alias(scope.type_env.clone(), n.clone())
+                let args = Rc::new({
+                    let mut __result = Vec::new();
+                    for arg in n.children.clone().iter().cloned() {
+                        __result.push(render_rust_alias_rhs_type(
+                            arg.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            scope.clone(),
+                            imports.clone(),
+                            registry.clone(),
+                            module_name.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            module_index.clone(),
+                            variant_to_enum.clone(),
+                        ));
+                    }
+                    __result
+                })
+                .join(&", ".to_string());
+                let applied_ty = v1_rt::concat(
+                    v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
+                    ">".to_string(),
+                );
+                if (v1_rt::set_contains(&shared_types, name.clone())
+                    && !rust_type_is_rc_wrapped(applied_ty.clone()))
                 {
-                    if (v1_rt::set_contains(&shared_types, name.clone())
-                        && !rust_type_is_rc_wrapped(base.clone()))
-                    {
-                        wrap_shared_type(RenderTarget::Rust, base.clone())
-                    } else {
-                        base.clone()
-                    }
+                    wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
                 } else {
-                    let args = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in n.children.clone().iter().cloned() {
-                            __result.push(render_rust_alias_rhs_type(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                                scope.clone(),
-                                imports.clone(),
-                                registry.clone(),
-                                module_name.clone(),
-                                export_sets.clone(),
-                                typed_modules.clone(),
-                                module_index.clone(),
-                                variant_to_enum.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .join(&", ".to_string());
-                    let applied_ty = v1_rt::concat(
-                        v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
-                        ">".to_string(),
-                    );
-                    if (v1_rt::set_contains(&shared_types, name.clone())
-                        && !rust_type_is_rc_wrapped(applied_ty.clone()))
-                    {
-                        wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
-                    } else {
-                        applied_ty.clone()
-                    }
+                    applied_ty.clone()
                 }
             }
         } else {
@@ -3139,9 +3129,7 @@ pub fn has_physical_type_def_in_module_filename(
                     for item in tm.items.clone().iter().cloned() {
                         if ((authored_name_at(source_indices.clone(), item.clone()).as_str()
                             == rhs_name.clone().as_str())
-                            && (is_type_def_item(item.clone())
-                                || is_type_alias_item(item.clone(), source_indices.clone())
-                                || is_type_decl_item(item.clone(), source_indices.clone())))
+                            && is_type_def_item(item.clone()))
                         {
                             __found = true;
                             break;
@@ -8478,13 +8466,22 @@ pub fn render_rust_param_sig_type(
 ) -> String {
     {
         let type_node = resolved_type(param.clone());
-        render_rust_fn_sig_type(
-            type_node,
-            generic_param_names,
-            shared_types,
-            source_indices,
-            env,
-        )
+        if ((generic_param_names.clone().len() as i64) > 0) {
+            render_rust_decl_type(
+                type_node,
+                generic_param_names.clone(),
+                shared_types,
+                source_indices,
+            )
+        } else {
+            render_rust_fn_sig_type(
+                type_node,
+                generic_param_names,
+                shared_types,
+                source_indices,
+                env,
+            )
+        }
     }
 }
 
