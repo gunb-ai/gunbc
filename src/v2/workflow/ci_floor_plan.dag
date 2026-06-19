@@ -37,7 +37,10 @@ import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
+import gunbc.ci_fleet { ci_fleet_floor_spawn_width }
 import std.types { ContentHash }
+import std.measure { HardwareThreadCount }
+import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
@@ -187,7 +190,7 @@ fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
 fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   RealizationPlan {
     target: ci_floor_target_digest
-    objective: RealizationObjective { goals: [] }
+    objective: RealizationObjective { goals: width_fold_objective_goals() }
     schedule: gunbc_ci_floor_schedule_inner()
     total: cost_account_predicted_zero()
   }
@@ -209,4 +212,9 @@ fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
     NotApplicable { diagnostic: _ } => false
     Unrealized { diagnostic: _ } => false
   }
+}
+
+// claim_executor spawn-width companion (feature:scheduler-width-budget scaffold).
+fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
+  ci_fleet_floor_spawn_width()
 }

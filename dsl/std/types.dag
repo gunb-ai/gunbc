@@ -365,8 +365,6 @@ type GitRef       = String where non_empty
 
 // --- Domain enums (Level 4: Finite Coproducts) ------------------------
 
-type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
-
 // --- Extracted enums (WS1-2: stringly-typed -> sum types) ---------------
 
 type TopologyNodeKind = Pure | Transport | SubDag | Env
@@ -374,15 +372,18 @@ type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
-// Canonical platform/target vocabulary (aligned with core/ir::platform)
-type Arch = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
+// Canonical target vocabulary (aligned with core/ir::platform).
+// TargetArchitecture is byte-identical to extdeps.cpu.types.CpuArchitecture — the std-layer
+// projection before extdeps import is available on every consumer path. OCI GOARCH wire
+// superset (X86, Arm, Mips, …) lives in extdeps.container.oci.types.ImageConfigArchitecture.
+type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
 type Vendor = UnknownVendor | Pc | Apple | W64
 type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
 type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf
 type ExecutionEnv = Native | Wsl | Container | Ci | Emulator
 
 type TargetTriple {
-  arch: Arch
+  arch: TargetArchitecture
   vendor: Vendor
   os: Os
   env: AbiEnv?

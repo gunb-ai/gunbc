@@ -5,8 +5,7 @@
 
 module std.emit_model
 
-// Stand-in `DeclarationRef` — bootstrap rows are empty.
-type DeclarationRef = String
+import std.serialization { DeclarationRef }
 
 type PlaceholderConvention
   = IndexedArgs

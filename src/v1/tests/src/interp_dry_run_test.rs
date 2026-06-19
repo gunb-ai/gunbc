@@ -114,12 +114,13 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
             .arg("--entry")
             .arg(entry_s.as_ref())
             .arg("--function")
-            .arg("hermetic_witness_holds");
-        cmd.output().expect("claim_batch wet (default)")
+            .arg("hermetic_witness_holds")
+            .arg("--wet");
+        cmd.output().expect("claim_batch --wet")
     };
     assert!(
         !wet.status.success(),
-        "default Wet must fail without a live server; stderr={}",
+        "explicit --wet must fail without a live server; stderr={}",
         String::from_utf8_lossy(&wet.stderr)
     );
 
@@ -130,14 +131,13 @@ fn claim_batch_hermetic_flag_uses_mock_response_by_execution() {
             .arg("--entry")
             .arg(entry_s.as_ref())
             .arg("--function")
-            .arg("hermetic_witness_holds")
-            .arg("--hermetic");
-        cmd.output().expect("claim_batch --hermetic")
+            .arg("hermetic_witness_holds");
+        cmd.output().expect("claim_batch default hermetic")
     };
     let _ = fs::remove_dir_all(&root);
     assert!(
         hermetic.status.success(),
-        "claim_batch --hermetic must pass via mock_response; stderr={}",
+        "claim_batch default Hermetic must pass via mock_response; stderr={}",
         String::from_utf8_lossy(&hermetic.stderr)
     );
 }

@@ -1,7 +1,7 @@
-// Cut 4 thesis proof — compile(Eval) yields EvalResult{value:Node} for a representable
-// runtime value (medium-neutral codomain through the real compile entry).
+// Cut 4 thesis proof — compile(Eval) yields EvalResult{value:Medium<Node>} for a representable
+// runtime value (uniform Medium<R> codomain through the real compile entry).
 //
-// GREEN: bool_primitive_facts literal → EvalResult with projected primitive Node.
+// GREEN: bool_primitive_facts literal → EvalResult with Lossless Medium<Node> carrying projected primitive Node.
 // RED: unit literal → ^eval_rejected_runtime_value_node_unrepresentable (not fabricated EvalResult).
 //
 // Run: claim_batch --source-root src/v2 --entry src/v2/test/claim/compiler/compile_eval_thesis_proof_test.dag --function compile_eval_thesis_proof_holds --claim-run
@@ -23,6 +23,7 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { Map }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
@@ -81,13 +82,20 @@ fn compile_eval_thesis_expected_bool_node() -> Node {
   }
 }
 
+fn compile_eval_thesis_medium_matches_expected(medium: Medium<Node>) -> Bool {
+  match medium.fidelity {
+    Lossless => medium.carried == compile_eval_thesis_expected_bool_node()
+    Lossy => false
+  }
+}
+
 fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   match compile_inferred(
     inferred: compile_eval_thesis_inferred(root: v2_eval_wave1_bool_literal_pin),
     mode: Eval { runtime: v2_eval_wave1_bool_literal_pin }
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
-      actual == compile_eval_thesis_expected_bool_node()
+      compile_eval_thesis_medium_matches_expected(medium: actual)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -98,7 +106,7 @@ fn compile_eval_bool_via_compile_entry_holds() -> Bool {
     mode: Eval { runtime: v2_eval_wave1_bool_literal_pin }
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
-      actual == compile_eval_thesis_expected_bool_node()
+      compile_eval_thesis_medium_matches_expected(medium: actual)
     Rejected { diagnostics: _ } => false
   }
 }

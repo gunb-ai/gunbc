@@ -21,6 +21,7 @@ module gunbc.tools.review_codex
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
 import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
 import extdeps.github.pulls
+import std.types { CommitSha }
 import extdeps.llm.cli
 import extdeps.shell
 import std.credentials { CredentialSource, EnvVar }
@@ -113,7 +114,7 @@ dsl/std/types.dag — kernel types, container types"
 
 // ── Pure functions ────────────────────────────────────────────
 
-fn has_review_at_sha(reviews: List<PullReview>, sha: String) -> Bool {
+fn has_review_at_sha(reviews: List<PullReview>, sha: CommitSha) -> Bool {
   any(reviews, r => r.commit_id == sha && contains(r.body, "INVARIANTS"))
 }
 
@@ -134,7 +135,7 @@ fn build_prompt(
 fn format_review_header(
   backend: String,
   model: String,
-  sha: String,
+  sha: CommitSha,
   body: String
 ) -> String {
   "<!-- [codex-review] sha:{sha} -->\n`{backend}` · `{model}` · `{sha}`\n\n{body}"

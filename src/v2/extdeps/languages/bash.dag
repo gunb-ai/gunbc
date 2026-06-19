@@ -21,8 +21,17 @@
 //
 // MIGRATION SLICE 4 — ShellStmt compound constructs (AndOr / Pipe / WithRedir) as translation
 // rows. Byte-identical to serialize_bash for each fixture; witnesses in bash_emit_command_test.
-// Next slices: If/Subshell/Heredoc → Assign/EnvPrefixed/Exit → migrate sidecar consumers →
-// delete program.dag.
+//
+// MIGRATION SLICE 5a — cross Arrow→Conj: Conj-positional emitted + FormalProduction flat rhs
+// on the lhs-exact structural path (`derive_grammar_relation_row_node`); dissolves slice-4's
+// `bash_fixed_tokens_grammar_relation_row` Arrow exact-equality scaffold.
+// Bash is the first PRODUCTION consumer of the T-11-gated lhs-exact path
+// (feature:grammar-inverse-lhs-exact-selection); on parser-convergence dissolution, migrate
+// these bash FormalProduction rows together with typescript's.
+// MIGRATION SLICE 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone
+// (`Pipe { AndOr left }` must emit `{ a && b; } | c`, not flat `a && b | c`). Subshell
+// nesting AndOr is a separate recursion fixture. Witnesses in bash_emit_command_test.
+// Next slices: Assign/EnvPrefixed/Exit → migrate sidecar consumers → delete program.dag.
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
 
@@ -30,11 +39,13 @@ module v2.extdeps.languages.bash
 
 import v2.std.algebra { Empty, fold_list, list_snoc_item }
 import v2.std.grammar {
-  GrammarExpr,
-  GrammarProduction,
-  Sequence,
-  grammar_expr_terminal,
-  grammar_production_to_node,
+  FormalGrammarSymbol,
+  FormalProduction,
+  derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact,
+  grammar_formal_production,
+  grammar_formal_terminal,
+  grammar_formal_terminal_bound,
   grammar_relation_tokens_node
 }
 import v2.std.compilers.lexing {
@@ -52,13 +63,11 @@ import v2.std.compilers.target_model {
   TargetModel,
   target_model_emit_transforms_empty,
   target_model_make_with_emit_transforms,
-  concrete_syntax_token_class,
   concrete_syntax_token_to_node
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
-  Arrow,
   Atom,
   Conj,
   Edge,
@@ -69,17 +78,16 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
+import v2.std.witness { Holds, Violates, Witness }
 
 // =========================================================================
 // The emitted intent (the `translate`-side anchor).
 //
-// An Arrow of leaf-Atom children — one atom per command word. Arrow + leaf children means: (a)
-// `translate`'s structure-preserving fold is identity (raw == node), and (b) the shape is NOT
-// lhs-exact-supported, so the grammar relation row is selected by exact fixture equality on
-// `grammar_relation_field_emitted` (06_translate.dag → grammar.dag
-// grammar_relation_row_emitted_reverse_parse_matches, the Arrow fallback). This is the same emit
-// anchor shape rust's mvp1 add-fn uses. The intent's *modeled* form (a real ShellStmt/Command
-// vocabulary the transports lower from) is a later slice; here it is a synthetic rendering anchor.
+// Conj of leaf-Atom positional children — one atom per bound-token slot (FixedToken
+// occurrences in FormalProduction.rhs are unbound and carry no emitted child).
+// lhs-exact-supported: grammar relation row selection walks FormalProduction rhs
+// against positional emitted children (`formal_production_for_lhs_exact` →
+// `derive_grammar_relation_row_node`), not Arrow exact-fixture equality.
 // =========================================================================
 
 fn bash_word_atom(id: Symbol) -> Node {
@@ -90,15 +98,128 @@ fn bash_word_atom(id: Symbol) -> Node {
   }
 }
 
-data bash_mvp1_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_git) },
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_rev_parse) },
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_show_toplevel) }
-  ],
-  occurrence_id: SyntheticOccurrence
+fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: tokens,
+      empty: Empty,
+      cons: fn(acc, token) {
+        match token {
+          BoundToken { binding: binding, token_class: _ } =>
+            list_snoc_item(
+              xs: acc,
+              item: Edge { label: Positional, target: bash_word_atom(id: binding) }
+            )
+          FixedToken { token_class: _ } => acc
+        }
+      }
+    ),
+    occurrence_id: SyntheticOccurrence
+  }
 }
+
+
+fn bash_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
+  match token {
+    FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
+    BoundToken { token_class: c, binding: b } =>
+      grammar_formal_terminal_bound(identity: c, binding: b)
+  }
+}
+
+fn bash_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: bash_formal_symbol_from_token(token: token))
+    }
+  )
+}
+
+fn bash_formal_production_from_fixture(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>
+) -> FormalProduction {
+  grammar_formal_production(
+    lhs: lhs,
+    rhs: bash_formal_rhs_from_tokens(tokens: tokens)
+  )
+}
+
+fn bash_lhs_exact_relation_row_witness(
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  let production = bash_formal_production_from_fixture(lhs: lhs, tokens: tokens)
+  let productions = [production]
+  match formal_production_for_lhs_exact(
+    productions: productions,
+    lhs: lhs,
+    child: emitted
+  ) {
+    Holds { value: selected } =>
+      derive_grammar_relation_row_node(
+        production: selected,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_empty_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_relation_translation_rules_witness(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Witness<Node> {
+  match bash_lhs_exact_relation_row_witness(
+    lhs: lhs,
+    tokens: tokens,
+    emitted: emitted
+  ) {
+    Holds { value: row } =>
+      Holds {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            bash_named_edge(name: rule_name, target: row)
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_relation_translation_rules_node(
+  rule_name: Symbol,
+  lhs: Symbol,
+  tokens: List<ConcreteSyntaxToken>,
+  emitted: Node
+) -> Node {
+  match bash_relation_translation_rules_witness(
+    rule_name: rule_name,
+    lhs: lhs,
+    tokens: tokens,
+    emitted: emitted
+  ) {
+    Holds { value: rules } => rules
+    Violates { diagnostic: _ } => bash_empty_translation_rules_node()
+  }
+}
+
 
 // The canonical shell text emit must produce (POSIX single-quoted words). Byte-identical to
 // `serialize_bash(command([lit("git"), lit("rev-parse"), lit("--show-toplevel")]))`.
@@ -116,6 +237,10 @@ fn bash_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+data bash_mvp1_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_mvp1_concrete_tokens()
+)
+
 fn bash_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   // Serialize through the single shared morphism (no parallel wire authority).
   concrete_syntax_token_to_node(token: token)
@@ -129,99 +254,37 @@ fn bash_named_edge(name: Symbol, target: Node) -> Edge {
 // Grammar relation row: emitted intent ⇄ concrete token sequence.
 // =========================================================================
 
-fn bash_grammar_command_expression() -> GrammarExpr {
-  Sequence {
-    left: Sequence {
-      left: grammar_expr_terminal(token_class: ^bash_token_word_git),
-      right: grammar_expr_terminal(token_class: ^bash_token_word_rev_parse)
-    },
-    right: grammar_expr_terminal(token_class: ^bash_token_word_show_toplevel)
-  }
-}
-
-fn bash_grammar_production_command() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_command,
-    expression: bash_grammar_command_expression(),
-    emitted: bash_word_atom(id: ^bash_surface_command)
-  }
-}
-
-fn bash_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: bash_grammar_production_command())
-      ),
-      bash_named_edge(name: ^grammar_relation_field_emitted, target: bash_mvp1_emitted_command),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_mvp1_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn bash_mvp1_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_command,
-        target: bash_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_command,
+    lhs: ^bash_production_command,
+    tokens: bash_mvp1_concrete_tokens(),
+    emitted: bash_mvp1_emitted_command
+  )
 }
 
 fn bash_bound_words_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_bound_words,
-        target: bash_bound_words_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_bound_words,
+    lhs: ^bash_production_bound_words,
+    tokens: bash_bound_words_concrete_tokens(),
+    emitted: bash_bound_words_emitted_command
+  )
 }
 
 fn bash_embedded_quote_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_embedded_quote_lit,
-        target: bash_embedded_quote_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_embedded_quote_lit,
+    lhs: ^bash_production_embedded_quote_lit,
+    tokens: bash_embedded_quote_concrete_tokens(),
+    emitted: bash_embedded_quote_emitted_command
+  )
 }
 
 // =========================================================================
 // Slice 2 — bound words: VarRef double-quoted + Lit single-quoted at emit time.
 // Byte-identical to serialize_bash(command([var_ref("ROOT"), lit("ROOT")])) => "$ROOT" 'ROOT'
 // =========================================================================
-
-data bash_bound_words_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_var_ROOT) },
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_lit_ROOT) }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
 fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -230,56 +293,13 @@ fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_bound_words_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: grammar_expr_terminal(token_class: ^bash_token_var_ref),
-    right: grammar_expr_terminal(token_class: ^bash_token_lit_spaced)
-  }
-}
+data bash_bound_words_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_bound_words_concrete_tokens()
+)
 
-fn bash_bound_words_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_bound_words,
-    expression: bash_bound_words_grammar_expression(),
-    emitted: bash_word_atom(id: ^bash_surface_bound_words)
-  }
-}
-
-fn bash_bound_words_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: bash_bound_words_grammar_production())
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: bash_bound_words_emitted_command
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_bound_words_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
+data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
 // Single-word bound lit with an embedded single quote — total POSIX escaping.
-data bash_embedded_quote_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_binding_lit_a_quote_b) }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_embedded_quote_source_text: String = "'a'\\''b'"
-
 fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken {
@@ -289,57 +309,17 @@ fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_embedded_quote_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_embedded_quote_lit,
-    expression: grammar_expr_terminal(token_class: ^bash_token_lit),
-    emitted: bash_word_atom(id: ^bash_surface_embedded_quote_lit)
-  }
-}
+data bash_embedded_quote_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_embedded_quote_concrete_tokens()
+)
 
-fn bash_embedded_quote_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: bash_embedded_quote_grammar_production())
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: bash_embedded_quote_emitted_command
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_embedded_quote_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
+data bash_embedded_quote_source_text: String = "'a'\\''b'"
 
 // =========================================================================
 // Slice 3 — source-root-ingest gate: fixed two-word Command.
 // Byte-identical to serialize_bash(command([lit("bash"), lit("scripts/source-root-ingest-gate.sh")]))
 // modulo the sidecar's trailing newline (immaterial to `sh -c`).
 // =========================================================================
-
-data bash_source_root_ingest_gate_emitted_command: Node = Node {
-  kind: TypeNode { connective: Arrow },
-  children: [
-    Edge { label: Positional, target: bash_word_atom(id: ^bash_word_bash) },
-    Edge {
-      label: Positional,
-      target: bash_word_atom(id: ^bash_word_source_root_ingest_gate_sh)
-    }
-  ],
-  occurrence_id: SyntheticOccurrence
-}
-
-data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
 
 fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -348,149 +328,26 @@ fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_source_root_ingest_gate_grammar_expression() -> GrammarExpr {
-  Sequence {
-    left: grammar_expr_terminal(token_class: ^bash_token_word_bash),
-    right: grammar_expr_terminal(token_class: ^bash_token_word_source_root_ingest_gate_sh)
-  }
-}
+data bash_source_root_ingest_gate_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_source_root_ingest_gate_concrete_tokens()
+)
 
-fn bash_source_root_ingest_gate_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_source_root_ingest_gate,
-    expression: bash_source_root_ingest_gate_grammar_expression(),
-    emitted: bash_word_atom(id: ^bash_surface_source_root_ingest_gate)
-  }
-}
-
-fn bash_source_root_ingest_gate_grammar_relation_row_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(
-          production: bash_source_root_ingest_gate_grammar_production()
-        )
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_emitted,
-        target: bash_source_root_ingest_gate_emitted_command
-      ),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: bash_source_root_ingest_gate_concrete_tokens(),
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
+data bash_source_root_ingest_gate_source_text: String = "'bash' 'scripts/source-root-ingest-gate.sh'"
 
 fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_source_root_ingest_gate,
-        target: bash_source_root_ingest_gate_grammar_relation_row_node()
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_source_root_ingest_gate,
+    lhs: ^bash_production_source_root_ingest_gate,
+    tokens: bash_source_root_ingest_gate_concrete_tokens(),
+    emitted: bash_source_root_ingest_gate_emitted_command
+  )
 }
 
 // =========================================================================
 // Slice 4 — AndOr / Pipe / WithRedir (POSIX §2.9 lists / compound commands).
-// Shared helpers: bash_arrow_emitted_from_words, bash_grammar_sequence_from_tokens.
+// Shared helper: bash_conj_emitted_from_tokens.
 // Each row is byte-identical to serialize_bash for the matching ShellStmt fixture.
 // =========================================================================
-
-fn bash_fixed_tokens_grammar_relation_row(
-  production: GrammarProduction,
-  emitted: Node,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^grammar_relation_field_production,
-        target: grammar_production_to_node(production: production)
-      ),
-      bash_named_edge(name: ^grammar_relation_field_emitted, target: emitted),
-      bash_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: tokens,
-          token_to_node: bash_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_arrow_emitted_from_words(ids: List<Symbol>) -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: fold_list(
-      xs: ids,
-      empty: Empty,
-      cons: fn(acc, sym) {
-        list_snoc_item(
-          xs: acc,
-          item: Edge { label: Positional, target: bash_word_atom(id: sym) }
-        )
-      }
-    ),
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-type BashGramSeqBuild
-  = BashGramSeqInit
-  | BashGramSeqReady { expr: GrammarExpr }
-
-// Left-nested Sequence spine from a concrete-token row (shared by slice-4 fixtures).
-fn bash_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
-  match fold_list(
-    xs: tokens,
-    empty: BashGramSeqInit,
-    cons: fn(state, token) {
-      match state {
-        BashGramSeqInit =>
-          BashGramSeqReady {
-            expr: grammar_expr_terminal(
-              token_class: concrete_syntax_token_class(token: token)
-            )
-          }
-        BashGramSeqReady { expr: acc } =>
-          BashGramSeqReady {
-            expr: Sequence {
-              left: acc,
-              right: grammar_expr_terminal(
-                token_class: concrete_syntax_token_class(token: token)
-              )
-            }
-          }
-      }
-    }
-  ) {
-    BashGramSeqInit =>
-      grammar_expr_terminal(token_class: ^bash_token_word_git)
-    BashGramSeqReady { expr: result } => result
-  }
-}
-
-// AndOr { AndThen } — `'true' && 'false'`
-data bash_and_then_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [^bash_word_true, ^bash_surface_and_then, ^bash_word_false]
-)
-
-data bash_and_then_source_text: String = "'true' && 'false'"
 
 fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -500,37 +357,21 @@ fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_and_then_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_and_then,
-    expression: bash_grammar_sequence_from_tokens(tokens: bash_and_then_concrete_tokens()),
-    emitted: bash_word_atom(id: ^bash_surface_and_then_stmt)
-  }
-}
-
-fn bash_and_then_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_and_then,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_and_then_grammar_production(),
-          emitted: bash_and_then_emitted,
-          tokens: bash_and_then_concrete_tokens()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// AndOr { OrElse } — `'true' || 'false'`
-data bash_or_else_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [^bash_word_true, ^bash_surface_or_else, ^bash_word_false]
+// AndOr { AndThen } — `'true' && 'false'`
+data bash_and_then_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_and_then_concrete_tokens()
 )
 
-data bash_or_else_source_text: String = "'true' || 'false'"
+data bash_and_then_source_text: String = "'true' && 'false'"
+
+fn bash_and_then_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_and_then,
+    lhs: ^bash_production_and_then,
+    tokens: bash_and_then_concrete_tokens(),
+    emitted: bash_and_then_emitted
+  )
+}
 
 fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -540,42 +381,21 @@ fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_or_else_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_or_else,
-    expression: bash_grammar_sequence_from_tokens(tokens: bash_or_else_concrete_tokens()),
-    emitted: bash_word_atom(id: ^bash_surface_or_else_stmt)
-  }
-}
-
-fn bash_or_else_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_or_else,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_or_else_grammar_production(),
-          emitted: bash_or_else_emitted,
-          tokens: bash_or_else_concrete_tokens()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
-data bash_with_redir_stderr_null_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [
-    ^bash_word_git,
-    ^bash_word_rev_parse,
-    ^bash_word_show_toplevel,
-    ^bash_surface_redir_stderr_null
-  ]
+// AndOr { OrElse } — `'true' || 'false'`
+data bash_or_else_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_or_else_concrete_tokens()
 )
 
-data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
+data bash_or_else_source_text: String = "'true' || 'false'"
+
+fn bash_or_else_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_or_else,
+    lhs: ^bash_production_or_else,
+    tokens: bash_or_else_concrete_tokens(),
+    emitted: bash_or_else_emitted
+  )
+}
 
 fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -586,45 +406,21 @@ fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_with_redir_stderr_null_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_with_redir_stderr_null,
-    expression: bash_grammar_sequence_from_tokens(
-      tokens: bash_with_redir_stderr_null_concrete_tokens()
-    ),
-    emitted: bash_word_atom(id: ^bash_surface_with_redir_stderr_null)
-  }
-}
-
-fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_with_redir_stderr_null,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_with_redir_stderr_null_grammar_production(),
-          emitted: bash_with_redir_stderr_null_emitted,
-          tokens: bash_with_redir_stderr_null_concrete_tokens()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// Pipe — `'echo' 'hi' | 'wc' '-c'`
-data bash_pipe_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [
-    ^bash_word_echo,
-    ^bash_word_hi,
-    ^bash_surface_pipe,
-    ^bash_word_wc,
-    ^bash_word_minus_c
-  ]
+// WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
+data bash_with_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_with_redir_stderr_null_concrete_tokens()
 )
 
-data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
+data bash_with_redir_stderr_null_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null"
+
+fn bash_with_redir_stderr_null_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_with_redir_stderr_null,
+    lhs: ^bash_production_with_redir_stderr_null,
+    tokens: bash_with_redir_stderr_null_concrete_tokens(),
+    emitted: bash_with_redir_stderr_null_emitted
+  )
+}
 
 fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -636,45 +432,21 @@ fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_pipe_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_pipe,
-    expression: bash_grammar_sequence_from_tokens(tokens: bash_pipe_concrete_tokens()),
-    emitted: bash_word_atom(id: ^bash_surface_pipe_stmt)
-  }
-}
-
-fn bash_pipe_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_pipe,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_pipe_grammar_production(),
-          emitted: bash_pipe_emitted,
-          tokens: bash_pipe_concrete_tokens()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-// host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
-// Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
-data bash_or_else_with_redir_emitted: Node = bash_arrow_emitted_from_words(
-  ids: [
-    ^bash_word_git,
-    ^bash_word_rev_parse,
-    ^bash_word_show_toplevel,
-    ^bash_surface_redir_stderr_null,
-    ^bash_surface_or_else,
-    ^bash_word_pwd
-  ]
+// Pipe — `'echo' 'hi' | 'wc' '-c'`
+data bash_pipe_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_pipe_concrete_tokens()
 )
 
-data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
+data bash_pipe_source_text: String = "'echo' 'hi' | 'wc' '-c'"
+
+fn bash_pipe_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_pipe,
+    lhs: ^bash_production_pipe,
+    tokens: bash_pipe_concrete_tokens(),
+    emitted: bash_pipe_emitted
+  )
+}
 
 fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -687,31 +459,342 @@ fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-fn bash_or_else_with_redir_grammar_production() -> GrammarProduction {
-  GrammarProduction {
-    name: ^bash_production_or_else_with_redir,
-    expression: bash_grammar_sequence_from_tokens(
-      tokens: bash_or_else_with_redir_concrete_tokens()
-    ),
-    emitted: bash_word_atom(id: ^bash_surface_or_else_with_redir)
+// host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
+// Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
+data bash_or_else_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_or_else_with_redir_concrete_tokens()
+)
+
+data bash_or_else_with_redir_source_text: String = "'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'"
+
+fn bash_or_else_with_redir_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_or_else_with_redir,
+    lhs: ^bash_production_or_else_with_redir,
+    tokens: bash_or_else_with_redir_concrete_tokens(),
+    emitted: bash_or_else_with_redir_emitted
+  )
+}
+
+// =========================================================================
+// Slice 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone.
+// Pipe binds tighter than &&: flat `'true' && 'false' | 'true'` mis-groups as
+// `'true' && ('false' | 'true')`. Correct emit wraps the AndOr operand: `{ 'true' && 'false'; } | 'true'`.
+// Authority: program.dag BraceGroup + Pipe fixture (not the sidecar's flat Pipe concat).
+// =========================================================================
+
+fn bash_subshell_true_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_lparen },
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_rparen }
+  ]
+}
+
+data bash_subshell_true_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_subshell_true_concrete_tokens()
+)
+
+data bash_subshell_true_source_text: String = "('true')"
+
+fn bash_subshell_true_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_subshell_true,
+    lhs: ^bash_production_subshell_true,
+    tokens: bash_subshell_true_concrete_tokens(),
+    emitted: bash_subshell_true_emitted
+  )
+}
+
+fn bash_if_true_then_false_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_kw_if },
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_semicolon },
+    FixedToken { token_class: ^bash_token_kw_then },
+    FixedToken { token_class: ^bash_token_word_false },
+    FixedToken { token_class: ^bash_token_semicolon },
+    FixedToken { token_class: ^bash_token_kw_fi }
+  ]
+}
+
+data bash_if_true_then_false_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_if_true_then_false_concrete_tokens()
+)
+
+data bash_if_true_then_false_source_text: String = "if 'true'; then 'false'; fi"
+
+fn bash_if_true_then_false_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_if_true_then_false,
+    lhs: ^bash_production_if_true_then_false,
+    tokens: bash_if_true_then_false_concrete_tokens(),
+    emitted: bash_if_true_then_false_emitted
+  )
+}
+
+fn bash_heredoc_simple_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_word_cat },
+    FixedToken { token_class: ^bash_token_greater },
+    FixedToken { token_class: ^bash_token_word_out },
+    FixedToken { token_class: ^bash_token_heredoc_open_eof },
+    FixedToken { token_class: ^bash_token_heredoc_body_hi },
+    FixedToken { token_class: ^bash_token_heredoc_close_eof }
+  ]
+}
+
+data bash_heredoc_simple_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_heredoc_simple_concrete_tokens()
+)
+
+data bash_heredoc_simple_source_text: String = "cat > 'out' <<'EOF'\nhi\nEOF"
+
+fn bash_heredoc_simple_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_heredoc_simple,
+    lhs: ^bash_production_heredoc_simple,
+    tokens: bash_heredoc_simple_concrete_tokens(),
+    emitted: bash_heredoc_simple_emitted
+  )
+}
+
+// Subshell nesting AndOr — recursion test only (|| has equal precedence to &&; parens
+// change bytes but not parse grouping). `'(' 'true' && 'false' ')' || 'true'`
+fn bash_subshell_and_or_nested_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_lparen },
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_and_then },
+    FixedToken { token_class: ^bash_token_word_false },
+    FixedToken { token_class: ^bash_token_rparen },
+    FixedToken { token_class: ^bash_token_or_else },
+    FixedToken { token_class: ^bash_token_word_true }
+  ]
+}
+
+data bash_subshell_and_or_nested_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_subshell_and_or_nested_concrete_tokens()
+)
+
+data bash_subshell_and_or_nested_source_text: String = "('true' && 'false') || 'true'"
+
+fn bash_subshell_and_or_nested_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_subshell_and_or_nested,
+    lhs: ^bash_production_subshell_and_or_nested,
+    tokens: bash_subshell_and_or_nested_concrete_tokens(),
+    emitted: bash_subshell_and_or_nested_emitted
+  )
+}
+
+// Pipe { AndOr{a,&&,b}, c } — brace-group wrap is mandatory because | binds tighter than &&.
+// Correct: `{ 'true' && 'false'; } | 'true'`. Wrong flat concat: `'true' && 'false' | 'true'`.
+fn bash_pipe_and_or_brace_grouped_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_lbrace },
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_and_then },
+    FixedToken { token_class: ^bash_token_word_false },
+    FixedToken { token_class: ^bash_token_semicolon_rbrace },
+    FixedToken { token_class: ^bash_token_pipe },
+    FixedToken { token_class: ^bash_token_word_true }
+  ]
+}
+
+data bash_pipe_and_or_brace_grouped_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_pipe_and_or_brace_grouped_concrete_tokens()
+)
+
+data bash_pipe_and_or_brace_grouped_source_text: String = "{ 'true' && 'false'; } | 'true'"
+
+fn bash_pipe_and_or_brace_grouped_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_pipe_and_or_brace_grouped,
+    lhs: ^bash_production_pipe_and_or_brace_grouped,
+    tokens: bash_pipe_and_or_brace_grouped_concrete_tokens(),
+    emitted: bash_pipe_and_or_brace_grouped_emitted
+  )
+}
+
+fn bash_pipe_and_or_flat_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_word_true },
+    FixedToken { token_class: ^bash_token_and_then },
+    FixedToken { token_class: ^bash_token_word_false },
+    FixedToken { token_class: ^bash_token_pipe },
+    FixedToken { token_class: ^bash_token_word_true }
+  ]
+}
+
+data bash_pipe_and_or_flat_wrong_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_pipe_and_or_flat_wrong_concrete_tokens()
+)
+
+data bash_pipe_and_or_flat_wrong_source_text: String = "'true' && 'false' | 'true'"
+
+fn bash_subshell_true_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_lparen, text: "("),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_rparen, text: ")")
+      ]
+    }
   }
 }
 
-fn bash_or_else_with_redir_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      bash_named_edge(
-        name: ^bash_relation_rule_or_else_with_redir,
-        target: bash_fixed_tokens_grammar_relation_row(
-          production: bash_or_else_with_redir_grammar_production(),
-          emitted: bash_or_else_with_redir_emitted,
-          tokens: bash_or_else_with_redir_concrete_tokens()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
+fn bash_subshell_true_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_subshell_true_translation_rules_node(),
+    source_literal: ^bash_subshell_true_source_literal,
+    production_name: ^bash_production_subshell_true,
+    tokens: bash_subshell_true_concrete_tokens(),
+    source_text: bash_subshell_true_source_text,
+    lex: bash_subshell_true_lex()
+  )
+}
+
+fn bash_if_true_then_false_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_kw_if, text: "if "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_semicolon, text: "; "),
+        bash_lex_rule(token_class: ^bash_token_kw_then, text: "then "),
+        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'"),
+        bash_lex_rule(token_class: ^bash_token_semicolon, text: "; "),
+        bash_lex_rule(token_class: ^bash_token_kw_fi, text: "fi")
+      ]
+    }
   }
+}
+
+fn bash_if_true_then_false_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_if_true_then_false_translation_rules_node(),
+    source_literal: ^bash_if_true_then_false_source_literal,
+    production_name: ^bash_production_if_true_then_false,
+    tokens: bash_if_true_then_false_concrete_tokens(),
+    source_text: bash_if_true_then_false_source_text,
+    lex: bash_if_true_then_false_lex()
+  )
+}
+
+fn bash_heredoc_simple_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_word_cat, text: "cat"),
+        bash_lex_rule(token_class: ^bash_token_greater, text: " > "),
+        bash_lex_rule(token_class: ^bash_token_word_out, text: "'out'"),
+        bash_lex_rule(token_class: ^bash_token_heredoc_open_eof, text: " <<'EOF'\n"),
+        bash_lex_rule(token_class: ^bash_token_heredoc_body_hi, text: "hi\n"),
+        bash_lex_rule(token_class: ^bash_token_heredoc_close_eof, text: "EOF")
+      ]
+    }
+  }
+}
+
+fn bash_heredoc_simple_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_heredoc_simple_translation_rules_node(),
+    source_literal: ^bash_heredoc_simple_source_literal,
+    production_name: ^bash_production_heredoc_simple,
+    tokens: bash_heredoc_simple_concrete_tokens(),
+    source_text: bash_heredoc_simple_source_text,
+    lex: bash_heredoc_simple_lex()
+  )
+}
+
+fn bash_subshell_and_or_nested_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_lparen, text: "("),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_and_then, text: " && "),
+        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'"),
+        bash_lex_rule(token_class: ^bash_token_rparen, text: ")"),
+        bash_lex_rule(token_class: ^bash_token_or_else, text: " || "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'")
+      ]
+    }
+  }
+}
+
+fn bash_subshell_and_or_nested_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_subshell_and_or_nested_translation_rules_node(),
+    source_literal: ^bash_subshell_and_or_nested_source_literal,
+    production_name: ^bash_production_subshell_and_or_nested,
+    tokens: bash_subshell_and_or_nested_concrete_tokens(),
+    source_text: bash_subshell_and_or_nested_source_text,
+    lex: bash_subshell_and_or_nested_lex()
+  )
+}
+
+fn bash_pipe_and_or_brace_grouped_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_lbrace, text: "{ "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_and_then, text: " && "),
+        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'"),
+        bash_lex_rule(token_class: ^bash_token_semicolon_rbrace, text: "; }"),
+        bash_lex_rule(token_class: ^bash_token_pipe, text: " | "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'")
+      ]
+    }
+  }
+}
+
+fn bash_pipe_and_or_brace_grouped_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_pipe_and_or_brace_grouped_translation_rules_node(),
+    source_literal: ^bash_pipe_and_or_brace_grouped_source_literal,
+    production_name: ^bash_production_pipe_and_or_brace_grouped,
+    tokens: bash_pipe_and_or_brace_grouped_concrete_tokens(),
+    source_text: bash_pipe_and_or_brace_grouped_source_text,
+    lex: bash_pipe_and_or_brace_grouped_lex()
+  )
+}
+
+fn bash_pipe_and_or_flat_wrong_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'"),
+        bash_lex_rule(token_class: ^bash_token_and_then, text: " && "),
+        bash_lex_rule(token_class: ^bash_token_word_false, text: "'false'"),
+        bash_lex_rule(token_class: ^bash_token_pipe, text: " | "),
+        bash_lex_rule(token_class: ^bash_token_word_true, text: "'true'")
+      ]
+    }
+  }
+}
+
+fn bash_pipe_and_or_flat_wrong_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_pipe_and_or_flat_wrong,
+    lhs: ^bash_production_pipe_and_or_flat_wrong,
+    tokens: bash_pipe_and_or_flat_wrong_concrete_tokens(),
+    emitted: bash_pipe_and_or_flat_wrong_emitted
+  )
+}
+
+fn bash_pipe_and_or_flat_wrong_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_pipe_and_or_flat_wrong_translation_rules_node(),
+    source_literal: ^bash_pipe_and_or_flat_wrong_source_literal,
+    production_name: ^bash_production_pipe_and_or_flat_wrong,
+    tokens: bash_pipe_and_or_flat_wrong_concrete_tokens(),
+    source_text: bash_pipe_and_or_flat_wrong_source_text,
+    lex: bash_pipe_and_or_flat_wrong_lex()
+  )
 }
 
 fn bash_binding_spellings() -> Map<Symbol, String> {

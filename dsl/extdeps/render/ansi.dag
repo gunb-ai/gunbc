@@ -1,0 +1,69 @@
+// extdeps/render/ansi.dag — ANSI escape / SGR color realization for SemanticColor.
+//
+// Anchor: https://ecma-international.org/publications-and-standards/standards/ecma-48/
+//   (ISO/IEC 6429 Select Graphic Rendition CSI sequences: ESC [ <params> m)
+//
+// Provenance: gunb.ai/pkg/fermi/colors.go — project palette-index choices per SemanticColor.
+//
+// P2 split: std.symbols owns the agnostic SemanticColor concept; the cited SGR
+// realization lives here.
+
+module extdeps.render.ansi
+
+import std.symbols { SemanticColor }
+
+// ECMA-48 CSI framing — emitted once via emit_sgr_csi, not repeated per mapping row.
+data csi_esc: String = "\x1b["
+data csi_end: String = "m"
+
+// ISO 8613-6 / xterm 256-color palette index (0..255).
+type PaletteIndex = Int
+
+type SgrStyle
+  = SgrReset {}
+  | SgrDim {}
+  | SgrIndexedForeground { index: PaletteIndex }
+
+type AnsiMapping {
+  color: SemanticColor
+  style: SgrStyle
+}
+
+data ansi_mappings: List<AnsiMapping> = [
+  { color: Default, style: SgrReset {} },
+  { color: Success, style: SgrIndexedForeground { index: 34 } },
+  { color: Warning, style: SgrIndexedForeground { index: 208 } },
+  { color: Error,   style: SgrIndexedForeground { index: 196 } },
+  { color: Info,    style: SgrIndexedForeground { index: 39 } },
+  { color: Dim,     style: SgrDim {} },
+  { color: Active,  style: SgrIndexedForeground { index: 208 } },
+  { color: Accent,  style: SgrIndexedForeground { index: 75 } }
+]
+
+fn format_sgr_params(style: SgrStyle) -> String {
+  match style {
+    SgrReset {} => "0"
+    SgrDim {} => "2"
+    SgrIndexedForeground { index: n } => concat("38;5;", to_string(n))
+  }
+}
+
+fn emit_sgr_csi(style: SgrStyle) -> String {
+  concat(concat(csi_esc, format_sgr_params(style: style)), csi_end)
+}
+
+// Lookup via fold + structural == (filter+field-equality hits a v1 interpreter bug).
+fn ansi_code(c: SemanticColor) -> String? {
+  fold(ansi_mappings,
+    init: none,
+    f: (acc, m) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if m.color == c {
+          Present { value: emit_sgr_csi(style: m.style) }
+        } else {
+          none
+        }
+    }
+  )
+}
