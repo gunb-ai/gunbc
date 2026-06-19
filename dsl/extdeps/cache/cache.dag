@@ -13,9 +13,7 @@ import extdeps.cache.types {
   CatalogBackendCacheKey,
   CatalogProviderKey,
   CatalogCachedArtifactReceipt,
-  CatalogInputSurface,
-  RustcInvocation,
-  ToolchainSpec,
+  agnostic_input_surfaces_from_catalog,
   SccacheInternalHash,
   CargoFingerprint,
   SccacheInternalEncoding,
@@ -33,9 +31,6 @@ import std.cache_interface {
   CasContentEncoding,
   OpaqueStringKey,
   CasContentDigest,
-  UpsertSubject,
-  FilePaths,
-  InputSurface,
 }
 import std.types { ContentHash }
 import std.list { List }
@@ -50,20 +45,6 @@ fn cited_cache_interface_facts(product: CacheInterfaceProduct) -> CacheInterface
     ResolvedGraphCache => resolved_graph_cache_facts
     ParseTableMemo => parse_table_memo_facts
   }
-}
-
-// Project catalog input surfaces onto std InputSurface (drop vendor-only axes).
-fn std_input_surface_from_catalog(input: CatalogInputSurface) -> List<InputSurface> {
-  match input {
-    UpsertSubject => [UpsertSubject]
-    FilePaths => [FilePaths]
-    RustcInvocation => []
-    ToolchainSpec => []
-  }
-}
-
-fn agnostic_input_surfaces_from_catalog(inputs: List<CatalogInputSurface>) -> List<InputSurface> {
-  inputs |> flat_map(std_input_surface_from_catalog)
 }
 
 // Planner-facing projection: flatten catalog io/placement into std CacheInterfaceFacts.
