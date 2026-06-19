@@ -4,6 +4,9 @@
 // (RealizationMeasureEffect shape) to host-effect implementations. §3 requires
 // dispatch to live in extdeps/, never in std/ (the interface must be agnostic).
 //
+// SCAFFOLD — v1 bootstrap seed handler (Rust shrinking toward zero, §7).
+// dissolve-on: delete when v2 eval fold subsumes RealizationMeasureEffect.ObserveElapsedAtSubject.
+//
 // Authority: this module, cited in tests. Do NOT fork or duplicate.
 
 module extdeps.realization.v1_handler
