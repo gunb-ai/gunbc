@@ -71,7 +71,7 @@ import v2.std.cross_tree.policy {
   cross_tree_activation_order,
   cross_tree_by_module_resolve_selected
 }
-import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_eq
@@ -654,13 +654,20 @@ fn resolve_with_admission(
 
 
 // Grounded ingest resolve — by-module cross-tree admission (Route C Phase C).
-// Uses witness source_root tags + cross_tree_activation_order from policy.
+fn source_root_set_fold_step(
+  acc: FreeMonoid<SourceRootRef>,
+  read: DagSourceReadWitness
+) -> FreeMonoid<SourceRootRef> {
+  source_root_set_insert(roots: acc, r: read.source_root)
+}
+
+
 fn source_root_set_from_ingest(ingest: SourceRootIngest) -> FreeMonoid<SourceRootRef> {
   fold_list(
     xs: ingest,
     empty: Empty,
     cons: fn(acc, read) {
-      source_root_set_insert(roots: acc, r: read.source_root)
+      source_root_set_fold_step(acc: acc, read: read)
     }
   )
 }
