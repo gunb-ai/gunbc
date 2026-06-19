@@ -449,7 +449,7 @@ test fn comprep_ts_bodied_emit_operand_swap_discriminates() -> Bool {
   match comprep_ts_emit_from_producer_swapped_tree(target: ts_mvp1_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == comprep_ts_emit_operand_swap_source_text) &&
-      (source != ts_mvp1_source_text) &&
+      (source.carried != ts_mvp1_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }
@@ -459,7 +459,7 @@ test fn comprep_ts_bodied_emit_catalog_minus_discriminates() -> Bool {
   match comprep_ts_emit_from_producer_tree(target: comprep_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == comprep_ts_emit_catalog_minus_source_text) &&
-      (source != ts_mvp1_source_text) &&
+      (source.carried != ts_mvp1_source_text) &&
       (d == None)
     Rejected { diagnostics: _ } => false
   }
