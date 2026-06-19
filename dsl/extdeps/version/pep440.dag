@@ -20,7 +20,7 @@
 
 module extdeps.version.pep440
 
-import extdeps.version { VersionConstraint, VersionIdentity, VersionScheme }
+import extdeps.version { VersionConstraint, VersionIdentity }
 import std.algebra { Equal, Greater, Less, Ordering }
 import std.integer { NonNegativeInt }
 import std.list { List }
@@ -111,8 +111,9 @@ fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> VersionC
   pep440_version_specifier_label(spec: spec)
 }
 
-// Slice-1 ordering on structured public carriers. Opaque `VersionIdentity`
-// compare wires through parse ingress in slice-2.
+// Slice-1 ordering on structured public carriers. `VersionScheme.compare` on opaque
+// `VersionIdentity` values is gated to slice-2 (parse ingress) — installing a stub
+// comparator would violate DESIGN.md §5 fail-closed semantics.
 fn pep440_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
   if a < b { Less }
   else if a > b { Greater }
@@ -195,16 +196,40 @@ fn pep440_compare_post_release(a: NonNegativeInt?, b: NonNegativeInt?) -> Orderi
   }
 }
 
+fn pep440_is_bare_dev_public(v: Pep440PublicVersion) -> Bool {
+  match v.pre_release {
+    Absent => match v.post_release {
+      Absent => match v.dev_release {
+        Present { value: _ } => true
+        Absent => false
+      }
+      Present { value: _ } => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+fn pep440_compare_bare_dev_tier(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Ordering {
+  let a_bare = pep440_is_bare_dev_public(v: a)
+  let b_bare = pep440_is_bare_dev_public(v: b)
+  if a_bare && !b_bare { Less }
+  else if !a_bare && b_bare { Greater }
+  else { Equal }
+}
+
 fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Ordering {
   match pep440_compare_non_negative_int(a: a.epoch, b: b.epoch) {
     Equal =>
       match pep440_compare_release_segments(a: a.release_segments, b: b.release_segments) {
         Equal =>
-          match pep440_compare_dev_release(a: a.dev_release, b: b.dev_release) {
+          match pep440_compare_bare_dev_tier(a: a, b: b) {
             Equal =>
               match pep440_compare_pre_release(a: a.pre_release, b: b.pre_release) {
                 Equal =>
-                  pep440_compare_post_release(a: a.post_release, b: b.post_release)
+                  match pep440_compare_post_release(a: a.post_release, b: b.post_release) {
+                    Equal => pep440_compare_dev_release(a: a.dev_release, b: b.dev_release)
+                    other => other
+                  }
                 other => other
               }
             other => other
@@ -213,15 +238,6 @@ fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Orde
       }
     other => other
   }
-}
-
-fn pep440_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal }
-  else { Greater }
-}
-
-data pep440_scheme: VersionScheme = {
-  compare: pep440_compare_identity
 }
 
 // -- Wire labels ---------------------------------------------------

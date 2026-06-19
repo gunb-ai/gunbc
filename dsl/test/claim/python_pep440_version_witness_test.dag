@@ -220,6 +220,43 @@ fn w_structural_alpha_before_final() -> Bool {
   ) == Less
 }
 
+fn w_a2_dev1_greater_than_a1() -> Bool {
+  pep440_compare_public(
+    a: Pep440PublicVersion {
+      epoch: 0,
+      release_segments: release_1_0(),
+      pre_release: Present {
+        value: Pep440PreRelease { phase: Pep440Alpha, number: 2 }
+      },
+      post_release: none,
+      dev_release: Present { value: 1 }
+    },
+    b: v_alpha_1_0a1().public
+  ) == Greater
+}
+
+fn w_bare_dev_before_alpha() -> Bool {
+  pep440_compare_public(
+    a: v_dev_1_0_dev456().public,
+    b: v_alpha_1_0a1().public
+  ) == Less
+}
+
+fn w_dev_on_pre_before_same_pre() -> Bool {
+  pep440_compare_public(
+    a: Pep440PublicVersion {
+      epoch: 0,
+      release_segments: release_1_0(),
+      pre_release: Present {
+        value: Pep440PreRelease { phase: Pep440Alpha, number: 1 }
+      },
+      post_release: none,
+      dev_release: Present { value: 1 }
+    },
+    b: v_alpha_1_0a1().public
+  ) == Less
+}
+
 test fn python_pep440_version_witnesses() -> Bool {
   w_final_release_label()
     && w_alpha_pre_release_label()
@@ -233,4 +270,7 @@ test fn python_pep440_version_witnesses() -> Bool {
     && w_version_identity_projection()
     && w_version_specifier_constraint_projection()
     && w_structural_alpha_before_final()
+    && w_a2_dev1_greater_than_a1()
+    && w_bare_dev_before_alpha()
+    && w_dev_on_pre_before_same_pre()
 }
