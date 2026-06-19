@@ -10,10 +10,10 @@
 
 module gunbc.idea_pr_spine
 
-import std.types { Bool, List }
+import std.types { List }
 import std.reducible {
   ReduceVerdict, Reduced, Irreducible, Unknown,
-  verdict_is_unknown,
+  reduce_verdicts_located,
 }
 import ctrl.review_verdict {
   ReviewVerdict, Approve, ApproveWithComments, RequestChanges,
@@ -71,30 +71,11 @@ fn review_step(r: Review) -> StageStep {
   StageStep { stage: ReviewOf { product: r.subject }, verdict: review_to_reduce(r) }
 }
 
-type SettleAcc {
-  started: Bool
-  verdict: ReduceVerdict
-}
-
-fn fold_stage(acc: SettleAcc, s: StageStep) -> SettleAcc {
-  if acc.started {
-    if verdict_is_unknown(acc.verdict) {
-      acc
-    } else {
-      SettleAcc { started: true, verdict: s.verdict }
-    }
-  } else {
-    SettleAcc { started: true, verdict: s.verdict }
-  }
-}
-
 fn settle(spine: List<StageStep>) -> ReduceVerdict {
-  let acc = fold(
-    spine,
-    init: SettleAcc { started: false, verdict: Unknown { missing: "idea-pr:idea-input:no-stages" } },
-    f: fn(a, s) { fold_stage(acc: a, s: s) }
+  reduce_verdicts_located(
+    verdicts: map(collection: spine, f: fn(s) { s.verdict }),
+    empty_missing: "idea-pr:idea-input:no-stages"
   )
-  acc.verdict
 }
 
 fn demo_spine_green() -> List<StageStep> {

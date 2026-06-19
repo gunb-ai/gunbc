@@ -42,30 +42,6 @@ fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
   Semigroup { op: reduce_verdict_combine }
 }
 
-fn verdict_is_unknown(v: ReduceVerdict) -> Bool {
-  match v {
-    Unknown { missing: m } => true
-    Reduced { parts: p } => false
-    Irreducible { witness: w } => false
-  }
-}
-
-fn verdict_is_irreducible(v: ReduceVerdict) -> Bool {
-  match v {
-    Irreducible { witness: w } => true
-    Reduced { parts: p } => false
-    Unknown { missing: m } => false
-  }
-}
-
-fn verdict_is_reduced(v: ReduceVerdict) -> Bool {
-  match v {
-    Reduced { parts: p } => true
-    Irreducible { witness: w } => false
-    Unknown { missing: m } => false
-  }
-}
-
 fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
   match a {
     Reduced { parts: pa } => match b {
@@ -95,13 +71,13 @@ type LocatedVerdictFoldAcc {
 
 fn fold_located_verdict(acc: LocatedVerdictFoldAcc, next: ReduceVerdict) -> LocatedVerdictFoldAcc {
   if acc.started {
-    if verdict_is_unknown(acc.verdict) {
-      acc
-    } else {
-      LocatedVerdictFoldAcc {
-        started: true,
-        verdict: reduce_verdict_combine(a: acc.verdict, b: next)
-      }
+    match acc.verdict {
+      Unknown { missing: _ } => acc
+      _ =>
+        LocatedVerdictFoldAcc {
+          started: true,
+          verdict: reduce_verdict_combine(a: acc.verdict, b: next)
+        }
     }
   } else {
     LocatedVerdictFoldAcc { started: true, verdict: next }
