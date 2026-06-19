@@ -28,7 +28,14 @@ module v2.test.manual.cwc_resolution_probe
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag {
+  dag_language_model_wave1,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import v2.std.compilers.sugar { sugar_all_coproduct_variants, sugar_fold_coproduct_pipe_chain }
+import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
@@ -74,17 +81,17 @@ fn cwc_tree_has_disj(n: Node) -> Bool {
   fold_node(
     n: n,
     algebra: NodeFold {
-      init: fn(_) { false },
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } => true
+          _ => false
+        }
+      },
       step: fn(acc, _edge, child_acc) {
         if acc {
           true
-        } else if child_acc {
-          true
         } else {
-          match n.kind {
-            TypeNode { connective: Disj } => true
-            _ => false
-          }
+          child_acc
         }
       }
     }
@@ -92,27 +99,69 @@ fn cwc_tree_has_disj(n: Node) -> Bool {
 }
 
 fn cwc_disj_arm_count(n: Node) -> Int {
-  match n.kind {
-    TypeNode { connective: Disj } => count(n.children)
-    _ =>
-      fold_node(
-        n: n,
-        algebra: NodeFold {
-          init: fn(_) { 0 },
-          step: fn(acc, _edge, child_count) {
-            if acc > 0 {
-              acc
-            } else {
-              child_count
-            }
-          }
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } => count(node.children)
+          _ => 0
         }
-      )
-  }
+      },
+      step: fn(acc, _edge, child_acc) {
+        if acc > 0 {
+          acc
+        } else {
+          child_acc
+        }
+      }
+    }
+  )
 }
 
 test fn cwc_norm_review_event_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_review)
+}
+
+test fn cwc_review_alias_rhs_found() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_review) {
+    Accepted { value: root, diagnostics: _ } =>
+      match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_type_alias_rhs) {
+        ParseSubtreeFound { captured: _ } => true
+        ParseSubtreeAbsent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_review_alias_rhs_variant_count() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_review) {
+    Accepted { value: root, diagnostics: _ } =>
+      match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_type_alias_rhs) {
+        ParseSubtreeFound { captured: captured } => length(xs: sugar_all_coproduct_variants(captured: captured)) == 4
+        ParseSubtreeAbsent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_review_fold_produces_disj() -> Bool {
+  match cwc_norm_of(src: cwc_src_type_review) {
+    Accepted { value: root, diagnostics: _ } =>
+      match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_type_alias_rhs) {
+        ParseSubtreeFound { captured: captured } =>
+          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: root) {
+            Accepted { value: result, diagnostics: _ } =>
+              match result.kind {
+                TypeNode { connective: Disj } => true
+                _ => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        ParseSubtreeAbsent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn cwc_review_normalized_has_disj() -> Bool {

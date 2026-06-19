@@ -8,11 +8,19 @@ fn cwc_probe_plan() -> List<List<Runnable>> {
     [
       RunnableSingleClaim {
         entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
-        function: "cwc_norm_two_variant_accepts"
+        function: "cwc_review_alias_rhs_found"
       },
       RunnableSingleClaim {
         entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
-        function: "cwc_norm_three_variant_accepts"
+        function: "cwc_review_alias_rhs_variant_count"
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
+        function: "cwc_review_fold_produces_disj"
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
+        function: "cwc_review_normalized_has_disj"
       }
     ]
   ]
