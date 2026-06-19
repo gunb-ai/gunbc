@@ -1,0 +1,103 @@
+// Scope: ephemeral located Reject probe for N_v2 gap-4 lane — first failing
+//   scoped-ingest read through tokenize→parse→normalize (same leg as
+//   program_assembly_read_to_normalized_root). Run via gunbc run (not claim-run).
+// Status: probe-only; dissolve when gap-4 floor witness lands.
+
+module v2.test.fixture.gap4_ingest_reject_probe
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Locus,
+  Rejected,
+  Textual,
+}
+import v2.std.language_model { LanguageModel }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.test.workflow.host_source_root_ingest_manifest { host_source_root_ingest }
+
+
+type IngestProbeState
+  = IngestProbePending
+  | IngestProbeFound {
+      path: String,
+      reason: Symbol,
+      stage: Symbol,
+      byte_start: Int,
+    }
+
+
+fn probe_byte_start(at: Locus) -> Int {
+  match at {
+    Textual { file: _, extent: ByteRange { start: s, end: _ } } => s
+    _ => -1
+  }
+}
+
+
+fn ingest_probe_step(
+  state: IngestProbeState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> IngestProbeState {
+  match state {
+    IngestProbeFound { path: _, reason: _, stage: _, byte_start: _ } => state
+    IngestProbePending =>
+      match tokenize(text: read.source, file: read.compilation_unit, rules: lm.lex) {
+        Rejected { diagnostics: d } =>
+          IngestProbeFound {
+            path: read.artifact.file_path,
+            reason: d.head.reason,
+            stage: ^tokenize,
+            byte_start: probe_byte_start(at: d.head.at),
+          }
+        Accepted { value: ts, diagnostics: _ } =>
+          match parse_module(tokens: ts, grammar: lm.grammar) {
+            Rejected { diagnostics: d } =>
+              IngestProbeFound {
+                path: read.artifact.file_path,
+                reason: d.head.reason,
+                stage: ^parse,
+                byte_start: probe_byte_start(at: d.head.at),
+              }
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: d } =>
+                  IngestProbeFound {
+                    path: read.artifact.file_path,
+                    reason: d.head.reason,
+                    stage: ^normalize,
+                    byte_start: probe_byte_start(at: d.head.at),
+                  }
+                Accepted { value: _, diagnostics: _ } => IngestProbePending
+              }
+          }
+      }
+  }
+}
+
+
+fn probe_first_ingest_reject() -> IngestProbeState {
+  fold_list(
+    xs: host_source_root_ingest,
+    empty: IngestProbePending,
+    cons: fn(state, read) {
+      ingest_probe_step(state: state, read: read, lm: dag_language_model_wave1())
+    }
+  )
+}
+
+
+fn probe_all_ingest_reads_accept() -> Bool {
+  match probe_first_ingest_reject() {
+    IngestProbePending => true
+    IngestProbeFound { path: _, reason: _, stage: _, byte_start: _ } => false
+  }
+}
