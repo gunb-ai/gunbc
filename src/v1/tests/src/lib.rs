@@ -78,10 +78,6 @@ mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
-mod nv2_gate_manifest_resolve_bisect_test;
-#[cfg(test)]
-mod nv2_gate_resolve_bisect_test;
-#[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod parse_table_memo_amortization_test;
@@ -99,6 +95,8 @@ mod rc_probe_wire_decode_call_test;
 mod render_repeat_test;
 #[cfg(test)]
 mod resolve_cross_process_cache_test;
+#[cfg(test)]
+mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]

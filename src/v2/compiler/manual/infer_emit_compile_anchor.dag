@@ -4,14 +4,12 @@ module v2.test.manual.infer_emit_compile_anchor
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.compile {
   CompileMode,
-  CompileOutput,
-  Source,
-  TranslateResult,
+  CompileOutput,  TranslateResult,
   TranslateTo,
   compile_inferred,
   compile_ingest_staging
 }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.compiler.emit { emit }
@@ -56,7 +54,7 @@ data anchor_stub_target_model: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data anchor_stub_source: Source = Empty
+data anchor_stub_source: Medium<String> = Medium { carried: Empty, fidelity: Lossless }
 data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,
@@ -90,14 +88,14 @@ fn anchor_infer_rejects() -> Outcome<InferredTree> {
   infer(tree: anchor_stub_empty_conj)
 }
 
-fn anchor_emit_rejects() -> Outcome<TargetSource> {
+fn anchor_emit_rejects() -> Outcome<Medium<String>> {
   emit(
     tree: anchor_stub_inferred_tree,
     target: anchor_stub_target_model
   )
 }
 
-fn anchor_emit_mvp1_accepts() -> Outcome<TargetSource> {
+fn anchor_emit_mvp1_accepts() -> Outcome<Medium<String>> {
   anchor_mvp1_emit_accepts()
 }
 
@@ -108,6 +106,6 @@ fn anchor_compile_inferred_mvp1_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-fn anchor_compile_rejects() -> Outcome<TargetSource> {
+fn anchor_compile_rejects() -> Outcome<Medium<String>> {
   compile_ingest_staging(source: anchor_stub_source, target: anchor_stub_target_model)
 }

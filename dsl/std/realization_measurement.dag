@@ -37,10 +37,6 @@ type RealizationMeasureEffect
       work_shape: String
     }
 
-// SCAFFOLD — v1 handler binding (§3: dispatch is realization, not std authority).
-// dissolve-on: relocate to extdeps/realization when v2 eval fold subsumes; std keeps Effect shape only.
-data v1_eval_expr_measure_handler_id: String = "host:v1-interpreter.eval_expr_self_time"
-
 // --- Pure roll-up lens: observations → CostAccount.time --------------------
 
 fn cost_account_measured_from_time(time: NanosecondDuration) -> CostAccount {

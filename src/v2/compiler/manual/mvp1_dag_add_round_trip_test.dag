@@ -5,7 +5,7 @@ module v2.test.manual.mvp1_dag_add_round_trip
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.translate {
   coerce_grounded_node,
   grammar_inverse_source_validated,
@@ -138,11 +138,11 @@ data mvp1_dag_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_mvp1_dag_emit_accepts() -> Outcome<TargetSource> {
+fn anchor_mvp1_dag_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: mvp1_dag_inferred_tree, target: mvp1_dag_target_model)
 }
 
-data mvp1_dag_emit_receipt: Outcome<TargetSource> = anchor_mvp1_dag_emit_accepts()
+data mvp1_dag_emit_receipt: Outcome<Medium<String>> = anchor_mvp1_dag_emit_accepts()
 
 fn mvp1_dag_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   match q {
@@ -152,7 +152,7 @@ fn mvp1_dag_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
+test fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
   match target_serialize_source_from_model(
     target: mvp1_dag_target_model,
     emitted: mvp1_dag_emitted_root

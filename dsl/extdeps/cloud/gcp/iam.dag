@@ -9,7 +9,7 @@
 
 module extdeps.cloud.gcp.iam
 
-import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject }
+import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject, GcpProjectId, ServiceAccountEmail }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
 import std.types { HttpMethod, AuthScheme }
 
@@ -80,6 +80,11 @@ type GcpGenerateAccessToken200Body {
 
 // -- Service: REST transport wiring ------------------------------
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH gcp.IAM ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.IAM {
   config {
     endpoint: "https://iamcredentials.googleapis.com"
@@ -113,14 +118,14 @@ service gcp.IAM {
       429 => GcpErrorShape
       5xx => GcpErrorShape
     }
-    mock_response {
-      200 => { accessToken: "ya29.mock-impersonated-token", expireTime: "2026-01-01T01:00:00Z" } "Access token generated",
-      403 => { error: { code: 403, message: "Permission iam.serviceAccounts.getAccessToken denied", status: "PERMISSION_DENIED" } } "Permission denied",
-      404 => { error: { code: 404, message: "Service account not found", status: "NOT_FOUND" } } "SA not found"
-    }
   }
 }
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH gcp.ResourceManager ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 
@@ -135,10 +140,6 @@ service gcp.ResourceManager {
       403 => GcpErrorShape
       404 => GcpErrorShape
       5xx => GcpErrorShape
-    }
-    mock_response {
-      200 => { bindings: [{ role: "roles/viewer", members: ["user:test@example.com"] }], etag: "BwXmock123=", version: 1 } "Policy retrieved",
-      403 => { error: { code: 403, message: "Permission denied on resource project", status: "PERMISSION_DENIED" } } "Permission denied"
     }
   }
 
@@ -159,11 +160,6 @@ service gcp.ResourceManager {
       409 => GcpErrorShape
       412 => GcpErrorShape
       5xx => GcpErrorShape
-    }
-    mock_response {
-      200 => { bindings: [{ role: "roles/viewer", members: ["user:test@example.com"] }], etag: "BwXmock456=", version: 1 } "Policy updated",
-      403 => { error: { code: 403, message: "Permission denied", status: "PERMISSION_DENIED" } } "Permission denied",
-      409 => { error: { code: 409, message: "Etag mismatch", status: "ABORTED" } } "Concurrent modification"
     }
   }
 }

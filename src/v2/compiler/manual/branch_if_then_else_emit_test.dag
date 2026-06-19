@@ -12,7 +12,7 @@ import v2.test.manual.branch_if_then_else_round_trip {
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.dag {
   dag_mvp1_fixture_emitted_pick_fn,
   dag_mvp1_node_is_kw_true_atom,
@@ -82,7 +82,7 @@ fn branch_if_then_else_emit_swapped_producer_tree() -> Outcome<InferredTree> {
   }
 }
 
-fn branch_if_then_else_emit_from_producer(target: TargetModel) -> Outcome<TargetSource> {
+fn branch_if_then_else_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: branch_if_then_else_emit_producer_tree(),
     f: fn(tree) {
@@ -91,7 +91,7 @@ fn branch_if_then_else_emit_from_producer(target: TargetModel) -> Outcome<Target
   )
 }
 
-fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcome<TargetSource> {
+fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: branch_if_then_else_emit_swapped_producer_tree(),
     f: fn(tree) {
@@ -313,7 +313,7 @@ fn branch_if_then_else_emit_diag_post_translate_serialize_accepts() -> Bool {
 fn branch_if_then_else_emit_diag_emit_eq_authority_text() -> Bool {
   match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
     Accepted { value: emitted, diagnostics: d } =>
-      (emitted == dag_mvp1_pick_source_text) && (d == None)
+      (emitted.carried == dag_mvp1_pick_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

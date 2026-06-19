@@ -1,0 +1,249 @@
+// dsl/test/claim/gunbhub_serve_witness_test.dag
+//
+// gunbhub M2 served render surface keystone: ServedStaticRouteTable +
+// dispatch witness (request → 200+body / 404). Bodies are compose-time
+// serialize_fragment output; XSS reject-witness runs at compose, not
+// per-request. Repo-path row is M1 placeholder (react-composed until
+// std.markdown merges).
+//
+// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
+
+module test.claim.gunbhub_serve_witness
+
+import gunbc.gunbhub_serve {
+  GunbhubServeRequest,
+  GunbhubPageSource,
+  ReactPage,
+  ComposedOk,
+  ComposeRejected,
+  Served,
+  RenderRejectedBeforeServe,
+  RouteNotFound,
+  MethodNotAllowed,
+  gunbhub_browse_page,
+  gunbhub_readme_page,
+  gunbhub_hostile_page,
+  gunbhub_browse_route,
+  gunbhub_repo_path_route,
+  gunbhub_browse_path_template,
+  gunbhub_repo_path_template,
+  gunbhub_html_content_type,
+  gunbhub_node_route_bindings,
+  gunbhub_served_static_route_table,
+  gunbhub_compose_body,
+  path_matches_template,
+  serve_gunbhub_request,
+  serve_gunbhub_page_source,
+}
+import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
+import extdeps.http.server { http_content_type_wire_label }
+import std.markup { MarkupNode }
+import std.react_markup {
+  EmitOk,
+  EmitRejected,
+  serialize_react_markup,
+}
+import std.types { GET, POST }
+
+// Witness-only: extract ComposedOk html; pages under test are known compose-safe.
+fn witness_compose_ok_html(node: MarkupNode) -> String {
+  match gunbhub_compose_body(node: node) {
+    ComposedOk { html: h } => h
+    ComposeRejected { reason: _ } => ""
+  }
+}
+
+fn expected_browse_html() -> String {
+  witness_compose_ok_html(node: gunbhub_browse_page())
+}
+
+fn expected_readme_html() -> String {
+  witness_compose_ok_html(node: gunbhub_readme_page())
+}
+
+// Host contract table: GET / and GET /{repo-path} with compose-time bodies.
+fn witness_static_table_has_two_get_routes() -> Bool {
+  let table = gunbhub_served_static_route_table()
+  count(xs: table.routes) == 2
+}
+
+fn witness_static_table_browse_row_matches_host_contract() -> Bool {
+  let table = gunbhub_served_static_route_table()
+  let browse_tpl = gunbhub_browse_path_template()
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        row.method == GET
+          && path_matches_template(template: row.path_pattern, path: "/")
+          && path_matches_template(template: browse_tpl, path: "/")
+          && row.body == expected_browse_html()
+          && row.content_type == gunbhub_html_content_type()
+          && http_content_type_wire_label(gunbhub_html_content_type()) == "text/html; charset=utf-8"
+          && row.status_on_hit == 200
+      }
+  )
+}
+
+// M1 placeholder: repo-path body is react-composed today; swap when std.markdown lands.
+fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
+  let table = gunbhub_served_static_route_table()
+  let repo_tpl = gunbhub_repo_path_template()
+  fold(
+    xs: table.routes,
+    init: false,
+    f: (acc, row) =>
+      if acc {
+        acc
+      } else {
+        row.method == GET
+          && path_matches_template(template: row.path_pattern, path: "/README.md")
+          && path_matches_template(template: repo_tpl, path: "/README.md")
+          && row.body == expected_readme_html()
+          && row.content_type == gunbhub_html_content_type()
+          && http_content_type_wire_label(gunbhub_html_content_type()) == "text/html; charset=utf-8"
+          && row.status_on_hit == 200
+      }
+  )
+}
+
+// End-to-end dispatch: served response body == static table entry.
+fn witness_browse_served_body_matches_consumer() -> Bool {
+  let expected = expected_browse_html()
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/" }
+  ) {
+    Served { response: r } => r.body == expected && r.status == 200
+    _ => false
+  }
+}
+
+fn witness_readme_served_body_matches_static_table() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/README.md" }
+  ) {
+    Served { response: r } => r.body == expected_readme_html() && r.status == 200
+    _ => false
+  }
+}
+
+fn witness_browse_empty_path_also_matches() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "" }
+  ) {
+    Served { response: r } => r.body == expected_browse_html()
+    _ => false
+  }
+}
+
+fn witness_unknown_path_not_found() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/missing/nested" }
+  ) {
+    RouteNotFound => true
+    _ => false
+  }
+}
+
+fn witness_wrong_method_not_allowed() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: POST, path: "/" }
+  ) {
+    MethodNotAllowed => true
+    _ => false
+  }
+}
+
+fn witness_repo_path_wrong_method_not_allowed() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: POST, path: "/README.md" }
+  ) {
+    MethodNotAllowed => true
+    _ => false
+  }
+}
+
+// Hostile javascript: href rejected before response — never reaches body.
+fn witness_hostile_compose_rejects_fail_closed() -> Bool {
+  match gunbhub_compose_body(node: gunbhub_hostile_page()) {
+    ComposeRejected { reason: _ } => true
+    ComposedOk { html: _ } => false
+  }
+}
+
+fn witness_hostile_page_not_in_static_table() -> Bool {
+  match gunbhub_compose_body(node: gunbhub_hostile_page()) {
+    ComposeRejected { reason: _ } =>
+      count(xs: gunbhub_served_static_route_table().routes) == 2
+    ComposedOk { html: _ } => false
+  }
+}
+
+fn witness_hostile_page_rejected_before_response() -> Bool {
+  match serve_gunbhub_page_source(
+    source: ReactPage { node: gunbhub_hostile_page() }
+  ) {
+    RenderRejectedBeforeServe { reason: _ } => true
+    Served { response: _ } => false
+    RouteNotFound => false
+    MethodNotAllowed => false
+  }
+}
+
+fn witness_hostile_page_not_served_via_request_path() -> Bool {
+  witness_hostile_page_rejected_before_response()
+}
+
+fn witness_browse_route_binding_declared() -> Bool {
+  let browse = gunbhub_browse_route()
+  fold(
+    xs: gunbhub_node_route_bindings(),
+    init: false,
+    f: (acc, binding) =>
+      if acc {
+        acc
+      } else {
+        binding.route.operation_name == browse.operation_name
+          && binding.route.method == browse.method
+          && binding.listener.handler_name == "gunbhub_handle_browseRoot"
+      }
+  )
+}
+
+fn witness_repo_path_route_binding_declared() -> Bool {
+  let repo = gunbhub_repo_path_route()
+  fold(
+    xs: gunbhub_node_route_bindings(),
+    init: false,
+    f: (acc, binding) =>
+      if acc {
+        acc
+      } else {
+        binding.route.operation_name == repo.operation_name
+          && binding.route.method == repo.method
+          && binding.listener.handler_name == "gunbhub_handle_repoPathDoc"
+      }
+  )
+}
+
+test fn gunbhub_serve_keystone_holds() -> Bool {
+  witness_static_table_has_two_get_routes()
+    && witness_static_table_browse_row_matches_host_contract()
+    && witness_static_table_repo_path_row_is_m1_placeholder()
+    && witness_browse_served_body_matches_consumer()
+    && witness_readme_served_body_matches_static_table()
+    && witness_browse_empty_path_also_matches()
+    && witness_unknown_path_not_found()
+    && witness_wrong_method_not_allowed()
+    && witness_repo_path_wrong_method_not_allowed()
+    && witness_hostile_compose_rejects_fail_closed()
+    && witness_hostile_page_not_in_static_table()
+    && witness_hostile_page_rejected_before_response()
+    && witness_hostile_page_not_served_via_request_path()
+    && witness_browse_route_binding_declared()
+    && witness_repo_path_route_binding_declared()
+    && gunbhub_html_render_keystone_holds()
+}

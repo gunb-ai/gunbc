@@ -7,7 +7,7 @@
 
 module v2.lens.application_serializer
 
-import v2.compiler.source_authority { DagSource }
+import extdeps.communication.medium { Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.lens.application { apply_diff }
 import v2.std.compilers.target_model { TargetModel }
@@ -20,8 +20,8 @@ import v2.std.node { Diff, Node }
 
 // Patch-in-error carrier: canonical .dag source before/after a structural Diff.
 type DagSourcePatch {
-  before: DagSource
-  after: DagSource
+  before: Medium<String>
+  after: Medium<String>
 }
 
 // apply_diff ∘ target_serialize_source_from_model — before/after DagSource patch carrier.

@@ -897,6 +897,88 @@ fn env_hermetic_without_fixture_store_fails_closed() {
 }
 
 #[test]
+fn diagnostic_redfish_record_then_hermetic_replay_holds() {
+    let ws = workspace_root();
+    let store_dir = fixture_store_dir("diagnostic-redfish-record-replay");
+    fs::create_dir_all(&store_dir).expect("fixture dir");
+    let entry = ws.join("dsl/test/claim/diagnostic_redfish_witness.dag");
+    assert!(
+        entry.is_file(),
+        "witness dag must exist at {}",
+        entry.display()
+    );
+
+    let record = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "diagnostic_redfish_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    assert!(
+        record.status.success(),
+        "redfish.Http.GetSensors record capture must pass (wet); stderr={}",
+        String::from_utf8_lossy(&record.stderr)
+    );
+
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "diagnostic_redfish_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().expect("store path"),
+    ]);
+    let _ = fs::remove_dir_all(&store_dir);
+    assert!(
+        hermetic.status.success(),
+        "hermetic redfish.Http.GetSensors replay must pass from recorded fixtures; stderr={}",
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+}
+
+#[test]
+fn diagnostic_redfish_hermetic_without_fixture_store_fails_closed() {
+    let ws = workspace_root();
+    let entry = ws.join("dsl/test/claim/diagnostic_redfish_witness.dag");
+    let hermetic = run_claim_batch(&[
+        "--source-root",
+        ws.to_str().expect("workspace"),
+        "--source-root",
+        ws.join("dsl").to_str().expect("dsl root"),
+        "--entry",
+        entry.to_str().expect("entry"),
+        "--function",
+        "diagnostic_redfish_keystone_holds",
+        "--hermetic",
+    ]);
+    assert!(
+        !hermetic.status.success(),
+        "redfish.Http.GetSensors in Hermetic without fixture store must fail closed"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&hermetic.stdout),
+        String::from_utf8_lossy(&hermetic.stderr)
+    );
+    assert!(
+        combined.contains("no mock_response") || combined.contains("refusing to fabricate"),
+        "expected fail-closed mock_response diagnostic, got:\n{combined}"
+    );
+}
+
+#[test]
 #[ignore = "wet-only: live jsonplaceholder record→replay — not hermetic CI floor"]
 fn http_pilot_rest_record_then_hermetic_replay_holds() {
     let ws = workspace_root();

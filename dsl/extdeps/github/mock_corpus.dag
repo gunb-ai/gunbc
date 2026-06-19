@@ -1,0 +1,93 @@
+// dsl/extdeps/github/mock_corpus.dag
+// Scope: the github layer's PUBLISHED mock corpus as a closed, declared structural fact.
+// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
+//
+// SINGLE authority for WHICH github.* operations are hermetically realizable. Read by BOTH the
+// compile-time M2 mock_totality_lens (src/v2/lens/mock_totality.dag, via the per-layer witness)
+// AND the v1 runtime's eval_service_call (the M4 hermetic-realization fold) — one model, not two.
+// POST-M4.1 (#5236): the runtime precomputes published keys from the whole dsl/ tree, so this
+// corpus is discoverable without co-locating an import into each service module's closure.
+//
+// Rows inhabit std.hermetic_replay.PublishedMockCase. The operation set authority remains
+// dsl/extdeps/github/{pulls,gists}.dag (`service github.Pulls` / `service github.Gist`);
+// per-case payloads live in the Phase-2 RecordedFixture store ONLY — rows carry the structural key.
+
+module extdeps.github.mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data github_gist_mock_case_create: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Gist.Create",
+  service: "github.Gist",
+  operation: "Create",
+  case_id: 0
+}
+
+data github_pulls_mock_case_list: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.List",
+  service: "github.Pulls",
+  operation: "List",
+  case_id: 0
+}
+
+data github_pulls_mock_case_get: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.Get",
+  service: "github.Pulls",
+  operation: "Get",
+  case_id: 0
+}
+
+data github_pulls_mock_case_diff: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.Diff",
+  service: "github.Pulls",
+  operation: "Diff",
+  case_id: 0
+}
+
+data github_pulls_mock_case_create_comment: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.CreateComment",
+  service: "github.Pulls",
+  operation: "CreateComment",
+  case_id: 0
+}
+
+data github_pulls_mock_case_list_reviews: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.ListReviews",
+  service: "github.Pulls",
+  operation: "ListReviews",
+  case_id: 0
+}
+
+data github_pulls_mock_case_create_review: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.CreateReview",
+  service: "github.Pulls",
+  operation: "CreateReview",
+  case_id: 0
+}
+
+data github_pulls_mock_case_list_comments: PublishedMockCase = PublishedMockCase {
+  operation_key: "github.Pulls.ListComments",
+  service: "github.Pulls",
+  operation: "ListComments",
+  case_id: 0
+}
+
+// 🟡 gated — feature:github-mock-corpus-from-service-decl — bind node://adhoc-2f09a66f-a60
+// dissolve-on-arrival: project this corpus directly from the `service github.Pulls` /
+// `service github.Gist` operation sets in dsl/extdeps/github/{pulls,gists}.dag (the SINGLE
+// authority for WHICH operations exist), joined with the Phase-2 RecordedFixture store (the
+// authority for WHICH recorded cases exist per operation), once a v2 lens can read a service
+// decl's operation nodes and the fixture store's keys; this declared list then deletes in the
+// same PR. forbidden: a row carrying a response VALUE — that would fork the payload authority,
+// now owned by the fixture store (§3); rows mirror the (operation_key, case_id) structural key
+// ONLY, and grow when a published operation/case is added upstream.
+data github_published_mock_corpus: List<PublishedMockCase> = [
+  github_gist_mock_case_create,
+  github_pulls_mock_case_list,
+  github_pulls_mock_case_get,
+  github_pulls_mock_case_diff,
+  github_pulls_mock_case_create_comment,
+  github_pulls_mock_case_list_reviews,
+  github_pulls_mock_case_create_review,
+  github_pulls_mock_case_list_comments
+]

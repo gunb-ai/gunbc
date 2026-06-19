@@ -14,7 +14,7 @@
 // Dissolution triggers (named):
 //   - v2/test/claim/realization_schedule_witness.dag enrolls in CI discovery when
 //     v2 self-compile-clean closes the Empty-in-generic sequence_outcome gap.
-//   - cache_interface.dag → Materialization rows become extdeps/realization handlers
+//   - cache_interface.dag agnostic shape; cited Materialization rows in extdeps/cache/* and extdeps/realization/*
 //   - RealizedStep / Placement / Materialization re-introduced (increment 3: reconcile→Share);
 //     their ContentHash intent + licensed_by return in increment 4 (cross-tree content-hash)
 //   - target digest → content_hash(subgraph) when dsl/v2 cross-tree Node import lands

@@ -7,6 +7,12 @@ module extdeps.diagnostic.ipmi
 
 import std.types { NonEmptyStr }
 
+// 🟡 dissolved — feature:diagnostic-ipmi-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
+// WHICH diagnostic.ipmi.Tool ops are hermetically realizable, and the fixture store owns the
+// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
+// shapes.
 service diagnostic.ipmi.Tool {
   operation SensorList {
     input { bmc_host: NonEmptyStr }
@@ -16,9 +22,6 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool sensor failed"
-    }
-    mock_response {
-      0 => { stdout: "VDDQ | Volts | ok\n", success: true } "Mock ipmi sensor"
     }
   }
 
@@ -31,9 +34,6 @@ service diagnostic.ipmi.Tool {
       0 => Unit
       nonzero => String "ipmitool sdr failed"
     }
-    mock_response {
-      0 => { stdout: "(mock sdr)", success: true } "Mock ipmi sdr"
-    }
   }
 
   operation SelList {
@@ -44,9 +44,6 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool sel failed"
-    }
-    mock_response {
-      0 => { stdout: "(mock sel)", success: true } "Mock ipmi sel"
     }
   }
 }
