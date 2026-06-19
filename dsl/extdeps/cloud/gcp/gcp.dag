@@ -123,6 +123,11 @@ data regions: List<GcpRegion> = [
 
 // -- Service: GCP auth operations (shell + REST transport) -------
 
+// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
+// WHICH gcloud.Auth ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcloud.Auth {
   operation Login {
     input {}
