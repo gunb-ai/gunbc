@@ -66,9 +66,14 @@ fn red_wrong_bind_canonical_differs_from_authority() -> Bool {
   }
 }
 
-test fn canonical_dag_source_bind_parse_print_round_trip_holds() -> Bool {
+fn green_bind_parse_print_holds() -> Bool {
   canonical_source_carried_from_parse_print_law(
     source: real_bind_source(),
     target: real_bind_target_model()
-  ) && red_wrong_bind_canonical_differs_from_authority()
+  )
+}
+
+test fn canonical_dag_source_bind_parse_print_round_trip_holds() -> Bool {
+  green_bind_parse_print_holds()
+    && red_wrong_bind_canonical_differs_from_authority()
 }

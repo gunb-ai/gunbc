@@ -1,0 +1,86 @@
+module v2.test.round_trip.source_authority_debug
+
+import v2.compiler.source_authority { parse_dag_source_ast, semantic_ir_from_ast_with_model }
+import v2.compiler.target_carriers { lossless_source }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.dag {
+  dag_language_model_wave1_modeled,
+  dag_mvp1_bind_source_text,
+  dag_mvp1_bind_target_model,
+  dag_mvp1_source_text,
+  dag_mvp1_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn debug_add_parse() -> Bool {
+  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_source_text)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_bind_parse() -> Bool {
+  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_bind_source_text)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_add_semantic() -> Bool {
+  let lm = dag_language_model_wave1_modeled()
+  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_source_text)) {
+    Accepted { value: ast, diagnostics: _ } =>
+      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_bind_semantic() -> Bool {
+  let lm = dag_language_model_wave1_modeled()
+  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_bind_source_text)) {
+    Accepted { value: ast, diagnostics: _ } =>
+      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_add_serialize() -> Bool {
+  let lm = dag_language_model_wave1_modeled()
+  let target = dag_mvp1_target_model()
+  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_source_text)) {
+    Accepted { value: ast, diagnostics: _ } =>
+      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
+        Accepted { value: ir, diagnostics: _ } =>
+          match target_serialize_source_from_model(target: target, emitted: ir.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn debug_bind_serialize() -> Bool {
+  let lm = dag_language_model_wave1_modeled()
+  let target = dag_mvp1_bind_target_model()
+  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_bind_source_text)) {
+    Accepted { value: ast, diagnostics: _ } =>
+      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
+        Accepted { value: ir, diagnostics: _ } =>
+          match target_serialize_source_from_model(target: target, emitted: ir.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
