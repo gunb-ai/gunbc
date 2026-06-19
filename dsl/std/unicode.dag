@@ -34,10 +34,9 @@ import std.types { Char }
 // **Concept placement (non-blocking / exploratory):** `CharClass` here is
 // *lexical* vocabulary (what a tokenizer treats as whitespace / ident) more than
 // a Unicode-intrinsic property like `DisplayWidth`. It lives in `std.unicode`
-// today as the nearest shared character-classification home (MODELING M9:
-// DFS from `dsl/std/`). Once M1(2.8) allows structural class rows in
-// tokenizer authority, revisit whether this sum moves to a lexical sibling
-// (e.g. std-facing tokenize) vs staying co-located with scalar `Char` helpers.
+// today as the nearest shared character-classification home. Once structural
+// class rows land in tokenizer authority, revisit whether this sum moves to a
+// lexical sibling (e.g. std-facing tokenize) vs staying co-located with `Char`.
 //
 // **Dissolution receipt — `CharClass` (modeling-discipline principle 4).**
 // 🟢 TERMINAL at ASCII-oriented lexical scanner scope: four irreducible named

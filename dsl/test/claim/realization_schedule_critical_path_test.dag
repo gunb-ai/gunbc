@@ -8,14 +8,14 @@
 
 module test.claim.realization_schedule_critical_path
 
-import std.measure { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.realization_measurement {
   schedule_batch_critical_path,
   schedule_critical_path_time,
   cost_account_measured_from_schedule_critical_path,
-  nanosecond_duration_list_total,
+  time_measure_list_total,
 }
-import std.realization_schedule { CostBasis, cost_account_time_nanos }
+import std.realization_schedule { CostBasis, cost_account_time_count }
 import std.nat { nat_compare, nat_max }
 import std.algebra { Greater, Equal }
 
@@ -25,7 +25,7 @@ fn witness_parallel_batch_takes_max_not_sum() -> Bool {
     nanosecond_duration(count: 5),
   ]
   let critical = schedule_batch_critical_path(batch_times: batch)
-  let summed = nanosecond_duration_list_total(times: batch)
+  let summed = time_measure_list_total(times: batch)
   nanosecond_duration_count(d: critical) == 100
     && nanosecond_duration_count(d: summed) == 105
     && nanosecond_duration_count(d: critical) != nanosecond_duration_count(d: summed)
@@ -52,7 +52,7 @@ fn witness_measured_total_uses_critical_path_basis() -> Bool {
   let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
   match account.basis {
     Measured =>
-      cost_account_time_nanos(account: account) == 200
+      cost_account_time_count(account: account) == 200
     Predicted => false
   }
 }

@@ -8,7 +8,7 @@
 // the retired hand-only manifest). Single edit surface: add/remove rows here.
 //
 // Phase-0 convergence: `TestNodeCostDimension.budget_time` / `measured_time` use
-// `NanosecondDuration` (std.measure); this table names libtest tokens until every
+// `NanosecondDuration` (std.verification, its timing-authority home); this table names libtest tokens until every
 // slow test is either sped up or modeled with explicit budget/measured facts.
 
 module gunbc.test_node_wall_clock_ratchet
