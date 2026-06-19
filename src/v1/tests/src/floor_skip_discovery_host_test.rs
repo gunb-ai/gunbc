@@ -78,6 +78,17 @@ fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
 }
 
 #[test]
+fn empty_git_diff_env_guards_produce_empty_paths() {
+    let (_base, _head, _merge) = empty_git_diff_env_guards();
+    let paths = v1_compiler::cli_run::floor_git_diff_name_only_paths()
+        .expect("HEAD...HEAD must succeed with empty changed paths");
+    assert!(
+        paths.is_empty(),
+        "empty diff override must yield PathsProduced([]), not fail-closed"
+    );
+}
+
+#[test]
 fn discovery_corpus_skip_enabled_verified_green_baseline_skips_on_replay() {
     let cache = workspace_root().join(format!(
         "target/floor_skip_baseline_test_{}",
@@ -86,6 +97,7 @@ fn discovery_corpus_skip_enabled_verified_green_baseline_skips_on_replay() {
     let _ = std::fs::remove_dir_all(&cache);
     std::fs::create_dir_all(&cache).expect("baseline cache dir");
     let _guard = baseline_cache_env_guard(Some(cache.as_path()));
+    let (_base, _head, _merge) = empty_git_diff_env_guards();
 
     let first = run_explicit_roster(true).expect("first pass records baseline");
     assert_eq!(first.skipped, 0, "cold baseline → run witness once");
@@ -125,6 +137,19 @@ impl Drop for EnvVarGuard {
 
 fn env_var_guard(key: &'static str, value: &str) -> EnvVarGuard {
     EnvVarGuard::set(key, value)
+}
+
+/// Pin an empty git diff so skip replay tests isolate baseline tombstone behavior
+/// from `origin/main...HEAD` churn on the witness entry (§5 discriminating receipt).
+/// Merge-base mode: `git diff --name-only HEAD...HEAD` → empty PathsProduced (skip-eligible).
+/// Note: `MERGE_BASE=0` would pass `"HEAD HEAD"` as one git arg in `floor_git_diff_name_only_paths`
+/// and fail observation (fail-closed), not empty diff.
+fn empty_git_diff_env_guards() -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
+    (
+        env_var_guard("GUNBC_CI_DIFF_BASE", "HEAD"),
+        env_var_guard("GUNBC_CI_DIFF_HEAD", "HEAD"),
+        env_var_guard("GUNBC_CI_DIFF_MERGE_BASE", "1"),
+    )
 }
 
 struct BaselineCacheEnvGuard {
