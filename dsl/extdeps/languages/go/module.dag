@@ -6,13 +6,15 @@
 // Upstream: Go Modules Reference (go.dev/ref/mod).
 //
 // DESIGN §3: this file is the authority for:
-//   - GoModuleVersion, GoModulePath, GoMajorVersionSuffix
+//   - GoSemVer (decomposed v-prefixed semver atoms), go_semver_label
+//   - GoModulePath, GoMajorVersionSuffix, go_major_suffix_str
 //   - GoLanguageVersion, GoToolchainName
 //   - GoRequireEntry, GoReplaceEntry, GoExcludeEntry, GoRetractEntry
 //   - GoModFile (go.mod structure)
 //   - go_mod_filename (§3 note: emit.dag carries go_manifest_file as a v1-seed
 //     scaffold under the same string; dissolve-on: v1 bootstrap reads module.dag)
 //   - go_mvs_properties (algorithm properties, not a runnable function)
+//   - VersionScheme data row scaffold — pending extdeps.version #5311
 //
 // Consumers:
 //   dsl/test/claim/go_module_versioning_witness_test.dag — by-execution witnesses
@@ -24,17 +26,42 @@ import std.types { NonEmptyStr }
 // ── Module version ───────────────────────────────────────────────────────────
 // go.dev/ref/mod#versions
 //
-// A module version is a semver tag with a mandatory "v" prefix.
+// A module version is a v-prefixed semver tag.  Decomposed to grounded atoms
+// (major/minor/patch Int + optional prerelease/build) per DESIGN.md §2.
 // Examples: v1.2.3, v0.1.0-alpha.1, v2.0.0-rc.1
 //
-// Pseudo-versions (go.dev/ref/mod#pseudo-versions) share this type:
-//   vX.Y.Z-yyyymmddhhmmss-abcdefabcdef
-// where X.Y.Z may be 0.0.0 (no prior tag), the base tag, or the next tag.
-// Both tagged and pseudo-versions are structurally indistinguishable at the
-// string layer — the pseudo-version predicate is a pattern check, not a variant.
+// Pseudo-versions (go.dev/ref/mod#pseudo-versions) are a PREDICATE on this
+// structure — the prerelease field matches the yyyymmddhhmmss-abcdefabcdef
+// pattern — not a separate type fork.
 //
-// Scaffold: `where pattern("^v\\d+\\.\\d+\\.\\d+")` pending Q-Regex.
-type GoModuleVersion = NonEmptyStr where brand("GoModuleVersion")
+// Scaffold: once extdeps.version (#5311) lands, add:
+//   import extdeps.version { VersionIdentity, VersionScheme }
+//   fn go_semver_to_version_identity(v: GoSemVer) -> VersionIdentity
+//   data go_module_version_scheme: VersionScheme = { compare: ... }
+//   Dissolve-on: #5311 merges.
+type GoSemVer {
+  major: Int
+  minor: Int
+  patch: Int
+  prerelease: String?   // e.g. "alpha.1", "rc.2", pseudo-version timestamp-hash
+  build: String?        // e.g. "build.1" — informational, ignored in version ordering
+}
+
+// Canonical wire label for a GoSemVer (go.dev/ref/mod#versions).
+// MajorV0OrV1 example: v1.2.3 → "v1.2.3"
+// Pre-release example: v0.1.0-alpha.1 → "v0.1.0-alpha.1"
+// Build meta example: v1.0.0+build.1 → "v1.0.0+build.1"
+fn go_semver_label(v: GoSemVer) -> String {
+  let base = concat("v", concat(to_string(v.major), concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))))
+  let with_pre = match v.prerelease {
+    Present { value: pre } => concat(base, concat("-", pre))
+    Absent => base
+  }
+  match v.build {
+    Present { value: bld } => concat(with_pre, concat("+", bld))
+    Absent => with_pre
+  }
+}
 
 // ── Module path ──────────────────────────────────────────────────────────────
 // go.dev/ref/mod#module-path
@@ -93,7 +120,7 @@ type GoToolchainName = NonEmptyStr where brand("GoToolchainName")
 // (transitive dependencies pinned for reproducible builds via MVS).
 type GoRequireEntry {
   module_path: GoModulePath
-  version: GoModuleVersion
+  version: GoSemVer
   indirect: Bool
 }
 
@@ -101,13 +128,13 @@ type GoRequireEntry {
 // go.dev/ref/mod#go-mod-file-replace
 //
 // Replaces a module path (optionally at a specific version) with an alternate
-// path and version. `source_version: none` replaces all versions.
+// path and version. `source_version: absent` replaces all versions.
 // Local directory replaces (e.g., "../myfork") have no target version.
 type GoReplaceEntry {
   source_path: GoModulePath
-  source_version: GoModuleVersion?
+  source_version: GoSemVer?
   target_path: GoModulePath
-  target_version: GoModuleVersion?
+  target_version: GoSemVer?
 }
 
 // ── exclude directive ────────────────────────────────────────────────────────
@@ -117,7 +144,7 @@ type GoReplaceEntry {
 // Only applies in the main module's go.mod (ignored in dependencies).
 type GoExcludeEntry {
   module_path: GoModulePath
-  version: GoModuleVersion
+  version: GoSemVer
 }
 
 // ── retract directive ────────────────────────────────────────────────────────
@@ -127,8 +154,8 @@ type GoExcludeEntry {
 // Single-version: retract v1.2.3
 // Range: retract [v1.2.0, v1.2.5] (both bounds inclusive)
 type GoRetractRange
-  = RetractSingle { version: GoModuleVersion }
-  | RetractRange  { low: GoModuleVersion, high: GoModuleVersion }
+  = RetractSingle { version: GoSemVer }
+  | RetractRange  { low: GoSemVer, high: GoSemVer }
 
 type GoRetractEntry {
   range: GoRetractRange
