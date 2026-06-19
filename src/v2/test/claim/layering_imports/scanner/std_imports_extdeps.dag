@@ -1,0 +1,26 @@
+// Scope: scanner-execution receipt — the live import projection must flag a planted
+//        std-layer extdeps.* import (the dsl-tree std→extdeps form; committed fixture, read
+//        by execution). Discriminating RED control for the std→extdeps rule.
+// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
+
+module v2.test.layering_imports.scanner.std_imports_extdeps
+
+import v2.lens.layering_imports {
+  layering_imports_violation_count,
+  layering_imports_clean_holds,
+  layer_import_facts_live
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data std_imports_extdeps_std_roots: List<String> = ["src/v2/test/fixture/layering_scan/std_imports_extdeps/std"]
+data std_imports_extdeps_extdeps_roots: List<String> = []
+
+fn scanner_std_imports_extdeps_detects_holds() -> Bool {
+  let facts = layer_import_facts_live(
+    std_roots: std_imports_extdeps_std_roots,
+    extdeps_roots: std_imports_extdeps_extdeps_roots
+  )
+  (layering_imports_violation_count(facts: facts) == 1)
+    && (layering_imports_clean_holds(facts: facts) == false)
+}
