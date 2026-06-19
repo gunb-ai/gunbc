@@ -11,10 +11,14 @@ module std.hermetic_replay
 // Structural key for a published mock case. Both filesystem and REST layers
 // inhabit this row shape (operation_key matches RecordedFixture.operation).
 type PublishedMockCase {
-  // 🟡 gated — feature:hermetic-published-mock-operation-ref — dissolve-on: replace
-  // operation_key: String with a ServiceOperationRef (qualified Symbol grounded to the
-  // extdeps service decl) once a lens links corpus rows to service operation nodes;
-  // string literals in *mock_corpus.dag then delete with this field (§3 nick).
+  // 🟡 gated — feature:hermetic-published-mock-operation-ref — dissolve-on: delete
+  // operation_key once every corpus row carries grounded service + operation fields and
+  // resolve_published_mock_keys reads only those (§3 nick).
   operation_key: String
+  // Grounded service / operation names (same spelling as the extdeps service decl). The
+  // runtime composes `service.operation` as the hermetic key; operation_key mirrors during
+  // migration.
+  service: String
+  operation: String
   case_id: Int
 }

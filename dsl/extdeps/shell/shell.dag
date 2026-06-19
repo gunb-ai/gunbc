@@ -16,6 +16,25 @@ module extdeps.shell
 
 import std.types { FilePath, NonEmptyStr }
 
+// Co-locate the PUBLISHED mock corpus into this layer's import closure (DESIGN.md §3: which
+// shell.* operations are hermetically realizable is a fact ABOUT the shell services, so it belongs
+// in their closure). Any consumer that imports extdeps.shell now transitively pulls the corpus, so
+// the v1 runtime's eval_service_call (the M4 hermetic-realization fold) resolves the published-key
+// set from item_registry — shell.Find/Which/Exec ops are GOVERNED in production via the same
+// single model the M2 mock_totality_lens reads. (Bare import: the closure membership is the point,
+// not a bound symbol — cf. filesystem_io.dag importing extdeps.filesystem.mock_corpus.)
+// 🟡 gated — feature:m4-universal-hermetic-corpus-load — bind node://adhoc-2d1fb71c-1f4
+// dissolve-on-arrival: M4.1 (fierce-crab-852) makes the runtime load the whole-tree published
+// corpus independent of the entry's import closure (governance universal not opt-in); this
+// per-layer co-location import then deletes.
+import extdeps.shell.mock_corpus
+
+// 🟡 dissolved — feature:shell-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.shell.mock_corpus) now governs WHICH
+// shell.* ops are hermetically realizable, and the fixture store owns the payloads (§3). forbidden:
+// reintroducing mock_response constants for Hermetic dispatch on these shapes. (shell.Env already
+// dissolved its mock earlier — same target end-state.)
 service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
@@ -25,9 +44,6 @@ service shell.Find {
     exit {
       0 => Unit
       nonzero => String "Find command failed"
-    }
-    mock_response {
-      0 => { dirs: ["/tmp/mock-dir"] } "Mock directory listing"
     }
   }
 }
@@ -58,9 +74,6 @@ service shell.Which {
       0 => Unit "Command found"
       1 => Unit "Command not found"
     }
-    mock_response {
-      0 => { exit_success: true, stdout: "/usr/bin/mock" } "Mock command found"
-    }
   }
 }
 
@@ -85,9 +98,6 @@ service shell.Exec {
       0 => Unit
       nonzero => String "Script failed"
     }
-    mock_response {
-      0 => { exit_code: 0, exit_success: true, stdout: "(mock)", stderr: "" } "Mock shell execution"
-    }
   }
 
   operation Check {
@@ -99,9 +109,6 @@ service shell.Exec {
     exit {
       0 => Unit
       nonzero => String "Command failed"
-    }
-    mock_response {
-      0 => { exists: true } "Mock command check"
     }
   }
 }
