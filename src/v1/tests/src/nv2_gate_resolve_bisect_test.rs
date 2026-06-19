@@ -37,6 +37,14 @@ const BISECTS: &[(&str, &str)] = &[
         "compiler_closure_emit",
         "src/v2/compiler/manual/nv2_gate_resolve_bisect_compiler_closure_emit.dag",
     ),
+    (
+        "program_assembly",
+        "src/v2/compiler/manual/nv2_gate_resolve_bisect_program_assembly.dag",
+    ),
+    (
+        "host_manifest_stub",
+        "src/v2/compiler/manual/nv2_gate_resolve_bisect_host_manifest_stub.dag",
+    ),
 ];
 
 fn timed_resolve(label: &str, entry: &str) {
@@ -75,3 +83,5 @@ bisect_test!(nv2_gate_resolve_bisect_find_witness, 2);
 bisect_test!(nv2_gate_resolve_bisect_languages_dag, 3);
 bisect_test!(nv2_gate_resolve_bisect_languages_rust, 4);
 bisect_test!(nv2_gate_resolve_bisect_compiler_closure_emit, 5);
+bisect_test!(nv2_gate_resolve_bisect_program_assembly, 6);
+bisect_test!(nv2_gate_resolve_bisect_host_manifest_stub, 7);
