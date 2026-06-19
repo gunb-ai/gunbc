@@ -28,9 +28,9 @@ import std.os.types {
   PosixProcess,
   ProcessSemantics,
 }
-import std.float { Float }
+import v2.std.float { Float }
+import v2.std.measure { Measure }
 import std.measure {
-  Measure,
   Time,
   DataRate,
   Currency,

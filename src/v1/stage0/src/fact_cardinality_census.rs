@@ -263,8 +263,8 @@ mod tests {
     }
 
     #[test]
-    fn lattice_is_cross_tree_coexistence_debt() {
-        assert!(cross_tree_is_coexistence(
+    fn lattice_is_not_cross_tree_coexistence_after_byte_sync_defork() {
+        assert!(!cross_tree_is_coexistence(
             "std/algebra.dag:Lattice".to_string()
         ));
     }

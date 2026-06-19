@@ -14,8 +14,8 @@ module std.realization_measurement
 
 import std.types { ContentHash, Bool, String, List }
 import std.nat { Nat, nat_max }
+import v2.std.measure { Measure }
 import std.measure {
-  Measure,
   Time,
   time_measure,
   measure_count,

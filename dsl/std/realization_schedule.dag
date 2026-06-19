@@ -9,8 +9,9 @@ module std.realization_schedule
 
 import std.types { ContentHash, Bool, String, List, Int }
 import std.nat { Nat }
+import v2.std.measure { Measure }
 import std.measure {
-  Measure, Time, ByteSize, Watt,
+  Time, ByteSize, Watt,
   byte_size, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }

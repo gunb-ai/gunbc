@@ -1,4 +1,4 @@
-// Scope: corpus witness — Lattice is byte-synced (not diverged) but still coexistence debt.
+// Scope: corpus witness — Lattice byte-sync de-fork cleared coexistence debt (slice 1a).
 // Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
 
 module v2.test.fact_cardinality.corpus.lattice_coexistence_debt
@@ -9,5 +9,5 @@ import v2.std.logic { Bool }
 data lattice_key: String = "std/algebra.dag:Lattice"
 
 test fn corpus_lattice_coexistence_debt_holds() -> Bool {
-  fact_cardinality_live_cross_tree_is_coexistence(rel_path_decl_key: lattice_key)
+  !fact_cardinality_live_cross_tree_is_coexistence(rel_path_decl_key: lattice_key)
 }

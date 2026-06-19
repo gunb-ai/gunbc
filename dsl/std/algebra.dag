@@ -94,11 +94,7 @@ import std.error_primitives { DivError, Result }
 // Unary structures (single operation)
 // =========================================================================
 
-// Magma: a set with a closed binary operation.
-// No laws beyond closure. The weakest algebraic structure.
-type Magma<T> {
-  op: fn(T, T) -> T
-}
+// Magma: authority at v2.std.algebra (byte-sync de-fork slice 1a).
 
 // Semigroup: associative magma.
 // Law: op(op(a, b), c) == op(a, op(b, c))
@@ -298,12 +294,7 @@ type Field<T> {
 // Lattice structures
 // =========================================================================
 
-// Lattice: two idempotent, commutative, associative operations with absorption.
-// Laws: meet(a, join(a, b)) == a, join(a, meet(a, b)) == a
-type Lattice<T> {
-  meet: fn(T, T) -> T
-  join: fn(T, T) -> T
-}
+// Lattice: authority at v2.std.algebra (byte-sync de-fork slice 1a).
 
 // BoundedLattice: lattice with top and bottom elements.
 // Laws: meet(top, a) == a, join(bottom, a) == a

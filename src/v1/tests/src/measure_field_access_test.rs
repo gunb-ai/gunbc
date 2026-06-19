@@ -223,10 +223,11 @@ fn measure_dag_rust_emit_terminates() {
     use v1_compiler::v1_compiler_compile::compile_sources;
     use v1_compiler::v1_std_core::diagnostic_to_message;
 
-    let roots: Vec<String> = crate::helpers::source_roots()
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
+    let ws = crate::helpers::workspace_root();
+    let roots: Vec<String> = vec![
+        ws.join("dsl").to_string_lossy().to_string(),
+        ws.join("src/v2").to_string_lossy().to_string(),
+    ];
     let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
     let entry = entry.to_string_lossy().to_string();
     let sources = cli_run::load_sources_for_entry(&roots, &entry)
@@ -251,10 +252,11 @@ fn measure_dag_rust_emit_terminates() {
 #[test]
 fn measure_dag_v2_loads_without_field_errors() {
     use std::rc::Rc;
-    let roots: Vec<String> = crate::helpers::source_roots()
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
+    let ws = crate::helpers::workspace_root();
+    let roots: Vec<String> = vec![
+        ws.join("dsl").to_string_lossy().to_string(),
+        ws.join("src/v2").to_string_lossy().to_string(),
+    ];
     let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
     let entry = entry.to_string_lossy().to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)

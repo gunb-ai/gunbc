@@ -23,7 +23,8 @@ module test.claim.realization_scale_agnostic
 
 import std.types { Bool, List }
 import std.nat { Nat }
-import std.measure { Measure, Time, Milli, time_measure, measure_count }
+import v2.std.measure { Measure }
+import std.measure { Time, Milli, time_measure, measure_count }
 import std.realization_schedule { CostAccount, cost_account_time_count }
 import std.realization_measurement {
   time_measure_seq,

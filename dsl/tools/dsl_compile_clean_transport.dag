@@ -21,7 +21,7 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { ensure_gunbc_built }
 
-// set -e; <prelude>; OUT=$(mktemp -d); "$GUNBC" compile --source-root "$ROOT"/dsl ... ; rm -rf "$OUT"
+// set -e; <prelude>; OUT=$(mktemp -d); "$GUNBC" compile --source-root "$ROOT"/dsl --source-root "$ROOT"/src/v2 ... ; rm -rf "$OUT"
 fn clean_tree_compile_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -33,6 +33,7 @@ fn clean_tree_compile_program() -> ShellProgram {
       command(words: [
         gunbc, lit(text: "compile"),
         lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2")] },
         lit(text: "--output-dir"), out,
         lit(text: "--target"), lit(text: "rust")
       ]),
@@ -55,6 +56,7 @@ data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn 
 //   set -e; <prelude>; TMP=$(mktemp -d)
 //   cat > "$TMP"/_perturb_compile_clean_red.dag <<'PERTURB' ... PERTURB
 //   if "$GUNBC" compile --source-root "$TMP" --source-root "$ROOT"/dsl \
+//        --source-root "$ROOT"/src/v2 \
 //        --output-dir "$TMP"/out --target rust >/dev/null 2>&1
 //     then rm -rf "$TMP"; exit 1; fi
 //   rm -rf "$TMP"; exit 0
@@ -77,6 +79,7 @@ fn compile_clean_perturb_program() -> ShellProgram {
             gunbc, lit(text: "compile"),
             lit(text: "--source-root"), tmp,
             lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
+            lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2")] },
             lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
             lit(text: "--target"), lit(text: "rust")
           ]),

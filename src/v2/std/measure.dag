@@ -1,8 +1,7 @@
 // src/v2/std/measure.dag
-// Scope: v2 compile-root MIRROR of the Measure carrier primitives (NOT landed authority).
-// Canonical authority: `dsl/std/measure.dag`. Delete when v2 compile loads `dsl/std`
-// directly. Ratchet: carrier shapes MUST match dsl authority (P2).
+// Scope: v2 authority for the Measure<Q, S, M> carrier primitive (byte-sync de-fork slice 1a).
 // Domain aliases (Voltage, Current, …) live in consumer modules — compute_fabric pattern.
+// dsl/std/measure.dag re-exports dsl-tree Quantity/Scale vocabulary and aliases via cross-tree import.
 
 module v2.std.measure
 
@@ -24,7 +23,7 @@ type Scale =
     Micro
   | One
 
-// 🟢 PRIMITIVE — parametric dimensional carrier (mirror of dsl/std/measure.dag).
+// Parametric dimensional carrier (v2 authority; byte-sync de-fork slice 1a).
 type Measure<Q, S, M> {
   count: M
 }
