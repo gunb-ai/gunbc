@@ -24,7 +24,7 @@ import tools.emit_host_transport {
 }
 
 // Run all four MVP rows (no short-circuit — surface every target failure in one CI pass).
-func run_gate() -> ProcessExit {
+func run_emit_host_gate_body() -> ProcessExit {
   rust = run_rust_mvp2_smoke()
   python = run_python_mvp2_smoke()
   go = run_go_mvp2_smoke()
@@ -39,10 +39,10 @@ func run_gate() -> ProcessExit {
 }
 
 func main() -> ProcessExit {
-  run_gate()
+  run_emit_host_gate_body()
 }
 
 // Composed CI entry point (tools.ci_gates imports this name).
 func run_emit_host_ci_gate() -> ProcessExit {
-  run_gate()
+  run_emit_host_gate_body()
 }

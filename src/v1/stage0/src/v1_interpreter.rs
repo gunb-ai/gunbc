@@ -87,6 +87,7 @@ use crate::v1_std_core::{
     FieldAccessStyle,
     FieldSummary,
     FieldValueShape,
+    InferredNode,
     MatchPattern,
     MethodSemantics,
     NewlineIndex,
@@ -2884,7 +2885,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
             StringPart::Text { value } => result.push_str(value.as_str()),
             StringPart::Interpolation { expr } => {
                 let val = eval_expr(&expr, env, ctx)?;
-                result.push_str(&format!("{}", val));
+                result.push_str(&value_to_host_string(&val));
             }
         }
     }
@@ -2895,10 +2896,110 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 // Cast
 // ---------------------------------------------------------------------------
 
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            if authored_name_at(ctx.si(), item.clone()) == type_name {
+                return Some(item.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Next alias step from a type-decl `inferred` RHS (`String`, `Secret`, or the
+/// base of `Base where …` before brand preservation).
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+    let direct = authored_name_at(ctx.si(), rhs.clone());
+    if !direct.is_empty() {
+        return Some(direct);
+    }
+    if rhs.connective == Connective::Conj {
+        for child in rhs.children.iter() {
+            let base = authored_name_at(ctx.si(), child.clone());
+            if !base.is_empty() {
+                return Some(base);
+            }
+        }
+    }
+    match rhs.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            let inner = authored_name_at(ctx.si(), node.clone());
+            if inner.is_empty() {
+                None
+            } else {
+                Some(inner)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+    let rhs = match item.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    alias_rhs_next_name(ctx, rhs)
+}
+
+/// Walk alias chains via type-decl items (pre-brand `inferred` RHS), not the
+/// brand-preserved `TypeEnv` bindings used at use sites.
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let mut current = authored_name_at(ctx.si(), target);
+    let mut seen = BTreeSet::new();
+
+    for _ in 0..32 {
+        if current.is_empty() {
+            return String::new();
+        }
+        if !seen.insert(current.clone()) {
+            return current;
+        }
+        if current == "String" {
+            return "String".to_string();
+        }
+
+        let Some(item) = lookup_type_item_across_modules(ctx, &current) else {
+            return current;
+        };
+
+        let Some(rhs_name) = type_item_alias_rhs_name(ctx, &item) else {
+            return current;
+        };
+
+        if rhs_name == current {
+            return current;
+        }
+        current = rhs_name;
+    }
+
+    current
+}
+
+fn str_identity_cast_if_string_family(
+    val: &Value,
+    ctx: &InterpContext,
+    target: Rc<Node>,
+) -> Option<Value> {
+    let Value::Str(s) = val else {
+        return None;
+    };
+    if cast_target_underlying_kernel(ctx, target) == "String" {
+        Some(Value::Str(s.clone()))
+    } else {
+        None
+    }
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node);
+    let target_name = authored_name_at(ctx.si(), target_node.clone());
+
+    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+        return Ok(v);
+    }
 
     match (val, target_name.as_str()) {
         (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
@@ -3758,6 +3859,8 @@ struct ShellResult {
 
 /// Push one evaluated argv expression onto `argv`. List carriers splice
 /// element-wise; strings stay atomic (never exploded to codepoints).
+/// FreeMonoid<Char> chains whose heads are scalar char codes materialize to one
+/// host string (v2 emit → shell.Exec.Run script boundary).
 fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()> {
     match &val {
         Value::Str(s) => {
@@ -3771,7 +3874,10 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
         Value::Variant { .. } => {
-            if let Some(items) = free_monoid_to_vec(&val) {
+            if let Some(s) = value_as_host_string(&val) {
+                argv.push(s);
+                Ok(())
+            } else if let Some(items) = free_monoid_to_vec(&val) {
                 for item in items {
                     push_shell_argv_tokens(argv, item)?;
                 }
@@ -3786,6 +3892,49 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             Ok(())
         }
     }
+}
+
+// **SCAFFOLD (DESIGN.md §7)** — host string materialization at shell/REST `{param}` templates.
+//
+// Hand-Rust scaffold receipt (P5 / §7):
+// - **Deleted wrong path:** `scripts/source-root-ingest-gate.sh` (deleted on main); slice-3 gate
+//   transport now emits `TargetSource` via row-driven bash emit (`src/v2/workflow/
+//   source_root_ingest_transport.dag`) instead of the retired sidecar script.
+// - **Red-by-execution (pre-scaffold):** `format!("{}", val)` on `FreeMonoid<Char>` Cons chains at
+//   `substitute_template` / `push_shell_argv_tokens` printed Cons debug text, not script bytes —
+//   `source_root_ingest_gate_passes` went RED on the CI floor until this flatten landed.
+// - **Green witnesses:** `v2.compiler.manual.bash_emit_command_test.bash_emit_source_root_ingest_gate_holds`
+//   (emit-time byte identity) + floor-plan `source_root_ingest_gate_passes` (Wet claim-run legs).
+// - **This site:** `value_as_host_string` / `value_to_host_string` flatten FreeMonoid chains at
+//   `eval_string_interp`, `substitute_template`, and `push_shell_argv_tokens`.
+// - **Dissolve-on (ROADMAP):** `ROADMAP.md` Now → Lane 3a `SourceRootIngest` (#5126 / #5155 slice 3) —
+//   delete these helpers when `TargetSource` gains a substrate coercion to flat Unicode at the shell
+//   boundary, or transports take `ShellProgram` not raw emit output.
+
+fn value_as_host_string(val: &Value) -> Option<String> {
+    if let Value::Str(s) = val {
+        return Some(s.clone());
+    }
+    let items = free_monoid_to_vec(val)?;
+    let mut out = String::new();
+    for item in items {
+        match item {
+            Value::Int(code) => {
+                let ch = char::from_u32(code as u32)?;
+                out.push(ch);
+            }
+            Value::Str(s) => out.push_str(&s),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+/// Materialize a runtime value for host-side string interpolation (shell argv
+/// `{param}` templates, REST path templates). FreeMonoid<Char> / TargetSource
+/// chains flatten to Unicode text; other values use Display.
+fn value_to_host_string(val: &Value) -> String {
+    value_as_host_string(val).unwrap_or_else(|| format!("{}", val))
 }
 
 /// Execute a shell transport: evaluate argv template, run command, capture output.
@@ -4379,7 +4528,7 @@ fn substitute_template(template: &str, env: &Rc<Env>, ctx: &InterpContext) -> St
                 var_name.push(c2);
             }
             if let Some(val) = env.lookup(ctx.sym(&var_name)) {
-                result.push_str(&format!("{}", val));
+                result.push_str(&value_to_host_string(&val));
             } else {
                 // Leave unresolved placeholders as-is
                 result.push('{');
@@ -5069,7 +5218,7 @@ fn eval_builtin(
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let layer = Value::Variant {
-                    type_name: ctx.sym("LayerLabel"),
+                    type_name: ctx.sym("LayerPrefix"),
                     variant_name: ctx.sym(f.layer),
                     fields: Rc::new(HashMap::new()),
                 };

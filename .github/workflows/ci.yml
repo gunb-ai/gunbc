@@ -81,4 +81,4 @@ jobs:
           rm -f "$BUILD_LOG"
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
-          "$ROOT/target/release/claim_executor" --source-root src/v2 --source-root dsl --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
+          "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
