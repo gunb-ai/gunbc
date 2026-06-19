@@ -925,7 +925,7 @@ fn target_serialize_bodied_arrow_from_model(
                       projection: projection
                     ),
                     f: fn(body_tokens) {
-                      serialize_concrete_syntax_tokens_to_source(
+                      serialize_concrete_syntax_tokens_to_source_string(
                         target: target,
                         tokens: target_bodied_arrow_compose_statement_tokens(
                           scaffold: scaffold,
