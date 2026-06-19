@@ -2,11 +2,10 @@
 //
 // T-Numeric-Construction **Slice 4** alias pivot (construction-chain layer 4).
 //
-// Authority:
-//   - `docs/design-numeric-construction.md` (construction chain: … → Int → Rational → Real).
-//   - `docs/audit/t-numeric-construction-field-of-fractions-6q.md` (Q6 single-authority
-//     resolution: canonical form is `Field<FieldOfFractions<Int>>`, **not** compact
-//     `FieldOfFractions<Int>` alone).
+// Authority: Q6 single-authority resolution (DESIGN.md §3) — canonical form is
+// `Field<FieldOfFractions<Int>>`, **not** compact `FieldOfFractions<Int>` alone.
+// This file owns the construction-chain layer 4 authority alongside magnitude.dag,
+// nat.dag, and integer.dag.
 //
 // `Field<T>` is the standard algebra witness over carrier `T`; here
 // `T = FieldOfFractions<Int>` is the opaque localization carrier (integral domain ℤ → field ℚ).
