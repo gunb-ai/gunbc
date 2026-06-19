@@ -24,7 +24,7 @@ import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import extdeps.communication.medium { Medium }
-import v2.compiler.target_carriers { TargetModel, lossless_text_medium }
+import v2.compiler.target_carriers { TargetModel, lossless_source }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }

@@ -46,7 +46,7 @@ import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { lossless_text_medium }
+import v2.compiler.target_carriers { lossless_source }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
@@ -484,7 +484,7 @@ fn deterministic_dag_source_serializer_witness(
   first: Medium<String>,
   second: Medium<String>
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
-  if first == second {
+  if first.carried == second.carried {
     Holds { value: DeterministicDagSourceSerializerLaw {} }
   } else {
     Violates {

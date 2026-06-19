@@ -16,6 +16,6 @@ import v2.std.text { String }
 // TargetModel authority is v2.std.compilers.target_model (P2); no local redeclare.
 // Recorded source text (ingest + emit) is Medium<String> — see extdeps.communication.medium.
 
-fn lossless_text_medium(text: String) -> Medium<String> {
+fn lossless_source(text: String) -> Medium<String> {
   Medium { carried: text, fidelity: Lossless }
 }

@@ -14,7 +14,7 @@ module v2.compiler.translate
 
 import v2.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { lossless_text_medium }
+import v2.compiler.target_carriers { lossless_source }
 import v2.std.compilers.target_model {
   CanonicalOperation,
   TargetBodiedArrowStatementScaffold,
@@ -819,7 +819,7 @@ fn serialize_concrete_syntax_tokens_to_source(
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
     f: fn(text) {
-      outcome_accepted(lossless_text_medium(text: text))
+      outcome_accepted(lossless_source(text: text))
     }
   )
 }
@@ -1176,7 +1176,7 @@ fn target_serialize_source_from_model(
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
         f: fn(text) {
-          outcome_accepted(lossless_text_medium(text: text))
+          outcome_accepted(lossless_source(text: text))
         }
       )
     }
