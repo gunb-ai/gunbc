@@ -23,6 +23,24 @@ import std.http_path { PathTemplate }
 import std.types { HttpMethod, HttpStatus, Port }
 
 // Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
+// 🟢 GREEN (terminal). Static-route content types are a closed MIME surface for
+// the gunbhub serve host; wire labels are the RFC 9110 media-type strings.
+type HttpContentType
+  = TextHtmlUtf8
+  | TextPlainUtf8
+  | ApplicationJsonUtf8
+  | ApplicationOctetStream
+
+fn http_content_type_wire_label(content_type: HttpContentType) -> String {
+  match content_type {
+    TextHtmlUtf8 => "text/html; charset=utf-8"
+    TextPlainUtf8 => "text/plain; charset=utf-8"
+    ApplicationJsonUtf8 => "application/json; charset=utf-8"
+    ApplicationOctetStream => "application/octet-stream"
+  }
+}
+
+// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
 // GREEN (terminal). These are distinct HTTP request-body media families
 // with externally specified wire behavior. A variant payload would erase the
 // parser/serializer selection carried by the media type itself.
@@ -115,7 +133,7 @@ type ServedStaticRoute {
   method: HttpMethod
   path_pattern: PathTemplate
   body: String
-  content_type: String
+  content_type: HttpContentType
   status_on_hit: HttpStatus
 }
 

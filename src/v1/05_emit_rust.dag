@@ -68,6 +68,7 @@ import v1.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
   rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
+  rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
   HigherOrderMethodSpec, rust_higher_order_methods
 }
 import v1.compiler.languages {
@@ -535,7 +536,11 @@ fn rust_string_as_authored_policy() -> RustEnumWireSerde {
 }
 
 fn rust_snake_string_policy() -> RustEnumWireSerde {
-  rust_serde_policy(enum_attr: "#[serde(rename_all = \"snake_case\")]", rename_prefix: none, rename_suffix: none, rename_style: none)
+  rust_serde_policy(enum_attr: rust_serde_rename_all_snake_case, rename_prefix: none, rename_suffix: none, rename_style: none)
+}
+
+fn rust_screaming_snake_string_policy() -> RustEnumWireSerde {
+  rust_serde_policy(enum_attr: rust_serde_rename_all_screaming_snake_case, rename_prefix: none, rename_suffix: none, rename_style: none)
 }
 
 fn field_value_by_name(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -587,7 +592,7 @@ fn rust_string_policy_for_naming(naming: Node, source_indices: Map<String, Newli
   } else if naming_name == "SnakeCase" {
     rust_snake_string_policy()
   } else if naming_name == "ScreamingSnakeCase" {
-    rust_serde_policy(enum_attr: "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]", rename_prefix: none, rename_suffix: none, rename_style: none)
+    rust_screaming_snake_string_policy()
   } else if naming_name == "StripPrefixAndSnakeCase" {
     match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
       Present { value: prefix } =>

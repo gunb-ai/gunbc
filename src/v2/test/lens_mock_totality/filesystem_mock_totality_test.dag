@@ -16,7 +16,11 @@
 module v2.test.lens_mock_totality.filesystem_mock_totality
 
 import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
-import v2.extdeps.filesystem.mock_corpus {
+// Single authority for the filesystem mock corpus now lives in the dsl/ tree
+// (dsl/extdeps/filesystem/mock_corpus.dag) so the v1 runtime reads the SAME model
+// this lens does (M4 hermetic-realization fold). Cross-tree v2->dsl import is the
+// existing pattern (cf. std.realization / std.types).
+import extdeps.filesystem.mock_corpus {
   PublishedMockCase,
   filesystem_published_mock_corpus
 }

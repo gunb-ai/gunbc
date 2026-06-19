@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // Persistent value carriers (ctrl#1533 phase 2), implementing the
 // v2.std.value_carrier declarations: HamtMap is a hash array mapped trie
@@ -1165,6 +1165,13 @@ pub struct InterpContext {
     mutation_counters: std::cell::RefCell<MutationCounters>,
     /// Single name intern table for runtime identity carriers (ctrl#1533 phase 3).
     symbols: RefCell<SymbolInterner>,
+    /// Memoized membership set of the PUBLISHED mock corpus — the §2 Realization pure-spec
+    /// the M2 mock_totality_lens also reads (the operation keys that are hermetically
+    /// realizable). The M4 hermetic-realization fold makes eval_service_call decide replay
+    /// from this ONE model rather than a parallel ledger. Computed once on first hermetic
+    /// service call via `resolve_published_mock_keys`; the corpus is an immutable global
+    /// constant for this context, with the same scoping as `data_cache`.
+    published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
 impl InterpContext {
@@ -1307,7 +1314,22 @@ impl InterpContext {
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
+            published_mock_keys: RefCell::new(None),
         }
+    }
+
+    /// The published mock corpus as an operation-key set (the §2 Realization pure-spec the
+    /// M2 mock_totality_lens also reads). Memoized: the corpus is an immutable global
+    /// constant for this context, so it is resolved at most once.
+    fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
+        {
+            if let Some(keys) = self.published_mock_keys.borrow().as_ref() {
+                return Ok(keys.clone());
+            }
+        }
+        let keys = Rc::new(resolve_published_mock_keys(self)?);
+        *self.published_mock_keys.borrow_mut() = Some(keys.clone());
+        Ok(keys)
     }
 
     fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
@@ -1507,6 +1529,11 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // gross time bubbles up to its parent via CHILD_NANOS — the classic
     // self-time decomposition. Runs on both the Ok and Err (`?`-propagated)
     // paths because the result is captured, not early-returned.
+    //
+    // Phase-0 keystone: when an active cache-subject is set, self-time rolls up
+    // to that content-hash key (PerformanceReceipt grain) instead of per-variant
+    // buckets. Variant counters remain as an opt-in deep projection when no
+    // subject is active.
     let idx = expr_variant_index(&node.expr_data);
     EVAL_COUNTS.with(|c| c.borrow_mut()[idx] += 1);
     let saved_children = CHILD_NANOS.replace(0);
@@ -1516,7 +1543,16 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     });
     let gross = start.elapsed().as_nanos();
     let children = CHILD_NANOS.get();
-    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += gross.saturating_sub(children));
+    let self_time = gross.saturating_sub(children);
+    // Phase-0 keystone: v1 proving handler for std.realization_measurement
+    // RealizationMeasureEffect::ObserveElapsedAtSubject (see v1_eval_expr_measure_handler_id).
+    // Durable model + roll-up lens live in .dag; this tap is host-effect realization only.
+    if let Some(subject) = ACTIVE_SUBJECT.with(|s| s.borrow().clone()) {
+        SUBJECT_SELF_NANOS.with(|m| {
+            *m.borrow_mut().entry(subject).or_insert(0) += self_time;
+        });
+    }
+    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += self_time);
     CHILD_NANOS.set(saved_children + gross);
     result
 }
@@ -3561,8 +3597,42 @@ fn eval_service_call(
         crate::recorded_fixture::service_inputs_fixture_json(op_node, &param_env, ctx)
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
-    // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
+        // M4 hermetic-realization fold (§2 Realization): the PUBLISHED mock corpus is the
+        // single authority for WHICH operations are hermetically realizable — the SAME model
+        // the M2 mock_totality_lens reads. A service is "corpus-governed" iff it publishes at
+        // least one case; for such a service the published model — NOT inline mock_* props —
+        // decides realizability. One decision procedure, shared by the runtime and the lens.
+        let published = ctx.published_mock_keys()?;
+        let service_is_governed = published.iter().any(|k| {
+            k.rsplit_once('.')
+                .map(|(svc, _)| svc == service_name)
+                .unwrap_or(false)
+        });
+        if service_is_governed && !published.contains(&key) {
+            // §5 fail-closed on disagreement: the service publishes a corpus but THIS operation
+            // is not a published case. Refuse loudly — even if a fixture or an inline mock_*
+            // prop still exists for it. A runtime that fabricated/replayed here would let the
+            // runtime decision and the published model diverge silently; this is the teeth.
+            let mut cases: Vec<&String> = published
+                .iter()
+                .filter(|k| {
+                    k.rsplit_once('.')
+                        .map(|(svc, _)| svc == service_name)
+                        .unwrap_or(false)
+                })
+                .collect();
+            cases.sort();
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "hermetic mode: operation {key} is not a published mock case for \
+                     corpus-governed service {service_name} — refusing to realize \
+                     (published cases: {cases:?})"
+                ),
+            });
+        }
+
+        // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
         if let Some(store) = &ctx.fixture_store {
             eprintln!(
                 "[hermetic:fixture] {}.{} inputs_hash={}",
@@ -3576,6 +3646,12 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
+        // Retained inline-mock fallback for extdeps layers that do NOT yet publish a dsl mock
+        // corpus (M4.0 migrated filesystem only). 🟡 dissolved-by —
+        // feature:m4-eval-service-call-folds-hermetic-realization — dissolve-on: every extdeps
+        // layer publishes a dsl-side PublishedMockCase corpus; when no corpus-free service
+        // relies on inline mock_* props, this branch and eval_mock_response delete together and
+        // the RecordedFixture store becomes the sole payload authority (§3).
         eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
@@ -3712,6 +3788,48 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
     }
 }
 
+const SHELL_TRANSIENT_RETRY_MAX: u8 = 3;
+
+fn shell_output_is_transient_infra(stderr: &str, spawn_err: Option<&str>) -> bool {
+    let hay = format!("{} {}", stderr, spawn_err.unwrap_or_default()).to_lowercase();
+    hay.contains("resource temporarily unavailable")
+        || hay.contains("failed to spawn")
+        || hay.contains("sccache: encountered fatal error")
+}
+
+fn shell_retry_note(next_attempt: u8) -> &'static str {
+    match next_attempt {
+        1 => "retry CARGO_BUILD_JOBS=1 (keep sccache)",
+        2 => "retry without RUSTC_WRAPPER",
+        _ => "retry",
+    }
+}
+
+fn run_shell_argv(argv: &[String], attempt: u8) -> Result<std::process::Output, String> {
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..]);
+    if attempt >= 1 {
+        cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+    if attempt >= 2 {
+        cmd.env_remove("RUSTC_WRAPPER");
+    }
+    cmd.output()
+        .map_err(|e| format!("failed to execute '{}': {}", argv[0], e))
+}
+
+fn log_shell_failure(exit_code: i32, stdout: &str, stderr: &str) {
+    if stderr.is_empty() && stdout.is_empty() {
+        return;
+    }
+    if !stderr.is_empty() {
+        eprintln!("[shell] exit {exit_code} stderr:\n{stderr}");
+    }
+    if !stdout.is_empty() {
+        eprintln!("[shell] exit {exit_code} stdout:\n{stdout}");
+    }
+}
+
 /// Execute a shell transport: evaluate argv template, run command, capture output.
 fn dispatch_shell(
     transport: &Rc<Node>,
@@ -3734,22 +3852,56 @@ fn dispatch_shell(
 
     eprintln!("[shell] {}", argv.join(" "));
 
-    let output = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .output()
-        .map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
-
-    Ok(ShellResult {
-        exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr)
-            .trim_end()
-            .to_string(),
-    })
+    let mut attempt = 0u8;
+    loop {
+        match run_shell_argv(&argv, attempt) {
+            Ok(output) => {
+                let exit_code = output.status.code().unwrap_or(-1);
+                let stdout = String::from_utf8_lossy(&output.stdout)
+                    .trim_end()
+                    .to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr)
+                    .trim_end()
+                    .to_string();
+                if exit_code != 0
+                    && attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
+                    && shell_output_is_transient_infra(&stderr, None)
+                {
+                    eprintln!(
+                        "[shell] transient infra error (exit {exit_code}), {}",
+                        shell_retry_note(attempt + 1)
+                    );
+                    log_shell_failure(exit_code, &stdout, &stderr);
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+                if exit_code != 0 {
+                    log_shell_failure(exit_code, &stdout, &stderr);
+                }
+                return Ok(ShellResult {
+                    exit_code,
+                    stdout,
+                    stderr,
+                });
+            }
+            Err(spawn_err)
+                if attempt + 1 < SHELL_TRANSIENT_RETRY_MAX
+                    && shell_output_is_transient_infra("", Some(&spawn_err)) =>
+            {
+                eprintln!(
+                    "[shell] transient spawn error ({}), {}",
+                    spawn_err,
+                    shell_retry_note(attempt + 1)
+                );
+                attempt += 1;
+                std::thread::sleep(Duration::from_secs(1));
+            }
+            Err(spawn_err) => {
+                return Err(InterpError::TypeError { msg: spawn_err });
+            }
+        }
+    }
 }
 
 /// Map shell stdout/stderr/exit_code to the operation's return type fields.
@@ -4524,6 +4676,69 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
+/// True iff a type-annotation node tree names `target` anywhere (the type itself or a type
+/// argument, e.g. the `PublishedMockCase` element of `List<PublishedMockCase>`). Reads SHAPE
+/// over the small type expression — cheap, no evaluation.
+fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
+    if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names(ctx, c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names(ctx, c, target))
+}
+
+/// Resolve the PUBLISHED mock corpus (the §2 Realization pure-spec) into its operation-key set.
+/// Reads SHAPE, not contents (DESIGN.md lens law): every `data` item DECLARED over
+/// `PublishedMockCase` contributes its rows' `operation_key`s. This is the SAME corpus the M2
+/// mock_totality_lens reads — the v1 runtime and the compile-time lens now decide hermetic
+/// realizability from ONE model. The declared-type pre-filter keeps this cheap: only corpus data
+/// items are evaluated, not every `data` constant in the loaded tree. Evaluated against
+/// `Env::empty()` like other `data` constants; data items are pure (no service calls), so this
+/// never re-enters `eval_service_call`.
+fn resolve_published_mock_keys(
+    ctx: &InterpContext,
+) -> InterpResult<std::collections::HashSet<String>> {
+    let mut keys = std::collections::HashSet::new();
+    for (name, info) in ctx.item_registry.iter() {
+        if info.kind != ItemKind::DataItem {
+            continue;
+        }
+        let Some(node) = ctx.lookup_fn(name) else {
+            continue;
+        };
+        // Declared-type gate: skip (without evaluating) any data item not declared over
+        // PublishedMockCase. Corpus data items always carry the explicit annotation.
+        let Some(ty) = node.type_annotation.as_ref() else {
+            continue;
+        };
+        if !type_annotation_names(ctx, ty, "PublishedMockCase") {
+            continue;
+        }
+        let Some(body) = node.body.as_ref() else {
+            continue;
+        };
+        let val = eval_expr(body, &Env::empty(), ctx)?;
+        let Value::List(items) = &val else {
+            continue;
+        };
+        for item in items.iter() {
+            if let Value::Record { type_name, fields } = item {
+                if ctx.sym_eq(*type_name, "PublishedMockCase") {
+                    if let Some(Value::Str(op_key)) = ctx.field(fields, "operation_key") {
+                        keys.insert(op_key.clone());
+                    }
+                }
+            }
+        }
+    }
+    Ok(keys)
+}
+
 /// Evaluate mock_response from an operation's properties for hermetic execution.
 fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     // Find first mock_* property
@@ -4922,6 +5137,30 @@ fn eval_builtin(
             }))
         }
 
+        "layer_import_facts" => {
+            let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
+            let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
+            let facts =
+                crate::layering_imports_project::layer_import_facts(&std_roots, &extdeps_roots);
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let layer = Value::Variant {
+                    type_name: ctx.sym("LayerLabel"),
+                    variant_name: ctx.sym(f.layer),
+                    fields: Rc::new(HashMap::new()),
+                };
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("layer"), layer);
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
+                items.push(Value::Record {
+                    type_name: ctx.sym("LayerImportFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
             crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
@@ -5277,6 +5516,10 @@ thread_local! {
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
     static EVAL_SELF_NANOS: RefCell<[u128; EXPR_VARIANT_COUNT]> =
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
+    /// Content-hash cache-subject key for the active witness eval (Phase-0 keystone).
+    static ACTIVE_SUBJECT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Self-time nanoseconds accumulated per cache-subject during the active profile window.
+    static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
     /// Gross nanoseconds charged by the child `eval_expr` frames of the frame
     /// currently running — read by a parent frame to subtract its children's
     /// time. Reset to 0 on frame entry, restored (plus the frame's own gross)
@@ -5300,6 +5543,58 @@ fn eval_profile_enabled() -> bool {
     })
 }
 
+/// SCAFFOLD — v1 proving handler mirror of `compute_fabric.PerformanceReceipt` (§3 peripheral).
+/// P5 receipt: `eval_measurement_purity_test.rs` (verdict unchanged under measurement).
+/// dissolve-on: v2 eval fold binds `RealizationMeasureEffect::ObserveElapsedAtSubject`;
+/// delete this struct + thread-local tap (`docs/plans/realization-measurement-loop.md` Phase 0 table).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PerformanceReceipt {
+    pub subject_key: String,
+    pub work_shape: String,
+    pub wall_nanos: u128,
+    pub eval_self_nanos: u128,
+    pub sample_count: u64,
+}
+
+/// Snapshot of per-subject eval self-time nanoseconds for the active thread.
+pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
+}
+
+/// Set the active cache-subject key for eval self-time attribution (`eval_expr` tap).
+pub fn eval_subject_set(subject_key: String) {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = Some(subject_key));
+}
+
+/// Clear the active cache-subject key.
+pub fn eval_subject_clear() {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = None);
+}
+
+/// Zero subject self-time counters and the child-time accumulator.
+pub fn eval_subject_timing_reset() {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow_mut().clear());
+    CHILD_NANOS.set(0);
+}
+
+/// Build a PerformanceReceipt from witness boundary timing + eval tap self-time.
+pub fn performance_receipt_from_witness(
+    subject_key: String,
+    work_shape: &str,
+    wall_nanos: u128,
+) -> PerformanceReceipt {
+    let eval_self_nanos = SUBJECT_SELF_NANOS
+        .with(|m| m.borrow().get(&subject_key).copied())
+        .unwrap_or(0);
+    PerformanceReceipt {
+        subject_key,
+        work_shape: work_shape.to_string(),
+        wall_nanos,
+        eval_self_nanos,
+        sample_count: 1,
+    }
+}
+
 /// A snapshot of the per-instruction eval profile (per-variant count + self-ns).
 #[derive(Clone)]
 pub struct EvalProfile {
@@ -5317,10 +5612,11 @@ pub fn eval_profile_snapshot() -> EvalProfile {
 }
 
 /// Zero the current thread's per-instruction profile (counts + self-ns + the
-/// child-time accumulator).
+/// child-time accumulator) and subject self-time map.
 pub fn eval_profile_reset() {
     EVAL_COUNTS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
     EVAL_SELF_NANOS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
+    eval_subject_timing_reset();
     CHILD_NANOS.set(0);
 }
 
@@ -5493,6 +5789,39 @@ fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
         }),
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a string argument", context),
+        }),
+    }
+}
+
+fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<String>> {
+    match val {
+        Some(Value::List(items)) => {
+            let mut out: Vec<String> = Vec::new();
+            for item in items.iter() {
+                match item {
+                    Value::Str(s) => out.push(s.clone()),
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "{} expects a List<String>, got element {}",
+                                context,
+                                other.type_label()
+                            ),
+                        })
+                    }
+                }
+            }
+            Ok(out)
+        }
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<String> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a List<String> argument", context),
         }),
     }
 }
