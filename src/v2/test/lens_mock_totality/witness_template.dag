@@ -11,7 +11,7 @@ import v2.lens.mock_totality { mock_totality_lens }
 import v2.std.algebra { contains, filter }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.hermetic_replay { PublishedMockCase }
+import std.hermetic_replay { PublishedMockCase }
 import v2.std.logic { Bool }
 
 fn published_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
