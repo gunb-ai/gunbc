@@ -1,64 +1,41 @@
 module v2.test.round_trip.source_authority_debug
 
-import v2.compiler.source_authority { parse_dag_source_ast, semantic_ir_from_ast_with_model }
-import v2.compiler.target_carriers { lossless_source }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_language_model_wave1_modeled,
-  dag_mvp1_bind_source_text,
-  dag_mvp1_bind_target_model,
-  dag_mvp1_source_text,
-  dag_mvp1_target_model
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production_tree
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_grammar_production_mvp1_fn_add,
+  dag_grammar_production_mvp1_fn_bind,
+  dag_language_model_wave1,
+  dag_mvp1_bind_source_text,
+  dag_mvp1_source_text
+}
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v2.std.logic { Bool }
 
-fn debug_add_parse() -> Bool {
-  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_source_text)) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn debug_bind_parse() -> Bool {
-  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_bind_source_text)) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn debug_add_semantic() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
-  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_source_text)) {
-    Accepted { value: ast, diagnostics: _ } =>
-      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+fn debug_comprep_add_parse() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: dag_mvp1_source_text,
+    file: ^debug_comprep_add_source,
+    rules: lm.lex
+  ) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      let root = GrammarRoot {
+        start: ^dag_production_mvp1_fn_add,
+        productions: [dag_grammar_production_mvp1_fn_add()],
+        sync_tokens: grammar_empty_sync_tokens()
       }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn debug_bind_semantic() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
-  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_bind_source_text)) {
-    Accepted { value: ast, diagnostics: _ } =>
-      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn debug_add_serialize() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
-  let target = dag_mvp1_target_model()
-  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_source_text)) {
-    Accepted { value: ast, diagnostics: _ } =>
-      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
-        Accepted { value: ir, diagnostics: _ } =>
-          match target_serialize_source_from_model(target: target, emitted: ir.tree) {
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
+        Accepted { value: validated, diagnostics: _ } =>
+          match parse_production_tree(
+            tokens: token_stream.tokens,
+            validated: validated,
+            production_name: ^dag_production_mvp1_fn_add
+          ) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -68,14 +45,26 @@ fn debug_add_serialize() -> Bool {
   }
 }
 
-fn debug_bind_serialize() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
-  let target = dag_mvp1_bind_target_model()
-  match parse_dag_source_ast(source: lossless_source(text: dag_mvp1_bind_source_text)) {
-    Accepted { value: ast, diagnostics: _ } =>
-      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
-        Accepted { value: ir, diagnostics: _ } =>
-          match target_serialize_source_from_model(target: target, emitted: ir.tree) {
+fn debug_comprep_bind_parse() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: dag_mvp1_bind_source_text,
+    file: ^debug_comprep_bind_source,
+    rules: lm.lex
+  ) {
+    Accepted { value: token_stream, diagnostics: _ } =>
+      let root = GrammarRoot {
+        start: ^dag_production_mvp1_fn_bind,
+        productions: [dag_grammar_production_mvp1_fn_bind()],
+        sync_tokens: grammar_empty_sync_tokens()
+      }
+      match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
+        Accepted { value: validated, diagnostics: _ } =>
+          match parse_production_tree(
+            tokens: token_stream.tokens,
+            validated: validated,
+            production_name: ^dag_production_mvp1_fn_bind
+          ) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
