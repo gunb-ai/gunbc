@@ -70,6 +70,7 @@ type PrLifecycleRefusal
   | PrMissingHeadSha
   | PrHeadShaMismatch { expected: CommitSha, actual: CommitSha }
   | PrMissingReviewTally
+  | PrMissingDigestVerdict
   | PrDigestNotReady { first_reason: String }
   | PrTallyRequestChanges { count: Int }
   | PrTallyBlockingFindings { count: Int }
@@ -227,9 +228,7 @@ fn evaluate_record_merge_ready(
   }
   match digest {
     Absent =>
-      return TransitionRefused {
-        refusal: PrDigestNotReady { first_reason: "missing digest verdict" }
-      }
+      return TransitionRefused { refusal: PrMissingDigestVerdict }
     Present { value: verdict } =>
       match verdict {
         Ready => {}
