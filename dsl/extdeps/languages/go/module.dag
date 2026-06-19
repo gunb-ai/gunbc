@@ -11,10 +11,13 @@
 //   - GoLanguageVersion, GoToolchainName
 //   - GoRequireEntry, GoReplaceEntry, GoExcludeEntry, GoRetractEntry
 //   - GoModFile (go.mod structure)
-//   - go_mod_filename (§3 note: emit.dag carries go_manifest_file as a v1-seed
-//     scaffold under the same string; dissolve-on: v1 bootstrap reads module.dag)
 //   - go_mvs_properties (algorithm properties, not a runnable function)
 //   - VersionScheme data row scaffold — pending extdeps.version #5311
+//
+// go.mod filename authority: extdeps.languages.go.emit.go_manifest_file
+//   (v1-seed scaffold, load-bearing in src/v1/languages.dag; this module does
+//    NOT re-declare it — dissolve-on: emit.dag imports go_manifest_file from
+//    module.dag when module.dag becomes the v1-bootstrap-read authority).
 //
 // Consumers:
 //   dsl/test/claim/go_module_versioning_witness_test.dag — by-execution witnesses
@@ -80,7 +83,7 @@ type GoModulePath = NonEmptyStr where brand("GoModulePath")
 // Single authority for this rule — do not re-state in emit.dag or workflow.
 type GoMajorVersionSuffix
   = MajorV0OrV1         // no suffix: v0 and v1 are suffix-free (go.dev/ref/mod#major-version-suffixes)
-  | MajorV2Plus { major: Int }  // path must end in /v2, /v3, …
+  | MajorV2Plus { major: Int where range(min: 2) }  // path must end in /v2, /v3, …; major MUST be ≥ 2
 
 // Renders the /vN suffix string for a given major version suffix.
 // MajorV0OrV1 → "" (no suffix appended to module path)
@@ -177,12 +180,6 @@ type GoModFile {
   exclude: List<GoExcludeEntry>
   retract: List<GoRetractEntry>
 }
-
-// ── Manifest filename ────────────────────────────────────────────────────────
-// Single authority for the go.mod filename (go.dev/ref/mod#go-mod-file).
-// §3 scaffold note: emit.dag also declares `go_manifest_file: String = "go.mod"`
-// as a v1-seed scaffold (same fact). Dissolve-on: v1 bootstrap reads this module.
-data go_mod_filename: String = "go.mod"
 
 // ── Minimum version selection algorithm properties ───────────────────────────
 // go.dev/ref/mod#minimal-version-selection

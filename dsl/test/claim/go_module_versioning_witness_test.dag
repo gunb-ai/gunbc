@@ -14,22 +14,22 @@ module test.claim.go_module_versioning_witness
 
 import std.logic { Bool }
 import std.types { Int, List }
+import extdeps.languages.go.emit { go_manifest_file }
 import extdeps.languages.go.module {
   GoMvsProperty,
   GoMajorVersionSuffix,
   GoSemVer,
   MajorV0OrV1,
   MajorV2Plus,
-  go_mod_filename,
   go_major_suffix_str,
   go_semver_label,
   go_mvs_properties
 }
 
-// -- go.mod filename is the single authority ------------------------------
+// -- go.mod filename (authority: extdeps.languages.go.emit.go_manifest_file) --
 
-fn w_go_mod_filename() -> Bool {
-  go_mod_filename == "go.mod"
+fn w_go_manifest_file() -> Bool {
+  go_manifest_file == "go.mod"
 }
 
 // -- Major version suffix rendering (go.dev/ref/mod#major-version-suffixes) --
@@ -122,7 +122,7 @@ fn w_go_mvs_has_three_properties() -> Bool {
 }
 
 test fn go_module_versioning_witnesses() -> Bool {
-  w_go_mod_filename()
+  w_go_manifest_file()
     && w_major_v0_or_v1_suffix_is_empty()
     && w_major_v2_suffix()
     && w_major_v3_suffix()
