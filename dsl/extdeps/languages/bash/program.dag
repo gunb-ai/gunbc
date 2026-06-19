@@ -21,7 +21,7 @@
 //
 // Consumers (ALL migrate off, then this module deletes):
 //   test.claim.bash_serializer_witness_test, tools/host_prelude, tools/dsl_compile_clean_transport,
-//   tools/layering_imports_transport, tools/emit_host_transport, tools/source_root_ingest_transport,
+//   tools/layering_imports_transport, tools/emit_host_transport,
 //   gunbc/ci_yaml_validate
 
 module extdeps.languages.bash.program
