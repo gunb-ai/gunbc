@@ -12,17 +12,10 @@
 //     resolution yet. #4831 (in flight) lands it as an explicit `std.option`
 //     module (`Option = Absent | Present{value}`) and repoints those
 //     consumers to `import std.option { Option }`.
-//   - The real `CostEstimate.unit_price: MoneyMicros` is a `Measure<Currency,
-//     Micro>` value; Measure VALUE eval on v2 is blocked by G1 (identifier-
-//     variant type args, #4826) -- the same gap that blocks `ByteSize`/`Hertz`
-//     eval. So a money-carrier value cannot yet be constructed/read on v1.
-//
-//   ⟹ INTERIM PROOF. This witness is NOT a permanent substitute for the real
-//   claim-run. **Real target:** a v2 claim-run over
-//   `product.compute_fabric.hetzner_cax41_cost_quote` (a `CostEstimate` with a
-//   `MoneyMicros` price), which lands once #4831 (Option-in-v2) AND #4826
-//   (G1 identifier-variant type args) clear. Wire this witness out / fold it
-//   into that real claim-run on arrival.
+//   - The real `CostEstimate.unit_price: MoneyMicros` consumer is now proven by
+//     `test.claim.hetzner_cost_quote_witness` (extdeps Hetzner CAX41 catalog row
+//     → `product.compute_fabric.per_second_billed_cost_quote`). This Float witness
+//     remains as the genuinely-real-valued fields exercise until folded.
 //
 // NOTE: money is fixed-point (`MoneyMicros` = `Measure<Currency, Micro>`),
 // NEVER `Float` -- floating point for money is a representation defect

@@ -1,11 +1,14 @@
 // std/symbols.dag -- DAG-modeled visual vocabulary for the codebase.
 //
+// Agnostic glyph/symbol concepts only (DESIGN.md §3). Encoding-tier glyph
+// realization tables and ANSI escape mappings live in extdeps/render/*;
+// dispatch that selects a terminal encoding tier lives there too.
+//
 // Composable symbol system with three encoding tiers (Emoji, Unicode, ASCII)
 // and semantic colors.  Follows the same SubDag compositional pattern as the
 // language module: encoding tiers are a SubDag, individual symbols are SubDags
 // with config + encoding atoms + resolve.
 //
-// This DSL module is the single source of truth for the symbol table.
 // The Rust SymbolSet/Symbol/SymbolId types in core/ir/src/symbols.rs
 // will eventually be generated from these definitions.
 
@@ -14,7 +17,7 @@ module std.symbols
 // --- Semantic color ---
 //
 // Meaning-based color that maps to ANSI/CSS/CI representations.
-// Defined here as the single source of truth for the symbol system.
+// Per-target escape sequences live in extdeps/render/ansi.dag.
 
 type SemanticColor = Default | Success | Warning | Error | Info | Dim | Active | Accent
 
@@ -85,7 +88,7 @@ type SymbolId
 // --- Symbol entry ---
 //
 // A single symbol with all three tier encodings and a semantic color.
-// The data table below is a flat list of these entries -- the "visual vocabulary".
+// The cited realization rows live in extdeps/render/glyphs.dag.
 
 type SymbolEntry {
   id: SymbolId
@@ -93,120 +96,4 @@ type SymbolEntry {
   unicode: String
   ascii: String
   color: SemanticColor
-}
-
-// --- Standard symbol set ---
-//
-// The canonical symbol table.  Each entry maps a SymbolId to its
-// three-tier visual encoding and semantic color.
-
-data standard_symbols: List<SymbolEntry> = [
-  // Node lifecycle
-  // NOTE: emoji/unicode tiers collapsed to ASCII -- restore when tokenizer handles UTF-8
-  { id: NodePending,      emoji: "[ ]", unicode: "o",   ascii: "[ ]", color: Dim     },
-  { id: NodeRunning,      emoji: "[~]", unicode: "O",   ascii: "[~]", color: Active  },
-  { id: NodeCompleted,    emoji: "[x]", unicode: "*",   ascii: "[x]", color: Success },
-  { id: NodeFailed,       emoji: "[!]", unicode: "x",   ascii: "[!]", color: Error   },
-  { id: NodeSkipped,      emoji: "[-]", unicode: "o",   ascii: "[-]", color: Dim     },
-  { id: NodeIntercepted,  emoji: "[m]", unicode: "<>",  ascii: "[m]", color: Info    },
-
-  // Edge states
-  { id: EdgeIdle,         emoji: "-",   unicode: "-",   ascii: "-",   color: Dim     },
-  { id: EdgeFlowing,      emoji: "=",   unicode: "=",   ascii: "=",   color: Accent  },
-  { id: EdgeDone,         emoji: "-",   unicode: "-",   ascii: "-",   color: Success },
-  { id: EdgeDead,         emoji: ".",   unicode: ".",   ascii: ".",   color: Dim     },
-
-  // DAG phases
-  { id: DagNotStarted,    emoji: "[ ]", unicode: "[ ]", ascii: "[ ]", color: Dim     },
-  { id: DagRunning,       emoji: "[>]", unicode: ">",   ascii: "[>]", color: Active  },
-  { id: DagCompleted,     emoji: "[X]", unicode: "#",   ascii: "[X]", color: Success },
-  { id: DagFailed,        emoji: "[!]", unicode: "#",   ascii: "[!]", color: Error   },
-
-  // Structural
-  { id: BoundaryMarker,   emoji: "[B]", unicode: "<>",  ascii: "[B]", color: Info    },
-
-  // Spinners (ASCII fallback -- restore braille when tokenizer handles UTF-8)
-  { id: Spinner0,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
-  { id: Spinner1,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
-  { id: Spinner2,         emoji: "-",   unicode: "-",   ascii: "-",   color: Active  },
-  { id: Spinner3,         emoji: "\\",  unicode: "\\",  ascii: "\\",  color: Active  },
-  { id: Spinner4,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
-  { id: Spinner5,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
-  { id: Spinner6,         emoji: "-",   unicode: "-",   ascii: "-",   color: Active  },
-  { id: Spinner7,         emoji: "\\",  unicode: "\\",  ascii: "\\",  color: Active  },
-  { id: Spinner8,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
-  { id: Spinner9,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
-
-  // Status indicators
-  { id: StatusSuccess,    emoji: "OK",   unicode: "v",    ascii: "OK",   color: Success },
-  { id: StatusFailure,    emoji: "FAIL", unicode: "x",    ascii: "FAIL", color: Error   },
-  { id: StatusWarning,    emoji: "WARN", unicode: "!",    ascii: "WARN", color: Warning },
-  { id: StatusInfo,       emoji: "INFO", unicode: "i",    ascii: "INFO", color: Info    },
-
-  // Data type indicators
-  { id: DataList,         emoji: "[L]",  unicode: "=",    ascii: "[L]",  color: Default },
-  { id: DataMap,          emoji: "[M]",  unicode: "[+]",  ascii: "[M]",  color: Default },
-  { id: DataSecret,       emoji: "[*]",  unicode: "*",    ascii: "[*]",  color: Warning },
-  { id: DataUrl,          emoji: "[U]",  unicode: ">",    ascii: "[U]",  color: Info    },
-  { id: DataTimer,        emoji: "[T]",  unicode: "[T]",  ascii: "[T]",  color: Dim     },
-
-  // Connectors
-  { id: ConnectorHorizontal,      emoji: "--", unicode: "--", ascii: "--", color: Dim },
-  { id: ConnectorVertical,        emoji: "|",  unicode: "|",  ascii: "|",  color: Dim },
-  { id: ConnectorTeeDown,         emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
-  { id: ConnectorTeeUp,           emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
-  { id: ConnectorCornerBottomLeft, emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
-  { id: ConnectorCornerTopLeft,    emoji: "+",  unicode: "+",  ascii: "+",  color: Dim }
-]
-
-// --- Resolution functions ---
-
-fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
-  let matches = filter(standard_symbols, e => e.id == id)
-  match matches |> first {
-    Present { value: entry } =>
-      match tier {
-        Emoji   => Present { value: entry.emoji }
-        Unicode => Present { value: entry.unicode }
-        Ascii   => Present { value: entry.ascii }
-      }
-    Absent => none
-  }
-}
-
-fn symbol_color(id: SymbolId) -> SemanticColor? {
-  let matches = filter(standard_symbols, e => e.id == id)
-  match matches |> first {
-    Present { value: entry } => Present { value: entry.color }
-    Absent => none
-  }
-}
-
-// --- ANSI color mapping ---
-//
-// Maps SemanticColor to ANSI 256-color escape codes.
-// Matches gunb.ai/pkg/fermi/colors.go for consistent appearance.
-
-type AnsiMapping {
-  color: SemanticColor
-  code: String
-}
-
-data ansi_mappings: List<AnsiMapping> = [
-  { color: Default, code: "\x1b[0m"          },
-  { color: Success, code: "\x1b[38;5;34m"    },
-  { color: Warning, code: "\x1b[38;5;208m"   },
-  { color: Error,   code: "\x1b[38;5;196m"   },
-  { color: Info,    code: "\x1b[38;5;39m"    },
-  { color: Dim,     code: "\x1b[2m"           },
-  { color: Active,  code: "\x1b[38;5;208m"   },
-  { color: Accent,  code: "\x1b[38;5;75m"    }
-]
-
-fn ansi_code(c: SemanticColor) -> String? {
-  let matches = filter(ansi_mappings, m => m.color == c)
-  match matches |> first {
-    Present { value: mapping } => Present { value: mapping.code }
-    Absent => none
-  }
 }

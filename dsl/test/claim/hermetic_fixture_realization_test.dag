@@ -1,0 +1,90 @@
+// dsl/test/claim/hermetic_fixture_realization_test.dag
+//
+// M5 fixture-store consolidation SPIKE witness (node://adhoc-3efc6449-ec5).
+//
+// Proves BY EXECUTION that the two forked fixture stores inhabit ONE content-addressed cache
+// kernel (std.cache_interface) as two handlers differing only on placement + key-derivation
+// maturity — and that one ArtifactIdentity routes to both backends (§2 one spec -> N handlers).
+//
+// Discriminating RED: witness_in_process_handler_is_fork_today fails closed if the in-process
+// row is fabricated as already-converged (ContentAddressedByValue / content_verified_on_read),
+// guarding against claiming the M5 key-derivation fold landed before it has.
+//
+// Run: gunbc run --source-root dsl --entry dsl/test/claim/hermetic_fixture_realization_test.dag \
+//        --function hermetic_fixture_realization_witnesses --claim-run
+
+module test.claim.hermetic_fixture_realization
+
+import std.types { Bool, ContentHash }
+import std.cache_identity { hermetic_fixture_artifact_kind }
+import std.cache_interface {
+  ArtifactIdentity,
+  ContentAddressedByValue,
+  HandAuthoredString,
+  PerHostFilesystem,
+  InProcess,
+  StructuredArtifact,
+  MissIsDiagnostic,
+}
+import extdeps.cache.cache {
+  cache_interface_facts_from_catalog,
+  cache_key_projection_transport,
+}
+import extdeps.realization.hermetic_fixture {
+  hermetic_fixture_file_facts,
+  hermetic_fixture_in_process_facts,
+  hermetic_fixture_file_store_id,
+  hermetic_fixture_in_process_id,
+}
+
+data shared_input_digest: ContentHash = "hermetic-fixture-witness-shared-input-digest"
+
+// The v1 on-disk RecordedFixture handler is the mature content-addressed reference.
+fn witness_file_handler_is_content_addressed_reference() -> Bool {
+  let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
+  (f.key_derivation.classification == ContentAddressedByValue)
+    && f.key_derivation.content_verified_on_read
+    && (f.locality == PerHostFilesystem)
+    && (f.value_shape == StructuredArtifact)
+}
+
+// The v2 in-process EffectIoFixtureStore handler is the fork side TODAY: degenerate key
+// (HandAuthoredString constant pin) and no read-verification. RED if fabricated as converged.
+fn witness_in_process_handler_is_fork_today() -> Bool {
+  let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
+  (m.key_derivation.classification == HandAuthoredString)
+    && !m.key_derivation.content_verified_on_read
+    && (m.locality == InProcess)
+    && (m.value_shape == StructuredArtifact)
+}
+
+// Shared kernel invariants both handlers already satisfy: same artifact value-shape family and
+// fail-closed on miss (a missing fixture is a loud diagnostic, never a silent fabricated value).
+fn witness_handlers_share_kernel_invariants() -> Bool {
+  let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
+  let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
+  (f.value_shape == m.value_shape)
+    && (f.miss_semantics == MissIsDiagnostic)
+    && (m.miss_semantics == MissIsDiagnostic)
+}
+
+// §2 horizontal, executed: ONE ArtifactIdentity (one content digest + the hermetic_fixture
+// artifact kind) routes through each backend's transport projection to its own store key.
+fn witness_one_artifact_routes_to_both_backends() -> Bool {
+  let id = ArtifactIdentity {
+    subject_digest: shared_input_digest,
+    artifact_kind: hermetic_fixture_artifact_kind,
+  }
+  let file_key = cache_key_projection_transport(artifact: id, backend: hermetic_fixture_file_facts)
+  let mem_key = cache_key_projection_transport(artifact: id, backend: hermetic_fixture_in_process_facts)
+  (file_key.store == hermetic_fixture_file_store_id)
+    && (mem_key.store == hermetic_fixture_in_process_id)
+    && !(file_key.store == mem_key.store)
+}
+
+test fn hermetic_fixture_realization_witnesses() -> Bool {
+  witness_file_handler_is_content_addressed_reference()
+    && witness_in_process_handler_is_fork_today()
+    && witness_handlers_share_kernel_invariants()
+    && witness_one_artifact_routes_to_both_backends()
+}

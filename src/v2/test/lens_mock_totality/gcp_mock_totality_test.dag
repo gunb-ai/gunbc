@@ -19,29 +19,28 @@
 
 module v2.test.lens_mock_totality.gcp_mock_totality
 
-import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
-// Single authority for the GCP mock corpus lives in the dsl/ tree
-// (dsl/extdeps/cloud/gcp/mock_corpus.dag) so the v1 runtime reads the SAME model this lens
-// does (M4 hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern.
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template {
+  mock_totality_green_holds,
+  mock_totality_red_on_omission_holds,
+  omit_consumer_handles,
+  outcome_accepted_p
+}
 import extdeps.cloud.gcp.mock_corpus {
   PublishedMockCase,
   gcp_published_mock_corpus
 }
-import v2.std.algebra { filter }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-// The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
-// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
 type MaterializedGcpMock {
   tag: Symbol
 }
 
-// The REAL consumer: materializes ANY published GCP case impl-blind, keyed on the operation_key
-// across all 14 published ops (9 services); fail-closes (canonical `mock_unhandled_rejection`)
-// for any unpublished op.
+data gcp_red_omit_keys: List<String> = ["gcp.SecretManager.AddVersion"]
+
 fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
   if case.operation_key == "gcloud.Auth.Login" {
     outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
@@ -76,87 +75,28 @@ fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock>
   }
 }
 
-// The DELIBERATELY-INCOMPLETE consumer: omits `gcp.SecretManager.AddVersion` → fail-closes on
-// that published case. This is the discriminating input that drives the lens RED on omission.
-fn materialize_gcp_mock_omits_add_version(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
-  if case.operation_key == "gcloud.Auth.Login" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
-  } else if case.operation_key == "gcloud.Auth.ReadADC" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_read_adc })
-  } else if case.operation_key == "oauth2.Google.Refresh" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_oauth2_google_refresh })
-  } else if case.operation_key == "shell.GCloud.AuthPrintAccessToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_auth_print_access_token })
-  } else if case.operation_key == "shell.GCloud.SecretManagerAccessVersion" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_secret_manager_access_version })
-  } else if case.operation_key == "gcp.IAM.GenerateAccessToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_iam_generate_access_token })
-  } else if case.operation_key == "gcp.ResourceManager.GetIamPolicy" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_get_iam_policy })
-  } else if case.operation_key == "gcp.ResourceManager.SetIamPolicy" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_set_iam_policy })
-  } else if case.operation_key == "gcp.SecretManager.AccessVersion" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_access_version })
-  } else if case.operation_key == "gcp.SecretManager.CreateSecret" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_create_secret })
-  } else if case.operation_key == "gcp.STS.Exchange" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_sts_exchange })
-  } else if case.operation_key == "github.OIDC.GetToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_github_oidc_get_token })
-  } else if case.operation_key == "gcp.Metadata.GetIdentityToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_metadata_get_identity_token })
-  } else {
-    mock_unhandled_rejection()
-  }
-}
-
-fn gcp_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
-  a.operation_key == b.operation_key && a.case_id == b.case_id
-}
-
-// Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
 fn gcp_real_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_gcp_mock(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  outcome_accepted_p(outcome: materialize_gcp_mock(case: case))
 }
 
-// Did the DELIBERATELY-INCOMPLETE consumer (no `AddVersion` handler) materialize this case?
 fn gcp_omits_add_version_consumer_handles(case: PublishedMockCase) -> Bool {
-  match materialize_gcp_mock_omits_add_version(case: case) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  omit_consumer_handles(
+    case: case,
+    omit_keys: gcp_red_omit_keys,
+    total_consumer_handles: gcp_real_consumer_handles
+  )
 }
 
-// The handled set = the published members a consumer accepts, BY EXECUTION over the corpus.
-fn gcp_handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
-  filter(xs: gcp_published_mock_corpus, predicate: consumer_handles)
-}
-
-// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
 test fn gcp_mock_consumer_is_total_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_green_holds(
     published: gcp_published_mock_corpus,
-    handled: gcp_handled_by(consumer_handles: gcp_real_consumer_handles),
-    eq: gcp_mock_case_eq
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+    consumer_handles: gcp_real_consumer_handles
+  )
 }
 
-// RED-on-omission by execution: omit `gcp.SecretManager.AddVersion` from the consumer → the
-// lens MUST fail-close. GREEN here proves the lens has teeth (it rejects an unhandled published
-// member); a vacuous lens that accepted anyway would make this witness RED.
 test fn gcp_mock_omitted_member_is_red_holds() -> Bool {
-  match mock_totality_lens(
+  mock_totality_red_on_omission_holds(
     published: gcp_published_mock_corpus,
-    handled: gcp_handled_by(consumer_handles: gcp_omits_add_version_consumer_handles),
-    eq: gcp_mock_case_eq
-  ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
+    consumer_handles: gcp_omits_add_version_consumer_handles
+  )
 }
