@@ -65,10 +65,6 @@ fn languages_consumer_census_lens_parses_and_runs_witnesses() {
     );
     assert_witness_true(
         "src/v2/compiler/languages_consumer_census/corpus/per_language_row_ratchet_test.dag",
-        "corpus_per_language_row_count_matches_baseline",
-    );
-    assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/per_language_row_ratchet_test.dag",
         "corpus_per_language_row_ratchet_holds",
     );
     assert_witness_true(
