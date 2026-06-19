@@ -1,18 +1,73 @@
-//! Wet==hermetic equivalence gate for governed-service witnesses (P3c).
+//! §6 SCAFFOLD — P3c wet/hermetic equivalence gate (comparator + vacuous roster).
 //!
-//! Before flipping CI's default `ExecutionMode` to Hermetic, prove that the
-//! representative governed-service roster — one discoverable `test fn` pair per
-//! extdeps layer under `src/v2/test/lens_mock_totality/` — yields identical
-//! per-witness outcomes under `--wet` and `--hermetic` on the real discovery
-//! corpus runner (`cli_run::run_discovery_corpus`). RED on any divergence.
+//! **Dissolution-on-arrival:** gains real faithfulness teeth when the first
+//! live-transport + published-mock witness lands (wet = live call, hermetic =
+//! published mock). Until then the `lens_mock_totality/*` roster makes no
+//! `eval_service_call` dispatch under either mode, so the roster integration
+//! check is vacuous-by-construction — it cannot observe mock-vs-real divergence.
+//!
+//! **Comparator teeth (unit):** `wet_hermetic_discovery_outcome_divergences`
+//! is tested with synthetic outcome vectors so divergence reporting is RED when
+//! the comparator itself regresses, independent of the roster.
 
 use v1_compiler::cli_run::{
     discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
-    wet_hermetic_discovery_outcome_divergences,
+    wet_hermetic_discovery_outcome_divergences, ClaimOutcome, DiscoveryWitnessOutcome,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
 use crate::helpers::workspace_root;
+
+fn sample_outcome(entry: &str, function: &str, outcome: ClaimOutcome) -> DiscoveryWitnessOutcome {
+    DiscoveryWitnessOutcome {
+        entry: entry.to_string(),
+        function: function.to_string(),
+        outcome,
+    }
+}
+
+#[test]
+fn wet_hermetic_comparator_reports_outcome_divergence() {
+    let wet = [sample_outcome(
+        "dsl/test/claim/example_witness_test.dag",
+        "witness_holds",
+        ClaimOutcome::Pass,
+    )];
+    let hermetic = [sample_outcome(
+        "dsl/test/claim/example_witness_test.dag",
+        "witness_holds",
+        ClaimOutcome::Fail,
+    )];
+    let divergences = wet_hermetic_discovery_outcome_divergences(&wet, &hermetic);
+    assert_eq!(
+        divergences.len(),
+        1,
+        "comparator must report Pass vs Fail on the same witness row"
+    );
+    assert!(
+        divergences[0].contains("witness_holds"),
+        "divergence line must name the witness: {}",
+        divergences[0]
+    );
+}
+
+#[test]
+fn wet_hermetic_comparator_empty_when_outcomes_match() {
+    let wet = [
+        sample_outcome("a.dag", "one", ClaimOutcome::Pass),
+        sample_outcome("b.dag", "two", ClaimOutcome::Fail),
+    ];
+    let hermetic = [
+        sample_outcome("a.dag", "one", ClaimOutcome::Pass),
+        sample_outcome("b.dag", "two", ClaimOutcome::Fail),
+    ];
+    let divergences = wet_hermetic_discovery_outcome_divergences(&wet, &hermetic);
+    assert!(
+        divergences.is_empty(),
+        "matching outcome vectors must yield no divergences: {:?}",
+        divergences
+    );
+}
 
 fn ci_witness_layer_roots() -> Vec<String> {
     let ws = workspace_root();
@@ -49,21 +104,23 @@ fn governed_service_representative_explicit_entries() -> Vec<(String, String)> {
     rep
 }
 
+/// Vacuous-by-construction scaffold: lens_mock_totality witnesses do not
+/// dispatch live service calls under either mode; this only guards roster wiring.
 #[test]
-fn wet_hermetic_governed_service_representative_equivalence_holds() {
+fn wet_hermetic_scaffold_roster_outcomes_agree() {
     let roots = ci_witness_layer_roots();
     let explicit = governed_service_representative_explicit_entries();
     let wet = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Wet)
-        .expect("wet discovery run for governed-service representative roster");
+        .expect("wet discovery run for scaffold roster");
     let hermetic = run_discovery_corpus(&roots, &[], &explicit, ExecutionMode::Hermetic)
-        .expect("hermetic discovery run for governed-service representative roster");
+        .expect("hermetic discovery run for scaffold roster");
     let divergences = wet_hermetic_discovery_outcome_divergences(
         &wet.witness_outcomes,
         &hermetic.witness_outcomes,
     );
     assert!(
         divergences.is_empty(),
-        "wet and hermetic must agree on every governed-service representative witness; divergences:\n{}",
+        "scaffold roster outcomes agree (vacuous — no service dispatch in roster); divergences:\n{}",
         divergences.join("\n")
     );
 }

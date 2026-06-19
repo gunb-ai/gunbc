@@ -2100,15 +2100,19 @@ pub struct DiscoverySummary {
     pub total_measured_nanos: u128,
 }
 
-/// Representative governed-service witnesses: one discoverable `test fn` pair per
-/// extdeps layer with a published mock corpus (`src/v2/test/lens_mock_totality/*`).
-/// These exercise the M4 hermetic-realization model without live service dispatch.
+/// Scaffold roster filter: one discoverable `test fn` per extdeps layer with a
+/// published mock corpus (`src/v2/test/lens_mock_totality/*`). These witnesses
+/// exercise the M4 hermetic-realization *model* in pure `.dag` — they do NOT
+/// traverse `eval_service_call` under either Wet or Hermetic, so they cannot
+/// observe mock-vs-live faithfulness. Dissolution: replace with witnesses that
+/// dispatch live transport under Wet and published-mock under Hermetic.
 pub fn is_governed_service_representative_row(row: &DiscoveryRow) -> bool {
     row.entry.contains("lens_mock_totality/")
 }
 
-/// Compare wet vs hermetic discovery-corpus outcomes row-for-row. Returns divergences
-/// (empty when equivalent). Fail-closed: roster length mismatch is a divergence.
+/// Row-for-row outcome comparator for the P3c scaffold gate. Returns divergence
+/// lines (empty when equivalent). Teeth: unit-tested with synthetic vectors;
+/// roster integration is vacuous until live-transport witnesses enroll.
 pub fn wet_hermetic_discovery_outcome_divergences(
     wet: &[DiscoveryWitnessOutcome],
     hermetic: &[DiscoveryWitnessOutcome],
