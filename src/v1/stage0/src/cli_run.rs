@@ -2987,6 +2987,80 @@ diff --git a/{fixture} b/{fixture}
         .expect("touch not fail-closed");
         assert!(touches, "witness must touch node A frontier");
     }
+
+    #[test]
+    fn witness_claim_evaluation_nodes_resolves_for_fixture() {
+        use super::{build_multi_entry_index, make_eval_context, resolve_entry_with_index};
+        use crate::v1_interpreter::{eval_data_item_value, run_in_context_with_args, ExecutionMode};
+        use std::path::PathBuf;
+
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ws = manifest.ancestors().nth(3).expect("workspace root");
+        let fixture = "dsl/test/claim/floor_skip_node_precision_fixture.dag";
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry_abs = ws.join(fixture).to_string_lossy().into_owned();
+        let index = build_multi_entry_index(&roots);
+        let (graph, si) = resolve_entry_with_index(&index, &entry_abs).expect("resolve");
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+        let claim = eval_data_item_value(&ctx, "floor_skip_precision_witness_claim")
+            .expect("eval")
+            .expect("claim");
+        let out = run_in_context_with_args(
+            &ctx,
+            "test_claim_evaluation_nodes",
+            &[(Some("c".to_string()), claim)],
+            false,
+        );
+        assert!(
+            out.is_ok(),
+            "test_claim_evaluation_nodes must accept fixture claim: {:?}",
+            out.err()
+        );
+    }
+
+    #[test]
+    fn floor_runner_claim_evaluation_nodes_resolves_for_policy_fixture() {
+        use super::{build_multi_entry_index, make_eval_context, resolve_entry_with_index};
+        use crate::v1_interpreter::{eval_data_item_value, run_in_context_with_args, ExecutionMode};
+        use std::path::PathBuf;
+
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let ws = manifest.ancestors().nth(3).expect("workspace root");
+        let fixture = "src/v2/workflow/affected_set_floor_runner_test.dag";
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry_abs = ws.join(fixture).to_string_lossy().into_owned();
+        let index = build_multi_entry_index(&roots);
+        let (graph, si) = resolve_entry_with_index(&index, &entry_abs).expect("resolve");
+        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+        let claim = eval_data_item_value(&ctx, "floor_test_claim_touched")
+            .expect("eval")
+            .expect("claim");
+        if let crate::v1_interpreter::Value::Variant { variant_name, fields, .. } = &claim {
+            let lhs = ctx.field(fields, "lhs").expect("lhs");
+            panic!(
+                "claim variant={} lhs={}",
+                ctx.resolve(*variant_name),
+                ctx.format_value(lhs)
+            );
+        }
+        let out = run_in_context_with_args(
+            &ctx,
+            "test_claim_evaluation_nodes",
+            &[(Some("c".to_string()), claim)],
+            false,
+        );
+        assert!(
+            out.is_ok(),
+            "floor_runner claim must resolve evaluation nodes: {:?}",
+            out.err()
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
