@@ -8,7 +8,11 @@ fn cwc_probe_plan() -> List<List<Runnable>> {
     [
       RunnableSingleClaim {
         entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
-        function: "cwc_nary_coproduct_normalize_boundary_holds"
+        function: "cwc_norm_two_variant_accepts"
+      },
+      RunnableSingleClaim {
+        entry: "src/v2/compiler/manual/cwc_resolution_probe_test.dag",
+        function: "cwc_norm_three_variant_accepts"
       }
     ]
   ]
