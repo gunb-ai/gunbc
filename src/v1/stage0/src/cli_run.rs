@@ -123,7 +123,11 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     .to_string_lossy()
                     .replace('\\', "/");
                 // Co-root overlay: later `source_roots` win on duplicate module paths
-                // (same last-wins policy as `build_module_index`).
+                // (same last-wins policy as `build_module_index`). TRANSITIONAL (slice 3):
+                // enables v2 overlay without panic while dsl+src/v2 coexist. DISSOLUTION
+                // RESTORE (final slice): when witness_layer_roots reverts to a single root and
+                // dsl/extdeps/shell is deleted, restore fail-closed panic on duplicate module_path
+                // so an accidental name collision is loud again (§5).
                 index.insert(module_path.clone(), rel);
             }
         }

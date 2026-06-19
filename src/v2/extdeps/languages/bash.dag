@@ -14,8 +14,10 @@
 // TargetModel (target_model.dag). Dynamic words (VarRef, Lit payloads) use BoundToken rows;
 // POSIX single-quote / double-quoted var-ref wrapping runs at emit time keyed by token class.
 //
-// MIGRATION SLICE 3 — first live transport migration: fixed-token
-// `'bash' 'scripts/source-root-ingest-gate.sh'` (v2.workflow.source_root_ingest_transport).
+// MIGRATION SLICE 3 — relocate source_root_ingest gate transport to v2.workflow
+// (v2.workflow.source_root_ingest_transport); live path still serialize_bash today.
+// Row-driven emit(byte-identity) is proven by bash_emit_source_root_ingest_gate_holds;
+// emit(intent, Bash) flip for the live transport is the next slice in this arc.
 // Next slices: ShellStmt vocab rows → migrate remaining sidecar consumers → delete program.dag.
 //
 // v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
