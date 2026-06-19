@@ -987,6 +987,8 @@ fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
   content_hash_atom(value: isolation_boundary_label(boundary: boundary))
 }
 
+// File-scoped arch label for digest only — lift to std/cpu/types.cpu_architecture_label
+// if a second consumer appears (§3 single authority).
 fn cpu_architecture_digest(arch: CpuArchitecture) -> ContentHash {
   match arch {
     X86_64 => content_hash_atom(value: "arch:X86_64")
@@ -1035,6 +1037,11 @@ fn resource_envelope_digest(envelope: ResourceEnvelope) -> ContentHash {
   )
 }
 
+// 🟡 STAGED — P-CF-INGRESS: WorkGraph / Partitioner / WorkAction / Reducer are Node
+// forward-stubs today; graph/partitioner/map/reduce/laws payloads are NOT yet folded.
+// dissolve-on: Node content-hash inhabitants land (P-CF-INGRESS) — replace
+// parallelism-payload-pending:* tags with real payload digests; until then two demands
+// differing only in graph/partitioner/map/reduce collide (explicit debt, not silent _).
 fn parallelism_shape_digest(shape: ParallelismShape) -> ContentHash {
   match shape {
     SingleWorkItem => content_hash_atom(value: "parallelism:SingleWorkItem")
@@ -1043,10 +1050,25 @@ fn parallelism_shape_digest(shape: ParallelismShape) -> ContentHash {
         content_hash_atom(value: "parallelism:IndependentShards"),
         content_hash_atom(value: to_string(n)),
       )
-    DependencyGraphParallel { graph: _ } =>
-      content_hash_atom(value: "parallelism:DependencyGraphParallel")
-    PartitionedReduce { partitioner: _, map: _, reduce: _, laws: _ } =>
-      content_hash_atom(value: "parallelism:PartitionedReduce")
+    DependencyGraphParallel { graph: graph } =>
+      content_hash_combine(
+        content_hash_atom(value: "parallelism:DependencyGraphParallel"),
+        content_hash_atom(value: "parallelism-payload-pending:WorkGraph"),
+      )
+    PartitionedReduce { partitioner: partitioner, map: map, reduce: reduce, laws: laws } =>
+      content_hash_combine(
+        content_hash_atom(value: "parallelism:PartitionedReduce"),
+        content_hash_combine(
+          content_hash_atom(value: "parallelism-payload-pending:Partitioner"),
+          content_hash_combine(
+            content_hash_atom(value: "parallelism-payload-pending:WorkAction-map"),
+            content_hash_combine(
+              content_hash_atom(value: "parallelism-payload-pending:Reducer"),
+              content_hash_atom(value: "parallelism-payload-pending:ReducerLaws"),
+            ),
+          ),
+        ),
+      )
   }
 }
 
