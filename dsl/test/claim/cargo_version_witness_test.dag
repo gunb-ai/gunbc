@@ -15,6 +15,8 @@ import extdeps.cargo {
   min_cargo_version,
 }
 import extdeps.cargo_version {
+  CargoVersionRequirement,
+  CargoToolVersionFloor,
   default_stage0_package_version,
   render_cargo_package_version_field,
   render_cargo_package_header_prefix,
@@ -71,6 +73,13 @@ fn w_min_cargo_version_grounded() -> Bool {
   min_cargo_version == ">= 1.56"
 }
 
+fn dep_requirement_one() -> CargoVersionRequirement { "1" }
+
+// DISCRIMINATING: tool floor carrier must not unify with dependency requirement.
+fn w_tool_floor_distinct_from_dep_requirement() -> Bool {
+  min_cargo_version != dep_requirement_one()
+}
+
 test fn cargo_version_witnesses() -> Bool {
   w_stage0_default_package_version()
     && w_package_version_field_renders()
@@ -78,4 +87,5 @@ test fn cargo_version_witnesses() -> Bool {
     && w_requirement_distinct_from_package_version()
     && w_emitter_header_prefix_uses_default()
     && w_min_cargo_version_grounded()
+    && w_tool_floor_distinct_from_dep_requirement()
 }

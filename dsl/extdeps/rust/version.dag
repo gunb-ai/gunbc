@@ -15,12 +15,18 @@
 module extdeps.cargo_version
 
 import extdeps.version.semver { SemVerIdentity, SemVerConstraint }
+import std.types { NonEmptyStr }
 
 // Published crate version in `[package].version` (crates.io / workspace manifests).
 type CargoPackageVersion = SemVerIdentity
 
 // Dependency version requirement in `[dependencies].crate = "…"`.
 type CargoVersionRequirement = SemVerConstraint
+
+// Minimum supported `cargo` binary for edition/workspace policy (Cargo Reference:
+// "The edition field"). Semver comparator wire — NOT interchangeable with
+// `[dependencies]` version requirements (§3 distinct facts).
+type CargoToolVersionFloor = NonEmptyStr where brand("CargoToolVersionFloor")
 
 // Single authority for the stage0/bootstrap crate package version token.
 data default_stage0_package_version: CargoPackageVersion = "0.1.0"
