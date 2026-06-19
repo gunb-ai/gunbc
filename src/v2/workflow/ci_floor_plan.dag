@@ -30,7 +30,7 @@ import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
-  SourceRootIngestGate
+  SourceRootIngestGate, Stage0LockstepGate
 }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
@@ -83,6 +83,7 @@ fn gate_node(g: Gate) -> Node {
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
+    Stage0LockstepGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_stage0_lockstep } }, children: [] }
   }
 }
 
@@ -100,6 +101,7 @@ fn gate_runnable(g: Gate) -> Runnable {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes"
     }
+    Stage0LockstepGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "stage0_lockstep_gate_passes" }
   }
 }
 

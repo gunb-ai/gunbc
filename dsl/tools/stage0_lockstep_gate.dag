@@ -1,0 +1,38 @@
+// tools/stage0_lockstep_gate.dag — stage0 regen-lockstep gate, run by the CI floor.
+//
+// Closes the §6 hole: nothing in CI gated on the stage0 seed being a clean
+// function of the `.dag`, so the seed silently drifted. This gate runs
+// `regen_stage0 --verify` (the lockstep oracle) over the live tree (GREEN) plus
+// a planted-drift RED receipt (the +/- teeth), mirroring tools.dsl_compile_clean_gate.
+//
+// Run standalone:
+//   cargo run -p v1-compiler --release --bin gunbc -- run \
+//     --source-root dsl --entry dsl/tools/stage0_lockstep_gate.dag --function main
+
+module tools.stage0_lockstep_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.stage0_lockstep_transport {
+  run_stage0_lockstep_verify,
+  run_stage0_lockstep_perturb_red_receipt
+}
+
+func run_stage0_lockstep_gate_body() -> ProcessExit {
+  let clean = run_stage0_lockstep_verify()
+  let perturb = run_stage0_lockstep_perturb_red_receipt()
+  return if clean && perturb {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "stage0 regen-lockstep gate failed: regen_stage0 --verify and/or planted-drift red receipt"
+    )
+  }
+}
+
+func run_stage0_lockstep_gate() -> ProcessExit {
+  run_stage0_lockstep_gate_body()
+}
+
+func main() -> ProcessExit {
+  run_stage0_lockstep_gate_body()
+}
