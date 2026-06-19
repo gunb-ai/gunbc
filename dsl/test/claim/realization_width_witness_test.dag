@@ -9,7 +9,7 @@ module test.claim.realization_width_witness
 
 import std.types { NonEmptyStr }
 import std.measure { hardware_thread_count, hardware_thread_count_value, hertz, byte_size }
-import std.placement_supply { HostIdentity, PlacementSupplyRow }
+import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,

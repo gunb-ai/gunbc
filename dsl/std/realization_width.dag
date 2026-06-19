@@ -27,7 +27,7 @@ import std.measure {
   hardware_thread_count_value,
   nanosecond_duration,
 }
-import std.placement_supply { PlacementSupplyRow }
+import product.placement_supply { PlacementSupplyRow }
 import std.pareto { AxisGoal, LowerIsBetter }
 import std.realization_schedule {
   Schedule,
