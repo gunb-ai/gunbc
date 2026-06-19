@@ -88,11 +88,19 @@ comparison set is the violation witness.
 A consumer applies a **string-decomposition op** — split / substring-slice / `contains` / index-of /
 char-fold / parse — to the leaf to recover parts. The *existence* of that op (its `Node` kind) is the
 contents-free proof that the leaf has internal structure the type omits. This is the general form of
-the part-number / target-triple / path cases, and `v2.lens.host_language_transport_script` is already
-**exactly this lens for one leaf** — a `shell script: String` whose consumer (the interpreter) cracks
-it open; its `dissolve-on` (`emit(intent, Bash)` makes a raw `String` unrepresentable) is the shape of
-*every* terminal anemia fix: flip the leaf's **type** so the cracking op becomes unrepresentable
-("the terminal form is usually a TYPE, not a lens").
+the part-number / target-triple / path cases. The motivating live instance is the #5132
+`EmbeddedShellExecFact { script_text: String }` trap — a stored `String` whose consumer was forced to
+character-scan it (`mktemp` / heredoc detection), the §2 failure made concrete; the cracking op is the
+witness. The terminal fix is always the same shape — flip the leaf's **type** so the cracking op
+becomes unrepresentable ("the terminal form is usually a TYPE, not a lens").
+
+**Not to be confused with `host_language_transport_script` (read with §7).** That lens is *not* a
+Signal-C detector. It does not scan for a consumer cracking a leaf; it classifies the **producer-side**
+parse-tree shape of the `script:` argument at `shell.Exec.Run` call sites — `BareStringLiteral` /
+`LetBoundStringLiteral` / `StringInterpLiteralsOnly` / `ComputedApplication` — and REDs on a literal
+blob (`host_language_transport_script.dag:26-31, 47-54`). That is the **interim migration guard** for a
+leaf *already known* to be anemic (the bash `script:` case), not a way to discover one. It belongs to
+the enforcement side (§7), not the detection taxonomy.
 
 ## 4. What is NOT mechanically decidable (the residual)
 
@@ -155,8 +163,11 @@ pure reader storing nothing, the leaf-side dual of `fact_density`.
   - **SoftCandidate** — weak/ambiguous (name-only Signal A, or Signal C on a possible subject). Surfaced
     for human review, never auto-gated.
   - **Atomic** — a §5 guard matched. Green.
-- **Output** — `std.lens_verdict.LensVerdict` (`Holds` / `Violation { diagnostic }`), matching
-  `host_language_transport_script` and `fact_density` exactly.
+- **Output** — `std.lens_verdict.LensVerdict` (`Holds` / `Violation { diagnostic }`), as
+  `host_language_transport_script` already returns (`:100-108`). Note `fact_density` instead returns
+  `Outcome<Witness<Node>>` (`fact_density.dag:96`) — so the lens family is *not* yet unified on one
+  verdict carrier; converging them onto `LensVerdict` is a follow-up that `std.lens_verdict`'s own
+  `dissolve-on` already anticipates. This lens should be authored on `LensVerdict` from the start.
 - **Diagnostic** — the §2 `map` strengthens the correction: not just "decompose," but "decompose onto
   `<existing type>`" when Signal A fires (the reduce step is then free).
 
@@ -174,8 +185,13 @@ type LeafGuard  = FallbackPayload | ParseInput | CitedAtom | PipelineSubject
 
 - **`fact_density`** — sum-side (`NoFact` hollow alias). This lens is its **leaf-side dual**; together
   they make §2 decomposition structurally covered in both directions.
-- **`host_language_transport_script`** — Signal C for a single leaf. Generalizing it is this lens; it
-  should eventually *dissolve into* this lens, not coexist (lenses are facts too — §3 on lenses).
+- **`host_language_transport_script`** — **not** a detector to generalize (it is not Signal C). It is
+  the *interim enforcement guard* for one leaf already known to be anemic (the bash `script: String`):
+  it reads the producer-side arg shape (literal-blob = unmigrated) and dissolves on a type flip
+  (`emit(intent, Bash)`). Its relevance to this lens is as the **template for HardViolation
+  enforcement** — interim arg-shape guard → terminal type flip — not as an extractor to absorb. The
+  two are complementary (discover-anemia vs guard-a-known-anemic-leaf during migration) and need not
+  merge.
 - **`fact_cardinality`** — same single-authority invariant, cross-tree census flavor. Shared invariant,
   different extractor — the unification this family is built on.
 
@@ -200,6 +216,7 @@ type LeafGuard  = FallbackPayload | ParseInput | CitedAtom | PipelineSubject
 Adopt the three-signal structural reframe as the answer to the open thread: **anemia is decidable
 wherever the hidden structure is already load-bearing in the program** (Signals A/B/C), and only there;
 the rest is modeling judgment, optionally automated later by cited-grammar oracles. Build **one**
-fact-cardinality-family lens (leaf-side dual of `fact_density`), confidence-tiered, dissolving
-`host_language_transport_script` into it. Do a read-only calibration pass over the live corpus before
-gating. Each HardViolation's terminal fix is a type flip; the lens is the interim guard.
+fact-cardinality-family lens (leaf-side dual of `fact_density`), confidence-tiered, authored on
+`std.lens_verdict.LensVerdict`, reusing `host_language_transport_script`'s interim-guard → type-flip
+pattern as the enforcement template (not absorbing it). Do a read-only calibration pass over the live
+corpus before gating. Each HardViolation's terminal fix is a type flip; the lens is the interim guard.
