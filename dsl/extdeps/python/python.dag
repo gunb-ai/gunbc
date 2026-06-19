@@ -15,7 +15,7 @@
 module extdeps.python
 
 import std.types { NonEmptyStr }
-import extdeps.version { VersionConstraint }
+import extdeps.version.pep440 { Pep440Constraint }
 
 // ── Spec citations ──────────────────────────────────────────────────
 
@@ -23,5 +23,5 @@ data python_docs: NonEmptyStr = "https://docs.python.org/3/reference/"
 
 // Minimum interpreter for workflows that invoke python3 on PATH.
 // Matches v2 typechecker python_version rows (mypy, pyright) and emit-host
-// MVP-2 smokes — PEP 440 constraint, not a bare identity label.
-data min_python_version: VersionConstraint = ">= 3.11"
+// MVP-2 smokes — PEP 440 specifier wire text, not a bare identity label.
+data min_python_version: Pep440Constraint = ">= 3.11"

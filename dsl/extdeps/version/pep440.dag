@@ -1,0 +1,17 @@
+// extdeps/version/pep440.dag — Python PEP 440 constraint carrier (slice-2 stub).
+//
+// Spec: https://packaging.python.org/en/latest/specifications/version-specifiers/
+// Full structured Pep440Version / Pep440VersionSpecifier model lands in #5307;
+// this stub supplies the scheme-branded constraint alias for runtime dependency rows.
+//
+// dissolve-on: extdeps/version/pep440.dag structured model (#5307) supersedes this stub.
+
+module extdeps.version.pep440
+
+import extdeps.version { VersionConstraint }
+import std.types { NonEmptyStr }
+
+data pep440_spec_url: NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
+
+// PEP 440 version-specifier wire text (e.g. ">= 3.11", "~= 2.2") — not a bare identity.
+type Pep440Constraint = VersionConstraint

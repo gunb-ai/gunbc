@@ -21,7 +21,7 @@ import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.gnu_coreutils { min_coreutils_version }
 import extdeps.cargo { min_cargo_version }
 import extdeps.python { min_python_version }
-import extdeps.go { min_go_version }
+import extdeps.go { min_go_language_version, min_go_toolchain }
 import std.algebra { Ordering, Less, Equal, Greater }
 
 // -- Test fixtures --------------------------------------------------
@@ -66,8 +66,12 @@ fn w_python_constraint_grounded() -> Bool {
   min_python_version == ">= 3.11"
 }
 
-fn w_go_constraint_grounded() -> Bool {
-  min_go_version == ">= 1.22"
+fn w_go_language_version_grounded() -> Bool {
+  min_go_language_version == "1.22"
+}
+
+fn w_go_toolchain_grounded() -> Bool {
+  min_go_toolchain == "go1.22.5"
 }
 
 // Ordering from std.algebra is reused — match exhausts all three variants.
@@ -87,6 +91,7 @@ test fn extdeps_version_base_witnesses() -> Bool {
     && w_coreutils_constraint_grounded()
     && w_cargo_constraint_grounded()
     && w_python_constraint_grounded()
-    && w_go_constraint_grounded()
+    && w_go_language_version_grounded()
+    && w_go_toolchain_grounded()
     && w_ordering_exhaustive_match()
 }
