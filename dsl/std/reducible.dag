@@ -1,0 +1,112 @@
+// std/reducible.dag — fail-closed three-valued reduction verdict (objective primitive).
+//
+// Promoted from ctrl plans.reducible (gunb-ai/ctrl #1716 relocation target).
+// CONSUMES product.compute_fabric.PartitionedReduce by correspondence only
+// (DESIGN.md §3 single authority) — declares NO map/reduce types.
+// Dissolution trigger (DESIGN.md §6): delete correspondence scaffold when this
+// module binds literal PartitionedReduce fields (partitioner/map/reduce/laws) via
+// product import or a std Realization row lands.
+//
+// VERDICT (DESIGN.md §5):
+//   Reduced { last_parts }  — decomposed / progressed (rightmost decisive leaf count)
+//   Irreducible { witness } — grounded atom, decisively not further reducible
+//   Unknown { missing }     — fail-closed; located axis names what is missing
+//
+// ALGEBRA: (ReduceVerdict, reduce_verdict_combine) is a Semigroup with absorbing
+// element Unknown (leftmost located axis preserved). No Monoid identity — empty
+// fold uses a located Unknown sentinel (started-flag / non-empty-only reduce).
+// reduce_verdicts_located folds List<ReduceVerdict> (= FreeMonoid carrier per
+// std.types) with this op — the horizontal catamorphism for sibling verdicts.
+
+module std.reducible
+
+import std.algebra { Semigroup }
+import std.types { Int, Bool, List }
+
+type ReduceVerdict
+  = Reduced { last_parts: Int }
+  | Irreducible { witness: String }
+  | Unknown { missing: String }
+
+// Semigroup join: Unknown absorbs (leftmost axis wins); decisive siblings take
+// the right-hand verdict (last green child wins). Post-fold, Reduced.last_parts is
+// the rightmost decisive leaf's count — not an aggregate sum across siblings.
+fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
+  match a {
+    Unknown { missing: ma } => Unknown { missing: ma }
+    _ => match b {
+      Unknown { missing: mb } => Unknown { missing: mb }
+      _ => b
+    }
+  }
+}
+
+fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
+  Semigroup { op: reduce_verdict_combine }
+}
+
+// dissolve-on: derived structural == on ReduceVerdict (closed coproduct equality)
+// replaces this hand-rolled predicate; interim owner: workflow_recursive witnesses.
+// std has no Eq derivation lane yet — witnesses are the only consumers.
+fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
+  match a {
+    Reduced { last_parts: pa } => match b {
+      Reduced { last_parts: pb } => pa == pb
+      Irreducible { witness: wb } => false
+      Unknown { missing: mb } => false
+    }
+    Irreducible { witness: wa } => match b {
+      Reduced { last_parts: pb } => false
+      Irreducible { witness: wb } => wa == wb
+      Unknown { missing: mb } => false
+    }
+    Unknown { missing: ma } => match b {
+      Reduced { last_parts: pb } => false
+      Irreducible { witness: wb } => false
+      Unknown { missing: mb } => ma == mb
+    }
+  }
+}
+
+// Non-empty fold without identity: first element replaces the empty sentinel;
+// subsequent steps use reduce_verdict_combine (Unknown latch = left unknown kept).
+type LocatedVerdictFoldAcc {
+  started: Bool
+  verdict: ReduceVerdict
+}
+
+fn fold_located_verdict(acc: LocatedVerdictFoldAcc, next: ReduceVerdict) -> LocatedVerdictFoldAcc {
+  if acc.started {
+    match acc.verdict {
+      Unknown { missing: _ } => acc
+      _ =>
+        LocatedVerdictFoldAcc {
+          started: true,
+          verdict: reduce_verdict_combine(a: acc.verdict, b: next)
+        }
+    }
+  } else {
+    LocatedVerdictFoldAcc { started: true, verdict: next }
+  }
+}
+
+fn reduce_verdicts_located(verdicts: List<ReduceVerdict>, empty_missing: String) -> ReduceVerdict {
+  let acc = fold(
+    verdicts,
+    init: LocatedVerdictFoldAcc {
+      started: false,
+      verdict: Unknown { missing: empty_missing }
+    },
+    f: fn(a, v) { fold_located_verdict(acc: a, next: v) }
+  )
+  acc.verdict
+}
+
+// §5 primitive: empty witness -> Unknown; named witness -> grounded atom.
+fn classify_leaf(witness: String) -> ReduceVerdict {
+  if witness == "" {
+    Unknown { missing: "witness" }
+  } else {
+    Irreducible { witness: witness }
+  }
+}
