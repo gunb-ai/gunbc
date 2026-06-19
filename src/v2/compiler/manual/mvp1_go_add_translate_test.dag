@@ -39,7 +39,7 @@ import v2.extdeps.languages.go {
   go_wave1_lex
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add_mvp {
@@ -86,7 +86,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-data mvp1_go_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
+data mvp1_go_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data mvp1_go_int_inhabitant: Node = go_int_inhabitant_node()
 
@@ -128,14 +128,14 @@ data mvp1_go_missing_translation_rules_target: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_mvp1_go_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
+fn anchor_mvp1_go_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>> {
   target_serialize_source_from_model(
     target: mvp1_go_missing_translation_rules_target,
     emitted: mvp1_go_emitted_root
   )
 }
 
-data mvp1_go_serialize_reject_receipt: Outcome<TargetSource> = anchor_mvp1_go_serialize_rejects_missing_translation_rules()
+data mvp1_go_serialize_reject_receipt: Outcome<Medium<String>> = anchor_mvp1_go_serialize_rejects_missing_translation_rules()
 
 fn mvp1_go_serialize_reject_claim_outcome() -> Outcome<Node> {
   match mvp1_go_serialize_reject_receipt {
@@ -303,7 +303,7 @@ data mvp1_go_inferred_tree: InferredTree = InferredTree {
   }
 }
 
-fn anchor_mvp1_go_emit_accepts() -> Outcome<TargetSource> {
+fn anchor_mvp1_go_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: mvp1_go_inferred_tree, target: mvp1_go_target_model)
 }
 
@@ -314,24 +314,24 @@ fn anchor_mvp1_go_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-data mvp1_go_emit_receipt: Outcome<TargetSource> = anchor_mvp1_go_emit_accepts()
+data mvp1_go_emit_receipt: Outcome<Medium<String>> = anchor_mvp1_go_emit_accepts()
 
 // R2 keystone execution witness — emit(add) must produce the canonical go_mvp1 add-fn source.
 test fn mvp1_go_emit_add_fn_accepts_holds() -> Bool {
   match mvp1_go_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source == go_mvp1_source_text) && (d == None)
+      (source.carried == go_mvp1_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 data mvp1_go_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_go_compile_inferred_accepts()
 
-// Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
+// Project emit Outcome<Medium<String>> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_go_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_go_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source == go_mvp1_source_text) && (d == None) {
+      if (source.carried == go_mvp1_source_text) && (d == None) {
         Accepted { value: mvp1_go_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -354,7 +354,7 @@ fn mvp1_go_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source == go_mvp1_source_text) && (d == None) {
+          if (source.carried == go_mvp1_source_text) && (d == None) {
             Accepted { value: mvp1_go_emitted_root, diagnostics: None }
           } else {
             Rejected {

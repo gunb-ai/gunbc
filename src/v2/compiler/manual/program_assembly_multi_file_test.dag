@@ -5,6 +5,7 @@
 
 module v2.test.manual.program_assembly_multi_file
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -16,8 +17,7 @@ import v2.compiler.program_assembly {
   assemble_program_from_module_roots
 }
 import v2.compiler.source_authority {
-  DagSource,
-  DagSourceReadWitness,
+    DagSourceReadWitness,
   SourceRootIngest,
 }
 import v2.extdeps.languages.dag {
@@ -177,8 +177,7 @@ test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   }
 }
 
-data pa_ingest_stub_source: DagSource = "module pa_subject_seg"
-
+data pa_ingest_stub_source: Medium<String> = Medium { carried: "module pa_subject_seg", fidelity: Lossless }
 data pa_ingest_source_file_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^pa_ingest_source_file_artifact,
