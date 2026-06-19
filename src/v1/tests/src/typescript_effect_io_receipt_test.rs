@@ -6,7 +6,7 @@
 //! (`target_value_expression_effect_apply` → `target_value_expression_to_concrete_tokens`'s
 //! `TargetValueExprEffectApply` arm → `serialize_concrete_syntax_tokens_to_source`). It drives
 //! the real v2 compile+interpret pipeline over
-//! `src/v2/compiler/manual/typescript_effect_io_emit.dag` to obtain the COMPILER-EMITTED
+//! `src/v2/compiler/manual/typescript_effect_io_emit_test.dag` to obtain the COMPILER-EMITTED
 //! TypeScript call expressions for an applied `WriteResource` and an applied `ReadResource`,
 //! then assembles a node-runnable program in which the two host-shim callees
 //! (`__gunbc_effect_write` / `__gunbc_effect_read`) are bound to `fs.writeFileSync` /
@@ -26,7 +26,7 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_effect_io_emit.dag";
+const WITNESS_ENTRY: &str = "src/v2/compiler/manual/typescript_effect_io_emit_test.dag";
 const WRITE_FN: &str = "ts_effect_write_call_source";
 const READ_FN: &str = "ts_effect_read_call_source";
 

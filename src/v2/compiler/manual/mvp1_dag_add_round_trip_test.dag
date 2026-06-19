@@ -152,7 +152,7 @@ fn mvp1_dag_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
+test fn mvp1_dag_emit_matches_serialize_holds() -> Bool {
   match target_serialize_source_from_model(
     target: mvp1_dag_target_model,
     emitted: mvp1_dag_emitted_root

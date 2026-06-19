@@ -1,4 +1,4 @@
-// dsl/test/claim/gunbhub_react_browse_witness.dag
+// dsl/test/claim/gunbhub_react_browse_witness_test.dag
 //
 // gunbhub R1 browse-page receipt: structurally compose a repo-browse page as a
 // ReactMarkupNode tree and serialize through canonical std.markup.Fragment.
@@ -27,6 +27,6 @@ fn gunbhub_browse_page_serializes_holds() -> Bool {
     "<div><h1>gunbc</h1><ul><li><a>dsl</a></li><li><a>src</a></li><li><a>ROADMAP.md</a></li></ul></div>"
 }
 
-fn gunbhub_browse_keystone_holds() -> Bool {
+test fn gunbhub_browse_keystone_holds() -> Bool {
   gunbhub_browse_page_serializes_holds()
 }

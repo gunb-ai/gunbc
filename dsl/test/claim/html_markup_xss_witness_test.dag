@@ -1,4 +1,4 @@
-// dsl/test/claim/html_markup_xss_witness.dag
+// dsl/test/claim/html_markup_xss_witness_test.dag
 //
 // By-execution witnesses for std.html_markup href/src scheme allowlisting.
 // std.markup escape_url is character-escaping only; the HTML consumer must
@@ -120,7 +120,7 @@ fn witness_allowlist_rejects_what_escape_url_passes() -> Bool {
     && witness_unsafe_href_blocks_serialization()
 }
 
-fn html_markup_xss_keystone_holds() -> Bool {
+test fn html_markup_xss_keystone_holds() -> Bool {
   witness_javascript_href_rejects()
     && witness_javascript_href_case_insensitive_rejects()
     && witness_data_href_rejects()
