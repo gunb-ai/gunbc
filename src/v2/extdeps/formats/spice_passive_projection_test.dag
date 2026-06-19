@@ -46,7 +46,7 @@ test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   }
 }
 
-fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
+test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
   let component = Capacitor {
     name: ^c1,
     n_plus: Named { node: NamedNode { name: ^n2 } },
@@ -59,7 +59,7 @@ fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
   }
 }
 
-fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
+test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
   let component = Inductor {
     name: ^l1,
     n_plus: Named { node: NamedNode { name: ^n3 } },
@@ -72,7 +72,7 @@ fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
   }
 }
 
-fn passive_topology_preserves_component_name_holds() -> Bool {
+test fn passive_topology_preserves_component_name_holds() -> Bool {
   let component = Resistor {
     name: ^r9,
     n_plus: Named { node: NamedNode { name: ^n9 } },

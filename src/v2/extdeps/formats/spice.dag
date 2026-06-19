@@ -79,8 +79,12 @@ type NodeRef
   | Named { node: NamedNode }
 
 
-// 🟡 needs-more-work — feature:spice-exact-voltage-gap — dissolve-on: std/ exact-real / Dimension substrate (T-3) · ledger: T-4
-// Below-boundary raw lexical carrier; approximate-voltage projection lives in v2.std.timeseries_signal.ApproxVoltage.
+// Below-boundary unparsed netlist lexical carrier (`lexeme` is the sanctioned raw
+// Shape-B token spelling — no lexeme→count parse path until T-3 Dimension lands).
+// 🟡 needs-more-work — feature:spice-lexeme-dimensional-substrate — dissolve-on:
+//   T-3 std/ exact-real / Dimension substrate supplies typed exact-carrier beside
+//   this lexeme scaffold · ledger: T-4
+// Approximate-voltage projection: v2.std.timeseries_signal.ApproxVoltage (not here).
 type SpiceValue {
   lexeme: String
 }
