@@ -4,15 +4,28 @@
 //        EVERY declared concept across the compiled corpus — the substrate primitive a
 //        namespace/concept index DFS (DESIGN.md §2 "DFS the concept DAG first") and the
 //        consolidation/DISPOSE authority (DESIGN.md §3 single-authority dedup) both build on.
-// Consumes: std/collection.dag, std/text.dag.
-// Single authority (DESIGN.md §3): QualifiedConcept / ConceptStruct are minted HERE, in gunbc
-//        std, and consumed downstream (e.g. ctrl plans.namespace_index). Do NOT fork a parallel
-//        concept-index carrier in a consumer — import this one.
+//
+// Source/projection split (DESIGN.md §3 single authority + §6 lens-not-Rust):
+//   - SOURCE (host boundary, irreducible today — v2 has no corpus-as-node handle, #4863):
+//     the Rust bridge `enumerate_concept_decls()` materializes each decl as a substrate `Node`
+//     (the same currency resolve_type_node returns, just plural + any-connective). It does NO
+//     index-contract shaping.
+//   - PROJECTION (here, in the model): ConceptStruct / FieldRef are shaped from each decl `node`
+//     by COMPOSING the existing public node_query readers (coproduct_arm_list_from_node /
+//     coproduct_arm_payload_pair_from_arm — they fold Conj records and Disj coproducts into
+//     (field, type) pairs identically). The contract shape is single-authority in .dag.
+// Consumes: std/collection.dag, std/text.dag, std/node.dag, std/node_query.dag, std/algebra.dag.
+// Single authority (DESIGN.md §3): QualifiedConcept / ConceptStruct / FieldRef are minted HERE,
+//        in gunbc std, and consumed downstream (e.g. ctrl plans.namespace_index). Do NOT fork a
+//        parallel concept-index carrier in a consumer — import this one.
 
 module v2.std.concept_index
 
 
+import v2.std.algebra { Empty, list_snoc_item }
 import v2.std.collection { List }
+import v2.std.node { Node }
+import v2.std.node_query { CoproductArm, coproduct_arm_list_from_node, coproduct_arm_payload_pair_from_arm }
 import v2.std.text { String }
 
 
@@ -34,7 +47,7 @@ type ConceptStruct {
 }
 
 // One row of the concept index: a concept located by its dotted module-qualified name
-// (e.g. "v2.std.node.Connective"), so two same-named concepts in different modules are distinct
+// (e.g. "std.node.Connective"), so two same-named concepts in different modules are distinct
 // rows under DESIGN.md §3. qualified_name is a dotted String to satisfy the downstream consumer
 // contract (plans.namespace_index); the structured carrier is v2.std.qualified_name.QualifiedName.
 type QualifiedConcept {
@@ -42,15 +55,51 @@ type QualifiedConcept {
   concept: ConceptStruct
 }
 
+// The SOURCE bridge's per-decl row: the logical qualified name, the leaf name, and the
+// materialized substrate `Node` of the declaration. Shaping into the index contract above is
+// the .dag projection below, NOT the bridge.
+type ConceptDecl {
+  qualified_name: String
+  name: String
+  node: Node
+}
+
 
 // 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival: v2
 // compile-graph access lets this enumerate the resolved graph in .dag (one walk over every
 // module's items), replacing the Rust intercept; sibling to v2.std.node.resolve_type_node, which
 // dissolves on the same trigger. forbidden: parallel corpus enumeration in Rust outside this
-// intercept, or a parallel concept-index carrier in a consumer (DESIGN.md §3).
+// intercept, or any ConceptStruct/FieldRef shaping in Rust (projection is .dag, below).
 //
-// Enumerates every TypeItem declared across the compiled corpus, one QualifiedConcept per concept,
-// in module-then-declaration order. Total: a corpus with no concepts yields the empty list.
+// SOURCE: materializes every TypeItem in the compiled corpus as { qualified_name, name, node }.
+fn enumerate_concept_decls() -> List<ConceptDecl> {
+  enumerate_concept_decls()
+}
+
+// PROJECTION: a decl's field list, projected from its materialized node by composing the public
+// node_query readers (connective-agnostic — folds a Conj record's field edges and a Disj
+// coproduct's arm edges into (field, type) pairs identically). No node_query contract change.
+fn field_refs_from_node(node: Node) -> List<FieldRef> {
+  fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
+    let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
+    list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
+  })
+}
+
+fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
+  QualifiedConcept {
+    qualified_name: decl.qualified_name,
+    concept: ConceptStruct {
+      name: decl.name,
+      fields: field_refs_from_node(node: decl.node)
+    }
+  }
+}
+
+// The concept index: every declared concept, projected to the consumer contract. Total — a
+// corpus with no concepts yields the empty list.
 fn enumerate_concepts() -> List<QualifiedConcept> {
-  enumerate_concepts()
+  fold(enumerate_concept_decls(), init: Empty, f: fn(acc, decl) {
+    list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
+  })
 }

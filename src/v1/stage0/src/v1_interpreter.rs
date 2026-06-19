@@ -2398,9 +2398,10 @@ pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
 
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
-// v2.std.concept_index corpus-enumeration bridge — dissolve-on: v2 compile-graph access
-// (same trigger as resolve_type_node). forbidden: parallel corpus enumeration in Rust.
-pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["enumerate_concepts"];
+// v2.std.concept_index corpus-enumeration SOURCE bridge — materializes each decl as a Node
+// (substrate currency); ALL ConceptStruct/FieldRef shaping is .dag. dissolve-on: v2 compile-graph
+// access (same trigger as resolve_type_node). forbidden: parallel corpus enumeration in Rust.
+pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["enumerate_concept_decls"];
 
 /// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
@@ -2503,8 +2504,8 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 
     if is_v4_std_concept_index_bridge_call(ctx, &func_name) {
         return match func_name.as_str() {
-            "enumerate_concepts" => {
-                crate::coproduct_reflection::eval_enumerate_concepts(ctx, &args)
+            "enumerate_concept_decls" => {
+                crate::coproduct_reflection::eval_enumerate_concept_decls(ctx, &args)
             }
             _ => unreachable!("concept_index bridge fn set mismatch"),
         };

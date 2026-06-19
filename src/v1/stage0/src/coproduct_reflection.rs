@@ -452,10 +452,16 @@ pub fn eval_resolve_type_node(
 }
 
 // ---------------------------------------------------------------------------
-// v2.std.concept_index — corpus enumeration bridge (sibling to resolve_type_node).
-// Where resolve_type_node reads ONE concept BY NAME, enumerate_concepts walks EVERY
-// declared TypeItem across the compiled corpus, one QualifiedConcept per concept.
-// Dissolves on the same trigger as resolve_type_node (v2 compile-graph access).
+// v2.std.concept_index — corpus enumeration SOURCE bridge (sibling to resolve_type_node).
+// Where resolve_type_node materializes ONE decl BY NAME (Disj only), enumerate_concept_decls
+// materializes EVERY declared TypeItem across the compiled corpus as a `ConceptDecl`
+// { qualified_name, name, node } — the SAME substrate currency (a Node), just plural and
+// any-connective. It does NO index-contract shaping: ConceptStruct / FieldRef are projected
+// from `node` entirely in .dag (v2.std.concept_index) via the existing public node_query readers
+// (coproduct_arm_list_from_node / coproduct_arm_payload_pair_from_arm, which fold Conj records
+// and Disj coproducts into (field, type) pairs identically). This keeps the index contract
+// single-authority in the model; the bridge is only the irreducible host boundary (v2 has no
+// corpus-as-node handle yet). Dissolves on the same trigger as resolve_type_node (#4863).
 // ---------------------------------------------------------------------------
 
 /// Logical (import-path) module-qualified name: the dotted module path followed by the concept's
@@ -472,85 +478,24 @@ fn logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
-/// Synthetic inline-record payload type name for a coproduct arm carrying fields, matching
-/// v2.std.node_query.conj_authored_payload_type_name: "{ f1: T1, f2: T2 }".
-fn inline_record_payload_type_name(ctx: &InterpContext, arm: &Rc<Node>) -> String {
-    let si = ctx.source_indices();
-    let mut acc = String::from("{");
-    for field in arm.children.iter() {
-        let field_name = authored_name_at(si.clone(), field.clone());
-        let piece = format!("{field_name}: {}", field_type_name(ctx, field));
-        if acc == "{" {
-            acc = format!("{{ {piece}");
-        } else {
-            acc = format!("{acc}, {piece}");
-        }
-    }
-    format!("{acc} }}")
-}
-
-fn field_ref_value(ctx: &InterpContext, field: &str, type_name: &str) -> Value {
-    Value::Record {
-        type_name: ctx.sym("FieldRef"),
-        fields: Rc::new(HashMap::from([
-            (ctx.sym("field"), Value::Str(field.to_string())),
-            (ctx.sym("type_name"), Value::Str(type_name.to_string())),
-        ])),
-    }
-}
-
-/// The authored type name of a record field's type expression (reuses the resolve_type_node
-/// readers' projection: inferred node first, falling back to the authored type expr).
-fn field_type_name(ctx: &InterpContext, field: &Rc<Node>) -> String {
-    let type_expr = field
-        .inferred
-        .as_ref()
-        .and_then(|inf| inferred_to_node(inf.clone()))
-        .unwrap_or_else(|| field_node_type_expr(field.clone()));
-    type_expr_authored_name(ctx, &type_expr)
-}
-
-/// Project a concept (TypeItem) to its ordered FieldRef list — the comparable structural surface.
-///   - record (Conj): one FieldRef per field { field: name, type_name: authored type }.
-///   - coproduct (Disj): one FieldRef per arm { field: arm label, type_name: payload type } —
-///     nullary arms carry the nullary-payload sentinel; this is the surface the §3 homonym guard
-///     compares (e.g. CpuArchitecture vs TargetArchitecture byte-identical enums).
-///   - atom/alias/other: no field substrate -> empty list (honest, not fabricated).
-///
-/// 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival: a
-/// general type-item projection (inline-record arm payloads, generics) lands with v2
-/// compile-graph access. forbidden: fabricating field substrate for non-Conj/Disj concepts.
-fn concept_field_refs(ctx: &InterpContext, item: &Rc<Node>) -> Vec<Value> {
-    let si = ctx.source_indices();
+/// Materialize a declared type item as a substrate `Node` Value — the same currency
+/// resolve_type_node returns, generalized to any connective by reusing the SAME internal marshal
+/// helpers (no change to resolve_type_node's public contract):
+///   - Disj (coproduct) -> marshal_disj_type_item (Named arm edges, payload sub-nodes).
+///   - Conj (record)    -> marshal_variant_arm_target (Named field edges -> field-type atoms;
+///                          empty record -> unit Conj node).
+///   - other (alias/atom/arrow) -> unit Conj node (no named-edge field substrate; the .dag
+///                          readers fold it to an empty field list — honest, not fabricated).
+/// All FieldRef/ConceptStruct shaping happens in .dag over this node, NOT here.
+fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
     match item.connective {
-        Connective::Conj => item
-            .children
-            .iter()
-            .map(|field| {
-                let field_name = authored_name_at(si.clone(), field.clone());
-                field_ref_value(ctx, &field_name, &field_type_name(ctx, field))
-            })
-            .collect(),
-        Connective::Disj => item
-            .children
-            .iter()
-            .map(|arm| {
-                let label = authored_name_at(si.clone(), arm.clone());
-                let payload = if arm.children.is_empty() {
-                    NULLARY_PAYLOAD_TYPE_NAME.to_string()
-                } else {
-                    // inline-record payload: synthetic "{ y: Int }" string (not nested FieldRefs),
-                    // matching node_query.conj_authored_payload_type_name.
-                    inline_record_payload_type_name(ctx, arm)
-                };
-                field_ref_value(ctx, &label, &payload)
-            })
-            .collect(),
-        _ => Vec::new(),
+        Connective::Disj => marshal_disj_type_item(ctx, item),
+        Connective::Conj => marshal_variant_arm_target(ctx, item),
+        _ => Ok(unit_type_node(ctx)),
     }
 }
 
-pub fn eval_enumerate_concepts(
+pub fn eval_enumerate_concept_decls(
     ctx: &InterpContext,
     _args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
@@ -573,19 +518,13 @@ pub fn eval_enumerate_concepts(
                 continue;
             }
             let qualified_name = logical_qualified_name(&info.module_name, &name);
-            let fields = concept_field_refs(ctx, item);
-            let concept = Value::Record {
-                type_name: ctx.sym("ConceptStruct"),
-                fields: Rc::new(HashMap::from([
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("fields"), crate::v1_interpreter::list_value(fields)),
-                ])),
-            };
+            let node = concept_decl_node(ctx, item)?;
             rows.push(Value::Record {
-                type_name: ctx.sym("QualifiedConcept"),
+                type_name: ctx.sym("ConceptDecl"),
                 fields: Rc::new(HashMap::from([
                     (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("concept"), concept),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("node"), node),
                 ])),
             });
         }
