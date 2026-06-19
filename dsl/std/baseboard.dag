@@ -21,11 +21,21 @@ type BaseboardManufacturer = | AsrockRack
 type BaseboardModel = | AsrockRackAltrad8ud1l2t
 
 // Cited bundle of facts about a baseboard model (authority: extdeps/boards/<vendor>.dag).
+// Manufacturer is NOT co-stored: the model tag already determines it, so a stored field
+// could disagree with itself (DESIGN §2 — one fact, derived globally). It is a projection
+// of `model` via `baseboard_manufacturer` below.
 type BaseboardCatalogRow {
   model: BaseboardModel
-  manufacturer: BaseboardManufacturer
   model_label: NonEmptyStr
   bmc_firmware: BmcFirmwareFamily
+}
+
+// model → manufacturer: the single authority for "who makes this board". Closed match,
+// fail-closed when a new model lands without its manufacturer mapped.
+fn baseboard_manufacturer(model: BaseboardModel) -> BaseboardManufacturer {
+  match model {
+    AsrockRackAltrad8ud1l2t => AsrockRack
+  }
 }
 
 // A specific deployed server's baseboard: which board it is, and the live endpoint at

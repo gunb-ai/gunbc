@@ -11,14 +11,14 @@ module extdeps.boards.asrock_rack
 
 import std.baseboard {
   BaseboardCatalogRow,
-  AsrockRack,
   AsrockRackAltrad8ud1l2t,
 }
 import std.bmc { OpenBmc }
 
+// Manufacturer (AsrockRack) is not stored here — it derives from `model` via
+// std.baseboard.baseboard_manufacturer (DESIGN §2, one fact derived).
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: AsrockRackAltrad8ud1l2t,
-  manufacturer: AsrockRack,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   bmc_firmware: OpenBmc,
 }
