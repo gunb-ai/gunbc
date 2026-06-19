@@ -31,26 +31,14 @@ data ansi_mappings: List<AnsiMapping> = [
   { color: Accent,  code: "\x1b[38;5;75m"    }
 ]
 
-fn semantic_color_eq(a: SemanticColor, b: SemanticColor) -> Bool {
-  match a {
-    Default => match b { Default => true  _ => false }
-    Success => match b { Success => true  _ => false }
-    Warning => match b { Warning => true  _ => false }
-    Error   => match b { Error   => true  _ => false }
-    Info    => match b { Info    => true  _ => false }
-    Dim     => match b { Dim     => true  _ => false }
-    Active  => match b { Active  => true  _ => false }
-    Accent  => match b { Accent  => true  _ => false }
-  }
-}
-
+// Lookup via fold + structural == (filter+field-equality hits a v1 interpreter bug).
 fn ansi_code(c: SemanticColor) -> String? {
   fold(ansi_mappings,
     init: none,
     f: (acc, m) => match acc {
       Present { value: _ } => acc
       Absent =>
-        if semantic_color_eq(a: m.color, b: c) {
+        if m.color == c {
           Present { value: m.code }
         } else {
           none
