@@ -1105,7 +1105,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: ^dag_production_primary_expr,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_caret),
-        grammar_formal_terminal(identity: ^dag_token_ident)
+        grammar_formal_terminal_free(identity: ^dag_token_ident)
       ]
     ),
     grammar_formal_production(
