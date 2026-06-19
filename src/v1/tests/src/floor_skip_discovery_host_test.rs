@@ -64,6 +64,38 @@ impl Drop for EnvVarGuard {
 }
 
 #[test]
+fn discovery_corpus_entry_resolves_in_roster_order() {
+    use std::collections::BTreeSet;
+
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, discover_floor_corpus_rows, resolve_entry_with_index,
+    };
+
+    let ws = workspace_root();
+    let roots = vec![
+        ws.join("src/v2").to_string_lossy().into_owned(),
+        ws.join("dsl").to_string_lossy().into_owned(),
+    ];
+    let scan_dirs = vec![
+        ws.join("dsl/test/claim").to_string_lossy().into_owned(),
+        ws.join("src/v2/compiler/manual")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
+    let index = build_multi_entry_index(&roots);
+    let mut seen = BTreeSet::new();
+    for row in &rows {
+        if !seen.insert(row.entry.clone()) {
+            continue;
+        }
+        resolve_entry_with_index(&index, &row.entry).unwrap_or_else(|e| {
+            panic!("resolve failed for {}: {e}", row.entry);
+        });
+    }
+}
+
+#[test]
 fn budget_roster_resolves_after_frontier_warmup() {
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 
