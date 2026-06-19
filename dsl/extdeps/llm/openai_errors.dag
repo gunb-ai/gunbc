@@ -4,9 +4,54 @@
 
 module extdeps.llm.openai_errors
 
+import std.types { NonEmptyStr }
+
+// OpenAI API error `error.type` registry (extensible — closed cited rows + Other).
+type OpenAiErrorType
+  = InvalidRequestError
+  | AuthenticationError
+  | PermissionError
+  | NotFoundError
+  | RateLimitError
+  | ApiError
+  | InsufficientQuota
+  | OpenAiErrorTypeOther { raw: NonEmptyStr }
+
+data openai_error_invalid_request_wire: String = "invalid_request_error"
+data openai_error_authentication_wire: String = "authentication_error"
+data openai_error_permission_wire: String = "permission_error"
+data openai_error_not_found_wire: String = "not_found_error"
+data openai_error_rate_limit_wire: String = "rate_limit_error"
+data openai_error_api_wire: String = "api_error"
+data openai_error_insufficient_quota_wire: String = "insufficient_quota"
+
+fn parse_openai_error_type(raw: String) -> OpenAiErrorType {
+  if raw == openai_error_invalid_request_wire { InvalidRequestError }
+  else if raw == openai_error_authentication_wire { AuthenticationError }
+  else if raw == openai_error_permission_wire { PermissionError }
+  else if raw == openai_error_not_found_wire { NotFoundError }
+  else if raw == openai_error_rate_limit_wire { RateLimitError }
+  else if raw == openai_error_api_wire { ApiError }
+  else if raw == openai_error_insufficient_quota_wire { InsufficientQuota }
+  else { OpenAiErrorTypeOther { raw: raw } }
+}
+
+fn openai_error_type_label(kind: OpenAiErrorType) -> String {
+  match kind {
+    InvalidRequestError => openai_error_invalid_request_wire
+    AuthenticationError => openai_error_authentication_wire
+    PermissionError => openai_error_permission_wire
+    NotFoundError => openai_error_not_found_wire
+    RateLimitError => openai_error_rate_limit_wire
+    ApiError => openai_error_api_wire
+    InsufficientQuota => openai_error_insufficient_quota_wire
+    OpenAiErrorTypeOther { raw: r } => r
+  }
+}
+
 type OpenAiErrorDetails {
   message: String
-  type: String
+  type: OpenAiErrorType
   param: String?
   code: String?
 }

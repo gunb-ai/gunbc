@@ -5,20 +5,73 @@
 
 module extdeps.llm.anthropic_errors
 
+import std.types { NonEmptyStr }
+
+// Anthropic error envelope outer `type` — currently only "error" on the wire.
+type AnthropicErrorEnvelopeType
+  = AnthropicErrorEnvelope {}
+
+data anthropic_error_envelope_error_wire: String = "error"
+
+fn anthropic_error_envelope_type_label(kind: AnthropicErrorEnvelopeType) -> String {
+  match kind {
+    AnthropicErrorEnvelope {} => anthropic_error_envelope_error_wire
+  }
+}
+
+// Anthropic error `error.type` registry (extensible — closed cited rows + Other).
+type AnthropicErrorType
+  = AuthenticationError
+  | InvalidRequestError
+  | RateLimitError
+  | OverloadedError
+  | NotFoundError
+  | ApiError
+  | AnthropicErrorTypeOther { raw: NonEmptyStr }
+
+data anthropic_error_authentication_wire: String = "authentication_error"
+data anthropic_error_invalid_request_wire: String = "invalid_request_error"
+data anthropic_error_rate_limit_wire: String = "rate_limit_error"
+data anthropic_error_overloaded_wire: String = "overloaded_error"
+data anthropic_error_not_found_wire: String = "not_found_error"
+data anthropic_error_api_wire: String = "api_error"
+
+fn parse_anthropic_error_type(raw: String) -> AnthropicErrorType {
+  if raw == anthropic_error_authentication_wire { AuthenticationError }
+  else if raw == anthropic_error_invalid_request_wire { InvalidRequestError }
+  else if raw == anthropic_error_rate_limit_wire { RateLimitError }
+  else if raw == anthropic_error_overloaded_wire { OverloadedError }
+  else if raw == anthropic_error_not_found_wire { NotFoundError }
+  else if raw == anthropic_error_api_wire { ApiError }
+  else { AnthropicErrorTypeOther { raw: raw } }
+}
+
+fn anthropic_error_type_label(kind: AnthropicErrorType) -> String {
+  match kind {
+    AuthenticationError => anthropic_error_authentication_wire
+    InvalidRequestError => anthropic_error_invalid_request_wire
+    RateLimitError => anthropic_error_rate_limit_wire
+    OverloadedError => anthropic_error_overloaded_wire
+    NotFoundError => anthropic_error_not_found_wire
+    ApiError => anthropic_error_api_wire
+    AnthropicErrorTypeOther { raw: r } => r
+  }
+}
+
 type AnthropicErrorDetails {
-  type: String
+  type: AnthropicErrorType
   message: String
 }
 
 type AnthropicErrorShape {
-  type: String
+  type: AnthropicErrorEnvelopeType
   error: AnthropicErrorDetails
 }
 
 data anthropic_error_example: AnthropicErrorShape = {
-  type: "error",
+  type: AnthropicErrorEnvelope {},
   error: {
-    type: "authentication_error",
+    type: AuthenticationError,
     message: "invalid x-api-key"
   }
 }
