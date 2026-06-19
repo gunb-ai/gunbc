@@ -11,10 +11,14 @@
 module test.claim.render_glyphs_ansi_witness
 
 import extdeps.render.ansi { ansi_code }
+import extdeps.render.ascii_glyph { ascii_glyph }
+import extdeps.render.emoji_glyph { emoji_glyph }
 import extdeps.render.glyphs { resolve_symbol, symbol_color }
-import std.symbols { Ascii, Error, NodeCompleted, NodeFailed, Success, Unicode }
+import extdeps.render.tier_glyphs { glyph_at, glyphs_for_tiers }
+import extdeps.render.unicode_glyph { unicode_glyph }
+import std.symbols { Ascii, Emoji, Error, NodeCompleted, NodeFailed, Success, Unicode }
 
-// -- Glyph tier dispatch -----------------------------------------------------
+// -- Glyph tier dispatch (standard_symbols table) ----------------------------
 fn w_completed_ascii() -> Bool {
   match resolve_symbol(id: NodeCompleted, tier: Ascii) {
     Present { value: s } => s == "[x]"
@@ -31,6 +35,19 @@ fn w_completed_unicode_differs_from_ascii() -> Bool {
       }
     Absent => false
   }
+}
+
+// -- Behavioral glyph_at witness (distinct text per tier; not brand-reliant) -
+// Perturbing glyph_at to project the wrong field makes this RED.
+fn w_glyph_at_selects_matching_tier_text() -> Bool {
+  let g = glyphs_for_tiers(
+    emoji: emoji_glyph(text: "E"),
+    unicode: unicode_glyph(text: "U"),
+    ascii: ascii_glyph(text: "A")
+  )
+  glyph_at(glyphs: g, tier: Ascii) == "A" &&
+  glyph_at(glyphs: g, tier: Unicode) == "U" &&
+  glyph_at(glyphs: g, tier: Emoji) == "E"
 }
 
 fn w_failed_color_is_error() -> Bool {
@@ -56,6 +73,7 @@ fn w_success_ansi_is_256_green() -> Bool {
 test fn render_glyphs_ansi_witnesses() -> Bool {
   w_completed_ascii() &&
   w_completed_unicode_differs_from_ascii() &&
+  w_glyph_at_selects_matching_tier_text() &&
   w_failed_color_is_error() &&
   w_success_ansi_is_256_green()
 }

@@ -16,10 +16,10 @@ import std.markup {
   MarkupNode,
   ElementNode,
   TextNode,
-}
-import std.html_markup {
   Serialized,
   Rejected,
+}
+import std.html_markup {
   try_serialize_html_node,
   escape_text_content,
 }

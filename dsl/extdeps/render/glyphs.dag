@@ -2,11 +2,21 @@
 //
 // Project visual vocabulary: three-tier encodings (Emoji / Unicode / Ascii) per
 // SymbolId. Dispatch lives in extdeps/, not std/ (DESIGN.md §3): std.symbols
-// owns only the agnostic glyph identity and SymbolEntry shape.
+// owns only the agnostic glyph identity vocabulary (SymbolId, Tier, SemanticColor).
 
 module extdeps.render.glyphs
 
-import std.symbols { SemanticColor, SymbolEntry, SymbolId, Tier }
+import extdeps.render.ascii_glyph { ascii_glyph }
+import extdeps.render.emoji_glyph { emoji_glyph }
+import extdeps.render.unicode_glyph { unicode_glyph }
+import extdeps.render.tier_glyphs { TierGlyphs, glyph_at, glyphs_for_tiers }
+import std.symbols { SemanticColor, SymbolId, Tier }
+
+type SymbolEntry {
+  id: SymbolId
+  glyphs: TierGlyphs
+  color: SemanticColor
+}
 
 // --- Standard symbol set ---
 //
@@ -16,60 +26,60 @@ import std.symbols { SemanticColor, SymbolEntry, SymbolId, Tier }
 data standard_symbols: List<SymbolEntry> = [
   // Node lifecycle
   // NOTE: emoji/unicode tiers collapsed to ASCII -- restore when tokenizer handles UTF-8
-  { id: NodePending,      emoji: "[ ]", unicode: "o",   ascii: "[ ]", color: Dim     },
-  { id: NodeRunning,      emoji: "[~]", unicode: "O",   ascii: "[~]", color: Active  },
-  { id: NodeCompleted,    emoji: "[x]", unicode: "*",   ascii: "[x]", color: Success },
-  { id: NodeFailed,       emoji: "[!]", unicode: "x",   ascii: "[!]", color: Error   },
-  { id: NodeSkipped,      emoji: "[-]", unicode: "o",   ascii: "[-]", color: Dim     },
-  { id: NodeIntercepted,  emoji: "[m]", unicode: "<>",  ascii: "[m]", color: Info    },
+  { id: NodePending,      glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[ ]"), unicode: unicode_glyph(text: "o"),   ascii: ascii_glyph(text: "[ ]")), color: Dim     },
+  { id: NodeRunning,      glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[~]"), unicode: unicode_glyph(text: "O"),   ascii: ascii_glyph(text: "[~]")), color: Active  },
+  { id: NodeCompleted,    glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[x]"), unicode: unicode_glyph(text: "*"),   ascii: ascii_glyph(text: "[x]")), color: Success },
+  { id: NodeFailed,       glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[!]"), unicode: unicode_glyph(text: "x"),   ascii: ascii_glyph(text: "[!]")), color: Error   },
+  { id: NodeSkipped,      glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[-]"), unicode: unicode_glyph(text: "o"),   ascii: ascii_glyph(text: "[-]")), color: Dim     },
+  { id: NodeIntercepted,  glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[m]"), unicode: unicode_glyph(text: "<>"),  ascii: ascii_glyph(text: "[m]")), color: Info    },
 
   // Edge states
-  { id: EdgeIdle,         emoji: "-",   unicode: "-",   ascii: "-",   color: Dim     },
-  { id: EdgeFlowing,      emoji: "=",   unicode: "=",   ascii: "=",   color: Accent  },
-  { id: EdgeDone,         emoji: "-",   unicode: "-",   ascii: "-",   color: Success },
-  { id: EdgeDead,         emoji: ".",   unicode: ".",   ascii: ".",   color: Dim     },
+  { id: EdgeIdle,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "-"),   unicode: unicode_glyph(text: "-"),   ascii: ascii_glyph(text: "-")),   color: Dim     },
+  { id: EdgeFlowing,      glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "="),   unicode: unicode_glyph(text: "="),   ascii: ascii_glyph(text: "=")),   color: Accent  },
+  { id: EdgeDone,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "-"),   unicode: unicode_glyph(text: "-"),   ascii: ascii_glyph(text: "-")),   color: Success },
+  { id: EdgeDead,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "."),   unicode: unicode_glyph(text: "."),   ascii: ascii_glyph(text: ".")),   color: Dim     },
 
   // DAG phases
-  { id: DagNotStarted,    emoji: "[ ]", unicode: "[ ]", ascii: "[ ]", color: Dim     },
-  { id: DagRunning,       emoji: "[>]", unicode: ">",   ascii: "[>]", color: Active  },
-  { id: DagCompleted,     emoji: "[X]", unicode: "#",   ascii: "[X]", color: Success },
-  { id: DagFailed,        emoji: "[!]", unicode: "#",   ascii: "[!]", color: Error   },
+  { id: DagNotStarted,    glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[ ]"), unicode: unicode_glyph(text: "[ ]"), ascii: ascii_glyph(text: "[ ]")), color: Dim     },
+  { id: DagRunning,       glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[>]"), unicode: unicode_glyph(text: ">"),   ascii: ascii_glyph(text: "[>]")), color: Active  },
+  { id: DagCompleted,     glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[X]"), unicode: unicode_glyph(text: "#"),   ascii: ascii_glyph(text: "[X]")), color: Success },
+  { id: DagFailed,        glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[!]"), unicode: unicode_glyph(text: "#"),   ascii: ascii_glyph(text: "[!]")), color: Error   },
 
   // Structural
-  { id: BoundaryMarker,   emoji: "[B]", unicode: "<>",  ascii: "[B]", color: Info    },
+  { id: BoundaryMarker,   glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[B]"), unicode: unicode_glyph(text: "<>"),  ascii: ascii_glyph(text: "[B]")), color: Info    },
 
   // Spinners (ASCII fallback -- restore braille when tokenizer handles UTF-8)
-  { id: Spinner0,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
-  { id: Spinner1,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
-  { id: Spinner2,         emoji: "-",   unicode: "-",   ascii: "-",   color: Active  },
-  { id: Spinner3,         emoji: "\\",  unicode: "\\",  ascii: "\\",  color: Active  },
-  { id: Spinner4,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
-  { id: Spinner5,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
-  { id: Spinner6,         emoji: "-",   unicode: "-",   ascii: "-",   color: Active  },
-  { id: Spinner7,         emoji: "\\",  unicode: "\\",  ascii: "\\",  color: Active  },
-  { id: Spinner8,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
-  { id: Spinner9,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
+  { id: Spinner0,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "|"),   unicode: unicode_glyph(text: "|"),   ascii: ascii_glyph(text: "|")),   color: Active  },
+  { id: Spinner1,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "/"),   unicode: unicode_glyph(text: "/"),   ascii: ascii_glyph(text: "/")),   color: Active  },
+  { id: Spinner2,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "-"),   unicode: unicode_glyph(text: "-"),   ascii: ascii_glyph(text: "-")),   color: Active  },
+  { id: Spinner3,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "\\"),  unicode: unicode_glyph(text: "\\"),  ascii: ascii_glyph(text: "\\")),  color: Active  },
+  { id: Spinner4,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "|"),   unicode: unicode_glyph(text: "|"),   ascii: ascii_glyph(text: "|")),   color: Active  },
+  { id: Spinner5,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "/"),   unicode: unicode_glyph(text: "/"),   ascii: ascii_glyph(text: "/")),   color: Active  },
+  { id: Spinner6,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "-"),   unicode: unicode_glyph(text: "-"),   ascii: ascii_glyph(text: "-")),   color: Active  },
+  { id: Spinner7,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "\\"),  unicode: unicode_glyph(text: "\\"),  ascii: ascii_glyph(text: "\\")),  color: Active  },
+  { id: Spinner8,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "|"),   unicode: unicode_glyph(text: "|"),   ascii: ascii_glyph(text: "|")),   color: Active  },
+  { id: Spinner9,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "/"),   unicode: unicode_glyph(text: "/"),   ascii: ascii_glyph(text: "/")),   color: Active  },
 
   // Status indicators
-  { id: StatusSuccess,    emoji: "OK",   unicode: "v",    ascii: "OK",   color: Success },
-  { id: StatusFailure,    emoji: "FAIL", unicode: "x",    ascii: "FAIL", color: Error   },
-  { id: StatusWarning,    emoji: "WARN", unicode: "!",    ascii: "WARN", color: Warning },
-  { id: StatusInfo,       emoji: "INFO", unicode: "i",    ascii: "INFO", color: Info    },
+  { id: StatusSuccess,    glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "OK"),   unicode: unicode_glyph(text: "v"),    ascii: ascii_glyph(text: "OK")),   color: Success },
+  { id: StatusFailure,    glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "FAIL"), unicode: unicode_glyph(text: "x"),    ascii: ascii_glyph(text: "FAIL")), color: Error   },
+  { id: StatusWarning,    glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "WARN"), unicode: unicode_glyph(text: "!"),    ascii: ascii_glyph(text: "WARN")), color: Warning },
+  { id: StatusInfo,       glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "INFO"), unicode: unicode_glyph(text: "i"),    ascii: ascii_glyph(text: "INFO")), color: Info    },
 
   // Data type indicators
-  { id: DataList,         emoji: "[L]",  unicode: "=",    ascii: "[L]",  color: Default },
-  { id: DataMap,          emoji: "[M]",  unicode: "[+]",  ascii: "[M]",  color: Default },
-  { id: DataSecret,       emoji: "[*]",  unicode: "*",    ascii: "[*]",  color: Warning },
-  { id: DataUrl,          emoji: "[U]",  unicode: ">",    ascii: "[U]",  color: Info    },
-  { id: DataTimer,        emoji: "[T]",  unicode: "[T]",  ascii: "[T]",  color: Dim     },
+  { id: DataList,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[L]"),  unicode: unicode_glyph(text: "="),    ascii: ascii_glyph(text: "[L]")),  color: Default },
+  { id: DataMap,          glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[M]"),  unicode: unicode_glyph(text: "[+]"),  ascii: ascii_glyph(text: "[M]")),  color: Default },
+  { id: DataSecret,       glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[*]"),  unicode: unicode_glyph(text: "*"),    ascii: ascii_glyph(text: "[*]")),  color: Warning },
+  { id: DataUrl,          glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[U]"),  unicode: unicode_glyph(text: ">"),    ascii: ascii_glyph(text: "[U]")),  color: Info    },
+  { id: DataTimer,        glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "[T]"),  unicode: unicode_glyph(text: "[T]"),  ascii: ascii_glyph(text: "[T]")),  color: Dim     },
 
   // Connectors
-  { id: ConnectorHorizontal,      emoji: "--", unicode: "--", ascii: "--", color: Dim },
-  { id: ConnectorVertical,        emoji: "|",  unicode: "|",  ascii: "|",  color: Dim },
-  { id: ConnectorTeeDown,         emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
-  { id: ConnectorTeeUp,           emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
-  { id: ConnectorCornerBottomLeft, emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
-  { id: ConnectorCornerTopLeft,    emoji: "+",  unicode: "+",  ascii: "+",  color: Dim }
+  { id: ConnectorHorizontal,      glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "--"), unicode: unicode_glyph(text: "--"), ascii: ascii_glyph(text: "--")), color: Dim },
+  { id: ConnectorVertical,        glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "|"),  unicode: unicode_glyph(text: "|"),  ascii: ascii_glyph(text: "|")),  color: Dim },
+  { id: ConnectorTeeDown,         glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "+"),  unicode: unicode_glyph(text: "+"),  ascii: ascii_glyph(text: "+")),  color: Dim },
+  { id: ConnectorTeeUp,           glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "+"),  unicode: unicode_glyph(text: "+"),  ascii: ascii_glyph(text: "+")),  color: Dim },
+  { id: ConnectorCornerBottomLeft, glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "+"),  unicode: unicode_glyph(text: "+"),  ascii: ascii_glyph(text: "+")), color: Dim },
+  { id: ConnectorCornerTopLeft,    glyphs: glyphs_for_tiers(emoji: emoji_glyph(text: "+"),  unicode: unicode_glyph(text: "+"),  ascii: ascii_glyph(text: "+")), color: Dim }
 ]
 
 // Lookup via fold + structural == (filter+field-equality hits a v1 interpreter bug).
@@ -90,12 +100,7 @@ fn lookup_symbol_entry(id: SymbolId) -> SymbolEntry? {
 
 fn resolve_symbol(id: SymbolId, tier: Tier) -> String? {
   match lookup_symbol_entry(id: id) {
-    Present { value: entry } =>
-      match tier {
-        Emoji   => Present { value: entry.emoji }
-        Unicode => Present { value: entry.unicode }
-        Ascii   => Present { value: entry.ascii }
-      }
+    Present { value: entry } => Present { value: glyph_at(glyphs: entry.glyphs, tier: tier) }
     Absent => none
   }
 }

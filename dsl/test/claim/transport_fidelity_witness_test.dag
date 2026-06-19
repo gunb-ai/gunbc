@@ -1,0 +1,88 @@
+// dsl/test/claim/transport_fidelity_witness_test.dag — by-execution witness for the
+// fidelity.dag §3 de-conflation: std holds the agnostic fold (classify_fidelities),
+// extdeps/transports holds the realization rows + dispatch (transport_fidelity,
+// transport_depth, transport_hermetic, classify_transports).
+//
+// GREEN: (a) all-local set folds Hermetic / depth S; (b) a set reaching RestNetwork
+//        folds Integration / depth L / non-hermetic; (c) the empty set is Unit / Xs.
+// RED (discriminating): asserts RestNetwork is hermetic — goes red BECAUSE the rest
+//        row is correctly fail-closed (hermetic: false). Flip the rest row to true and
+//        this control passes, proving the dispatch actually reads the cited row.
+//
+// Run: gunbc run --source-root dsl --entry dsl/test/claim/transport_fidelity_witness_test.dag --function transport_fidelity_holds --claim-run
+
+module test.claim.transport_fidelity
+
+import std.fidelity { TransportClass, TestClass, DerivedClassification }
+import std.fermi { fermi_eq }
+import std.logic { Bool }
+import extdeps.transports.fidelity {
+  transport_depth,
+  transport_hermetic,
+  classify_transports,
+}
+
+fn test_class_is_hermetic(c: TestClass) -> Bool {
+  match c {
+    Hermetic => true
+    Unit => false
+    Integration => false
+  }
+}
+
+fn test_class_is_integration(c: TestClass) -> Bool {
+  match c {
+    Integration => true
+    Unit => false
+    Hermetic => false
+  }
+}
+
+fn test_class_is_unit(c: TestClass) -> Bool {
+  match c {
+    Unit => true
+    Hermetic => false
+    Integration => false
+  }
+}
+
+// (a) all-local transports: max depth S, all hermetic -> Hermetic test class.
+fn local_set_is_hermetic() -> Bool {
+  let d = classify_transports(transports: [ShellLocal, FileBoundary, LocalDirect])
+  test_class_is_hermetic(c: d.test_class) && d.hermetic && fermi_eq(lhs: d.depth, rhs: S)
+}
+
+// (b) reaching RestNetwork: depth L dominates, not all hermetic -> Integration.
+fn network_set_is_integration() -> Bool {
+  let d = classify_transports(transports: [ShellLocal, RestNetwork])
+  test_class_is_integration(c: d.test_class) && !d.hermetic && fermi_eq(lhs: d.depth, rhs: L)
+}
+
+// (c) empty set: Unit, Xs, hermetic-by-vacuity.
+fn empty_set_is_unit() -> Bool {
+  let d = classify_transports(transports: [])
+  test_class_is_unit(c: d.test_class) && d.hermetic && fermi_eq(lhs: d.depth, rhs: Xs)
+}
+
+// The dispatch reads the cited rows: shell is sub-second + hermetic, rest is L + non-hermetic.
+fn dispatch_reads_cited_rows() -> Bool {
+  fermi_eq(lhs: transport_depth(tc: ShellLocal), rhs: S)
+    && transport_hermetic(tc: ShellLocal)
+    && fermi_eq(lhs: transport_depth(tc: RestNetwork), rhs: L)
+    && !transport_hermetic(tc: RestNetwork)
+}
+
+// RED (discriminating): RestNetwork is fail-closed non-hermetic, so this reads false.
+// It passes only if the rest row is (wrongly) flipped to hermetic — proving the
+// dispatch genuinely consults the cited row rather than a constant.
+fn red_rest_network_advertises_hermetic() -> Bool {
+  transport_hermetic(tc: RestNetwork)
+}
+
+test fn transport_fidelity_holds() -> Bool {
+  local_set_is_hermetic()
+    && network_set_is_integration()
+    && empty_set_is_unit()
+    && dispatch_reads_cited_rows()
+    && !red_rest_network_advertises_hermetic()
+}

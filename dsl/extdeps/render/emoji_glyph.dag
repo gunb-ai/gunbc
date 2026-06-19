@@ -1,0 +1,17 @@
+// extdeps/render/emoji_glyph.dag — Emoji-tier glyph carrier (UTS #51).
+//
+// Anchor: https://www.unicode.org/reports/tr51/ (UTS #51 Unicode Emoji)
+//
+// dissolve-on: Q-Regex UTS #51 emoji-sequence validity.
+
+module extdeps.render.emoji_glyph
+
+type EmojiGlyph = String where brand("EmojiGlyph")
+
+fn emoji_glyph(text: String) -> EmojiGlyph {
+  text
+}
+
+fn emoji_glyph_text(g: EmojiGlyph) -> String {
+  g
+}
