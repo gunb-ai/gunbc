@@ -10,11 +10,12 @@ import std.resources { Filesystem, Network, AuthContext }
 import std.types {
   AccessToken,
   AuthScheme,
-  NonEmptyStr,
+  NonEmptyStr
+}
+import extdeps.cloud.gcp.gcp {
   GcpProjectId,
   ServiceAccountEmail
 }
-import extdeps.cloud.gcp.gcp
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam
 import extdeps.cloud.gcp.sts

@@ -3,10 +3,9 @@
 
 module v2.test.manual.validate_ingest_staging_stage_bisect
 
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile {
-  LensGateWitness,
-  Source,
-  always_required_lenses,
+  LensGateWitness,  always_required_lenses,
   run_required_lens_gates_on_subtree
 }
 import v2.compiler.infer { infer, InferredTree }
@@ -39,14 +38,13 @@ import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 
-data bisect_empty_source: Source = "module stage0.bisect.empty\n"
-data bisect_add_module_source: Source = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
-data bisect_add_module_truncated_source: Source = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + "
-
+data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
+data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data bisect_add_module_truncated_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
 fn bisect_through_tokenize() -> Outcome<TokenStream> {
   let lm = dag_language_model_wave1()
   tokenize(
-    text: bisect_empty_source,
+    text: bisect_empty_source.carried,
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   )
@@ -56,7 +54,7 @@ fn bisect_through_parse() -> Outcome<ParseTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: bisect_empty_source,
+      text: bisect_empty_source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
@@ -70,7 +68,7 @@ fn bisect_through_normalize() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: bisect_empty_source,
+      text: bisect_empty_source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
@@ -120,7 +118,7 @@ fn bisect_through_parse_production() -> Outcome<ParseTree> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: bisect_empty_source,
+      text: bisect_empty_source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
@@ -157,7 +155,7 @@ fn bisect_single_module_parse_expr() -> Bool {
     ModeledGrammar { root: root } =>
       bind_outcome(
         o: tokenize(
-          text: bisect_empty_source,
+          text: bisect_empty_source.carried,
           file: ^compile_ingest_staging_source_file,
           rules: lm.lex
         ),
@@ -204,7 +202,7 @@ fn bisect_normalize_terminates() -> Bool {
 fn bisect_wave1_parse_module_add_parse_accepts() -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(
-    text: bisect_add_module_source,
+    text: bisect_add_module_source.carried,
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
@@ -220,7 +218,7 @@ fn bisect_wave1_parse_module_add_parse_accepts() -> Bool {
 fn bisect_wave1_parse_module_add_resolve_accepts() -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(
-    text: bisect_add_module_source,
+    text: bisect_add_module_source.carried,
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
@@ -244,7 +242,7 @@ fn bisect_wave1_parse_module_add_resolve_accepts() -> Bool {
 fn bisect_wave1_parse_module_truncated_rejects() -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(
-    text: bisect_add_module_truncated_source,
+    text: bisect_add_module_truncated_source.carried,
     file: ^compile_ingest_staging_source_file,
     rules: lm.lex
   ) {
@@ -270,7 +268,7 @@ fn bisect_through_resolve() -> Outcome<Node> {
   let lm = dag_language_model_wave1()
   bind_outcome(
     o: tokenize(
-      text: bisect_empty_source,
+      text: bisect_empty_source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),

@@ -34,6 +34,12 @@ type Gist {
 }
 
 // -- Service: REST transport wiring ------------------------------
+//
+// 🟡 dissolved — feature:github-gist-mock-response — scaffold:hand-authored mock_response —
+// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
+// (recorded wet via --record); the published corpus (extdeps.github.mock_corpus) now governs WHICH
+// github.Gist ops are hermetically realizable, and the fixture store owns the payloads (§3).
+// forbidden: reintroducing mock_response constants for Hermetic dispatch on this shape.
 
 service github.Gist {
   config {
@@ -73,21 +79,6 @@ service github.Gist {
       403 => GitHubErrorShape
       422 => GitHubErrorShape
       5xx => GitHubErrorShape
-    }
-    mock_response {
-      201 => {
-        id: "gist-abc123",
-        description: "Mock gist",
-        public: false,
-        files: { "snippet.rs": { filename: "snippet.rs", content: "fn main() {}", language: "Rust", size: 12 } },
-        owner: { login: "mock-user", id: 12345, type: User },
-        html_url: "https://gist.github.com/mock-user/gist-abc123",
-        created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-01T00:00:00Z"
-      } "Gist created successfully",
-      401 => { message: "Bad credentials", documentation_url: "https://docs.github.com/rest" } "Invalid or missing auth token",
-      403 => { message: "Forbidden", documentation_url: "https://docs.github.com/rest" } "Insufficient scopes",
-      422 => { message: "Validation Failed", errors: [{ resource: "Gist", code: "missing_field", field: "files" }] } "Empty files rejected"
     }
   }
 }

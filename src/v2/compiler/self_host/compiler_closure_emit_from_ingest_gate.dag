@@ -47,7 +47,7 @@ fn compiler_closure_v2_emit_from_scoped_ingest_accepts() -> Bool {
     target: rust_mvp1_target_model()
   ) {
     Accepted { value: receipt, diagnostics: d } =>
-      (d == None) && (receipt.closure_size > 0) && (string_is_empty(s: receipt.source) == false)
+      (d == None) && (receipt.closure_size > 0) && (string_is_empty(s: receipt.source.carried) == false)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -59,7 +59,7 @@ fn compiler_closure_v2_emit_source_for_cargo_check() -> String {
     admission: host_compiler_closure_admission,
     target: rust_mvp1_target_model()
   ) {
-    Accepted { value: receipt, diagnostics: _ } => receipt.source
+    Accepted { value: receipt, diagnostics: _ } => receipt.source.carried
     Rejected { diagnostics: _ } => ""
   }
 }

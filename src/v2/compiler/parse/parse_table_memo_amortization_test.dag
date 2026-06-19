@@ -9,7 +9,8 @@
 module v2.test.parse.parse_table_memo_amortization
 
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.source_authority { DagSource, DagSourceReadWitness, SourceRootIngest }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { Cons, Empty, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -18,10 +19,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Hash, Node, content_hash }
 
 
-data memo_amort_empty_a_source: DagSource = "module memo_amort_a\n"
-data memo_amort_empty_b_source: DagSource = "module memo_amort_b\n"
-data memo_amort_bisect_add_source: DagSource = "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }"
-
+data memo_amort_empty_a_source: Medium<String> = Medium { carried: "module memo_amort_a\n", fidelity: Lossless }
+data memo_amort_empty_b_source: Medium<String> = Medium { carried: "module memo_amort_b\n", fidelity: Lossless }
+data memo_amort_bisect_add_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
 data memo_amort_file_a_read: DagSourceReadWitness = DagSourceReadWitness {
   source: memo_amort_empty_a_source,
   artifact: Artifact {

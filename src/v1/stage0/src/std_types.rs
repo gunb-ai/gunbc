@@ -6,7 +6,6 @@ use self::Arch::*;
 use self::AuthScheme::*;
 use self::Bool::*;
 use self::CodegenBackend::*;
-use self::CredentialFlow::*;
 use self::DocSourceKind::*;
 use self::ExecutionEnv::*;
 use self::FermiDepth::*;
@@ -306,10 +305,6 @@ pub type WorkflowRunId = String;
 
 pub type GitRef = String;
 
-pub type GcpProjectId = String;
-
-pub type ServiceAccountEmail = String;
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -351,28 +346,6 @@ pub enum FermiDepth {
     M,
     L,
     Xl,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum CredentialFlow {
-    Stored {
-        secret_name: NonEmptyStr,
-    },
-    PlatformInjected {
-        env_var: NonEmptyStr,
-    },
-    WorkloadIdentity {
-        audience: NonEmptyStr,
-        service_account: Box<Option<ServiceAccountEmail>>,
-        scopes: Rc<Vec<String>>,
-    },
-    InteractiveAuth {
-        scopes: Rc<Vec<String>>,
-    },
-    Chained {
-        steps: Rc<Vec<Rc<CredentialFlow>>>,
-    },
 }
 
 #[derive(

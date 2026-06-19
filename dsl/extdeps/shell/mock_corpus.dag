@@ -27,21 +27,29 @@ import std.hermetic_replay { PublishedMockCase }
 
 data shell_find_mock_case_list_dirs: PublishedMockCase = PublishedMockCase {
   operation_key: "shell.Find.ListDirs",
+  service: "shell.Find",
+  operation: "ListDirs",
   case_id: 0
 }
 
 data shell_which_mock_case_check: PublishedMockCase = PublishedMockCase {
   operation_key: "shell.Which.Check",
+  service: "shell.Which",
+  operation: "Check",
   case_id: 0
 }
 
 data shell_exec_mock_case_run: PublishedMockCase = PublishedMockCase {
   operation_key: "shell.Exec.Run",
+  service: "shell.Exec",
+  operation: "Run",
   case_id: 0
 }
 
 data shell_exec_mock_case_check: PublishedMockCase = PublishedMockCase {
   operation_key: "shell.Exec.Check",
+  service: "shell.Exec",
+  operation: "Check",
   case_id: 0
 }
 

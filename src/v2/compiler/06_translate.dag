@@ -13,7 +13,8 @@ module v2.compiler.translate
 
 
 import v2.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.target_carriers { lossless_source }
 import v2.std.compilers.target_model {
   CanonicalOperation,
   TargetBodiedArrowStatementScaffold,
@@ -814,7 +815,18 @@ fn grammar_inverse_source_validated(
 fn serialize_concrete_syntax_tokens_to_source(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
+    f: fn(text) {
+      outcome_accepted(lossless_source(text: text))
+    }
+  )
+}
+fn serialize_concrete_syntax_tokens_to_source_string(
+  target: TargetModel,
+  tokens: List<ConcreteSyntaxToken>
+) -> Outcome<String> {
   fold_list(
     xs: tokens,
     empty: Accepted { value: Empty, diagnostics: None },
@@ -887,7 +899,7 @@ fn translate_project_transform_in_arrow_scope(
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -913,7 +925,7 @@ fn target_serialize_bodied_arrow_from_model(
                       projection: projection
                     ),
                     f: fn(body_tokens) {
-                      serialize_concrete_syntax_tokens_to_source(
+                      serialize_concrete_syntax_tokens_to_source_string(
                         target: target,
                         tokens: target_bodied_arrow_compose_statement_tokens(
                           scaffold: scaffold,
@@ -936,7 +948,7 @@ fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
   target: TargetModel,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -1056,7 +1068,7 @@ fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
@@ -1069,7 +1081,7 @@ fn token_item_to_source_bounded(
     }
   )
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
+fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<String> {
   bind_outcome(
     o: token_item_serialize_measure(item: item, target: target),
     f: fn(measure) {
@@ -1081,7 +1093,7 @@ fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   fold_list(
     xs: tokens,
     empty: Accepted { value: Empty, diagnostics: None },
@@ -1104,7 +1116,7 @@ fn token_sequence_to_source_bounded(
     }
   )
 }
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
+fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<String> {
   bind_outcome(
     o: token_sequence_serialize_measure(tokens: tokens, target: target),
     f: fn(measure) {
@@ -1119,7 +1131,7 @@ fn target_serialize_source_from_model_bounded(
   remaining: Int,
   target: TargetModel,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -1157,11 +1169,16 @@ fn target_serialize_source_from_model_bounded(
 fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   bind_outcome(
     o: translate_serialize_measure(target: target, emitted: emitted),
     f: fn(measure) {
-      target_serialize_source_from_model_bounded(measure, target, emitted)
+      bind_outcome(
+        o: target_serialize_source_from_model_bounded(measure, target, emitted),
+        f: fn(text) {
+          outcome_accepted(lossless_source(text: text))
+        }
+      )
     }
   )
 }
@@ -2065,7 +2082,7 @@ fn serialize_type_expr_generic_apply_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: node)
@@ -2127,7 +2144,7 @@ fn serialize_type_expr_args_bounded(
   form: TargetGenericApply,
   args: List<Node>,
   anchor: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2178,7 +2195,7 @@ fn serialize_type_expr_separated_bounded(
   separator: Symbol,
   items: List<Node>,
   anchor: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2231,7 +2248,7 @@ fn serialize_type_expr_record_fields_bounded(
   field_label_separator: Symbol,
   fields: List<Edge>,
   anchor: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2296,7 +2313,7 @@ fn serialize_type_expr_record_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetGenericApply,
   node: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   match form.field_label_separator {
     Present { value: field_label_separator } =>
       bind_outcome(
@@ -2343,7 +2360,7 @@ fn serialize_type_expr_sum_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetSumTypeShape,
   node: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   bind_outcome(
     o: target_type_expr_emitted_labeled_slot_nodes(node: node),
     f: fn(variants) {
@@ -2364,7 +2381,7 @@ fn serialize_type_expr_arrow_param_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   slot: TargetTypeExprArrowParamSlot
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   bind_outcome(
     o: serialize_type_expr_arrow_param_spelling(
       target: target,
@@ -2405,7 +2422,7 @@ fn serialize_type_expr_arrow_params_bounded(
   form: TargetFunctionTypeShape,
   params: List<TargetTypeExprArrowParamSlot>,
   anchor: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2457,7 +2474,7 @@ fn serialize_type_expr_arrow_named_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   bind_outcome(
     o: target_type_expr_arrow_labeled_param_slots(node: node),
     f: fn(params) {
@@ -2527,7 +2544,7 @@ fn serialize_type_expr_arrow_input_wrapped(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   input_node: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   bind_outcome(
     o: lex_rules_literal(target: target, token_class: form.open),
     f: fn(open_source) {
@@ -2564,7 +2581,7 @@ fn serialize_type_expr_arrow_inputs_bounded(
   form: TargetFunctionTypeShape,
   inputs: List<Node>,
   anchor: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: anchor)
@@ -2615,7 +2632,7 @@ fn serialize_type_expr_arrow_bounded(
   projection: TargetTypeExpressionProjection,
   form: TargetFunctionTypeShape,
   node: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   match target_type_expr_arrow_wire_shape(node: node) {
     Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
       bind_outcome_accepted(
@@ -2683,7 +2700,7 @@ fn serialize_type_expr_emitted_wire_bounded(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   wire: TargetTypeExpression
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   match wire.kind {
     TargetTypeExprAtom =>
       type_expr_spelling_for_atom(target: target, node: wire.node)
@@ -2734,7 +2751,7 @@ fn serialize_type_expr_emitted_bounded(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -3111,7 +3128,7 @@ fn serialize_type_expr_boundary_atom_bounded(
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   match translate_target_function_signature_realization_for_boundary(
     target: target,
     emitted: emitted,
@@ -3163,7 +3180,7 @@ fn serialize_type_expr_boundary_bounded(
   projection: TargetTypeExpressionProjection,
   boundary_site: FunctionBoundarySite,
   emitted: Node
-) -> Outcome<TargetSource> {
+) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)

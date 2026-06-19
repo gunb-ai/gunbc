@@ -139,6 +139,36 @@ fn parse_module_items(
     (module.children.clone(), source_indices)
 }
 
+/// Shell-transport argv expression nodes for one `(service, operation)` in an extdeps file.
+pub fn shell_argv_nodes_for_operation(
+    path: String,
+    service: String,
+    operation: String,
+) -> (
+    Rc<Vec<Rc<Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    let (items, source_indices) = parse_module_items(&path);
+    for item in items.iter() {
+        if item.name != service {
+            continue;
+        }
+        let fallback_transport = if let Some(t) = item.transport.as_ref() {
+            t.clone()
+        } else {
+            crate::v1_std_core::local_transport_node(item.span.clone())
+        };
+        for op in item.children.iter() {
+            if op.name != operation {
+                continue;
+            }
+            let eff = effective_operation_transport(op.clone(), fallback_transport.clone());
+            return (eff.children.clone(), source_indices);
+        }
+    }
+    panic!("shell argv projection: operation {service}.{operation} not found in {path}");
+}
+
 /// Count dead input params for one `(service, operation)` in a parsed extdeps file.
 pub fn dead_param_count_for_operation(path: String, service: String, operation: String) -> i64 {
     let (items, source_indices) = parse_module_items(&path);
@@ -609,6 +639,18 @@ mod tests {
                 "extdeps.cargo_build".to_string(),
                 "cargo.Build".to_string(),
                 "Doc".to_string(),
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn cargo_run_dead_param_defused_on_live_tree() {
+        assert_eq!(
+            dead_param_count_for_module_path(
+                "extdeps.cargo_build".to_string(),
+                "cargo.Build".to_string(),
+                "Run".to_string(),
             ),
             0
         );

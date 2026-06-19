@@ -8,7 +8,7 @@
 module v2.compiler.emit
 
 
-import v2.compiler.target_carriers { TargetSource }
+import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.translate {
   TargetNodeTree,
@@ -24,16 +24,16 @@ import v2.std.compilers.target_model { TargetModel }
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   target_serialize_source_from_model(target: target, emitted: emitted)
 }
-fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<TargetSource> {
+fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<Medium<String>> {
   serialize_source_for_emitted(emitted: tree, target: target)
 }
 fn emit(
   tree: InferredTree,
   target: TargetModel
-) -> Outcome<TargetSource> {
+) -> Outcome<Medium<String>> {
   bind_outcome(
     o: translate(tree: tree, target: target),
     f: fn(target_tree) {

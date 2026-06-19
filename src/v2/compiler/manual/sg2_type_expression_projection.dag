@@ -175,7 +175,7 @@ fn sg2_serialized_text(emitted: Node) -> String {
     target: sg2_type_expr_target,
     emitted: emitted
   ) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.carried
     Rejected { diagnostics: _ } => sg2_fail_text
   }
 }

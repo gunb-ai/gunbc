@@ -76,10 +76,10 @@ execution*, and placement is *resolved from the deployment's offers* — **neith
 Identical to the cache planner auto-wiring and the scheduler's hardware-budget fold: *caller declares
 intent; the realization is resolved from modeled deployment facts.* All three dimensions share this.
 
-**Layering discipline (§3):** `compute_fabric` is **product**; schedule/cache are **std** (imports point
-toward std). Split: std owns the *budget shape* (`std.placement_supply` ✓) and the `{time,space,power}`
-cost axis; product `compute_fabric` owns the **$/billing axis** (`CostClass`, `MoneyMicros`) and *projects*
-fleet rows into the std shape (`placement_supply_row`, `compute_fabric.dag:220`); the **peripheral host
+**Layering discipline (§3):** `compute_fabric` and `placement_supply` are **product**; schedule/cache are **std** (imports point
+toward std). Split: product owns the *placement projection carrier* (`product.placement_supply` ✓) and std owns the `{time,space,power}`
+cost-axis measure carriers it composes; product `compute_fabric` owns the **$/billing axis** (`CostClass`, `MoneyMicros`) and *projects*
+fleet rows into that carrier (`placement_supply_row`, `compute_fabric.dag:220`); the **peripheral host
 realizer** bridges product→std and runs the Pareto pick. std stays product-free.
 
 ### v2 is the target; v1 is the proving ground (DESIGN §7)
