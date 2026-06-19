@@ -64,6 +64,8 @@ mod interp_string_family_cast_test;
 #[cfg(test)]
 mod interp_wire_serialize_test;
 #[cfg(test)]
+mod wet_hermetic_equivalence_test;
+#[cfg(test)]
 mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;

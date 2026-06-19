@@ -290,6 +290,7 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
         }
     };
     // Context scoped to this claim's graph: its `data` cache drops with it.
+    // Effectful gate transports (shell.Exec, Filesystem.*) require Wet dispatch.
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
     match run_claim(&ctx, &function) {
         ClaimOutcome::Pass => ClaimResult {
@@ -332,7 +333,7 @@ fn run_discovery_batch_node(
         &source_roots,
         &scan_dirs,
         &explicit_entries,
-        ExecutionMode::Wet,
+        ExecutionMode::Hermetic,
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
@@ -376,7 +377,7 @@ fn eval_plan(
 ) -> Result<Vec<Vec<Runnable>>, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
         format!(
             "plan eval failed ({}::{}): {}",

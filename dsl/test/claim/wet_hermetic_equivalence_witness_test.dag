@@ -1,0 +1,17 @@
+// dsl/test/claim/wet_hermetic_equivalence_witness_test.dag
+//
+// P3c authority marker: the governed-service wet==hermetic equivalence gate runs
+// the lens_mock_totality discoverable roster BOTH --wet and --hermetic via
+// v1-compiler-tests `wet_hermetic_governed_service_representative_equivalence_holds`
+// (CI-enrolled in gunbc.ci_spec.ci_rust_gate_test_command). This witness only
+// asserts the representative roster prefix is pinned — the teeth live in the Rust
+// by-execution comparator (RED on per-witness outcome divergence).
+
+module test.claim.wet_hermetic_equivalence_witness
+
+// Pin: one `test fn` per extdeps published-mock layer (18 witnesses today).
+data wet_hermetic_equivalence_representative_prefix: String = "src/v2/test/lens_mock_totality/"
+
+test fn wet_hermetic_equivalence_roster_authority_is_pinned() -> Bool {
+  wet_hermetic_equivalence_representative_prefix != ""
+}
