@@ -22,16 +22,22 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
+  WorkDemand,
+  ResourceEnvelope,
+  IsolationRequirement,
+  IndependentShards,
+  offer_placement_supply_row,
+  placement_spawn_width,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
-import std.measure { byte_size, hertz }
+import std.measure { byte_size, hertz, hardware_thread_count, HardwareThreadCount }
 import std.os.types {
   OperatingSystemSurface,
   Linux,
   Posix,
   PosixProcess,
 }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, PlacementSupplyRow }
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
@@ -84,4 +90,36 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
 
 fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+}
+
+// Phase 1: corpus as IndependentShards WorkDemand (degenerate shard_count=1 today).
+fn gunbc_ci_floor_corpus_work_demand() -> WorkDemand {
+  WorkDemand {
+    resources: ResourceEnvelope {
+      cpu: none,
+      gpu: none,
+      memory: none,
+      storage: none,
+      network: none,
+    },
+    os: none,
+    isolation: IsolationRequirement { boundary: PerJobFilesystem },
+    toolchains: [],
+    parallelism: IndependentShards { shard_count: 1 },
+    data_locality: [],
+    effects: [],
+  }
+}
+
+fn gunbc_ci_floor_placement_supply() -> PlacementSupplyRow? {
+  offer_placement_supply_row(offer: gunbc_ci_fleet_offer)
+}
+
+// Host spawn-width authority for the CI fleet offer + corpus WorkDemand.
+fn ci_fleet_floor_spawn_width() -> HardwareThreadCount {
+  match gunbc_ci_floor_placement_supply() {
+    Absent => hardware_thread_count(1)
+    Present { value: row } =>
+      placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand())
+  }
 }
