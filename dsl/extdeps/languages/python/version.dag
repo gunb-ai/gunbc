@@ -151,7 +151,7 @@ fn pep440_local_version_label(local: List<Pep440LocalSegment>) -> String {
 
 fn pep440_version_label(v: Pep440Version) -> String {
   let public_label = pep440_public_version_label(v: v.public)
-  if count(xs: v.local) == 0 {
+  if v.local.length() == 0 {
     public_label
   } else {
     concat(public_label, concat("+", pep440_local_version_label(local: v.local)))
