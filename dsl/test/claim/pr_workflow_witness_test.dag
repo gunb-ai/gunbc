@@ -6,13 +6,15 @@
 module test.claim.pr_workflow_witness_test
 
 import ctrl.pr_workflow {
-  PrLifecycleFacts, PrLifecycleStage, PrNodeBinding, PrLifecycleTransitionRequest,
+  PrLifecycleFacts, PrLifecycleStage, PrActiveLifecycleStage, PrTerminalLifecycleStage,
+  PrNodeBinding, PrLifecycleTransitionRequest,
   PrLifecycleEventTag, MarkReadyForReview, RecordMergeReady,
   PrOpen, PrUnderReview, PrMergeReady, PrMerged, PrClosed,
+  PrLifecycleActive, PrLifecycleTerminal,
   PrDraftBlocksReview, PrDigestNotReady, PrPolicyNotPermitted, PrMissingReviewTally,
-  PrMissingDigestVerdict, PrHeadShaMismatch,
+  PrMissingDigestVerdict, PrHeadShaMismatch, PrAlreadyTerminal,
   CanTransition, TransitionRefused,
-  is_terminal_stage, decide_lifecycle_transition, classify_github_terminal_anchor,
+  decide_lifecycle_transition, classify_github_terminal_anchor,
 }
 import ctrl.pr_digests { Ready, NotReady }
 import ctrl.review_verdict { MergeReadinessTally }
@@ -63,10 +65,22 @@ fn witness_binding() -> PrNodeBinding {
   }
 }
 
-fn witness_facts(stage: PrLifecycleStage) -> PrLifecycleFacts {
+fn witness_active_facts(active: PrActiveLifecycleStage) -> PrLifecycleFacts {
   PrLifecycleFacts {
     binding: witness_binding(),
-    stage: stage,
+    stage: PrLifecycleActive { stage: active },
+    head_sha: Present { value: witness_head_sha },
+    marked_ready_at: none,
+    merge_ready_at: none,
+    merged_at: none,
+    closed_at: none,
+  }
+}
+
+fn witness_terminal_facts(terminal: PrTerminalLifecycleStage) -> PrLifecycleFacts {
+  PrLifecycleFacts {
+    binding: witness_binding(),
+    stage: PrLifecycleTerminal { stage: terminal },
     head_sha: Present { value: witness_head_sha },
     marked_ready_at: none,
     merge_ready_at: none,
@@ -89,21 +103,25 @@ fn witness_tally_green() -> MergeReadinessTally {
 }
 
 fn witness_terminal_stages_refuse() -> Bool {
-  fold(
-    [
-      is_terminal_stage(stage: PrMerged),
-      is_terminal_stage(stage: PrClosed),
-      !is_terminal_stage(stage: PrOpen),
-    ],
-    init: true,
-    f: fn(acc, v) { acc && v }
-  )
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_terminal_facts(terminal: PrMerged),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: MarkReadyForReview,
+      digest: none,
+      tally: none,
+      policy_permitted: none,
+    }
+  ) {
+    TransitionRefused { refusal: PrAlreadyTerminal { stage: _ } } => true
+    _ => false
+  }
 }
 
 fn witness_draft_blocks_mark_ready() -> Bool {
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrOpen),
+      facts: witness_active_facts(active: PrOpen),
       pr: witness_open_pr(draft: true, state: Open, merged_at: none),
       event: MarkReadyForReview,
       digest: none,
@@ -119,7 +137,7 @@ fn witness_draft_blocks_mark_ready() -> Bool {
 fn witness_merge_ready_requires_policy() -> Bool {
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrUnderReview),
+      facts: witness_active_facts(active: PrUnderReview),
       pr: witness_open_pr(draft: false, state: Open, merged_at: none),
       event: RecordMergeReady,
       digest: Present { value: Ready },
@@ -135,7 +153,7 @@ fn witness_merge_ready_requires_policy() -> Bool {
 fn witness_missing_tally_blocks_merge_ready() -> Bool {
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrUnderReview),
+      facts: witness_active_facts(active: PrUnderReview),
       pr: witness_open_pr(draft: false, state: Open, merged_at: none),
       event: RecordMergeReady,
       digest: Present { value: Ready },
@@ -144,6 +162,22 @@ fn witness_missing_tally_blocks_merge_ready() -> Bool {
     }
   ) {
     TransitionRefused { refusal: PrMissingReviewTally } => true
+    _ => false
+  }
+}
+
+fn witness_missing_digest_blocks_merge_ready() -> Bool {
+  match decide_lifecycle_transition(
+    request: PrLifecycleTransitionRequest {
+      facts: witness_active_facts(active: PrUnderReview),
+      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
+      event: RecordMergeReady,
+      digest: none,
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: PrMissingDigestVerdict } => true
     _ => false
   }
 }
@@ -164,7 +198,7 @@ fn witness_tally_stale_head() -> MergeReadinessTally {
 fn witness_stale_tally_head_sha_blocks() -> Bool {
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrUnderReview),
+      facts: witness_active_facts(active: PrUnderReview),
       pr: witness_open_pr(draft: false, state: Open, merged_at: none),
       event: RecordMergeReady,
       digest: Present { value: Ready },
@@ -177,26 +211,10 @@ fn witness_stale_tally_head_sha_blocks() -> Bool {
   }
 }
 
-fn witness_missing_digest_blocks_merge_ready() -> Bool {
-  match decide_lifecycle_transition(
-    request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrUnderReview),
-      pr: witness_open_pr(draft: false, state: Open, merged_at: none),
-      event: RecordMergeReady,
-      digest: none,
-      tally: Present { value: witness_tally_green() },
-      policy_permitted: Present { value: true },
-    }
-  ) {
-    TransitionRefused { refusal: PrMissingDigestVerdict } => true
-    _ => false
-  }
-}
-
 fn witness_merge_ready_green_with_policy() -> Bool {
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrUnderReview),
+      facts: witness_active_facts(active: PrUnderReview),
       pr: witness_open_pr(draft: false, state: Open, merged_at: none),
       event: RecordMergeReady,
       digest: Present { value: Ready },
@@ -204,7 +222,7 @@ fn witness_merge_ready_green_with_policy() -> Bool {
       policy_permitted: Present { value: true },
     }
   ) {
-    CanTransition { to: PrMergeReady } => true
+    CanTransition { to: PrLifecycleActive { stage: PrMergeReady } } => true
     _ => false
   }
 }
@@ -212,7 +230,7 @@ fn witness_merge_ready_green_with_policy() -> Bool {
 fn witness_digest_not_ready_blocks() -> Bool {
   match decide_lifecycle_transition(
     request: PrLifecycleTransitionRequest {
-      facts: witness_facts(stage: PrUnderReview),
+      facts: witness_active_facts(active: PrUnderReview),
       pr: witness_open_pr(draft: false, state: Open, merged_at: none),
       event: RecordMergeReady,
       digest: Present { value: NotReady { first_reason: "draft", more_reasons: [] } },
@@ -233,7 +251,7 @@ fn witness_merged_anchor_from_github() -> Bool {
       merged_at: Present { value: witness_merged_at },
     )
   ) {
-    Present { value: PrMerged } => true
+    Present { value: PrLifecycleTerminal { stage: PrMerged } } => true
     _ => false
   }
 }
@@ -242,7 +260,7 @@ fn witness_closed_anchor_from_github() -> Bool {
   match classify_github_terminal_anchor(
     pr: witness_open_pr(draft: false, state: Closed, merged_at: none)
   ) {
-    Present { value: PrClosed } => true
+    Present { value: PrLifecycleTerminal { stage: PrClosed } } => true
     _ => false
   }
 }

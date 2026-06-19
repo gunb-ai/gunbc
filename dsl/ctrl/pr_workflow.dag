@@ -26,17 +26,26 @@ import ctrl.review_verdict { MergeReadinessTally }
 import extdeps.github.pulls { PullRequest, Open, Closed }
 import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
 
-// 🟢 TERMINAL — internal ctrl PR lifecycle stages. Distinct from
-// extdeps.github.pulls.PullRequestState (wire open/closed) and from
-// gunbc.workflow.types policy surfaces. Forward-only bookends are
-// PrMerged / PrClosed; intermediate stages are repairable only via
-// explicit regress events modeled outside this narrowed Phase-1.5 slice.
-type PrLifecycleStage
+// 🟢 TERMINAL — active lifecycle coordinates only. Distinct repair paths from
+// terminal bookends; successor_stage is defined only over this sum.
+type PrActiveLifecycleStage
   = PrOpen
   | PrUnderReview
   | PrMergeReady
-  | PrMerged
+
+// 🟢 TERMINAL — terminal lifecycle bookends only. No successor edges originate
+// here; matches process_algebra ProcessCloseState fact-placement discipline.
+type PrTerminalLifecycleStage
+  = PrMerged
   | PrClosed
+
+// 🟢 TERMINAL — active vs terminal progress split (process_algebra
+// ProcessCloseState pattern). Dissolution pattern rejected: a flat five-variant
+// stage enum plus `is_terminal_stage: Bool` predicate — terminal membership must
+// be structural per arm, not recovered by scanning variants.
+type PrLifecycleStage
+  = PrLifecycleActive { stage: PrActiveLifecycleStage }
+  | PrLifecycleTerminal { stage: PrTerminalLifecycleStage }
 
 // 🟢 TERMINAL — binds a process-graph node to a GitHub PR coordinate.
 // The node id is the dashboard authority key; URL/number are lineage.
@@ -86,6 +95,14 @@ type PrLifecycleEventTag
   | RecordMerged
   | RecordClosed
 
+// 🟢 TERMINAL coproduct at Phase-1 scope — transition guard result, parallel to
+// ProcessClosureDecision in process_algebra.dag.
+//
+// Decomposition receipt (DESIGN.md §2):
+// - Classification: 🟢 TERMINAL. Success and refusal are disjoint repair paths.
+// - Dissolution pattern rejected: optional refusal on success would admit
+//   contradictory states.
+// - Trigger: none for M2-PR parity; new refusal codes extend PrLifecycleRefusal.
 type PrLifecycleDecision
   = CanTransition { to: PrLifecycleStage }
   | TransitionRefused { refusal: PrLifecycleRefusal }
@@ -99,41 +116,38 @@ type PrLifecycleTransitionRequest {
   policy_permitted: Bool?
 }
 
-fn is_terminal_stage(stage: PrLifecycleStage) -> Bool {
-  match stage {
-    PrOpen => false
-    PrUnderReview => false
-    PrMergeReady => false
-    PrMerged => true
-    PrClosed => true
-  }
-}
-
-fn successor_stage(from: PrLifecycleStage, event: PrLifecycleEventTag) -> PrLifecycleStage? {
+fn successor_stage(
+  from: PrActiveLifecycleStage,
+  event: PrLifecycleEventTag,
+) -> PrLifecycleStage? {
   match from {
     PrOpen =>
       match event {
-        MarkReadyForReview => Present { value: PrUnderReview }
-        RecordClosed => Present { value: PrClosed }
+        MarkReadyForReview =>
+          Present { value: PrLifecycleActive { stage: PrUnderReview } }
+        RecordClosed =>
+          Present { value: PrLifecycleTerminal { stage: PrClosed } }
         RecordMergeReady => Absent
         RecordMerged => Absent
       }
     PrUnderReview =>
       match event {
-        RecordMergeReady => Present { value: PrMergeReady }
-        RecordClosed => Present { value: PrClosed }
+        RecordMergeReady =>
+          Present { value: PrLifecycleActive { stage: PrMergeReady } }
+        RecordClosed =>
+          Present { value: PrLifecycleTerminal { stage: PrClosed } }
         MarkReadyForReview => Absent
         RecordMerged => Absent
       }
     PrMergeReady =>
       match event {
-        RecordMerged => Present { value: PrMerged }
-        RecordClosed => Present { value: PrClosed }
+        RecordMerged =>
+          Present { value: PrLifecycleTerminal { stage: PrMerged } }
+        RecordClosed =>
+          Present { value: PrLifecycleTerminal { stage: PrClosed } }
         MarkReadyForReview => Absent
         RecordMergeReady => Absent
       }
-    PrMerged => Absent
-    PrClosed => Absent
   }
 }
 
@@ -141,10 +155,12 @@ fn successor_stage(from: PrLifecycleStage, event: PrLifecycleEventTag) -> PrLife
 // UnderReview / MergeReady without ctrl-persisted stage facts.
 fn github_terminal_anchor(pr: PullRequest) -> PrLifecycleStage? {
   match pr.merged_at {
-    Present { value: _ } => Present { value: PrMerged }
+    Present { value: _ } =>
+      Present { value: PrLifecycleTerminal { stage: PrMerged } }
     Absent =>
       match pr.state {
-        Closed => Present { value: PrClosed }
+        Closed =>
+          Present { value: PrLifecycleTerminal { stage: PrClosed } }
         Open => Absent
       }
   }
@@ -154,20 +170,23 @@ fn evaluate_mark_ready_for_review(
   facts: PrLifecycleFacts,
   pr: PullRequest,
 ) -> PrLifecycleDecision {
-  if is_terminal_stage(stage: facts.stage) {
-    return TransitionRefused {
-      refusal: PrAlreadyTerminal { stage: facts.stage }
-    }
-  }
-  match successor_stage(from: facts.stage, event: MarkReadyForReview) {
-    Absent =>
+  match facts.stage {
+    PrLifecycleTerminal { stage: _ } =>
       return TransitionRefused {
-        refusal: PrInvalidSuccessor {
-          from: facts.stage,
-          event: MarkReadyForReview,
-        }
+        refusal: PrAlreadyTerminal { stage: facts.stage }
       }
-    Present { value: to } => {}
+    PrLifecycleActive { stage: active } => {
+      match successor_stage(from: active, event: MarkReadyForReview) {
+        Absent =>
+          return TransitionRefused {
+            refusal: PrInvalidSuccessor {
+              from: facts.stage,
+              event: MarkReadyForReview,
+            }
+          }
+        Present { value: to } => {}
+      }
+    }
   }
   if pr.draft {
     return TransitionRefused { refusal: PrDraftBlocksReview }
@@ -182,7 +201,7 @@ fn evaluate_mark_ready_for_review(
     Absent =>
       return TransitionRefused { refusal: PrMissingHeadSha }
   }
-  CanTransition { to: PrUnderReview }
+  CanTransition { to: PrLifecycleActive { stage: PrUnderReview } }
 }
 
 fn evaluate_record_merge_ready(
@@ -192,20 +211,23 @@ fn evaluate_record_merge_ready(
   tally: MergeReadinessTally?,
   policy_permitted: Bool?,
 ) -> PrLifecycleDecision {
-  if is_terminal_stage(stage: facts.stage) {
-    return TransitionRefused {
-      refusal: PrAlreadyTerminal { stage: facts.stage }
-    }
-  }
-  match successor_stage(from: facts.stage, event: RecordMergeReady) {
-    Absent =>
+  match facts.stage {
+    PrLifecycleTerminal { stage: _ } =>
       return TransitionRefused {
-        refusal: PrInvalidSuccessor {
-          from: facts.stage,
-          event: RecordMergeReady,
-        }
+        refusal: PrAlreadyTerminal { stage: facts.stage }
       }
-    Present { value: to } => {}
+    PrLifecycleActive { stage: active } => {
+      match successor_stage(from: active, event: RecordMergeReady) {
+        Absent =>
+          return TransitionRefused {
+            refusal: PrInvalidSuccessor {
+              from: facts.stage,
+              event: RecordMergeReady,
+            }
+          }
+        Present { value: to } => {}
+      }
+    }
   }
   if pr.draft {
     return TransitionRefused { refusal: PrDraftBlocksReview }
@@ -274,32 +296,42 @@ fn evaluate_record_merge_ready(
         return TransitionRefused { refusal: PrPolicyNotPermitted }
       }
   }
-  CanTransition { to: PrMergeReady }
+  CanTransition { to: PrLifecycleActive { stage: PrMergeReady } }
 }
 
 fn evaluate_terminal_record(
   facts: PrLifecycleFacts,
   event: PrLifecycleEventTag,
-  to: PrLifecycleStage,
+  to: PrTerminalLifecycleStage,
 ) -> PrLifecycleDecision {
-  if is_terminal_stage(stage: facts.stage) {
-    return TransitionRefused {
-      refusal: PrAlreadyTerminal { stage: facts.stage }
+  match facts.stage {
+    PrLifecycleTerminal { stage: _ } =>
+      return TransitionRefused {
+        refusal: PrAlreadyTerminal { stage: facts.stage }
+      }
+    PrLifecycleActive { stage: active } => {
+      match successor_stage(from: active, event: event) {
+        Absent =>
+          return TransitionRefused {
+            refusal: PrInvalidSuccessor { from: facts.stage, event: event }
+          }
+        Present { value: expected } =>
+          match expected {
+            PrLifecycleTerminal { stage: terminal } =>
+              if terminal != to {
+                return TransitionRefused {
+                  refusal: PrInvalidSuccessor { from: facts.stage, event: event }
+                }
+              }
+            PrLifecycleActive { stage: _ } =>
+              return TransitionRefused {
+                refusal: PrInvalidSuccessor { from: facts.stage, event: event }
+              }
+          }
+      }
     }
   }
-  match successor_stage(from: facts.stage, event: event) {
-    Absent =>
-      return TransitionRefused {
-        refusal: PrInvalidSuccessor { from: facts.stage, event: event }
-      }
-    Present { value: expected } =>
-      if expected != to {
-        return TransitionRefused {
-          refusal: PrInvalidSuccessor { from: facts.stage, event: event }
-        }
-      }
-  }
-  CanTransition { to: to }
+  CanTransition { to: PrLifecycleTerminal { stage: to } }
 }
 
 fn classify_github_terminal_anchor(pr: PullRequest) -> PrLifecycleStage? {
