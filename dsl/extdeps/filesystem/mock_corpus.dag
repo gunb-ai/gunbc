@@ -20,11 +20,15 @@ import std.hermetic_replay { PublishedMockCase }
 
 data filesystem_mock_case_write_committed: PublishedMockCase = PublishedMockCase {
   operation_key: "Filesystem.Write",
+  service: "Filesystem",
+  operation: "Write",
   case_id: 0
 }
 
 data filesystem_mock_case_read_contents: PublishedMockCase = PublishedMockCase {
   operation_key: "Filesystem.Read",
+  service: "Filesystem",
+  operation: "Read",
   case_id: 0
 }
 
