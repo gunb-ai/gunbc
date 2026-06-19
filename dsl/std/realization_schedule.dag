@@ -22,12 +22,17 @@ import std.lens_verdict {
   ModuleWholeFile,
 }
 
-// dissolve-on: extdeps/realization measured cost handlers — add `basis: CostBasis`
-//   (Measured | Predicted) and cost_account_measured_* / cost_account_predicted_zero rows.
+// dissolve-on: extdeps/realization measured cost handlers — peripheral host realizers
+//   aggregate PerformanceReceipt rows into cost_account_measured_* at the floor boundary.
+type CostBasis
+  = Predicted
+  | Measured
+
 type CostAccount {
   time: NanosecondDuration
   space: ByteSize
   power: Watt
+  basis: CostBasis
 }
 
 fn cost_account_predicted_zero() -> CostAccount {
@@ -35,7 +40,21 @@ fn cost_account_predicted_zero() -> CostAccount {
     time: nanosecond_duration(count: 0)
     space: byte_size(count: 0)
     power: watt(count: 0)
+    basis: Predicted
   }
+}
+
+fn cost_account_measured(time: NanosecondDuration) -> CostAccount {
+  CostAccount {
+    time: time
+    space: byte_size(count: 0)
+    power: watt(count: 0)
+    basis: Measured
+  }
+}
+
+fn cost_account_time_nanos(account: CostAccount) -> Nat {
+  nanosecond_duration_count(d: account.time)
 }
 
 type RealizationObjective {
@@ -61,6 +80,9 @@ type RealizationPlan {
   target: ContentHash
   objective: RealizationObjective
   schedule: Schedule
+  // Measured roll-up along schedule critical path (seq across batches, max within batch);
+  // authority v1.compiler.complexity span / cost_seq / cost_par — see
+  // std.realization_measurement.schedule_critical_path_time.
   total: CostAccount
 }
 

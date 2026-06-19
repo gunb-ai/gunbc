@@ -1,8 +1,8 @@
 
 module v2.test.language_model.rust
+import v2.std.language_model { LanguageModel }
 
 import v2.extdeps.languages.rust {
-  RustLanguageModel,
   rust_integer_algebra_inhabitance_rust_facts_i32,
   rust_language_model_wave1,
   rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
@@ -39,7 +39,7 @@ import v2.std.rust_leaf_model_claim {
   RustcRejectsExpectation
 }
 // R3-external falsification: type_form vs value_form mismatch (planning §7).
-type RustLeafModelClaim = LeafModelClaim<Outcome<RustLanguageModel>, RustClaimSubject, RustClaimExpectation>
+type RustLeafModelClaim = LeafModelClaim<Outcome<LanguageModel>, RustClaimSubject, RustClaimExpectation>
 
 fn rust_leaf_rustc_invocation() -> TargetInvocation {
   TargetInvocation {

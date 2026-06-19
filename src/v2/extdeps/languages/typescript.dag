@@ -7,6 +7,7 @@
 // 🟡
 
 module v2.extdeps.languages.typescript
+import v2.std.language_model { LanguageModel }
 
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.grammar {
@@ -223,13 +224,6 @@ type TsEcma262NumericPrimitiveFactsUnion
   | TsNumericFactsBigInt { facts: TsBigIntPrimitiveFacts }
 
 // 🟢 grounded.
-type TsLanguageModel {
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-  lex: LexRules
-  grammar: ParseGrammar
-}
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 
@@ -1787,25 +1781,16 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
       Edge {
         label: Positional,
         target: Node {
-          kind: TypeNode { connective: Instantiation },
-          children: [
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }
-            }
-          ],
+          kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
+          children: [],
           occurrence_id: SyntheticOccurrence
         }
       }
@@ -2410,8 +2395,8 @@ fn ts_model_core_wave1() -> ModelCore {
   }
 }
 
-fn ts_language_model_wave1() -> TsLanguageModel {
-  TsLanguageModel {
+fn ts_language_model_wave1() -> LanguageModel {
+  LanguageModel {
     language_identity: ^ts_language_model_surface_id,
     canonical_symbols: ts_language_model_canonical_symbols(),
     core: ts_model_core_wave1(),
@@ -3143,8 +3128,8 @@ fn ts_language_model_canonical_symbols_wave2a() -> Set<Symbol> {
   }
 }
 
-fn ts_language_model_wave2a() -> TsLanguageModel {
-  TsLanguageModel {
+fn ts_language_model_wave2a() -> LanguageModel {
+  LanguageModel {
     language_identity: ^ts_language_model_surface_id,
     canonical_symbols: ts_language_model_canonical_symbols_wave2a(),
     core: ts_model_core_wave1(),
@@ -3718,8 +3703,8 @@ fn ts_language_model_canonical_symbols_wave2b() -> Set<Symbol> {
   }
 }
 
-fn ts_language_model_wave2b() -> TsLanguageModel {
-  TsLanguageModel {
+fn ts_language_model_wave2b() -> LanguageModel {
+  LanguageModel {
     language_identity: ^ts_language_model_surface_id,
     canonical_symbols: ts_language_model_canonical_symbols_wave2b(),
     core: ts_model_core_wave2b(),

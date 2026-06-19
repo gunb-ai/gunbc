@@ -4,9 +4,11 @@
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v2.extdeps.languages.cpp
+import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.grammar {
+  VoidGrammar,
   StampClass,
   StampBinding,
   grammar_formal_terminal,
@@ -25,6 +27,7 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.lexing {
+  VoidLexRules,
   LexRule,
   LexRuleSet,
   LexRules,
@@ -176,11 +179,6 @@ type CppBoolPrimitiveFacts {
   encoding_fact: Node
 }
 
-type CppLanguageModel {
-  language_identity: Symbol
-  canonical_symbols: Set<Symbol>
-  core: ModelCore
-}
 
 // Tokens are the shared v2.std.compilers.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
 // per-target C++ coproduct dissolved into that std authority.
@@ -937,8 +935,10 @@ fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
   }
 }
 
-fn cpp_language_model_wave1(target_profile: Node) -> CppLanguageModel {
-  CppLanguageModel {
+fn cpp_language_model_wave1(target_profile: Node) -> LanguageModel {
+  LanguageModel {
+    lex: VoidLexRules,
+    grammar: VoidGrammar,
     language_identity: ^cpp_language_model_surface_id,
     canonical_symbols: cpp_language_model_canonical_symbols(target_profile: target_profile),
     core: cpp_model_core_wave1(target_profile: target_profile)

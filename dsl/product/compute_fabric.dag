@@ -13,7 +13,8 @@
 
 module product.compute_fabric
 
-import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
+import std.nat { Nat }
+import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, List }
 import std.os.types {
   FileSystemSemantics,
   Linux,
@@ -30,6 +31,9 @@ import std.measure {
   One,
   ByteSize,
   MoneyMicros,
+  NanosecondDuration,
+  nanosecond_duration,
+  nanosecond_duration_count,
   HardwareThreadCount,
   byte_size,
   byte_size_count,
@@ -38,6 +42,13 @@ import std.measure {
   hertz,
 }
 import std.currency { CurrencyCode }
+import std.realization_schedule { CostAccount }
+import std.realization_measurement { cost_account_measured_from_time }
+import std.content_hash {
+  content_hash_atom,
+  content_hash_combine,
+  content_hash_tagged,
+}
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import std.cpu {
   CpuFacts,
@@ -47,14 +58,19 @@ import std.cpu {
   cpu_facts_threads,
 }
 import std.cpu.types {
+  CpuArchitecture,
   CpuDeploymentFacts,
   CpuModelCatalogRow,
   CpuSocket,
-  CpuVendor,
   SocketPackage,
   Aarch64,
+  X86_64,
+  Armv7,
+  Riscv64,
+  Wasm32,
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
+import std.baseboard { ServerBaseboard }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -118,10 +134,52 @@ type StorageMount {
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
+// 🟡 grounded, NOT terminal. Closed GPU-vendor surface — kills the stringly anemia. Overlaps
+// std.cpu.CpuVendor on shared entities (AMD/Intel/Apple/Qualcomm).
+// dissolution-trigger: fold into a single shared Vendor authority with std.cpu.CpuVendor pending
+// the parked, operator-gated std-conflation vendor-unification decision.
+type GpuVendor = Nvidia | Amd | Intel | Apple | Qualcomm
+
+// NVIDIA sm_XX / AMD gfx-style capability axes decoded structurally: vendor plus
+// major/minor magnitudes, not a marketplace label string.
+type GpuComputeCapability {
+  vendor: GpuVendor
+  major: Int
+  minor: Int
+}
+
+type UnsubstantiatedGpuCapabilityLabel { vendor: GpuVendor }
+
+type GpuCapabilityLabelOutcome
+  = GpuCapabilityLabelOk { label: String }
+  | GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel }
+
+// Fail-closed capability label projection: only NVIDIA sm_X_Y and AMD gfxXY are
+// substantiated wire conventions; Intel/Apple/Qualcomm refuse rather than fabricate.
+fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
+  match cap.vendor {
+    Nvidia => GpuCapabilityLabelOk {
+      label: concat("sm_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
+    }
+    Amd => GpuCapabilityLabelOk {
+      label: concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+    }
+    Intel => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Intel }
+    }
+    Apple => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Apple }
+    }
+    Qualcomm => GpuCapabilityLabelRejected {
+      reason: UnsubstantiatedGpuCapabilityLabel { vendor: Qualcomm }
+    }
+  }
+}
+
 type GpuFacts {
-  vendor: NonEmptyStr
+  vendor: GpuVendor
   model: NonEmptyStr
-  compute_capability: NonEmptyStr?
+  compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }
@@ -165,6 +223,11 @@ type ProcessorKind
 
 type ComputeHost {
   identity: HostIdentity
+  // The physical board this host is built on, with its live BMC endpoint. Optional:
+  // `none` = baseboard not modeled for this host (a single, clear meaning — not a
+  // conflation). When present, it couples the host to the BMC out-of-band lifecycle
+  // (board → firmware → factory login), the entry point of provisioning.
+  baseboard: ServerBaseboard?
   processors: List<ProcessorKind>
   memory: List<MemoryDevice>
   storage: List<StorageDevice>
@@ -577,12 +640,64 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  wall_duration: Duration
+  wall_duration: NanosecondDuration
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence
   cache_state_summary: NonEmptyStr?
+}
+
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> NanosecondDuration {
+  nanosecond_duration(
+    count: fold(
+      receipts,
+      init: 0,
+      f: (acc, receipt) => acc + nanosecond_duration_count(d: receipt.wall_duration)
+    )
+  )
+}
+
+// Pure roll-up lens (std.realization_measurement): PerformanceReceipt observations
+// → CostAccount.time with Measured basis. Handler emits receipts; this folds them.
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount {
+  cost_account_measured_from_time(time: performance_receipts_total_time(receipts: receipts))
+}
+
+// Host-side v1 interpreter provider row for SingleSample witness measurements.
+data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
+
+// SCAFFOLD — dissolve-on: detected-host execution surface (extdeps/os host probe stamps
+// measurement_context from runtime; delete this hardcoded Linux/Posix constant).
+data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
+  os: OperatingSystemSurface {
+    kernel: Linux,
+    distro_or_product: none,
+    version: none,
+    filesystem_semantics: Posix,
+    process_semantics: PosixProcess,
+  },
+  isolation: SharedHostHome,
+  container_runtime: none,
+  toolchains: [],
+  mounted_storage: [],
+  network: [],
+}
+
+fn performance_receipt_host_single_sample(
+  work_shape: WorkUnitId,
+  wall_time: NanosecondDuration,
+) -> PerformanceReceipt {
+  PerformanceReceipt {
+    provider: host_v1_interpreter_provider,
+    work_shape: work_shape,
+    wall_duration: wall_time,
+    cpu_seconds: none,
+    sample_count: 1,
+    measurement_context: host_v1_interpreter_execution_surface,
+    confidence: SingleSample,
+    cache_state_summary: none,
+  }
 }
 
 type PricingSource
@@ -661,6 +776,7 @@ data example_vm_execution_surface: ExecutionSurface = ExecutionSurface {
 
 data example_compute_host: ComputeHost = ComputeHost {
   identity: example_host_identity,
+  baseboard: none,
   processors: [],
   memory: [],
   storage: [],
@@ -769,6 +885,7 @@ data example_resource_cpu: CpuFacts = CpuFacts {
 
 data example_resource_host: ComputeHost = ComputeHost {
   identity: "example-resource-host",
+  baseboard: none,
   processors: [CpuProcessor { cpu: example_resource_cpu }],
   memory: [MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none }],
   storage: [],
@@ -871,10 +988,144 @@ fn witness_resource_offer_admits_feasible_demand() -> Bool {
   }
 }
 
-// Content-pure digest projected from work identity (work.id) only; output
-// content_digest joins when ArtifactRef inhabits. Full canonical encoding
-// (action + inputs + output spec + output content_digest) supplied by the
-// harness when Outcome/ArtifactRef inhabit (Node stubs today).
+// Content-addressed digest over work identity + demand (action/inputs/output spec
+// join when ArtifactRef/WorkAction inhabit — P-CF-INGRESS). Returns a 16-hex hash,
+// never the hand-authored work.id brand (§0 one-key-for-3-dimensions).
+data execution_receipt_digest_schema: NonEmptyStr = "execution-receipt-canonical-v1"
+
+fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
+  content_hash_atom(value: isolation_boundary_label(boundary: boundary))
+}
+
+// File-scoped arch label for digest only — lift to std/cpu/types.cpu_architecture_label
+// if a second consumer appears (§3 single authority).
+fn cpu_architecture_digest(arch: CpuArchitecture) -> ContentHash {
+  match arch {
+    X86_64 => content_hash_atom(value: "arch:X86_64")
+    Aarch64 => content_hash_atom(value: "arch:Aarch64")
+    Armv7 => content_hash_atom(value: "arch:Armv7")
+    Riscv64 => content_hash_atom(value: "arch:Riscv64")
+    Wasm32 => content_hash_atom(value: "arch:Wasm32")
+  }
+}
+
+fn optional_cpu_requirement_digest(req: CpuRequirement?) -> ContentHash {
+  match req {
+    Absent => content_hash_atom(value: "cpu:none")
+    Present { value: r } =>
+      content_hash_combine(
+        content_hash_atom(value: "cpu"),
+        content_hash_combine(
+          content_hash_atom(value: to_string(hardware_thread_count_value(r.min_threads))),
+          match r.architecture {
+            Absent => content_hash_atom(value: "arch:any")
+            Present { value: arch } => cpu_architecture_digest(arch: arch)
+          },
+        ),
+      )
+  }
+}
+
+fn optional_memory_requirement_digest(req: MemoryRequirement?) -> ContentHash {
+  match req {
+    Absent => content_hash_atom(value: "memory:none")
+    Present { value: r } =>
+      content_hash_combine(
+        content_hash_atom(value: "memory"),
+        content_hash_atom(value: to_string(byte_size_count(r.min_bytes))),
+      )
+  }
+}
+
+fn resource_envelope_digest(envelope: ResourceEnvelope) -> ContentHash {
+  content_hash_combine(
+    optional_cpu_requirement_digest(req: envelope.cpu),
+    content_hash_combine(
+      optional_memory_requirement_digest(req: envelope.memory),
+      content_hash_atom(value: "resource-envelope-v1"),
+    ),
+  )
+}
+
+// 🟡 STAGED — P-CF-INGRESS: WorkGraph / Partitioner / WorkAction / Reducer are Node
+// forward-stubs today; graph/partitioner/map/reduce/laws payloads are NOT yet folded.
+// dissolve-on: Node content-hash inhabitants land (P-CF-INGRESS) — replace
+// parallelism-payload-pending:* tags with real payload digests; until then two demands
+// differing only in graph/partitioner/map/reduce collide (explicit debt, not silent _).
+fn parallelism_shape_digest(shape: ParallelismShape) -> ContentHash {
+  match shape {
+    SingleWorkItem => content_hash_atom(value: "parallelism:SingleWorkItem")
+    IndependentShards { shard_count: n } =>
+      content_hash_combine(
+        content_hash_atom(value: "parallelism:IndependentShards"),
+        content_hash_atom(value: to_string(n)),
+      )
+    DependencyGraphParallel { graph: graph } =>
+      content_hash_combine(
+        content_hash_atom(value: "parallelism:DependencyGraphParallel"),
+        content_hash_atom(value: "parallelism-payload-pending:WorkGraph"),
+      )
+    PartitionedReduce { partitioner: partitioner, map: map, reduce: reduce, laws: laws } =>
+      content_hash_combine(
+        content_hash_atom(value: "parallelism:PartitionedReduce"),
+        content_hash_combine(
+          content_hash_atom(value: "parallelism-payload-pending:Partitioner"),
+          content_hash_combine(
+            content_hash_atom(value: "parallelism-payload-pending:WorkAction-map"),
+            content_hash_combine(
+              content_hash_atom(value: "parallelism-payload-pending:Reducer"),
+              content_hash_atom(value: "parallelism-payload-pending:ReducerLaws"),
+            ),
+          ),
+        ),
+      )
+  }
+}
+
+fn work_demand_content_digest(demand: WorkDemand) -> ContentHash {
+  content_hash_combine(
+    resource_envelope_digest(envelope: demand.resources),
+    content_hash_combine(
+      isolation_boundary_digest(boundary: demand.isolation.boundary),
+      content_hash_combine(
+        parallelism_shape_digest(shape: demand.parallelism),
+        content_hash_atom(value: "work-demand-v1"),
+      ),
+    ),
+  )
+}
+
+fn execution_receipt_subject_digest(
+  work_id: WorkUnitId,
+  demand: WorkDemand,
+) -> ExecutionReceiptDigest {
+  content_hash_tagged(
+    tag: execution_receipt_digest_schema,
+    payload: content_hash_combine(
+      content_hash_atom(value: work_id),
+      work_demand_content_digest(demand: demand),
+    ),
+  )
+}
+
 fn execution_receipt_digest<T>(receipt: ExecutionReceipt<T>) -> ExecutionReceiptDigest {
-  receipt.work.id
+  execution_receipt_subject_digest(
+    work_id: receipt.work.id,
+    demand: receipt.work.requirements,
+  )
+}
+
+fn witness_execution_receipt_digest_not_raw_work_id(
+  work_id: WorkUnitId,
+  demand: WorkDemand,
+) -> Bool {
+  execution_receipt_subject_digest(work_id: work_id, demand: demand) != work_id
+}
+
+fn witness_execution_receipt_digest_differs_by_demand(
+  work_id: WorkUnitId,
+  left: WorkDemand,
+  right: WorkDemand,
+) -> Bool {
+  execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
 }

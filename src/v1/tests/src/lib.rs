@@ -36,6 +36,8 @@ mod diagnostics;
 #[cfg(test)]
 mod effects;
 #[cfg(test)]
+mod eval_measurement_purity_test;
+#[cfg(test)]
 mod extdeps_shape_transport_policy_lens_test;
 #[cfg(test)]
 mod fact_cardinality_lens_test;
@@ -58,6 +60,8 @@ mod interp_recorded_fixture_test;
 #[cfg(test)]
 mod interp_stats_test;
 #[cfg(test)]
+mod interp_string_family_cast_test;
+#[cfg(test)]
 mod interp_wire_serialize_test;
 #[cfg(test)]
 mod interpreted_parse_termination_test;
@@ -73,6 +77,10 @@ mod measure_field_access_test;
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
+#[cfg(test)]
+mod nv2_gate_manifest_resolve_bisect_test;
+#[cfg(test)]
+mod nv2_gate_resolve_bisect_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
@@ -103,6 +111,8 @@ mod target_model_runtime_import_repro;
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
+#[cfg(test)]
+mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
 #[cfg(test)]

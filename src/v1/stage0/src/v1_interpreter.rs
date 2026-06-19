@@ -87,6 +87,7 @@ use crate::v1_std_core::{
     FieldAccessStyle,
     FieldSummary,
     FieldValueShape,
+    InferredNode,
     MatchPattern,
     MethodSemantics,
     NewlineIndex,
@@ -1165,6 +1166,13 @@ pub struct InterpContext {
     mutation_counters: std::cell::RefCell<MutationCounters>,
     /// Single name intern table for runtime identity carriers (ctrl#1533 phase 3).
     symbols: RefCell<SymbolInterner>,
+    /// Memoized membership set of the PUBLISHED mock corpus — the §2 Realization pure-spec
+    /// the M2 mock_totality_lens also reads (the operation keys that are hermetically
+    /// realizable). The M4 hermetic-realization fold makes eval_service_call decide replay
+    /// from this ONE model rather than a parallel ledger. Computed once on first hermetic
+    /// service call via `resolve_published_mock_keys`; the corpus is an immutable global
+    /// constant for this context, with the same scoping as `data_cache`.
+    published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
 impl InterpContext {
@@ -1307,7 +1315,22 @@ impl InterpContext {
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
+            published_mock_keys: RefCell::new(None),
         }
+    }
+
+    /// The published mock corpus as an operation-key set (the §2 Realization pure-spec the
+    /// M2 mock_totality_lens also reads). Memoized: the corpus is an immutable global
+    /// constant for this context, so it is resolved at most once.
+    fn published_mock_keys(&self) -> InterpResult<Rc<std::collections::HashSet<String>>> {
+        {
+            if let Some(keys) = self.published_mock_keys.borrow().as_ref() {
+                return Ok(keys.clone());
+            }
+        }
+        let keys = Rc::new(resolve_published_mock_keys(self)?);
+        *self.published_mock_keys.borrow_mut() = Some(keys.clone());
+        Ok(keys)
     }
 
     fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
@@ -1507,6 +1530,11 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // gross time bubbles up to its parent via CHILD_NANOS — the classic
     // self-time decomposition. Runs on both the Ok and Err (`?`-propagated)
     // paths because the result is captured, not early-returned.
+    //
+    // Phase-0 keystone: when an active cache-subject is set, self-time rolls up
+    // to that content-hash key (PerformanceReceipt grain) instead of per-variant
+    // buckets. Variant counters remain as an opt-in deep projection when no
+    // subject is active.
     let idx = expr_variant_index(&node.expr_data);
     EVAL_COUNTS.with(|c| c.borrow_mut()[idx] += 1);
     let saved_children = CHILD_NANOS.replace(0);
@@ -1516,7 +1544,16 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     });
     let gross = start.elapsed().as_nanos();
     let children = CHILD_NANOS.get();
-    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += gross.saturating_sub(children));
+    let self_time = gross.saturating_sub(children);
+    // Phase-0 keystone: v1 proving handler for std.realization_measurement
+    // RealizationMeasureEffect::ObserveElapsedAtSubject (see v1_eval_expr_measure_handler_id).
+    // Durable model + roll-up lens live in .dag; this tap is host-effect realization only.
+    if let Some(subject) = ACTIVE_SUBJECT.with(|s| s.borrow().clone()) {
+        SUBJECT_SELF_NANOS.with(|m| {
+            *m.borrow_mut().entry(subject).or_insert(0) += self_time;
+        });
+    }
+    EVAL_SELF_NANOS.with(|c| c.borrow_mut()[idx] += self_time);
     CHILD_NANOS.set(saved_children + gross);
     result
 }
@@ -2859,10 +2896,110 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 // Cast
 // ---------------------------------------------------------------------------
 
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            if authored_name_at(ctx.si(), item.clone()) == type_name {
+                return Some(item.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Next alias step from a type-decl `inferred` RHS (`String`, `Secret`, or the
+/// base of `Base where …` before brand preservation).
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+    let direct = authored_name_at(ctx.si(), rhs.clone());
+    if !direct.is_empty() {
+        return Some(direct);
+    }
+    if rhs.connective == Connective::Conj {
+        for child in rhs.children.iter() {
+            let base = authored_name_at(ctx.si(), child.clone());
+            if !base.is_empty() {
+                return Some(base);
+            }
+        }
+    }
+    match rhs.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            let inner = authored_name_at(ctx.si(), node.clone());
+            if inner.is_empty() {
+                None
+            } else {
+                Some(inner)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+    let rhs = match item.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    alias_rhs_next_name(ctx, rhs)
+}
+
+/// Walk alias chains via type-decl items (pre-brand `inferred` RHS), not the
+/// brand-preserved `TypeEnv` bindings used at use sites.
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let mut current = authored_name_at(ctx.si(), target);
+    let mut seen = BTreeSet::new();
+
+    for _ in 0..32 {
+        if current.is_empty() {
+            return String::new();
+        }
+        if !seen.insert(current.clone()) {
+            return current;
+        }
+        if current == "String" {
+            return "String".to_string();
+        }
+
+        let Some(item) = lookup_type_item_across_modules(ctx, &current) else {
+            return current;
+        };
+
+        let Some(rhs_name) = type_item_alias_rhs_name(ctx, &item) else {
+            return current;
+        };
+
+        if rhs_name == current {
+            return current;
+        }
+        current = rhs_name;
+    }
+
+    current
+}
+
+fn str_identity_cast_if_string_family(
+    val: &Value,
+    ctx: &InterpContext,
+    target: Rc<Node>,
+) -> Option<Value> {
+    let Value::Str(s) = val else {
+        return None;
+    };
+    if cast_target_underlying_kernel(ctx, target) == "String" {
+        Some(Value::Str(s.clone()))
+    } else {
+        None
+    }
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node);
+    let target_name = authored_name_at(ctx.si(), target_node.clone());
+
+    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+        return Ok(v);
+    }
 
     match (val, target_name.as_str()) {
         (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
@@ -3561,8 +3698,42 @@ fn eval_service_call(
         crate::recorded_fixture::service_inputs_fixture_json(op_node, &param_env, ctx)
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
-    // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
     if ctx.execution_mode.is_hermetic() {
+        // M4 hermetic-realization fold (§2 Realization): the PUBLISHED mock corpus is the
+        // single authority for WHICH operations are hermetically realizable — the SAME model
+        // the M2 mock_totality_lens reads. A service is "corpus-governed" iff it publishes at
+        // least one case; for such a service the published model — NOT inline mock_* props —
+        // decides realizability. One decision procedure, shared by the runtime and the lens.
+        let published = ctx.published_mock_keys()?;
+        let service_is_governed = published.iter().any(|k| {
+            k.rsplit_once('.')
+                .map(|(svc, _)| svc == service_name)
+                .unwrap_or(false)
+        });
+        if service_is_governed && !published.contains(&key) {
+            // §5 fail-closed on disagreement: the service publishes a corpus but THIS operation
+            // is not a published case. Refuse loudly — even if a fixture or an inline mock_*
+            // prop still exists for it. A runtime that fabricated/replayed here would let the
+            // runtime decision and the published model diverge silently; this is the teeth.
+            let mut cases: Vec<&String> = published
+                .iter()
+                .filter(|k| {
+                    k.rsplit_once('.')
+                        .map(|(svc, _)| svc == service_name)
+                        .unwrap_or(false)
+                })
+                .collect();
+            cases.sort();
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "hermetic mode: operation {key} is not a published mock case for \
+                     corpus-governed service {service_name} — refusing to realize \
+                     (published cases: {cases:?})"
+                ),
+            });
+        }
+
+        // Hermetic with fixture store: replay recorded response (fail-closed on miss/stale).
         if let Some(store) = &ctx.fixture_store {
             eprintln!(
                 "[hermetic:fixture] {}.{} inputs_hash={}",
@@ -3576,6 +3747,12 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
+        // Retained inline-mock fallback for extdeps layers that do NOT yet publish a dsl mock
+        // corpus (M4.0 migrated filesystem only). 🟡 dissolved-by —
+        // feature:m4-eval-service-call-folds-hermetic-realization — dissolve-on: every extdeps
+        // layer publishes a dsl-side PublishedMockCase corpus; when no corpus-free service
+        // relies on inline mock_* props, this branch and eval_mock_response delete together and
+        // the RecordedFixture store becomes the sole payload authority (§3).
         eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
@@ -4524,6 +4701,69 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
+/// True iff a type-annotation node tree names `target` anywhere (the type itself or a type
+/// argument, e.g. the `PublishedMockCase` element of `List<PublishedMockCase>`). Reads SHAPE
+/// over the small type expression — cheap, no evaluation.
+fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
+    if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
+        return true;
+    }
+    ty.children
+        .iter()
+        .any(|c| type_annotation_names(ctx, c, target))
+        || ty
+            .params
+            .iter()
+            .any(|c| type_annotation_names(ctx, c, target))
+}
+
+/// Resolve the PUBLISHED mock corpus (the §2 Realization pure-spec) into its operation-key set.
+/// Reads SHAPE, not contents (DESIGN.md lens law): every `data` item DECLARED over
+/// `PublishedMockCase` contributes its rows' `operation_key`s. This is the SAME corpus the M2
+/// mock_totality_lens reads — the v1 runtime and the compile-time lens now decide hermetic
+/// realizability from ONE model. The declared-type pre-filter keeps this cheap: only corpus data
+/// items are evaluated, not every `data` constant in the loaded tree. Evaluated against
+/// `Env::empty()` like other `data` constants; data items are pure (no service calls), so this
+/// never re-enters `eval_service_call`.
+fn resolve_published_mock_keys(
+    ctx: &InterpContext,
+) -> InterpResult<std::collections::HashSet<String>> {
+    let mut keys = std::collections::HashSet::new();
+    for (name, info) in ctx.item_registry.iter() {
+        if info.kind != ItemKind::DataItem {
+            continue;
+        }
+        let Some(node) = ctx.lookup_fn(name) else {
+            continue;
+        };
+        // Declared-type gate: skip (without evaluating) any data item not declared over
+        // PublishedMockCase. Corpus data items always carry the explicit annotation.
+        let Some(ty) = node.type_annotation.as_ref() else {
+            continue;
+        };
+        if !type_annotation_names(ctx, ty, "PublishedMockCase") {
+            continue;
+        }
+        let Some(body) = node.body.as_ref() else {
+            continue;
+        };
+        let val = eval_expr(body, &Env::empty(), ctx)?;
+        let Value::List(items) = &val else {
+            continue;
+        };
+        for item in items.iter() {
+            if let Value::Record { type_name, fields } = item {
+                if ctx.sym_eq(*type_name, "PublishedMockCase") {
+                    if let Some(Value::Str(op_key)) = ctx.field(fields, "operation_key") {
+                        keys.insert(op_key.clone());
+                    }
+                }
+            }
+        }
+    }
+    Ok(keys)
+}
+
 /// Evaluate mock_response from an operation's properties for hermetic execution.
 fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     // Find first mock_* property
@@ -5072,6 +5312,18 @@ fn eval_builtin(
             Ok(Some(Value::Int(count)))
         }
 
+        "module_source_nickname_literal_count_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "module_source_nickname_literal_count_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            let count =
+                crate::extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
+                    module,
+                );
+            Ok(Some(Value::Int(count)))
+        }
+
         "extdeps_policy_leak_count_for_qualified_name" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
                 msg: "extdeps_policy_leak_count_for_qualified_name requires a QualifiedName"
@@ -5301,6 +5553,10 @@ thread_local! {
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
     static EVAL_SELF_NANOS: RefCell<[u128; EXPR_VARIANT_COUNT]> =
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
+    /// Content-hash cache-subject key for the active witness eval (Phase-0 keystone).
+    static ACTIVE_SUBJECT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Self-time nanoseconds accumulated per cache-subject during the active profile window.
+    static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
     /// Gross nanoseconds charged by the child `eval_expr` frames of the frame
     /// currently running — read by a parent frame to subtract its children's
     /// time. Reset to 0 on frame entry, restored (plus the frame's own gross)
@@ -5324,6 +5580,58 @@ fn eval_profile_enabled() -> bool {
     })
 }
 
+/// SCAFFOLD — v1 proving handler mirror of `compute_fabric.PerformanceReceipt` (§3 peripheral).
+/// P5 receipt: `eval_measurement_purity_test.rs` (verdict unchanged under measurement).
+/// dissolve-on: v2 eval fold binds `RealizationMeasureEffect::ObserveElapsedAtSubject`;
+/// delete this struct + thread-local tap (`docs/plans/realization-measurement-loop.md` Phase 0 table).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PerformanceReceipt {
+    pub subject_key: String,
+    pub work_shape: String,
+    pub wall_nanos: u128,
+    pub eval_self_nanos: u128,
+    pub sample_count: u64,
+}
+
+/// Snapshot of per-subject eval self-time nanoseconds for the active thread.
+pub fn subject_self_nanos_snapshot() -> HashMap<String, u128> {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow().clone())
+}
+
+/// Set the active cache-subject key for eval self-time attribution (`eval_expr` tap).
+pub fn eval_subject_set(subject_key: String) {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = Some(subject_key));
+}
+
+/// Clear the active cache-subject key.
+pub fn eval_subject_clear() {
+    ACTIVE_SUBJECT.with(|s| *s.borrow_mut() = None);
+}
+
+/// Zero subject self-time counters and the child-time accumulator.
+pub fn eval_subject_timing_reset() {
+    SUBJECT_SELF_NANOS.with(|m| m.borrow_mut().clear());
+    CHILD_NANOS.set(0);
+}
+
+/// Build a PerformanceReceipt from witness boundary timing + eval tap self-time.
+pub fn performance_receipt_from_witness(
+    subject_key: String,
+    work_shape: &str,
+    wall_nanos: u128,
+) -> PerformanceReceipt {
+    let eval_self_nanos = SUBJECT_SELF_NANOS
+        .with(|m| m.borrow().get(&subject_key).copied())
+        .unwrap_or(0);
+    PerformanceReceipt {
+        subject_key,
+        work_shape: work_shape.to_string(),
+        wall_nanos,
+        eval_self_nanos,
+        sample_count: 1,
+    }
+}
+
 /// A snapshot of the per-instruction eval profile (per-variant count + self-ns).
 #[derive(Clone)]
 pub struct EvalProfile {
@@ -5341,10 +5649,11 @@ pub fn eval_profile_snapshot() -> EvalProfile {
 }
 
 /// Zero the current thread's per-instruction profile (counts + self-ns + the
-/// child-time accumulator).
+/// child-time accumulator) and subject self-time map.
 pub fn eval_profile_reset() {
     EVAL_COUNTS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
     EVAL_SELF_NANOS.with(|c| *c.borrow_mut() = [0; EXPR_VARIANT_COUNT]);
+    eval_subject_timing_reset();
     CHILD_NANOS.set(0);
 }
 

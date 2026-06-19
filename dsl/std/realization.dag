@@ -34,7 +34,9 @@ import std.realization_schedule {
   ScheduleWitnessEntry,
   Schedule,
   CostAccount,
+  cost_account_measured,
   cost_account_predicted_zero,
+  cost_account_time_nanos,
   schedule_lens_verdict_for_ci_floor,
   schedule_generates_same_batch_count,
   schedule_generates_identical_schedule,
@@ -42,6 +44,14 @@ import std.realization_schedule {
   ScheduleLensViolation,
   runnable_step_label,
   schedule_batch_contains_label,
+}
+import std.realization_measurement {
+  RealizationMeasureEffect,
+  cost_account_measured_from_time,
+  cost_account_measured_from_schedule_critical_path,
+  schedule_critical_path_time,
+  schedule_batch_critical_path,
+  nanosecond_duration_list_total,
 }
 
 // --- Independence classifier (fail-closed) ------------------------------------
