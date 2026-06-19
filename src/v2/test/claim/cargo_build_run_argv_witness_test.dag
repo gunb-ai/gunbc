@@ -1,15 +1,18 @@
-// dsl/test/claim/cargo_build_run_argv_witness_test.dag
+// v2/test/claim/cargo_build_run_argv_witness_test.dag
 //
 // DESIGN §5 green-by-execution consumer for cargo.Build.Run: the escaped-literal
 // defect (`"\{package\}"` / `"\{bin\}"`) produced static "{package}" tokens and left
-// the op unexercised. This witness (1) materializes argv with concrete params and
-// asserts the exact token list, and (2) calls cargo.Build.Run wet — both go RED if
-// substitution does not fire.
+// the op unexercised. Lives under src/v2 (not dsl/) because shell_materialize_argv_for_operation
+// is a runtime projection builtin — dsl/ compile-clean must not see it.
+//
+// This witness (1) materializes argv with concrete params and asserts the exact token list,
+// and (2) calls cargo.Build.Run wet — both go RED if substitution does not fire.
 
-module test.claim.cargo_build_run_argv_witness
+module v2.test.claim.cargo_build_run_argv_witness
 
 import std.logic { Bool }
-import std.types { List }
+import std.types { List, Int }
+import v2.std.algebra { length }
 import extdeps.cargo_build
 
 data cargo_build_run_path: String = "dsl/extdeps/rust/cargo_build.dag"
