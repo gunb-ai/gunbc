@@ -125,7 +125,7 @@ fn translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds() -> Bo
 }
 
 
-fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
+fn witness_translate_diagnostic_reason_symbol_inverse() -> Bool {
   translate_diagnostic_reason_symbol_round_trip_holds()
     && translate_diagnostic_reason_roster_matches_variants()
     && translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds()
@@ -239,7 +239,7 @@ fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
 
 
 test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
-  translate_diagnostic_reason_symbol_inverse_holds()
+  witness_translate_diagnostic_reason_symbol_inverse()
 }
 
 
