@@ -5,11 +5,16 @@
 //! skips untouched explicit-roster witnesses when the branch diff does not touch them.
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use v1_compiler::cli_run::{
     run_discovery_corpus_with_options, DiscoveryCorpusOptions, DiscoverySummary,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
+
+/// Serializes tests that mutate the process-global `GUNBC_CI_DIFF_*` env so `cargo test`'s
+/// default multi-threaded harness cannot let one test's injected diff leak into another.
+static DIFF_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn workspace_root() -> PathBuf {
     crate::helpers::workspace_root()
@@ -125,6 +130,7 @@ fn discovery_corpus_skip_disabled_runs_without_panic() {
 
 #[test]
 fn discovery_corpus_skip_enabled_empty_diff_runs_corpus() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "HEAD");
     let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
     let summary = run_explicit_roster(true).expect("empty diff path must not panic");
@@ -137,6 +143,7 @@ fn discovery_corpus_skip_enabled_empty_diff_runs_corpus() {
 
 #[test]
 fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
     let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
     let _merge = EnvVarGuard::set("GUNBC_CI_DIFF_MERGE_BASE", "0");
@@ -148,34 +155,67 @@ fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
     assert!(summary.passed >= 1);
 }
 
-#[test]
-fn discovery_corpus_skip_enabled_skips_untouched_explicit_witness() {
-    chdir_workspace();
-    let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "origin/main");
-    let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
-    let ws = workspace_root();
-    let entry = ws
-        .join("src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag")
-        .to_string_lossy()
-        .into_owned();
-    let summary = run_discovery_corpus_with_options(
+fn fixture_line(text: &str, needle: &str) -> i64 {
+    text.lines()
+        .position(|l| l.contains(needle))
+        .map(|i| (i + 1) as i64)
+        .unwrap_or_else(|| panic!("discriminator fixture missing line containing `{needle}`"))
+}
+
+/// Run the node-precise floor skip over a single deterministic injected unified diff
+/// (`git diff -U0` shape) touching exactly `line` of `rel_path`.
+fn run_injected_diff(rel_path: &str, line: i64, entry: &str) -> DiscoverySummary {
+    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");
+    let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
         &[],
-        &[(entry, "floor_disc_witness_a_only_holds".to_string())],
+        &[(entry.to_string(), "floor_disc_witness_a_only_holds".to_string())],
         ExecutionMode::Wet,
         discovery_options(true),
     )
-    .expect("node-precise skip path must not error");
-    assert_eq!(summary.total, 1);
-    assert!(
-        summary.skipped == 1 || summary.passed == 1,
-        "branch diff must either skip or run the discriminator witness (got passed={}, skipped={})",
-        summary.passed,
-        summary.skipped
-    );
-    assert!(
-        summary.failures.is_empty(),
-        "unexpected failures: {:?}",
-        summary.failures
+    .expect("node-precise skip path must not error (FreeMonoid decode root fix)")
+}
+
+/// §5 same-file node-precision discriminator — the acceptance bar. ONE fixture file holds
+/// two independent nodes A and B; witness `floor_disc_witness_a_only_holds`'s claim
+/// references node A only. A unified diff touching node A's declaration RUNS the witness;
+/// a diff touching ONLY node B's declaration SKIPS it. Both edits are in the SAME file, so
+/// a file-level skip can never produce the B-only skip, and a file-level run-all can never
+/// produce it either — only true node precision discriminates A from B.
+///
+/// This also proves the FreeMonoid decode root fix by execution: the skip decision walks
+/// `eval_data_item_value` / `eval_data_initializer_values` over the fixture's `List<Node>`
+/// initializers, which decode only under `with_active_context`; without the fix the path
+/// errors and the `.expect` in `run_injected_diff` panics (and a re-masking regression that
+/// fail-closed to run-all would flip the B-only `skipped == 1` assertion red).
+#[test]
+fn node_precise_same_file_a_runs_b_skips_by_execution() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    chdir_workspace();
+    let ws = workspace_root();
+    let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let abs = ws.join(rel);
+    let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
+    // Interior, unique lines of each node's declaration span.
+    let a_line = fixture_line(&text, "^floor_disc_node_a_symbol");
+    let b_line = fixture_line(&text, "^floor_disc_node_b_symbol");
+    let entry = abs.to_string_lossy().into_owned();
+
+    // A-edit → witness RUNS (node A is in the claim-on-A closure).
+    let a = run_injected_diff(rel, a_line, &entry);
+    assert_eq!(a.total, 1);
+    assert!(a.failures.is_empty(), "A-edit produced failures: {:?}", a.failures);
+    assert_eq!(a.skipped, 0, "A-edit must NOT skip the claim-on-A witness");
+    assert_eq!(a.passed, 1, "A-edit must RUN the claim-on-A witness");
+
+    // B-only edit → witness SKIPS (node B is NOT in the claim-on-A closure).
+    let b = run_injected_diff(rel, b_line, &entry);
+    assert_eq!(b.total, 1);
+    assert!(b.failures.is_empty(), "B-edit produced failures: {:?}", b.failures);
+    assert_eq!(b.passed, 0, "B-only edit must NOT run the claim-on-A witness");
+    assert_eq!(
+        b.skipped, 1,
+        "B-only edit must SKIP the claim-on-A witness (node precision; a file-level impl runs it)"
     );
 }

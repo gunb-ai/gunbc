@@ -2318,6 +2318,12 @@ struct FileLineRange {
 }
 
 fn floor_git_diff_range() -> Result<String, String> {
+    // Injection seam: the unified diff text is the real input to the affected-set; git is
+    // one transport for obtaining it. A caller (host test / CI step) may supply the text
+    // directly via GUNBC_CI_DIFF_UNIFIED; production leaves it unset and shells to git.
+    if let Ok(injected) = std::env::var("GUNBC_CI_DIFF_UNIFIED") {
+        return Ok(injected);
+    }
     let base = std::env::var("GUNBC_CI_DIFF_BASE")
         .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
     let head = std::env::var("GUNBC_CI_DIFF_HEAD")
@@ -2421,6 +2427,45 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
     }
 }
 
+/// Is `val` a substrate `Node` record value?
+fn value_is_node(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
+    matches!(
+        val,
+        v1_interpreter::Value::Record { type_name, .. } if ctx.resolve(*type_name).as_str() == "Node"
+    )
+}
+
+/// Collect every `Node`-valued sub-tree reachable from `val` (the evaluated value of a
+/// changed data item). A changed data item conservatively contributes every Node it
+/// denotes to the rerun frontier — seeding only from changed *TestClaims* is fail-open
+/// (editing a plain `Node` datum or a std fn a witness depends on would seed nothing and
+/// the witness would skip silently). The witness-touch check (`==` / subtree-by-identity)
+/// then decides which witnesses actually depend on a changed node. Over-collect within a
+/// changed item, never under-collect (fail-closed).
+fn collect_node_values(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+    out: &mut Vec<v1_interpreter::Value>,
+) {
+    if value_is_node(val, ctx) {
+        out.push(val.clone());
+    }
+    match val {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => {
+            for v in fields.values() {
+                collect_node_values(v, ctx, out);
+            }
+        }
+        v1_interpreter::Value::List(items) => {
+            for v in items.iter() {
+                collect_node_values(v, ctx, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn call_test_claim_fn_bool(
     ctx: &v1_interpreter::InterpContext,
     fn_name: &str,
@@ -2443,64 +2488,6 @@ fn call_test_claim_fn_bool(
             ctx.format_value(&other)
         )),
         Err(e) => Err(format!("{}: {}", fn_name, e)),
-    }
-}
-
-fn call_test_claim_fn_nodes(
-    ctx: &v1_interpreter::InterpContext,
-    claim: &v1_interpreter::Value,
-) -> Result<Option<Vec<v1_interpreter::Value>>, String> {
-    const FN: &str = "test_claim_evaluation_nodes";
-    if !ctx.item_registry.contains_key(FN) {
-        return Ok(None);
-    }
-    let args = [(Some("c".to_string()), claim.clone())];
-    match v1_interpreter::run_in_context_with_args(ctx, FN, &args, false) {
-        Ok(nodes) => {
-            let elems = free_monoid_values(&nodes, ctx)?;
-            Ok(Some(elems))
-        }
-        Err(e) => Err(format!("{FN}: {e}")),
-    }
-}
-
-fn free_monoid_values(
-    value: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Result<Vec<v1_interpreter::Value>, String> {
-    let mut out = Vec::new();
-    let mut cur = value;
-    loop {
-        match cur {
-            v1_interpreter::Value::Variant {
-                variant_name,
-                fields,
-                ..
-            } if ctx.sym_eq(*variant_name, "Cons") => {
-                let head = ctx
-                    .field(fields, "head")
-                    .ok_or_else(|| "Cons without `head` field".to_string())?;
-                out.push(head.clone());
-                cur = ctx
-                    .field(fields, "tail")
-                    .ok_or_else(|| "Cons without `tail` field".to_string())?;
-            }
-            v1_interpreter::Value::Variant { variant_name, .. }
-                if ctx.sym_eq(*variant_name, "Empty") =>
-            {
-                return Ok(out);
-            }
-            v1_interpreter::Value::List(items) => {
-                out.extend(items.iter().cloned());
-                return Ok(out);
-            }
-            other => {
-                return Err(format!(
-                    "expected a List (Cons/Empty), got {}",
-                    other.type_label_public()
-                ))
-            }
-        }
     }
 }
 
@@ -2559,24 +2546,21 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             else {
                 continue;
             };
-            if !value_is_test_claim(&val, &ctx) {
-                continue;
+            // A claim whose own declaration span was edited re-runs via the fast-path
+            // (entry_touches_frontier_seeds checks overlapping_test_claims by name).
+            if value_is_test_claim(&val, &ctx) {
+                overlapping_test_claims.insert((file_norm.clone(), name.clone()));
             }
-            overlapping_test_claims.insert((file_norm.clone(), name.clone()));
-            match call_test_claim_fn_nodes(&ctx, &val) {
-                Ok(Some(nodes)) => {
-                    for node in nodes {
-                        let key = ctx.format_value(&node);
-                        if seen.insert(key) {
-                            frontier.push(node);
-                        }
-                    }
-                }
-                Ok(None) => {}
-                Err(msg) => {
-                    return Err(format!(
-                        "frontier node extraction failed for `{name}` in {file_path}: {msg}"
-                    ));
+            // Node-level rerun frontier: seed EVERY Node the changed data item denotes,
+            // not just changed-TestClaim eval-nodes. This subsumes the old extraction (a
+            // TestClaim's value tree contains its lhs/rhs Nodes) and closes the fail-open
+            // hole for changes to plain `Node` data a witness depends on.
+            let mut item_nodes = Vec::new();
+            collect_node_values(&val, &ctx, &mut item_nodes);
+            for node in item_nodes {
+                let key = ctx.format_value(&node);
+                if seen.insert(key) {
+                    frontier.push(node);
                 }
             }
         }
