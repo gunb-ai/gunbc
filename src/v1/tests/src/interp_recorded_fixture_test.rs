@@ -532,8 +532,7 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
 //            without the corpus read, Forbidden would silently return its inline mock.
 // Hermetic with NO --fixture-store, so realization falls to the inline-mock branch the gate must
 // override. The corpus rows inhabit the real std.hermetic_replay.PublishedMockCase, resolved from
-// the entry's import closure exactly as a real Filesystem consumer's corpus now is (co-located via
-// the `import extdeps.filesystem.mock_corpus` in filesystem_io.dag).
+// the whole dsl/ tree (M4.1 universal governance — independent of this entry's import closure).
 #[test]
 fn m4_governed_service_published_realizes_unpublished_fails_closed() {
     let ws = workspace_root();
