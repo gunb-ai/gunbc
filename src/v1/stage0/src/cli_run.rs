@@ -2354,7 +2354,6 @@ pub fn run_discovery_corpus(
     if width == 1 {
         return run_discovery_rows(&rows, &index, execution_mode);
     }
-
     // Peripheral width realization: shard whole entry-groups across workers; topology
     // (which witnesses run) is unchanged — only host fan-out differs.
     let shards = shard_row_indices_by_entry(&rows, width);
@@ -2363,14 +2362,16 @@ pub fn run_discovery_corpus(
         width,
         shards.iter().filter(|s| !s.is_empty()).count()
     );
+    let source_roots_owned = source_roots.to_vec();
     let mut handles = Vec::new();
     for shard in shards {
         if shard.is_empty() {
             continue;
         }
         let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
-        let index = index.clone();
+        let roots = source_roots_owned.clone();
         handles.push(std::thread::spawn(move || {
+            let index = build_multi_entry_index(&roots);
             run_discovery_rows(&shard_rows, &index, execution_mode)
         }));
     }
