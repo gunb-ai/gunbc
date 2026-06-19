@@ -31,6 +31,12 @@ import std.types { NonEmptyStr }
 data pep440_spec_url: NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
 data pep440_spec_label: NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
 
+// PEP 440 version-specifier wire text — predicate over identities, not a version.
+type Pep440Constraint = VersionConstraint
+
+// Minimum CPython for workflows invoking python3 on PATH (typechecker rows).
+data min_python_interpreter: Pep440Constraint = ">= 3.11"
+
 // -- Public version segments ---------------------------------------
 //
 // Coproduct dissolution: `Pep440PreReleasePhase` — alpha/beta/rc are mutually

@@ -25,7 +25,8 @@ import extdeps.version.pep440 {
   pep440_version_specifier_label,
   pep440_version_label,
   pep440_spec_url,
-  pep440_spec_label
+  pep440_spec_label,
+  min_python_interpreter,
 }
 
 fn release_1() -> Pep440ReleaseSegments {
@@ -280,6 +281,10 @@ fn w_dev_on_pre_before_same_pre() -> Bool {
   ) == Less
 }
 
+fn w_min_python_interpreter_grounded() -> Bool {
+  min_python_interpreter == ">= 3.11"
+}
+
 test fn python_pep440_version_witnesses() -> Bool {
   w_final_release_label()
     && w_alpha_pre_release_label()
@@ -297,4 +302,5 @@ test fn python_pep440_version_witnesses() -> Bool {
     && w_a2_dev1_greater_than_a1()
     && w_bare_dev_before_alpha()
     && w_dev_on_pre_before_same_pre()
+    && w_min_python_interpreter_grounded()
 }
