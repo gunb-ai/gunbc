@@ -1,0 +1,14 @@
+// FIXTURE — planted module with a string interpolation of literals-only in script: position
+// at a shell.Exec.Run call. Read as SHAPE-ONLY by transport_script_literal_violation_count_for_path
+// (parse-tree shape classification, no content scan, never executed). The by-execution oracle
+// that the projection flags a StringInterpLiteralsOnly violation: the interpolated variable
+// is let-bound to a string literal, so all parts are literal-shaped. DO NOT import this module.
+module v2.test.fixture.transport_script_scan.string_interp_literals_only_plant
+
+import extdeps.shell
+
+fn run_string_interp_literal_violation() -> Bool {
+  let cmd = "echo hello"
+  let result = shell.Exec.Run(script: "{cmd}")
+  result.success
+}

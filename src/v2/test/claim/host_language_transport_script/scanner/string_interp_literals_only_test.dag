@@ -1,0 +1,17 @@
+// Scope: scanner-execution receipt — the live transport-script projection must flag a planted
+//        string interpolation whose parts are all literal-shaped (StringInterpLiteralsOnly shape).
+//        The discriminating RED input that goes red when the detection breaks. Fixture committed at
+//        src/v2/test/fixture/transport_script_scan/string_interp_literals_only/plant.dag.
+
+module v2.test.host_language_transport_script.scanner.string_interp_literals_only
+
+import v2.lens.host_language_transport_script {
+  transport_script_live_literal_violation_count_for_path
+}
+import v2.std.logic { Bool }
+
+test fn scanner_string_interp_literals_only_red_detects_holds() -> Bool {
+  transport_script_live_literal_violation_count_for_path(
+    path: "src/v2/test/fixture/transport_script_scan/string_interp_literals_only/plant.dag"
+  ) == 1
+}
