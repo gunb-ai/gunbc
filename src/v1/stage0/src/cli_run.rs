@@ -1802,6 +1802,9 @@ pub fn verify_bool_witness_transport_projection_complete(
 }
 
 fn dag_string_escape(s: &str) -> String {
+    // Brace escapes pair with v1_compiler_tokenize::process_escapes (`\{`/`\}` → literal
+    // braces). Required when embedding raw `.dag` source in manifest string literals; other
+    // call sites (witness paths, module names) are brace-free in practice.
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('{', "\\{")
@@ -2371,6 +2374,8 @@ fn parse_dotted_module_path(path: &str) -> Option<Vec<String>> {
 }
 
 /// Parse `module …` and `import …` lines from an entry `.dag` source for manifest admission.
+/// Bootstrap host transport only — same lightweight line-scan shape as `extract_module_path`;
+/// dissolves when v2 owns ingest-side admission projection.
 pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntryAdmission, String> {
     let mut subject: Option<Vec<String>> = None;
     let mut imports: Vec<Vec<String>> = Vec::new();

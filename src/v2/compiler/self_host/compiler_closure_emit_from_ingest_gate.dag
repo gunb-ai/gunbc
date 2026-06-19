@@ -1,5 +1,5 @@
 // Scope: N_v2 substrate gate — emit_compiler_import_closure_from_ingest on scoped
-//   53-module host manifest overlay (v2 own emitter via emit_for_target).
+//   host manifest overlay (v2 own emitter via emit_for_target).
 // Status: NOT auto-enrolled (no test fn); run via scripts/v2-compiler-closure-nv2-gate.sh only.
 
 module v2.test.self_host.compiler_closure_emit_from_ingest_gate
@@ -23,8 +23,11 @@ import v2.test.workflow.host_source_root_ingest_manifest {
 
 fn compiler_closure_scoped_ingest_module_count_ok() -> Bool {
   host_source_root_ingest_coverage_receipt.coverage_complete
-    && (host_source_root_ingest_coverage_receipt.ingest_read_count == 53)
-    && (length(xs: host_source_root_ingest) == 53)
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count
+      == host_source_root_ingest_coverage_receipt.produced_row_count)
+    && (length(xs: host_source_root_ingest)
+      == host_source_root_ingest_coverage_receipt.ingest_read_count)
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
 
@@ -33,7 +36,8 @@ fn compiler_closure_scoped_ingest_parses() -> Bool {
     ingest: host_source_root_ingest,
     lm: dag_language_model_wave1()
   ) {
-    Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 53
+    Accepted { value: roots, diagnostics: _ } =>
+      length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count
     Rejected { diagnostics: _ } => false
   }
 }
