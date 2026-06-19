@@ -122,6 +122,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             unit_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "utf8_decode_bytes".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
