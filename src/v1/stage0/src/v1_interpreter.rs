@@ -87,6 +87,7 @@ use crate::v1_std_core::{
     FieldAccessStyle,
     FieldSummary,
     FieldValueShape,
+    InferredNode,
     MatchPattern,
     MethodSemantics,
     NewlineIndex,
@@ -2895,10 +2896,110 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 // Cast
 // ---------------------------------------------------------------------------
 
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            if authored_name_at(ctx.si(), item.clone()) == type_name {
+                return Some(item.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Next alias step from a type-decl `inferred` RHS (`String`, `Secret`, or the
+/// base of `Base where …` before brand preservation).
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+    let direct = authored_name_at(ctx.si(), rhs.clone());
+    if !direct.is_empty() {
+        return Some(direct);
+    }
+    if rhs.connective == Connective::Conj {
+        for child in rhs.children.iter() {
+            let base = authored_name_at(ctx.si(), child.clone());
+            if !base.is_empty() {
+                return Some(base);
+            }
+        }
+    }
+    match rhs.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => {
+            let inner = authored_name_at(ctx.si(), node.clone());
+            if inner.is_empty() {
+                None
+            } else {
+                Some(inner)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+    let rhs = match item.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    alias_rhs_next_name(ctx, rhs)
+}
+
+/// Walk alias chains via type-decl items (pre-brand `inferred` RHS), not the
+/// brand-preserved `TypeEnv` bindings used at use sites.
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let mut current = authored_name_at(ctx.si(), target);
+    let mut seen = BTreeSet::new();
+
+    for _ in 0..32 {
+        if current.is_empty() {
+            return String::new();
+        }
+        if !seen.insert(current.clone()) {
+            return current;
+        }
+        if current == "String" {
+            return "String".to_string();
+        }
+
+        let Some(item) = lookup_type_item_across_modules(ctx, &current) else {
+            return current;
+        };
+
+        let Some(rhs_name) = type_item_alias_rhs_name(ctx, &item) else {
+            return current;
+        };
+
+        if rhs_name == current {
+            return current;
+        }
+        current = rhs_name;
+    }
+
+    current
+}
+
+fn str_identity_cast_if_string_family(
+    val: &Value,
+    ctx: &InterpContext,
+    target: Rc<Node>,
+) -> Option<Value> {
+    let Value::Str(s) = val else {
+        return None;
+    };
+    if cast_target_underlying_kernel(ctx, target) == "String" {
+        Some(Value::Str(s.clone()))
+    } else {
+        None
+    }
+}
+
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node);
+    let target_name = authored_name_at(ctx.si(), target_node.clone());
+
+    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+        return Ok(v);
+    }
 
     match (val, target_name.as_str()) {
         (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
