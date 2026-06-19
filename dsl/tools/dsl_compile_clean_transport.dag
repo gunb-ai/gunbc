@@ -58,7 +58,7 @@ data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn 
 //        --output-dir "$TMP"/out --target rust >/dev/null 2>&1
 //     then rm -rf "$TMP"; exit 1; fi
 //   rm -rf "$TMP"; exit 0
-fn perturb_program() -> ShellProgram {
+fn compile_clean_perturb_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
   let tmp = var_ref(name: "TMP")
@@ -94,6 +94,6 @@ fn perturb_program() -> ShellProgram {
 }
 
 fn run_perturb_optional_skew_red_receipt() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: perturb_program()))
+  let result = shell.Exec.Run(script: serialize_bash(p: compile_clean_perturb_program()))
   result.success
 }
