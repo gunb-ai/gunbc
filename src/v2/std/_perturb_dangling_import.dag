@@ -1,0 +1,4 @@
+// TEMP perturbation — planted dangling import to prove the resolved-imports gate flips RED
+// through the literal ci_floor_plan command. Removed immediately after the proof.
+module v2.std._perturb_dangling_import
+import totally.broken.unresolved.module_xyz
