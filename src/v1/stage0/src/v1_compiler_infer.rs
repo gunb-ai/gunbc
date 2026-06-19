@@ -10970,24 +10970,10 @@ pub fn infer_items(
     items: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
-    let __probe = std::env::var("NV2_STAGE_TIMING").is_ok();
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
-            let __it0 = std::time::Instant::now();
-            let __r = infer_item(item.clone(), scope.clone());
-            if __probe {
-                let __e = __it0.elapsed();
-                if __e.as_millis() > 200 {
-                    eprintln!(
-                        "ITEM {}::{} infer_item={:?}",
-                        scope.module_name.clone(),
-                        authored_name_at(scope.type_env.clone().source_indices.clone(), item.clone()),
-                        __e
-                    );
-                }
-            }
-            __result.push(__r);
+            __result.push(infer_item(item.clone(), scope.clone()));
         }
         __result
     })
@@ -13014,18 +13000,12 @@ pub fn typecheck_module(
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckModuleResult> {
     {
-        let __probe = std::env::var("NV2_STAGE_TIMING").is_ok();
-        let __mname = authored_name_at(source_indices.clone(), resolved.module.clone());
-        let __ph0 = std::time::Instant::now();
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
             source_indices.clone(),
             intern_table,
         );
-        if __probe && __ph0.elapsed().as_millis() > 200 {
-            eprintln!("PHASE {} build_type_env={:?}", __mname, __ph0.elapsed());
-        }
         let env = env_result.env.clone();
         let env_diags = env_result.diagnostics.clone();
         let env_errors = Rc::new({
@@ -13054,28 +13034,17 @@ pub fn typecheck_module(
         }
         let resolved_module_name =
             authored_name_at(source_indices.clone(), resolved.module.clone());
-        let __ph1 = std::time::Instant::now();
         let contributions = Rc::new({
             let mut __result = Vec::new();
             for item in module_items(resolved.module.clone()).iter().cloned() {
-                let __ai0 = std::time::Instant::now();
-                let __c = analyze_item(item.clone(), env.clone(), resolved_module_name.clone());
-                if __probe && __ai0.elapsed().as_millis() > 200 {
-                    eprintln!(
-                        "PHASE-ANALYZE {}::{} analyze_item={:?}",
-                        __mname,
-                        authored_name_at(source_indices.clone(), item.clone()),
-                        __ai0.elapsed()
-                    );
-                }
-                __result.push(__c);
+                __result.push(analyze_item(
+                    item.clone(),
+                    env.clone(),
+                    resolved_module_name.clone(),
+                ));
             }
             __result
         });
-        if __probe && __ph1.elapsed().as_millis() > 200 {
-            eprintln!("PHASE {} analyze_item_loop={:?}", __mname, __ph1.elapsed());
-        }
-        let __ph2 = std::time::Instant::now();
         let ctx = build_module_context(
             contributions,
             parent_index.clone(),
@@ -13083,9 +13052,6 @@ pub fn typecheck_module(
             env.clone(),
             resolved_module_name.clone(),
         );
-        if __probe && __ph2.elapsed().as_millis() > 200 {
-            eprintln!("PHASE {} build_module_context={:?}", __mname, __ph2.elapsed());
-        }
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
@@ -13117,11 +13083,7 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
-        let __ph3 = std::time::Instant::now();
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
-        if __probe && __ph3.elapsed().as_millis() > 200 {
-            eprintln!("PHASE {} infer_items={:?}", __mname, __ph3.elapsed());
-        }
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.clone().iter().cloned() {
@@ -13136,20 +13098,12 @@ pub fn typecheck_module(
             }
             __result
         });
-        let __ph4 = std::time::Instant::now();
         let updated_func_env = populate_output_provenance(
             typed_items.clone(),
             ctx.func_env.clone(),
             env.clone(),
             data_locals.clone(),
         );
-        if __probe && __ph4.elapsed().as_millis() > 200 {
-            eprintln!(
-                "PHASE {} populate_output_provenance={:?}",
-                __mname,
-                __ph4.elapsed()
-            );
-        }
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
             for item in typed_items.clone().iter().cloned() {
@@ -13756,32 +13710,17 @@ pub fn typecheck_modules(
                 });
             }
             Some(resolved) => {
-                let __probe = std::env::var("NV2_STAGE_TIMING").is_ok();
-                let __pt0 = std::time::Instant::now();
                 let parent_result = collect_parent_envs(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
                 );
-                let __pe = __pt0.elapsed();
-                let __tt0 = std::time::Instant::now();
                 let tc_result = typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
-                if __probe {
-                    let __te = __tt0.elapsed();
-                    if __pe.as_millis() > 200 || __te.as_millis() > 200 {
-                        eprintln!(
-                            "TCMOD {} parent_envs={:?} typecheck_module={:?}",
-                            authored_name_at(source_indices.clone(), resolved.module.clone()),
-                            __pe,
-                            __te
-                        );
-                    }
-                }
                 let typed = tc_result.typed.clone();
                 let tc_diags = tc_result.diagnostics.clone();
                 {
