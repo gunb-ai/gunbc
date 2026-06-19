@@ -1,0 +1,306 @@
+// Scope: Route C Phase B witnesses — cross-tree resolution wiring in name_resolve.
+//
+// GREEN: dual-root pool, same-tree imports resolve (dsl→dsl, v2→v2).
+// GREEN: cross-tree import resolves when TreeFundamentalityOrder is MoreFundamental.
+// RED:   cross-tree import denied fail-closed when TreeFundamentalityOrder is Unknown.
+//
+// Enrolled in CI via _test.dag naming convention (floor discovery auto-enroll).
+
+module v2.test.claim.name_resolve_cross_tree_resolution
+
+import v2.compiler.name_resolve {
+  Admission,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  resolve_with_admission,
+  resolve_with_admission_policy
+}
+import v2.compiler.program_assembly { assemble_program_from_module_roots }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model_surface_empty_prelude,
+  dag_named_edge
+}
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import v2.std.cross_tree.import_model { FundamentalityUnknown, MoreFundamental }
+import v2.std.cross_tree.resolution { source_root_set_from_module_roots }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+
+
+fn ct_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn ct_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: qn_spine
+      ),
+      Edge {
+        label: Named { name: export_sym },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: export_atom } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ct_subject_with_import_use(
+  qn_spine: Node,
+  import_use_sym: Symbol,
+  imported_decl: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: qn_spine
+      ),
+      Edge {
+        label: Named { name: import_use_sym },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: imported_decl } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ct_qn_one(seg: Symbol) -> QualifiedName {
+  QnCons { head: seg, tail: QnEmpty }
+}
+
+fn ct_qn_v2(seg_b: Symbol) -> QualifiedName {
+  QnCons {
+    head: ^v2,
+    tail: QnCons { head: seg_b, tail: QnEmpty }
+  }
+}
+
+
+// ── dsl same-tree (program_assembly_multi_file posture) ───────────────────────
+
+fn ct_dsl_same_tree_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: ct_subject_with_import_use(
+      qn_spine: ct_qn_node(seg: ^ct_dsl_subject_seg),
+      import_use_sym: ^ct_dsl_import_use_sym,
+      imported_decl: ^ct_dsl_imported_decl
+    ),
+    tail: Cons {
+      head: ct_module_root(
+        qn_spine: ct_qn_node(seg: ^ct_dsl_peer_seg),
+        export_sym: ^ct_dsl_imported_decl,
+        export_atom: ^dag_c3_surface_sugar_service
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn ct_dsl_same_tree_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: ct_qn_one(seg: ^ct_dsl_subject_seg) },
+    imports: Cons {
+      head: Import {
+        target: ct_qn_one(seg: ^ct_dsl_peer_seg),
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+
+// ── v2 same-tree ──────────────────────────────────────────────────────────────
+
+fn ct_v2_same_tree_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: ct_subject_with_import_use(
+      qn_spine: ct_qn_spine(
+        segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_subject_seg, tail: Empty } }
+      ),
+      import_use_sym: ^ct_v2_import_use_sym,
+      imported_decl: ^ct_v2_imported_decl
+    ),
+    tail: Cons {
+      head: ct_module_root(
+        qn_spine: ct_qn_spine(
+          segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_peer_seg, tail: Empty } }
+        ),
+        export_sym: ^ct_v2_imported_decl,
+        export_atom: ^dag_c3_surface_sugar_service
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn ct_v2_same_tree_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: ct_qn_v2(seg_b: ^ct_v2_subject_seg) },
+    imports: Cons {
+      head: Import {
+        target: ct_qn_v2(seg_b: ^ct_v2_peer_seg),
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+
+// ── cross-tree (v2 subject → dsl target) ─────────────────────────────────────
+
+fn ct_cross_tree_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: ct_subject_with_import_use(
+      qn_spine: ct_qn_spine(
+        segments: Cons { head: ^v2, tail: Cons { head: ^ct_cross_v2_subject_seg, tail: Empty } }
+      ),
+      import_use_sym: ^ct_cross_import_use_sym,
+      imported_decl: ^ct_cross_dsl_export_sym
+    ),
+    tail: Cons {
+      head: ct_module_root(
+        qn_spine: ct_qn_node(seg: ^ct_cross_dsl_target_seg),
+        export_sym: ^ct_cross_dsl_export_sym,
+        export_atom: ^dag_c3_surface_sugar_service
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn ct_cross_tree_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: ct_qn_v2(seg_b: ^ct_cross_v2_subject_seg)
+    },
+    imports: Cons {
+      head: Import {
+        target: ct_qn_one(seg: ^ct_cross_dsl_target_seg),
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+
+// ── GREEN witnesses ─────────────────────────────────────────────────────────
+
+fn witness_dsl_same_tree_import_resolves_holds() -> Bool {
+  match assemble_program_from_module_roots(
+    roots: ct_dsl_same_tree_roots(),
+    admission: ct_dsl_same_tree_admission(),
+    lm: dag_language_model_surface_empty_prelude()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_v2_same_tree_import_resolves_holds() -> Bool {
+  match assemble_program_from_module_roots(
+    roots: ct_v2_same_tree_roots(),
+    admission: ct_v2_same_tree_admission(),
+    lm: dag_language_model_surface_empty_prelude()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_cross_tree_more_fundamental_resolves_holds() -> Bool {
+  let roots = ct_cross_tree_roots()
+  let lm = dag_language_model_surface_empty_prelude()
+  match resolve_with_admission_policy(
+    lm: lm,
+    roots: roots,
+    admission: ct_cross_tree_admission(),
+    order: MoreFundamental,
+    active_roots: source_root_set_from_module_roots(roots: roots)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+// ── RED witnesses ─────────────────────────────────────────────────────────────
+
+fn witness_cross_tree_unknown_order_denied_holds() -> Bool {
+  let roots = ct_cross_tree_roots()
+  let lm = dag_language_model_surface_empty_prelude()
+  match resolve_with_admission(
+    lm: lm,
+    roots: roots,
+    admission: ct_cross_tree_admission()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+
+test fn name_resolve_cross_tree_resolution_witnesses() -> Bool {
+  witness_dsl_same_tree_import_resolves_holds()
+    && witness_v2_same_tree_import_resolves_holds()
+    && witness_cross_tree_more_fundamental_resolves_holds()
+    && witness_cross_tree_unknown_order_denied_holds()
+}
