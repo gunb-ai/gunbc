@@ -5055,6 +5055,30 @@ fn eval_builtin(
             }))
         }
 
+        "layer_import_facts" => {
+            let std_roots = expect_str_list(positional.first().copied(), "layer_import_facts")?;
+            let extdeps_roots = expect_str_list(positional.get(1).copied(), "layer_import_facts")?;
+            let facts =
+                crate::layering_imports_project::layer_import_facts(&std_roots, &extdeps_roots);
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let layer = Value::Variant {
+                    type_name: ctx.sym("LayerLabel"),
+                    variant_name: ctx.sym(f.layer),
+                    fields: Rc::new(HashMap::new()),
+                };
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("layer"), layer);
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                fields.insert(ctx.sym("import_module"), Value::Str(f.import_module));
+                items.push(Value::Record {
+                    type_name: ctx.sym("LayerImportFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
             crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
@@ -5683,6 +5707,39 @@ fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
         }),
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a string argument", context),
+        }),
+    }
+}
+
+fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<String>> {
+    match val {
+        Some(Value::List(items)) => {
+            let mut out: Vec<String> = Vec::new();
+            for item in items.iter() {
+                match item {
+                    Value::Str(s) => out.push(s.clone()),
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "{} expects a List<String>, got element {}",
+                                context,
+                                other.type_label()
+                            ),
+                        })
+                    }
+                }
+            }
+            Ok(out)
+        }
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<String> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a List<String> argument", context),
         }),
     }
 }
