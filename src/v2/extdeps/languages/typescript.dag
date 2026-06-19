@@ -1012,19 +1012,7 @@ fn ts_wave2a_task_formal_productions() -> List<FormalProduction> {
 }
 
 fn ts_wave2a_task_type_alias_relation_row_witness() -> Witness<Node> {
-  match formal_production_for_lhs_exact(
-    productions: ts_wave2a_task_formal_productions(),
-    lhs: ^ts_production_wave2a_type_alias_decl,
-    child: ts_wave2a_task_type_alias_emitted()
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: ts_wave2a_task_formal_productions(),
-        emitted: ts_wave2a_task_type_alias_emitted()
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  ts_eager_grammar_relation_row_witness(lhs: ^ts_production_wave2a_type_alias_decl)
 }
 
 fn ts_wave2a_task_serialize_source_children() -> List<Edge> {
@@ -1203,20 +1191,71 @@ fn ts_pr3_identity_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn ts_pr3_identity_relation_row_witness() -> Witness<Node> {
-  match formal_production_for_lhs_exact(
-    productions: ts_pr3_identity_formal_productions(),
-    lhs: ^ts_production_pr3_typed_fn_decl,
-    child: ts_pr3_identity_typed_fn_emitted()
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: ts_pr3_identity_formal_productions(),
-        emitted: ts_pr3_identity_typed_fn_emitted()
-      )
+// FINISH-LINE-B Arc 1 — emitted exemplar side-table keyed by production lhs (decision-2).
+// Arrow mvp1 fn-add Violates derive (PR-1.5b Conj-only) — keeps marked scaffold fallback below.
+fn ts_exemplar_emitted_for_lhs(lhs: Symbol) -> Witness<Node> {
+  if lhs == ^ts_production_wave2a_type_alias_decl {
+    Holds { value: ts_wave2a_task_type_alias_emitted() }
+  } else if lhs == ^ts_production_pr3_typed_fn_decl {
+    Holds { value: ts_pr3_identity_typed_fn_emitted() }
+  } else if lhs == ^ts_production_mvp1_fn_add {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_emitted_not_conj,
+        at: node_locus(node: ts_mvp1_emitted_add_fn_node()),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  } else {
+    Violates {
+      diagnostic: Diagnostic {
+        reason: ^grammar_relation_production_not_found,
+        at: node_locus(node: ts_inhabitant_atom(id: lhs)),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    }
+  }
+}
+
+fn ts_exemplared_formal_productions_for_lhs(lhs: Symbol) -> List<FormalProduction> {
+  if lhs == ^ts_production_wave2a_type_alias_decl {
+    ts_wave2a_task_formal_productions()
+  } else if lhs == ^ts_production_pr3_typed_fn_decl {
+    ts_pr3_identity_formal_productions()
+  } else {
+    Empty
+  }
+}
+
+fn ts_eager_grammar_relation_row_witness(lhs: Symbol) -> Witness<Node> {
+  match ts_exemplar_emitted_for_lhs(lhs: lhs) {
+    Holds { value: emitted } =>
+      let productions = ts_exemplared_formal_productions_for_lhs(lhs: lhs)
+      match formal_production_for_lhs_exact(
+        productions: productions,
+        lhs: lhs,
+        child: emitted
+      ) {
+        Holds { value: production } =>
+          derive_grammar_relation_row_node(
+            production: production,
+            productions: productions,
+            emitted: emitted
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
+}
+
+// 🟡 scaffold — FINISH-LINE-B Arc 1: mvp1 fn-add Arrow emitted; derive Violates. Sole row —
+// dedup-cutover forbids additive eager twin (ForwardRowMany on ingest). Arc 2 cutover.
+fn ts_mvp1_fn_add_scaffold_relation_row_node() -> Node {
+  ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+}
+
+fn ts_pr3_identity_relation_row_witness() -> Witness<Node> {
+  ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl)
 }
 
 fn ts_pr3_identity_serialize_source_children() -> List<Edge> {
@@ -1264,7 +1303,7 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
               children: [
                 ts_named_edge(
                   name: ^ts_relation_rule_mvp1_fn_add,
-                  target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+                  target: ts_mvp1_fn_add_scaffold_relation_row_node()
                 ),
                 ts_named_edge(
                   name: ^ts_relation_rule_type_alias_task,
@@ -1366,14 +1405,14 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
   )
 }
 
-// MVP-1 add-fn target model: hand-built grammar-relation row (no derive witness on this path).
+// MVP-1 add-fn target model: mvp1 scaffold row (Arrow — Arc 1 eager derive Violates).
 fn ts_mvp1_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       ts_named_edge(
         name: ^ts_relation_rule_mvp1_fn_add,
-        target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+        target: ts_mvp1_fn_add_scaffold_relation_row_node()
       ),
       ts_named_edge(
         name: ^ts_relation_rule_mvp1_fn_add_with_body,
@@ -1396,7 +1435,7 @@ fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
           children: [
             ts_named_edge(
               name: ^ts_relation_rule_mvp1_fn_add,
-              target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+              target: ts_mvp1_fn_add_scaffold_relation_row_node()
             ),
             ts_named_edge(
               name: ^ts_relation_rule_type_alias_task,
