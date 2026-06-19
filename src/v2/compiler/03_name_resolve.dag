@@ -442,14 +442,14 @@ fn source_root_for_qn_in_bindings(
     xs: bindings,
     empty: Absent,
     cons: fn(found, binding) {
-      optional_prefer_first_present(
-        left: found,
-        right: if qualified_name_eq(a: binding.module_qn, b: qn) {
-          optional_present(value: binding.source_root)
-        } else {
-          Absent
-        }
-      )
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match qualified_name_eq(a: binding.module_qn, b: qn) {
+            true => Present { value: binding.source_root }
+            false => Absent
+          }
+      }
     }
   ) {
     Present { value: tree } => outcome_accepted(value: tree)
