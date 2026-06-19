@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::rc::Rc;
 
 use crate::std_node::compiler_recursive_types;
@@ -2074,10 +2075,12 @@ pub struct EntryResolveReceipt {
 }
 
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
-/// many passed, and a rendered failure line per non-pass (empty on full green).
+/// many passed, how many were skipped (stateless node-frontier), and a rendered
+/// failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
+    pub skipped: usize,
     pub failures: Vec<String>,
     /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
@@ -2280,6 +2283,234 @@ pub fn discover_floor_corpus_rows(
     Ok(rows)
 }
 
+/// Phase 1.5a REDO — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
+pub struct DiscoveryCorpusOptions {
+    pub skip_unaffected_node_frontier: bool,
+}
+
+impl Default for DiscoveryCorpusOptions {
+    fn default() -> Self {
+        Self {
+            skip_unaffected_node_frontier: false,
+        }
+    }
+}
+
+/// Default diff policy — witness-gated to `floor_skip_git_diff_policy()` /
+/// `gunbc.ci_spec.diff_policy` (`floor_test_diff_policy_matches_ci_spec_holds`).
+const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
+const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
+
+enum FloorGitDiffOutcome {
+    ObservationFailClosed { reason: String },
+    PathsProduced(Vec<String>),
+}
+
+/// Git name-only diff for CI floor skip. Fail-closed: any git error → caller runs all.
+pub fn floor_git_diff_name_only_paths() -> Result<Vec<String>, String> {
+    let base = std::env::var("GUNBC_CI_DIFF_BASE")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
+    let head = std::env::var("GUNBC_CI_DIFF_HEAD")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_HEAD.to_string());
+    let merge_base = std::env::var("GUNBC_CI_DIFF_MERGE_BASE")
+        .map(|v| v != "0" && v != "false")
+        .unwrap_or(true);
+    let range = if merge_base {
+        format!("{base}...{head}")
+    } else {
+        format!("{base} {head}")
+    };
+    let output = Command::new("git")
+        .args(["diff", "--name-only", &range])
+        .output()
+        .map_err(|e| format!("git diff spawn failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff --name-only {} failed (status {})",
+            range,
+            output.status
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let paths: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    Ok(paths)
+}
+
+fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
+    match val {
+        v1_interpreter::Value::Variant { variant_name, .. } => matches!(
+            ctx.resolve(*variant_name).as_str(),
+            "EqualsClaim"
+                | "CompilesClaim"
+                | "DiagnosticClaim"
+                | "StructuralEqualsClaim"
+                | "RoundTripClaim"
+                | "BoolWitnessClaim"
+        ),
+        _ => false,
+    }
+}
+
+fn eval_module_data_values(
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    v1_interpreter::eval_data_initializer_values(ctx).map_err(|e| format!("{e}"))
+}
+
+fn call_test_claim_fn_bool(
+    ctx: &v1_interpreter::InterpContext,
+    fn_name: &str,
+    claim: &v1_interpreter::Value,
+    frontier: &v1_interpreter::Value,
+    claim_param: &str,
+) -> Result<Option<bool>, String> {
+    if !ctx.item_registry.contains_key(fn_name) {
+        return Ok(None);
+    }
+    let args = [
+        (Some(claim_param.to_string()), claim.clone()),
+        (Some("frontier".to_string()), frontier.clone()),
+    ];
+    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(Some(b)),
+        Ok(other) => Err(format!(
+            "{} returned `{}`, expected Bool",
+            fn_name,
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{}: {}", fn_name, e)),
+    }
+}
+
+fn call_test_claim_fn_nodes(
+    ctx: &v1_interpreter::InterpContext,
+    claim: &v1_interpreter::Value,
+) -> Result<Option<Vec<v1_interpreter::Value>>, String> {
+    const FN: &str = "test_claim_evaluation_nodes";
+    if !ctx.item_registry.contains_key(FN) {
+        return Ok(None);
+    }
+    let args = [(Some("c".to_string()), claim.clone())];
+    match v1_interpreter::run_in_context_with_args(ctx, FN, &args, false) {
+        Ok(nodes) => {
+            let elems = free_monoid_values(&nodes, ctx)?;
+            Ok(Some(elems))
+        }
+        Err(e) => Err(format!("{FN}: {e}")),
+    }
+}
+
+fn free_monoid_values(
+    value: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut out = Vec::new();
+    let mut cur = value;
+    loop {
+        match cur {
+            v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .ok_or_else(|| "Cons without `head` field".to_string())?;
+                out.push(head.clone());
+                cur = ctx
+                    .field(fields, "tail")
+                    .ok_or_else(|| "Cons without `tail` field".to_string())?;
+            }
+            v1_interpreter::Value::Variant { variant_name, .. }
+                if ctx.sym_eq(*variant_name, "Empty") =>
+            {
+                return Ok(out);
+            }
+            v1_interpreter::Value::List(items) => {
+                out.extend(items.iter().cloned());
+                return Ok(out);
+            }
+            other => {
+                return Err(format!(
+                    "expected a List (Cons/Empty), got {}",
+                    other.type_label_public()
+                ))
+            }
+        }
+    }
+}
+
+fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Value {
+    v1_interpreter::list_value(items)
+}
+
+fn collect_frontier_nodes_from_changed_paths(
+    index: &MultiEntryIndex,
+    changed_paths: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut frontier = Vec::new();
+    let mut seen = HashSet::new();
+    for path in changed_paths {
+        if !path.ends_with(".dag") {
+            continue;
+        }
+        let (graph, source_indices) = match resolve_entry_with_index(index, path) {
+            Ok(pair) => pair,
+            Err(_) => continue,
+        };
+        let ctx = make_eval_context(&graph, source_indices, execution_mode);
+        for val in eval_module_data_values(&ctx)? {
+            if !value_is_test_claim(&val, &ctx) {
+                continue;
+            }
+            if let Some(nodes) = call_test_claim_fn_nodes(&ctx, &val)? {
+                for node in nodes {
+                    let key = ctx.format_value(&node);
+                    if seen.insert(key) {
+                        frontier.push(node);
+                    }
+                }
+            }
+        }
+    }
+    Ok(frontier)
+}
+
+fn entry_claims_touch_frontier(
+    ctx: &v1_interpreter::InterpContext,
+    frontier: &v1_interpreter::Value,
+) -> Result<bool, String> {
+    let mut saw_claim = false;
+    for val in eval_module_data_values(ctx)? {
+        if !value_is_test_claim(&val, ctx) {
+            continue;
+        }
+        saw_claim = true;
+        if let Some(true) =
+            call_test_claim_fn_bool(ctx, "test_claim_evaluation_touches_rerun_frontier", &val, frontier, "c")?
+        {
+            return Ok(true);
+        }
+        if let Some(true) = call_test_claim_fn_bool(
+            ctx,
+            "floor_claim_touches_rerun_frontier",
+            &val,
+            frontier,
+            "claim",
+        )? {
+            return Ok(true);
+        }
+    }
+    // Fail-closed: no TestClaim surface in this entry → always run the witness.
+    Ok(!saw_claim)
+}
+
 /// Run the whole floor discovery corpus through one shared module index
 /// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
 /// are appended to the discovered roster with `(entry, function)` dedup — exactly
@@ -2293,6 +2524,22 @@ pub fn run_discovery_corpus(
     scan_dirs: &[String],
     explicit_entries: &[(String, String)],
     execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    run_discovery_corpus_with_options(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        DiscoveryCorpusOptions::default(),
+    )
+}
+
+pub fn run_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
     let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
@@ -2321,11 +2568,38 @@ pub fn run_discovery_corpus(
     }
     let index = build_multi_entry_index(source_roots);
 
+    let diff_outcome = if options.skip_unaffected_node_frontier {
+        match floor_git_diff_name_only_paths() {
+            Ok(paths) => FloorGitDiffOutcome::PathsProduced(paths),
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: git diff unavailable ({msg}) — fail-closed, running full corpus"
+                );
+                FloorGitDiffOutcome::ObservationFailClosed { reason: msg }
+            }
+        }
+    } else {
+        FloorGitDiffOutcome::PathsProduced(Vec::new())
+    };
+    let (skip_enabled, changed_paths) = match diff_outcome {
+        FloorGitDiffOutcome::ObservationFailClosed { .. } => (false, Vec::new()),
+        FloorGitDiffOutcome::PathsProduced(paths) => {
+            (options.skip_unaffected_node_frontier && !paths.is_empty(), paths)
+        }
+    };
+    let frontier_nodes = if skip_enabled {
+        collect_frontier_nodes_from_changed_paths(&index, &changed_paths, execution_mode)?
+    } else {
+        Vec::new()
+    };
+    let frontier_value = list_value_from_vec(frontier_nodes.clone());
+
     // Group by entry (rows are sorted by (entry, function)), resolve each entry
     // once, run its witnesses against the shared graph.
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
+        skipped: 0,
         failures: Vec::new(),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
@@ -2335,6 +2609,7 @@ pub fn run_discovery_corpus(
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
+    let mut current_entry_touches = true;
     for row in &rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
@@ -2351,8 +2626,22 @@ pub fn run_discovery_corpus(
                 resolve_nanos,
             });
             current_closure_subject = Some(closure_subject);
-            ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
+            let entry_ctx = make_eval_context(&graph, source_indices, execution_mode);
+            current_entry_touches = if skip_enabled {
+                entry_claims_touch_frontier(&entry_ctx, &frontier_value)?
+            } else {
+                true
+            };
+            ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
+        }
+        if skip_enabled && !current_entry_touches {
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [assumed-green node-frontier] {} ({})",
+                row.function, row.entry
+            );
+            continue;
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
