@@ -30,7 +30,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.model_core { EffectSignature, PrimitiveOperationRef }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence, Hash, content_hash }
 import v2.std.runtime {
   EffectHandler,
   EffectHandlerBinding,
@@ -42,8 +42,11 @@ import v2.std.runtime {
   EvaluationFrame,
   ReadResource,
   RuntimeValue,
+  RuntimeValueNodeProjected,
+  RuntimeValueNodeUnrepresentable,
   WriteResource,
-  effect_handler_for_kind
+  effect_handler_for_kind,
+  runtime_value_node_projection
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -58,9 +61,14 @@ type EffectIoResourceBackend
 // consumer: effect_io_pure_backends_match — locator carries backend tag alongside store.backend;
 // mismatch unrepresentable once fixture store is parameterized by backend. dissolve-on-arrival:
 // backend-indexed store type or eq/tag substrate in std/; forbidden: silent dual-tag drift.
+//
+// M5 fixture-store consolidation (node://adhoc-7e32be31-47c): identity is the content digest
+// of the reified operation-input Node (subject_digest = content_hash(inputs)) — the SAME digest
+// authority the v1 on-disk RecordedFixture handler uses, so this in-process handler is now
+// ContentAddressedByValue (std.cache_interface) rather than a HandAuthoredString constant pin.
 type EffectIoResourceLocator {
   backend: EffectIoResourceBackend
-  identity: Symbol
+  identity: Hash
 }
 
 // 🟡 gated — illegal-states interim — feature:effect-io-backend-parameterized-store —
@@ -68,7 +76,7 @@ type EffectIoResourceLocator {
 // dissolve-on-arrival: backend-indexed store type makes cross-backend lookup unrepresentable.
 type EffectIoFixtureStore {
   backend: EffectIoResourceBackend
-  entries: Map<Symbol, RuntimeValue>
+  entries: Map<Hash, RuntimeValue>
 }
 
 // Co-located inject-per-run authority: fixture store and handler binding are constructed together.
@@ -154,23 +162,43 @@ fn effect_io_pure_locator_from_args(
 ) -> Witness<EffectIoResourceLocator> {
   match list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
     Holds { value: locator_value } =>
-      Holds {
-        value: EffectIoResourceLocator {
-          backend: backend,
-          identity: effect_io_pure_locator_identity(value: locator_value)
-        }
+      match effect_io_pure_locator_identity(value: locator_value) {
+        Holds { value: digest } =>
+          Holds {
+            value: EffectIoResourceLocator {
+              backend: backend,
+              identity: digest
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
-// 🟡 gated — feature:effect-io-locator-identity-from-value — wave-2 interim: every locator
-// collapses to a single declare-per-claim pin (^effect_io_pure_default_locator); the RuntimeValue
-// argument is intentionally ignored so distinct locator args silently alias (fail-open for the gate).
-// dissolve-on-arrival: first consumer that derives fixture keys from RuntimeValue→Node reification
-// (or an explicit locator Symbol field on the request args) — identity becomes value-derived.
-fn effect_io_pure_locator_identity(_value: RuntimeValue) -> Symbol {
-  ^effect_io_pure_default_locator
+fn effect_io_pure_locator_unrepresentable_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_io_pure_locator_unrepresentable,
+    at: node_locus(node: effect_io_pure_operation_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟢 M5 fixture-store consolidation (node://adhoc-7e32be31-47c) — the degenerate
+// HandAuthoredString constant pin is dissolved: the fixture key is now the content digest of the
+// reified operation-input Node, content_hash(runtime_value_node_projection(value)). This is the
+// ContentAddressedByValue derivation (std.cache_interface) that BOTH fixture handlers share — the
+// v1 on-disk RecordedFixture handler keys on content_hash(inputs) the same way — so distinct
+// locator args no longer silently alias. A RuntimeValue with no faithful Node reification
+// (RuntimeReference / RuntimeClosure / RuntimeUnit today) is a LOUD fail-closed reject (DESIGN.md
+// §5), never a silent collapse onto one key.
+fn effect_io_pure_locator_identity(value: RuntimeValue) -> Witness<Hash> {
+  match runtime_value_node_projection(value: value) {
+    RuntimeValueNodeProjected { node: reified } =>
+      Holds { value: content_hash(n: reified) }
+    RuntimeValueNodeUnrepresentable =>
+      Violates { diagnostic: effect_io_pure_locator_unrepresentable_diagnostic() }
+  }
 }
 
 fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<RuntimeValue> {
