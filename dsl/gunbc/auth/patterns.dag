@@ -147,6 +147,8 @@ func metadata_oidc(audience: String) -> { token: Secret }
 
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
 // Commented: parser doesn't support if/else as inline expression yet.
+// Materializers (when enabled): gunbc.auth.credentials.{gcp_oauth_access_token_via_adc_refresh,
+// gcp_oauth_access_token_via_gcloud}.
 //
 // func local_auth() -> Secret
 //   uses fs: Filesystem
