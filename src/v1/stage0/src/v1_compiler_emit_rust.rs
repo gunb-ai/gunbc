@@ -3139,7 +3139,9 @@ pub fn has_physical_type_def_in_module_filename(
                     for item in tm.items.clone().iter().cloned() {
                         if ((authored_name_at(source_indices.clone(), item.clone()).as_str()
                             == rhs_name.clone().as_str())
-                            && is_type_def_item(item.clone()))
+                            && (is_type_def_item(item.clone())
+                                || is_type_alias_item(item.clone(), source_indices.clone())
+                                || is_type_decl_item(item.clone(), source_indices.clone())))
                         {
                             __found = true;
                             break;

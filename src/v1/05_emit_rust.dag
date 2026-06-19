@@ -1594,7 +1594,9 @@ fn has_physical_type_def_in_module_filename(rhs_name: String, mod_filename: Stri
     Present { value: mods } => mods |> any(tm =>
       tm.items |> any(item =>
         authored_name_at(source_indices: source_indices, node: item) == rhs_name
-        && is_type_def_item(item: item)
+        && (is_type_def_item(item: item)
+          || is_type_alias_item(item: item, source_indices: source_indices)
+          || is_type_decl_item(item: item, source_indices: source_indices))
       )
     )
     Absent => false
