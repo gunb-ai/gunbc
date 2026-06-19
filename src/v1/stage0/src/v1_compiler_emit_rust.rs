@@ -635,11 +635,12 @@ pub fn render_rust_alias_rhs_type(
             } else if let Some(carrier) = rust_opaque_kernel_alias_carrier(name.clone()) {
                 carrier
             } else {
-                rust_render_type_leaf_name(
+                let rendered = rust_render_type_leaf_name(
                     name.clone(),
                     variant_to_enum.clone(),
                     scope.type_env.clone(),
-                )
+                );
+                render_rust_shared_type_if_needed(name.clone(), rendered, shared_types.clone())
             }
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0))
