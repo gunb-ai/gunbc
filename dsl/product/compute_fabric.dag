@@ -61,6 +61,7 @@ import std.cpu.types {
   Aarch64,
 }
 import std.placement_supply { HostIdentity, PlacementSupplyRow }
+import std.baseboard { ServerBaseboard }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -213,6 +214,11 @@ type ProcessorKind
 
 type ComputeHost {
   identity: HostIdentity
+  // The physical board this host is built on, with its live BMC endpoint. Optional:
+  // `none` = baseboard not modeled for this host (a single, clear meaning — not a
+  // conflation). When present, it couples the host to the BMC out-of-band lifecycle
+  // (board → firmware → factory login), the entry point of provisioning.
+  baseboard: ServerBaseboard?
   processors: List<ProcessorKind>
   memory: List<MemoryDevice>
   storage: List<StorageDevice>
@@ -779,6 +785,7 @@ data example_vm_execution_surface: ExecutionSurface = ExecutionSurface {
 
 data example_compute_host: ComputeHost = ComputeHost {
   identity: example_host_identity,
+  baseboard: none,
   processors: [],
   memory: [],
   storage: [],
@@ -887,6 +894,7 @@ data example_resource_cpu: CpuFacts = CpuFacts {
 
 data example_resource_host: ComputeHost = ComputeHost {
   identity: "example-resource-host",
+  baseboard: none,
   processors: [CpuProcessor { cpu: example_resource_cpu }],
   memory: [MemoryDevice { capacity: byte_size(68719476736), memory_kind: Dram, bandwidth: none }],
   storage: [],
