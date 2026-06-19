@@ -85,15 +85,24 @@ type SymbolId
   | ConnectorCornerBottomLeft
   | ConnectorCornerTopLeft
 
+// --- Tier glyph ---
+//
+// One encoding-tier realization: the closed Tier enum keys the glyph text.
+// Rows compose into SymbolEntry.glyphs; cited strings live in extdeps/render/glyphs.dag.
+
+type TierGlyph {
+  tier: Tier
+  text: String
+}
+
 // --- Symbol entry ---
 //
-// A single symbol with all three tier encodings and a semantic color.
+// A single symbol: identity, tier-keyed glyph encodings, and semantic color.
+// Glyphs are keyed by the closed Tier enum — not parallel nickname columns.
 // The cited realization rows live in extdeps/render/glyphs.dag.
 
 type SymbolEntry {
   id: SymbolId
-  emoji: String
-  unicode: String
-  ascii: String
+  glyphs: List<TierGlyph>
   color: SemanticColor
 }
