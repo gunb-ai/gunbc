@@ -2658,6 +2658,8 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
+    /// `V2Tree` or `DslTree` — matches `SourceRootRef` variants in import_model.dag.
+    pub source_root: String,
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
@@ -2691,6 +2693,48 @@ fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("host_sr");
     source_root_ingest_symbol_from_stem(stem)
+}
+
+/// Map a repo-relative file path to the `SourceRootRef` tag for the matching `--source-root`.
+pub fn source_root_ref_tag_for_path(
+    file_path: &str,
+    source_roots: &[String],
+) -> Result<&'static str, String> {
+    fn repo_relative_path(path: &str) -> String {
+        let norm = path.replace('\\', "/");
+        let ws = workspace_root().to_string_lossy().replace('\\', "/");
+        if let Some(stripped) = norm.strip_prefix(&format!("{ws}/")) {
+            stripped.to_string()
+        } else {
+            norm
+        }
+    }
+
+    let rel = repo_relative_path(file_path);
+    let mut best: Option<(&str, usize)> = None;
+    for root in source_roots {
+        let root_rel = repo_relative_path(root);
+        if rel == root_rel || rel.starts_with(&format!("{root_rel}/")) {
+            let len = root_rel.len();
+            if best.map_or(true, |(_, bl)| len > bl) {
+                best = Some((root_rel.as_str(), len));
+            }
+        }
+    }
+    let matched = best.ok_or_else(|| {
+        format!(
+            "discover_source_root_ingest: file path {:?} is not under any --source-root {:?}",
+            file_path, source_roots
+        )
+    })?;
+    match matched {
+        "src/v2" => Ok("V2Tree"),
+        "dsl" => Ok("DslTree"),
+        other => Err(format!(
+            "discover_source_root_ingest: unknown source root {:?} (expected src/v2 or dsl)",
+            other
+        )),
+    }
 }
 
 /// Parsed `Admission` facts for the scoped `--entry` module (subject + import targets).
@@ -2789,6 +2833,20 @@ mod manifest_emit_tests {
             "match x \\{ A => 1 \\}"
         );
     }
+
+    #[test]
+    fn source_root_ref_tag_maps_v2_and_dsl_roots() {
+        use super::source_root_ref_tag_for_path;
+        let roots = vec!["src/v2".to_string(), "dsl".to_string()];
+        assert_eq!(
+            source_root_ref_tag_for_path("src/v2/compiler/00_compile.dag", &roots).unwrap(),
+            "V2Tree"
+        );
+        assert_eq!(
+            source_root_ref_tag_for_path("dsl/gunbc/ci_layer_roots.dag", &roots).unwrap(),
+            "DslTree"
+        );
+    }
 }
 
 fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
@@ -2814,6 +2872,8 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
     let mut material = String::new();
     for rec in records {
         material.push_str(&rec.file_path);
+        material.push('\0');
+        material.push_str(&rec.source_root);
         material.push('\0');
         material.push_str(&rec.source);
         material.push('\0');
@@ -2885,6 +2945,7 @@ pub fn discover_source_root_reads(
             file_path: rel_forward,
             module_path,
             source: content,
+            source_root: source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string(),
         });
     }
 
@@ -2928,6 +2989,7 @@ pub fn discover_source_root_reads_for_entry(
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
+            source_root: source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string(),
         });
     }
 
@@ -2939,9 +3001,10 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  source_root: {},\n  compilation_unit: {compilation_unit}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
+        rec.source_root,
     ))
 }
 
@@ -2989,6 +3052,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.cross_tree.import_model { DslTree, V2Tree }\n");
     out.push_str("import v2.std.text { String }\n");
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");

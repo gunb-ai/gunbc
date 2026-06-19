@@ -305,6 +305,28 @@ fn floor_discovery_enrollment_has_no_test_fn_hygiene_violations() {
 }
 
 #[test]
+fn manifest_source_read_witness_includes_grounded_source_root() {
+    let ws = workspace_root();
+    let temp = unique_temp_dir("manifest-source-root");
+    fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("manifest.dag");
+    let records = discover_source_root_reads_for_entry(
+        &[ws.join("src/v2").to_string_lossy().to_string()],
+        ws.join(COMPILER_ENTRY).to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover reads");
+    emit_source_root_ingest_manifest(&manifest_path, &records[..1], None).expect("emit manifest");
+    let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
+    assert!(
+        manifest.contains("source_root: V2Tree"),
+        "manifest witness missing grounded source_root tag:\n{manifest}"
+    );
+    assert_eq!(records[0].source_root, "V2Tree");
+    let _ = fs::remove_dir_all(&temp);
+}
+
+#[test]
 fn manifest_entry_admission_qualified_name_is_well_formed() {
     let ws = workspace_root();
     let temp = unique_temp_dir("manifest-qn");

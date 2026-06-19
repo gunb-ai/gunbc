@@ -1,0 +1,66 @@
+// Scope: Route C Phase C — grounded source_root on DagSourceReadWitness ingest.
+// Proves source_root_set_from_ingest derives active roots from witness tags (not QN-prefix).
+
+module v2.test.claim.source_root_ingest_tagging
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_root_set_from_ingest
+}
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DslTree, V2Tree }
+import v2.std.cross_tree.resolution { source_root_set_contains }
+import v2.std.logic { Bool }
+
+
+data tagging_v2_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium { carried: "module tagging.v2\n", fidelity: Lossless },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^tagging_v2_artifact,
+    file_path: "src/v2/test/fixture/tagging_v2.dag"
+  },
+  source_root: V2Tree,
+  compilation_unit: ^tagging_v2_cu
+}
+
+data tagging_dsl_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium { carried: "module tagging.dsl\n", fidelity: Lossless },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^tagging_dsl_artifact,
+    file_path: "dsl/test/fixture/tagging_dsl.dag"
+  },
+  source_root: DslTree,
+  compilation_unit: ^tagging_dsl_cu
+}
+
+data tagging_dual_tree_ingest: SourceRootIngest = Cons {
+  head: tagging_v2_read,
+  tail: Cons { head: tagging_dsl_read, tail: Empty }
+}
+
+
+fn witness_ingest_active_roots_contains_both_trees() -> Bool {
+  let roots = source_root_set_from_ingest(ingest: tagging_dual_tree_ingest)
+  source_root_set_contains(roots: roots, r: V2Tree)
+    && source_root_set_contains(roots: roots, r: DslTree)
+    && (length(xs: roots) == 2)
+}
+
+fn witness_single_v2_ingest_tags_v2_tree() -> Bool {
+  let roots = source_root_set_from_ingest(
+    ingest: Cons { head: tagging_v2_read, tail: Empty }
+  )
+  source_root_set_contains(roots: roots, r: V2Tree)
+    && !source_root_set_contains(roots: roots, r: DslTree)
+}
+
+
+test fn source_root_ingest_tagging_witnesses() -> Bool {
+  witness_ingest_active_roots_contains_both_trees()
+    && witness_single_v2_ingest_tags_v2_tree()
+}

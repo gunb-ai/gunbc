@@ -14,6 +14,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { Cons, Empty, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Node, content_hash }
@@ -29,6 +30,7 @@ data memo_amort_file_a_read: DagSourceReadWitness = DagSourceReadWitness {
     id: ^memo_amort_file_a_artifact,
     file_path: "src/v2/test/fixture/memo_amort_file_a.dag"
   },
+  source_root: V2Tree,
   compilation_unit: ^memo_amort_cu_a
 }
 
@@ -39,6 +41,7 @@ data memo_amort_file_b_read: DagSourceReadWitness = DagSourceReadWitness {
     id: ^memo_amort_file_b_artifact,
     file_path: "src/v2/test/fixture/memo_amort_file_b.dag"
   },
+  source_root: V2Tree,
   compilation_unit: ^memo_amort_cu_b
 }
 
@@ -49,6 +52,7 @@ data memo_amort_bisect_add_read: DagSourceReadWitness = DagSourceReadWitness {
     id: ^memo_amort_bisect_add_artifact,
     file_path: "src/v2/test/fixture/memo_amort_bisect_add.dag"
   },
+  source_root: V2Tree,
   compilation_unit: ^memo_amort_cu_bisect_add
 }
 

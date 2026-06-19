@@ -28,6 +28,8 @@ import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v2.std.provenance { span_index_empty }
 import v2.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
+import v2.std.cross_tree.import_model { SourceRootRef }
+import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -67,6 +69,8 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: Medium<String>
   artifact: Artifact
+  // Route C Phase C: host tags which --source-root the file was read from (not QN-prefix inference).
+  source_root: SourceRootRef
   // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
   // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
   compilation_unit: Symbol
@@ -77,6 +81,17 @@ type DagSourceReadWitness {
 // Stage C Lane 3: program_assembly.dag folds this monoid into validated module roots +
 //   resolve_with_admission (many files, not a single Source string).
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
+
+// Active source-root set from grounded ingest witnesses (replaces QN-prefix fallback on ingest path).
+fn source_root_set_from_ingest(ingest: SourceRootIngest) -> FreeMonoid<SourceRootRef> {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      source_root_set_insert(roots: acc, r: read.source_root)
+    }
+  )
+}
 
 // OOM-guard scalar receipt — mirrors OwnedDataDiscoveryReceipt shape.
 type SourceRootProvenanceCoverageReceipt {

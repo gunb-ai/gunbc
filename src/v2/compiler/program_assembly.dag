@@ -14,6 +14,7 @@ module v2.compiler.program_assembly
 import v2.compiler.name_resolve {
   Admission,
   resolve_with_admission,
+  resolve_with_admission_policy,
   validate_module_roots
 }
 import v2.compiler.normalize { normalize }
@@ -22,7 +23,9 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
   source_authority_diagnostic,
+  source_root_set_from_ingest,
 }
+import v2.std.cross_tree.import_model { FundamentalityUnknown }
 import v2.compiler.tokenize { tokenize }
 import v2.std.language_model { LanguageModel }
 import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
@@ -151,10 +154,17 @@ fn assemble_program_from_ingest(
   bind_outcome(
     o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
     f: fn(roots) {
-      assemble_program_from_module_roots(
-        roots: roots,
-        admission: admission,
-        lm: lm
+      bind_outcome(
+        o: validate_module_roots(roots: roots),
+        f: fn(validated_roots) {
+          resolve_with_admission_policy(
+            lm: lm,
+            roots: validated_roots,
+            admission: admission,
+            order: FundamentalityUnknown,
+            active_roots: source_root_set_from_ingest(ingest: ingest)
+          )
+        }
       )
     }
   )

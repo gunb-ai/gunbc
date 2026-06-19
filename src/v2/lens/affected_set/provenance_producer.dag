@@ -19,6 +19,7 @@ import v2.lens.edit_locus {
 }
 import v2.std.collection { List }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.algebra { Cons, Empty, contains, count_equal, for_all, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.exact_structural_equality_zip_fold_predicate {
@@ -57,18 +58,21 @@ data provenance_producer_fixture_artifact: Artifact = Artifact {
 data provenance_producer_fixture_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_fixture_source,
   artifact: provenance_producer_fixture_artifact,
+  source_root: V2Tree,
   compilation_unit: ^provenance_producer_compilation_unit
 }
 
 data provenance_producer_malformed_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_malformed_source,
   artifact: provenance_producer_fixture_artifact,
+  source_root: V2Tree,
   compilation_unit: ^provenance_producer_compilation_unit
 }
 
 data provenance_producer_module_surface_source_read: DagSourceReadWitness = DagSourceReadWitness {
   source: provenance_producer_module_surface_source,
   artifact: provenance_producer_fixture_artifact,
+  source_root: V2Tree,
   compilation_unit: ^provenance_producer_compilation_unit
 }
 

@@ -5,10 +5,10 @@
 // Consumers: v2.compiler.name_resolve (namespace_for_subject cross-tree gate).
 //
 // SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback
-// dissolve-on (grounded source_root at ingest): add source_root: SourceRootRef to
-//   DagSourceReadWitness (src/v2/compiler/source_authority.dag); host tags by which
-//   --source-root the file came from; delete source_root_ref_from_qualified_name and
-//   source_root_set_from_module_roots QN-prefix fallback.
+// dissolve-on (grounded source_root at ingest): Phase C landed source_root on DagSourceReadWitness
+//   + source_root_set_from_ingest (source_authority.dag); host tags in discover_source_root_ingest.
+//   Remaining: delete source_root_ref_from_qualified_name and source_root_set_from_module_roots
+//   once all consumers thread ingest-grounded roots (synthetic module-root tests still use fallback).
 // ACTIVATION GATE (hard): supplying a non-Unknown TreeFundamentalityOrder for real
 //   compilation (cross-tree direction-flip) MUST NOT land until grounded source_root
 //   tagging replaces this fallback. INERT Unknown-default is allowed; relying on QN-prefix

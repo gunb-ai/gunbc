@@ -10,6 +10,7 @@ import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import v2.compiler.target_carriers { lossless_source }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -27,6 +28,7 @@ fn medium_source_read_witness() -> DagSourceReadWitness {
       id: ^medium_source_fixture_artifact,
       file_path: "src/v2/compiler/manual/medium_source_text_instantiation_test.dag"
     },
+    source_root: V2Tree,
     compilation_unit: ^medium_source_fixture_compilation_unit
   }
 }
