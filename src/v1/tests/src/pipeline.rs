@@ -7864,11 +7864,16 @@ fn scoped_closure_is_smaller_than_whole_v2_tree() {
 #[ignore] // Boundary: N_v1 — v1 emitter (`compile_dag_named_with_source_roots`) on scoped v2 closure.
 fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
+    let dsl_root = ws.join("dsl");
     let v2_root = ws.join("src/v2");
+    let overlay_roots = vec![dsl_root.clone(), v2_root.clone()];
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
     let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
-    let roots = vec![v2_root.to_string_lossy().to_string()];
+    let roots = vec![
+        dsl_root.to_string_lossy().to_string(),
+        v2_root.to_string_lossy().to_string(),
+    ];
     let module_count = v1_compiler::cli_run::load_sources_for_entry(&roots, entry)
         .expect("load compiler entry closure")
         .len();
@@ -7878,7 +7883,7 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
         entry,
         &entry_content,
         v1_compiler::v1_compiler_compile::RenderTarget::Rust,
-        std::slice::from_ref(&v2_root),
+        &overlay_roots,
     );
 
     let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&result)
