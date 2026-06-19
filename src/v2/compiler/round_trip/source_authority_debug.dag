@@ -1,48 +1,61 @@
 module v2.test.round_trip.source_authority_debug
 
-import v2.compiler.source_authority {
-  parse_dag_source_ast,
-  semantic_ir_from_ast_with_model
-}
-import v2.compiler.target_carriers { lossless_source }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
-  dag_language_model_wave1_modeled,
-  dag_mvp1_target_model
+  dag_mvp1_bind_source_text,
+  dag_mvp1_bind_target_model,
+  dag_mvp1_fixture_emitted_bind_fn
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.complexity_gate.comprep_wave1_bind_subject_producer {
+  comprep_source_bridged_bind_arrow_with_body
+}
+import v2.test.manual.comprep_bind_round_trip {
+  comprep_bind_round_trip_inferred_facts_for
+}
+import v2.std.collection { Map }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
 import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Holds, Witness }
 
-data module_wrapped_add: String = "module m\nfn add(x:Int, y:Int) -> Int { x + y }"
-
-fn debug_add_parse() -> Bool {
-  match parse_dag_source_ast(source: lossless_source(text: module_wrapped_add)) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+fn inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(key) {
+        comprep_bind_round_trip_inferred_facts_for(node: key)
+      }
+    }
   }
 }
 
-fn debug_add_semantic() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
-  match parse_dag_source_ast(source: lossless_source(text: module_wrapped_add)) {
-    Accepted { value: ast, diagnostics: _ } =>
-      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
-        Accepted { value: _, diagnostics: _ } => true
+fn debug_real_parse_bind_emit() -> Bool {
+  let target = dag_mvp1_bind_target_model()
+  match comprep_source_bridged_bind_arrow_with_body() {
+    Accepted { value: root, diagnostics: _ } =>
+      match emit(tree: inferred_tree_for(root: root), target: target) {
+        Accepted { value: source, diagnostics: _ } =>
+          source.carried == dag_mvp1_bind_source_text
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn debug_add_serialize() -> Bool {
-  let lm = dag_language_model_wave1_modeled()
-  let target = dag_mvp1_target_model()
-  match parse_dag_source_ast(source: lossless_source(text: module_wrapped_add)) {
-    Accepted { value: ast, diagnostics: _ } =>
-      match semantic_ir_from_ast_with_model(ast: ast, lm: lm) {
-        Accepted { value: ir, diagnostics: _ } =>
-          match target_serialize_source_from_model(target: target, emitted: ir.tree) {
-            Accepted { value: _, diagnostics: _ } => true
+fn debug_real_parse_bind_serialize_eq_authority() -> Bool {
+  let target = dag_mvp1_bind_target_model()
+  match target_serialize_source_from_model(
+    target: target,
+    emitted: dag_mvp1_fixture_emitted_bind_fn
+  ) {
+    Accepted { value: authority, diagnostics: _ } =>
+      match comprep_source_bridged_bind_arrow_with_body() {
+        Accepted { value: root, diagnostics: _ } =>
+          match emit(tree: inferred_tree_for(root: root), target: target) {
+            Accepted { value: source, diagnostics: _ } =>
+              source.carried == authority.carried
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
