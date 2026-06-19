@@ -36,6 +36,10 @@ fn rust_edition_str(edition: RustEdition) -> String {
 
 data default_rust_edition: RustEdition = Edition2021
 
+// Minimum cargo for edition 2021 (Cargo Reference: "The edition field").
+// Pinned toolchain stays rust-toolchain.toml — this is the honest floor.
+data min_cargo_version: CargoVersionRequirement = ">= 1.56"
+
 // -- Package model -------------------------------------------------
 
 type CargoPackage {
