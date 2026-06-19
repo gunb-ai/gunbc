@@ -5691,6 +5691,28 @@ fn eval_builtin(
             )))
         }
 
+        "extdeps_stable_authority_locator_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_stable_authority_locator_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::stable_authority_locator_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_derived_extdeps_modules" => {
+            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
+                    .to_string(),
+            })?;
+            Ok(Some(
+                crate::extdeps_shape_transport_policy_project::derived_extdeps_modules_value(ctx),
+            ))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

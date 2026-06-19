@@ -1,0 +1,9 @@
+// RED perturb fixture — clean_https module shape with anchor row dropped.
+
+module extdeps.fixture.stable_authority_clean_https_no_anchor
+
+import std.logic { Bool }
+
+fn noop() -> Bool {
+  true
+}

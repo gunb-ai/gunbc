@@ -664,6 +664,69 @@ pub fn stable_authority_scheme_identity_for_qualified_name(
     stable_authority_scheme_identity_for_module_path(module_path)
 }
 
+pub fn stable_authority_locator_for_module_path(module_path: String) -> String {
+    match project_stable_authority_anchor(&module_path) {
+        StableAuthorityAnchorProjection::Present { locator, .. } => locator,
+        StableAuthorityAnchorProjection::Absent => String::new(),
+    }
+}
+
+pub fn stable_authority_locator_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> String {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    stable_authority_locator_for_module_path(module_path)
+}
+
+/// Sorted `extdeps.*` module paths from the derived module index (live roster authority).
+pub fn derived_extdeps_module_paths() -> Vec<String> {
+    let index = crate::module_path_index::build_module_path_index();
+    let mut paths: Vec<String> = index
+        .keys()
+        .filter(|k| k.starts_with("extdeps."))
+        .cloned()
+        .collect();
+    paths.sort();
+    paths
+}
+
+pub fn qualified_name_value_from_module_path(
+    ctx: &crate::v1_interpreter::InterpContext,
+    module_path: &str,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::Value;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    let qn_variant = |variant: &str, fields: HashMap<_, _>| Value::Variant {
+        type_name: ctx.sym("QualifiedName"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    };
+    if module_path.is_empty() {
+        return qn_variant("QnEmpty", HashMap::new());
+    }
+    let mut qn = qn_variant("QnEmpty", HashMap::new());
+    for seg in module_path.split('.').rev() {
+        let mut fields = HashMap::new();
+        fields.insert(ctx.sym("head"), Value::Str(seg.to_string()));
+        fields.insert(ctx.sym("tail"), qn);
+        qn = qn_variant("QnCons", fields);
+    }
+    qn
+}
+
+pub fn derived_extdeps_modules_value(
+    ctx: &crate::v1_interpreter::InterpContext,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::list_value;
+    let items: Vec<_> = derived_extdeps_module_paths()
+        .iter()
+        .map(|p| qualified_name_value_from_module_path(ctx, p))
+        .collect();
+    list_value(items)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -874,6 +937,41 @@ service github.Gist {
                 scheme_identity: "Gopher".to_string(),
                 locator: "example.invalid/spec".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn derived_extdeps_module_paths_covers_live_corpus() {
+        let paths = derived_extdeps_module_paths();
+        assert!(
+            paths.len() > 150,
+            "expected live extdeps roster, got {}",
+            paths.len()
+        );
+        assert!(paths.iter().any(|p| p == "extdeps.stable_authority"));
+        assert!(paths.iter().any(|p| p == "extdeps.uri"));
+        assert!(paths.iter().any(|p| p == "extdeps.git"));
+    }
+
+    #[test]
+    fn stable_authority_clean_https_fixture_projects_https_locator() {
+        assert_eq!(
+            stable_authority_anchor_kind_for_module_path(
+                "extdeps.fixture.stable_authority_clean_https".to_string()
+            ),
+            "present"
+        );
+        assert_eq!(
+            stable_authority_scheme_identity_for_module_path(
+                "extdeps.fixture.stable_authority_clean_https".to_string()
+            ),
+            "Https"
+        );
+        assert_eq!(
+            stable_authority_locator_for_module_path(
+                "extdeps.fixture.stable_authority_clean_https".to_string()
+            ),
+            "yaml.org/spec/1.2.2/"
         );
     }
 }
