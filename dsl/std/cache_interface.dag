@@ -19,8 +19,6 @@ import std.pareto {
 }
 import std.realization_schedule {
   CostAccount,
-  cost_account_measured,
-  cost_account_time_nanos,
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
 
@@ -582,50 +580,61 @@ fn read_latency_rank(latency: ReadLatencyClass) -> Int {
   }
 }
 
-// Representative fetch-cost magnitudes for read_latency (nanoseconds). Used by the
-// cost-aware reach fold: min(recompute, fetch + p(miss)·recompute) collapses to
-// fetch <= recompute at the witness grain (p(miss) folded into discriminating cases).
-fn read_latency_cost_nanos(facts: CacheInterfaceFacts) -> Int {
+// Representative fetch-cost for read_latency axis. Carrier stays NanosecondDuration;
+// unwrap only at Pareto comparison boundary (hardware_selection / CostAccount pattern).
+fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
   match facts.read_latency {
-    InProcessNs => 1
-    LocalDiskUs => 1000
-    LanMs => 1000000
-    WanTensMs => 10000000
+    InProcessNs => nanosecond_duration(count: 1)
+    LocalDiskUs => nanosecond_duration(count: 1000)
+    LanMs => nanosecond_duration(count: 1000000)
+    WanTensMs => nanosecond_duration(count: 10000000)
   }
 }
 
 type CacheReachCandidate {
   layer: CacheInterfaceId?
-  fetch_cost_nanos: Int
-  recompute_saved_nanos: Int
-  latency_nanos: Int
+  fetch_cost: NanosecondDuration
+  recompute_saved: NanosecondDuration
+  latency: NanosecondDuration
 }
 
 fn cache_reach_candidate_recompute() -> CacheReachCandidate {
   CacheReachCandidate {
     layer: none
-    fetch_cost_nanos: 0
-    recompute_saved_nanos: 0
-    latency_nanos: 0
+    fetch_cost: nanosecond_duration(count: 0)
+    recompute_saved: nanosecond_duration(count: 0)
+    latency: nanosecond_duration(count: 0)
   }
 }
 
-fn cache_reach_candidate_probe(id: CacheInterfaceId, recompute_nanos: Int) -> CacheReachCandidate {
+fn cache_reach_candidate_probe(id: CacheInterfaceId, recompute: CostAccount) -> CacheReachCandidate {
   let facts = cache_facts_for_id(id: id)
-  let fetch = read_latency_cost_nanos(facts: facts)
+  let fetch = read_latency_cost(facts: facts)
   CacheReachCandidate {
     layer: Present { value: id }
-    fetch_cost_nanos: fetch
-    recompute_saved_nanos: recompute_nanos
-    latency_nanos: fetch
+    fetch_cost: fetch
+    recompute_saved: recompute.time
+    latency: fetch
   }
 }
 
 fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> List<AxisComparison> {
   [
-    axis_comparison_int(goal: LowerIsBetter, a: a.fetch_cost_nanos, b: b.fetch_cost_nanos),
-    axis_comparison_int(goal: HigherIsBetter, a: a.recompute_saved_nanos, b: b.recompute_saved_nanos),
-    axis_comparison_int(goal: LowerIsBetter, a: a.latency_nanos, b: b.latency_nanos),
+    axis_comparison_int(
+      goal: LowerIsBetter,
+      a: nanosecond_duration_count(d: a.fetch_cost),
+      b: nanosecond_duration_count(d: b.fetch_cost),
+    ),
+    axis_comparison_int(
+      goal: HigherIsBetter,
+      a: nanosecond_duration_count(d: a.recompute_saved),
+      b: nanosecond_duration_count(d: b.recompute_saved),
+    ),
+    axis_comparison_int(
+      goal: LowerIsBetter,
+      a: nanosecond_duration_count(d: a.latency),
+      b: nanosecond_duration_count(d: b.latency),
+    ),
   ]
 }
 
@@ -633,22 +642,14 @@ fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> Domi
   dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
 }
 
-fn recompute_nanos_int(recompute: CostAccount) -> Int {
-  nanosecond_duration_count(d: recompute.time)
-}
-
 // Layer is worth probing when measured recompute exceeds representative fetch cost
 // (recompute path does not dominate the probe on fetch+saved axes at cheap grain).
 fn cache_layer_cost_justified(id: CacheInterfaceId, recompute: CostAccount) -> Bool {
-  let recompute_nanos = recompute_nanos_int(recompute: recompute)
-  recompute_nanos >= read_latency_cost_nanos(facts: cache_facts_for_id(id: id))
+  nanosecond_duration_count(d: recompute.time) >= nanosecond_duration_count(d: read_latency_cost(facts: cache_facts_for_id(id: id)))
 }
 
 fn cache_layer_beats_recompute_path(id: CacheInterfaceId, recompute: CostAccount) -> Bool {
-  let probe = cache_reach_candidate_probe(
-    id: id,
-    recompute_nanos: recompute_nanos_int(recompute: recompute),
-  )
+  let probe = cache_reach_candidate_probe(id: id, recompute: recompute)
   match cache_reach_dominates(
     a: cache_reach_candidate_recompute(),
     b: probe,
