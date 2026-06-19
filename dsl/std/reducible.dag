@@ -6,7 +6,7 @@
 // trigger (snappy-stag: Option-in-v2 + Measure G1).
 //
 // VERDICT (DESIGN.md §5):
-//   Reduced { parts }       — decomposed / progressed
+//   Reduced { last_parts }  — decomposed / progressed (rightmost decisive leaf count)
 //   Irreducible { witness } — grounded atom, decisively not further reducible
 //   Unknown { missing }     — fail-closed; located axis names what is missing
 //
@@ -22,12 +22,12 @@ import std.algebra { Semigroup }
 import std.types { Int, Bool, List }
 
 type ReduceVerdict
-  = Reduced { parts: Int }
+  = Reduced { last_parts: Int }
   | Irreducible { witness: String }
   | Unknown { missing: String }
 
 // Semigroup join: Unknown absorbs (leftmost axis wins); decisive siblings take
-// the right-hand verdict (last green child wins). Post-fold, Reduced.parts is
+// the right-hand verdict (last green child wins). Post-fold, Reduced.last_parts is
 // the rightmost decisive leaf's count — not an aggregate sum across siblings.
 fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   match a {
@@ -45,18 +45,18 @@ fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
 
 fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
   match a {
-    Reduced { parts: pa } => match b {
-      Reduced { parts: pb } => pa == pb
+    Reduced { last_parts: pa } => match b {
+      Reduced { last_parts: pb } => pa == pb
       Irreducible { witness: wb } => false
       Unknown { missing: mb } => false
     }
     Irreducible { witness: wa } => match b {
-      Reduced { parts: pb } => false
+      Reduced { last_parts: pb } => false
       Irreducible { witness: wb } => wa == wb
       Unknown { missing: mb } => false
     }
     Unknown { missing: ma } => match b {
-      Reduced { parts: pb } => false
+      Reduced { last_parts: pb } => false
       Irreducible { witness: wb } => false
       Unknown { missing: mb } => ma == mb
     }
