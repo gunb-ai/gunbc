@@ -2327,8 +2327,7 @@ pub fn floor_git_diff_name_only_paths() -> Result<Vec<String>, String> {
     if !output.status.success() {
         return Err(format!(
             "git diff --name-only {} failed (status {})",
-            range,
-            output.status
+            range, output.status
         ));
     }
     let text = String::from_utf8_lossy(&output.stdout);
@@ -2492,9 +2491,13 @@ fn entry_claims_touch_frontier(
             continue;
         }
         saw_claim = true;
-        if let Some(true) =
-            call_test_claim_fn_bool(ctx, "test_claim_evaluation_touches_rerun_frontier", &val, frontier, "c")?
-        {
+        if let Some(true) = call_test_claim_fn_bool(
+            ctx,
+            "test_claim_evaluation_touches_rerun_frontier",
+            &val,
+            frontier,
+            "c",
+        )? {
             return Ok(true);
         }
         if let Some(true) = call_test_claim_fn_bool(
@@ -2583,9 +2586,10 @@ pub fn run_discovery_corpus_with_options(
     };
     let (skip_enabled, changed_paths) = match diff_outcome {
         FloorGitDiffOutcome::ObservationFailClosed { .. } => (false, Vec::new()),
-        FloorGitDiffOutcome::PathsProduced(paths) => {
-            (options.skip_unaffected_node_frontier && !paths.is_empty(), paths)
-        }
+        FloorGitDiffOutcome::PathsProduced(paths) => (
+            options.skip_unaffected_node_frontier && !paths.is_empty(),
+            paths,
+        ),
     };
     let frontier_nodes = if skip_enabled {
         collect_frontier_nodes_from_changed_paths(&index, &changed_paths, execution_mode)?

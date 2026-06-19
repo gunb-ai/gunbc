@@ -38,8 +38,8 @@ use std::process::ExitCode;
 use std::thread;
 
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options, run_value,
-    ClaimOutcome, DiscoveryCorpusOptions,
+    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
+    run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
@@ -219,15 +219,15 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => Vec::new(),
             };
-            let skip_unaffected_node_frontier = match ctx.field(fields, "skip_unaffected_node_frontier") {
+            let skip_unaffected_node_frontier = match ctx
+                .field(fields, "skip_unaffected_node_frontier")
+            {
                 Some(v) => match v {
                     Value::Bool(b) => *b,
-                    other => {
-                        return Err(format!(
-                            "RunnableDiscoveryBatch.skip_unaffected_node_frontier must be Bool, got {}",
-                            other.type_label_public()
-                        ))
-                    }
+                    other => return Err(format!(
+                        "RunnableDiscoveryBatch.skip_unaffected_node_frontier must be Bool, got {}",
+                        other.type_label_public()
+                    )),
                 },
                 None => false,
             };
