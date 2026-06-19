@@ -25,14 +25,17 @@
 // a SKU's power coefficient (W/chip) and the board downclock thresholds — are marked 🟡.
 //
 // Authority: this module (the decision model). Component catalog SHAPES: std.cpu / std.memory.
-// Measure carriers: std.measure (ByteSize, Watt, Milliwatt, MoneyMicros) + product.compute_fabric
-// (Bandwidth — reused, NOT a forked rate carrier).
+// Measure carriers: std.measure (ByteSize, Watt) + product.compute_fabric
+// (Bandwidth, MoneyMicros — reused, NOT forked) + local Milliwatt (sub-watt scale).
 
 module product.hardware_selection
 
 import std.types { Int, NonEmptyStr, Bool, List }
+import std.nat { Nat }
 import std.measure {
   Measure,
+  Power,
+  Milli,
   measure_count,
   ByteSize,
   byte_size,
@@ -41,16 +44,15 @@ import std.measure {
   Watt,
   watt,
   watt_count,
-  Milliwatt,
-  milliwatt,
-  milliwatt_count,
+}
+import product.compute_fabric {
+  Bandwidth,
   MoneyMicros,
   money_micros,
-  money_micros_count
+  money_micros_count,
 }
-import product.compute_fabric { Bandwidth }
 import std.cpu.types { CpuModelCatalogRow, CpuSocket }
-import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width }
+import std.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width, JedecDdrGenerationCatalogRow }
 import std.pareto {
   AxisComparison,
   DominanceVerdict,
@@ -60,6 +62,21 @@ import std.pareto {
   dominance_of_comparisons,
   verdict_dominates,
   on_pareto_front
+}
+
+// Power magnitude at MILLI scale — product-layer scale denomination for sub-watt draw.
+// std.measure keeps `Watt` at unit scale only (no PowerAmount<S> in std). A single
+// component drawing a fraction of a watt (a DRAM device ~0.4 W) rounds to nothing as an
+// Int watt, so the per-device coefficient is carried at milli scale and folds up to whole
+// `Watt`s in memory_power.
+type Milliwatt = Measure<Power, Milli, Nat>
+
+fn milliwatt(count: Nat) -> Milliwatt {
+  Milliwatt { count: count }
+}
+
+fn milliwatt_count(w: Milliwatt) -> Nat {
+  w.count
 }
 
 // === The decision point: five grounded axes ==============================
@@ -155,17 +172,21 @@ fn min_int(a: Int, b: Int) -> Int {
 // buffering) — std.memory.types authority. The config adds the population choice (DPC).
 type MemoryConfig {
   module: DramModuleCatalogRow
+  // jedec — the cited JEDEC generation row for module.generation (extdeps/memory/jedec
+  // authority). Carried on the config so product/ stays extdeps-free (DESIGN §3 layering);
+  // callers wire jedec_ddr_generation_catalog_row(module.generation) at the deployment edge.
+  jedec: JedecDdrGenerationCatalogRow
   dimms_per_channel: Int
   // 🟡 CALIBRATE(dram-power-coefficient) — power drawn per DRAM device at this data rate, the
   // SECOND live-confirm point. Carried as `Milliwatt` (Power dimension at milli scale) not a
   // bare Int: a single device draws a fraction of a watt, so an Int-watt coefficient rounds to
-  // nothing — the std.measure Milliwatt carrier denominates sub-watt power exactly as
-  // MoneyMicros denominates sub-major money. DRAM power scales with the device COUNT, derived
+  // nothing — product.hardware_selection Milliwatt denominates sub-watt power exactly as
+  // product.compute_fabric.MoneyMicros denominates sub-major money. DRAM power scales with the device COUNT, derived
   // (not stored) from the grounded axes: chips_per_rank = 72 / chip_width-bits (18 for x4, 9
   // for x8), × rank_count, × sticks. This per-device coefficient is a measured input.
   power_per_chip: Milliwatt
-  // 🟡 used-market price per stick (operator's live eBay data confirms). MoneyMicros carrier
-  // (the single money authority), not a flat `Int` with the unit baked into the field name.
+  // 🟡 used-market price per stick (operator's live eBay data confirms). MoneyMicros from
+  // product.compute_fabric (the single money authority), not a flat `Int` with the unit baked into the field name.
   price_per_stick: MoneyMicros
 }
 
@@ -334,10 +355,11 @@ fn config_axes(cfg: SystemConfig) -> HardwareAxes {
 }
 
 // A config is REALIZABLE iff its DIMM is a part that can physically exist (std.memory owns the
-// DDR4 die-density physics; this is the selection-time filter, fail-closed like
-// psu_is_adequate — a non-existent SKU must never reach the Pareto front, §5).
+// die-density physics; jedec carries the per-generation ceiling from extdeps/memory/jedec;
+// this is the selection-time filter, fail-closed like psu_is_adequate — a non-existent SKU
+// must never reach the Pareto front, §5).
 fn config_is_realizable(cfg: SystemConfig) -> Bool {
-  dram_module_is_realizable(module: cfg.memory.module)
+  dram_module_is_realizable(module: cfg.memory.module, jedec: cfg.memory.jedec)
 }
 
 // === Dominance: the ONE kernel, applied =================================

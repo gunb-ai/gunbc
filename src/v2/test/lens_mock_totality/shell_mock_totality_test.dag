@@ -1,0 +1,123 @@
+// src/v2/test/lens_mock_totality/shell_mock_totality_test.dag
+// Scope: §5 PROOF that v2.lens.mock_totality GATES by execution over the shell layer's published
+//        mock corpus — GREEN when the consumer is total, RED when a member is omitted.
+// Status: discoverable `test fn` witness — the CI floor gates it via
+//         `claim_batch --roster-from-discovery` (whole src/v2 scanned for `test fn` in
+//         `*_test.dag`). Mirrors the M4.0 filesystem witness exactly (#5188).
+//
+// The shell layer is the MULTI-SERVICE shape (shell.Find / shell.Which / shell.Exec each a
+// distinct service, four published ops total) — the published corpus is a flat List spanning all
+// of them, so this single totality witness covers the whole layer. shell.Env is intentionally
+// NOT in the corpus (its mock was dissolved earlier; it replays via the RecordedFixture seam and
+// is fail-closed fixtureless-hermetic) — the per-service-boundary control.
+//
+// The two witnesses are a discriminating pair (DESIGN.md §5: a real consumer GREEN by execution
+// PLUS a discriminating input that goes RED when the behaviour is wrong):
+//   - the REAL consumer handles every published case  → lens Accepts  → `..._is_total_holds`.
+//   - a consumer with `Exec.Run` deliberately OMITTED  → lens Rejects → `..._omitted_member_is_red`.
+// The second is the teeth: it goes GREEN only because the lens FAIL-CLOSES on the unhandled
+// member — a vacuous lens that always accepted would flip it RED.
+
+module v2.test.lens_mock_totality.shell_mock_totality
+
+import v2.lens.mock_totality { mock_totality_lens, mock_unhandled_rejection }
+// Single authority for the shell mock corpus lives in the dsl/ tree
+// (dsl/extdeps/shell/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does (M4
+// hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern.
+import extdeps.shell.mock_corpus {
+  PublishedMockCase,
+  shell_published_mock_corpus
+}
+import v2.std.algebra { filter }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+// The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
+// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
+type MaterializedShellMock {
+  tag: Symbol
+}
+
+// The REAL consumer: materializes ANY published shell case impl-blind, keyed on the operation_key
+// across all four published ops (Find/Which/Exec.Run/Exec.Check); fail-closes (the canonical
+// `mock_unhandled_rejection`) for an unpublished op.
+fn materialize_shell_mock(case: PublishedMockCase) -> Outcome<MaterializedShellMock> {
+  if case.operation_key == "shell.Find.ListDirs" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_find_list_dirs })
+  } else if case.operation_key == "shell.Which.Check" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_which_check })
+  } else if case.operation_key == "shell.Exec.Run" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_run })
+  } else if case.operation_key == "shell.Exec.Check" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_check })
+  } else {
+    mock_unhandled_rejection()
+  }
+}
+
+// The DELIBERATELY-INCOMPLETE consumer: omits `shell.Exec.Run` → fail-closes on that published
+// case. This is the discriminating input that drives the lens RED on omission.
+fn materialize_shell_mock_omits_exec_run(case: PublishedMockCase) -> Outcome<MaterializedShellMock> {
+  if case.operation_key == "shell.Find.ListDirs" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_find_list_dirs })
+  } else if case.operation_key == "shell.Which.Check" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_which_check })
+  } else if case.operation_key == "shell.Exec.Check" {
+    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_check })
+  } else {
+    mock_unhandled_rejection()
+  }
+}
+
+fn shell_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
+  a.operation_key == b.operation_key && a.case_id == b.case_id
+}
+
+// Did the REAL consumer materialize this case? (per-case verdict collapsed to Bool).
+fn shell_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  match materialize_shell_mock(case: case) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Did the DELIBERATELY-INCOMPLETE consumer (no `Exec.Run` handler) materialize this case?
+fn shell_omits_exec_run_consumer_handles(case: PublishedMockCase) -> Bool {
+  match materialize_shell_mock_omits_exec_run(case: case) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The handled set = the published members a consumer accepts, BY EXECUTION over the corpus.
+fn shell_handled_by(consumer_handles: fn(PublishedMockCase) -> Bool) -> List<PublishedMockCase> {
+  filter(xs: shell_published_mock_corpus, predicate: consumer_handles)
+}
+
+// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
+test fn shell_mock_consumer_is_total_holds() -> Bool {
+  match mock_totality_lens(
+    published: shell_published_mock_corpus,
+    handled: shell_handled_by(consumer_handles: shell_real_consumer_handles),
+    eq: shell_mock_case_eq
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED-on-omission by execution: omit `shell.Exec.Run` from the consumer → the lens MUST fail-close.
+// GREEN here proves the lens has teeth (it rejects an unhandled published member); a vacuous
+// lens that accepted anyway would make this witness RED.
+test fn shell_mock_omitted_member_is_red_holds() -> Bool {
+  match mock_totality_lens(
+    published: shell_published_mock_corpus,
+    handled: shell_handled_by(consumer_handles: shell_omits_exec_run_consumer_handles),
+    eq: shell_mock_case_eq
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

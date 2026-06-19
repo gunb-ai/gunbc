@@ -59,6 +59,8 @@ service GovernedProbe {
 // `Allowed` is published; `Forbidden` is intentionally omitted to drive the fail-closed RED arm.
 data m4_probe_case_allowed: PublishedMockCase = PublishedMockCase {
   operation_key: "GovernedProbe.Allowed",
+  service: "GovernedProbe",
+  operation: "Allowed",
   case_id: 0
 }
 

@@ -80,6 +80,9 @@ type RealizationPlan {
   target: ContentHash
   objective: RealizationObjective
   schedule: Schedule
+  // Measured roll-up along schedule critical path (seq across batches, max within batch);
+  // authority v1.compiler.complexity span / cost_seq / cost_par — see
+  // std.realization_measurement.schedule_critical_path_time.
   total: CostAccount
 }
 
