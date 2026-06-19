@@ -1,0 +1,56 @@
+// By-execution witnesses for std/types.dag Arch + Platform nickname collapse (§3).
+//
+// Discriminating: GOARCH wire decode still round-trips via extdeps.container.oci.types
+// ImageConfigArchitecture; Armv7 stays unrepresentable on egress (fail-closed label).
+//
+// Run via:
+//   gunbc run --source-root dsl --entry dsl/test/claim/types_arch_collapse_witness_test.dag \
+//     --function types_arch_collapse_witnesses --claim-run
+
+module test.claim.types_arch_collapse
+
+import extdeps.container.oci.types {
+  Aarch64,
+  Armv7,
+  ImageConfigGoarchKnown,
+  ImageConfigGoarchUnknown,
+  ImageConfigGoarchUnrepresentable,
+  ImageConfigGoarchWireLabel,
+  image_config_goarch_label,
+  parse_image_config_goarch,
+}
+
+fn witness_goarch_parses_arm64_wire() -> Bool {
+  match parse_image_config_goarch("arm64") {
+    ImageConfigGoarchKnown { value: Aarch64 } => true
+    ImageConfigGoarchUnknown { wire: _ } => false
+  }
+}
+
+fn witness_goarch_rejects_unknown_wire() -> Bool {
+  match parse_image_config_goarch("plan9") {
+    ImageConfigGoarchUnknown { wire: _ } => true
+    ImageConfigGoarchKnown { value: _ } => false
+  }
+}
+
+fn witness_goarch_label_roundtrips_known() -> Bool {
+  match image_config_goarch_label(Aarch64) {
+    ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
+    ImageConfigGoarchUnrepresentable => false
+  }
+}
+
+fn witness_goarch_label_unrepresentable_armv7() -> Bool {
+  match image_config_goarch_label(Armv7) {
+    ImageConfigGoarchUnrepresentable => true
+    ImageConfigGoarchWireLabel { wire: _ } => false
+  }
+}
+
+test fn types_arch_collapse_witnesses() -> Bool {
+  witness_goarch_parses_arm64_wire()
+    && witness_goarch_rejects_unknown_wire()
+    && witness_goarch_label_roundtrips_known()
+    && witness_goarch_label_unrepresentable_armv7()
+}
