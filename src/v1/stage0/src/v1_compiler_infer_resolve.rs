@@ -2015,10 +2015,7 @@ pub fn resolve_expr_types(
                 descent_evidence: de,
                 ..
             } => {
-                // bind-once: resolve each arg child a SINGLE time, then split
-                // into resolved children + diagnostics. Resolving twice made a
-                // nested constructor literal O(2^depth).
-                let arg_results = Rc::new({
+                let resolved_children = Rc::new({
                     let mut __result = Vec::new();
                     for arg_node in texpr.children.clone().iter().cloned() {
                         __result.push({
@@ -2028,34 +2025,39 @@ pub fn resolve_expr_types(
                             };
                             let vr =
                                 resolve_expr_types(val.clone(), env.clone(), module_name.clone());
-                            Rc::new(ExprResolveResult {
-                                expr: make_arg_node(
-                                    if (arg_node.ident_span.clone() == None) {
-                                        None
-                                    } else {
-                                        Some(authored_name(env.clone(), arg_node.clone()))
-                                    },
-                                    vr.expr.clone(),
-                                    arg_node.span.clone(),
-                                    node_name_span(arg_node.clone()),
-                                ),
-                                diagnostics: vr.diagnostics.clone(),
-                            })
+                            make_arg_node(
+                                if (arg_node.ident_span.clone() == None) {
+                                    None
+                                } else {
+                                    Some(authored_name(env.clone(), arg_node.clone()))
+                                },
+                                vr.expr.clone(),
+                                arg_node.span.clone(),
+                                node_name_span(arg_node.clone()),
+                            )
                         });
-                    }
-                    __result
-                });
-                let resolved_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
-                        __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
-                        __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    for arg_node in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*{
+                                let val = match arg_node.children.clone().first().cloned() {
+                                    Some(v) => v.clone(),
+                                    None => arg_node.clone(),
+                                };
+                                let vr = resolve_expr_types(
+                                    val.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                );
+                                vr.diagnostics.clone()
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
                     __result
                 });
@@ -2078,8 +2080,7 @@ pub fn resolve_expr_types(
                 method_semantics: ms,
                 ..
             } => {
-                // bind-once: resolve each child a SINGLE time (see ExprCall).
-                let mc_results = Rc::new({
+                let resolved_children = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
                         texpr
@@ -2104,10 +2105,7 @@ pub fn resolve_expr_types(
                                         env.clone(),
                                         module_name.clone(),
                                     );
-                                    Rc::new(ExprResolveResult {
-                                        expr: rr.expr.clone(),
-                                        diagnostics: rr.diagnostics.clone(),
-                                    })
+                                    rr.expr.clone()
                                 }
                             } else {
                                 {
@@ -2120,39 +2118,71 @@ pub fn resolve_expr_types(
                                         env.clone(),
                                         module_name.clone(),
                                     );
-                                    Rc::new(ExprResolveResult {
-                                        expr: make_arg_node(
-                                            if (child.ident_span.clone() == None) {
-                                                None
-                                            } else {
-                                                Some(authored_name_at(
-                                                    env.source_indices.clone(),
-                                                    child.clone(),
-                                                ))
-                                            },
-                                            vr.expr.clone(),
-                                            child.span.clone(),
-                                            node_name_span(child.clone()),
-                                        ),
-                                        diagnostics: vr.diagnostics.clone(),
-                                    })
+                                    make_arg_node(
+                                        if (child.ident_span.clone() == None) {
+                                            None
+                                        } else {
+                                            Some(authored_name_at(
+                                                env.source_indices.clone(),
+                                                child.clone(),
+                                            ))
+                                        },
+                                        vr.expr.clone(),
+                                        child.span.clone(),
+                                        node_name_span(child.clone()),
+                                    )
                                 }
                             }
                         });
                     }
                     __result
                 });
-                let resolved_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
-                        __result.push(r.expr.clone());
-                    }
-                    __result
-                });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
-                        __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    for pair in Rc::new(
+                        texpr
+                            .children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.extend(
+                            (*{
+                                let idx = pair.0.clone();
+                                let child = pair.1.clone();
+                                if (idx.clone() == 0) {
+                                    {
+                                        let rr = resolve_expr_types(
+                                            child.clone(),
+                                            env.clone(),
+                                            module_name.clone(),
+                                        );
+                                        rr.diagnostics.clone()
+                                    }
+                                } else {
+                                    {
+                                        let val = match child.children.clone().first().cloned() {
+                                            Some(v) => v.clone(),
+                                            None => child.clone(),
+                                        };
+                                        let vr = resolve_expr_types(
+                                            val.clone(),
+                                            env.clone(),
+                                            module_name.clone(),
+                                        );
+                                        vr.diagnostics.clone()
+                                    }
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
                     __result
                 });
@@ -2171,8 +2201,7 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprMatch => {
-                // bind-once: resolve each scrutinee/arm a SINGLE time (see ExprCall).
-                let match_results = Rc::new({
+                let resolved_children = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
                         texpr
@@ -2197,10 +2226,7 @@ pub fn resolve_expr_types(
                                         env.clone(),
                                         module_name.clone(),
                                     );
-                                    Rc::new(ExprResolveResult {
-                                        expr: sr.expr.clone(),
-                                        diagnostics: sr.diagnostics.clone(),
-                                    })
+                                    sr.expr.clone()
                                 }
                             } else {
                                 {
@@ -2231,21 +2257,15 @@ pub fn resolve_expr_types(
                                                         diagnostics: Rc::new(vec![]),
                                                     }),
                                                 };
-                                            Rc::new(ExprResolveResult {
-                                                expr: make_arm_node(
-                                                    match child.match_pattern.clone() {
-                                                        Some(p) => p.clone(),
-                                                        None => Rc::new(MatchPattern::Wildcard),
-                                                    },
-                                                    Some(guard_r.expr.clone()),
-                                                    body_r.expr.clone(),
-                                                    child.span.clone(),
-                                                ),
-                                                diagnostics: v1_rt::concat(
-                                                    guard_r.diagnostics.clone(),
-                                                    body_r.diagnostics.clone(),
-                                                ),
-                                            })
+                                            make_arm_node(
+                                                match child.match_pattern.clone() {
+                                                    Some(p) => p.clone(),
+                                                    None => Rc::new(MatchPattern::Wildcard),
+                                                },
+                                                Some(guard_r.expr.clone()),
+                                                body_r.expr.clone(),
+                                                child.span.clone(),
+                                            )
                                         }
                                     } else {
                                         {
@@ -2260,18 +2280,15 @@ pub fn resolve_expr_types(
                                                     diagnostics: Rc::new(vec![]),
                                                 }),
                                             };
-                                            Rc::new(ExprResolveResult {
-                                                expr: make_arm_node(
-                                                    match child.match_pattern.clone() {
-                                                        Some(p) => p.clone(),
-                                                        None => Rc::new(MatchPattern::Wildcard),
-                                                    },
-                                                    None,
-                                                    body_r.expr.clone(),
-                                                    child.span.clone(),
-                                                ),
-                                                diagnostics: body_r.diagnostics.clone(),
-                                            })
+                                            make_arm_node(
+                                                match child.match_pattern.clone() {
+                                                    Some(p) => p.clone(),
+                                                    None => Rc::new(MatchPattern::Wildcard),
+                                                },
+                                                None,
+                                                body_r.expr.clone(),
+                                                child.span.clone(),
+                                            )
                                         }
                                     }
                                 }
@@ -2280,17 +2297,91 @@ pub fn resolve_expr_types(
                     }
                     __result
                 });
-                let resolved_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
-                        __result.push(r.expr.clone());
-                    }
-                    __result
-                });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
-                        __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    for pair in Rc::new(
+                        texpr
+                            .children
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.extend(
+                            (*{
+                                let idx = pair.0.clone();
+                                let child = pair.1.clone();
+                                if (idx.clone() == 0) {
+                                    {
+                                        let sr = resolve_expr_types(
+                                            child.clone(),
+                                            env.clone(),
+                                            module_name.clone(),
+                                        );
+                                        sr.diagnostics.clone()
+                                    }
+                                } else {
+                                    {
+                                        let arm_ch = child.children.clone();
+                                        let has_guard = ((arm_ch.clone().len() as i64) == 2);
+                                        if has_guard.clone() {
+                                            {
+                                                let guard_r = match arm_ch.clone().first().cloned()
+                                                {
+                                                    Some(g) => resolve_expr_types(
+                                                        g.clone(),
+                                                        env.clone(),
+                                                        module_name.clone(),
+                                                    ),
+                                                    None => Rc::new(ExprResolveResult {
+                                                        expr: child.clone(),
+                                                        diagnostics: Rc::new(vec![]),
+                                                    }),
+                                                };
+                                                let body_r =
+                                                    match arm_ch.clone().get(1 as usize).cloned() {
+                                                        Some(b) => resolve_expr_types(
+                                                            b.clone(),
+                                                            env.clone(),
+                                                            module_name.clone(),
+                                                        ),
+                                                        None => Rc::new(ExprResolveResult {
+                                                            expr: child.clone(),
+                                                            diagnostics: Rc::new(vec![]),
+                                                        }),
+                                                    };
+                                                v1_rt::concat(
+                                                    guard_r.diagnostics.clone(),
+                                                    body_r.diagnostics.clone(),
+                                                )
+                                            }
+                                        } else {
+                                            {
+                                                let body_r = match arm_ch.clone().first().cloned() {
+                                                    Some(b) => resolve_expr_types(
+                                                        b.clone(),
+                                                        env.clone(),
+                                                        module_name.clone(),
+                                                    ),
+                                                    None => Rc::new(ExprResolveResult {
+                                                        expr: child.clone(),
+                                                        diagnostics: Rc::new(vec![]),
+                                                    }),
+                                                };
+                                                body_r.diagnostics.clone()
+                                            }
+                                        }
+                                    }
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
                     __result
                 });
@@ -2390,10 +2481,7 @@ pub fn resolve_expr_types(
             ExprData::ExprRecordLit {
                 parent_enum: pe, ..
             } => {
-                // bind-once: resolve each field-init value a SINGLE time. This is
-                // the arm hit by deep nested constructor literals (Cons/record
-                // chains) — resolving twice per field was O(2^depth).
-                let fi_results = Rc::new({
+                let resolved_children = Rc::new({
                     let mut __result = Vec::new();
                     for fi_node in texpr.children.clone().iter().cloned() {
                         __result.push({
@@ -2403,30 +2491,35 @@ pub fn resolve_expr_types(
                             };
                             let vr =
                                 resolve_expr_types(val.clone(), env.clone(), module_name.clone());
-                            Rc::new(ExprResolveResult {
-                                expr: make_field_init_node(
-                                    authored_name(env.clone(), fi_node.clone()),
-                                    vr.expr.clone(),
-                                    fi_node.span.clone(),
-                                    node_name_span(fi_node.clone()),
-                                ),
-                                diagnostics: vr.diagnostics.clone(),
-                            })
+                            make_field_init_node(
+                                authored_name(env.clone(), fi_node.clone()),
+                                vr.expr.clone(),
+                                fi_node.span.clone(),
+                                node_name_span(fi_node.clone()),
+                            )
                         });
-                    }
-                    __result
-                });
-                let resolved_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
-                        __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
-                        __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    for fi_node in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*{
+                                let val = match fi_node.children.clone().first().cloned() {
+                                    Some(v) => v.clone(),
+                                    None => fi_node.clone(),
+                                };
+                                let vr = resolve_expr_types(
+                                    val.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                );
+                                vr.diagnostics.clone()
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
                     __result
                 });
@@ -2559,15 +2652,11 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprStringInterp => {
-                // bind-once: resolve each interpolation part a SINGLE time (see ExprCall).
-                let part_results = Rc::new({
+                let resolved_children = Rc::new({
                     let mut __result = Vec::new();
                     for part_node in texpr.children.clone().iter().cloned() {
                         __result.push(match (*part_node.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { value: _, .. } => Rc::new(ExprResolveResult {
-                                expr: part_node.clone(),
-                                diagnostics: Rc::new(vec![]),
-                            }),
+                            ExprData::ExprLiteral { value: _, .. } => part_node.clone(),
                             _ => match part_node.children.clone().first().cloned() {
                                 Some(inner) => {
                                     let r = resolve_expr_types(
@@ -2575,34 +2664,35 @@ pub fn resolve_expr_types(
                                         env.clone(),
                                         module_name.clone(),
                                     );
-                                    Rc::new(ExprResolveResult {
-                                        expr: make_interp_part_node(
-                                            r.expr.clone(),
-                                            part_node.span.clone(),
-                                        ),
-                                        diagnostics: r.diagnostics.clone(),
-                                    })
+                                    make_interp_part_node(r.expr.clone(), part_node.span.clone())
                                 }
-                                None => Rc::new(ExprResolveResult {
-                                    expr: part_node.clone(),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
+                                None => part_node.clone(),
                             },
                         });
                     }
                     __result
                 });
-                let resolved_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
-                        __result.push(r.expr.clone());
-                    }
-                    __result
-                });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
-                        __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    for part_node in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*match (*part_node.expr_data.clone()).clone() {
+                                ExprData::ExprLiteral { value: _, .. } => Rc::new(vec![]),
+                                _ => match part_node.children.clone().first().cloned() {
+                                    Some(inner) => {
+                                        let r = resolve_expr_types(
+                                            inner.clone(),
+                                            env.clone(),
+                                            module_name.clone(),
+                                        );
+                                        r.diagnostics.clone()
+                                    }
+                                    None => Rc::new(vec![]),
+                                },
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
                     __result
                 });
