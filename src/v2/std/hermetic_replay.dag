@@ -7,7 +7,9 @@ module v2.std.hermetic_replay
 
 type PublishedMockCase {
   // 🟡 gated — feature:hermetic-published-mock-operation-ref — dissolve-on: dsl/std/hermetic_replay
-  // ServiceOperationRef carrier supersedes this String field; mirror deletes with v2 std resolve.
+  // mirror deletes with v2 std resolve.
   operation_key: String
+  service: String
+  operation: String
   case_id: Int
 }

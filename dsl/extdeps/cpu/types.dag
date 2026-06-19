@@ -27,7 +27,7 @@ type CpuSocket {
   contact_count: Int
 }
 
-// A vendor part identifies itself by its catalog row — std/cpu owns the SHAPE, the
+// A vendor part identifies itself by its catalog row — extdeps/cpu owns the SHAPE, the
 // per-vendor rows live in extdeps/cpu/<vendor>. No std-level enum of one vendor's
 // SKUs (that would make the concept a purchase order).
 type CpuModelCatalogRow {

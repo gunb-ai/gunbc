@@ -33,9 +33,11 @@ import std.measure {
   Measure,
   Time,
   DataRate,
+  Currency,
+  Micro,
   One,
   ByteSize,
-  MoneyMicros,
+  MoneyAmount,
   NanosecondDuration,
   nanosecond_duration,
   nanosecond_duration_count,
@@ -117,6 +119,22 @@ type OomSignalClass = KillProcess | Throttle | ReportOnly
 
 type Bandwidth = Measure<DataRate, One, Nat>
 type Duration = Measure<Time, One, Nat>
+
+// Micro-denominated money (storage scale = `Micro`, 10^-6 major units).
+// Product-layer scale denomination — std.measure keeps abstract `MoneyAmount<S>` only.
+// Demanded by Hetzner cost quotes whose source data is `*_eur_micros` (e.g. 50500
+// micro-EUR/hour); micros are finer than the EUR minor unit (cent), so a minor-unit
+// `<One>` carrier could not hold them losslessly.
+type MoneyMicros = MoneyAmount<Micro>
+
+fn money_micros(count: Nat) -> MoneyMicros {
+  MoneyMicros { count: count }
+}
+
+fn money_micros_count(m: MoneyMicros) -> Nat {
+  m.count
+}
+
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
 
 type ComputeArtifactLocality
@@ -267,7 +285,7 @@ type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
 // Cost quote: a fixed-point money price tagged with its ISO 4217 currency.
 // The `expected_units: Float` / `currency: NonEmptyStr` stopgap (Float carrying
 // raw int micros; loose string code) is DISSOLVED here onto the money carrier
-// landed in `std.measure` / `std.currency`:
+// landed in this module (`MoneyMicros`) / `std.currency`:
 //   - `unit_price: MoneyMicros` — `Measure<Currency, Micro>`, the exact micro
 //     denomination Hetzner quotes in (`*_eur_micros`). Money is fixed-point,
 //     never `Float` (floating point for money is a representation defect).
@@ -1003,7 +1021,7 @@ fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
   content_hash_atom(value: isolation_boundary_label(boundary: boundary))
 }
 
-// File-scoped arch label for digest only — lift to std/cpu/types.cpu_architecture_label
+// File-scoped arch label for digest only — lift to extdeps/cpu/types.cpu_architecture_label
 // if a second consumer appears (§3 single authority).
 fn cpu_architecture_digest(arch: CpuArchitecture) -> ContentHash {
   match arch {

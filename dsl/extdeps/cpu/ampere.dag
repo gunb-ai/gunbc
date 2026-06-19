@@ -2,7 +2,7 @@
 //
 // Ampere's published Altra-family parts, as extdeps.cpu CpuModelCatalogRow values.
 // Vendor hardware is an external dependency: it lives in extdeps/, importing the
-// catalog SHAPE from std/cpu. std/cpu owns only the shape; it does not enumerate
+// catalog SHAPE from extdeps/cpu. extdeps/cpu owns only the shape; it does not enumerate
 // any one vendor's lineup. Which specific part a given host runs is an operator
 // deployment fact (ctrl), not a fact about Ampere.
 

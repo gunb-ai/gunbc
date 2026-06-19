@@ -27,20 +27,6 @@
 
 module extdeps.filesystem.filesystem_io
 
-// Co-locate the PUBLISHED mock corpus into this service's import closure (DESIGN.md §3:
-// which operations are hermetically realizable is a fact ABOUT the Filesystem service, so it
-// belongs in the service's closure). Any real consumer that imports Filesystem now transitively
-// pulls the corpus, so the v1 runtime's eval_service_call (the M4 hermetic-realization fold)
-// resolves the published-key set from item_registry on real claim_batch runs — Filesystem.Read
-// and Filesystem.Write are GOVERNED in production via the same single model the M2
-// mock_totality_lens reads, with no change to claim_batch's closure-load model. (Bare import:
-// the closure membership is the point, not a bound symbol — cf. `import extdeps.shell`.)
-// 🟡 gated — feature:m4-universal-hermetic-corpus-load — bind node://adhoc-9abb4d61-554
-// dissolve-on-arrival: M4.1 makes the runtime load the whole-tree published corpus independent
-// of the entry's import closure (the runtime reads EXACTLY the model the M2 lens reads,
-// governance universal not opt-in); this per-service co-location import then deletes.
-import extdeps.filesystem.mock_corpus
-
 service Filesystem {
   // Commit `content` to the file at `path`, creating or truncating it.
   // Returns the WriteResult receipt (success / bytes_written / path / error).

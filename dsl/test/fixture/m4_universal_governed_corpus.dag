@@ -1,0 +1,20 @@
+// dsl/test/fixture/m4_universal_governed_corpus.dag
+//
+// Corpus-only module for M4.1 — intentionally NOT imported by m4_universal_corpus_witness.dag.
+// The v1 runtime must discover this via whole-tree published-mock-corpus governance (M4.1), not
+// via the witness entry's import closure (M4.0 co-location opt-in).
+
+module test.fixture.m4_universal_governed_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data m4_universal_probe_case_allowed: PublishedMockCase = PublishedMockCase {
+  operation_key: "GovernedUniversalProbe.Allowed",
+  service: "GovernedUniversalProbe",
+  operation: "Allowed",
+  case_id: 0
+}
+
+data m4_universal_governed_probe_corpus: List<PublishedMockCase> = [
+  m4_universal_probe_case_allowed
+]
