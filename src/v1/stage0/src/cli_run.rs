@@ -3,13 +3,14 @@
 // The generated main.rs calls handle_run_with_options() for the Run subcommand.
 
 use std::cell::RefCell;
+use std::process::Command;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
-use crate::std_types::kernel_type_set;
+use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::lookup_type_by_name;
@@ -2074,10 +2075,12 @@ pub struct EntryResolveReceipt {
 }
 
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
-/// many passed, and a rendered failure line per non-pass (empty on full green).
+/// many passed, how many were skipped (stateless node-frontier), and a rendered
+/// failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
+    pub skipped: usize,
     pub failures: Vec<String>,
     /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
@@ -2278,6 +2281,525 @@ pub fn discover_floor_corpus_rows(
             .then_with(|| a.function.cmp(&b.function))
     });
     Ok(rows)
+}
+
+/// Phase 1.5a REDO v2 — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
+pub struct DiscoveryCorpusOptions {
+    pub skip_unaffected_node_frontier: bool,
+}
+
+impl Default for DiscoveryCorpusOptions {
+    fn default() -> Self {
+        Self {
+            skip_unaffected_node_frontier: false,
+        }
+    }
+}
+
+/// Default diff policy — witness-gated to `floor_skip_git_diff_policy()` /
+/// `gunbc.ci_spec.diff_policy` (`floor_test_diff_policy_matches_ci_spec_holds`).
+const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
+const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
+
+enum FloorGitDiffOutcome {
+    ObservationFailClosed { reason: String },
+    UnifiedProduced(String),
+}
+
+/// New-side inclusive line range from one unified-diff hunk (`git diff -U0`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileLineRange {
+    start: i64,
+    end: i64,
+}
+
+fn floor_git_diff_range() -> Result<String, String> {
+    let base = std::env::var("GUNBC_CI_DIFF_BASE")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
+    let head = std::env::var("GUNBC_CI_DIFF_HEAD")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_HEAD.to_string());
+    let merge_base = std::env::var("GUNBC_CI_DIFF_MERGE_BASE")
+        .map(|v| v != "0" && v != "false")
+        .unwrap_or(true);
+    let range = if merge_base {
+        format!("{base}...{head}")
+    } else {
+        format!("{base} {head}")
+    };
+    let output = Command::new("git")
+        .args(["diff", "-U0", &range])
+        .output()
+        .map_err(|e| format!("git diff spawn failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff -U0 {} failed (status {})",
+            range, output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn normalize_repo_path(path: &str) -> String {
+    path.strip_prefix("./")
+        .unwrap_or(path)
+        .replace('\\', "/")
+}
+
+/// Parse unified diff output into new-side line ranges per repo-relative file path.
+fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
+    let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
+    let mut current_file: Option<String> = None;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
+            current_file = Some(normalize_repo_path(rest));
+        } else if line.starts_with("@@ ") {
+            let Some(file) = current_file.clone() else {
+                continue;
+            };
+            let plus = line.split_whitespace().nth(2).unwrap_or("");
+            let plus = plus.trim_start_matches('+');
+            let (start, count) = if let Some((s, c)) = plus.split_once(',') {
+                (
+                    s.parse::<i64>().unwrap_or(1),
+                    c.parse::<i64>().unwrap_or(1),
+                )
+            } else {
+                (plus.parse::<i64>().unwrap_or(1), 1)
+            };
+            let end = if count <= 0 { start } else { start + count - 1 };
+            out.entry(file)
+                .or_default()
+                .push(FileLineRange { start, end });
+        }
+    }
+    out
+}
+
+fn newline_index_for_span<'a>(
+    span: &SourceSpan,
+    source_indices: &'a HashMap<String, Rc<NewlineIndex>>,
+) -> Option<&'a Rc<NewlineIndex>> {
+    let file = normalize_repo_path(&span.file);
+    source_indices.get(&span.file).or_else(|| {
+        source_indices.iter().find_map(|(path, idx)| {
+            let norm = normalize_repo_path(path);
+            if norm == file || file.ends_with(&norm) || norm.ends_with(&file) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn span_overlaps_line_ranges(
+    span: &SourceSpan,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    ranges: &[FileLineRange],
+) -> bool {
+    let Some(index) = newline_index_for_span(span, source_indices) else {
+        return false;
+    };
+    let start_line = byte_to_line_col(index.clone(), span.start).line;
+    let end_line = byte_to_line_col(index.clone(), span.end).line;
+    ranges
+        .iter()
+        .any(|r| start_line <= r.end && end_line >= r.start)
+}
+
+fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
+    match val {
+        v1_interpreter::Value::Variant { variant_name, .. } => matches!(
+            ctx.resolve(*variant_name).as_str(),
+            "EqualsClaim"
+                | "CompilesClaim"
+                | "DiagnosticClaim"
+                | "StructuralEqualsClaim"
+                | "RoundTripClaim"
+                | "BoolWitnessClaim"
+        ),
+        _ => false,
+    }
+}
+
+fn call_test_claim_fn_bool(
+    ctx: &v1_interpreter::InterpContext,
+    fn_name: &str,
+    claim: &v1_interpreter::Value,
+    frontier: &v1_interpreter::Value,
+    claim_param: &str,
+) -> Result<Option<bool>, String> {
+    if !ctx.item_registry.contains_key(fn_name) {
+        return Ok(None);
+    }
+    let args = [
+        (Some(claim_param.to_string()), claim.clone()),
+        (Some("frontier".to_string()), frontier.clone()),
+    ];
+    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(Some(b)),
+        Ok(other) => Err(format!(
+            "{} returned `{}`, expected Bool",
+            fn_name,
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{}: {}", fn_name, e)),
+    }
+}
+
+fn call_test_claim_fn_nodes(
+    ctx: &v1_interpreter::InterpContext,
+    claim: &v1_interpreter::Value,
+) -> Result<Option<Vec<v1_interpreter::Value>>, String> {
+    const FN: &str = "test_claim_evaluation_nodes";
+    if !ctx.item_registry.contains_key(FN) {
+        return Ok(None);
+    }
+    let args = [(Some("c".to_string()), claim.clone())];
+    match v1_interpreter::run_in_context_with_args(ctx, FN, &args, false) {
+        Ok(nodes) => {
+            let elems = free_monoid_values(&nodes, ctx)?;
+            Ok(Some(elems))
+        }
+        Err(e) => Err(format!("{FN}: {e}")),
+    }
+}
+
+fn free_monoid_values(
+    value: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut out = Vec::new();
+    let mut cur = value;
+    loop {
+        match cur {
+            v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .ok_or_else(|| "Cons without `head` field".to_string())?;
+                out.push(head.clone());
+                cur = ctx
+                    .field(fields, "tail")
+                    .ok_or_else(|| "Cons without `tail` field".to_string())?;
+            }
+            v1_interpreter::Value::Variant { variant_name, .. }
+                if ctx.sym_eq(*variant_name, "Empty") =>
+            {
+                return Ok(out);
+            }
+            v1_interpreter::Value::List(items) => {
+                out.extend(items.iter().cloned());
+                return Ok(out);
+            }
+            other => {
+                return Err(format!(
+                    "expected a List (Cons/Empty), got {}",
+                    other.type_label_public()
+                ))
+            }
+        }
+    }
+}
+
+fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Value {
+    v1_interpreter::list_value(items)
+}
+
+/// Node-precise frontier: substrate evaluation nodes from TestClaim `data` items whose
+/// declaration spans overlap git unified-diff line ranges (not whole changed files).
+fn collect_frontier_nodes_from_diff_line_ranges(
+    index: &MultiEntryIndex,
+    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut frontier = Vec::new();
+    let mut seen = HashSet::new();
+    for (file_path, ranges) in line_ranges_by_file {
+        if !file_path.ends_with(".dag") {
+            continue;
+        }
+        let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
+            Ok(pair) => pair,
+            Err(_) => continue,
+        };
+        let ctx = make_eval_context(&graph, source_indices.clone(), execution_mode);
+        for (name, info) in ctx.item_registry.iter() {
+            if info.kind != ItemKind::DataItem {
+                continue;
+            }
+            let Some(item_node) = ctx.lookup_fn(name) else {
+                continue;
+            };
+            if !span_overlaps_line_ranges(&item_node.span, &source_indices, ranges) {
+                continue;
+            }
+            let Some(body) = item_node.body.as_ref() else {
+                continue;
+            };
+            let val = v1_interpreter::eval_expr(body, &v1_interpreter::Env::empty(), &ctx)
+                .map_err(|e| format!("eval data `{name}` in {file_path}: {e}"))?;
+            if !value_is_test_claim(&val, &ctx) {
+                continue;
+            }
+            if let Some(nodes) = call_test_claim_fn_nodes(&ctx, &val)? {
+                for node in nodes {
+                    let key = ctx.format_value(&node);
+                    if seen.insert(key) {
+                        frontier.push(node);
+                    }
+                }
+            }
+        }
+    }
+    Ok(frontier)
+}
+
+fn entry_claims_touch_frontier(
+    ctx: &v1_interpreter::InterpContext,
+    frontier: &v1_interpreter::Value,
+) -> Result<bool, String> {
+    let mut saw_claim = false;
+    for val in v1_interpreter::eval_data_initializer_values(ctx).map_err(|e| format!("{e}"))? {
+        if !value_is_test_claim(&val, ctx) {
+            continue;
+        }
+        saw_claim = true;
+        if let Some(true) = call_test_claim_fn_bool(
+            ctx,
+            "test_claim_evaluation_touches_rerun_frontier",
+            &val,
+            frontier,
+            "c",
+        )? {
+            return Ok(true);
+        }
+        if let Some(true) = call_test_claim_fn_bool(
+            ctx,
+            "floor_claim_touches_rerun_frontier",
+            &val,
+            frontier,
+            "claim",
+        )? {
+            return Ok(true);
+        }
+    }
+    // Fail-closed: no TestClaim surface in this entry → always run the witness.
+    Ok(!saw_claim)
+}
+
+/// Run the whole floor discovery corpus through one shared module index
+/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
+/// are appended to the discovered roster with `(entry, function)` dedup — exactly
+/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
+/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
+/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
+/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
+/// `claim_batch` keeps its own timing/stats loop but shares the roster.
+pub fn run_discovery_corpus(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<DiscoverySummary, String> {
+    run_discovery_corpus_with_options(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        DiscoveryCorpusOptions::default(),
+    )
+}
+
+pub fn run_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    options: DiscoveryCorpusOptions,
+) -> Result<DiscoverySummary, String> {
+    check_floor_filename_hygiene(source_roots)?;
+    let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
+    // Append explicit rows with (entry, function) dedup, then re-sort so each
+    // entry's witnesses stay grouped for the resolve-once loop below.
+    let mut seen: std::collections::BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.entry.clone(), r.function.clone()))
+        .collect();
+    for (entry, function) in explicit_entries {
+        if seen.insert((entry.clone(), function.clone())) {
+            rows.push(DiscoveryRow {
+                label: function.clone(),
+                entry: entry.clone(),
+                function: function.clone(),
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
+    if rows.is_empty() {
+        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
+    }
+    let index = build_multi_entry_index(source_roots);
+
+    let diff_outcome = if options.skip_unaffected_node_frontier {
+        match floor_git_diff_range() {
+            Ok(text) => FloorGitDiffOutcome::UnifiedProduced(text),
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: git diff unavailable ({msg}) — fail-closed, running full corpus"
+                );
+                FloorGitDiffOutcome::ObservationFailClosed { reason: msg }
+            }
+        }
+    } else {
+        FloorGitDiffOutcome::UnifiedProduced(String::new())
+    };
+    let line_ranges_by_file = match diff_outcome {
+        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
+        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
+    };
+    let skip_enabled = options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty();
+    let frontier_nodes = if skip_enabled {
+        collect_frontier_nodes_from_diff_line_ranges(
+            &index,
+            &line_ranges_by_file,
+            execution_mode,
+        )?
+    } else {
+        Vec::new()
+    };
+    let frontier_value = list_value_from_vec(frontier_nodes.clone());
+
+    // Group by entry (rows are sorted by (entry, function)), resolve each entry
+    // once, run its witnesses against the shared graph.
+    let mut summary = DiscoverySummary {
+        total: rows.len(),
+        passed: 0,
+        skipped: 0,
+        failures: Vec::new(),
+        entry_resolve_receipts: Vec::new(),
+        total_resolve_nanos: 0,
+        performance_receipts: Vec::new(),
+        total_measured_nanos: 0,
+    };
+    let mut current_entry: Option<String> = None;
+    let mut current_closure_subject: Option<String> = None;
+    let mut ctx: Option<v1_interpreter::InterpContext> = None;
+    let mut current_entry_touches = true;
+    for row in &rows {
+        if current_entry.as_deref() != Some(row.entry.as_str()) {
+            let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
+                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
+            let closure_subject = subject_digest_for_closure(&sources);
+            let resolve_started = std::time::Instant::now();
+            let (graph, source_indices) = resolve_entry_with_index(&index, &row.entry)
+                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let resolve_nanos = resolve_started.elapsed().as_nanos();
+            summary.total_resolve_nanos += resolve_nanos;
+            summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                entry: row.entry.clone(),
+                closure_subject: closure_subject.clone(),
+                resolve_nanos,
+            });
+            current_closure_subject = Some(closure_subject);
+            let entry_ctx = make_eval_context(&graph, source_indices, execution_mode);
+            current_entry_touches = if skip_enabled {
+                entry_claims_touch_frontier(&entry_ctx, &frontier_value)?
+            } else {
+                true
+            };
+            ctx = Some(entry_ctx);
+            current_entry = Some(row.entry.clone());
+        }
+        if skip_enabled && !current_entry_touches {
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [assumed-green node-frontier] {} ({})",
+                row.function, row.entry
+            );
+            continue;
+        }
+        let ctx_ref = ctx.as_ref().expect("ctx set above");
+        let closure_subject = current_closure_subject
+            .as_deref()
+            .expect("closure subject set above");
+        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+        summary.total_measured_nanos += receipt.wall_nanos;
+        summary.performance_receipts.push(receipt);
+        match outcome {
+            ClaimOutcome::Pass => summary.passed += 1,
+            ClaimOutcome::Fail => summary.failures.push(format!(
+                "{} ({}) returned Bool(false)",
+                row.function, row.entry
+            )),
+            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
+                "{} ({}) returned `{}`, not Bool",
+                row.function, row.entry, got
+            )),
+            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+                "{} ({}) runtime error: {}",
+                row.function, row.entry, message
+            )),
+        }
+    }
+    Ok(summary)
+}
+
+#[cfg(test)]
+mod floor_skip_frontier_tests {
+    use super::{parse_unified_diff_line_ranges, FileLineRange, span_overlaps_line_ranges};
+    use crate::v1_std_core::{build_newline_index, byte_to_line_col, SourceSpan};
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    #[test]
+    fn parse_unified_diff_extracts_new_side_line_ranges() {
+        let diff = "\
+diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
+--- a/src/v2/lens/affected_set.dag
++++ b/src/v2/lens/affected_set.dag
+@@ -100,0 +101,3 @@
++line1
++line2
++line3
+";
+        let ranges = parse_unified_diff_line_ranges(diff);
+        let file = "src/v2/lens/affected_set.dag";
+        assert_eq!(
+            ranges.get(file),
+            Some(&vec![FileLineRange { start: 101, end: 103 }])
+        );
+    }
+
+    #[test]
+    fn span_overlap_requires_line_intersection_not_whole_file() {
+        let source = "a\nb\nc\n";
+        let index = build_newline_index("f.dag".to_string(), source.to_string());
+        let mut si = HashMap::new();
+        si.insert("f.dag".to_string(), index);
+        let span = SourceSpan {
+            file: "f.dag".to_string(),
+            start: 0,
+            end: 1,
+        };
+        assert!(span_overlaps_line_ranges(
+            &span,
+            &si,
+            &[FileLineRange { start: 1, end: 1 }]
+        ));
+        assert!(!span_overlaps_line_ranges(
+            &span,
+            &si,
+            &[FileLineRange { start: 3, end: 3 }]
+        ));
+    }
 }
 
 /// Run the whole floor discovery corpus through one shared module index

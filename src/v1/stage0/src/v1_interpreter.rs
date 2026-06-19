@@ -1491,6 +1491,21 @@ fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     Ok(Env::extend(&Env::empty(), bindings))
 }
 
+/// Evaluate every `data` initializer in `ctx` (the same values `build_initial_env` binds).
+pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Value>> {
+    let mut out = Vec::new();
+    for (name, info) in ctx.item_registry.iter() {
+        if info.kind == ItemKind::DataItem {
+            if let Some(node) = ctx.lookup_fn(name) {
+                if let Some(ref body) = node.body {
+                    out.push(eval_expr(body, &Env::empty(), ctx)?);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 // ---------------------------------------------------------------------------
 // Function call
 // ---------------------------------------------------------------------------
