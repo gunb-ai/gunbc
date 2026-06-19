@@ -1,0 +1,33 @@
+// Scope: lens-unit GREEN — file: scheme is a valid stable authority (internal PDF).
+
+module v2.test.extdeps_stable_authority.lens_unit.clean_file_anchor
+
+import extdeps.stable_authority { StableAuthority }
+import extdeps.uri { Uri }
+import v2.lens.extdeps_stable_authority {
+  AnchorPresent,
+  ExtdepsStableAuthorityFact,
+  extdeps_stable_authority_clean_holds
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data clean_file_facts: List<ExtdepsStableAuthorityFact> = [
+  ExtdepsStableAuthorityFact {
+    path: "dsl/extdeps/specs/example.dag",
+    module: "extdeps.specs.example",
+    status: AnchorPresent {
+      authority: StableAuthority {
+        uri: Uri {
+          scheme: File,
+          locator: "/usr/share/doc/spec.pdf#page=12"
+        }
+      }
+    }
+  }
+]
+
+test fn clean_file_anchor_is_green_holds() -> Bool {
+  extdeps_stable_authority_clean_holds(facts: clean_file_facts)
+}

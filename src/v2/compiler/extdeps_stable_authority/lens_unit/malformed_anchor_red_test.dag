@@ -1,0 +1,24 @@
+// Scope: lens-unit RED — anchor row present but does not parse to StableAuthority+Uri.
+
+module v2.test.extdeps_stable_authority.lens_unit.malformed_anchor_red
+
+import v2.lens.extdeps_stable_authority {
+  AnchorMalformed,
+  ExtdepsStableAuthorityFact,
+  extdeps_stable_authority_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data malformed_anchor_facts: List<ExtdepsStableAuthorityFact> = [
+  ExtdepsStableAuthorityFact {
+    path: "dsl/extdeps/fixture/bad.dag",
+    module: "extdeps.fixture.bad",
+    status: AnchorMalformed
+  }
+]
+
+test fn malformed_anchor_is_red_holds() -> Bool {
+  extdeps_stable_authority_violation_count(facts: malformed_anchor_facts) == 1
+}

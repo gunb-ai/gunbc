@@ -1,0 +1,115 @@
+// src/v2/lens/extdeps_stable_authority.dag
+// Scope: extdeps module stable-authority anchor guard (DESIGN.md §3 grounding).
+// Every extdeps/ module must declare `data extdeps_stable_authority_anchor:
+// StableAuthority` with a structured Uri (scheme + locator) — no string prefix tests.
+// Internal stable authorities (file:, repo docs) are VALID.
+// Consumer: tools.extdeps_stable_authority_gate → lens-unit + staged corpus witnesses.
+//
+// Projection: NODE-TREE over parsed data-decl values (same cohort as
+// extdeps_shape_transport_policy / layering_imports). NO Rust text-scanner;
+// live-tree builtin deferred until Source: SourceRootIngest (#5126).
+
+module v2.lens.extdeps_stable_authority
+
+import extdeps.stable_authority { StableAuthority }
+import extdeps.uri { uri_scheme_is_recognized }
+import v2.std.algebra {
+  fold_list,
+  is_empty,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type ExtdepsStableAuthorityAnchorStatus
+  = AnchorAbsent
+  | AnchorPresent { authority: StableAuthority }
+  | AnchorMalformed
+
+type ExtdepsStableAuthorityFact {
+  path: String
+  module: String
+  status: ExtdepsStableAuthorityAnchorStatus
+}
+
+type ExtdepsStableAuthorityViolation
+  = MissingFormalAnchor { path: String, module: String }
+  | MalformedStableAuthority { path: String, module: String }
+
+data empty_extdeps_stable_authority_violations: List<ExtdepsStableAuthorityViolation> = []
+
+fn extdeps_stable_authority_uri_recognized(authority: StableAuthority) -> Bool {
+  uri_scheme_is_recognized(s: authority.uri.scheme)
+}
+
+fn extdeps_stable_authority_fact_violation(
+  fact: ExtdepsStableAuthorityFact
+) -> List<ExtdepsStableAuthorityViolation> {
+  match fact.status {
+    AnchorAbsent => [
+      MissingFormalAnchor {
+        path: fact.path,
+        module: fact.module
+      }
+    ]
+    AnchorMalformed => [
+      MalformedStableAuthority {
+        path: fact.path,
+        module: fact.module
+      }
+    ]
+    AnchorPresent { authority: a } =>
+      if extdeps_stable_authority_uri_recognized(authority: a) {
+        empty_extdeps_stable_authority_violations
+      } else {
+        [
+          MalformedStableAuthority {
+            path: fact.path,
+            module: fact.module
+          }
+        ]
+      }
+  }
+}
+
+fn scan_extdeps_stable_authority_facts(
+  facts: List<ExtdepsStableAuthorityFact>
+) -> List<ExtdepsStableAuthorityViolation> {
+  fold_list(
+    xs: facts,
+    empty: empty_extdeps_stable_authority_violations,
+    cons: fn(acc, fact) {
+      fold_list(
+        xs: extdeps_stable_authority_fact_violation(fact: fact),
+        empty: acc,
+        cons: fn(inner, v) { list_snoc_item(xs: inner, item: v) }
+      )
+    }
+  )
+}
+
+fn extdeps_stable_authority_clean_holds(
+  facts: List<ExtdepsStableAuthorityFact>
+) -> Bool {
+  is_empty(xs: scan_extdeps_stable_authority_facts(facts: facts))
+}
+
+fn extdeps_stable_authority_clean_nonvacuous_holds(
+  facts: List<ExtdepsStableAuthorityFact>
+) -> Bool {
+  (is_empty(xs: facts) == false) && extdeps_stable_authority_clean_holds(facts: facts)
+}
+
+fn extdeps_stable_authority_violation_count(
+  facts: List<ExtdepsStableAuthorityFact>
+) -> Int {
+  length(xs: scan_extdeps_stable_authority_facts(facts: facts))
+}
+
+fn extdeps_stable_authority_module_count(
+  facts: List<ExtdepsStableAuthorityFact>
+) -> Int {
+  length(xs: facts)
+}

@@ -11,7 +11,7 @@
 module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate
+  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, ExtdepsStableAuthorityGate, DslCompileCleanGate, CiYamlGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
@@ -29,6 +29,10 @@ func layering_imports_gate_passes() -> Bool {
 
 func resolved_imports_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: ResolvedImportsGate))
+}
+
+func extdeps_stable_authority_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: ExtdepsStableAuthorityGate))
 }
 
 func dsl_compile_clean_gate_passes() -> Bool {

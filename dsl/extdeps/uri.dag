@@ -1,0 +1,52 @@
+// extdeps/uri.dag — RFC 3986 URI carrier (scheme + locator).
+//
+// Spec anchors (intersubjective grounding — §1 A3):
+//   RFC 3986 URI generic syntax: https://www.rfc-editor.org/rfc/rfc3986
+//   IANA URI scheme registry: https://www.rfc-editor.org/rfc/rfc7595
+//
+// Uri is an extdeps concept (external authority), not std business logic.
+// §6 dissolution: locator is opaque NonEmptyStr for now; fuller RFC 3986
+// authority / path / query / fragment decomposition deferred until field-level
+// FactAuthorityOverride needs granular fragments (e.g. #page=12 on a PDF).
+
+module extdeps.uri
+
+import std.types { NonEmptyStr, Url }
+
+// Closed sum — categorical axis for URI scheme (§2). Add variants as we cite
+// new IANA schemes; never string-match "https://" in lens or gate logic.
+type UriScheme
+  = Http
+  | Https
+  | File
+  | Ftp
+
+type Uri {
+  scheme: UriScheme
+  locator: NonEmptyStr
+}
+
+fn uri_scheme_is_http(s: UriScheme) -> Bool {
+  match s {
+    Http => true
+    Https => true
+    File => false
+    Ftp => false
+  }
+}
+
+fn uri_scheme_is_recognized(s: UriScheme) -> Bool {
+  match s {
+    Http => true
+    Https => true
+    File => true
+    Ftp => true
+  }
+}
+
+// Url (std.types) is the legacy http(s) String projection carrier.
+// [Url] ⊂ { uri | uri_scheme_is_http(uri.scheme) } — relation only; Url=String
+// consumer migration is a separate follow-up.
+fn uri_is_url(uri: Uri) -> Bool {
+  uri_scheme_is_http(s: uri.scheme)
+}

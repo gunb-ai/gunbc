@@ -1,0 +1,38 @@
+// Scope: lens-unit GREEN — https stable authority with structured Uri scheme match.
+
+module v2.test.extdeps_stable_authority.lens_unit.clean_https_anchor
+
+import extdeps.stable_authority { StableAuthority }
+import extdeps.uri { Uri }
+import v2.lens.extdeps_stable_authority {
+  AnchorPresent,
+  ExtdepsStableAuthorityFact,
+  extdeps_stable_authority_clean_holds,
+  extdeps_stable_authority_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data clean_https_path: String = "dsl/extdeps/formats/yaml.dag"
+data clean_https_module: String = "extdeps.formats.yaml"
+
+data clean_https_facts: List<ExtdepsStableAuthorityFact> = [
+  ExtdepsStableAuthorityFact {
+    path: clean_https_path,
+    module: clean_https_module,
+    status: AnchorPresent {
+      authority: StableAuthority {
+        uri: Uri {
+          scheme: Https,
+          locator: "yaml.org/spec/1.2.2/"
+        }
+      }
+    }
+  }
+]
+
+test fn clean_https_anchor_is_green_holds() -> Bool {
+  extdeps_stable_authority_clean_holds(facts: clean_https_facts)
+    && (extdeps_stable_authority_violation_count(facts: clean_https_facts) == 0)
+}

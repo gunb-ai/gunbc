@@ -1,0 +1,74 @@
+// tools/extdeps_stable_authority_transport.dag — host transport for stable-authority gate.
+// Phase 1: lens-unit + extdeps.uri witnesses only (no live-tree scan until staged rollout).
+
+module tools.extdeps_stable_authority_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+
+data esa_uri_witness_entry: String = "dsl/test/claim/uri_witness_test.dag"
+data esa_uri_witness_function: String = "uri_witnesses"
+
+data esa_clean_https_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/clean_https_anchor_test.dag"
+data esa_clean_https_function: String = "clean_https_anchor_is_green_holds"
+
+data esa_clean_file_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/clean_file_anchor_test.dag"
+data esa_clean_file_function: String = "clean_file_anchor_is_green_holds"
+
+data esa_missing_red_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/missing_anchor_red_test.dag"
+data esa_missing_red_function: String = "missing_anchor_is_red_holds"
+
+data esa_malformed_red_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/malformed_anchor_red_test.dag"
+data esa_malformed_red_function: String = "malformed_anchor_is_red_holds"
+
+data esa_scheme_perturb_entry: String = "src/v2/compiler/extdeps_stable_authority/lens_unit/scheme_perturb_red_test.dag"
+data esa_scheme_perturb_function: String = "scheme_perturb_present_to_malformed_flips_red_holds"
+
+fn esa_source_root_flags() -> List<ShellWord> {
+  [
+    lit(text: "--source-root"),
+    lit(text: "dsl"),
+    lit(text: "--source-root"),
+    lit(text: "src/v2")
+  ]
+}
+
+fn esa_gunbc_claim_run(entry: String, function: String) -> ShellStmt {
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], esa_source_root_flags()),
+    [lit(text: "--entry"), lit(text: entry), lit(text: "--function"), lit(text: function), lit(text: "--claim-run")]
+  ))
+}
+
+fn esa_run_claims(stmts: List<ShellStmt>) -> Bool {
+  let prog = ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), stmts)
+  }
+  let result = shell.Exec.Run(script: serialize_bash(p: prog))
+  result.success
+}
+
+fn run_extdeps_stable_authority_uri_witnesses() -> Bool {
+  esa_run_claims(stmts: [esa_gunbc_claim_run(entry: esa_uri_witness_entry, function: esa_uri_witness_function)])
+}
+
+fn run_extdeps_stable_authority_lens_unit_green() -> Bool {
+  esa_run_claims(stmts: [
+    esa_gunbc_claim_run(entry: esa_clean_https_entry, function: esa_clean_https_function),
+    esa_gunbc_claim_run(entry: esa_clean_file_entry, function: esa_clean_file_function)
+  ])
+}
+
+fn run_extdeps_stable_authority_lens_unit_red() -> Bool {
+  esa_run_claims(stmts: [
+    esa_gunbc_claim_run(entry: esa_missing_red_entry, function: esa_missing_red_function),
+    esa_gunbc_claim_run(entry: esa_malformed_red_entry, function: esa_malformed_red_function),
+    esa_gunbc_claim_run(entry: esa_scheme_perturb_entry, function: esa_scheme_perturb_function)
+  ])
+}

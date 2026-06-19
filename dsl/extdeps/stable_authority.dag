@@ -1,0 +1,34 @@
+// extdeps/stable_authority.dag — stable authority citation carrier (DESIGN §3).
+//
+// extdeps modules cite a STABLE AUTHORITY — an API, vendor spec, standard, or
+// stable internal interface that likely will not change. Not exclusively external;
+// internal stable docs are valid anchors.
+//
+// Canonical module-level data row name (projection + lens match literally):
+//   data extdeps_stable_authority_anchor: StableAuthority = ...
+//
+// Self-anchor: this module's convention is grounded on DESIGN.md §3 (internal,
+// valid under the dropped external-only rule).
+
+module extdeps.stable_authority
+
+import std.types { NonEmptyStr }
+import extdeps.uri { Uri, File }
+
+type StableAuthority {
+  uri: Uri
+}
+
+// Field-level override: a specific fact cites a finer locator than the module
+// root (e.g. a page fragment on a PDF). Absent ⇒ inherit module root.
+type FactAuthorityOverride {
+  fact: NonEmptyStr
+  authority: StableAuthority
+}
+
+data extdeps_stable_authority_anchor: StableAuthority = StableAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "DESIGN.md#3-single-authority"
+  }
+}

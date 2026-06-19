@@ -1,0 +1,46 @@
+// Scope: lens-unit RED — perturb structured anchor from Present(Https) to Malformed flips clean→violation.
+
+module v2.test.extdeps_stable_authority.lens_unit.scheme_perturb_red
+
+import extdeps.stable_authority { StableAuthority }
+import extdeps.uri { Uri }
+import v2.lens.extdeps_stable_authority {
+  AnchorMalformed,
+  AnchorPresent,
+  ExtdepsStableAuthorityFact,
+  extdeps_stable_authority_clean_holds,
+  extdeps_stable_authority_violation_count
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data perturb_path: String = "dsl/extdeps/formats/yaml.dag"
+data perturb_module: String = "extdeps.formats.yaml"
+
+data perturb_green_facts: List<ExtdepsStableAuthorityFact> = [
+  ExtdepsStableAuthorityFact {
+    path: perturb_path,
+    module: perturb_module,
+    status: AnchorPresent {
+      authority: StableAuthority {
+        uri: Uri { scheme: Https, locator: "yaml.org/spec/1.2.2/" }
+      }
+    }
+  }
+]
+
+data perturb_red_facts: List<ExtdepsStableAuthorityFact> = [
+  ExtdepsStableAuthorityFact {
+    path: perturb_path,
+    module: perturb_module,
+    status: AnchorMalformed
+  }
+]
+
+test fn scheme_perturb_present_to_malformed_flips_red_holds() -> Bool {
+  extdeps_stable_authority_clean_holds(facts: perturb_green_facts)
+    && (extdeps_stable_authority_violation_count(facts: perturb_green_facts) == 0)
+    && (extdeps_stable_authority_violation_count(facts: perturb_red_facts) == 1)
+    && (extdeps_stable_authority_clean_holds(facts: perturb_red_facts) == false)
+}

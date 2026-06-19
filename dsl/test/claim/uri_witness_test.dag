@@ -1,0 +1,42 @@
+// Scope: extdeps.uri scheme predicates — discriminating http(s) vs file without string prefix tests.
+
+module test.claim.uri_witness
+
+import extdeps.uri {
+  Uri,
+  Http,
+  Https,
+  File,
+  uri_is_url,
+  uri_scheme_is_http,
+  uri_scheme_is_recognized
+}
+import std.logic { Bool }
+
+test fn uri_scheme_is_http_matches_https_holds() -> Bool {
+  uri_scheme_is_http(s: Https)
+}
+
+test fn uri_scheme_is_http_rejects_file_holds() -> Bool {
+  uri_scheme_is_http(s: File) == false
+}
+
+test fn uri_is_url_https_projection_holds() -> Bool {
+  uri_is_url(uri: Uri { scheme: Https, locator: "example.com/spec" })
+}
+
+test fn uri_is_url_file_not_url_holds() -> Bool {
+  uri_is_url(uri: Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
+}
+
+test fn uri_scheme_file_is_recognized_holds() -> Bool {
+  uri_scheme_is_recognized(s: File)
+}
+
+test fn uri_witnesses() -> Bool {
+  uri_scheme_is_http_matches_https_holds()
+    && uri_scheme_is_http_rejects_file_holds()
+    && uri_is_url_https_projection_holds()
+    && uri_is_url_file_not_url_holds()
+    && uri_scheme_file_is_recognized_holds()
+}

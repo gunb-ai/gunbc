@@ -1,0 +1,31 @@
+// tools/extdeps_stable_authority_gate.dag — extdeps stable-authority anchor gate (model phase).
+//
+// Lens-unit + extdeps.uri witnesses only; live-tree roster deferred to staged rollout.
+
+module tools.extdeps_stable_authority_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.extdeps_stable_authority_transport {
+  run_extdeps_stable_authority_uri_witnesses,
+  run_extdeps_stable_authority_lens_unit_green,
+  run_extdeps_stable_authority_lens_unit_red
+}
+
+func run_extdeps_stable_authority_gate_body() -> ProcessExit {
+  let uri_ok = run_extdeps_stable_authority_uri_witnesses()
+  let green_ok = run_extdeps_stable_authority_lens_unit_green()
+  let red_ok = run_extdeps_stable_authority_lens_unit_red()
+  if uri_ok && green_ok && red_ok {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "extdeps stable-authority gate failed")
+  }
+}
+
+func main() -> ProcessExit {
+  run_extdeps_stable_authority_gate_body()
+}
+
+func run_extdeps_stable_authority_ci_gate() -> ProcessExit {
+  run_extdeps_stable_authority_gate_body()
+}
