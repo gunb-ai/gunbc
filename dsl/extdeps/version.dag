@@ -1,0 +1,64 @@
+// extdeps/version.dag — upstream version citations (DESIGN.md §3).
+//
+// Anchor: https://en.wikipedia.org/wiki/Software_versioning
+//
+// extdeps invariant: cite the source, keep its real names, declare its version.
+// Single authority for *how* extdeps records that fidelity citation — not a
+// normalization layer. Upstream names its own versions (POSIX.1-2017,
+// 2022-11-28, v1, 1.2.0); carriers preserve those labels as
+// `UpstreamVersionLabel`.
+//
+// SemVer lives in `std.types` when upstream genuinely uses semver (OCI runtime
+// bundle version, crate manifests). Do not re-mint semver here.
+//
+// Identity: UpstreamVersionLabel equality is string equality (== / !=). Two
+// UpstreamSpecCitation values represent the same pinned spec when both source
+// and version match (`spec_citations_match`). Two RestApiVersionHeader values
+// represent the same pinned API revision when header name and version label
+// both match (`api_headers_same_version`).
+//
+// Ordering: no general total order is defined for arbitrary version labels —
+// upstream labeling schemes are heterogeneous ("POSIX.1-2017", "v1", "1.2.0").
+// Exception: ISO 8601 date labels ("2022-11-28", "2023-06-01") are ordered
+// lexicographically by time; callers that rely on date ordering must validate
+// the label format before comparing.
+//
+// Consumers:
+//   extdeps/cron/schedule_model.dag — `UpstreamSpecCitation`
+//   extdeps/llm/anthropic.dag       — `RestApiVersionHeader`
+//   extdeps/github/github.dag       — `RestApiVersionHeader`
+
+module extdeps.version
+
+import std.types { NonEmptyStr, Url }
+
+// Version label exactly as the upstream source names it — not normalized to SemVer.
+type UpstreamVersionLabel = NonEmptyStr where brand("UpstreamVersionLabel")
+
+// DESIGN §3 spec citation: source URL + declared version.
+type UpstreamSpecCitation {
+  source: Url
+  version: UpstreamVersionLabel
+}
+
+// REST API version pinned via a request header (Anthropic `anthropic-version`,
+// GitHub `X-GitHub-Api-Version`). Header name is part of the upstream contract.
+type RestApiVersionHeader {
+  header: NonEmptyStr
+  version: UpstreamVersionLabel
+}
+
+// REST API version pinned via URL path segment (GCP `/storage/v1`, `/run/v2`).
+type RestApiPathVersion {
+  segment: NonEmptyStr
+}
+
+// Identity: true iff both citations point to the same source at the same version.
+fn spec_citations_match(a: UpstreamSpecCitation, b: UpstreamSpecCitation) -> Bool {
+  a.source == b.source && a.version == b.version
+}
+
+// Identity: true iff both headers carry the same header name and version label.
+fn api_headers_same_version(a: RestApiVersionHeader, b: RestApiVersionHeader) -> Bool {
+  a.header == b.header && a.version == b.version
+}
