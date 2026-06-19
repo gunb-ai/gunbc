@@ -104,20 +104,22 @@ fn strip_comments_and_string_literals(source: &str) -> String {
     out
 }
 
-fn contains_decl_reference(content: &str, decl_name: &str) -> bool {
-    let stripped = strip_comments_and_string_literals(content);
-    stripped
-        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-        .any(|token| token == decl_name)
-}
-
 fn is_census_infrastructure_path(rel: &str) -> bool {
     rel == "src/v1/stage0/src/languages_consumer_census.rs"
         || rel.starts_with("src/v2/compiler/languages_consumer_census/")
         || rel == "src/v2/lens/languages_consumer_census.dag"
 }
 
-fn walk_consumer_files(ws: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
+fn tokenize_identifiers(content: &str) -> HashSet<String> {
+    let stripped = strip_comments_and_string_literals(content);
+    stripped
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn walk_tree_dir(top_root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).unwrap_or_else(|e| {
         panic!(
             "languages_consumer_census: failed to read dir {}: {e}",
@@ -127,11 +129,7 @@ fn walk_consumer_files(ws: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if name == "target" || name == ".git" || name == "node_modules" {
-                continue;
-            }
-            walk_consumer_files(ws, &path, out);
+            walk_tree_dir(top_root, &path, out);
             continue;
         }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -141,14 +139,26 @@ fn walk_consumer_files(ws: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn walk_tree(top_root: &Path, out: &mut Vec<PathBuf>) {
+    if !top_root.is_dir() {
+        panic!(
+            "languages_consumer_census: tree root {} does not exist",
+            top_root.display()
+        );
+    }
+    walk_tree_dir(top_root, top_root, out);
+}
+
 fn decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
     let ws = workspace_root();
     let authority = ws.join(AUTHORITY_REL);
     let authority_content = read_source(&authority);
     let decl_names = extract_data_decl_names(&authority_content);
+    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
 
     let mut files = Vec::new();
-    walk_consumer_files(&ws, &ws, &mut files);
+    walk_tree(&ws.join("dsl"), &mut files);
+    walk_tree(&ws.join("src"), &mut files);
 
     let mut by_decl: HashMap<String, HashSet<String>> =
         decl_names.iter().map(|name| (name.clone(), HashSet::new())).collect();
@@ -158,14 +168,12 @@ fn decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
         if rel == AUTHORITY_REL || is_census_infrastructure_path(&rel) {
             continue;
         }
-        let content = read_source(&path);
-        for decl_name in &decl_names {
-            if contains_decl_reference(&content, decl_name) {
-                by_decl
-                    .get_mut(decl_name)
-                    .expect("decl map key")
-                    .insert(rel.clone());
-            }
+        let tokens = tokenize_identifiers(&read_source(&path));
+        for decl_name in tokens.intersection(&decl_name_set) {
+            by_decl
+                .get_mut(decl_name)
+                .expect("decl map key")
+                .insert(rel.clone());
         }
     }
 
