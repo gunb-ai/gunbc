@@ -12,8 +12,13 @@ import v2.test.lens_mock_totality.witness_template {
   omit_consumer_handles,
   outcome_accepted_p
 }
-import v2.extdeps.test.mock_corpus { http_pilot_published_mock_corpus }
-import v2.std.hermetic_replay { PublishedMockCase }
+// Single authority for the http_pilot mock corpus now lives in the dsl/ tree
+// (dsl/extdeps/test/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does (M4
+// hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern.
+import extdeps.test.mock_corpus {
+  PublishedMockCase,
+  http_pilot_published_mock_corpus
+}
 import v2.std.collection { List }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }

@@ -1,0 +1,79 @@
+// extdeps/render/terminal.dag — Terminal width composition over glyph realization.
+//
+// Width-constrained frame/line composition depends on resolve_symbol (encoding-tier
+// dispatch in extdeps.render.glyphs). Lives in extdeps so std.render stays
+// realization-free (DESIGN.md §3).
+
+module extdeps.render.terminal
+
+import extdeps.render.glyphs { resolve_symbol }
+import std.render { Frame, Line, Span, Viewport }
+import std.symbols { Tier }
+import std.unicode { string_display_width }
+import std.width { truncate_text }
+
+fn span_width(span: Span, tier: Tier) -> Int? {
+  let text_w = string_display_width(s: span.text)
+  match span.style.symbol {
+    null => Present { value: text_w }
+    sym  => match resolve_symbol(id: sym, tier: tier) {
+      Present { value: s } => Present { value: text_w + string_display_width(s: s) }
+      Absent => none
+    }
+  }
+}
+
+fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span>? {
+  let state = fold(spans,
+    init: Present { value: { kept: [], remaining: budget } },
+    f: (acc, span) => match acc {
+      Absent => none
+      Present { value: st } =>
+        if st.remaining <= 0 {
+          acc
+        } else {
+          match span_width(span: span, tier: tier) {
+            Present { value: w } =>
+              if w <= st.remaining {
+                Present { value: { kept: concat(st.kept, [span]), remaining: st.remaining - w } }
+              } else {
+                Present { value: { kept: concat(st.kept, [Span { text: truncate_text(text: span.text, max_width: st.remaining), style: span.style }]), remaining: 0 } }
+              }
+            Absent => none
+          }
+        }
+    }
+  )
+  match state {
+    Present { value: s } => Present { value: s.kept }
+    Absent => none
+  }
+}
+
+fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line? {
+  let indent_width = line.indent * 4
+  let budget = max_width - indent_width
+  if budget <= 0 { return Present { value: Line { spans: [], indent: line.indent, max_width: max_width } } }
+  match truncate_spans(spans: line.spans, budget: budget, tier: tier) {
+    Present { value: spans } => Present { value: Line { spans: spans, indent: line.indent, max_width: max_width } }
+    Absent => none
+  }
+}
+
+fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame? {
+  let result = fold(frame.lines,
+    init: Present { value: [] },
+    f: (acc, line) => match acc {
+      Absent => none
+      Present { value: lines } =>
+        match constrain_line(line: line, max_width: viewport.width, tier: tier) {
+          Present { value: l } => Present { value: concat(lines, [l]) }
+          Absent => none
+        }
+    }
+  )
+  match result {
+    Present { value: lines } => Present { value: Frame { lines: lines, cursor_action: frame.cursor_action } }
+    Absent => none
+  }
+}
