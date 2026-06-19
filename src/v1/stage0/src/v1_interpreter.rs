@@ -5713,6 +5713,18 @@ fn eval_builtin(
             ))
         }
 
+        "extdeps_stable_authority_is_backfill_pending_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_stable_authority_is_backfill_pending_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_backfill_pending_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

@@ -725,6 +725,35 @@ pub fn derived_extdeps_modules_value(
     list_value(items)
 }
 
+fn backfill_pending_module_paths() -> &'static std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    use std::sync::OnceLock;
+    static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
+    PATHS.get_or_init(|| {
+        let ws = crate::module_path_index::workspace_root();
+        let path = ws.join("dsl/extdeps/stable_authority_backfill_pending.txt");
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
+        content
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_string)
+            .collect()
+    })
+}
+
+/// Slice-1 seed: explicit shrinking exclusion roster for unanchored extdeps modules.
+/// New modules NOT on this list are fail-closed RED until anchored.
+pub fn is_backfill_pending_for_module_path(module_path: &str) -> bool {
+    backfill_pending_module_paths().contains(module_path)
+}
+
+pub fn is_backfill_pending_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    is_backfill_pending_for_module_path(&module_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

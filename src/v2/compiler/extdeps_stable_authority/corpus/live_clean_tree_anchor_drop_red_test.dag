@@ -1,9 +1,10 @@
-// Scope: discriminating RED — enrolled module with anchor row dropped fails live policy.
+// Scope: discriminating RED — live scan path flags anchor-drop (NOT a sibling predicate).
 
 module v2.test.extdeps_stable_authority.corpus.live_clean_tree_anchor_drop_red
 
 import v2.lens.extdeps_stable_authority {
-  extdeps_stable_authority_live_enrolled_anchor_drop_is_red
+  extdeps_stable_authority_has_missing_formal_anchor_via_live_policy,
+  extdeps_stable_authority_live_violation_count_for_module
 }
 import v2.lens.extdeps_stable_authority.module_refs {
   extdeps_fixture_clean_https_no_anchor_module
@@ -11,7 +12,10 @@ import v2.lens.extdeps_stable_authority.module_refs {
 import v2.std.logic { Bool }
 
 test fn corpus_live_clean_tree_anchor_drop_red_holds() -> Bool {
-  extdeps_stable_authority_live_enrolled_anchor_drop_is_red(
+  extdeps_stable_authority_live_violation_count_for_module(
     module: extdeps_fixture_clean_https_no_anchor_module
-  )
+  ) == 1
+    && extdeps_stable_authority_has_missing_formal_anchor_via_live_policy(
+      module: extdeps_fixture_clean_https_no_anchor_module
+    )
 }

@@ -55,11 +55,6 @@ data extdeps_stable_authority_anchor_machinery_exempt_modules: List<QualifiedNam
   extdeps_stable_authority_module
 ]
 
-// Slice-1 enrolled modules: real extdeps rows that MUST declare anchors before backfill lands.
-data extdeps_stable_authority_anchor_enrolled_modules: List<QualifiedName> = [
-  extdeps_fixture_clean_https_module
-]
-
 // RED perturb fixtures excluded from live clean-tree roster (would false-RED the gate).
 data extdeps_stable_authority_clean_tree_roster_exclusions: List<QualifiedName> = [
   extdeps_fixture_bogus_scheme_module,
