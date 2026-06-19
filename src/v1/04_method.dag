@@ -135,6 +135,12 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "extdeps_gist_create_declares_filename_input_for_qualified_name", bool_type)
   let m = map_insert(m, "extdeps_gist_create_files_keyed_by_filename_for_qualified_name", bool_type)
   let m = map_insert(m, "transport_script_literal_violation_count_for_path", int_type)
+  let m = map_insert(m, "languages_consumer_census_data_decl_count", int_type)
+  let m = map_insert(m, "languages_consumer_census_per_language_row_count", int_type)
+  let m = map_insert(m, "languages_consumer_census_format_row_count", int_type)
+  let m = map_insert(m, "languages_consumer_census_external_consumer_count", int_type)
+  let m = map_insert(m, "languages_consumer_census_is_composition_only", bool_type)
+  let m = map_insert(m, "languages_consumer_census_has_external_consumer", bool_type)
   m
 }
 
