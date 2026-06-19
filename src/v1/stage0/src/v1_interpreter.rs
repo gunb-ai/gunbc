@@ -1274,13 +1274,7 @@ impl InterpContext {
         execution_mode: ExecutionMode,
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     ) -> Self {
-        Self::with_runtime_options(
-            graph,
-            source_indices,
-            execution_mode,
-            fixture_store,
-            None,
-        )
+        Self::with_runtime_options(graph, source_indices, execution_mode, fixture_store, None)
     }
 
     /// Build an interpreter context. When `whole_tree_published_keys` is `Some`, hermetic
@@ -1375,10 +1369,7 @@ impl InterpContext {
         let published = self.published_mock_keys()?;
         let services: std::collections::HashSet<String> = published
             .iter()
-            .filter_map(|k| {
-                k.rsplit_once('.')
-                    .map(|(svc, _)| svc.to_string())
-            })
+            .filter_map(|k| k.rsplit_once('.').map(|(svc, _)| svc.to_string()))
             .collect();
         let services = Rc::new(services);
         *self.governed_services.borrow_mut() = Some(services.clone());

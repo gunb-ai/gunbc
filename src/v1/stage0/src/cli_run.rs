@@ -848,8 +848,7 @@ pub fn precompute_whole_tree_published_mock_keys(
         return Ok(std::collections::HashSet::new());
     }
     let index = build_module_index(&dsl_roots);
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        index.values().cloned().collect();
+    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
