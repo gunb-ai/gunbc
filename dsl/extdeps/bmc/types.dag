@@ -10,7 +10,15 @@
 
 module extdeps.bmc.types
 
-import std.measure { Watt, ByteSize, HardwareThreadCount, byte_size, watt }
+import std.measure {
+  Watt,
+  ByteSize,
+  HardwareThreadCount,
+  Celsius,
+  RevolutionsPerMinute,
+  byte_size,
+  watt,
+}
 import std.types { NonEmptyStr, Int, List }
 
 // ComputerSystem.PowerState — host power state as reported by the BMC (not host OS).
@@ -61,7 +69,7 @@ type RedfishPowerSubsystem {
 type RedfishTemperatureReading {
   member_id: NonEmptyStr
   name: NonEmptyStr?
-  reading_celsius: Int?
+  reading_celsius: Celsius?
 }
 
 // Chassis Thermal resource.
@@ -77,8 +85,8 @@ type RedfishThermalSubsystem {
 // Coproduct over sensor families — illegal states (Power+Celsius, FanTach+Watts) unrepresentable.
 type RedfishSensorReading =
     PowerSensor { name: NonEmptyStr, watts: Watt? }
-  | TemperatureSensor { name: NonEmptyStr, celsius: Int? }
-  | FanTachSensor { name: NonEmptyStr, rpm: Int? }
+  | TemperatureSensor { name: NonEmptyStr, celsius: Celsius? }
+  | FanTachSensor { name: NonEmptyStr, rpm: RevolutionsPerMinute? }
 
 type RedfishChassisSensorCollection {
   chassis_id: NonEmptyStr

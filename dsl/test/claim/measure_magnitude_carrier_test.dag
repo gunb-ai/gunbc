@@ -14,6 +14,8 @@ import std.measure {
   byte_size_count,
   ElectricPotential,
   Micro,
+  celsius,
+  celsius_count,
 }
 import product.compute_fabric {
   money_micros,
@@ -39,6 +41,11 @@ fn signed_microvolts_count(v: Measure<ElectricPotential, Micro, Int>) -> Int {
 
 test fn measure_signed_magnitude_roundtrip_holds() -> Bool {
   signed_microvolts_count(signed_microvolts(-5)) == -5
+}
+
+// GATE1 — absolute Celsius (Redfish inlet sensors): sub-zero readings must be representable.
+test fn celsius_subzero_absolute_roundtrip_holds() -> Bool {
+  celsius_count(celsius(-12)) == -12
 }
 
 // Two-hop alias chain — the `<M>`-carrying `count` field read multi-hop through

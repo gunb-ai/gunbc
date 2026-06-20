@@ -85,6 +85,13 @@ type Quantity =
   // power × time) is NOT minted here — no consuming fold demands it yet (no carrier ahead
   // of demand). Anchor: https://en.wikipedia.org/wiki/Watt  (P = dE/dt; 1 W = 1 J/s)
   | Power
+  // Thermal axis (Q-Unit-5 minted-with-consumer: extdeps.bmc Redfish thermal + sensor
+  // coproduct grounding witness). Absolute Celsius at scale One (M=Int — inlet sensors
+  // can read below 0°C; affine ΔCelsius split deferred until a consumer demands it).
+  | Temperature
+  // Fan tach axis (revolutions per minute; Redfish ReadingUnits=Rpm). Q-Unit-5
+  // minted-with-consumer: extdeps.bmc Redfish sensor coproduct grounding witness.
+  | RotationalSpeed
   // Electrical dimensions (Q-Unit-5 inhabitant: v2.std.timeseries_signal R/L/C map/fold,
   // gunbc#4895/#4913). R/L/C ratings + v/i samples are form-independent.
   // ElectricCharge + MagneticFlux: pre-approved at gunbc#4929 forward-ref ("SPICE S1
@@ -165,15 +172,32 @@ fn scale_exponent(s: Scale) -> Int {
   }
 }
 
+// Single authority: bytes per gibibyte (IEC 80000-13 GiB = 2^30 bytes).
+fn gibibyte_scale_factor_bytes() -> Nat {
+  1073741824
+}
+
 // Bytes per unit at Memory scale `s` (One = byte; Gibi = 2^30 bytes per gibibyte).
-fn memory_scale_factor_bytes(s: Scale) -> Nat {
+// Fail-closed (§5): SI decimal scales are not memory-capacity factors — returns Absent.
+fn memory_scale_factor_bytes(s: Scale) -> Nat? {
   match s {
-    One  => 1
-    Kibi => 1024
-    Mebi => 1048576
-    Gibi => 1073741824
-    Tebi => 1099511627776
-    _    => 1
+    One  => Present { value: 1 }
+    Kibi => Present { value: 1024 }
+    Mebi => Present { value: 1048576 }
+    Gibi => Present { value: gibibyte_scale_factor_bytes() }
+    Tebi => Present { value: 1099511627776 }
+    Atto  => none
+    Femto => none
+    Pico  => none
+    Nano  => none
+    Micro => none
+    Milli => none
+    Kilo  => none
+    Mega  => none
+    Giga  => none
+    Tera  => none
+    Peta  => none
+    Exa   => none
   }
 }
 
@@ -289,7 +313,7 @@ fn gibibyte_count(g: Gibibyte) -> Nat {
 }
 
 fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
-  byte_size(count: gibibyte_count(g) * memory_scale_factor_bytes(s: Gibi))
+  byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
 }
 
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
@@ -325,12 +349,35 @@ type HardwareThreadCount = Measure<Count, One, Nat>
 // would instantiate `<M>` like the signed electrical carriers, not a new alias.
 type Watt = Measure<Power, One, Nat>
 
+// Absolute thermal magnitude in degrees Celsius (Redfish ReadingUnits=Cel). M=Int —
+// cold-aisle inlet readings can be sub-zero; ΔCelsius affine split deferred.
+type Celsius = Measure<Temperature, One, Int>
+
+// Fan tach magnitude in revolutions per minute (Redfish ReadingUnits=Rpm).
+type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
+
 fn watt(count: Nat) -> Watt {
   Watt { count: count }
 }
 
 fn watt_count(w: Watt) -> Nat {
   w.count
+}
+
+fn celsius(count: Int) -> Celsius {
+  Celsius { count: count }
+}
+
+fn celsius_count(c: Celsius) -> Int {
+  c.count
+}
+
+fn rpm(count: Nat) -> RevolutionsPerMinute {
+  RevolutionsPerMinute { count: count }
+}
+
+fn rpm_count(r: RevolutionsPerMinute) -> Nat {
+  r.count
 }
 
 // --- MoneyAmount<S>: price magnitude carrier ------------------------------
