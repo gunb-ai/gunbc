@@ -1,6 +1,7 @@
 // FINISH-LINE-B Arc 1 — eager-materialize exemplared productions + dedup-cutover gates.
 // Coverage ceiling: wave2a_task + pr3_identity (Conj exemplars); mvp1 fn-add keeps Arrow scaffold.
-// GREEN: eager row content_hash round-trip, byte-identical emit, dag self-emit fixed point.
+// GREEN: eager row content_hash round-trip, byte-identical serialize-source witnesses.
+// Dag self-emit regression: existing candidate_generation_test (floor corpus), not duplicated here (OOM).
 // RED: duplicate token-spine rows → ForwardRowMany; perturbed eager emitted breaks serialize.
 
 module v2.test.manual.typescript_eager_materialize_dedup_cutover

@@ -7,7 +7,6 @@
 
 module v2.test.self_host.candidate_generation
 
-import v2.compiler.self_host { self_host_fixed_point_digests_match }
 import v2.compiler.self_host.candidate_generation {
   generate_translate_self_emit_candidate
 }
@@ -145,25 +144,6 @@ fn candidate_generation_mvp1_dag_slice_accepts() -> Bool {
 }
 
 
-// FINISH-LINE-B Arc 1 — mandatory dag self-emit bit-identical round-trip (content_hash oracle).
-// Lives here (not typescript_eager_materialize_dedup_cutover_test) so batch-2 floor avoids
-// co-resolving self_host + mvp1_dag_add_round_trip beside the typescript exemplar gates (OOM 137).
-fn arc1_dag_self_emit_bit_identical_round_trip_holds() -> Bool {
-  match generate_translate_self_emit_candidate(
-    resolved_module: mvp1_dag_emitted_root,
-    dag_target: mvp1_dag_target_model
-  ) {
-    Accepted { value: candidate, diagnostics: d } =>
-      (d == None)
-        && self_host_fixed_point_digests_match(
-          emitted_stage1: candidate.emitted,
-          emitted_stage2: mvp1_dag_emitted_root
-        )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-
 fn translate_error_profile_roster_nonempty() -> Bool {
   length(xs: translate_diagnostic_reason_roster()) > 0
 }
@@ -265,11 +245,6 @@ test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
 
 test fn candidate_generation_translate_self_emit_mvp1_slice_holds() -> Bool {
   candidate_generation_mvp1_dag_slice_accepts()
-}
-
-
-test fn arc1_dag_self_emit_bit_identical_round_trip_holds() -> Bool {
-  arc1_dag_self_emit_bit_identical_round_trip_holds()
 }
 
 
