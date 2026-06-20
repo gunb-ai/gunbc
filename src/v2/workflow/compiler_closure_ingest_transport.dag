@@ -10,8 +10,8 @@ import extdeps.shell
 import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt,
-  Command, Lit, VarRef,
-  lit, var_ref, command, serialize_bash
+  Command, Concat, CmdSubst,
+  lit, var_ref, command, assign, serialize_bash
 }
 import tools.host_prelude { ensure_discover_source_root_ingest_built, ensure_gunbc_built }
 
@@ -20,32 +20,30 @@ data closure_entry: String = "src/v2/compiler/00_compile.dag"
 data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag"
 data closure_witness_module_count: String = "compiler_closure_scoped_ingest_module_count_ok_holds"
 
-fn emit_closure_manifest_stmt(tmp: String) -> ShellStmt {
+fn emit_closure_manifest_stmt() -> ShellStmt {
   command(words: [
     var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST"),
     lit(text: "--source-root"), lit(text: closure_source_root),
     lit(text: "--entry"), lit(text: closure_entry),
     lit(text: "--emit-dag-manifest"),
-    Concat { parts: [tmp, lit(text: "/host_source_root_ingest_manifest.dag")] }
+    Concat {
+      parts: [
+        var_ref(name: "CLOSURE_MANIFEST_DIR"),
+        lit(text: "/host_source_root_ingest_manifest.dag")
+      ]
+    }
   ])
 }
 
-fn gunbc_claim_run(tmp: String, function: String) -> ShellStmt {
+fn closure_gunbc_claim_run(function: String) -> ShellStmt {
   command(words: [
     var_ref(name: "GUNBC"), lit(text: "run"),
     lit(text: "--source-root"), lit(text: "dsl"),
     lit(text: "--source-root"), lit(text: closure_source_root),
-    lit(text: "--source-root"), tmp,
+    lit(text: "--source-root"), var_ref(name: "CLOSURE_MANIFEST_DIR"),
     lit(text: "--entry"), lit(text: closure_test_entry),
     lit(text: "--function"), lit(text: function),
     lit(text: "--claim-run")
-  ])
-}
-
-fn mktemp_dir_assign() -> ShellStmt {
-  command(words: [
-    lit(text: "CLOSURE_MANIFEST_DIR="),
-    Concat { parts: [lit(text: "$("), lit(text: "mktemp"), lit(text: "-d)")] }
   ])
 }
 
@@ -54,9 +52,13 @@ func run_compiler_closure_ingest_gate() -> Bool {
     set_e: true,
     statements: concat(ensure_gunbc_built(), ensure_discover_source_root_ingest_built(), [
       command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
-      mktemp_dir_assign(),
-      emit_closure_manifest_stmt(tmp: "CLOSURE_MANIFEST_DIR"),
-      gunbc_claim_run(tmp: "CLOSURE_MANIFEST_DIR", function: closure_witness_module_count)
+      assign(
+        name: "CLOSURE_MANIFEST_DIR",
+        value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }
+      ),
+      emit_closure_manifest_stmt(),
+      closure_gunbc_claim_run(function: closure_witness_module_count),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), var_ref(name: "CLOSURE_MANIFEST_DIR")])
     ])
   }
   let result = shell.Exec.Run(script: serialize_bash(p: prog))
