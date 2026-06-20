@@ -225,3 +225,10 @@ pub fn variant_locals_from_items(
         },
     )
 }
+
+pub struct FnItem;
+pub struct FuncItem;
+pub struct TypeItem;
+pub struct DataItem;
+pub struct ServiceItem;
+pub struct OtherItem;

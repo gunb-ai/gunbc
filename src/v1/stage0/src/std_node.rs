@@ -105,10 +105,10 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("Node".to_string(), true);
-            __m.insert("InferredNode".to_string(), true);
-            __m.insert("MatchPattern".to_string(), true);
-            __m.insert("MethodSemantics".to_string(), true);
+            __m.insert("Node", true);
+            __m.insert("InferredNode", true);
+            __m.insert("MatchPattern", true);
+            __m.insert("MethodSemantics", true);
             Rc::new(__m)
         };
     }

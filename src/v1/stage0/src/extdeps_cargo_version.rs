@@ -17,27 +17,27 @@ pub type CargoVersionRequirement = SemVerConstraint;
 
 pub type CargoToolVersionFloor = SemVerConstraint;
 
-pub fn default_stage0_package_version() -> Rc<FreeMonoid<Nat>> {
+pub fn default_stage0_package_version() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "0.1.0".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> Rc<FreeMonoid<Nat>> {
+pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
     v1_rt::concat(
         v1_rt::concat("version = \"".to_string(), version),
         "\"".to_string(),
     )
 }
 
-pub fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> Rc<FreeMonoid<Nat>> {
+pub fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String {
     v1_rt::concat(v1_rt::concat("\"".to_string(), req), "\"".to_string())
 }
 
-pub fn render_cargo_package_header_prefix(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn render_cargo_package_header_prefix(name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat("[package]\nname = \"".to_string(), name),

@@ -6365,13 +6365,13 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // alias-peel above), so it fires for `Measure`/its aliases and stays
         // silent for every fully-used-param struct and for enum variants.
         let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: tn) {
-          Present { value: decl } =>
-            if decl.connective == Conj {
-              let pnames = decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))
-              let unused = struct_unused_param_names(generic_param_names: pnames, children: decl.children, source_indices: si)
-              if unused |> count > 0 {
-                [concat("    ", rust_phantom_field_name(), ": std::marker::PhantomData,")]
-              } else { [] }
+          Present { value: struct_decl } =>
+            let is_struct = struct_decl.connective == Conj
+            let pnames = struct_decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))
+            let unused = struct_unused_param_names(generic_param_names: pnames, children: struct_decl.children, source_indices: si)
+            let has_unused = (unused |> count) > 0
+            if is_struct && has_unused {
+              [concat("    ", rust_phantom_field_name(), ": std::marker::PhantomData,")]
             } else { [] }
           Absent => []
         }

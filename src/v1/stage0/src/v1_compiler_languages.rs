@@ -1282,7 +1282,7 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
         RenderTarget::Rust => {
             let mut __found = false;
             for t in rust_string_types().iter().cloned() {
-                if (t.clone().as_str() == name.clone().as_str()) {
+                if (t.clone() == name.clone()) {
                     __found = true;
                     break;
                 }
@@ -1292,7 +1292,7 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
         RenderTarget::Go => {
             let mut __found = false;
             for t in go_string_types().iter().cloned() {
-                if (t.clone().as_str() == name.clone().as_str()) {
+                if (t.clone() == name.clone()) {
                     __found = true;
                     break;
                 }
@@ -1302,7 +1302,7 @@ pub fn is_string_like(target: RenderTarget, name: String) -> bool {
         RenderTarget::Python => {
             let mut __found = false;
             for t in python_string_types().iter().cloned() {
-                if (t.clone().as_str() == name.clone().as_str()) {
+                if (t.clone() == name.clone()) {
                     __found = true;
                     break;
                 }
@@ -1345,3 +1345,13 @@ pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
         v1_rt::replace(tmpl, "{0}".to_string(), inner)
     }
 }
+
+pub struct SnakeCaseTestNames;
+pub struct PascalCaseTestNames;
+pub struct IfExpression;
+pub struct ConditionalTernary;
+pub struct IfStatement;
+pub struct MatchExpression;
+pub struct MatchStatementArmReturn;
+pub struct PascalCase;
+pub struct CamelCase;
