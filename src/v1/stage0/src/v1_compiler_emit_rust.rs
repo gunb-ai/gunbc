@@ -4874,6 +4874,24 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
     })
 }
 
+pub fn is_self_referential_opaque_type_resolved(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let item_text = authored_name_at(source_indices.clone(), item.clone());
+    let rhs = resolved_type(item.clone());
+    is_type_alias_return_node(rhs.clone(), source_indices.clone())
+        && authored_name_at(source_indices.clone(), rhs) == item_text
+}
+
+pub fn is_zero_param_self_referential_opaque_decl(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    is_bare_leaf_item(item.clone())
+        && is_self_referential_opaque_type_resolved(item.clone(), source_indices)
+}
+
 pub fn is_parametric_opaque_type_decl_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4882,7 +4900,34 @@ pub fn is_parametric_opaque_type_decl_item(
         && item.body.is_none()
         && item.transport.is_none()
         && (item.children.clone().len() as i64) == 0
-        && !is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone())
+        && (!is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone())
+            || is_self_referential_opaque_type_resolved(item.clone(), source_indices))
+}
+
+pub fn emit_zero_param_phantom_opaque_struct(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let item_text = authored_name_at(source_indices.clone(), item.clone());
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n".to_string(),
+                        rust_visibility_prefix(),
+                    ),
+                    rust_items().struct_keyword.clone(),
+                ),
+                v1_rt::concat(
+                    v1_rt::concat(" ".to_string(), item_text),
+                    "(pub std::marker::PhantomData<()>);".to_string(),
+                ),
+            ),
+            "".to_string(),
+        ),
+        "".to_string(),
+    )
 }
 
 pub fn emit_parametric_phantom_opaque_struct(
@@ -6237,6 +6282,11 @@ pub fn emit_typed_item(
                     && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
                 {
                     rust_nominal_identity_carrier_def(item_text.clone())
+                } else if is_zero_param_self_referential_opaque_decl(
+                    item.clone(),
+                    env.source_indices.clone(),
+                ) {
+                    emit_zero_param_phantom_opaque_struct(item.clone(), env.source_indices.clone())
                 } else {
                     v1_rt::concat(
                         v1_rt::concat(
