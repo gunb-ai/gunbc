@@ -349,19 +349,36 @@ fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
 }
 
 fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
-  match tepe_type_decl_binding_atom_optional(node: type_decl) {
-    Present { value: atom_node } => tepe_atom_identity_optional(node: atom_node)
-    Absent =>
-      match parse_production_emitted_identity_optional(node: type_decl) {
-        Present { value: surface } =>
-          if surface == ^dag_surface_type_decl {
-            match parse_production_captured_child_optional(node: type_decl) {
-              Present { value: expr } => tepe_type_decl_name_from_decl_expr_optional(expr: expr)
+  match parse_production_emitted_identity_optional(node: type_decl) {
+    Present { value: surface } =>
+      if surface == ^dag_surface_type_decl {
+        match parse_production_captured_child_optional(node: type_decl) {
+          Present { value: expr } =>
+            match tepe_type_decl_name_from_decl_expr_optional(expr: expr) {
+              Present { value: name } => optional_present(value: name)
+              Absent =>
+                match tepe_type_decl_binding_atom_optional(node: type_decl) {
+                  Present { value: atom_node } =>
+                    tepe_atom_identity_optional(node: atom_node)
+                  Absent => optional_absent()
+                }
+            }
+          Absent =>
+            match tepe_type_decl_binding_atom_optional(node: type_decl) {
+              Present { value: atom_node } =>
+                tepe_atom_identity_optional(node: atom_node)
               Absent => optional_absent()
             }
-          } else {
-            optional_absent()
-          }
+        }
+      } else {
+        match tepe_type_decl_binding_atom_optional(node: type_decl) {
+          Present { value: atom_node } => tepe_atom_identity_optional(node: atom_node)
+          Absent => optional_absent()
+        }
+      }
+    Absent =>
+      match tepe_type_decl_binding_atom_optional(node: type_decl) {
+        Present { value: atom_node } => tepe_atom_identity_optional(node: atom_node)
         Absent => optional_absent()
       }
   }
@@ -613,15 +630,16 @@ fn tepe_contract_row_for_disj_anchor(
         Present { value: _ } => acc
         Absent =>
           match row {
-            CoproductWireContractIndexRow { coproduct_sym: enum_sym, naming_tag: _, decl: _ } =>
-              match tepe_disj_for_enum_sym_optional(root: root, enum_sym: enum_sym) {
-                Present { value: disj } =>
-                  if content_hash(n: disj) == anchor_hash {
-                    optional_present(value: row)
-                  } else {
-                    optional_absent()
-                  }
-                Absent => optional_absent()
+            CoproductWireContractIndexRow {
+              coproduct_sym: _,
+              naming_tag: _,
+              decl: _,
+              disj_hash: row_hash
+            } =>
+              if row_hash == anchor_hash {
+                optional_present(value: row)
+              } else {
+                optional_absent()
               }
           }
       }
@@ -657,7 +675,7 @@ fn tepe_apply_contract_row_enrichment(
   contract: CoproductWireContractIndexRow
 ) -> Outcome<TargetTypeExpressionProjection> {
   match contract {
-    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: naming_tag, decl: _ } =>
+    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: naming_tag, decl: _, disj_hash: _ } =>
       tepe_apply_enriched_disj_form(
         base: base,
         catalog: catalog,
@@ -771,65 +789,13 @@ fn tepe_normalize_naming_tag_for_catalog(sym: Symbol) -> Symbol {
   }
 }
 
-fn tepe_disj_first_variant_sym_optional(disj: Node) -> Optional<Symbol> {
-  match list_at_optional(xs: disj.children, index: 0) {
-    Absent => optional_absent()
-    Present { value: edge } =>
-      match tepe_atom_sym_optional(node: edge.target) {
-        Present { value: sym } => optional_present(value: sym)
-        Absent => optional_absent()
-      }
-  }
-}
-
-fn tepe_disj_matches_coproduct_sym(disj: Node, coproduct_sym: Symbol) -> Bool {
-  match tepe_disj_first_variant_sym_optional(disj: disj) {
-    Present { value: first } =>
-      if coproduct_sym == ^ReviewEvent {
-        first == ^Approve
-      } else {
-        if coproduct_sym == ^Status {
-          first == ^Open
-        } else {
-          false
-        }
-      }
-    Absent => false
-  }
-}
-
-fn tepe_disj_for_coproduct_sym_optional(root: Node, coproduct_sym: Symbol) -> Optional<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match node.kind {
-          TypeNode { connective: Disj } =>
-            if tepe_disj_matches_coproduct_sym(disj: node, coproduct_sym: coproduct_sym) {
-              optional_present(value: node)
-            } else {
-              optional_absent()
-            }
-          _ => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
-      }
-    }
-  )
-}
-
 fn tepe_row_with_disj_hash(
   root: Node,
   row: CoproductWireContractIndexRow
 ) -> Outcome<CoproductWireContractIndexRow> {
   match row {
     CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: tag, decl: decl, disj_hash: _ } =>
-      match tepe_disj_for_coproduct_sym_optional(root: root, coproduct_sym: csym) {
+      match tepe_disj_for_enum_sym_optional(root: root, enum_sym: csym) {
         Present { value: disj } =>
           outcome_accepted(
             CoproductWireContractIndexRow {
@@ -919,7 +885,7 @@ fn tepe_rows_contain_coproduct(rows: List<CoproductWireContractIndexRow>, sym: S
     Absent => false
     Present { value: head } =>
       match head {
-        CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _ } =>
+        CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _, disj_hash: _ } =>
           if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: sym) {
             true
           } else {
@@ -937,7 +903,7 @@ fn tepe_rows_contain_equivalent_contract(
   row: CoproductWireContractIndexRow
 ) -> Bool {
   match row {
-    CoproductWireContractIndexRow { coproduct_sym: rsym, naming_tag: rtag, decl: _ } =>
+    CoproductWireContractIndexRow { coproduct_sym: rsym, naming_tag: rtag, decl: _, disj_hash: _ } =>
       match list_at_optional(xs: rows, index: 0) {
         Absent => false
         Present { value: head } =>
@@ -945,7 +911,8 @@ fn tepe_rows_contain_equivalent_contract(
             CoproductWireContractIndexRow {
               coproduct_sym: csym,
               naming_tag: ctag,
-              decl: _
+              decl: _,
+              disj_hash: _
             } =>
               if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: rsym)
                 && ctag == rtag
@@ -968,7 +935,7 @@ fn tepe_append_contract_row(
   row: CoproductWireContractIndexRow
 ) -> Outcome<List<CoproductWireContractIndexRow>> {
   match row {
-    CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: decl } =>
+    CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: decl, disj_hash: _ } =>
       if tepe_rows_contain_equivalent_contract(rows: rows, row: row) {
         outcome_accepted(rows)
       } else if tepe_rows_contain_coproduct(rows: rows, sym: csym) {
@@ -1008,17 +975,17 @@ fn tepe_fold_decl_into_index(
                     type_coproduct_wire_contract: type_coproduct_wire_contract
                   ) {
                     Accepted { value: row, diagnostics: _ } =>
-                      bind_outcome(
-                        o: tepe_row_with_disj_hash(root: root, row: row),
-                        f: fn(stamped) {
+                      match tepe_row_with_disj_hash(root: root, row: row) {
+                        Accepted { value: stamped, diagnostics: _ } =>
                           match tepe_append_contract_row(rows: rows, row: stamped) {
                             Accepted { value: next_rows, diagnostics: _ } =>
-                              outcome_accepted(CoproductWireContractIndexOk { rows: next_rows })
+                              CoproductWireContractIndexOk { rows: next_rows }
                             Rejected { diagnostics: r } =>
-                              outcome_rejected(r)
+                              CoproductWireContractIndexErr { diagnostics: r }
                           }
-                        }
-                      )
+                        Rejected { diagnostics: r } =>
+                          CoproductWireContractIndexErr { diagnostics: r }
+                      }
                     Rejected { diagnostics: r } =>
                       CoproductWireContractIndexErr { diagnostics: r }
                   }
@@ -1079,6 +1046,7 @@ fn tepe_collect_data_decl_nodes(root: Node) -> List<Node> {
 
 fn tepe_fold_index_over_decls(
   acc: CoproductWireContractIndexAcc,
+  root: Node,
   decls: List<Node>,
   field_coproduct: Symbol,
   field_encoding: Symbol,
@@ -1095,6 +1063,7 @@ fn tepe_fold_index_over_decls(
             TailAbsent =>
               tepe_fold_decl_into_index(
                 acc: CoproductWireContractIndexOk { rows: rows },
+                root: root,
                 decl: decl,
                 field_coproduct: field_coproduct,
                 field_encoding: field_encoding,
@@ -1104,11 +1073,13 @@ fn tepe_fold_index_over_decls(
               tepe_fold_index_over_decls(
                 acc: tepe_fold_decl_into_index(
                   acc: CoproductWireContractIndexOk { rows: rows },
+                  root: root,
                   decl: decl,
                   field_coproduct: field_coproduct,
                   field_encoding: field_encoding,
                   type_coproduct_wire_contract: type_coproduct_wire_contract
                 ),
+                root: root,
                 decls: tail,
                 field_coproduct: field_coproduct,
                 field_encoding: field_encoding,
@@ -1127,6 +1098,7 @@ fn tepe_build_coproduct_wire_contract_index(
 ) -> Outcome<List<CoproductWireContractIndexRow>> {
   match tepe_fold_index_over_decls(
     acc: CoproductWireContractIndexOk { rows: Empty },
+    root: root,
     decls: tepe_collect_data_decl_nodes(root: root),
     field_coproduct: field_coproduct,
     field_encoding: field_encoding,
@@ -1145,7 +1117,7 @@ fn tepe_lookup_contract_row(
     Absent => optional_absent()
     Present { value: head } =>
       match head {
-        CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _ } =>
+        CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _, disj_hash: _ } =>
           if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: enum_sym) {
             optional_present(value: head)
           } else {

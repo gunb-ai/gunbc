@@ -847,7 +847,8 @@ test fn cwc_enrichment_contract_catalog_apply_holds() -> Bool {
                                 CoproductWireContractIndexRow {
                                   coproduct_sym: _,
                                   naming_tag: tag,
-                                  decl: _
+                                  decl: _,
+                                  disj_hash: _
                                 } =>
                                   match tepe_disj_form_from_catalog(
                                     catalog: catalog,
