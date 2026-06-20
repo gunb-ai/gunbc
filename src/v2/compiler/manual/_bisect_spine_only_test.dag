@@ -1,0 +1,60 @@
+module v2.test.manual._bisect_spine_only
+
+import v2.compiler.ingest { grammar_relation_row_forward_selection }
+import v2.extdeps.languages.typescript {
+  ts_named_edge,
+  ts_wave2a_task_type_alias_emitted,
+  ts_wave2a_task_type_alias_relation_row_witness
+}
+import v2.std.algebra { Empty, list_append }
+import v2.std.collection { List }
+import v2.std.compilers.target_model {
+  concrete_syntax_token_class,
+  concrete_syntax_token_list_from_node
+}
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.witness { Holds, Violates }
+
+fn ts_arc1_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
+    f: fn(tokens_root) {
+      bind_outcome(
+        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+        f: fn(tokens) {
+          let classes = fold(
+            tokens,
+            init: Empty,
+            f: fn(acc, t) {
+              list_append(
+                left: acc,
+                right: [concrete_syntax_token_class(token: t)]
+              )
+            }
+          )
+          outcome_accepted(value: classes)
+        }
+      )
+    }
+  )
+}
+
+test fn bisect_spine_only_stub() -> Bool {
+  match ts_wave2a_task_type_alias_relation_row_witness() {
+    Holds { value: row } =>
+      match ts_arc1_row_token_spine_classes(row: row) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
