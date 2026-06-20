@@ -56,16 +56,44 @@ fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
 }
 
 #[test]
-fn debug_wrong_type_entry_path_sensitivity() {
+fn debug_module_name_match_vs_mismatch() {
+    let body = r#"
+import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+
+fn take_acct(acct: AccountId) -> String {
+  ""
+}
+
+fn caller(uid: UserId) -> String {
+  let x = uid
+  take_acct(x)
+}
+
+fn pbp_wrong() -> String {
+  caller(uid: Refined { base: "" })
+}
+"#;
     let ws = workspace_root();
-    let content = std::fs::read_to_string(ws.join(WRONG_TYPE_ENTRY)).expect("read");
     let roots = [ws.join("src/v2"), ws.join("dsl")];
-    for entry in [WRONG_TYPE_ENTRY, "pd3adv.dag"] {
+    for (entry, module_name) in [
+        (
+            WRONG_TYPE_ENTRY,
+            "v2.test.manual.pbp_body_producer_wrong_type_repro",
+        ),
+        ("pd3adv.dag", "pd3adv.twin_let"),
+    ] {
+        let source = format!("module {module_name}\n{body}");
         let resolved = compile_to_resolved(Rc::new(
-            resolve_imports_transitively_with_source_roots(entry, &content, &roots),
+            resolve_imports_transitively_with_source_roots(entry, &source, &roots),
         ));
         eprintln!(
-            "{entry} errs={:?} graph={}",
+            "module={module_name} entry={entry} errs={:?} graph={}",
             non_complexity_errors(&resolved),
             resolved.graph.is_some()
         );
