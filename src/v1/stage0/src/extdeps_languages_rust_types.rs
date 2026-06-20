@@ -33,31 +33,31 @@ pub fn rust_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
     CACHED.with(|c: &Rc<Vec<Rc<InhabitantDecl>>>| c.clone())
 }
 
-pub fn rust_optional_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_optional_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Option<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_none_expr() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_none_expr() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_some_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_some_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Some({0})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_callable() -> Rc<CallableRepr> {
@@ -89,22 +89,22 @@ pub fn pass_non_copy_by_ref() -> bool {
     true
 }
 
-pub fn ref_prefix() -> Rc<FreeMonoid<Nat>> {
+pub fn ref_prefix() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "&".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn mut_ref_prefix() -> Rc<FreeMonoid<Nat>> {
+pub fn mut_ref_prefix() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "&mut ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -117,31 +117,31 @@ pub enum SmartPointerKind {
     ArcPtr,
 }
 
-pub fn box_template() -> Rc<FreeMonoid<Nat>> {
+pub fn box_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Box<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rc_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rc_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Rc<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn arc_template() -> Rc<FreeMonoid<Nat>> {
+pub fn arc_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Arc<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn common_trait_bounds() -> Rc<Vec<String>> {
@@ -153,22 +153,22 @@ pub fn common_trait_bounds() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn where_clause_template() -> Rc<FreeMonoid<Nat>> {
+pub fn where_clause_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "where\n    {constraints}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn trait_bound_template() -> Rc<FreeMonoid<Nat>> {
+pub fn trait_bound_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{type}: {bound}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn integer_types() -> Rc<Vec<String>> {
@@ -199,28 +199,20 @@ pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     CACHED.with(|c: &Rc<CastSyntax>| c.clone())
 }
 
-pub fn serde_enum_tag_attribute() -> Rc<FreeMonoid<Nat>> {
+pub fn serde_enum_tag_attribute() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[serde(tag = \"_variant\")]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn serde_rename_template() -> Rc<FreeMonoid<Nat>> {
+pub fn serde_rename_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[serde(rename = \"{key}\")]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
-
-pub struct Owned;
-pub struct SharedRef;
-pub struct MutRef;
-pub struct RawPtr;
-pub struct BoxPtr;
-pub struct RcPtr;
-pub struct ArcPtr;

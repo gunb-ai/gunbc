@@ -30,7 +30,7 @@ pub struct TypeEnv {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinding {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
 }
@@ -42,7 +42,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
     }
 }
 
-pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
     match intern_find(env.intern_table.clone(), name) {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => false,
@@ -56,14 +56,14 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     }
 }
 
-pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: Rc<FreeMonoid<Nat>>) -> Option<Rc<Node>> {
+pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match intern_find(env.intern_table.clone(), name) {
         Some(id) => lookup_type(env.clone(), id.clone()),
         None => None,
     }
 }
 
-pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> Rc<FreeMonoid<Nat>> {
+pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
     authored_name_at(env.source_indices.clone(), node)
 }
 
@@ -81,10 +81,7 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     }
 }
 
-pub fn inductive_fields_for(
-    env: Rc<TypeEnv>,
-    type_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<Vec<Rc<InductiveField>>> {
+pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
     match v1_rt::map_get(&env.inductive_fields.clone(), type_name) {
         Some(fields) => fields.clone(),
         None => Rc::new(vec![]),
@@ -93,17 +90,15 @@ pub fn inductive_fields_for(
 
 pub fn is_inductive_field(
     env: Rc<TypeEnv>,
-    type_name: Rc<FreeMonoid<Nat>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-    field_name: Rc<FreeMonoid<Nat>>,
+    type_name: String,
+    variant_name: String,
+    field_name: String,
 ) -> bool {
     {
         let mut __found = false;
         for f in inductive_fields_for(env, type_name).iter().cloned() {
-            if ((crate::v2_std_text::host_string_text_to_rust_host(f.variant_name.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host(variant_name.clone()))
-                && (crate::v2_std_text::host_string_text_to_rust_host(f.field_name.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(field_name.clone())))
+            if ((f.variant_name.clone().as_str() == variant_name.clone().as_str())
+                && (f.field_name.clone().as_str() == field_name.clone().as_str()))
             {
                 __found = true;
                 break;
@@ -115,9 +110,9 @@ pub fn is_inductive_field(
 
 pub fn put_inductive_field(
     fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    type_name: Rc<FreeMonoid<Nat>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-    field_name: Rc<FreeMonoid<Nat>>,
+    type_name: String,
+    variant_name: String,
+    field_name: String,
     shape: RecursionShape,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
@@ -144,11 +139,11 @@ pub fn put_inductive_field(
 
 pub fn put_inductive_field_cross(
     fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    type_name: Rc<FreeMonoid<Nat>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-    field_name: Rc<FreeMonoid<Nat>>,
+    type_name: String,
+    variant_name: String,
+    field_name: String,
     shape: RecursionShape,
-    element_type: Rc<FreeMonoid<Nat>>,
+    element_type: String,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
@@ -178,7 +173,7 @@ pub fn merge_inductive_fields(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: Rc<FreeMonoid<Nat>>| {
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
             match v1_rt::map_get(&right, type_name.clone()) {
                 Some(incoming) => {
                     let existing = match v1_rt::map_get(&acc, type_name.clone()) {
@@ -201,7 +196,7 @@ pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.iter().cloned().fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<Rc<InductiveField>>>>(),
+        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
@@ -238,13 +233,13 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             },
         );
         let merged_inductive_fields = envs.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<Rc<InductiveField>>>>(),
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| {
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
         let merged_source_indices = envs.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, env: Rc<TypeEnv>| {
                 v1_rt::rc_map_merge(acc, env.source_indices.clone())
             },

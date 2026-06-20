@@ -109,15 +109,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_std_core.rs",
 ];
 
-// MUST stay in lockstep with the emitter's `hand_maintained_mods` declaration in
-// src/v1/05_emit_rust.dag (`emit_lib_rs_from_files`): every `pub mod X;` the emitter
-// writes into the generated lib.rs for a hand-maintained module must be copied into
-// the fresh-compile temp dir here, or `cargo fmt` of the emitted crate fails to
-// resolve the module. These two lists are a §3 parallel-authority pair (the deeper
-// fix is a single source); until then this is the synced copy of the emitter's set
-// (13 modules) plus the two dag_collect bootstrap modules injected by
-// patch_bootstrap_dag_collect. The lens-`*_project` / `*_census` / recorded_fixture
-// modules are hand-maintained Rust seed, not regenerated, so they live here.
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",

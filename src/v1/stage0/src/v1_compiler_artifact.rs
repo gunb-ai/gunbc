@@ -41,7 +41,7 @@ pub enum ArtifactKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
     pub entry_modules: Rc<Vec<String>>,
@@ -62,10 +62,10 @@ pub enum BoundaryKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Boundary {
-    pub from_artifact: Rc<FreeMonoid<Nat>>,
-    pub to_artifact: Rc<FreeMonoid<Nat>>,
+    pub from_artifact: String,
+    pub to_artifact: String,
     pub kind: BoundaryKind,
-    pub contract: Rc<FreeMonoid<Nat>>,
+    pub contract: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -121,7 +121,7 @@ pub fn default_artifact_plan(
     }))
 }
 
-pub type DagNodeId = Rc<FreeMonoid<Nat>>;
+pub type DagNodeId = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -130,10 +130,10 @@ pub enum DagInferredRecord {
         node: Box<DagNodeId>,
     },
     TypeVariableRef {
-        id: Rc<FreeMonoid<Nat>>,
+        id: String,
     },
     CompilerErrorRecord {
-        message: Rc<FreeMonoid<Nat>>,
+        message: String,
         span: Rc<SourceSpan>,
     },
 }
@@ -147,33 +147,19 @@ pub struct DagModuleRef {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
-    pub severity: Rc<FreeMonoid<Nat>>,
-    pub message: Rc<FreeMonoid<Nat>>,
+    pub severity: String,
+    pub message: String,
     pub span: Rc<SourceSpan>,
-    pub module_name: Rc<FreeMonoid<Nat>>,
-    pub category: Rc<FreeMonoid<Nat>>,
+    pub module_name: Option<String>,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
-    pub version: Rc<FreeMonoid<Nat>>,
+    pub version: String,
     pub nodes: Rc<HashMap<DagNodeId, String>>,
     pub modules: Rc<Vec<String>>,
     pub item_registry_keys: Rc<Vec<String>>,
     pub diagnostics: Rc<Vec<String>>,
     pub files: Rc<Vec<String>>,
 }
-
-pub struct Rust;
-pub struct Python;
-pub struct Go;
-pub struct Dag;
-pub struct ServiceBinary;
-pub struct Library;
-pub struct Frontend;
-pub struct GeneratedSupport;
-pub struct DirectCall;
-pub struct HttpJson;
-pub struct MessageQueue;
-pub struct Ffi;
-pub struct FileProtocol;

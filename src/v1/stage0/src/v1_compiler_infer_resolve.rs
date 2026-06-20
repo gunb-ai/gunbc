@@ -62,7 +62,7 @@ pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
 pub fn unit_variant_in_coproduct(
     env: Rc<TypeEnv>,
     ty: Rc<Node>,
-    variant_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
 ) -> Option<Rc<Node>> {
     match ty.connective.clone() {
         Connective::Disj => {
@@ -74,12 +74,9 @@ pub fn unit_variant_in_coproduct(
                     if (acc.clone() != None) {
                         acc.clone()
                     } else {
-                        if ((crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                            env.source_indices.clone(),
-                            v.clone(),
-                        )) == crate::v2_std_text::host_string_text_to_rust_host(
-                            variant_name.clone(),
-                        )) && is_unit_variant_node(v.clone()))
+                        if ((authored_name_at(env.source_indices.clone(), v.clone()).as_str()
+                            == variant_name.clone().as_str())
+                            && is_unit_variant_node(v.clone()))
                         {
                             Some(v.clone())
                         } else {
@@ -105,7 +102,7 @@ pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<
 
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
-    variant_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
 ) -> Option<Rc<Node>> {
     {
         let matches = collect_unit_variant_phantom_matches(env, variant_name);
@@ -122,7 +119,7 @@ pub fn lookup_unit_variant_phantom_type(
 
 pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
-    variant_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
     Rc::new(v1_rt::map_keys(&env.bindings.clone()))
         .iter()
@@ -188,16 +185,12 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
 pub fn preserve_nominal_brand_on_resolve(
     identity: Rc<Node>,
     structural: Rc<Node>,
-    brand_name: Rc<FreeMonoid<Nat>>,
+    brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((crate::v2_std_text::host_string_text_to_rust_host(brand_name.clone())
-        != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-        && (crate::v2_std_text::host_string_text_to_rust_host(brand_name.clone())
-            != crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                source_indices,
-                structural.clone(),
-            ))))
+    if (((brand_name.clone().as_str() != "".to_string().as_str())
+        && (brand_name.clone().as_str()
+            != authored_name_at(source_indices, structural.clone()).as_str()))
         && !is_declared_container_alias_spelling(brand_name.clone()))
     {
         with_authored_identity(identity, structural.clone())
@@ -206,11 +199,7 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
-pub fn peel_nominal_alias_identity(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<Node> {
+pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     {
         let source_indices = env.source_indices.clone();
         let brand = authored_name_at(source_indices.clone(), n.clone());
@@ -243,13 +232,9 @@ pub fn peel_nominal_alias_identity(
                         .resolved
                         .clone()
                 };
-                if (((crate::v2_std_text::host_string_text_to_rust_host(brand.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                    && (crate::v2_std_text::host_string_text_to_rust_host(brand.clone())
-                        != crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                            source_indices.clone(),
-                            structural.clone(),
-                        ))))
+                if (((brand.clone().as_str() != "".to_string().as_str())
+                    && (brand.clone().as_str()
+                        != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
                     && !is_declared_container_alias_spelling(brand.clone()))
                 {
                     with_authored_identity(n.clone(), structural.clone())
@@ -348,11 +333,7 @@ pub struct ResourceUseResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn resolve_node(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<NodeResolveResult> {
+pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
     resolve_node_bounded(n, env, module_name, 0)
 }
 
@@ -365,10 +346,8 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
                     decl.clone()
                 } else {
                     if ((((n.children.clone().len() as i64) > 0)
-                        && (crate::v2_std_text::host_string_text_to_rust_host(n.name.clone())
-                            != crate::v2_std_text::host_string_text_to_rust_host("".to_string())))
-                        && (crate::v2_std_text::host_string_text_to_rust_host(n.name.clone())
-                            != crate::v2_std_text::host_string_text_to_rust_host(brand)))
+                        && (n.name.clone().as_str() != "".to_string().as_str()))
+                        && (n.name.clone().as_str() != brand.as_str()))
                     {
                         match lookup_type_by_name(env.clone(), n.name.clone()) {
                             Some(structural) => structural.clone(),
@@ -416,7 +395,7 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 pub fn substitute_type_slots(
     n: Rc<Node>,
     slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: Rc<FreeMonoid<Nat>>,
+    decl_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -438,11 +417,9 @@ pub fn substitute_type_slots(
                     let mut __result = Vec::new();
                     for child in n.children.clone().iter().cloned() {
                         __result.push(
-                            if (crate::v2_std_text::host_string_text_to_rust_host(
-                                authored_name_at(source_indices.clone(), child.clone()),
-                            ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                decl_name.clone(),
-                            )) {
+                            if (authored_name_at(source_indices.clone(), child.clone()).as_str()
+                                == decl_name.clone().as_str())
+                            {
                                 {
                                     let substituted_args = Rc::new({
                                         let mut __result = Vec::new();
@@ -559,7 +536,7 @@ pub fn classify_alias(target: Rc<Node>) -> AliasKind {
 pub fn resolve_alias_target(
     target: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
     depth: i64,
 ) -> Rc<Node> {
     match classify_alias(target.clone()) {
@@ -590,7 +567,7 @@ pub fn is_parametric_type_alias_decl(item: Rc<Node>) -> bool {
 pub fn resolve_nominal_alias_rhs(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((n.connective.clone() == Connective::NoConnective)
@@ -656,7 +633,7 @@ pub fn resolve_nominal_alias_rhs(
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
     depth: i64,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -846,26 +823,60 @@ pub fn resolve_node_bounded(
                                     let mut __result = Vec::new();
                                     for variant_child in n.children.clone().iter().cloned() {
                                         __result.push({
-                                        let field_results = Rc::new({ let mut __result = Vec::new(); for field_child in variant_child.children.clone().iter().cloned() { __result.push(if (field_child.inferred.clone() == None) {
-                                            Rc::new(NodeResolveResult {
-    resolved: field_child.clone(),
-    diagnostics: Rc::new(vec![]),
-})
-                                        } else {
-                                            {
-                                                let field_rt = resolved_type(field_child.clone());
-let is_self_ref = ((crate::v2_std_text::host_string_text_to_rust_host(authored_name(env.clone(), field_rt.clone())) == crate::v2_std_text::host_string_text_to_rust_host(authored_name(env.clone(), n.clone()))) && ((field_rt.children.clone().len() as i64) > 0));
-let rt_result = if is_self_ref.clone() {
-                                                    Rc::new(NodeResolveResult {
-    resolved: field_rt.clone(),
-    diagnostics: Rc::new(vec![]),
-})
-                                                } else {
-                                                    resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), (depth.clone() + 1))
-                                                };
-let rt_resolved = rt_result.resolved.clone();
-let rt_diags = rt_result.diagnostics.clone();
-Rc::new(NodeResolveResult {
+                                            let field_results = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for field_child in
+                                                    variant_child.children.clone().iter().cloned()
+                                                {
+                                                    __result.push(
+                                                        if (field_child.inferred.clone() == None) {
+                                                            Rc::new(NodeResolveResult {
+                                                                resolved: field_child.clone(),
+                                                                diagnostics: Rc::new(vec![]),
+                                                            })
+                                                        } else {
+                                                            {
+                                                                let field_rt = resolved_type(
+                                                                    field_child.clone(),
+                                                                );
+                                                                let is_self_ref = ((authored_name(
+                                                                    env.clone(),
+                                                                    field_rt.clone(),
+                                                                )
+                                                                .as_str()
+                                                                    == authored_name(
+                                                                        env.clone(),
+                                                                        n.clone(),
+                                                                    )
+                                                                    .as_str())
+                                                                    && ((field_rt
+                                                                        .children
+                                                                        .clone()
+                                                                        .len()
+                                                                        as i64)
+                                                                        > 0));
+                                                                let rt_result = if is_self_ref
+                                                                    .clone()
+                                                                {
+                                                                    Rc::new(NodeResolveResult {
+                                                                        resolved: field_rt.clone(),
+                                                                        diagnostics: Rc::new(
+                                                                            vec![],
+                                                                        ),
+                                                                    })
+                                                                } else {
+                                                                    resolve_node_bounded(
+                                                                        field_rt.clone(),
+                                                                        env.clone(),
+                                                                        module_name.clone(),
+                                                                        (depth.clone() + 1),
+                                                                    )
+                                                                };
+                                                                let rt_resolved =
+                                                                    rt_result.resolved.clone();
+                                                                let rt_diags =
+                                                                    rt_result.diagnostics.clone();
+                                                                Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
     name: field_child.name.clone(),
     span: field_child.span.clone(),
@@ -890,34 +901,56 @@ Rc::new(NodeResolveResult {
 }),
     diagnostics: rt_diags.clone(),
 })
-}
-                                        }); } __result });
-let resolved_fields = Rc::new({ let mut __result = Vec::new(); for fr in field_results.clone().iter().cloned() { __result.push(fr.resolved.clone()); } __result });
-let field_diags = Rc::new({ let mut __result = Vec::new(); for fr in field_results.clone().iter().cloned() { __result.extend((*fr.diagnostics.clone()).iter().cloned()); } __result });
-Rc::new(NodeResolveResult {
-    resolved: Rc::new(Node {
-    name: variant_child.name.clone(),
-    span: variant_child.span.clone(),
-    ident_span: variant_child.ident_span.clone(),
-    children: resolved_fields.clone(),
-    connective: variant_child.connective.clone(),
-    params: variant_child.params.clone(),
-    inferred: variant_child.inferred.clone(),
-    return_cardinality: variant_child.return_cardinality.clone(),
-    uses: variant_child.uses.clone(),
-    body: variant_child.body.clone(),
-    transport: variant_child.transport.clone(),
-    properties: variant_child.properties.clone(),
-    type_annotation: variant_child.type_annotation.clone(),
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-    ident: None,
-}),
-    diagnostics: field_diags.clone(),
-})
-});
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                __result
+                                            });
+                                            let resolved_fields = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for fr in field_results.clone().iter().cloned() {
+                                                    __result.push(fr.resolved.clone());
+                                                }
+                                                __result
+                                            });
+                                            let field_diags = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for fr in field_results.clone().iter().cloned() {
+                                                    __result.extend(
+                                                        (*fr.diagnostics.clone()).iter().cloned(),
+                                                    );
+                                                }
+                                                __result
+                                            });
+                                            Rc::new(NodeResolveResult {
+                                                resolved: Rc::new(Node {
+                                                    name: variant_child.name.clone(),
+                                                    span: variant_child.span.clone(),
+                                                    ident_span: variant_child.ident_span.clone(),
+                                                    children: resolved_fields.clone(),
+                                                    connective: variant_child.connective.clone(),
+                                                    params: variant_child.params.clone(),
+                                                    inferred: variant_child.inferred.clone(),
+                                                    return_cardinality: variant_child
+                                                        .return_cardinality
+                                                        .clone(),
+                                                    uses: variant_child.uses.clone(),
+                                                    body: variant_child.body.clone(),
+                                                    transport: variant_child.transport.clone(),
+                                                    properties: variant_child.properties.clone(),
+                                                    type_annotation: variant_child
+                                                        .type_annotation
+                                                        .clone(),
+                                                    is_self_recursive: false,
+                                                    has_non_tail_self_call: false,
+                                                    match_pattern: None,
+                                                    expr_data: Rc::new(ExprData::NoExprData),
+                                                    ident: None,
+                                                }),
+                                                diagnostics: field_diags.clone(),
+                                            })
+                                        });
                                     }
                                     __result
                                 });
@@ -1023,7 +1056,7 @@ Rc::new(NodeResolveResult {
                     .iter()
                     .cloned()
                     .fold(
-                        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Node>>(),
+                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
                         |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                             let idx = pair.0.clone();
                             let slot_name =
@@ -1507,7 +1540,7 @@ Rc::new(NodeResolveResult {
 pub fn missing_generic_args_diagnostics(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     if ((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
         && is_user_generic_use_site(n.clone(), env.clone()))
@@ -1536,7 +1569,7 @@ pub fn missing_generic_args_diagnostics(
 pub fn resolve_optional_node(
     n: Option<Rc<InferredNode>>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<NodeResolveResult> {
     if (n.clone() == None) {
         Rc::new(NodeResolveResult {
@@ -1593,11 +1626,7 @@ pub fn resolve_optional_node(
     }
 }
 
-pub fn resolve_field(
-    field: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<FieldResult> {
+pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldResult> {
     {
         let authored_type = field_node_type_expr(field.clone());
         let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
@@ -1640,11 +1669,7 @@ pub fn resolve_field(
     }
 }
 
-pub fn resolve_param(
-    param: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<ParamResult> {
+pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ParamResult> {
     {
         let authored_type = param_node_type_expr(param.clone());
         let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
@@ -1716,7 +1741,7 @@ pub fn resolve_param(
 pub fn resolve_resource_use(
     ru: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<ResourceUseResult> {
     {
         let type_result = resolve_node(resource_use_resource(ru.clone()), env.clone(), module_name);
@@ -1737,7 +1762,7 @@ pub fn resolve_resource_use(
 pub fn resolve_named_arg(
     arg: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<NamedArgResolveResult> {
     {
         let value_result = resolve_expr_types(arg_value(arg.clone()), env.clone(), module_name);
@@ -1758,7 +1783,7 @@ pub fn resolve_named_arg(
 pub fn resolve_field_init(
     field_init: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<FieldInitResolveResult> {
     {
         let value_result = resolve_expr_types(
@@ -1783,7 +1808,7 @@ pub fn resolve_field_init(
 pub fn resolve_match_arm(
     arm: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<MatchArmResolveResult> {
     {
         let arm_g = arm_guard(arm.clone());
@@ -1821,7 +1846,7 @@ pub fn resolve_match_arm(
 pub fn resolve_string_part(
     part: Rc<StringPart>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<StringPartResolveResult> {
     match (*part).clone() {
         StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
@@ -1847,7 +1872,7 @@ pub fn resolve_string_part(
 pub fn resolve_transport_binding(
     transport: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<TransportResolveResult> {
     if is_local_transport(transport.clone(), env.source_indices.clone()) {
         Rc::new(TransportResolveResult {
@@ -1946,7 +1971,7 @@ pub fn resolve_transport_binding(
 pub fn resolve_expr_types(
     texpr: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<ExprResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -1990,6 +2015,9 @@ pub fn resolve_expr_types(
                 descent_evidence: de,
                 ..
             } => {
+                // bind-once: resolve each arg child a SINGLE time, then split
+                // into resolved children + diagnostics. Resolving twice made a
+                // nested constructor literal O(2^depth).
                 let arg_results = Rc::new({
                     let mut __result = Vec::new();
                     for arg_node in texpr.children.clone().iter().cloned() {
@@ -2019,14 +2047,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.clone().iter().cloned() {
+                    for r in arg_results.iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.clone().iter().cloned() {
+                    for r in arg_results.iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2050,6 +2078,7 @@ pub fn resolve_expr_types(
                 method_semantics: ms,
                 ..
             } => {
+                // bind-once: resolve each child a SINGLE time (see ExprCall).
                 let mc_results = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
@@ -2115,14 +2144,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.clone().iter().cloned() {
+                    for r in mc_results.iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.clone().iter().cloned() {
+                    for r in mc_results.iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2142,6 +2171,7 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprMatch => {
+                // bind-once: resolve each scrutinee/arm a SINGLE time (see ExprCall).
                 let match_results = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
@@ -2252,14 +2282,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.clone().iter().cloned() {
+                    for r in match_results.iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.clone().iter().cloned() {
+                    for r in match_results.iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2360,6 +2390,9 @@ pub fn resolve_expr_types(
             ExprData::ExprRecordLit {
                 parent_enum: pe, ..
             } => {
+                // bind-once: resolve each field-init value a SINGLE time. This is
+                // the arm hit by deep nested constructor literals (Cons/record
+                // chains) — resolving twice per field was O(2^depth).
                 let fi_results = Rc::new({
                     let mut __result = Vec::new();
                     for fi_node in texpr.children.clone().iter().cloned() {
@@ -2385,14 +2418,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.clone().iter().cloned() {
+                    for r in fi_results.iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.clone().iter().cloned() {
+                    for r in fi_results.iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2526,6 +2559,7 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprStringInterp => {
+                // bind-once: resolve each interpolation part a SINGLE time (see ExprCall).
                 let part_results = Rc::new({
                     let mut __result = Vec::new();
                     for part_node in texpr.children.clone().iter().cloned() {
@@ -2560,14 +2594,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.clone().iter().cloned() {
+                    for r in part_results.iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.clone().iter().cloned() {
+                    for r in part_results.iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2783,13 +2817,10 @@ pub fn fn_type_param_names(
         for p in Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(param_node_name_at(
-                    p.clone(),
-                    source_indices.clone(),
-                )) == crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                    source_indices.clone(),
-                    param_node_type_expr(p.clone()),
-                ))) {
+                if (param_node_name_at(p.clone(), source_indices.clone()).as_str()
+                    == authored_name_at(source_indices.clone(), param_node_type_expr(p.clone()))
+                        .as_str())
+                {
                     __result.push(p);
                 }
             }
@@ -2835,9 +2866,7 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
                     .iter()
                     .cloned()
                     {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(other.clone())
-                            == crate::v2_std_text::host_string_text_to_rust_host(s.clone()))
-                        {
+                        if (other.clone().as_str() == s.clone().as_str()) {
                             __found = true;
                             break;
                         }
@@ -2853,11 +2882,7 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
     }
 }
 
-pub fn resolve_item_types(
-    item: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<ItemResult> {
+pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tp_names = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
@@ -2882,7 +2907,7 @@ pub fn resolve_item_types(
         };
         let env = tp_names.clone().iter().cloned().fold(
             env.clone(),
-            |e: Rc<TypeEnv>, tp_name: Rc<FreeMonoid<Nat>>| {
+            |e: Rc<TypeEnv>, tp_name: String| {
                 Rc::new(TypeEnv {
                     bindings: v1_rt::rc_map_insert(
                         e.bindings.clone(),
@@ -3291,7 +3316,3 @@ pub fn resolve_item_types(
         })
     })
 }
-
-pub struct AliasParameterized;
-pub struct AliasLeaf;
-pub struct AliasPassthrough;

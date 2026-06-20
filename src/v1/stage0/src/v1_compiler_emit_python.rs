@@ -123,14 +123,13 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
-                                if (crate::v2_std_text::host_string_text_to_rust_host(
-                                    p.module_name.clone(),
-                                ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                    authored_name_at(
+                                if (p.module_name.clone().as_str()
+                                    == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
                                         tm.module.clone(),
-                                    ),
-                                )) {
+                                    )
+                                    .as_str())
+                                {
                                     __result.push(p);
                                 }
                             }
@@ -143,9 +142,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (crate::v2_std_text::host_string_text_to_rust_host(f.path.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
+                if (f.path.clone().as_str() != "".to_string().as_str()) {
                     __result.push(f);
                 }
             }
@@ -164,7 +161,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
-pub fn py_derive_attribute() -> Rc<FreeMonoid<Nat>> {
+pub fn py_derive_attribute() -> String {
     match serialization_for_target(RenderTarget::Python)
         .derive_attribute
         .clone()
@@ -174,7 +171,7 @@ pub fn py_derive_attribute() -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn py_default_value() -> Rc<FreeMonoid<Nat>> {
+pub fn py_default_value() -> String {
     match serialization_for_target(RenderTarget::Python)
         .default_value
         .clone()
@@ -230,7 +227,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
     }
 }
 
-pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> Rc<FreeMonoid<Nat>> {
+pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({
             let mut __result = Vec::new();
@@ -280,7 +277,7 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> Rc<FreeM
 }
 
 pub fn emit_py_test_file(
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
@@ -322,7 +319,7 @@ pub fn emit_py_test_file(
     }
 }
 
-pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
     {
         let test_name = test_function_name(projection.clone(), RenderTarget::Python);
         let indent = make_indent((depth.clone() + 1));
@@ -346,7 +343,7 @@ pub fn emit_py_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             emit_ident(
@@ -374,14 +371,11 @@ pub fn emit_py_module(
         let mod_name_str = authored_name_at(si.clone(), m.clone());
         let prelude = emit_py_prelude(typed_module.clone());
         let imports_str = emit_py_imports(module_imports(m.clone()), si.clone());
-        let imports_section =
-            if (crate::v2_std_text::host_string_text_to_rust_host(imports_str.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-            {
-                "".to_string()
-            } else {
-                v1_rt::concat("\n".to_string(), imports_str.clone())
-            };
+        let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
+            "".to_string()
+        } else {
+            v1_rt::concat("\n".to_string(), imports_str.clone())
+        };
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
@@ -435,7 +429,7 @@ pub fn emit_py_module(
 pub fn emit_py_imports(
     imports: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -506,9 +500,7 @@ pub fn emit_py_imports(
             Rc::new({
                 let mut __result = Vec::new();
                 for line in import_lines.iter().cloned() {
-                    if (crate::v2_std_text::host_string_text_to_rust_host(line.clone())
-                        != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                    {
+                    if (line.clone().as_str() != "".to_string().as_str()) {
                         __result.push(line);
                     }
                 }
@@ -519,7 +511,7 @@ pub fn emit_py_imports(
     }
 }
 
-pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
     {
         let items = typed_module.items.clone();
         let has_structs = {
@@ -589,7 +581,7 @@ pub fn emit_py_typed_item(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let env = scope.type_env.clone();
         let item_text = authored_name(env.clone(), item.clone());
@@ -657,7 +649,7 @@ pub fn emit_py_typed_item(
     }
 }
 
-pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
@@ -670,10 +662,10 @@ pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<
 }
 
 pub fn emit_py_dataclass_from_children(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     if ((children.clone().len() as i64) == 0) {
         v1_rt::concat(
             v1_rt::concat(
@@ -709,10 +701,7 @@ pub fn emit_py_dataclass_from_children(
     }
 }
 
-pub fn emit_py_dataclass_field_from_child(
-    child: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let ty = emit_node_type(
             resolved_type(child.clone()),
@@ -746,10 +735,10 @@ pub fn emit_py_dataclass_field_from_child(
 }
 
 pub fn emit_py_enum_from_children(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let has_data = {
             let mut __found = false;
@@ -839,10 +828,10 @@ pub fn emit_py_enum_from_children(
 }
 
 pub fn emit_py_variant_class_from_child(
-    parent_name: Rc<FreeMonoid<Nat>>,
+    parent_name: String,
     child: Rc<Node>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let class_name = v1_rt::concat(parent_name, authored_name(env.clone(), child.clone()));
         if ((child.children.clone().len() as i64) == 0) {
@@ -879,13 +868,13 @@ pub fn emit_py_variant_class_from_child(
 }
 
 pub fn emit_py_fn_def(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let depth = 0;
         let si = scope.type_env.clone().source_indices.clone();
@@ -984,14 +973,14 @@ pub fn emit_py_fn_def(
 }
 
 pub fn emit_py_func_def(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let depth = 0;
         let service_names = match lookup_item(registry.clone(), name.clone()) {
@@ -1069,7 +1058,7 @@ pub fn emit_py_func_params(
     uses: Rc<Vec<Rc<Node>>>,
     service_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
@@ -1123,7 +1112,7 @@ pub fn emit_py_typed_expr(
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_typed_expr(
         texpr,
         RenderTarget::Python,
@@ -1143,10 +1132,10 @@ pub fn emit_py_typed_expr(
 
 pub fn emit_py_transport_body(
     transport: Rc<Node>,
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_transport_dispatch(
         transport,
         op_name,
@@ -1164,7 +1153,7 @@ pub fn emit_py_service_def(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_service_def(
         item,
         RenderTarget::Python,
@@ -1186,7 +1175,7 @@ pub fn emit_py_service_init(
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children, source_indices);
         let params = service_field_decls(
@@ -1224,10 +1213,10 @@ pub fn emit_py_service_init(
 }
 
 pub fn emit_py_rest_call(
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     transport: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let self_base_url = v1_rt::concat(
             v1_rt::concat("{".to_string(), "self.base_url".to_string()),
@@ -1264,7 +1253,7 @@ pub fn emit_py_rest_call(
 pub fn emit_py_headers_dict(
     transport: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let auth_entry = if transport_has_auth(transport.clone(), source_indices.clone()) {
             {
@@ -1302,9 +1291,7 @@ pub fn emit_py_headers_dict(
             }
             __result
         });
-        let all_entries = if (crate::v2_std_text::host_string_text_to_rust_host(auth_entry.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-        {
+        let all_entries = if (auth_entry.clone().as_str() == "".to_string().as_str()) {
             header_entries.join(&", ".to_string())
         } else {
             v1_rt::concat(auth_entry.clone(), header_entries.join(&", ".to_string()))
@@ -1317,10 +1304,10 @@ pub fn emit_py_headers_dict(
 }
 
 pub fn emit_py_shell_call(
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     transport: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let envs = transport_env(transport, source_indices.clone());
         let env_dict_entries = Rc::new({
@@ -1384,7 +1371,7 @@ pub fn emit_py_shell_call(
     }
 }
 
-pub fn emit_py_file_call(op_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_file_call(op_name: String) -> String {
     {
         let self_base_path = v1_rt::concat(
             v1_rt::concat("{".to_string(), "self.base_path".to_string()),
@@ -1409,7 +1396,7 @@ pub fn emit_py_file_call(op_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn emit_py_local_call(op_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_local_call(op_name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1422,7 +1409,7 @@ pub fn emit_py_local_call(op_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     )
 }
 
-pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let depth = 0;
@@ -1461,7 +1448,7 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<N
     }
 }
 
-pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -1484,9 +1471,7 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Fre
             __result
         });
         let params_str = input_params.join(&", ".to_string());
-        let all_params = if (crate::v2_std_text::host_string_text_to_rust_host(params_str.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-        {
+        let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
             "self".to_string()
         } else {
             v1_rt::concat("self, ".to_string(), params_str.clone())
@@ -1542,12 +1527,12 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Fre
 }
 
 pub fn emit_py_data_def(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let ty_str = emit_node_type(
             type_node,

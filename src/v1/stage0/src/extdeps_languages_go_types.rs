@@ -41,80 +41,80 @@ pub fn go_callable() -> Rc<CallableRepr> {
     CACHED.with(|c: &Rc<CallableRepr>| c.clone())
 }
 
-pub fn pointer_template() -> Rc<FreeMonoid<Nat>> {
+pub fn pointer_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "*{0}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn go_optional_template() -> Rc<FreeMonoid<Nat>> {
+pub fn go_optional_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "*{0}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn address_of_template() -> Rc<FreeMonoid<Nat>> {
+pub fn address_of_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "&{value}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nil_literal() -> Rc<FreeMonoid<Nat>> {
+pub fn nil_literal() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "nil".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn visibility_by_case() -> bool {
     true
 }
 
-pub fn embedded_field_syntax() -> Rc<FreeMonoid<Nat>> {
+pub fn embedded_field_syntax() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{type}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn empty_interface() -> Rc<FreeMonoid<Nat>> {
+pub fn empty_interface() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "interface{}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn any_type() -> Rc<FreeMonoid<Nat>> {
+pub fn any_type() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "any".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn interface_def_template() -> Rc<FreeMonoid<Nat>> {
+pub fn interface_def_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "type {name} interface {\n{methods}\n}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn integer_types() -> Rc<Vec<String>> {
@@ -135,13 +135,13 @@ pub fn float_types() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn type_conversion_template() -> Rc<FreeMonoid<Nat>> {
+pub fn type_conversion_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{type}({expr})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn go_cast_syntax() -> Rc<CastSyntax> {

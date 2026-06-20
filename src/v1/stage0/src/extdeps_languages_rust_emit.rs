@@ -15,13 +15,13 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), "true".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), "false".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), "None".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("and"), "&&".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("or"), "||".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("not"), "!".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("div"), "/".to_string());
+            __m.insert("true".to_string(), "true".to_string());
+            __m.insert("false".to_string(), "false".to_string());
+            __m.insert("null".to_string(), "None".to_string());
+            __m.insert("and".to_string(), "&&".to_string());
+            __m.insert("or".to_string(), "||".to_string());
+            __m.insert("not".to_string(), "!".to_string());
+            __m.insert("div".to_string(), "/".to_string());
             Rc::new(__m)
         };
     }
@@ -32,13 +32,13 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("list"), "Vec<{0}>".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("set"), "std::collections::BTreeSet<{0}>".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("optional"), "Option<{0}>".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("map"), "HashMap<{0}, {1}>".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("free_monoid"), "Vec<{0}>".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("partial_function"), "HashMap<{0}, {1}>".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("boolean_algebra"), "bool".to_string());
+            __m.insert("list".to_string(), "Vec<{0}>".to_string());
+            __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+            __m.insert("optional".to_string(), "Option<{0}>".to_string());
+            __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
+            __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
+            __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
+            __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };
     }
@@ -57,7 +57,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
@@ -77,7 +77,7 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
@@ -93,13 +93,13 @@ pub fn rust_reserved() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn rust_reserved_escape_suffix() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_reserved_escape_suffix() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "_".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_string_types() -> Rc<Vec<String>> {
@@ -111,325 +111,325 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn rust_struct_derives() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_struct_derives() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_struct_derives_copy() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_struct_derives_copy() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_enum_derives() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_enum_derives() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_enum_derives_copy() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_enum_derives_copy() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_serde_tag() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_serde_tag() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[serde(tag = \"_variant\")]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_serde_rename_all_snake_case() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_serde_rename_all_snake_case() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[serde(rename_all = \"snake_case\")]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_serde_rename_all_screaming_snake_case() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_serde_rename_all_screaming_snake_case() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_serde_rename_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_serde_rename_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "#[serde(rename = \"{0}\")]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_func_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_func_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "fn".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_async_prefix() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_async_prefix() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "async ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_struct_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_struct_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "struct".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_enum_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_enum_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "enum".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_type_alias_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_type_alias_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_param_separator() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_param_separator() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_return_arrow() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_return_arrow() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_param_type_sep() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_param_type_sep() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             ": ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_module_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_module_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "mod".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_import_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_import_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "use".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_import_from_keyword() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_import_from_keyword() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_lambda_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_lambda_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "|{0}| {1}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_error_expr_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_error_expr_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "panic!({0})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_list_literal_empty() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_list_literal_empty() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Rc::new(vec![])".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_list_literal_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_list_literal_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Rc::new(vec![{0}])".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_null_coalesce_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_null_coalesce_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{0}.unwrap_or_else(|| {1})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_error_type_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_error_type_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "compile_error!(\"{0}\")".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_type_arg_open() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_type_arg_open() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "<".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_type_arg_close() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_type_arg_close() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             ">".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_void_type() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_void_type() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_tuple_empty() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_tuple_empty() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_tuple_pair_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_tuple_pair_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "({0}, {1})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_tuple_multi_template() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_tuple_multi_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "({0})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_tuple_separator() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_tuple_separator() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_source_extension() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_source_extension() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             ".rs".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_source_dir() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_source_dir() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "src/".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_visibility() -> Rc<FreeMonoid<Nat>> {
+pub fn rust_visibility() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "pub ".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeFunction {
-    pub name: Rc<FreeMonoid<Nat>>,
-    pub bridge_name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
+    pub bridge_name: String,
     pub passes_by_ref: bool,
     pub wraps_result: bool,
 }
@@ -446,7 +446,7 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
     rt_function_registry().iter().cloned().fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
@@ -466,7 +466,7 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
@@ -486,7 +486,7 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
@@ -497,9 +497,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     Rc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
-            if (crate::v2_std_text::host_string_text_to_rust_host(f.name.clone())
-                != crate::v2_std_text::host_string_text_to_rust_host(f.bridge_name.clone()))
-            {
+            if (f.name.clone().as_str() != f.bridge_name.clone().as_str()) {
                 __result.push(f);
             }
         }
@@ -508,33 +506,33 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
 }
 
-pub fn is_rt_function(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_rt_function(name: String) -> bool {
     v1_rt::map_contains_key(&rt_functions(), name)
 }
 
-pub fn rt_bridge_name(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn rt_bridge_name(name: String) -> String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
         None => name.clone(),
     }
 }
 
-pub fn rt_passes_by_ref(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn rt_passes_by_ref(name: String) -> bool {
     v1_rt::map_contains_key(&rt_ref_map_functions(), name)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HigherOrderMethodSpec {
-    pub method_name: Rc<FreeMonoid<Nat>>,
-    pub inline_template: Rc<FreeMonoid<Nat>>,
-    pub fn_ref_template: Rc<FreeMonoid<Nat>>,
+    pub method_name: String,
+    pub inline_template: String,
+    pub fn_ref_template: String,
     pub wraps_in_sharing: bool,
 }
 

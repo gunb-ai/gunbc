@@ -21,7 +21,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncSig {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Rc<Node>,
     pub is_async: bool,
@@ -49,8 +49,8 @@ pub struct SigsAccum {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
-    pub caller: Rc<FreeMonoid<Nat>>,
-    pub callee: Rc<FreeMonoid<Nat>>,
+    pub caller: String,
+    pub callee: String,
 }
 
 pub fn collect_func_call_edges(
@@ -81,7 +81,7 @@ pub fn collect_func_call_edges(
 }
 
 pub fn collect_calls_in_expr(
-    caller: Rc<FreeMonoid<Nat>>,
+    caller: String,
     texpr: Rc<Node>,
     local_func_set: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -123,8 +123,8 @@ pub fn collect_calls_in_expr(
 }
 
 pub fn func_reaches_self(
-    root: Rc<FreeMonoid<Nat>>,
-    current: Rc<FreeMonoid<Nat>>,
+    root: String,
+    current: String,
     call_edges: Rc<Vec<Rc<CallEdge>>>,
     visited: Rc<HashMap<String, bool>>,
 ) -> bool {
@@ -139,11 +139,7 @@ pub fn func_reaches_self(
                     for e in Rc::new({
                         let mut __result = Vec::new();
                         for e in call_edges.clone().iter().cloned() {
-                            if (crate::v2_std_text::host_string_text_to_rust_host(e.caller.clone())
-                                == crate::v2_std_text::host_string_text_to_rust_host(
-                                    current.clone(),
-                                ))
-                            {
+                            if (e.caller.clone().as_str() == current.clone().as_str()) {
                                 __result.push(e);
                             }
                         }
@@ -159,9 +155,7 @@ pub fn func_reaches_self(
                 {
                     let mut __found = false;
                     for c in callees.iter().cloned() {
-                        if if (crate::v2_std_text::host_string_text_to_rust_host(c.clone())
-                            == crate::v2_std_text::host_string_text_to_rust_host(root.clone()))
-                        {
+                        if if (c.clone().as_str() == root.clone().as_str()) {
                             true
                         } else {
                             func_reaches_self(
@@ -184,8 +178,8 @@ pub fn func_reaches_self(
 
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
     names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
-        |acc: Rc<HashMap<String, bool>>, name: Rc<FreeMonoid<Nat>>| {
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), true)
         },
     )
@@ -199,7 +193,7 @@ pub fn collect_parent_resolved_sigs(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<ResolvedFuncSig>>(),
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
                 if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
                     acc.clone()
@@ -258,7 +252,7 @@ pub fn topo_resolve_loop(
     mut declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
     mut call_edges: Rc<Vec<Rc<CallEdge>>>,
     mut local_func_set: Rc<HashMap<String, bool>>,
-    mut module_name: Rc<FreeMonoid<Nat>>,
+    mut module_name: String,
     mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     mut fuel: i64,
 ) -> Rc<ResolveFuncSigsResult> {
@@ -302,11 +296,7 @@ pub fn topo_resolve_loop(
                             for e in Rc::new({
                                 let mut __result = Vec::new();
                                 for e in call_edges.clone().iter().cloned() {
-                                    if (crate::v2_std_text::host_string_text_to_rust_host(
-                                        e.caller.clone(),
-                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                        fn_name.clone(),
-                                    )) {
+                                    if (e.caller.clone().as_str() == fn_name.clone().as_str()) {
                                         __result.push(e);
                                     }
                                 }
@@ -351,7 +341,7 @@ pub fn topo_resolve_loop(
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    |acc: Rc<SigsAccum>, fn_name: Rc<FreeMonoid<Nat>>| match v1_rt::map_get(
+                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                         &declared_sigs,
                         fn_name.clone(),
                     ) {
@@ -419,7 +409,7 @@ pub fn topo_resolve_loop(
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
             }),
-            |acc: Rc<SigsAccum>, fn_name: Rc<FreeMonoid<Nat>>| match v1_rt::map_get(
+            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
                 &declared_sigs,
                 fn_name.clone(),
             ) {
@@ -454,8 +444,8 @@ pub fn topo_resolve_loop(
             },
         );
         let ready_set = ready.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
-            |acc: Rc<HashMap<String, bool>>, fn_name: Rc<FreeMonoid<Nat>>| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
                 v1_rt::rc_map_insert(acc, fn_name.clone(), true)
             },
         );
@@ -485,7 +475,7 @@ pub fn topo_resolve_loop(
 pub fn resolve_func_sigs(
     declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
     items: Rc<Vec<Rc<Node>>>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolveFuncSigsResult> {
     {

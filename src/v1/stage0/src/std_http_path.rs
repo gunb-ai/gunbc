@@ -16,8 +16,8 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UrlPathToken {
-    LiteralToken { text: Rc<FreeMonoid<Nat>> },
-    ParamToken { name: Rc<FreeMonoid<Nat>> },
+    LiteralToken { text: String },
+    ParamToken { name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -28,13 +28,8 @@ pub struct PathTemplate {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathSegmentTokensResult {
-    ParsedSegmentTokens {
-        tokens: Rc<Vec<Rc<UrlPathToken>>>,
-    },
-    MalformedPathSegment {
-        segment: Rc<FreeMonoid<Nat>>,
-        reason: Rc<FreeMonoid<Nat>>,
-    },
+    ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
+    MalformedPathSegment { segment: String, reason: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -44,13 +39,13 @@ pub enum PathTemplateParseResult {
         template: Rc<PathTemplate>,
     },
     MalformedPathTemplate {
-        raw: Rc<FreeMonoid<Nat>>,
-        segment: Rc<FreeMonoid<Nat>>,
-        reason: Rc<FreeMonoid<Nat>>,
+        raw: String,
+        segment: String,
+        reason: String,
     },
 }
 
-pub fn parse_path_template(raw: Rc<FreeMonoid<Nat>>) -> Rc<PathTemplateParseResult> {
+pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
     {
         let path_only = match Rc::new(
             raw.clone()
@@ -75,9 +70,7 @@ pub fn parse_path_template(raw: Rc<FreeMonoid<Nat>>) -> Rc<PathTemplateParseResu
             .iter()
             .cloned()
             {
-                if (crate::v2_std_text::host_string_text_to_rust_host(s.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
+                if (s.clone().as_str() != "".to_string().as_str()) {
                     __result.push(s);
                 }
             }
@@ -119,9 +112,7 @@ pub fn parse_path_template(raw: Rc<FreeMonoid<Nat>>) -> Rc<PathTemplateParseResu
                                 tokens: first_tokens.clone(),
                             }),
                         }),
-                        |acc: Rc<PathTemplateParseResult>, seg: Rc<FreeMonoid<Nat>>| match (*acc
-                            .clone())
-                        .clone()
+                        |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
                         {
                             PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
                             PathTemplateParseResult::ParsedPathTemplate {
@@ -157,7 +148,7 @@ pub fn parse_path_template(raw: Rc<FreeMonoid<Nat>>) -> Rc<PathTemplateParseResu
     }
 }
 
-pub fn parse_segment_tokens(seg: Rc<FreeMonoid<Nat>>) -> Rc<PathSegmentTokensResult> {
+pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
     if !v1_rt::contains(seg.clone(), "{".to_string()) {
         if v1_rt::contains(seg.clone(), "}".to_string()) {
             Rc::new(PathSegmentTokensResult::MalformedPathSegment {
@@ -236,38 +227,28 @@ pub fn parse_segment_tokens(seg: Rc<FreeMonoid<Nat>>) -> Rc<PathSegmentTokensRes
                     })
                 }
             };
-            let prefix_tokens =
-                if (crate::v2_std_text::host_string_text_to_rust_host(prefix.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
-                    Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
-                        text: prefix.clone(),
-                    })])
-                } else {
-                    Rc::new(vec![])
-                };
-            let param_tokens =
-                if (crate::v2_std_text::host_string_text_to_rust_host(param_name.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
-                    Rc::new(vec![Rc::new(UrlPathToken::ParamToken {
-                        name: param_name.clone(),
-                    })])
-                } else {
-                    Rc::new(vec![])
-                };
-            let suffix_tokens =
-                if (crate::v2_std_text::host_string_text_to_rust_host(suffix.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
-                    Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
-                        text: suffix.clone(),
-                    })])
-                } else {
-                    Rc::new(vec![])
-                };
-            if (((crate::v2_std_text::host_string_text_to_rust_host(param_name.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+            let prefix_tokens = if (prefix.clone().as_str() != "".to_string().as_str()) {
+                Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+                    text: prefix.clone(),
+                })])
+            } else {
+                Rc::new(vec![])
+            };
+            let param_tokens = if (param_name.clone().as_str() != "".to_string().as_str()) {
+                Rc::new(vec![Rc::new(UrlPathToken::ParamToken {
+                    name: param_name.clone(),
+                })])
+            } else {
+                Rc::new(vec![])
+            };
+            let suffix_tokens = if (suffix.clone().as_str() != "".to_string().as_str()) {
+                Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+                    text: suffix.clone(),
+                })])
+            } else {
+                Rc::new(vec![])
+            };
+            if (((param_name.clone().as_str() == "".to_string().as_str())
                 || v1_rt::contains(suffix.clone(), "{".to_string()))
                 || v1_rt::contains(suffix.clone(), "}".to_string()))
             {
@@ -303,7 +284,7 @@ pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
     }
 }
 
-pub fn last_path_param(template: Rc<PathTemplate>) -> Rc<FreeMonoid<Nat>> {
+pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
     {
         let params = Rc::new({
             let mut __result = Vec::new();

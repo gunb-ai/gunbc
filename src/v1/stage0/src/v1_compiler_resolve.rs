@@ -35,7 +35,7 @@ pub struct ResolvedModule {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedImport {
-    pub module_path: Rc<FreeMonoid<Nat>>,
+    pub module_path: String,
     pub is_all: bool,
     pub specific_names: Rc<Vec<String>>,
     pub target_module: Option<Rc<Node>>,
@@ -43,8 +43,8 @@ pub struct ResolvedImport {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DepEdge {
-    pub from_module: Rc<FreeMonoid<Nat>>,
-    pub to_module: Rc<FreeMonoid<Nat>>,
+    pub from_module: String,
+    pub to_module: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -53,7 +53,7 @@ pub struct ResolveAccum {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn map_has(m: Rc<HashMap<String, bool>>, key: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key) {
         Some(_) => true,
         None => false,
@@ -67,7 +67,7 @@ pub fn resolve_modules(
     {
         let dup_diags = check_duplicate_modules(modules.clone(), source_indices.clone());
         let module_index = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Node>>(),
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
@@ -77,12 +77,12 @@ pub fn resolve_modules(
             },
         );
         let export_sets = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<Node>| {
                 let exported = get_exported_names(m.clone(), source_indices.clone());
                 let exported_set = exported.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
-                    |inner_acc: Rc<HashMap<String, bool>>, name: Rc<FreeMonoid<Nat>>| {
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    |inner_acc: Rc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(inner_acc, name.clone(), true)
                     },
                 );
@@ -95,10 +95,7 @@ pub fn resolve_modules(
         );
         let resolve_accum = modules.clone().iter().cloned().fold(
             Rc::new(ResolveAccum {
-                imports_by_name: v1_rt::rc_empty_map::<
-                    Rc<FreeMonoid<Nat>>,
-                    Rc<Vec<Rc<ResolvedImport>>>,
-                >(),
+                imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
@@ -140,7 +137,7 @@ pub fn resolve_modules(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, i64>(),
+            v1_rt::rc_empty_map::<String, i64>(),
             |acc: Rc<HashMap<String, i64>>, pair: (i64, String)| {
                 v1_rt::rc_map_insert(acc, pair.1.clone(), pair.0.clone())
             },
@@ -188,10 +185,7 @@ pub fn resolve_modules(
     }
 }
 
-pub fn find_module(
-    module_index: Rc<HashMap<String, Rc<Node>>>,
-    path: Rc<FreeMonoid<Nat>>,
-) -> Option<Rc<Node>> {
+pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&module_index, path)
 }
 
@@ -264,7 +258,7 @@ pub struct ImportResolveResult {
 pub fn resolve_import(
     import: Rc<Node>,
     module_index: Rc<HashMap<String, Rc<Node>>>,
-    importing_module: Rc<FreeMonoid<Nat>>,
+    importing_module: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ImportResolveResult> {
@@ -297,7 +291,7 @@ pub fn resolve_import(
             Some(target_mod) => {
                 let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
                     Some(set) => set.clone(),
-                    None => v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+                    None => v1_rt::rc_empty_map::<String, bool>(),
                 };
                 let name_diags = if import_is_all(import.clone()) {
                     Rc::new(vec![])
@@ -398,7 +392,7 @@ pub fn get_exported_names(
 pub fn get_item_name(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     authored_name_at(source_indices, item)
 }
 
@@ -435,7 +429,7 @@ pub fn check_duplicate_modules(
     {
         let result = modules.iter().cloned().fold(
             Rc::new(DuplicateCheckState {
-                seen_names: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+                seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
@@ -479,8 +473,8 @@ pub struct TopoResult {
 
 pub fn adjacency_add_edge(
     adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
-    from_module: Rc<FreeMonoid<Nat>>,
-    to_module: Rc<FreeMonoid<Nat>>,
+    from_module: String,
+    to_module: String,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
@@ -495,10 +489,8 @@ pub fn adjacency_add_edge(
     }
 }
 
-pub fn topo_sort_key(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
-    if (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
-        == crate::v2_std_text::host_string_text_to_rust_host("std.types".to_string()))
-    {
+pub fn topo_sort_key(name: String) -> String {
+    if (name.clone().as_str() == "std.types".to_string().as_str()) {
         "".to_string()
     } else {
         name.clone()
@@ -520,9 +512,7 @@ pub fn topological_sort(
         let has_std_types = {
             let mut __found = false;
             for name in module_names.clone().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host("std.types".to_string()))
-                {
+                if (name.clone().as_str() == "std.types".to_string().as_str()) {
                     __found = true;
                     break;
                 }
@@ -559,30 +549,22 @@ pub fn topological_sort(
                             let imports_std_types = {
                                 let mut __found = false;
                                 for imp in module_imports(m.clone()).iter().cloned() {
-                                    if (crate::v2_std_text::host_string_text_to_rust_host(
-                                        authored_name_at(source_indices.clone(), imp.clone()),
-                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                        "std.types".to_string(),
-                                    )) {
+                                    if (authored_name_at(source_indices.clone(), imp.clone())
+                                        .as_str()
+                                        == "std.types".to_string().as_str())
+                                    {
                                         __found = true;
                                         break;
                                     }
                                 }
                                 __found
                             };
-                            if ((((crate::v2_std_text::host_string_text_to_rust_host(
-                                m_name.clone(),
-                            ) != crate::v2_std_text::host_string_text_to_rust_host(
-                                "std.types".to_string(),
-                            )) && (crate::v2_std_text::host_string_text_to_rust_host(
-                                m_name.clone(),
-                            ) != crate::v2_std_text::host_string_text_to_rust_host(
-                                "std.algebra".to_string(),
-                            ))) && (crate::v2_std_text::host_string_text_to_rust_host(
-                                m_name.clone(),
-                            ) != crate::v2_std_text::host_string_text_to_rust_host(
-                                "std.error_primitives".to_string(),
-                            ))) && (imports_std_types.clone() == false))
+                            if ((((m_name.clone().as_str() != "std.types".to_string().as_str())
+                                && (m_name.clone().as_str()
+                                    != "std.algebra".to_string().as_str()))
+                                && (m_name.clone().as_str()
+                                    != "std.error_primitives".to_string().as_str()))
+                                && (imports_std_types.clone() == false))
                             {
                                 Rc::new(vec![Rc::new(DepEdge {
                                     from_module: "std.types".to_string(),
@@ -605,24 +587,21 @@ pub fn topological_sort(
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<String>>>(),
+                v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
                 |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
                     adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
                 },
             );
         let in_degree_map = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, i64>(),
+            v1_rt::rc_empty_map::<String, i64>(),
             |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
                 let imports_std_types = {
                     let mut __found = false;
                     for imp in module_imports(m.clone()).iter().cloned() {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                            source_indices.clone(),
-                            imp.clone(),
-                        )) == crate::v2_std_text::host_string_text_to_rust_host(
-                            "std.types".to_string(),
-                        )) {
+                        if (authored_name_at(source_indices.clone(), imp.clone()).as_str()
+                            == "std.types".to_string().as_str())
+                        {
                             __found = true;
                             break;
                         }
@@ -630,18 +609,9 @@ pub fn topological_sort(
                     __found
                 };
                 let implicit_std_types_in_degree = if ((((has_std_types.clone()
-                    && (crate::v2_std_text::host_string_text_to_rust_host(m_name.clone())
-                        != crate::v2_std_text::host_string_text_to_rust_host(
-                            "std.types".to_string(),
-                        )))
-                    && (crate::v2_std_text::host_string_text_to_rust_host(m_name.clone())
-                        != crate::v2_std_text::host_string_text_to_rust_host(
-                            "std.algebra".to_string(),
-                        )))
-                    && (crate::v2_std_text::host_string_text_to_rust_host(m_name.clone())
-                        != crate::v2_std_text::host_string_text_to_rust_host(
-                            "std.error_primitives".to_string(),
-                        )))
+                    && (m_name.clone().as_str() != "std.types".to_string().as_str()))
+                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str()))
+                    && (m_name.clone().as_str() != "std.error_primitives".to_string().as_str()))
                     && (imports_std_types.clone() == false))
                 {
                     1
@@ -672,9 +642,9 @@ pub fn topological_sort(
             .iter()
             .cloned()
             .collect();
-            __sorted.sort_by(|a: &Rc<FreeMonoid<Nat>>, b: &Rc<FreeMonoid<Nat>>| {
-                let __ka = (|name: Rc<FreeMonoid<Nat>>| topo_sort_key(name.clone()))(a.clone());
-                let __kb = (|name: Rc<FreeMonoid<Nat>>| topo_sort_key(name.clone()))(b.clone());
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
+                let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
                 __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
@@ -695,8 +665,8 @@ pub fn topological_sort(
         } else {
             {
                 let sorted_set = result.sorted.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, name: Rc<FreeMonoid<Nat>>| {
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    |acc: Rc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(acc, name.clone(), true)
                     },
                 );
@@ -750,7 +720,7 @@ pub fn kahn_drain(
                 sorted: sorted.clone(),
                 in_degree_map: in_degree_map.clone(),
             }),
-            |state: Rc<KahnDrainState>, node: Rc<FreeMonoid<Nat>>| {
+            |state: Rc<KahnDrainState>, node: String| {
                 let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone());
                 {
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
@@ -760,7 +730,7 @@ pub fn kahn_drain(
                     };
                     let new_degrees = neighbors.clone().iter().cloned().fold(
                         state.in_degree_map,
-                        |deg_map: Rc<HashMap<String, i64>>, neighbor: Rc<FreeMonoid<Nat>>| {
+                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
                             let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -810,8 +780,8 @@ pub fn kahn_drain(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: Rc<FreeMonoid<Nat>>| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
@@ -820,9 +790,9 @@ pub fn kahn_drain(
                 .iter()
                 .cloned()
                 .collect();
-            __sorted.sort_by(|a: &Rc<FreeMonoid<Nat>>, b: &Rc<FreeMonoid<Nat>>| {
-                let __ka = (|name: Rc<FreeMonoid<Nat>>| name.clone())(a.clone());
-                let __kb = (|name: Rc<FreeMonoid<Nat>>| name.clone())(b.clone());
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|name: String| name.clone())(a.clone());
+                let __kb = (|name: String| name.clone())(b.clone());
                 __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted

@@ -85,8 +85,8 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ReservedWordStrategy {
-    PrefixEscape { prefix: Rc<FreeMonoid<Nat>> },
-    SuffixEscape { suffix: Rc<FreeMonoid<Nat>> },
+    PrefixEscape { prefix: String },
+    SuffixEscape { suffix: String },
     NoEscape,
 }
 
@@ -98,22 +98,22 @@ pub struct ReservedWords {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectScaffold {
-    pub manifest_file: Rc<FreeMonoid<Nat>>,
-    pub module_init_file: Rc<FreeMonoid<Nat>>,
-    pub source_file_extension: Rc<FreeMonoid<Nat>>,
-    pub source_dir: Rc<FreeMonoid<Nat>>,
+    pub manifest_file: Option<String>,
+    pub module_init_file: Option<String>,
+    pub source_file_extension: String,
+    pub source_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SerializationSpec {
-    pub struct_derives: Rc<FreeMonoid<Nat>>,
-    pub struct_derives_copy: Rc<FreeMonoid<Nat>>,
-    pub enum_derives: Rc<FreeMonoid<Nat>>,
-    pub enum_derives_copy: Rc<FreeMonoid<Nat>>,
-    pub tag_attribute: Rc<FreeMonoid<Nat>>,
-    pub rename_attribute_template: Rc<FreeMonoid<Nat>>,
-    pub derive_attribute: Rc<FreeMonoid<Nat>>,
-    pub default_value: Rc<FreeMonoid<Nat>>,
+    pub struct_derives: Option<String>,
+    pub struct_derives_copy: Option<String>,
+    pub enum_derives: Option<String>,
+    pub enum_derives_copy: Option<String>,
+    pub tag_attribute: Option<String>,
+    pub rename_attribute_template: Option<String>,
+    pub derive_attribute: Option<String>,
+    pub default_value: Option<String>,
 }
 
 #[derive(
@@ -127,88 +127,88 @@ pub enum TestNameStyle {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestConventions {
-    pub file_prefix: Rc<FreeMonoid<Nat>>,
-    pub file_suffix: Rc<FreeMonoid<Nat>>,
-    pub file_dir: Rc<FreeMonoid<Nat>>,
-    pub function_prefix: Rc<FreeMonoid<Nat>>,
+    pub file_prefix: String,
+    pub file_suffix: String,
+    pub file_dir: Option<String>,
+    pub function_prefix: String,
     pub name_style: TestNameStyle,
-    pub async_decorator: Rc<FreeMonoid<Nat>>,
+    pub async_decorator: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportTrigger {
-    TypeUsageTrigger { type_name: Rc<FreeMonoid<Nat>> },
-    TraitImplTrigger { trait_name: Rc<FreeMonoid<Nat>> },
-    DeriveMacroTrigger { macro_name: Rc<FreeMonoid<Nat>> },
-    ContainerUsageTrigger { container: Rc<FreeMonoid<Nat>> },
+    TypeUsageTrigger { type_name: String },
+    TraitImplTrigger { trait_name: String },
+    DeriveMacroTrigger { macro_name: String },
+    ContainerUsageTrigger { container: String },
     AsyncUsageTrigger,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportRule {
     pub trigger: Rc<ImportTrigger>,
-    pub import_path: Rc<FreeMonoid<Nat>>,
+    pub import_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub needs_sharing: bool,
-    pub wrap_template: Rc<FreeMonoid<Nat>>,
-    pub clone_value: Rc<FreeMonoid<Nat>>,
-    pub deref_clone: Rc<FreeMonoid<Nat>>,
-    pub field_clone: Rc<FreeMonoid<Nat>>,
-    pub iter_owned: Rc<FreeMonoid<Nat>>,
-    pub clone_suffix: Rc<FreeMonoid<Nat>>,
-    pub borrow_param_template: Rc<FreeMonoid<Nat>>,
-    pub borrow_arg_template: Rc<FreeMonoid<Nat>>,
+    pub wrap_template: String,
+    pub clone_value: String,
+    pub deref_clone: String,
+    pub field_clone: String,
+    pub iter_owned: String,
+    pub clone_suffix: String,
+    pub borrow_param_template: String,
+    pub borrow_arg_template: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IndexingSemantics {
-    pub list_index: Rc<FreeMonoid<Nat>>,
-    pub map_index: Rc<FreeMonoid<Nat>>,
-    pub string_index: Rc<FreeMonoid<Nat>>,
-    pub list_slice: Rc<FreeMonoid<Nat>>,
-    pub string_slice: Rc<FreeMonoid<Nat>>,
+    pub list_index: String,
+    pub map_index: String,
+    pub string_index: String,
+    pub list_slice: Option<String>,
+    pub string_slice: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationRequirements {
-    pub let_binding_inferred: Rc<FreeMonoid<Nat>>,
-    pub let_binding_annotated: Rc<FreeMonoid<Nat>>,
-    pub lambda_param_typed: Rc<FreeMonoid<Nat>>,
-    pub lambda_param_untyped: Rc<FreeMonoid<Nat>>,
+    pub let_binding_inferred: String,
+    pub let_binding_annotated: String,
+    pub lambda_param_typed: String,
+    pub lambda_param_untyped: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceFieldTemplates {
-    pub rest_decl: Rc<FreeMonoid<Nat>>,
-    pub auth_decl: Rc<FreeMonoid<Nat>>,
-    pub shell_decl: Rc<FreeMonoid<Nat>>,
-    pub file_decl: Rc<FreeMonoid<Nat>>,
-    pub rest_ctor: Rc<FreeMonoid<Nat>>,
-    pub auth_ctor: Rc<FreeMonoid<Nat>>,
-    pub shell_ctor: Rc<FreeMonoid<Nat>>,
-    pub file_ctor: Rc<FreeMonoid<Nat>>,
+    pub rest_decl: String,
+    pub auth_decl: String,
+    pub shell_decl: String,
+    pub file_decl: String,
+    pub rest_ctor: String,
+    pub auth_ctor: String,
+    pub shell_ctor: String,
+    pub file_ctor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockSyntax {
-    pub block_open: Rc<FreeMonoid<Nat>>,
-    pub block_close: Rc<FreeMonoid<Nat>>,
-    pub else_clause: Rc<FreeMonoid<Nat>>,
-    pub match_keyword: Rc<FreeMonoid<Nat>>,
-    pub case_keyword: Rc<FreeMonoid<Nat>>,
-    pub arm_separator: Rc<FreeMonoid<Nat>>,
-    pub stmt_terminator: Rc<FreeMonoid<Nat>>,
+    pub block_open: String,
+    pub block_close: String,
+    pub else_clause: String,
+    pub match_keyword: String,
+    pub case_keyword: String,
+    pub arm_separator: String,
+    pub stmt_terminator: String,
     pub significant_whitespace: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ForEachSyntax {
-    pub prefix: Rc<FreeMonoid<Nat>>,
-    pub separator: Rc<FreeMonoid<Nat>>,
+    pub prefix: String,
+    pub separator: String,
 }
 
 #[derive(
@@ -234,20 +234,20 @@ pub enum MatchValueForm {
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub match_value_form: MatchValueForm,
-    pub wildcard_case: Rc<FreeMonoid<Nat>>,
+    pub wildcard_case: Option<String>,
     pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
-    pub guard_prefix: Rc<FreeMonoid<Nat>>,
-    pub empty_return_value: Rc<FreeMonoid<Nat>>,
-    pub return_suffix: Rc<FreeMonoid<Nat>>,
+    pub guard_prefix: Option<String>,
+    pub empty_return_value: String,
+    pub return_suffix: String,
     pub suppress_unit_return: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantPatternSyntax {
-    pub open: Rc<FreeMonoid<Nat>>,
-    pub close: Rc<FreeMonoid<Nat>>,
-    pub binding_sep: Rc<FreeMonoid<Nat>>,
-    pub empty_suffix: Rc<FreeMonoid<Nat>>,
+    pub open: String,
+    pub close: String,
+    pub binding_sep: String,
+    pub empty_suffix: String,
 }
 
 #[derive(
@@ -264,35 +264,35 @@ pub enum NamingCase {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum VisibilitySpec {
-    KeywordVisibility { prefix: Rc<FreeMonoid<Nat>> },
+    KeywordVisibility { prefix: String },
     CaseVisibility { export_case: NamingCase },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
-    pub loop_keyword: Rc<FreeMonoid<Nat>>,
-    pub break_return: Rc<FreeMonoid<Nat>>,
-    pub continue_str: Rc<FreeMonoid<Nat>>,
-    pub temp_var_prefix: Rc<FreeMonoid<Nat>>,
-    pub temp_decl_prefix: Rc<FreeMonoid<Nat>>,
-    pub temp_assign_op: Rc<FreeMonoid<Nat>>,
+    pub loop_keyword: String,
+    pub break_return: String,
+    pub continue_str: String,
+    pub temp_var_prefix: String,
+    pub temp_decl_prefix: String,
+    pub temp_assign_op: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ServiceMethodStrategy {
-    SelfInParams { self_param: Rc<FreeMonoid<Nat>> },
-    ExternalReceiver { var_name: Rc<FreeMonoid<Nat>> },
+    SelfInParams { self_param: String },
+    ExternalReceiver { var_name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ServiceReturnStrategy {
     ArrowReturn,
-    ErrorTupleReturn { error_type: Rc<FreeMonoid<Nat>> },
+    ErrorTupleReturn { error_type: String },
 }
 impl ServiceReturnStrategy {
-    pub fn error_type(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn error_type(&self) -> String {
         match self {
             ServiceReturnStrategy::ArrowReturn => panic!("no error_type on unit variant"),
             ServiceReturnStrategy::ErrorTupleReturn {
@@ -302,17 +302,14 @@ impl ServiceReturnStrategy {
     }
 }
 
-pub fn service_self_param(spec: Rc<LanguageSpec>) -> Rc<FreeMonoid<Nat>> {
+pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
         ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => "".to_string(),
     }
 }
 
-pub fn service_receiver_str(
-    spec: Rc<LanguageSpec>,
-    service_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: _, .. } => "".to_string(),
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v1_rt::concat(
@@ -339,10 +336,7 @@ pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
     }
 }
 
-pub fn service_return_str(
-    spec: Rc<LanguageSpec>,
-    ret_type: Rc<FreeMonoid<Nat>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
             v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type)
@@ -359,23 +353,20 @@ pub fn service_return_str(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemKeywords {
-    pub func_keyword: Rc<FreeMonoid<Nat>>,
-    pub async_prefix: Rc<FreeMonoid<Nat>>,
-    pub struct_keyword: Rc<FreeMonoid<Nat>>,
-    pub enum_keyword: Rc<FreeMonoid<Nat>>,
-    pub type_alias_keyword: Rc<FreeMonoid<Nat>>,
-    pub param_separator: Rc<FreeMonoid<Nat>>,
-    pub return_arrow: Rc<FreeMonoid<Nat>>,
-    pub param_type_sep: Rc<FreeMonoid<Nat>>,
-    pub module_keyword: Rc<FreeMonoid<Nat>>,
-    pub import_keyword: Rc<FreeMonoid<Nat>>,
-    pub import_from_keyword: Rc<FreeMonoid<Nat>>,
+    pub func_keyword: String,
+    pub async_prefix: String,
+    pub struct_keyword: String,
+    pub enum_keyword: String,
+    pub type_alias_keyword: String,
+    pub param_separator: String,
+    pub return_arrow: String,
+    pub param_type_sep: String,
+    pub module_keyword: String,
+    pub import_keyword: String,
+    pub import_from_keyword: String,
 }
 
-pub fn item_keyword_for_kind(
-    forms: Rc<Vec<Rc<ItemForm>>>,
-    kind: ItemFormKind,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -395,7 +386,7 @@ pub fn item_keyword_for_kind(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
-    pub target_name: Rc<FreeMonoid<Nat>>,
+    pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
     pub scaffold: Rc<ProjectScaffold>,
     pub serialization: Rc<SerializationSpec>,
@@ -410,21 +401,21 @@ pub struct LanguageSpec {
     pub tco: Rc<TcoSyntax>,
     pub items: Rc<ItemKeywords>,
     pub expression_semantics: Rc<ExpressionSemantics>,
-    pub lambda_template: Rc<FreeMonoid<Nat>>,
-    pub error_expr_template: Rc<FreeMonoid<Nat>>,
-    pub list_literal_empty: Rc<FreeMonoid<Nat>>,
-    pub list_literal_template: Rc<FreeMonoid<Nat>>,
-    pub null_coalesce_template: Rc<FreeMonoid<Nat>>,
-    pub error_type_template: Rc<FreeMonoid<Nat>>,
-    pub type_arg_open: Rc<FreeMonoid<Nat>>,
-    pub type_arg_close: Rc<FreeMonoid<Nat>>,
-    pub void_type: Rc<FreeMonoid<Nat>>,
+    pub lambda_template: String,
+    pub error_expr_template: String,
+    pub list_literal_empty: String,
+    pub list_literal_template: String,
+    pub null_coalesce_template: String,
+    pub error_type_template: String,
+    pub type_arg_open: String,
+    pub type_arg_close: String,
+    pub void_type: String,
     pub tuple_syntax: Rc<TupleSyntax>,
     pub string_interp: Rc<StringInterpSyntax>,
-    pub callable_type_template: Rc<FreeMonoid<Nat>>,
+    pub callable_type_template: Option<String>,
     pub naming_case: NamingCase,
-    pub async_call_prefix: Rc<FreeMonoid<Nat>>,
-    pub bridge_method_prefix: Rc<FreeMonoid<Nat>>,
+    pub async_call_prefix: String,
+    pub bridge_method_prefix: String,
     pub bridge_method_case: NamingCase,
     pub bridge_method_overrides: Rc<HashMap<String, String>>,
     pub record_lit: Rc<RecordLitSyntax>,
@@ -434,35 +425,35 @@ pub struct LanguageSpec {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TupleSyntax {
-    pub empty: Rc<FreeMonoid<Nat>>,
-    pub pair_template: Rc<FreeMonoid<Nat>>,
-    pub multi_template: Rc<FreeMonoid<Nat>>,
-    pub separator: Rc<FreeMonoid<Nat>>,
-    pub first_accessor: Rc<FreeMonoid<Nat>>,
-    pub second_accessor: Rc<FreeMonoid<Nat>>,
+    pub empty: String,
+    pub pair_template: String,
+    pub multi_template: String,
+    pub separator: String,
+    pub first_accessor: String,
+    pub second_accessor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecordLitSyntax {
-    pub named_open: Rc<FreeMonoid<Nat>>,
-    pub named_close: Rc<FreeMonoid<Nat>>,
-    pub named_empty: Rc<FreeMonoid<Nat>>,
-    pub named_field_sep: Rc<FreeMonoid<Nat>>,
-    pub named_field_join: Rc<FreeMonoid<Nat>>,
-    pub anon_empty: Rc<FreeMonoid<Nat>>,
-    pub anon_prefix: Rc<FreeMonoid<Nat>>,
-    pub anon_suffix: Rc<FreeMonoid<Nat>>,
-    pub anon_field_indent: Rc<FreeMonoid<Nat>>,
+    pub named_open: String,
+    pub named_close: String,
+    pub named_empty: String,
+    pub named_field_sep: String,
+    pub named_field_join: String,
+    pub anon_empty: String,
+    pub anon_prefix: String,
+    pub anon_suffix: String,
+    pub anon_field_indent: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InterpStyle {
-    FormatArgs { placeholder: Rc<FreeMonoid<Nat>> },
+    FormatArgs { placeholder: String },
     InlineExpr,
 }
 impl InterpStyle {
-    pub fn placeholder(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn placeholder(&self) -> String {
         match self {
             InterpStyle::FormatArgs {
                 placeholder: __val, ..
@@ -474,15 +465,15 @@ impl InterpStyle {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EscapePair {
-    pub from: Rc<FreeMonoid<Nat>>,
-    pub to: Rc<FreeMonoid<Nat>>,
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
     pub style: Rc<InterpStyle>,
-    pub format_template: Rc<FreeMonoid<Nat>>,
-    pub plain_template: Rc<FreeMonoid<Nat>>,
+    pub format_template: String,
+    pub plain_template: String,
     pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
 
@@ -648,7 +639,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
@@ -828,7 +819,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
         bridge_method_overrides: v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+            v1_rt::rc_empty_map::<String, String>(),
             "with".to_string(),
             "with_update".to_string(),
         ),
@@ -998,7 +989,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "v2rt.".to_string(),
         bridge_method_case: NamingCase::PascalCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: "{".to_string(),
             named_close: "}".to_string(),
@@ -1174,7 +1165,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
@@ -1202,7 +1193,7 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
     }
 }
 
-pub fn target_keyword(target: RenderTarget, key: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
             v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
@@ -1233,7 +1224,7 @@ pub fn binop_symbol(
     target: RenderTarget,
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> Option<String> {
     {
         let ops = target_operators(target);
         let op_matching = Rc::new({
@@ -1286,14 +1277,12 @@ pub fn binop_symbol(
     }
 }
 
-pub fn is_string_like(target: RenderTarget, name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_string_like(target: RenderTarget, name: String) -> bool {
     match target {
         RenderTarget::Rust => {
             let mut __found = false;
             for t in rust_string_types().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(t.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
-                {
+                if (t.clone().as_str() == name.clone().as_str()) {
                     __found = true;
                     break;
                 }
@@ -1303,9 +1292,7 @@ pub fn is_string_like(target: RenderTarget, name: Rc<FreeMonoid<Nat>>) -> bool {
         RenderTarget::Go => {
             let mut __found = false;
             for t in go_string_types().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(t.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
-                {
+                if (t.clone().as_str() == name.clone().as_str()) {
                     __found = true;
                     break;
                 }
@@ -1315,9 +1302,7 @@ pub fn is_string_like(target: RenderTarget, name: Rc<FreeMonoid<Nat>>) -> bool {
         RenderTarget::Python => {
             let mut __found = false;
             for t in python_string_types().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(t.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
-                {
+                if (t.clone().as_str() == name.clone().as_str()) {
                     __found = true;
                     break;
                 }
@@ -1354,19 +1339,9 @@ pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSem
         .clone()
 }
 
-pub fn wrap_shared_type(target: RenderTarget, inner: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
         let tmpl = sharing_for_target(target).wrap_template.clone();
         v1_rt::replace(tmpl, "{0}".to_string(), inner)
     }
 }
-
-pub struct SnakeCaseTestNames;
-pub struct PascalCaseTestNames;
-pub struct IfExpression;
-pub struct ConditionalTernary;
-pub struct IfStatement;
-pub struct MatchExpression;
-pub struct MatchStatementArmReturn;
-pub struct PascalCase;
-pub struct CamelCase;

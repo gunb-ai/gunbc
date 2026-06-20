@@ -99,7 +99,7 @@ pub fn optional_evidence_meet(
 
 pub fn map_evidence_merge_at(
     base: Rc<HashMap<String, DescentEvidence>>,
-    key: Rc<FreeMonoid<Nat>>,
+    key: String,
     new_val: DescentEvidence,
 ) -> Rc<HashMap<String, DescentEvidence>> {
     match v1_rt::map_get(&base, key.clone()) {
@@ -115,14 +115,14 @@ pub fn map_evidence_merge_at(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RankingDimension {
-    TreeSize { param: Rc<FreeMonoid<Nat>> },
-    ListLength { param: Rc<FreeMonoid<Nat>> },
-    ArithmeticValue { param: Rc<FreeMonoid<Nat>> },
-    TokenPosition { param: Rc<FreeMonoid<Nat>> },
-    SetCardinality { param: Rc<FreeMonoid<Nat>> },
+    TreeSize { param: String },
+    ListLength { param: String },
+    ArithmeticValue { param: String },
+    TokenPosition { param: String },
+    SetCardinality { param: String },
 }
 impl RankingDimension {
-    pub fn param(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn param(&self) -> String {
         match self {
             RankingDimension::TreeSize { param: __val, .. } => __val.clone(),
             RankingDimension::ListLength { param: __val, .. } => __val.clone(),
@@ -236,12 +236,12 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DescentSource {
-    ChildAccessor { accessor: Rc<FreeMonoid<Nat>> },
+    ChildAccessor { accessor: String },
     ListShrink { amount: Rc<PositiveDescentAmount> },
     ArithmeticSubtractDescent { steps: Rc<PositiveDescentAmount> },
     ArithmeticDivideDescent { divisor: Rc<ProportionalDivisor> },
-    ParserAdvance { witness: Rc<FreeMonoid<Nat>> },
-    SetRemoval { element: Rc<FreeMonoid<Nat>> },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
     FoldIteration,
 }
 
@@ -252,11 +252,7 @@ pub struct TerminationProof {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProofEdge {
-    pub caller: Rc<FreeMonoid<Nat>>,
-    pub callee: Rc<FreeMonoid<Nat>>,
+    pub caller: String,
+    pub callee: String,
     pub evidence: Rc<Vec<DescentEvidence>>,
 }
-
-pub struct Strict;
-pub struct NonIncreasing;
-pub struct DescentUnknown;

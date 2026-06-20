@@ -12,22 +12,22 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn workspace_members_region_begin_marker() -> Rc<FreeMonoid<Nat>> {
+pub fn workspace_members_region_begin_marker() -> String {
     "    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)".to_string()
 }
 
-pub fn workspace_members_region_end_marker() -> Rc<FreeMonoid<Nat>> {
+pub fn workspace_members_region_end_marker() -> String {
     "    # END generated stage0 crate members".to_string()
 }
 
-pub fn stage0_member_entry(spec: Rc<Stage0CrateSpec>) -> Rc<FreeMonoid<Nat>> {
+pub fn stage0_member_entry(spec: Rc<Stage0CrateSpec>) -> String {
     v1_rt::concat(
         v1_rt::concat("    \"".to_string(), spec.crate_dir.clone()),
         "\",".to_string(),
     )
 }
 
-pub fn stage0_workspace_member_region() -> Rc<FreeMonoid<Nat>> {
+pub fn stage0_workspace_member_region() -> String {
     Rc::new(
         stage0_crate_plan()
             .crates

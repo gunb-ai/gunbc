@@ -51,11 +51,11 @@ pub enum RecursionShape {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InductiveField {
-    pub type_name: Rc<FreeMonoid<Nat>>,
-    pub variant_name: Rc<FreeMonoid<Nat>>,
-    pub field_name: Rc<FreeMonoid<Nat>>,
+    pub type_name: String,
+    pub variant_name: String,
+    pub field_name: String,
     pub shape: RecursionShape,
-    pub element_type: Rc<FreeMonoid<Nat>>,
+    pub element_type: String,
 }
 
 pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
@@ -84,20 +84,16 @@ pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
 }
 
 pub fn inductive_field_eq(a: Rc<InductiveField>, b: Rc<InductiveField>) -> bool {
-    (((((crate::v2_std_text::host_string_text_to_rust_host(a.type_name.clone())
-        == crate::v2_std_text::host_string_text_to_rust_host(b.type_name.clone()))
-        && (crate::v2_std_text::host_string_text_to_rust_host(a.variant_name.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host(b.variant_name.clone())))
-        && (crate::v2_std_text::host_string_text_to_rust_host(a.field_name.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host(b.field_name.clone())))
+    (((((a.type_name.clone().as_str() == b.type_name.clone().as_str())
+        && (a.variant_name.clone().as_str() == b.variant_name.clone().as_str()))
+        && (a.field_name.clone().as_str() == b.field_name.clone().as_str()))
         && recursion_shape_eq(a.shape.clone(), b.shape.clone()))
-        && (crate::v2_std_text::host_string_text_to_rust_host(a.element_type.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host(b.element_type.clone())))
+        && (a.element_type.clone().as_str() == b.element_type.clone().as_str()))
 }
 
 pub fn inductive_field_to_dimension(
     field: Rc<InductiveField>,
-    param: Rc<FreeMonoid<Nat>>,
+    param: String,
 ) -> Rc<RankingDimension> {
     Rc::new(RankingDimension::TreeSize { param: param })
 }
@@ -113,7 +109,7 @@ pub enum SubValueRelation {
         field: Rc<InductiveField>,
     },
     ArithmeticDescent {
-        param: Rc<FreeMonoid<Nat>>,
+        param: String,
         factor: Rc<ShrinkFactor>,
     },
     PreservedValue,
@@ -198,8 +194,7 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
                 factor: fac_b,
                 ..
             } => {
-                ((crate::v2_std_text::host_string_text_to_rust_host(pa.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(pb.clone()))
+                ((pa.clone().as_str() == pb.clone().as_str())
                     && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
             }
             _ => false,
@@ -546,15 +541,15 @@ pub fn poly_exp_degree_one() -> Rc<PolynomialExponent> {
 #[serde(tag = "_variant")]
 pub enum AtomicCost {
     PolyCost {
-        param: Rc<FreeMonoid<Nat>>,
+        param: String,
         exponent: Rc<PolynomialExponent>,
     },
     LogCost {
-        param: Rc<FreeMonoid<Nat>>,
+        param: String,
     },
 }
 impl AtomicCost {
-    pub fn param(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn param(&self) -> String {
         match self {
             AtomicCost::PolyCost { param: __val, .. } => __val.clone(),
             AtomicCost::LogCost { param: __val, .. } => __val.clone(),
@@ -607,7 +602,7 @@ pub fn cost_constant() -> Rc<CostBound> {
     Rc::new(CostBound::ConstantBound)
 }
 
-pub fn cost_linear(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
+pub fn cost_linear(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::AtomicBound {
         cost: Rc::new(AtomicCost::PolyCost {
             param: param,
@@ -616,7 +611,7 @@ pub fn cost_linear(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
     })
 }
 
-pub fn cost_poly(param: Rc<FreeMonoid<Nat>>, degree: i64) -> Rc<CostBound> {
+pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
     if (degree.clone() < 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
@@ -643,7 +638,7 @@ pub fn cost_poly(param: Rc<FreeMonoid<Nat>>, degree: i64) -> Rc<CostBound> {
     }
 }
 
-pub fn cost_root(param: Rc<FreeMonoid<Nat>>, k: i64) -> Rc<CostBound> {
+pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
     if (k.clone() <= 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
@@ -662,21 +657,21 @@ pub fn cost_root(param: Rc<FreeMonoid<Nat>>, k: i64) -> Rc<CostBound> {
     }
 }
 
-pub fn cost_sqrt(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
+pub fn cost_sqrt(param: String) -> Rc<CostBound> {
     cost_root(param, 2)
 }
 
-pub fn cost_cbrt(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
+pub fn cost_cbrt(param: String) -> Rc<CostBound> {
     cost_root(param, 3)
 }
 
-pub fn cost_log(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
+pub fn cost_log(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::AtomicBound {
         cost: Rc::new(AtomicCost::LogCost { param: param }),
     })
 }
 
-pub fn cost_nlogn(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
+pub fn cost_nlogn(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::ProductBound {
         factors: Rc::new(vec![
             Rc::new(AtomicCost::PolyCost {
@@ -690,10 +685,7 @@ pub fn cost_nlogn(param: Rc<FreeMonoid<Nat>>) -> Rc<CostBound> {
     })
 }
 
-pub fn cost_graph_linear(
-    v_param: Rc<FreeMonoid<Nat>>,
-    e_param: Rc<FreeMonoid<Nat>>,
-) -> Rc<CostBound> {
+pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
     Rc::new(CostBound::SumOfProductsBound {
         terms: Rc::new(vec![
             Rc::new(vec![Rc::new(AtomicCost::PolyCost {
@@ -710,7 +702,7 @@ pub fn cost_graph_linear(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecurrenceForm {
-    pub param: Rc<FreeMonoid<Nat>>,
+    pub param: String,
     pub branches: i64,
     pub divisor: i64,
     pub work_exponent: i64,
@@ -944,7 +936,7 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
     }
 }
 
-pub fn catamorphism_bound(param: Rc<FreeMonoid<Nat>>, nesting_depth: i64) -> Rc<CostBound> {
+pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostBound> {
     if (nesting_depth.clone() < 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
@@ -957,7 +949,7 @@ pub fn catamorphism_bound(param: Rc<FreeMonoid<Nat>>, nesting_depth: i64) -> Rc<
 }
 
 pub fn derive_bound(
-    param: Rc<FreeMonoid<Nat>>,
+    param: String,
     branches: i64,
     factor: Rc<ShrinkFactor>,
     work_exponent: i64,
@@ -1110,9 +1102,3 @@ pub fn bellman_ford_bound() -> Rc<CostBound> {
 pub fn floyd_warshall_bound() -> Rc<CostBound> {
     cost_poly("V".to_string(), 3)
 }
-
-pub struct DirectRecursion;
-pub struct ListRecursion;
-pub struct OptionalRecursion;
-pub struct SetRecursion;
-pub struct MapValueRecursion;

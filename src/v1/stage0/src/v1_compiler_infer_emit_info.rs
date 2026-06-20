@@ -53,7 +53,7 @@ impl TypeRepr {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub repr: Rc<TypeRepr>,
     pub field_summaries: Rc<HashMap<String, Rc<FieldSummary>>>,
     pub field_type_map: Rc<HashMap<String, String>>,
@@ -84,30 +84,25 @@ pub struct EmitInfoBuildState {
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
-        type_summaries: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<TypeSummary>>(),
+        type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
         shared_types: v1_rt::rc_empty_set::<String>(),
-        ownership_index: v1_rt::rc_empty_map::<
-            Rc<FreeMonoid<Nat>>,
-            Rc<std::collections::BTreeSet<String>>,
-        >(),
+        ownership_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
         movable: v1_rt::rc_empty_set::<String>(),
-        variant_to_enum: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        variant_to_enum: v1_rt::rc_empty_map::<String, String>(),
         owned_bindings: v1_rt::rc_empty_set::<String>(),
-        read_only_params_index: v1_rt::rc_empty_map::<
-            Rc<FreeMonoid<Nat>>,
-            Rc<std::collections::BTreeSet<String>>,
-        >(),
+        read_only_params_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
+        ),
         read_only_params: v1_rt::rc_empty_set::<String>(),
     })
 }
 
 pub fn variant_has_fields(
     emit_info: Rc<EmitGraphInfo>,
-    enum_name: Rc<FreeMonoid<Nat>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
+    enum_name: String,
+    variant_name: String,
 ) -> bool {
     {
         let key = v1_rt::concat(v1_rt::concat(enum_name, "::".to_string()), variant_name);
@@ -115,16 +110,13 @@ pub fn variant_has_fields(
     }
 }
 
-pub fn variant_summary_key(
-    enum_name: Rc<FreeMonoid<Nat>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn variant_summary_key(enum_name: String, variant_name: String) -> String {
     v1_rt::concat(v1_rt::concat(enum_name, "::".to_string()), variant_name)
 }
 
 pub fn lookup_emit_type_summary(
     emit_info: Rc<EmitGraphInfo>,
-    type_name: Rc<FreeMonoid<Nat>>,
+    type_name: String,
 ) -> Option<Rc<TypeSummary>> {
     v1_rt::map_get(&emit_info.type_summaries.clone(), type_name)
 }
@@ -136,7 +128,7 @@ pub fn derive_variant_to_enum(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+            v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary
                 .repr
                 .clone())
@@ -148,19 +140,18 @@ pub fn derive_variant_to_enum(
                         .cloned()
                         .fold(
                             acc.clone(),
-                            |inner: Rc<HashMap<String, String>>, vn: Rc<FreeMonoid<Nat>>| {
-                                match v1_rt::map_get(&inner, vn.clone()) {
-                                    Some(_) => v1_rt::rc_map_insert(
-                                        inner.clone(),
-                                        vn.clone(),
-                                        "".to_string(),
-                                    ),
-                                    None => v1_rt::rc_map_insert(
-                                        inner.clone(),
-                                        vn.clone(),
-                                        summary.name.clone(),
-                                    ),
+                            |inner: Rc<HashMap<String, String>>, vn: String| match v1_rt::map_get(
+                                &inner,
+                                vn.clone(),
+                            ) {
+                                Some(_) => {
+                                    v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
                                 }
+                                None => v1_rt::rc_map_insert(
+                                    inner.clone(),
+                                    vn.clone(),
+                                    summary.name.clone(),
+                                ),
                             },
                         )
                 }
@@ -171,7 +162,7 @@ pub fn derive_variant_to_enum(
 
 pub fn is_known_variant(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
 ) -> bool {
     {
         let mut __found = false;
@@ -192,8 +183,8 @@ pub fn is_known_variant(
 
 pub fn variant_belongs_to_enum(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-    enum_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
+    enum_name: String,
 ) -> bool {
     match v1_rt::map_get(&type_summaries, enum_name) {
         Some(summary) => match (*summary.repr.clone()).clone() {
@@ -208,7 +199,7 @@ pub fn variant_belongs_to_enum(
 
 pub fn is_enum_in_summaries(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    type_name: Rc<FreeMonoid<Nat>>,
+    type_name: String,
 ) -> bool {
     match v1_rt::map_get(&type_summaries, type_name) {
         Some(summary) => match (*summary.repr.clone()).clone() {
@@ -221,9 +212,9 @@ pub fn is_enum_in_summaries(
 
 pub fn find_variant_parent(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    variant_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
     scope_enums: Rc<Vec<String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> Option<String> {
     Rc::new({
         let mut __result = Vec::new();
         for en in scope_enums.iter().cloned() {
@@ -273,7 +264,7 @@ pub fn build_struct_field_summaries(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FieldSummary>>(),
+            v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
                 let idx = pair.0.clone();
                 let child = pair.1.clone();
@@ -310,7 +301,7 @@ pub fn build_struct_field_summaries(
 
 pub fn find_first_enum_field_node(
     variants: Rc<Vec<Rc<Node>>>,
-    field_name: Rc<FreeMonoid<Nat>>,
+    field_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match variants.first().cloned() {
@@ -324,7 +315,7 @@ pub fn find_first_enum_field_node(
 
 pub fn enum_field_present_in_all_variants(
     variants: Rc<Vec<Rc<Node>>>,
-    field_name: Rc<FreeMonoid<Nat>>,
+    field_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -341,7 +332,7 @@ pub fn enum_field_present_in_all_variants(
 
 pub fn enum_field_type_consistent(
     variants: Rc<Vec<Rc<Node>>>,
-    field_name: Rc<FreeMonoid<Nat>>,
+    field_name: String,
     expected: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -415,8 +406,8 @@ pub fn build_enum_field_summaries(
             __result
         });
         consistent.iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FieldSummary>>(),
-            |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: Rc<FreeMonoid<Nat>>| {
+            v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
+            |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| {
                 match find_first_enum_field_node(
                     variants.clone(),
                     field_name.clone(),
@@ -444,7 +435,7 @@ pub fn build_field_type_map(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, String>> {
     children.iter().cloned().fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child
             .inferred
             .clone()
@@ -462,13 +453,9 @@ pub fn build_field_type_map(
                     false
                 };
                 let key = authored_name_at(source_indices.clone(), child.clone());
-                if (((crate::v2_std_text::host_string_text_to_rust_host(resolved_name.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+                if (((resolved_name.clone().as_str() != "".to_string().as_str())
                     && !ft_is_type_var.clone())
-                    && (crate::v2_std_text::host_string_text_to_rust_host(resolved_name.clone())
-                        != crate::v2_std_text::host_string_text_to_rust_host(
-                            "Dynamic".to_string(),
-                        )))
+                    && (resolved_name.clone().as_str() != "Dynamic".to_string().as_str()))
                 {
                     v1_rt::rc_map_insert(acc.clone(), key.clone(), resolved_name.clone())
                 } else {
@@ -520,7 +507,7 @@ pub fn build_type_summary(
                 repr: Rc::new(TypeRepr::StructRepr),
                 field_summaries: build_struct_field_summaries(item.clone(), source_indices.clone()),
                 field_type_map: build_field_type_map(item.children.clone(), source_indices.clone()),
-                variant_name_set: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+                variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
                 generic_param_names: gpn,
                 has_fn_fields: has_fn,
             }))
@@ -545,10 +532,9 @@ pub fn build_type_summary(
                         item.children.clone(),
                         source_indices.clone(),
                     ),
-                    field_type_map: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(
-                    ),
+                    field_type_map: v1_rt::rc_empty_map::<String, String>(),
                     variant_name_set: item.children.clone().iter().cloned().fold(
-                        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+                        v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| {
                             v1_rt::rc_map_insert(
                                 acc,
@@ -612,11 +598,7 @@ pub fn add_emit_item_summary(
                                                 variant.children.clone(),
                                                 source_indices.clone(),
                                             ),
-                                            variant_name_set: v1_rt::rc_empty_map::<
-                                                Rc<FreeMonoid<Nat>>,
-                                                bool,
-                                            >(
-                                            ),
+                                            variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
                                             generic_param_names: Rc::new(vec![]),
                                             has_fn_fields: v_has_fn.clone(),
                                         }),
