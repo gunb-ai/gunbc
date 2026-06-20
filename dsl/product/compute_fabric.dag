@@ -618,8 +618,9 @@ data allocation_class_xlarge: AllocationClassSpec = AllocationClassSpec {
 // trigger; final values are generated-from-the-ledger (measured peaks + BMC grantable).
 // Authority: docs/runbooks/ci-runner-cgroup-memory-cap.md
 
-// 🟡 scaffold — host-runner-slice-cap · dissolve-on: max(measured normal-CI floor VmHWM @
-// width=4, memory.peak on system-actions-runner.slice) + pig-tail margin
+// 🟡 scaffold — host-runner-slice-cap · dissolve-on: max(measured normal-CI floor
+// peak_vmhwm_kib from claim_executor [measurement] @ width=4, memory.peak runner slice)
+// + pig-tail margin
 data host_memory_scaffold_runner_slice_cap: ByteSize = byte_size(68719476736)
 
 // 🟡 scaffold — ci-per-shard-peak (#5375 width input; §3 fork) · dissolve-on: measured

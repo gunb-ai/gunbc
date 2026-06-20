@@ -66,7 +66,7 @@ and concurrency are **not** ready-to-route — see Part B.
 | Signal | Source | Status |
 |---|---|---|
 | Pig / crash peak | kernel OOM: `claim_executor` **93.5 GiB** anon-rss (srv2, 2026-06-20 02:55) | **grounded** |
-| Normal CI floor peak RSS | `claim_batch` / `claim_executor` end-of-run `[interp-stats]` **VmHWM** @ width=4, or `memory.peak` on `system-actions-runner.slice` during a green floor | **pending measurement** |
+| Normal CI floor peak RSS | `claim_executor` end-of-run `[measurement]` `peak_vmhwm_kib` / `peak_cgroup_bytes` @ width=4 (every green floor) | **self-reporting** (instrumented) |
 | Session peak-RSS distribution | RC-5 / capacity census: most sessions **< 1 GiB** (LLM idle); few spike to **~31 GiB** on cargo/ctrl-build | **shape known, distribution TBD** |
 | Per-session container cap (live) | `memory.max=33578549248` (~31.3 GiB), 20 admitted | **grounded** |
 | Spawn reservation (live) | 256 MiB kernel admission | **grounded** (`host_memory_scaffold_session_spawn_reservation`) |

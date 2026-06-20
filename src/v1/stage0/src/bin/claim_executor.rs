@@ -43,6 +43,48 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
+/// Peak resident set from `/proc/self/status` VmHWM (KiB). Linux best-effort.
+fn proc_status_peak_kib() -> Option<u64> {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("VmHWM:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse().ok())
+        })
+}
+
+/// Cgroup v2 `memory.peak` for this process (bytes). None when unavailable or `max`.
+fn cgroup_memory_peak_bytes() -> Option<u64> {
+    let raw = std::fs::read_to_string("/sys/fs/cgroup/memory.peak").ok()?;
+    let trimmed = raw.trim();
+    if trimmed == "max" {
+        return None;
+    }
+    trimmed.parse().ok()
+}
+
+fn peak_rss_measurement_suffix() -> String {
+    let vmhwm = proc_status_peak_kib()
+        .map(|kib| kib.to_string())
+        .unwrap_or_else(|| "unavailable".to_string());
+    let cgroup = cgroup_memory_peak_bytes()
+        .map(|b| b.to_string())
+        .unwrap_or_else(|| "unavailable".to_string());
+    format!("peak_vmhwm_kib={vmhwm} peak_cgroup_bytes={cgroup}")
+}
+
+/// One `[measurement]` line per green run — grounds runner-cap scaffold dissolution.
+fn emit_run_peak_measurement(spawn_width: usize, batches: usize) {
+    eprintln!(
+        "[measurement] claim_executor run: spawn_width={} batches={} {}",
+        spawn_width,
+        batches,
+        peak_rss_measurement_suffix()
+    );
+}
+
 /// One runnable plan node, projected from the plan value. A `SingleClaim` is one
 /// `(entry, function)` Bool witness (the demo suite + the floor's per-gate
 /// nodes); a `DiscoveryBatch` is the whole `--roster-from-discovery` corpus as a
@@ -375,12 +417,13 @@ fn run_discovery_batch_node(
     ) {
         Ok(summary) if summary.failures.is_empty() => {
             eprintln!(
-                "[measurement] discovery corpus: {} witness(es) ({} skipped), resolve {:.3}ms, evalu {:.3}ms, CostAccount.time basis=Measured {}ns",
+                "[measurement] discovery corpus: {} witness(es) ({} skipped), resolve {:.3}ms, evalu {:.3}ms, CostAccount.time basis=Measured {}ns, {}",
                 summary.total,
                 summary.skipped,
                 summary.total_resolve_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
+                peak_rss_measurement_suffix(),
             );
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
@@ -862,6 +905,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
+        emit_run_peak_measurement(spawn_width, batches.len());
         Ok(ExitCode::SUCCESS)
     }
 }
