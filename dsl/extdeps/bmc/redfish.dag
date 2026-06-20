@@ -17,7 +17,16 @@ import extdeps.bmc.types {
   RedfishSystemInventory,
   RedfishPowerState,
 }
-import std.measure { ByteSize, Watt, byte_size, watt, watt_count, byte_size_count }
+import std.measure {
+  ByteSize,
+  Watt,
+  HardwareThreadCount,
+  byte_size,
+  watt,
+  watt_count,
+  byte_size_count,
+  hardware_thread_count,
+}
 import std.types { Int, List, NonEmptyStr }
 
 // Redfish reports TotalSystemMemoryGiB (binary GiB). Convert to ByteSize.
@@ -32,8 +41,8 @@ fn redfish_memory_summary_from_gib(total_gib: Int) -> RedfishMemorySummary {
 fn redfish_processor_summary(
   model: NonEmptyStr,
   processor_count: Int,
-  core_count: Int,
-  logical_processor_count: Int?
+  core_count: HardwareThreadCount,
+  logical_processor_count: HardwareThreadCount?
 ) -> RedfishProcessorSummary {
   RedfishProcessorSummary {
     model: model,
@@ -47,10 +56,10 @@ fn redfish_system_inventory(
   model: NonEmptyStr,
   processor_model: NonEmptyStr,
   processor_count: Int,
-  processor_core_count: Int,
+  processor_core_count: HardwareThreadCount,
   total_memory_gib: Int,
   power_state: RedfishPowerState,
-  logical_processor_count: Int?
+  logical_processor_count: HardwareThreadCount?
 ) -> RedfishSystemInventory {
   RedfishSystemInventory {
     model: model,

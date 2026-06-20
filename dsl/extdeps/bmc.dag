@@ -7,14 +7,14 @@ module extdeps.bmc
 
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot }
 import extdeps.bmc.redfish { bmc_ground_host_observations }
-import std.measure { ByteSize, Watt }
-import std.types { Int, NonEmptyStr }
+import std.measure { ByteSize, Watt, HardwareThreadCount }
+import std.types { NonEmptyStr }
 
 fn bmc_observed_processor_model(obs: BmcGroundedHostObservations) -> NonEmptyStr {
   obs.processor_model
 }
 
-fn bmc_observed_processor_core_count(obs: BmcGroundedHostObservations) -> Int {
+fn bmc_observed_processor_core_count(obs: BmcGroundedHostObservations) -> HardwareThreadCount {
   obs.processor_core_count
 }
 

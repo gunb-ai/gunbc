@@ -10,7 +10,7 @@
 
 module extdeps.bmc.types
 
-import std.measure { Watt, ByteSize, byte_size, watt }
+import std.measure { Watt, ByteSize, HardwareThreadCount, byte_size, watt }
 import std.types { NonEmptyStr, Int, List }
 
 // ComputerSystem.PowerState — host power state as reported by the BMC (not host OS).
@@ -22,8 +22,8 @@ type RedfishPowerState = On | Off | PoweringOn | PoweringOff
 type RedfishProcessorSummary {
   model: NonEmptyStr
   processor_count: Int
-  core_count: Int
-  logical_processor_count: Int?
+  core_count: HardwareThreadCount
+  logical_processor_count: HardwareThreadCount?
 }
 
 // MemorySummary on ComputerSystem — total installed RAM as the BMC inventories it.
@@ -79,7 +79,7 @@ type BmcTelemetrySnapshot {
 // CPU model / core-count / RAM / wall-power rows for operator fleet hosts (srv1/srv2).
 type BmcGroundedHostObservations {
   processor_model: NonEmptyStr
-  processor_core_count: Int
+  processor_core_count: HardwareThreadCount
   total_memory_bytes: ByteSize
   power_consumed_watts: Watt?
 }

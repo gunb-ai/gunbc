@@ -12,7 +12,7 @@
 module test.claim.bmc_redfish_grounding
 
 import std.logic { Bool }
-import std.measure { byte_size_count, watt, watt_count }
+import std.measure { byte_size_count, watt, watt_count, hardware_thread_count, hardware_thread_count_value }
 import extdeps.bmc.types {
   BmcTelemetrySnapshot,
   RedfishPowerControl,
@@ -32,10 +32,10 @@ data example_srv_redfish_system: RedfishSystemInventory = redfish_system_invento
   model: "ALTRAD8UD-1L2T",
   processor_model: "Ampere(R) Altra(R) Processor",
   processor_count: 1,
-  processor_core_count: 64,
+  processor_core_count: hardware_thread_count(64),
   total_memory_gib: 128,
   power_state: On,
-  logical_processor_count: Present { value: 64 }
+  logical_processor_count: Present { value: hardware_thread_count(64) }
 )
 
 data example_srv_redfish_power: RedfishPowerSubsystem = RedfishPowerSubsystem {
@@ -58,7 +58,9 @@ data example_srv_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
 test fn bmc_redfish_grounding_holds() -> Bool {
   let obs = bmc_ground_snapshot(snapshot: example_srv_telemetry)
   // 128 GiB = 128 * 1073741824 bytes — matches 8× HMA82GR7AFR4N-VK sticks on srv1/srv2.
-  bmc_ground_host_observations(snapshot: example_srv_telemetry).processor_core_count == 64
+  hardware_thread_count_value(
+    bmc_ground_host_observations(snapshot: example_srv_telemetry).processor_core_count
+  ) == 64
     && example_srv_redfish_system.processor.processor_count == 1
     && obs.processor_model == "Ampere(R) Altra(R) Processor"
     && byte_size_count(obs.total_memory_bytes) == 128 * 1073741824
