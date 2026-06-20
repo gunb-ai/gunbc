@@ -26,7 +26,8 @@ import v2.std.diagnostic {
   bind_outcome,
   node_locus,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  port_locus
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.lexing { LexRules }
@@ -111,9 +112,117 @@ type FormalGrammar {
 }
 
 
+// 🟡 gated — feature:grammar-well-formed-witness — invariants (4) N∩Σ=∅ and (5) finiteness require
+// PointwisePower enumeration (gunbc#4766). validate_grammar proves (1)(2)(3) only; this marker
+// records (4)(5) honestly unproven until #4766 lands.
+type GrammarAlphabetEnumerationEvidence {
+  blocker: Symbol
+}
+
+
+fn grammar_alphabet_enumeration_deferred_4766() -> GrammarAlphabetEnumerationEvidence {
+  GrammarAlphabetEnumerationEvidence { blocker: ^grammar_enumeration_deferred_4766 }
+}
+
+
 // 🟡 gated — feature:grammar-well-formed-witness — witness that a FormalGrammar value satisfies all five invariants: (1) start∈N, (2) each FormalProduction.lhs∈N, (3) each FormalProduction.rhs symbol∈N∪Σ, (4) N∩Σ=∅, (5) N and Σ are finite (Set<T> is a predicate; finiteness requires an explicit cardinality proof). Dissolve-on: validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
 type WellFormedFormalGrammar {
   grammar: FormalGrammar
+  alphabet_enumeration: GrammarAlphabetEnumerationEvidence
+}
+
+
+fn validate_grammar_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: ^validate_grammar_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn formal_grammar_symbol_in_alphabet(
+  nonterminals: Set<FormalNonterminal>,
+  terminals: Set<FormalTerminal>,
+  symbol: FormalGrammarSymbol
+) -> Bool {
+  match symbol {
+    FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
+      terminals.member(terminal)
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      nonterminals.member(nonterminal)
+  }
+}
+
+
+fn formal_production_rhs_in_alphabet(
+  nonterminals: Set<FormalNonterminal>,
+  terminals: Set<FormalTerminal>,
+  production: FormalProduction
+) -> Bool {
+  fold_list(
+    xs: production.rhs,
+    empty: true,
+    cons: fn(acc, symbol) {
+      acc
+        && formal_grammar_symbol_in_alphabet(
+          nonterminals: nonterminals,
+          terminals: terminals,
+          symbol: symbol
+        )
+    }
+  )
+}
+
+
+fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> Bool {
+  fold_list(
+    xs: g.productions,
+    empty: true,
+    cons: fn(acc, production) {
+      acc && g.nonterminals.member(production.lhs)
+    }
+  )
+}
+
+
+fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> Bool {
+  fold_list(
+    xs: g.productions,
+    empty: true,
+    cons: fn(acc, production) {
+      acc
+        && formal_production_rhs_in_alphabet(
+          nonterminals: g.nonterminals,
+          terminals: g.terminals,
+          production: production
+        )
+    }
+  )
+}
+
+
+fn validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> {
+  if !g.nonterminals.member(g.start) {
+    Violates {
+      diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_start_not_in_nonterminals)
+    }
+  } else if !validate_grammar_all_lhs_in_nonterminals(g: g) {
+    Violates {
+      diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_lhs_not_in_nonterminals)
+    }
+  } else if !validate_grammar_all_rhs_in_alphabet(g: g) {
+    Violates {
+      diagnostic: validate_grammar_diagnostic(reason: ^validate_grammar_rhs_symbol_not_in_alphabet)
+    }
+  } else {
+    Holds {
+      value: WellFormedFormalGrammar {
+        grammar: g,
+        alphabet_enumeration: grammar_alphabet_enumeration_deferred_4766()
+      }
+    }
+  }
 }
 
 

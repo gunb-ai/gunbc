@@ -15,6 +15,14 @@ module extdeps.transports.rest
 
 import std.types { HttpMethod, Url }
 import std.serialization { WireFormat }
+import std.fidelity { TransportFidelity }
+
+// Fidelity row for the HTTP REST realization (§3: cited specifics live with
+// the realization, not in std). A network round-trip (RFC 9110 over the
+// network) is the large cost bucket, and it is NOT hermetic by this coarse
+// classifier — fail-closed; per-op hermetic replay is proven by execution
+// (record→replay witnesses), not assumed here.
+data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
 
 // Configuration type for REST transport bindings.
 // The parser validates transport blocks labeled "rest" against this schema.

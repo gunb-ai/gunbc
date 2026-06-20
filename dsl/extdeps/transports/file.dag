@@ -10,6 +10,14 @@
 
 module extdeps.transports.file
 
+import std.fidelity { TransportFidelity }
+
+// Fidelity row for the filesystem realization (§3: cited specifics live with
+// the realization, not in std). A local read/write (POSIX.1-2017 read/write,
+// no network) is sub-second and hermetic — a local-path boundary is
+// deterministic and replayable without a remote dependency.
+data file_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
+
 // Configuration type for file transport bindings.
 type FileTransportConfig {
   base_path: String             // POSIX pathname prefix for operation paths
