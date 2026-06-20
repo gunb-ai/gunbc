@@ -469,14 +469,18 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
     n: root,
     algebra: NodeFold {
       init: fn(node) {
-        match tepe_type_decl_name_optional(type_decl: node) {
-          Present { value: enum_sym } =>
-            if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
-              optional_present(value: enum_sym)
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
+        if tepe_node_has_surface(root: node, surface: ^dag_surface_type_decl) {
+          match tepe_type_decl_name_optional(type_decl: node) {
+            Present { value: enum_sym } =>
+              if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
+                optional_present(value: enum_sym)
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
+        } else {
+          optional_absent()
         }
       },
       step: fn(acc, _edge, child_acc) {
@@ -513,7 +517,10 @@ fn tepe_contract_row_for_disj_anchor(
 ) -> Optional<CoproductWireContractIndexRow> {
   match tepe_enum_sym_for_disj(root: root, disj_anchor: disj_anchor) {
     Present { value: enum_sym } =>
-      tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym)
+      match tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym) {
+        Present { value: row } => optional_present(value: row)
+        Absent => tepe_singleton_contract_row_optional(rows: rows)
+      }
     Absent => tepe_singleton_contract_row_optional(rows: rows)
   }
 }
