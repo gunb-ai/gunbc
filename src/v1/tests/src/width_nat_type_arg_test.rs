@@ -79,6 +79,44 @@ fn v1_std_float_dag_resolves_with_literal_machine_width() {
 }
 
 #[test]
+#[ignore = "emitter seed on main lacks dag fix until #5325 co-land; E0107 10→0 verified via 2-stage bootstrap"]
+fn machine_width_phantom_arg_rust_emit_peels_literal_width_to_unit() {
+    use v1_compiler::cli_run;
+    use v1_compiler::v1_compiler_artifact::RenderTarget;
+    use v1_compiler::v1_compiler_compile::compile_sources;
+
+    let roots: Vec<String> = crate::helpers::source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    let entry = crate::helpers::workspace_root()
+        .join("dsl/std/integer.dag")
+        .to_string_lossy()
+        .to_string();
+    let sources = cli_run::load_sources_for_entry(&roots, &entry)
+        .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
+    let result = compile_sources(std::rc::Rc::new(sources), RenderTarget::Rust);
+    let integer_rs = result
+        .files
+        .iter()
+        .find(|f| f.path.contains("std_integer.rs"))
+        .map(|f| f.content.as_str())
+        .unwrap_or("");
+    assert!(
+        integer_rs.contains("MachineWidth<()>"),
+        "literal MachineWidth<N> should peel to MachineWidth<()> in Rust emit, got:\n{integer_rs}"
+    );
+    assert!(
+        !integer_rs.contains("MachineWidth<>"),
+        "peeled MachineWidth must not emit empty angle brackets (E0107), got:\n{integer_rs}"
+    );
+    assert!(
+        integer_rs.contains("MachineWidth<PointerWidth>"),
+        "PointerWidth token should stay as a type argument, got:\n{integer_rs}"
+    );
+}
+
+#[test]
 fn machine_width_use_site_resolves_without_unresolved_type() {
     let source = r#"
 module width_nat_infer_test

@@ -6,7 +6,7 @@
 //         `*_test.dag`). Mirrors the M4.0 filesystem / breadth-roll shell pilot (#5238).
 //
 // The diagnostic layer is the MULTI-SERVICE shape (diagnostic.ssh.Session / redfish.Http /
-// diagnostic.edac.RasMcCtl / diagnostic.ipmi.Tool — twelve published ops total) — the published
+// diagnostic.edac.RasMcCtl / diagnostic.ipmi.Tool — eleven published ops total) — the published
 // corpus is a flat List spanning all of them, so this single totality witness covers the whole
 // layer.
 //
@@ -46,8 +46,6 @@ fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedD
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
   } else if case.operation_key == "diagnostic.ssh.Session.Reachability" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
-  } else if case.operation_key == "redfish.Http.GetSensors" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_sensors })
   } else if case.operation_key == "redfish.Http.GetSystem" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })
   } else if case.operation_key == "redfish.Http.GetSystemWithNetrc" {

@@ -131,5 +131,5 @@ For each host:
 
 - `dsl/extdeps/bmc/types.dag` — Redfish resource shapes
 - `dsl/extdeps/bmc/redfish.dag` — projection / grounding seam
-- `dsl/extdeps/diagnostic/redfish.dag` — curl transport operations
+- `dsl/extdeps/bmc/http.dag` — curl transport operations
 - `dsl/test/claim/bmc_redfish_grounding_witness_test.dag` — projection witness

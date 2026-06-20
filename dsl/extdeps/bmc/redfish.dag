@@ -1,8 +1,8 @@
 // extdeps/bmc/redfish.dag — Redfish telemetry projections and host-grounding seam.
 //
 // Pure folds over extdeps/bmc/types shapes. Transport that fetches the raw JSON lives
-// in extdeps/diagnostic/redfish.dag; JSON parse → these records is a peripheral handler
-// (dissolve-on: v2.extdeps.formats.json crosses the dsl/ tree). Until then, grounding
+// in extdeps/bmc/http.dag; JSON parse → these records is a peripheral handler (dissolve-on:
+// v2.extdeps.formats.json parse fold consumable from dsl/). Until then, grounding
 // witnesses exercise the projection with structured fixture rows (DESIGN §5).
 
 module extdeps.bmc.redfish

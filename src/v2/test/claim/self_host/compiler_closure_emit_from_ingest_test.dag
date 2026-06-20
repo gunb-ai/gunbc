@@ -1,0 +1,178 @@
+// Scope: N_v2 self-host closure ingest witnesses — modeled ci_claim_gate (no shell/Rust harness).
+// Host manifest overlay required at runtime for ingest-backed claims (see
+//   v2.workflow.compiler_closure_ingest_transport).
+// Anchor: DESIGN.md §5/§7 — fast in-substrate carrier check + manifest receipt claims;
+//   gap-4 discriminating probe stays a test fn (excluded from discovery) until bounded-
+//   slice manifest transport lands — dissolve-on: enroll gap4_probe_all_ingest_reads_accept_holds
+//   (+ parses_holds if needed) in compiler_closure_ingest_transport as the active RED gate.
+
+module v2.test.self_host.compiler_closure_emit_from_ingest
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.self_host.closure_witness_layer_roots {
+  self_host_closure_witness_layer_roots
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { Absent, Optional }
+import v2.std.diagnostic {
+  Accepted,
+  Locus,
+  Rejected,
+}
+import v2.std.language_model { LanguageModel }
+import v2.std.logic { Bool }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_ingest,
+  host_source_root_ingest_coverage_receipt
+}
+
+
+type Gap4IngestProbeState
+  = Gap4IngestProbePending
+  | Gap4IngestProbeFound {
+      path: String,
+      reason: Symbol,
+      stage: Symbol,
+      at: Locus,
+      remain_class: Optional<Symbol>,
+      remain_lexeme: Optional<String>,
+      remain_start: Optional<Int>,
+      remain_end: Optional<Int>,
+    }
+
+
+fn gap4_probe_found_from_parse_reject(
+  path: String,
+  reason: Symbol,
+  at: Locus
+) -> Gap4IngestProbeState {
+  Gap4IngestProbeFound {
+    path: path,
+    reason: reason,
+    stage: ^parse,
+    at: at,
+    remain_class: Absent,
+    remain_lexeme: Absent,
+    remain_start: Absent,
+    remain_end: Absent,
+  }
+}
+
+
+fn gap4_ingest_probe_step(
+  state: Gap4IngestProbeState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Gap4IngestProbeState {
+  match state {
+    Gap4IngestProbeFound {
+      path: _, reason: _, stage: _, at: _, remain_class: _, remain_lexeme: _, remain_start: _, remain_end: _
+    } => state
+    Gap4IngestProbePending =>
+      match tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
+        Rejected { diagnostics: d } =>
+          Gap4IngestProbeFound {
+            path: read.artifact.file_path,
+            reason: d.head.reason,
+            stage: ^tokenize,
+            at: d.head.at,
+            remain_class: Absent,
+            remain_lexeme: Absent,
+            remain_start: Absent,
+            remain_end: Absent,
+          }
+        Accepted { value: ts, diagnostics: _ } =>
+          match parse_module(tokens: ts, grammar: lm.grammar) {
+            Rejected { diagnostics: d } =>
+              gap4_probe_found_from_parse_reject(
+                path: read.artifact.file_path,
+                reason: d.head.reason,
+                at: d.head.at
+              )
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: d } =>
+                  Gap4IngestProbeFound {
+                    path: read.artifact.file_path,
+                    reason: d.head.reason,
+                    stage: ^normalize,
+                    at: d.head.at,
+                    remain_class: Absent,
+                    remain_lexeme: Absent,
+                    remain_start: Absent,
+                    remain_end: Absent,
+                  }
+                Accepted { value: _, diagnostics: _ } => Gap4IngestProbePending
+              }
+          }
+      }
+  }
+}
+
+
+fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
+  fold_list(
+    xs: host_source_root_ingest,
+    empty: Gap4IngestProbePending,
+    cons: fn(state, read) {
+      gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model_wave1())
+    }
+  )
+}
+
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == target) })
+}
+
+
+// In-substrate carrier consumption (§3): no Rust/bash projection of witness_layer_roots.
+// Enrolled via compiler_closure_ingest_transport (no manifest overlay).
+test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
+  (length(xs: self_host_closure_witness_layer_roots) == length(xs: witness_layer_roots))
+    && fold_list(
+      xs: self_host_closure_witness_layer_roots,
+      empty: true,
+      cons: fn(acc, item) {
+        acc && list_contains_str(xs: witness_layer_roots, target: item)
+      }
+    )
+}
+
+
+// Manifest-overlay gate claims (excluded from discovery; run via compiler_closure_ingest_transport).
+test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
+  host_source_root_ingest_coverage_receipt.coverage_complete
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count == host_source_root_ingest_coverage_receipt.produced_row_count)
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+}
+
+
+// Discriminating gap-4 probe — RED on full closure until front-end fix (not in CI transport yet;
+// full-fold interpreter scale; enroll via bounded-slice transport when locate lands).
+test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
+  match gap4_probe_first_ingest_reject() {
+    Gap4IngestProbePending => true
+    Gap4IngestProbeFound {
+      path: _, reason: _, stage: _, at: _, remain_class: _, remain_lexeme: _, remain_start: _, remain_end: _
+    } => false
+  }
+}
+
+
+test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: host_source_root_ingest,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count
+    Rejected { diagnostics: _ } => false
+  }
+}

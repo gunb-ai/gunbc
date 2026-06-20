@@ -102,7 +102,7 @@ mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
-mod resolve_typed_cache_equivalence_test;
+mod source_root_ingest_manifest_host_test;
 #[cfg(test)]
 mod source_audit;
 #[cfg(test)]
@@ -113,8 +113,6 @@ mod target_model_runtime_import_repro;
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
-#[cfg(test)]
-mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
 #[cfg(test)]
