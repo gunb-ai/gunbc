@@ -1969,13 +1969,16 @@ fn translate_type_expression_project(
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
     TypeNode { connective: connective } =>
       bind_outcome(
-        o: type_expr_projection_row_closedness_from_target(
-          target: target,
-          projection: projection,
-          connective: connective
-        ),
-        f: fn(_) {
-          match connective {
+        o: type_expression_projection_from_target(target: target),
+        f: fn(base_projection) {
+          bind_outcome(
+            o: type_expr_projection_row_closedness_from_target(
+              target: target,
+              projection: base_projection,
+              connective: connective
+            ),
+            f: fn(_) {
+              match connective {
             Atom { identity: _ } =>
               bind_outcome(
                 o: fold_node(
@@ -2049,6 +2052,8 @@ fn translate_type_expression_project(
                 }
               )
           }
+            }
+          )
         }
       )
   }
