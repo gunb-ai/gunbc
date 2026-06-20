@@ -36,6 +36,7 @@ import product.compute_fabric {
   placement_spawn_width,
   placement_floor_memory_budget_bytes,
   placement_supply_row_from_bmc,
+  host_memory_scaffold_ci_per_shard_peak,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure {
@@ -126,11 +127,13 @@ fn gunbc_ci_floor_corpus_work_demand(corpus_shard_count: Int) -> WorkDemand {
     resources: ResourceEnvelope {
       cpu: none,
       gpu: none,
-      // Per-shard peak resolve memory (#5375). Pig witnesses (Arc1-class ~31 GiB) are
-      // contained by the operator cgroup cap on system-actions-runner.slice — NOT by
-      // serializing width to 1. eager-boar-790 slims the pig content; see
-      // docs/runbooks/ci-runner-cgroup-memory-cap.md.
-      memory: Present { value: MemoryRequirement { min_bytes: byte_size(15032385536) } },
+      // Per-shard peak resolve memory (#5375). SCAFFOLD — stale 14 GiB estimate until
+      // measured; see host_memory_scaffold_ci_per_shard_peak. Pig witnesses (~31 GiB)
+      // are contained by operator runner-slice MemoryMax — NOT width=1. eager-boar-790
+      // slims pig content; docs/runbooks/ci-runner-cgroup-memory-cap.md.
+      memory: Present {
+        value: MemoryRequirement { min_bytes: host_memory_scaffold_ci_per_shard_peak },
+      },
       storage: none,
       network: none,
     },
