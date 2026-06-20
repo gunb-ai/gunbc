@@ -1,6 +1,7 @@
 // dsl/test/claim/dsl_compile_clean_witness.dag — by-execution +/- witness for dsl compile-clean.
 //
-// GREEN: run_clean_tree_compile() — gunbc compile over live dsl/ exits 0.
+// GREEN: run_clean_tree_compile() — gunbc compile over live dsl/ (+ src/v2 pools) exits 0.
+// GREEN: run_cross_tree_import_green_receipt() — planted dsl→v2 import resolves and compiles.
 // RED:    run_perturb_optional_skew_red_receipt() — planted Some/None skew fails compile.
 //
 // Run: gunbc run --source-root dsl --entry <this> --function dsl_compile_clean_witnesses --claim-run
@@ -9,6 +10,7 @@ module test.claim.dsl_compile_clean_witness
 
 import tools.dsl_compile_clean_transport {
   run_clean_tree_compile,
+  run_cross_tree_import_green_receipt,
   run_perturb_optional_skew_red_receipt
 }
 
@@ -16,10 +18,16 @@ fn witness_clean_tree_compile_holds() -> Bool {
   run_clean_tree_compile()
 }
 
+fn witness_cross_tree_import_compiles_green() -> Bool {
+  run_cross_tree_import_green_receipt()
+}
+
 fn witness_perturb_optional_skew_goes_red() -> Bool {
   run_perturb_optional_skew_red_receipt()
 }
 
 test fn dsl_compile_clean_witnesses() -> Bool {
-  witness_clean_tree_compile_holds() && witness_perturb_optional_skew_goes_red()
+  witness_clean_tree_compile_holds()
+    && witness_cross_tree_import_compiles_green()
+    && witness_perturb_optional_skew_goes_red()
 }

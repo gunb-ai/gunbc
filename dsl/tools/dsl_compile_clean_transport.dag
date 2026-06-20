@@ -1,8 +1,14 @@
 // tools/dsl_compile_clean_transport.dag — shell transport for whole-tree dsl/ compile-clean.
 //
-// Host runs `gunbc compile --source-root <dsl> --target rust` over the live tree (GREEN) and
-// a perturb receipt (RED: planted fresh-name unimported module resolved against the live
-// dsl/ index as dependency pool — no cp -r + cold whole-tree rebuild).
+// Host runs `gunbc compile` over the live dsl/ tree (GREEN) with witness_layer_roots as the
+// dependency pool (§3 single authority: dsl first, src/v2 second). gunbc indexes every .dag
+// under all --source-root flags into the module pool, but only compiles entry modules from
+// the FIRST root (load_sources / Compile in cli_run.rs); later roots are import pools only —
+// adding src/v2 does NOT cold-compile the whole v2 tree, only modules pulled by dsl imports.
+//
+// Also runs:
+//   * perturb RED receipt — planted bad module fails typecheck against the live pools;
+//   * cross-tree GREEN receipt — planted dsl module importing v2.* resolves and compiles.
 //
 // Both transports are modeled off hand-written `let script = "..."` blobs onto structured
 // `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
@@ -12,6 +18,7 @@
 module tools.dsl_compile_clean_transport
 
 import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
@@ -21,7 +28,12 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { ensure_gunbc_built }
 
-// set -e; <prelude>; OUT=$(mktemp -d); "$GUNBC" compile --source-root "$ROOT"/dsl ... ; rm -rf "$OUT"
+// --source-root <r> for every witness_layer_root (§3 — same roots as the rest of CI).
+fn dcc_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+// set -e; <prelude>; cd "$ROOT"; OUT=$(mktemp -d); "$GUNBC" compile <witness roots> ... ; rm -rf "$OUT"
 fn clean_tree_compile_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -29,13 +41,15 @@ fn clean_tree_compile_program() -> ShellProgram {
   ShellProgram {
     set_e: true,
     statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
       assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: [
-        gunbc, lit(text: "compile"),
-        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
-        lit(text: "--output-dir"), out,
-        lit(text: "--target"), lit(text: "rust")
-      ]),
+      command(words: concat(
+        [gunbc, lit(text: "compile")],
+        concat(dcc_source_root_flags(), [
+          lit(text: "--output-dir"), out,
+          lit(text: "--target"), lit(text: "rust")
+        ])
+      )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out])
     ])
   }
@@ -49,15 +63,12 @@ fn run_clean_tree_compile() -> Bool {
 // The planted module whose legacy Some/None on a builtin T? must fail typecheck.
 data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"
 
-// RED receipt: plant the fresh-name unimported bad module; resolve against the live dsl/
-// index (second --source-root) as dependency pool — no cp -r + cold whole-tree rebuild.
-// Compile MUST fail (if it succeeds → exit 1).
-//   set -e; <prelude>; TMP=$(mktemp -d)
-//   cat > "$TMP"/_perturb_compile_clean_red.dag <<'PERTURB' ... PERTURB
-//   if "$GUNBC" compile --source-root "$TMP" --source-root "$ROOT"/dsl \
-//        --output-dir "$TMP"/out --target rust >/dev/null 2>&1
-//     then rm -rf "$TMP"; exit 1; fi
-//   rm -rf "$TMP"; exit 0
+// Planted dsl module that imports v2.* — must compile when pools include src/v2.
+data cross_tree_green_module_source: String = "module test.perturb_compile_clean_cross_tree_green\nimport v2.std.logic { Bool }\nfn probe() -> Bool { True }"
+
+// RED receipt: plant the fresh-name unimported bad module; resolve against witness_layer_roots
+// as dependency pools — no cp -r + cold whole-tree rebuild. Compile MUST fail (if it succeeds
+// → exit 1).
 fn compile_clean_perturb_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -65,6 +76,7 @@ fn compile_clean_perturb_program() -> ShellProgram {
   ShellProgram {
     set_e: true,
     statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
       assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
       Heredoc {
         path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_red.dag")] },
@@ -73,13 +85,13 @@ fn compile_clean_perturb_program() -> ShellProgram {
       },
       If {
         cond: WithRedir {
-          stmt: command(words: [
-            gunbc, lit(text: "compile"),
-            lit(text: "--source-root"), tmp,
-            lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
-            lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
-            lit(text: "--target"), lit(text: "rust")
-          ]),
+          stmt: command(words: concat(
+            [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+            concat(dcc_source_root_flags(), [
+              lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+              lit(text: "--target"), lit(text: "rust")
+            ])
+          )),
           redir: StdoutAndStderrToNull
         },
         then: [
@@ -95,5 +107,41 @@ fn compile_clean_perturb_program() -> ShellProgram {
 
 fn run_perturb_optional_skew_red_receipt() -> Bool {
   let result = shell.Exec.Run(script: serialize_bash(p: compile_clean_perturb_program()))
+  result.success
+}
+
+// GREEN receipt: planted dsl module imports v2.std.logic; first --source-root is TMP (entry
+// tree), witness_layer_roots are dependency pools — compile must succeed (set -e).
+fn compile_cross_tree_green_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  let out = var_ref(name: "OUT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_cross_tree_green.dag")] },
+        delimiter: "CROSS_TREE_GREEN",
+        body: cross_tree_green_module_source
+      },
+      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      command(words: concat(
+        [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+        concat(dcc_source_root_flags(), [
+          lit(text: "--output-dir"), out,
+          lit(text: "--target"), lit(text: "rust")
+        ])
+      )),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+    ])
+  }
+}
+
+fn run_cross_tree_import_green_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: compile_cross_tree_green_program()))
   result.success
 }

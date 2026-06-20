@@ -1,0 +1,10 @@
+// dsl/test/fixture/dsl_compile_clean_cross_tree_probe.dag — minimal dsl-rooted module
+// importing v2.*; enrolled in the live dsl/ compile-clean tree when dual-root pools are on.
+
+module test.fixture.dsl_compile_clean_cross_tree_probe
+
+import v2.std.logic { Bool }
+
+fn probe_cross_tree_import() -> Bool {
+  True
+}
