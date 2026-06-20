@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold, fold_list, is_empty, list_append, list_snoc_item, list_tail }
+import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, list_append, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -111,53 +111,145 @@ fn tepe_atom_sym_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
-fn tepe_naming_spelling_basename(spelling: String) -> String {
-  match spelling {
-    "\"ScreamingSnakeCase\"" => "ScreamingSnakeCase"
-    "VariantNaming.ScreamingSnakeCase" => "ScreamingSnakeCase"
-    "\"VariantNaming.ScreamingSnakeCase\"" => "ScreamingSnakeCase"
-    "\"SnakeCase\"" => "SnakeCase"
-    "VariantNaming.SnakeCase" => "SnakeCase"
-    "\"VariantNaming.SnakeCase\"" => "SnakeCase"
-    "\"AsAuthored\"" => "AsAuthored"
-    "VariantNaming.AsAuthored" => "AsAuthored"
-    "\"VariantNaming.AsAuthored\"" => "AsAuthored"
-    _ => spelling
-  }
-}
-
-fn tepe_field_binding_symbols_equivalent(left: Symbol, right: Symbol) -> Bool {
-  if left == right {
-    true
-  } else {
-    match symbol_interned_spelling(binding: left) {
-      Accepted { value: left_spelling, diagnostics: _ } =>
-        match symbol_interned_spelling(binding: right) {
-          Accepted { value: right_spelling, diagnostics: _ } =>
-            if left_spelling == right_spelling {
-              true
-            } else {
-              false
-            }
-          Rejected { diagnostics: _ } => false
-        }
-      Rejected { diagnostics: _ } => false
-    }
-  }
-}
-
 fn tepe_field_init_parts_match_name(parts: TepeFieldInitParts, field: Symbol) -> Bool {
   match tepe_atom_sym_optional(node: parts.name) {
-    Present { value: sym } => tepe_field_binding_symbols_equivalent(left: sym, right: field)
+    Present { value: sym } => sym == field
     Absent => false
   }
 }
 
-fn tepe_field_init_value_node_optional(node: Node) -> Optional<Node> {
-  match tepe_field_init_parts_optional(node: node) {
-    Present { value: parts } => optional_present(value: parts.value)
-    Absent => optional_present(value: node)
+fn tepe_field_init_value_is_encoding_shape(value: Node) -> Bool {
+  match tepe_field_init_value_structural_fallback(root: value, field: ^naming) {
+    Present { value: _ } => true
+    Absent => false
   }
+}
+
+fn tepe_coproduct_field_value_optional(root: Node) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_field_init_parts_optional(node: node) {
+          Present { value: parts } =>
+            if tepe_field_init_value_is_encoding_shape(value: parts.value) {
+              optional_absent()
+            } else {
+              match tepe_atom_sym_optional(node: parts.value) {
+                Present { value: _ } => optional_present(value: parts.value)
+                Absent => optional_absent()
+              }
+            }
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_encoding_field_value_optional(root: Node) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_field_init_parts_optional(node: node) {
+          Present { value: parts } =>
+            if tepe_field_init_value_is_encoding_shape(value: parts.value) {
+              optional_present(value: parts.value)
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_sole_field_init_value_optional(root: Node) -> Optional<Node> {
+  match fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_field_init_parts_optional(node: node) {
+          Present { value: parts } =>
+            optional_present(value: parts.value)
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } =>
+            match child_acc {
+              Present { value: _ } => optional_absent()
+              Absent => acc
+            }
+          Absent => child_acc
+        }
+      }
+    }
+  ) {
+    Present { value: only } => optional_present(value: only)
+    Absent => optional_absent()
+  }
+}
+
+// 🟡 scaffold — dissolve-on: replace spelling-dispatch with enrichment-protocol field
+// rows keyed by ^coproduct/^encoding/^naming atoms (no runtime string compare arms).
+fn tepe_field_init_value_structural_fallback(
+  root: Node,
+  field: Symbol
+) -> Optional<Node> {
+  match symbol_interned_spelling(binding: field) {
+    Accepted { value: spelling, diagnostics: _ } =>
+      if spelling == "encoding" {
+        tepe_encoding_field_value_optional(root: root)
+      } else if spelling == "coproduct" {
+        tepe_coproduct_field_value_optional(root: root)
+      } else if spelling == "naming" {
+        tepe_sole_field_init_value_optional(root: root)
+      } else {
+        optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn tepe_find_field_init_value_by_name_only(root: Node, field: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_field_init_parts_optional(node: node) {
+          Present { value: parts } =>
+            if tepe_field_init_parts_match_name(parts: parts, field: field) {
+              optional_present(value: parts.value)
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
 }
 
 fn tepe_field_init_value_from_colon_sequence_optional(seq: Node) -> Optional<Node> {
@@ -167,37 +259,38 @@ fn tepe_field_init_value_from_colon_sequence_optional(seq: Node) -> Optional<Nod
   }
 }
 
-fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclParts> {
+fn tepe_data_decl_body_optional(decl: Node) -> Optional<Node> {
   match find_named_child(root: decl, name: ^dag_surface_data_decl_type) {
-    Accepted { value: type_expr, diagnostics: _ } =>
-      match find_named_child(root: decl, name: ^dag_surface_data_decl_expr) {
-        Accepted { value: expr, diagnostics: _ } =>
-          optional_present(TepeDataDeclParts { type_expr: type_expr, expr: expr })
-        Rejected { diagnostics: _ } => optional_absent()
-      }
+    Accepted { value: _, diagnostics: _ } => optional_present(value: decl)
     Rejected { diagnostics: _ } =>
-      match tepe_production_captured_optional(node: decl) {
-        Present { value: s1 } =>
-          match tepe_sequence_right_optional(seq: s1) {
-            Present { value: s2 } =>
-              match tepe_sequence_right_optional(seq: s2) {
-                Present { value: s3 } =>
-                  match tepe_sequence_right_optional(seq: s3) {
-                    Present { value: s4 } =>
-                      match tepe_sequence_left_optional(seq: s4) {
-                        Present { value: type_expr } =>
-                          match tepe_sequence_right_optional(seq: s4) {
-                            Present { value: s5 } =>
-                              match tepe_sequence_right_optional(seq: s5) {
-                                Present { value: expr } =>
-                                  optional_present(
-                                    TepeDataDeclParts {
-                                      type_expr: type_expr,
-                                      expr: expr
-                                    }
-                                  )
-                                Absent => optional_absent()
-                              }
+      match tepe_unwrap_to_conj_optional(node: decl) {
+        Present { value: conj } => optional_present(value: conj)
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn tepe_data_decl_type_and_expr_from_capture_optional(decl: Node) -> Optional<TepeDataDeclParts> {
+  match tepe_production_captured_optional(node: decl) {
+    Present { value: s1 } =>
+      match tepe_sequence_right_optional(seq: s1) {
+        Present { value: s2 } =>
+          match tepe_sequence_right_optional(seq: s2) {
+            Present { value: s3 } =>
+              match tepe_sequence_right_optional(seq: s3) {
+                Present { value: s4 } =>
+                  match tepe_sequence_left_optional(seq: s4) {
+                    Present { value: type_expr } =>
+                      match tepe_sequence_right_optional(seq: s4) {
+                        Present { value: s5 } =>
+                          match tepe_sequence_right_optional(seq: s5) {
+                            Present { value: expr } =>
+                              optional_present(
+                                TepeDataDeclParts {
+                                  type_expr: type_expr,
+                                  expr: expr
+                                }
+                              )
                             Absent => optional_absent()
                           }
                         Absent => optional_absent()
@@ -210,70 +303,56 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
           }
         Absent => optional_absent()
       }
-  }
-}
-
-fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
-  match tepe_sequence_right_optional(seq: expr) {
-    Present { value: s2 } =>
-      match tepe_sequence_left_optional(seq: s2) {
-        Present { value: name_node } => tepe_atom_sym_optional(node: name_node)
-        Absent => optional_absent()
-      }
     Absent => optional_absent()
   }
 }
 
-fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
-  match parse_production_emitted_identity_optional(node: type_decl) {
-    Present { value: surface } =>
-      if surface == ^dag_surface_type_decl {
-        match parse_production_captured_child_optional(node: type_decl) {
-          Present { value: expr } =>
-            match tepe_type_decl_name_from_decl_expr_optional(expr: expr) {
-              Present { value: name } => optional_present(value: name)
-              Absent => optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      } else {
-        optional_absent()
-      }
-    Absent =>
-      match fold_list(
-        xs: type_decl.children,
-        empty: optional_absent(),
-        cons: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match e.label {
-                Named { name: sym } =>
-                  if sym == ^dag_surface_type_decl {
-                    acc
-                  } else {
-                    optional_present(value: sym)
-                  }
-                Positional => acc
-              }
+fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclParts> {
+  match tepe_data_decl_body_optional(decl: decl) {
+    Present { value: body } =>
+      match find_named_child(root: body, name: ^dag_surface_data_decl_type) {
+        Accepted { value: type_expr, diagnostics: _ } =>
+          match find_named_child(root: body, name: ^dag_surface_data_decl_expr) {
+            Accepted { value: expr, diagnostics: _ } =>
+              optional_present(TepeDataDeclParts { type_expr: type_expr, expr: expr })
+            Rejected { diagnostics: _ } => optional_absent()
           }
+        Rejected { diagnostics: _ } =>
+          tepe_data_decl_type_and_expr_from_capture_optional(decl: decl)
+      }
+    Absent => tepe_data_decl_type_and_expr_from_capture_optional(decl: decl)
+  }
+}
+
+fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
+  match fold_list(xs: type_decl.children, empty: optional_absent(), cons: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Named { name: sym } =>
+            if sym == ^dag_surface_type_decl {
+              acc
+            } else {
+              optional_present(value: sym)
+            }
+          Positional => acc
         }
-      ) {
-        Present { value: sym } => optional_present(value: sym)
-        Absent =>
-          match tepe_production_captured_optional(node: type_decl) {
-            Present { value: s1 } =>
-              match tepe_sequence_right_optional(seq: s1) {
-                Present { value: s2 } =>
-                  match tepe_sequence_left_optional(seq: s2) {
-                    Present { value: name_node } =>
-                      tepe_atom_sym_optional(node: name_node)
-                    Absent => optional_absent()
-                  }
+    }
+  }) {
+    Present { value: sym } => optional_present(value: sym)
+    Absent =>
+      match tepe_production_captured_optional(node: type_decl) {
+        Present { value: s1 } =>
+          match tepe_sequence_right_optional(seq: s1) {
+            Present { value: s2 } =>
+              match tepe_sequence_left_optional(seq: s2) {
+                Present { value: name_node } => tepe_atom_sym_optional(node: name_node)
                 Absent => optional_absent()
               }
             Absent => optional_absent()
           }
+        Absent => optional_absent()
       }
   }
 }
@@ -356,7 +435,22 @@ fn tepe_unwrap_to_conj_optional(node: Node) -> Optional<Node> {
 }
 
 fn tepe_named_field_target(root: Node, field: Symbol) -> Optional<Node> {
-  tepe_find_field_init_value_optional(root: root, field: field)
+  match tepe_find_field_init_value_optional(root: root, field: field) {
+    Present { value: child } => optional_present(value: child)
+    Absent =>
+      match tepe_unwrap_to_conj_optional(node: root) {
+        Present { value: conj } =>
+          match find_named_child(root: conj, name: field) {
+            Accepted { value: child, diagnostics: _ } =>
+              match tepe_field_init_parts_optional(node: child) {
+                Present { value: parts } => optional_present(value: parts.value)
+                Absent => optional_present(value: child)
+              }
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
 }
 
 fn tepe_disj_in_subtree(node: Node) -> Optional<Node> {
@@ -396,6 +490,17 @@ fn tepe_subtree_contains_disj_anchor(root: Node, disj_anchor: Node) -> Bool {
   )
 }
 
+fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
+  match tepe_sequence_right_optional(seq: expr) {
+    Present { value: s2 } =>
+      match tepe_sequence_left_optional(seq: s2) {
+        Present { value: name_node } => tepe_atom_sym_optional(node: name_node)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Node> {
   fold_node(
     n: root,
@@ -419,9 +524,9 @@ fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Nod
         }
       },
       step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
+        match child_acc {
+          Present { value: _ } => child_acc
+          Absent => acc
         }
       }
     }
@@ -429,7 +534,6 @@ fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Nod
 }
 
 fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
-  let anchor_hash = content_hash(n: disj_anchor)
   fold_node(
     n: root,
     algebra: NodeFold {
@@ -439,23 +543,19 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
         } else {
           match tepe_type_decl_name_optional(type_decl: node) {
             Present { value: enum_sym } =>
-              match tepe_disj_in_subtree(node: node) {
-                Present { value: disj } =>
-                  if content_hash(n: disj) == anchor_hash {
-                    optional_present(value: enum_sym)
-                  } else {
-                    optional_absent()
-                  }
-                Absent => optional_absent()
+              if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
+                optional_present(value: enum_sym)
+              } else {
+                optional_absent()
               }
             Absent => optional_absent()
           }
         }
       },
       step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
+        match child_acc {
+          Present { value: _ } => child_acc
+          Absent => acc
         }
       }
     }
@@ -467,31 +567,9 @@ fn tepe_contract_row_for_disj_anchor(
   root: Node,
   disj_anchor: Node
 ) -> Optional<CoproductWireContractIndexRow> {
-  let anchor_hash = content_hash(n: disj_anchor)
-  let matched = fold_list(
-    xs: rows,
-    empty: optional_absent(),
-    cons: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match row {
-            CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _ } =>
-              match tepe_disj_for_enum_sym_optional(root: root, enum_sym: csym) {
-                Present { value: disj } =>
-                  if content_hash(n: disj) == anchor_hash {
-                    optional_present(value: row)
-                  } else {
-                    optional_absent()
-                  }
-                Absent => optional_absent()
-              }
-          }
-      }
-    }
-  )
-  match matched {
-    Present { value: row } => optional_present(value: row)
+  match tepe_enum_sym_for_disj(root: root, disj_anchor: disj_anchor) {
+    Present { value: enum_sym } =>
+      tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym)
     Absent => optional_absent()
   }
 }
@@ -534,17 +612,12 @@ fn tepe_apply_contract_row_enrichment(
 }
 
 fn tepe_declaration_ref_sym_from_value(node: Node, decl: Node) -> Outcome<Symbol> {
-  match tepe_field_init_value_node_optional(node: node) {
-    Present { value: value_node } =>
-      match tepe_atom_sym_optional(node: value_node) {
-        Present { value: sym } =>
-          if sym == ^dag_token_string_literal {
-            outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
-          } else {
-            outcome_accepted(sym)
-          }
-        Absent =>
-          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+  match tepe_atom_sym_optional(node: node) {
+    Present { value: sym } =>
+      if sym == ^dag_token_string_literal {
+        outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      } else {
+        outcome_accepted(sym)
       }
     Absent =>
       outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
@@ -594,15 +667,23 @@ fn tepe_variant_naming_tag_from_encoding(encoding: Node, decl: Node) -> Outcome<
 }
 
 fn tepe_normalize_naming_tag_for_catalog(sym: Symbol) -> Symbol {
-  match symbol_interned_spelling(binding: sym) {
-    Accepted { value: spelling, diagnostics: _ } =>
-      match tepe_naming_spelling_basename(spelling: spelling) {
-        "ScreamingSnakeCase" => ^ScreamingSnakeCase
-        "SnakeCase" => ^SnakeCase
-        "AsAuthored" => ^AsAuthored
-        _ => sym
-      }
-    Rejected { diagnostics: _ } => sym
+  if sym == ^ScreamingSnakeCase {
+    ^ScreamingSnakeCase
+  } else if sym == ^SnakeCase {
+    ^SnakeCase
+  } else if sym == ^AsAuthored {
+    ^AsAuthored
+  } else {
+    match symbol_interned_spelling(binding: sym) {
+      Accepted { value: spelling, diagnostics: _ } =>
+        match tepe_naming_spelling_basename(spelling: spelling) {
+          "ScreamingSnakeCase" => ^ScreamingSnakeCase
+          "SnakeCase" => ^SnakeCase
+          "AsAuthored" => ^AsAuthored
+          _ => sym
+        }
+      Rejected { diagnostics: _ } => sym
+    }
   }
 }
 
@@ -697,19 +778,14 @@ fn tepe_rows_contain_equivalent_contract(
   row: CoproductWireContractIndexRow
 ) -> Bool {
   match row {
-    CoproductWireContractIndexRow { coproduct_sym: rsym, naming_tag: rtag, decl: _ } =>
+    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: _, decl: decl } =>
+      let row_hash = content_hash(n: decl)
       match list_at_optional(xs: rows, index: 0) {
         Absent => false
         Present { value: head } =>
           match head {
-            CoproductWireContractIndexRow {
-              coproduct_sym: csym,
-              naming_tag: ctag,
-              decl: _
-            } =>
-              if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: rsym)
-                && ctag == rtag
-              {
+            CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: _, decl: existing } =>
+              if content_hash(n: existing) == row_hash {
                 true
               } else {
                 match list_tail(xs: rows) {
@@ -817,8 +893,7 @@ fn tepe_collect_data_decl_nodes(root: Node) -> List<Node> {
       init: fn(node) {
         if tepe_node_has_surface(root: node, surface: ^dag_surface_data_decl) {
           match tepe_data_decl_type_and_expr_optional(decl: node) {
-            Present { value: _ } =>
-              Cons { head: node, tail: Empty }
+            Present { value: _ } => [node]
             Absent => Empty
           }
         } else {
@@ -917,11 +992,17 @@ fn tepe_lookup_contract_row(
 fn tepe_naming_spelling_basename(spelling: String) -> String {
   match spelling {
     "\"ScreamingSnakeCase\"" => "ScreamingSnakeCase"
+    "ScreamingSnakeCase" => "ScreamingSnakeCase"
     "VariantNaming.ScreamingSnakeCase" => "ScreamingSnakeCase"
     "\"VariantNaming.ScreamingSnakeCase\"" => "ScreamingSnakeCase"
     "\"SnakeCase\"" => "SnakeCase"
+    "SnakeCase" => "SnakeCase"
     "VariantNaming.SnakeCase" => "SnakeCase"
     "\"VariantNaming.SnakeCase\"" => "SnakeCase"
+    "\"AsAuthored\"" => "AsAuthored"
+    "AsAuthored" => "AsAuthored"
+    "VariantNaming.AsAuthored" => "AsAuthored"
+    "\"VariantNaming.AsAuthored\"" => "AsAuthored"
     _ => spelling
   }
 }
@@ -1189,9 +1270,9 @@ fn tepe_bundle_child_lookup_step(
 fn tepe_target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
-      match fold_list(
-        xs: target.bundle.children,
-        empty: TepeBundleChildMissing,
+      match fold(
+        target.bundle.children,
+        init: TepeBundleChildMissing,
         cons: fn(acc, e) {
           tepe_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
         }
@@ -1410,8 +1491,5 @@ fn tepe_wire_contract_index_nonempty(tree: InferredTree, target: TargetModel) ->
         Absent => false
       }
     Rejected { diagnostics: _ } => false
-  }
-}
-ostics: _ } => false
   }
 }
