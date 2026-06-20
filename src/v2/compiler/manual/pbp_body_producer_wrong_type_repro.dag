@@ -6,6 +6,6 @@ import v2.std.logic { Bool }
 import v2.std.integer { Int }
 
 fn pbp_wrong() -> Bool {
-  let bad: Int = true
-  bad == 0
+  let one = 1
+  one
 }
