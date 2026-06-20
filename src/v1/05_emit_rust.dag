@@ -3111,6 +3111,46 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
 }
 
 
+// True iff the type node `n` (or any nested child) names `target` -- the
+// structural "does this field type mention this generic param" test.
+fn type_node_mentions_name(n: Node, target: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if authored_name_at(source_indices: source_indices, node: n) == target {
+    true
+  } else {
+    n.children |> any(c => type_node_mentions_name(n: c, target: target, source_indices: source_indices))
+  }
+}
+
+// A struct generic param that no field's type references is UNUSED -- Rust
+// rejects it (E0392 "parameter is never used"). The phantom dimensional tags on
+// `Measure<Q, S, M>` (only `M` reaches the `count` field; `Q`/`S` tag the
+// dimension) are the canonical case. Such params must be carried in a
+// `PhantomData` field for the emitted struct to be well-formed, and every
+// construction must then populate that field (see emit_typed_record_lit).
+fn struct_unused_param_names(generic_param_names: List<String>, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  generic_param_names |> filter(p =>
+    !(children |> any(child => type_node_mentions_name(n: field_node_type_expr(n: child), target: p, source_indices: source_indices)))
+  )
+}
+
+// The `<...>` arg of the synthetic `PhantomData` carrier for a struct's unused
+// params: a single param bare (`PhantomData<Q>`), several as a tuple
+// (`PhantomData<(Q, S)>`) so one field "uses" them all.
+fn rust_phantom_marker_inner(unused: List<String>) -> String {
+  if unused |> count == 1 {
+    match unused |> first {
+      Present { value: u } => u
+      Absent => "()"
+    }
+  } else {
+    concat("(", unused |> join(separator: ", "), ")")
+  }
+}
+
+// The unused-param `PhantomData` field name -- single authority shared by the
+// struct definition and every construction so they always agree.
+fn rust_phantom_field_name() -> String { "_phantom" }
+
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = match map_get(emit_info.type_summaries, name) {
     Present { value: ts } => ts.has_fn_fields
@@ -3129,7 +3169,16 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(struct_name: name, child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
-    let fields_str = field_lines |> join(separator: "\n")
+    // E0392: carry any generic param unused by the fields in a PhantomData
+    // field (`Measure<Q, S, M>`'s phantom `Q`/`S`). The `#[derive]` on the
+    // struct adds the standard `Q: Trait` bounds, satisfied by the concrete
+    // marker tags at every instantiation; serde special-cases PhantomData and
+    // adds no Serialize/Deserialize bound.
+    let unused_params = struct_unused_param_names(generic_param_names: generic_param_names, children: children, source_indices: env.source_indices)
+    let all_field_lines = if unused_params |> count > 0 {
+      concat(field_lines, [concat("    ", rust_visibility_prefix(), rust_phantom_field_name(), ": std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">,")])
+    } else { field_lines }
+    let fields_str = all_field_lines |> join(separator: "\n")
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
@@ -6309,7 +6358,24 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             } else { [] }
           Absent => []
         }
-        let all_field_strs = concat(field_strs, default_strs)
+        // Populate the synthetic PhantomData field (E0392) whenever the target
+        // struct carries unused generic params -- the construction counterpart
+        // of the phantom field appended in emit_struct_from_children. Keyed on
+        // the concrete struct decl (`tn` is the peeled struct name after the
+        // alias-peel above), so it fires for `Measure`/its aliases and stays
+        // silent for every fully-used-param struct and for enum variants.
+        let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: tn) {
+          Present { value: decl } =>
+            if decl.connective == Conj {
+              let pnames = decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))
+              let unused = struct_unused_param_names(generic_param_names: pnames, children: decl.children, source_indices: si)
+              if unused |> count > 0 {
+                [concat("    ", rust_phantom_field_name(), ": std::marker::PhantomData,")]
+              } else { [] }
+            } else { [] }
+          Absent => []
+        }
+        let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
         raw
