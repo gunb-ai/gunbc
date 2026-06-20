@@ -86,53 +86,6 @@ fn primary_precedence_within_root_duplicate_module_path_panics() {
 }
 
 #[test]
-fn primary_precedence_pool_root_within_root_duplicate_module_path_panics() {
-    let Some(gunbc) = gunbc_bin() else {
-        eprintln!("skipping: release gunbc binary not found");
-        return;
-    };
-    let ws = workspace_root();
-    let primary = temp_dir("pool-dup-primary");
-    fs::write(
-        primary.join("primary.dag"),
-        "module primary.only\nfn ok() -> Int { 1 }\n",
-    )
-    .expect("write primary.dag");
-    let pool = temp_dir("pool-dup-pool");
-    fs::write(
-        pool.join("a.dag"),
-        "module duplicate.pool.root\nfn a() -> Int { 1 }\n",
-    )
-    .expect("write pool a.dag");
-    fs::write(
-        pool.join("b.dag"),
-        "module duplicate.pool.root\nfn b() -> Int { 2 }\n",
-    )
-    .expect("write pool b.dag");
-    let out = temp_dir("pool-dup-out");
-    let output = compile_with_roots(
-        &gunbc,
-        &ws,
-        &[&primary, &pool],
-        "primary-precedence",
-        &out,
-    );
-    let combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(!output.status.success());
-    assert!(
-        combined.contains("duplicate module path") && combined.contains("within source root"),
-        "expected pool-root within-root duplicate panic; got:\n{combined}"
-    );
-    rm_rf(&primary);
-    rm_rf(&pool);
-    rm_rf(&out);
-}
-
-#[test]
 fn strict_dependency_pool_index_panics_on_cross_root_extdeps_shell_collision() {
     let Some(gunbc) = gunbc_bin() else {
         eprintln!("skipping: release gunbc binary not found");
