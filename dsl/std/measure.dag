@@ -26,7 +26,8 @@
 // Scope (Phase-1 carrier landing):
 //   - `Measure<Q, S>` -- phantom-parameter carrier for dimensional types.
 //   - `Quantity`      -- what is being measured (Time, Length, Mass, ...).
-//   - `Scale`         -- SI decimal scale exponent (Atto..Exa, `One` = 10^0).
+//   - `Scale`         -- SI decimal scale exponent (Atto..Exa, `One` = 10^0) plus IEC
+//                         binary memory prefixes (Kibi..Tebi, powers of 2) for Memory.
 //   - `scale_exponent(s: Scale) -> Int` -- structural exponent query
 //     (typed exponent authority; lets Grounding consumers and downstream
 //     algebraic consumers project a Scale value to its decimal exponent
@@ -97,7 +98,7 @@ type Quantity =
   | ElectricCharge
   | MagneticFlux
 
-// --- Scale: SI decimal scale exponent -------------------------------------
+// --- Scale: SI decimal + IEC binary memory exponents ----------------------
 //
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟡 SCAFFOLD
 // Same dissolution trigger as `Quantity`: "all Scale values consumed by
