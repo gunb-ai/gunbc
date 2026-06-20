@@ -2467,6 +2467,10 @@ fn run_discovery_rows(
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
+            // Cross-tree de-fork (dsl → v2.std.* imports) can change which modules
+            // appear in an entry closure; stale typed-module cache entries from a
+            // prior witness must not leak across entry boundaries.
+            index.typed_module_cache.borrow_mut().clear();
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
