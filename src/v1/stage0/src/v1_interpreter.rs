@@ -2450,6 +2450,11 @@ pub(crate) const STD_LEXING_BRIDGE_FNS: &[&str] = &["symbol_intern_lexeme"];
 
 pub(crate) const STD_NODE_QUERY_BRIDGE_FNS: &[&str] = &["coproduct_nullary_inhabitants"];
 
+// v2.std.concept_index corpus-enumeration SOURCE bridge — materializes each decl as a Node
+// (substrate currency); ALL ConceptStruct/FieldRef shaping is .dag. dissolve-on: v2 compile-graph
+// access (same trigger as resolve_type_node). forbidden: parallel corpus enumeration in Rust.
+pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_live"];
+
 /// Sentinel surface for tests: every name here must be wired in `eval_call`'s bridge intercept.
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
@@ -2457,6 +2462,10 @@ pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_node_query_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_QUERY_BRIDGE_FNS
+}
+
+pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
+    STD_CONCEPT_INDEX_BRIDGE_FNS
 }
 
 fn is_v4_std_node_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2475,6 +2484,15 @@ fn is_v4_std_node_query_bridge_call(ctx: &InterpContext, func_name: &str) -> boo
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.std.node_query")
+}
+
+fn is_v4_std_concept_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_CONCEPT_INDEX_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.std.concept_index")
 }
 
 fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2533,6 +2551,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, &args)
             }
             _ => unreachable!("node_query bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_concept_index_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "concept_decl_facts_live" => {
+                crate::coproduct_reflection::eval_concept_decl_facts_live(ctx, &args)
+            }
+            _ => unreachable!("concept_index bridge fn set mismatch"),
         };
     }
 
@@ -5010,6 +5037,69 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
     })
 }
 
+/// `filesystem_read` builtin adapter — routes through modeled `Filesystem.Read` so the
+/// hermetic ExecutionMode gate (record/replay via RecordedFixture / published corpus)
+/// applies. Direct `v1_rt::filesystem_read` was a §5 faithfulness hole: hermetic runs
+/// still touched disk. Dissolves the §3 fork onto the single Filesystem service authority.
+fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResult<Value> {
+    if !ctx.service_ops.contains_key("Filesystem.Read") {
+        return Err(if ctx.execution_mode.is_hermetic() {
+            InterpError::TypeError {
+                msg:
+                    "hermetic mode: filesystem_read requires Filesystem.Read in the import \
+                      closure (import extdeps.filesystem.filesystem_io) — refusing direct disk read"
+                        .to_string(),
+            }
+        } else {
+            InterpError::Unimplemented {
+                what: "filesystem_read requires Filesystem.Read in the import closure \
+                       (import extdeps.filesystem.filesystem_io)"
+                    .to_string(),
+            }
+        });
+    }
+
+    let args = [(Some("path".to_string()), Value::Str(path))];
+    let result = eval_service_call("Filesystem", "Read", &args, &Env::empty(), ctx)?;
+
+    let (content, success, error) = match result {
+        Value::Record { fields, .. } => {
+            let success = matches!(ctx.field(&fields, "success"), Some(Value::Bool(true)));
+            let content = match ctx.field(&fields, "content") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+            let error = match ctx.field(&fields, "error") {
+                Some(Value::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+            (content, success, error)
+        }
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: "filesystem_read: Filesystem.Read returned non-record".to_string(),
+            });
+        }
+    };
+
+    if !success {
+        return Err(InterpError::TypeError {
+            msg: if error.is_empty() {
+                "filesystem_read: read failed".to_string()
+            } else {
+                format!("filesystem_read: {error}")
+            },
+        });
+    }
+
+    let mut out_fields = HashMap::new();
+    out_fields.insert(ctx.sym("content"), Value::Str(content));
+    Ok(Value::Record {
+        type_name: ctx.sym("FilesystemReadResult"),
+        fields: Rc::new(out_fields),
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Built-in functions (v1_rt equivalents)
 // ---------------------------------------------------------------------------
@@ -5387,13 +5477,7 @@ fn eval_builtin(
 
         "filesystem_read" => {
             let path = expect_str(positional.first().copied(), "filesystem_read")?;
-            let result = v1_rt::filesystem_read(path);
-            let mut fields = HashMap::new();
-            fields.insert(ctx.sym("content"), Value::Str(result.content));
-            Ok(Some(Value::Record {
-                type_name: ctx.sym("FilesystemReadResult"),
-                fields: Rc::new(fields),
-            }))
+            Ok(Some(eval_filesystem_read_builtin(path, ctx)?))
         }
 
         "layer_import_facts" => {
