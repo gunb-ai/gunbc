@@ -445,19 +445,15 @@ fn gap4_single_module_discriminator() {
             forward
         }
     };
-    let record = REPRESENTATIVE_SLICE_PATHS
+    let record = all
         .iter()
-        .map(|path| {
-            let mut rec = all
-                .iter()
-                .find(|r| normalize_path(&r.file_path) == *path)
-                .unwrap_or_else(|| panic!("slice path not in compiler closure: {path}"))
-                .clone();
-            rec.file_path = (*path).to_string();
+        .find(|r| normalize_path(&r.file_path) == single)
+        .cloned()
+        .map(|mut rec| {
+            rec.file_path = single.to_string();
             rec
         })
-        .find(|r| normalize_path(&r.file_path) == single)
-        .unwrap_or_else(|| panic!("single-module path not in slice: {single}"));
+        .unwrap_or_else(|| panic!("single-module path not in compiler closure: {single}"));
 
     let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
     let admission =
