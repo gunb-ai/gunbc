@@ -490,15 +490,35 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
 }
 
 fn tepe_declaration_ref_value_atom_optional(node: Node) -> Optional<Node> {
-  match tepe_atom_identity_optional(node: node) {
-    Present { value: _ } => optional_present(value: node)
-    Absent =>
-      match parse_production_captured_child_optional(node: node) {
-        Present { value: captured } =>
-          tepe_declaration_ref_value_atom_optional(node: captured)
-        Absent => optional_absent()
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match tepe_atom_identity_optional(node: n0) {
+          Present { value: sym } =>
+            if sym == ^dag_token_ident
+              || sym == ^dag_token_string_literal
+              || sym == ^dag_token_colon
+              || sym == ^dag_token_eq
+              || sym == ^dag_token_comma
+              || sym == ^dag_token_lbrace
+              || sym == ^dag_token_rbrace
+            {
+              optional_absent()
+            } else {
+              optional_present(value: n0)
+            }
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
       }
-  }
+    }
+  )
 }
 
 fn tepe_declaration_ref_sym_from_value(node: Node, decl: Node) -> Outcome<Symbol> {
@@ -697,6 +717,25 @@ fn tepe_fold_decl_into_index(
   }
 }
 
+fn tepe_merge_index_acc(
+  left: CoproductWireContractIndexAcc,
+  right: CoproductWireContractIndexAcc
+) -> CoproductWireContractIndexAcc {
+  match left {
+    CoproductWireContractIndexErr { diagnostics: d } =>
+      CoproductWireContractIndexErr { diagnostics: d }
+    CoproductWireContractIndexOk { rows: left_rows } =>
+      match right {
+        CoproductWireContractIndexErr { diagnostics: d } =>
+          CoproductWireContractIndexErr { diagnostics: d }
+        CoproductWireContractIndexOk { rows: right_rows } =>
+          CoproductWireContractIndexOk {
+            rows: list_append(left: left_rows, right: right_rows)
+          }
+      }
+  }
+}
+
 fn tepe_build_coproduct_wire_contract_index(
   root: Node,
   field_coproduct: Symbol,
@@ -716,11 +755,7 @@ fn tepe_build_coproduct_wire_contract_index(
         )
       },
       step: fn(acc, _edge, child_acc) {
-        match acc {
-          CoproductWireContractIndexErr { diagnostics: d } =>
-            CoproductWireContractIndexErr { diagnostics: d }
-          _ => child_acc
-        }
+        tepe_merge_index_acc(left: acc, right: child_acc)
       }
     }
   ) {
