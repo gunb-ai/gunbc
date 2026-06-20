@@ -30,7 +30,8 @@ type Uri {
 
 // 🟢 TERMINAL — closed-sum membership: Http|Https vs File|Ftp (discriminating witness
 // surface for the extdeps.uri carrier; scheme recognition for live anchors lives in
-// v2.lens.extdeps_stable_authority.decode_uri_scheme over projected constructor identity).
+// scheme recognition for live anchors lives in
+// v2.lens.extdeps_external_authority.decode_uri_scheme over projected constructor identity).
 fn uri_scheme_is_http(s: UriScheme) -> Bool {
   match s {
     Http => true

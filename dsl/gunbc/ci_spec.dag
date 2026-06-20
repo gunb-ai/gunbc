@@ -12,6 +12,7 @@ type Gate
   | EmitHostGate
   | LayeringImportsGate
   | ResolvedImportsGate
+  | ExtdepsExternalAuthorityGate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate
@@ -38,6 +39,7 @@ data gunbc_ci_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
   ResolvedImportsGate,
+  ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   CiYamlGate,
   SourceRootIngestGate

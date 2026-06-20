@@ -1,11 +1,11 @@
 // RED perturb fixture — external anchor with unrecognized Uri scheme constructor identity.
 
-module extdeps.fixture.stable_authority_bogus_scheme
+module extdeps.fixture.external_authority_bogus_scheme
 
-import extdeps.stable_authority { StableAuthority }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri }
 
-data extdeps_stable_authority_anchor: StableAuthority = StableAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Gopher
     locator: "example.invalid/spec"

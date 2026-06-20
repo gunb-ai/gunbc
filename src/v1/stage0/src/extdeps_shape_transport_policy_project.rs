@@ -936,7 +936,9 @@ service github.Gist {
     #[test]
     fn external_authority_self_anchor_projects_file_with_fragment() {
         assert_eq!(
-            external_authority_anchor_kind_for_module_path("extdeps.external_authority".to_string()),
+            external_authority_anchor_kind_for_module_path(
+                "extdeps.external_authority".to_string()
+            ),
             "present"
         );
         assert_eq!(
