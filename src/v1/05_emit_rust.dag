@@ -7579,6 +7579,38 @@ fn data_value_has_cross_refs(value: Node) -> Bool {
   }
 }
 
+// A `data` decl whose annotation is a closed alias renders from the RESOLVED
+// inferred type (the brand/alias peel target), not the authored annotation —
+// e.g. `data min_cargo_version: CargoToolVersionFloor` renders return type
+// `SemVerConstraint` (CargoToolVersionFloor = SemVerConstraint, defined in
+// extdeps.version.semver). render_rust_type_with_applied_binding emits the bare
+// peel-target name, but the importing module's use-set only carries the authored
+// import (CargoToolVersionFloor), so the bare reference is unresolved (E0425).
+// Qualify a cross-module simple nominal to crate::<def_mod>::<name>, mirroring
+// render_rust_alias_rhs_type's cross-module qualification. Conservative: only the
+// bare-name case (rendered string == authored name, no generics/Rc wrap) and only
+// non-kernel/non-container names whose defining module differs from the local one.
+fn rust_data_def_qualify_cross_module(raw_ty_str: String, render_type_node: Node, module_name: String, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> String {
+  let resolved_name = authored_name_at(source_indices: source_indices, node: render_type_node)
+  if render_type_node.connective == NoConnective
+    && (render_type_node.children |> count) == 0
+    && (render_type_node.params |> count) == 0
+    && resolved_name != ""
+    && raw_ty_str == resolved_name
+    && is_kernel_type(name: resolved_name) == false
+    && is_container_type(name: resolved_name) == false {
+    let local_mod = module_to_filename(name: module_name)
+    let def_mod = item_defining_module_filename(name: resolved_name, registry: registry, fallback: local_mod)
+    if def_mod != local_mod {
+      concat("crate::", def_mod, "::", resolved_name)
+    } else {
+      raw_ty_str
+    }
+  } else {
+    raw_ty_str
+  }
+}
+
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let annotation_type_node = type_node
   let render_type_node = if annotation_type_node.children |> count > 0 {
@@ -7599,7 +7631,9 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
         else { concat("BoundedLattice<", top_type_name, ">") }
       Absent => raw_ty_str
     }
-  } else { raw_ty_str }
+  } else {
+    rust_data_def_qualify_cross_module(raw_ty_str: raw_ty_str, render_type_node: render_type_node, module_name: scope.module_name, registry: registry, source_indices: scope.type_env.source_indices)
+  }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
   // shared-type data accessors return Rc<T> when body stores Rc::new(...) (e.g. TestClaim via call).

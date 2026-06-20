@@ -5258,17 +5258,28 @@ pub fn emit_specific_import_block(
         let type_summaries = emit_info.type_summaries.clone();
         let deduped_names = unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for n in filtered_names.iter().cloned() {
-                if {
-                    let mut __all = true;
-                    for ln in local_names.clone().iter().cloned() {
-                        if !(ln.clone() != n.clone()) {
-                            __all = false;
-                            break;
+            for n in Rc::new({
+                let mut __result = Vec::new();
+                for n in filtered_names.iter().cloned() {
+                    if {
+                        let mut __all = true;
+                        for ln in local_names.clone().iter().cloned() {
+                            if !(ln.clone() != n.clone()) {
+                                __all = false;
+                                break;
+                            }
                         }
+                        __all
+                    } {
+                        __result.push(n);
                     }
-                    __all
-                } {
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (is_container_type(n.clone()) == false) {
                     __result.push(n);
                 }
             }
@@ -20419,6 +20430,48 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
     })
 }
 
+pub fn rust_data_def_qualify_cross_module(
+    raw_ty_str: String,
+    render_type_node: Rc<Node>,
+    module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let resolved_name = authored_name_at(source_indices, render_type_node.clone());
+        if (((((((render_type_node.connective.clone() == Connective::NoConnective)
+            && ((render_type_node.children.clone().len() as i64) == 0))
+            && ((render_type_node.params.clone().len() as i64) == 0))
+            && (resolved_name.clone() != "".to_string()))
+            && (raw_ty_str.clone() == resolved_name.clone()))
+            && (is_kernel_type(resolved_name.clone()) == false))
+            && (is_container_type(resolved_name.clone()) == false))
+        {
+            {
+                let local_mod = module_to_filename(module_name);
+                let def_mod = item_defining_module_filename(
+                    resolved_name.clone(),
+                    registry,
+                    local_mod.clone(),
+                );
+                if (def_mod.clone() != local_mod.clone()) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("crate::".to_string(), def_mod.clone()),
+                            "::".to_string(),
+                        ),
+                        resolved_name.clone(),
+                    )
+                } else {
+                    raw_ty_str.clone()
+                }
+            }
+        } else {
+            raw_ty_str.clone()
+        }
+    }
+}
+
 pub fn emit_data_def(
     name: String,
     type_node: Rc<Node>,
@@ -20440,7 +20493,7 @@ pub fn emit_data_def(
             }
         };
         let raw_ty_str = render_rust_type_with_applied_binding(
-            render_type_node,
+            render_type_node.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
@@ -20479,7 +20532,13 @@ pub fn emit_data_def(
                 None => raw_ty_str.clone(),
             }
         } else {
-            raw_ty_str.clone()
+            rust_data_def_qualify_cross_module(
+                raw_ty_str.clone(),
+                render_type_node.clone(),
+                scope.module_name.clone(),
+                registry.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            )
         };
         let fn_name = to_snake(name);
         let needs_rc = v1_rt::set_contains(
@@ -20510,7 +20569,7 @@ pub fn emit_data_def(
                     Some(identity_expr) => identity_expr.clone(),
                     None => emit_typed_expr(
                         value.clone(),
-                        registry,
+                        registry.clone(),
                         scope.clone(),
                         depth,
                         shared_types.clone(),
@@ -20547,7 +20606,7 @@ pub fn emit_data_def(
                 let body = emit_data_def_body(
                     type_node.clone(),
                     value.clone(),
-                    registry,
+                    registry.clone(),
                     scope.clone(),
                     depth,
                     shared_types.clone(),
