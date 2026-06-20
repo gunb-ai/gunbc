@@ -480,6 +480,9 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    // Typed-module cache is keyed by module name only; cross-tree imports (dsl →
+    // v2.std.*) make the correct typed result entry-specific. Clear per resolve.
+    index.typed_module_cache.borrow_mut().clear();
     let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
@@ -2467,10 +2470,6 @@ fn run_discovery_rows(
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            // Cross-tree de-fork (dsl → v2.std.* imports) can change which modules
-            // appear in an entry closure; stale typed-module cache entries from a
-            // prior witness must not leak across entry boundaries.
-            index.typed_module_cache.borrow_mut().clear();
             let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
@@ -2821,6 +2820,27 @@ mod manifest_emit_tests {
             dag_embedded_dag_source_escape("match x { A => 1 }"),
             "match x \\{ A => 1 \\}"
         );
+    }
+
+    #[test]
+    fn discovery_index_survives_cross_tree_dsl_then_v2_resolve() {
+        use super::{build_multi_entry_index, resolve_entry_with_index, workspace_root};
+        let ws = workspace_root();
+        let roots = vec![
+            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let dsl_entry = ws
+            .join("dsl/test/claim/measure_magnitude_carrier_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        resolve_entry_with_index(&index, &dsl_entry).expect("dsl cross-tree witness");
+        let v2_entry = ws
+            .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        resolve_entry_with_index(&index, &v2_entry).expect("v2 witness after dsl cross-tree");
     }
 }
 
