@@ -110,13 +110,7 @@ fn primary_precedence_pool_root_within_root_duplicate_module_path_panics() {
     )
     .expect("write pool b.dag");
     let out = temp_dir("pool-dup-out");
-    let output = compile_with_roots(
-        &gunbc,
-        &ws,
-        &[&primary, &pool],
-        "primary-precedence",
-        &out,
-    );
+    let output = compile_with_roots(&gunbc, &ws, &[&primary, &pool], "primary-precedence", &out);
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
