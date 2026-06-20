@@ -85,6 +85,7 @@ data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming
 
 data cwc_expected_sum_regression_text: String = "X | Y"
 data cwc_expected_serde_sum_text: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]\nApprove | RequestChanges | Comment | Pending"
+data cwc_expected_serde_attr_line: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]\n"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -854,27 +855,60 @@ fn cwc_sg2_module_sum_text() -> String {
   )
 }
 
+fn cwc_wire_serde_base_body_text(target: TargetModel) -> String {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(target: target) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: target,
+                projection: base
+              ) {
+                Accepted { value: emitted, diagnostics: _ } =>
+                  match target_serialize_source_from_model_with_projection(
+                    target: target,
+                    emitted: emitted,
+                    projection: base
+                  ) {
+                    Accepted { value: source, diagnostics: _ } => source.carried
+                    Rejected { diagnostics: _ } => ""
+                  }
+                Rejected { diagnostics: _ } => ""
+              }
+            Rejected { diagnostics: _ } => ""
+          }
+        Absent => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn cwc_wire_serde_enriched_sum_text(target: TargetModel) -> String {
+  cwc_serialized_sum_text(src: cwc_src_cwc_module, target: target)
+}
+
 test fn cwc_translate_serde_rename_all_holds() -> Bool {
-  cwc_serialized_sum_text(
-    src: cwc_src_cwc_module,
+  let screaming = cwc_wire_serde_enriched_sum_text(
     target: rust_wire_serde_screaming_snake_target
-  ) == cwc_expected_serde_sum_text
+  )
+  let body = cwc_wire_serde_base_body_text(
+    target: rust_wire_serde_screaming_snake_target
+  )
+  screaming == concat(cwc_expected_serde_attr_line, body)
 }
 
 test fn cwc_translate_serde_wrong_naming_red() -> Bool {
-  let snake = cwc_serialized_sum_text(
-    src: cwc_src_cwc_module,
-    target: rust_wire_serde_snake_case_target
-  )
-  snake != cwc_sg2_module_sum_text() && snake != ""
+  let snake = cwc_wire_serde_enriched_sum_text(target: rust_wire_serde_snake_case_target)
+  let body = cwc_wire_serde_base_body_text(target: rust_wire_serde_snake_case_target)
+  snake != body && snake != ""
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
-  let screaming = cwc_serialized_sum_text(
-    src: cwc_src_cwc_module,
-    target: rust_wire_serde_screaming_snake_target
-  )
-  cwc_sg2_module_sum_text() == screaming
+  cwc_sg2_module_sum_text()
+    == cwc_wire_serde_enriched_sum_text(target: rust_wire_serde_screaming_snake_target)
 }
 
 test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
