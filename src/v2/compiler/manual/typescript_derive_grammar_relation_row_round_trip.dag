@@ -8,7 +8,7 @@ import v2.extdeps.languages.typescript {
   ts_grammar_relation_row_node,
   ts_inhabitant_atom,
   ts_mvp1_emitted_add_fn_node,
-  ts_mvp1_fn_add_scaffold_relation_row_node,
+  ts_mvp1_fn_add_relation_row_node,
   ts_mvp1_grammar_relation_row,
   ts_mvp1_canonical_add_fn_tokens,
   ts_concrete_token_node,
@@ -197,6 +197,27 @@ data claim_typescript_pr3_identity_derive_grammar_relation_row_round_trip: TestC
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_pr3_identity_derive_row_round_trip_holds()
+  ),
+  expected_value: ts_grammar_relation_round_trip_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+// Arc 2 — mvp1 fn-add eager Conj row round-trips (cheap per-row content_hash). The eager-derive
+// witness and the total emit node-path (ts_mvp1_fn_add_relation_row_node) agree, so the Conj row
+// is the single materialized authority replacing the Arrow scaffold fixture twin.
+fn ts_mvp1_fn_add_derive_row_round_trip_holds() -> Bool {
+  match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_mvp1_fn_add) {
+    Holds { value: eager_row } =>
+      content_hash(n: eager_row) == content_hash(n: ts_mvp1_fn_add_relation_row_node())
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data claim_typescript_mvp1_fn_add_derive_grammar_relation_row_round_trip: TestClaim = CompilesClaim {
+  label: "T-11 FINISH-LINE-B Arc 2: mvp1 fn-add eager Conj row content_hash round-trips derive_grammar_relation_row_node (Arrow scaffold cutover)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_grammar_relation_round_trip_claim_input(
+    ok: ts_mvp1_fn_add_derive_row_round_trip_holds()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }

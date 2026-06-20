@@ -1,8 +1,9 @@
-// FINISH-LINE-B Arc 1 — eager-materialize exemplared productions + dedup-cutover gates.
-// Coverage ceiling: wave2a_task + pr3_identity (Conj exemplars); mvp1 fn-add keeps Arrow scaffold.
+// FINISH-LINE-B Arc 1/2 — eager-materialize exemplared productions + dedup-cutover gates.
+// Coverage: wave2a_task + pr3_identity + mvp1 fn-add — all three carry a syntax-shaped Conj exemplar
+// (Arc 2 cut mvp1 over from the Arrow scaffold; the Arrow stays as the derive negative control).
 // GREEN: eager row content_hash round-trip (serialize + forward dedup in sibling *_test.dag entries).
 // Dag self-emit regression: existing candidate_generation_test (floor corpus), not duplicated here (OOM).
-// RED: perturbed eager emitted breaks derive (surplus Conj slot).
+// RED: perturbed eager emitted breaks derive (surplus Conj slot) — for wave2a and mvp1.
 
 module v2.test.manual.typescript_eager_materialize_dedup_cutover
 
@@ -59,10 +60,22 @@ fn ts_arc1_pr3_eager_row_round_trip_holds() -> Bool {
   }
 }
 
-fn ts_arc1_mvp1_exemplar_derive_violates_holds() -> Bool {
+// Arc 2 cutover: mvp1 fn-add now carries a syntax-shaped Conj exemplar, so the exemplar table Holds
+// (was Violates ^grammar_relation_emitted_not_conj on the Arrow scaffold in Arc 1).
+fn ts_arc2_mvp1_exemplar_derive_holds_body() -> Bool {
   match ts_exemplar_emitted_for_lhs(lhs: ^ts_production_mvp1_fn_add) {
-    Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
-    Holds { value: _ } => false
+    Holds { value: emitted } => emitted == ts_mvp1_typed_fn_emitted()
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// Arc 2 dedup-cutover: the eager-derive witness content_hash-agrees with the total emit node-path
+// (ts_mvp1_fn_add_relation_row_node), so the Conj row is the single authority replacing the Arrow twin.
+fn ts_arc2_mvp1_eager_row_round_trip_body() -> Bool {
+  match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_mvp1_fn_add) {
+    Holds { value: eager_row } =>
+      content_hash(n: eager_row) == content_hash(n: ts_mvp1_fn_add_relation_row_node())
+    Violates { diagnostic: _ } => false
   }
 }
 
@@ -97,14 +110,43 @@ fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
   }
 }
 
-fn ts_arc1_mvp1_scaffold_row_present_holds() -> Bool {
+// Arc 2: the materialized mvp1 fn-add row carries the Conj emitted (cut over from the Arrow scaffold).
+fn ts_arc2_mvp1_row_emitted_is_conj_body() -> Bool {
   match find_named_child(
-    root: ts_mvp1_fn_add_scaffold_relation_row_node(),
+    root: ts_mvp1_fn_add_relation_row_node(),
     name: ^grammar_relation_field_emitted
   ) {
     Accepted { value: emitted, diagnostics: _ } =>
-      emitted == ts_mvp1_emitted_add_fn_node()
+      emitted == ts_mvp1_typed_fn_emitted()
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// Discriminating RED control: a surplus positional slot in the mvp1 emitted Conj breaks the derive
+// (conj slot surplus) — the eager row is genuine, not a fixture pass.
+fn ts_arc2_mvp1_surplus_conj_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_fn_add) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_y) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^dag_binding_param_x) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^dag_binding_param_y) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ts_arc2_mvp1_perturbed_row_derive_red_body() -> Bool {
+  match derive_grammar_relation_row_node(
+    production: ts_formal_production_mvp1_fn_add(),
+    productions: [ts_formal_production_mvp1_fn_add()],
+    emitted: ts_arc2_mvp1_surplus_conj_emitted()
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
   }
 }
 
@@ -116,8 +158,14 @@ test fn ts_arc1_pr3_eager_row_content_hash_round_trip_holds() -> Bool {
   ts_arc1_pr3_eager_row_round_trip_holds()
 }
 
-test fn ts_arc1_mvp1_arrow_exemplar_keeps_scaffold_fallback_holds() -> Bool {
-  ts_arc1_mvp1_exemplar_derive_violates_holds() && ts_arc1_mvp1_scaffold_row_present_holds()
+test fn ts_arc2_mvp1_conj_exemplar_cutover_holds() -> Bool {
+  ts_arc2_mvp1_exemplar_derive_holds_body()
+    && ts_arc2_mvp1_row_emitted_is_conj_body()
+    && ts_arc2_mvp1_eager_row_round_trip_body()
+}
+
+test fn ts_arc2_mvp1_perturbed_eager_emitted_derive_red_holds() -> Bool {
+  ts_arc2_mvp1_perturbed_row_derive_red_body()
 }
 
 test fn ts_arc1_wave2a_perturbed_eager_emitted_derive_red_holds() -> Bool {
