@@ -14,6 +14,7 @@ import extdeps.version.semver {
   SemVerAlphanumericIdentifier,
   semver_scheme,
   semver_compare,
+  semver_compare_identifier,
   semver_to_version_identity,
   semver_version_label,
 }
@@ -90,6 +91,22 @@ fn w_semver_scheme_equality_compare() -> Bool {
   semver_scheme.compare("1.0.0", "1.0.0") == Equal
 }
 
+// Wire-label lexicographic fallback on opaque VersionIdentity (interim until parse).
+fn w_semver_scheme_wire_label_ordering() -> Bool {
+  semver_scheme.compare("1.0.0", "2.0.0") == Less
+}
+
+// semver.org §11.4.3: numeric identifiers have lower precedence than alphanumeric.
+fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
+  match semver_compare_identifier(
+    a: SemVerNumericIdentifier { value: 1 },
+    b: SemVerAlphanumericIdentifier { label: "alpha" }
+  ) {
+    Less => true
+    _ => false
+  }
+}
+
 fn w_semver_version_label_core() -> Bool {
   semver_version_label(v: semver_1_0_0()) == "1.0.0"
 }
@@ -146,6 +163,8 @@ test fn extdeps_version_semver_witnesses() -> Bool {
     && w_semver_constraint_inhabits_version_constraint()
     && w_identity_distinct_from_constraint()
     && w_semver_scheme_equality_compare()
+    && w_semver_scheme_wire_label_ordering()
+    && w_semver_compare_identifier_numeric_less_than_alphanumeric()
     && w_semver_version_label_core()
     && w_semver_version_label_pre_release()
     && w_semver_version_label_build_ignored_in_compare()
