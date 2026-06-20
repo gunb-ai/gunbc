@@ -2944,8 +2944,7 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
-        let source_root =
-            source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string();
+        let source_root = source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string();
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
@@ -2990,8 +2989,7 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
-        let source_root =
-            source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string();
+        let source_root = source_root_ref_tag_for_path(&rel_forward, source_roots)?.to_string();
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
