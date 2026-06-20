@@ -14,8 +14,10 @@ import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_ci_floor_batches, corpus_runnable
+  gunbc_ci_floor_batches, corpus_runnable,
+  gunbc_ci_floor_breadth, gunbc_ci_floor_spawn_width
 }
+import std.measure { hardware_thread_count_value }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
@@ -100,6 +102,20 @@ fn witness_corpus_skip_node_frontier_enabled() -> Bool {
   }
 }
 
+// Connected relationship: spawn_width is DERIVED from the floor breadth, not tuned.
+// When breadth <= hardware threads (true on the real fleet), spawn_width == breadth —
+// so the host runs the independent layer concurrently, not one-at-a-time.
+fn witness_spawn_width_tracks_breadth() -> Bool {
+  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) == gunbc_ci_floor_breadth()
+}
+
+// Discriminating: the floor is NOT serial. A revert to a constant shard_count (=1) or a
+// supply that collapsed to one thread makes breadth/width 1 → this goes RED.
+fn witness_floor_not_serial() -> Bool {
+  (gunbc_ci_floor_breadth() > 1) &&
+    (hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 1)
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_two_readiness_layers() &&
     witness_compile_root_runs_first() &&
@@ -108,5 +124,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_discovery_scan_dirs_in_plan() &&
     witness_scan_dirs_match_layer_authority() &&
     witness_corpus_has_no_explicit_entries() &&
-    witness_corpus_skip_node_frontier_enabled()
+    witness_corpus_skip_node_frontier_enabled() &&
+    witness_spawn_width_tracks_breadth() &&
+    witness_floor_not_serial()
 }
