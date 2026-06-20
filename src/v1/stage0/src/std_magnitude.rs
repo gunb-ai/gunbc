@@ -10,5 +10,4 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Magnitude(pub std::marker::PhantomData<()>);
+pub type Magnitude = Magnitude;

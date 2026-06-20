@@ -15,13 +15,13 @@ pub fn python_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true", "True".to_string());
-            __m.insert("false", "False".to_string());
-            __m.insert("null", "None".to_string());
-            __m.insert("and", "and".to_string());
-            __m.insert("or", "or".to_string());
-            __m.insert("not", "not ".to_string());
-            __m.insert("div", "//".to_string());
+            __m.insert("true".to_string(), "True".to_string());
+            __m.insert("false".to_string(), "False".to_string());
+            __m.insert("null".to_string(), "None".to_string());
+            __m.insert("and".to_string(), "and".to_string());
+            __m.insert("or".to_string(), "or".to_string());
+            __m.insert("not".to_string(), "not ".to_string());
+            __m.insert("div".to_string(), "//".to_string());
             Rc::new(__m)
         };
     }
@@ -32,13 +32,13 @@ pub fn python_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list", "list[{0}]".to_string());
-            __m.insert("set", "set[{0}]".to_string());
-            __m.insert("optional", "Optional[{0}]".to_string());
-            __m.insert("map", "dict[{0}, {1}]".to_string());
-            __m.insert("free_monoid", "list[{0}]".to_string());
-            __m.insert("partial_function", "dict[{0}, {1}]".to_string());
-            __m.insert("boolean_algebra", "bool".to_string());
+            __m.insert("list".to_string(), "list[{0}]".to_string());
+            __m.insert("set".to_string(), "set[{0}]".to_string());
+            __m.insert("optional".to_string(), "Optional[{0}]".to_string());
+            __m.insert("map".to_string(), "dict[{0}, {1}]".to_string());
+            __m.insert("free_monoid".to_string(), "list[{0}]".to_string());
+            __m.insert("partial_function".to_string(), "dict[{0}, {1}]".to_string());
+            __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };
     }

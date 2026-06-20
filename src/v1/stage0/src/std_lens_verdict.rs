@@ -15,10 +15,10 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LensVerdictLocus {
-    ModuleWholeFile { module_name: String },
+    ModuleWholeFile { module_name: Rc<FreeMonoid<Nat>> },
 }
 impl LensVerdictLocus {
-    pub fn module_name(&self) -> String {
+    pub fn module_name(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             LensVerdictLocus::ModuleWholeFile {
                 module_name: __val, ..
@@ -29,7 +29,7 @@ impl LensVerdictLocus {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LensVerdictDiagnostic {
-    pub reason: String,
+    pub reason: Rc<FreeMonoid<Nat>>,
     pub at: Rc<LensVerdictLocus>,
 }
 

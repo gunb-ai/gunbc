@@ -69,9 +69,10 @@ pub use crate::v1_std_core::{
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
-    is_error_diagnostic, lambda_param_names_at, make_error_node, module_imports, module_items,
-    no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
-    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic, lambda_param_names_at,
+    make_error_node, module_imports, module_items, no_span, param_node_default_value,
+    param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -2111,7 +2112,7 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
     if {
         let mut __found = false;
         for n in names.iter().cloned() {
-            if (n.clone() == ref_name.clone()) {
+            if (n.clone().as_str() == ref_name.clone().as_str()) {
                 __found = true;
                 break;
             }
@@ -2269,16 +2270,10 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parse_results = parsed.parse_results.clone();
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
-        let has_parse_errors = {
-            let mut __found = false;
-            for p in parse_results.clone().iter().cloned() {
-                if (p.error.clone() != None) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
+        let has_parse_errors = parse_results
+            .iter()
+            .cloned()
+            .any(|p: Rc<ParseResult>| p.error.clone() != None);
         if has_parse_errors {
             Rc::new(FrontendResult {
                 graph: None,
@@ -2287,28 +2282,26 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 intern_table: parsed.intern_table.clone(),
             })
         } else {
-            {
-                let modules = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parse_results.clone().iter().cloned() {
-                        __result.push(p.module.clone().clone().unwrap());
-                    }
-                    __result
-                });
-                let source_indices = newline_indices.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
-                        v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
-                    },
-                );
-                let graph = resolve_modules(modules, source_indices);
-                Rc::new(FrontendResult {
-                    graph: Some(graph.clone()),
-                    diagnostics: v1_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
-                    newline_indices: newline_indices.clone(),
-                    intern_table: parsed.intern_table.clone(),
-                })
-            }
+            let modules = Rc::new({
+                let mut __result = Vec::new();
+                for p in parse_results.iter().cloned() {
+                    __result.push(p.module.clone().clone().unwrap());
+                }
+                __result
+            });
+            let source_indices = newline_indices.clone().iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
+                    v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
+                },
+            );
+            let graph = resolve_modules(modules, source_indices);
+            Rc::new(FrontendResult {
+                graph: Some(graph.clone()),
+                diagnostics: v1_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
+                newline_indices: newline_indices.clone(),
+                intern_table: parsed.intern_table.clone(),
+            })
         }
     }
 }
@@ -2352,9 +2345,40 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
     compile_to_resolved_with_options(sources, default_compile_pipeline_options())
 }
 
+/// Discovery-corpus merged resolve: same pipeline as [`compile_to_resolved`], but
+/// advisory-demoted typecheck diagnostics do not nil the typed graph (SCAFFOLD in
+/// `00_core.dag`; consumed by `discover_owned_data_decls`).
+pub fn compile_to_resolved_discovery_corpus_advisory(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+) -> Rc<ResolvedPipelineResult> {
+    compile_to_resolved_with_options_gated(sources, default_compile_pipeline_options(), true)
+}
+
+fn is_resolved_pipeline_typecheck_blocking(
+    diagnostic: Rc<CompilerDiagnostic>,
+    discovery_corpus_advisory_typecheck: bool,
+) -> bool {
+    if !is_error_diagnostic(diagnostic.clone()) {
+        return false;
+    }
+    if discovery_corpus_advisory_typecheck {
+        is_discovery_corpus_blocking_diagnostic(diagnostic)
+    } else {
+        true
+    }
+}
+
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     options: CompilePipelineOptions,
+) -> Rc<ResolvedPipelineResult> {
+    compile_to_resolved_with_options_gated(sources, options, false)
+}
+
+fn compile_to_resolved_with_options_gated(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    options: CompilePipelineOptions,
+    discovery_corpus_advisory_typecheck: bool,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let frontend = front_end_sources(sources);
@@ -2439,7 +2463,10 @@ pub fn compile_to_resolved_with_options(
                 let type_errors = Rc::new({
                     let mut __result = Vec::new();
                     for d in typed_diags.clone().iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
+                        if is_resolved_pipeline_typecheck_blocking(
+                            d.diagnostic.clone(),
+                            discovery_corpus_advisory_typecheck,
+                        ) {
                             __result.push(d);
                         }
                     }
