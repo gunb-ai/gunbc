@@ -46,6 +46,9 @@ enum Commands {
         /// Multi-root index policy: `strict` (default) panics on any cross-root duplicate;
         /// `primary-precedence` keeps the first root authoritative and fills only absent paths
         /// from later dependency-pool roots (opt-in for dual-root dsl compile-clean gate).
+        /// TRANSITIONAL: dissolve-on extdeps.shell de-fork (S2) — single module_path row;
+        /// then remove this knob and rely on strict-only (receipt: dependency_pool_index tests
+        /// for primary-precedence deleted, dsl_compile_clean witness suite green at strict).
         #[arg(long = "dependency-pool-index", default_value = "strict")]
         dependency_pool_index: String,
     },

@@ -4,14 +4,21 @@
 // dependency pool (§3 single authority: dsl first, src/v2 second) and
 // `--dependency-pool-index primary-precedence` (primary root authoritative; pool fills absent
 // paths only — NOT global last-wins). gunbc indexes every .dag under all --source-root flags
-// under all --source-root flags into the module pool, but only compiles entry modules from
+// into the module pool, but only compiles entry modules from
 // the FIRST root (load_sources / Compile in cli_run.rs); later roots are import pools only —
 // adding src/v2 does NOT cold-compile the whole v2 tree, only modules pulled by dsl imports.
 //
 // Also runs:
 //   * perturb RED receipt — planted bad module fails typecheck against the live pools;
 //   * cross-tree GREEN receipt — planted dsl module importing v2.* resolves and compiles;
-//   * dsl-shell primary-precedence receipt — dsl extdeps.shell (shell.Env) wins over v2 overlay.
+//   * dsl-shell primary-precedence receipt — regression guard: last-wins would silently pick
+//     v2 extdeps.shell overlay (no shell.Env) and fail typecheck (§5); not a celebration of
+//     dual authority. dissolve-on: extdeps.shell de-fork (S2) unifies the module_path row.
+//
+// 🟡 gated — feature:CP-GATE-PRIMARY-PRECEDENCE-KNOB — owner: extdeps.shell de-fork (S2 slice).
+// dissolve-on: single extdeps.shell authority (delete dsl row or v2 overlay); drop
+// primary-precedence opt-in and this receipt; strict-only cross-root panic restored.
+// Receipt: run_dsl_shell_primary_precedence_receipt deleted + CI floor green without knob.
 //
 // Both transports are modeled off hand-written `let script = "..."` blobs onto structured
 // `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
@@ -73,8 +80,8 @@ data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn 
 // Planted dsl module that imports v2.* — must compile when pools include src/v2.
 data cross_tree_green_module_source: String = "module test.perturb_compile_clean_cross_tree_green\nimport v2.std.logic { Bool }\nfn probe() -> Bool { True }"
 
-// Discriminating primary-precedence receipt: shell.Env exists only in dsl extdeps.shell (~101 lines);
-// v2 overlay (~34 lines) has shell.Exec only — last-wins would misresolve and fail typecheck.
+// Discriminating primary-precedence receipt: proves dsl extdeps.shell row is selected when
+// shell.Env is required — last-wins on extdeps.shell would misresolve (§5 silent-wrong-answer).
 data dsl_shell_primary_module_source: String = "module test.perturb_compile_clean_dsl_shell_primary\nimport extdeps.shell\nfn probe() -> String? {\n  shell.Env.Get(name: \"PATH\")\n}"
 
 // RED receipt: plant the fresh-name unimported bad module; resolve against witness_layer_roots
