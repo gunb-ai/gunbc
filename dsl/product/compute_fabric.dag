@@ -568,11 +568,12 @@ fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> Hard
   }
 }
 
-// --- §1.1b allocation classes + admit (compute-fabric allocator plan step 1) --
+// --- §1.1b allocation classes + admit (compute-fabric allocator DESTINATION) --
 //
-// Fixed-size allocation classes replace hand-tuned per-consumer byte constants (§3).
-// admit() is the Σ(live) + request ≤ grantable invariant — fail-closed refuse on
-// overflow (§5). Step 4 routes dashboard/docker through this; step 2 wires CI.
+// Fixed-size allocation classes + admit() model the Σ(live) + request ≤ grantable
+// invariant (§5). DESTINATION for allocator plan step 4 (dashboard/docker routing) —
+// NOT wired into CI spawn_width today (#5375 memory-aware width stays authoritative;
+// host containment = cgroup MemoryMax on system-actions-runner.slice).
 
 type AllocationClass =
     Small    // 2 hardware threads · 2 GiB
