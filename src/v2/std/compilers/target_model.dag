@@ -53,6 +53,7 @@ import v2.std.compilers.lexing {
   LexPattern,
   LexRule,
   LexRules,
+  LexicalPhrase,
   LiteralPattern,
   ModeledLexRules,
   TokenRule,
@@ -252,6 +253,22 @@ fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
     FixedToken { token_class: c } => c
     BoundToken { token_class: c, binding: _ } => c
   }
+}
+
+// Projection of a LexicalPhrase (lexing.dag) to its concrete-token sequence — the grammar/
+// serialize side of the same single-authority carrier, homed here because it is where
+// ConcreteSyntaxToken lives (the import arrow runs target_model -> lexing, never back). Each
+// span is a FixedToken on its token_class: a phrase whose spelling is literal has no
+// binding-resolved (BoundToken) span, so this projection is total over today's LexicalPhrase.
+// A binding-carrying span / BoundToken projection is the T-6/bound-word migration extension.
+fn phrase_to_fixed_concrete_tokens(p: LexicalPhrase) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: p.spans,
+    empty: Empty,
+    cons: fn(acc, s) {
+      list_snoc_item(xs: acc, item: FixedToken { token_class: s.token_class })
+    }
+  )
 }
 
 // Per-target lex + binding-spelling lookup (tokens/layout authority for translate serialize).
