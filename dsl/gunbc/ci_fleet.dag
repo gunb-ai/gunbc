@@ -32,7 +32,7 @@ import product.compute_fabric {
   placement_floor_memory_budget_bytes,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
-import std.measure { byte_size, hertz, hardware_thread_count, HardwareThreadCount }
+import std.measure { byte_size, byte_size_count, hertz, hardware_thread_count, hardware_thread_count_value, HardwareThreadCount }
 import std.os.types {
   OperatingSystemSurface,
   Linux,
@@ -130,13 +130,34 @@ fn gunbc_ci_floor_placement_supply() -> PlacementSupplyRow? {
   offer_placement_supply_row(offer: gunbc_ci_fleet_offer)
 }
 
-// Host spawn-width = min(caller's corpus breadth, this fleet's hardware threads).
-// No hand-tuned width: add a gate to the spec → breadth re-derives; change the host →
-// supply re-derives; spawn_width follows from both with zero edits here.
+// Host spawn-width = min(corpus breadth, hardware threads, memory_budget / per-shard peak).
+// No hand-tuned width: add a gate to the spec → breadth re-derives; change the host → supply
+// re-derives; raise the per-shard memory → the memory bound re-derives; spawn_width follows
+// from all three via placement_spawn_width with zero edits here. The memory term is what
+// keeps batch-2 from OOM-killing as the corpus grows (the CPU-only bound was memory-blind).
 fn ci_fleet_floor_spawn_width(corpus_shard_count: Int) -> HardwareThreadCount {
   match gunbc_ci_floor_placement_supply() {
     Absent => hardware_thread_count(1)
     Present { value: row } =>
       placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count))
+  }
+}
+
+// §5 OOM oracle: the chosen floor width times the per-shard peak memory must fit the
+// conservative memory budget — i.e. batch-2's concurrent memory peak stays under the cgroup
+// MemoryMax. Discriminating: a memory-blind width (= min(breadth, threads), ignoring the
+// memory term) would exceed the budget and flip this false. Absent supply / Absent memory
+// demand are vacuously safe (no concurrent memory pressure to bound).
+fn ci_fleet_floor_spawn_fits_memory_budget(corpus_shard_count: Int) -> Bool {
+  match gunbc_ci_floor_placement_supply() {
+    Absent => true
+    Present { value: row } =>
+      match gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count).resources.memory {
+        Absent => true
+        Present { value: req } => {
+          let width = hardware_thread_count_value(t: ci_fleet_floor_spawn_width(corpus_shard_count: corpus_shard_count))
+          width * byte_size_count(req.min_bytes) <= placement_floor_memory_budget_bytes(supply: row)
+        }
+      }
   }
 }

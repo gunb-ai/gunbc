@@ -499,19 +499,19 @@ fn placement_floor_memory_budget_bytes(supply: PlacementSupplyRow) -> Int {
   byte_size_count(supply.ram_bytes) / 2
 }
 
-// Memory-bounded width: how many concurrent units fit under the memory budget, each peaking
-// at the demand's per-unit memory requirement. Absent memory demand => no memory bound (the
-// hardware-thread count is an inert ceiling). per-unit guarded > 0 (never divide by zero);
-// a budget under one unit still admits 1 (fail-closed forward progress, never 0 width).
-fn placement_memory_width(supply: PlacementSupplyRow, demand: WorkDemand) -> Int {
-  let cores = hardware_thread_count_value(t: supply.hardware_threads)
+// Memory width BOUND: how many concurrent units fit under the memory budget, each peaking at
+// the demand's per-unit memory requirement. `none` = no memory bound (Absent demand, or a
+// degenerate non-positive per-unit guarded against divide-by-zero). A budget under one unit
+// still admits 1 (fail-closed forward progress, never 0 width). Returned as `Int?` so the
+// "no bound" case never has to unify with the Int division result.
+fn placement_memory_width_bound(supply: PlacementSupplyRow, demand: WorkDemand) -> Int? {
   match demand.resources.memory {
-    Absent => cores
+    Absent => none
     Present { value: req } => {
       let per_unit = byte_size_count(req.min_bytes)
-      if per_unit <= 0 { cores } else {
+      if per_unit <= 0 { none } else {
         let fits = placement_floor_memory_budget_bytes(supply: supply) / per_unit
-        if fits < 1 { 1 } else { fits }
+        Present { value: if fits < 1 { 1 } else { fits } }
       }
     }
   }
@@ -533,8 +533,10 @@ fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> Hard
       hardware_threads: supply.hardware_threads
     )
   )
-  let mem_width = placement_memory_width(supply: supply, demand: demand)
-  hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
+  match placement_memory_width_bound(supply: supply, demand: demand) {
+    Absent => hardware_thread_count(count: cpu_width)
+    Present { value: mem_width } => hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
+  }
 }
 
 // --- §1.2 demand -------------------------------------------------------------
