@@ -124,7 +124,7 @@ fn infer_receipt_runtime_value() -> RuntimeValue {
 fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_receipt_extdeps,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

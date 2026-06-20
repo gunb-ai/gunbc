@@ -1,0 +1,62 @@
+// gunbc/tools/bmc_read_telemetry.dag — runnable: poll BMC Redfish telemetry (read-only).
+//
+// Reaches the BMC at $BMC_HOST using rotated credentials from $BMC_NETRC_FILE (0600
+// netrc — password MUST NOT ride curl argv). GETs Systems/system + Chassis sensors.
+//
+// Run (management network; BMC IP from ctrl operator_fleet):
+//   BMC_HOST=<srvN-bmc-ip> BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
+//     --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
+//
+// OpenBMC ALTRAD8UD: Chassis Power/Thermal are empty; sensor collection carries power/temp.
+// Factory first-contact (unrotated) remains gunbc.tools.bmc_first_contact.
+
+module gunbc.tools.bmc_read_telemetry
+
+import extdeps.shell
+import extdeps.diagnostic.redfish
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
+import std.types { NonEmptyStr, String }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+func bmc_read_telemetry() -> ProcessExit
+  uses net: Network
+{
+  host = shell.Env.Get(name: "BMC_HOST")
+  netrc = shell.Env.Get(name: "BMC_NETRC_FILE")
+  match host.value {
+    Absent => return exit_failure(reason: "BMC_HOST is not set")
+    Present { value: host_v } =>
+      if host_v == "" {
+        return exit_failure(reason: "BMC_HOST is empty")
+      } else {
+        match netrc.value {
+          Absent => return exit_failure(reason: "BMC_NETRC_FILE is not set (rotated BMC cred)")
+          Present { value: netrc_v } =>
+            if netrc_v == "" {
+              return exit_failure(reason: "BMC_NETRC_FILE is empty")
+            } else {
+              let bmc = host_v as NonEmptyStr
+              let netrc_file = netrc_v as NonEmptyStr
+              let chassis = asrock_altrad8ud_redfish_chassis_id
+
+              system_resp = redfish.Http.GetSystemWithNetrc(bmc_host: bmc, netrc_file: netrc_file)
+              if system_resp.success == false {
+                return exit_failure(reason: system_resp.body)
+              }
+
+              sensors_resp = redfish.Http.GetChassisSensors(
+                bmc_host: bmc,
+                chassis_id: chassis,
+                netrc_file: netrc_file
+              )
+              if sensors_resp.success == false {
+                return exit_failure(reason: sensors_resp.body)
+              }
+
+              return ExitSuccess
+            }
+        }
+      }
+  }
+}
