@@ -301,6 +301,64 @@ fn cwc_translate_project_disj_accepts(src: String, target: TargetModel) -> Bool 
   }
 }
 
+fn cwc_inferred_review_disj_present() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cwc_projection_for_review_disj_accepts(target: TargetModel) -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_for_translate(
+            tree: tree,
+            target: target,
+            node: disj
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cwc_serialize_review_disj_accepts(target: TargetModel) -> Bool {
+  match cwc_serialized_sum_text(src: cwc_src_cwc_module, target: target) {
+    "" => false
+    _ => true
+  }
+}
+
+test fn cwc_translate_project_disj_accepts_holds() -> Bool {
+  cwc_translate_project_disj_accepts(
+    src: cwc_src_cwc_module,
+    target: rust_wire_serde_screaming_snake_target
+  )
+}
+
+test fn cwc_inferred_review_disj_present_holds() -> Bool {
+  cwc_inferred_review_disj_present()
+}
+
+test fn cwc_projection_for_review_disj_accepts_holds() -> Bool {
+  cwc_projection_for_review_disj_accepts(
+    target: rust_wire_serde_screaming_snake_target
+  )
+}
+
+test fn cwc_serialize_review_disj_accepts_holds() -> Bool {
+  cwc_serialize_review_disj_accepts(target: rust_wire_serde_screaming_snake_target)
+}
+
 test fn cwc_translate_serde_rename_all_holds() -> Bool {
   let text = cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
