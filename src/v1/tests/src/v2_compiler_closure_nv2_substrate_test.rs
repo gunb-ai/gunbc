@@ -486,6 +486,101 @@ fn gap4_single_module_discriminator() {
 }
 
 #[test]
+#[ignore = "gap4 slice-only prefix binary-search (7 modules, faster locate)"]
+fn probe_gap4_slice_ingest_first_reject() {
+    let ws = workspace_root();
+    let v2_root = ws.join("src/v2").to_string_lossy().to_string();
+    let entry = ws.join(COMPILER_ENTRY);
+    let all = discover_source_root_reads_for_entry(
+        &[v2_root],
+        entry.to_str().expect("entry utf8"),
+        &["host_source_root_ingest_manifest.dag".to_string()],
+    )
+    .expect("discover scoped compiler closure reads");
+    let normalize_path = |path: &str| -> String {
+        let forward = path.replace('\\', "/");
+        if let Ok(stripped) = std::path::Path::new(&forward).strip_prefix(&ws) {
+            stripped.to_string_lossy().replace('\\', "/")
+        } else {
+            forward
+        }
+    };
+    let records: Vec<_> = REPRESENTATIVE_SLICE_PATHS
+        .iter()
+        .map(|path| {
+            let mut rec = all
+                .iter()
+                .find(|r| normalize_path(&r.file_path) == *path)
+                .unwrap_or_else(|| panic!("slice path not in compiler closure: {path}"))
+                .clone();
+            rec.file_path = (*path).to_string();
+            rec
+        })
+        .collect();
+
+    let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
+    let admission =
+        parse_source_root_entry_admission(&entry_source).expect("parse entry admission");
+
+    let temp = unique_temp_dir("gap4-slice-probe");
+    fs::create_dir_all(&temp).expect("temp dir");
+    let manifest_path = temp.join("manifest.dag");
+
+    let mut lo = 1usize;
+    let mut hi = records.len();
+    let mut failing_idx = None;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        emit_source_root_ingest_manifest(&manifest_path, &records[..mid], Some(&admission))
+            .expect("emit prefix manifest");
+        eprintln!(
+            "gap4 slice probe: testing prefix {mid}/{} ({}) ...",
+            records.len(),
+            records[mid - 1].file_path
+        );
+
+        let manifest_dir = manifest_path.parent().expect("manifest parent");
+        let ctx = nv2_eval_context(manifest_dir).expect("resolve nv2 gate ctx");
+        let pass = matches!(
+            run_claim(&ctx, "compiler_closure_scoped_ingest_parses_holds"),
+            ClaimOutcome::Pass
+        );
+        eprintln!(
+            "gap4 slice probe: prefix {mid} => {}",
+            if pass { "PASS" } else { "FAIL" }
+        );
+
+        if pass {
+            lo = mid + 1;
+        } else {
+            failing_idx = Some(mid - 1);
+            hi = mid - 1;
+        }
+    }
+
+    let report = match failing_idx {
+        None => format!(
+            "gap4 slice probe: all {} slice prefixes passed (unexpected)",
+            records.len()
+        ),
+        Some(idx) => {
+            let failing = &records[idx];
+            format!(
+                "gap4 slice ingest first Reject at fold index {idx} (prefix {}):\n  file_path: {}\n  module_path: {}\n",
+                idx + 1,
+                failing.file_path,
+                failing.module_path,
+            )
+        }
+    };
+    eprintln!("{report}");
+    if failing_idx.is_none() {
+        panic!("{report}");
+    }
+    panic!("{report}");
+}
+
+#[test]
 #[ignore = "gap4 probe — prefix binary-search first scoped-ingest Reject (manual)"]
 fn probe_gap4_scoped_ingest_first_reject() {
     let ws = workspace_root();
