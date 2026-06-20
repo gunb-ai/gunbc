@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, list_append, list_snoc_item, list_tail }
+import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold, fold_list, is_empty, list_append, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -214,25 +214,21 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
 }
 
 fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
-  match fold_list(
-    xs: type_decl.children,
-    empty: optional_absent(),
-    cons: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match e.label {
-            Named { name: sym } =>
-              if sym == ^dag_surface_type_decl {
-                acc
-              } else {
-                optional_present(value: sym)
-              }
-            Positional => acc
-          }
-      }
+  match fold(type_decl.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Named { name: sym } =>
+            if sym == ^dag_surface_type_decl {
+              acc
+            } else {
+              optional_present(value: sym)
+            }
+          Positional => acc
+        }
     }
-  ) {
+  }) {
     Present { value: sym } => optional_present(value: sym)
     Absent =>
       match tepe_production_captured_optional(node: type_decl) {
@@ -475,15 +471,7 @@ fn tepe_contract_row_for_disj_anchor(
   )
   match matched {
     Present { value: row } => optional_present(value: row)
-    Absent =>
-      match list_at_optional(xs: rows, index: 0) {
-        Absent => optional_absent()
-        Present { value: only_row } =>
-          match list_tail(xs: rows) {
-            TailAbsent => optional_present(value: only_row)
-            TailFound { tail: _ } => optional_absent()
-          }
-      }
+    Absent => optional_absent()
   }
 }
 
@@ -808,7 +796,8 @@ fn tepe_collect_data_decl_nodes(root: Node) -> List<Node> {
       init: fn(node) {
         if tepe_node_has_surface(root: node, surface: ^dag_surface_data_decl) {
           match tepe_data_decl_type_and_expr_optional(decl: node) {
-            Present { value: _ } => [node]
+            Present { value: _ } =>
+              Cons { head: node, tail: Empty }
             Absent => Empty
           }
         } else {
