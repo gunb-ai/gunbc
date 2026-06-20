@@ -466,6 +466,47 @@ fn tepe_subtree_contains_disj_anchor(root: Node, disj_anchor: Node) -> Bool {
   )
 }
 
+fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        tepe_disj_in_type_decl_candidate(candidate: node, enum_sym: enum_sym)
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_disj_in_type_decl_candidate(candidate: Node, enum_sym: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: candidate) {
+    Present { value: surface } =>
+      if surface == ^dag_surface_type_decl {
+        tepe_disj_in_type_decl_kernel(type_decl: candidate, enum_sym: enum_sym)
+      } else {
+        optional_absent()
+      }
+    Absent => tepe_disj_in_type_decl_kernel(type_decl: candidate, enum_sym: enum_sym)
+  }
+}
+
+fn tepe_disj_in_type_decl_kernel(type_decl: Node, enum_sym: Symbol) -> Optional<Node> {
+  match tepe_type_decl_name_optional(type_decl: type_decl) {
+    Present { value: name } =>
+      if name == enum_sym {
+        tepe_disj_in_subtree(node: type_decl)
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn tepe_enum_sym_if_type_decl_contains_disj_kernel(
   type_decl: Node,
   disj_hash: Hash

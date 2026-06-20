@@ -37,8 +37,7 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_lookup_contract_row,
   tepe_contract_row_for_disj_anchor,
   tepe_enum_sym_for_disj,
-  tepe_type_decl_name_optional,
-  tepe_disj_in_subtree
+  tepe_disj_for_enum_sym_optional
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -254,28 +253,7 @@ fn cwc_optional_review_event_disj(n: Node) -> Optional<Node> {
 }
 
 fn cwc_optional_disj_for_enum_sym(root: Node, enum_sym: Symbol) -> Optional<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match tepe_type_decl_name_optional(type_decl: node) {
-          Present { value: name } =>
-            if name == enum_sym {
-              tepe_disj_in_subtree(node: node)
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
-      }
-    }
-  )
+  tepe_disj_for_enum_sym_optional(root: root, enum_sym: enum_sym)
 }
 
 fn cwc_translate_project_disj_accepts(src: String, target: TargetModel) -> Bool {
