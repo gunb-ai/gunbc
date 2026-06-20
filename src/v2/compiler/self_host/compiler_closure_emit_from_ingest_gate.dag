@@ -1,23 +1,115 @@
 // Scope: N_v2 substrate gate — emit_compiler_import_closure_from_ingest on scoped
 //   host manifest overlay (v2 own emitter via emit_for_target).
 // Status: NOT auto-enrolled (no test fn); run via scripts/v2-compiler-closure-nv2-gate.sh only.
+// Roots: gunbc.ci_layer_roots.witness_layer_roots (carrier v2.compiler.self_host.closure_witness_layer_roots).
 
 module v2.test.self_host.compiler_closure_emit_from_ingest_gate
 
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.extdeps.languages.rust { rust_mvp1_target_model }
-import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.algebra { fold_list, length }
+import v2.std.diagnostic {
+  Accepted,
+  Locus,
+  Rejected,
+}
+import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
 import v2.std.text { String, string_is_empty }
 import v2.test.workflow.host_source_root_ingest_manifest {
   host_compiler_closure_admission,
   host_source_root_ingest,
   host_source_root_ingest_coverage_receipt
+}
+
+
+type Gap4IngestProbeState
+  = Gap4IngestProbePending
+  | Gap4IngestProbeFound {
+      path: String,
+      reason: Symbol,
+      stage: Symbol,
+      at: Locus,
+    }
+
+
+fn gap4_ingest_probe_step(
+  state: Gap4IngestProbeState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Gap4IngestProbeState {
+  match state {
+    Gap4IngestProbeFound { path: _, reason: _, stage: _, at: _ } => state
+    Gap4IngestProbePending =>
+      match tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
+        Rejected { diagnostics: d } =>
+          Gap4IngestProbeFound {
+            path: read.artifact.file_path,
+            reason: d.head.reason,
+            stage: ^tokenize,
+            at: d.head.at,
+          }
+        Accepted { value: ts, diagnostics: _ } =>
+          match parse_module(tokens: ts, grammar: lm.grammar) {
+            Rejected { diagnostics: d } =>
+              Gap4IngestProbeFound {
+                path: read.artifact.file_path,
+                reason: d.head.reason,
+                stage: ^parse,
+                at: d.head.at,
+              }
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: d } =>
+                  Gap4IngestProbeFound {
+                    path: read.artifact.file_path,
+                    reason: d.head.reason,
+                    stage: ^normalize,
+                    at: d.head.at,
+                  }
+                Accepted { value: _, diagnostics: _ } => Gap4IngestProbePending
+              }
+          }
+      }
+  }
+}
+
+
+// Located gap-4 diagnostic: first scoped-ingest read that rejects tokenize→parse→normalize.
+// Run via nv2 gate entry (host manifest overlay); NOT the standalone fixture entry (smaller
+// resolve closure — host_source_root_ingest stays stub-shaped → fold_list type error).
+fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
+  fold_list(
+    xs: host_source_root_ingest,
+    empty: Gap4IngestProbePending,
+    cons: fn(state, read) {
+      gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model_wave1())
+    }
+  )
+}
+
+
+fn gap4_probe_all_ingest_reads_accept() -> Bool {
+  match gap4_probe_first_ingest_reject() {
+    Gap4IngestProbePending => true
+    Gap4IngestProbeFound { path: _, reason: _, stage: _, at: _ } => false
+  }
+}
+
+
+fn gap4_probe_found_file_path() -> String {
+  match gap4_probe_first_ingest_reject() {
+    Gap4IngestProbePending => ""
+    Gap4IngestProbeFound { path: p, reason: _, stage: _, at: _ } => p
+  }
 }
 
 

@@ -49,8 +49,12 @@ type Behavior
 // resolve_type_node: minimal Rust bridge (compiler Disj → substrate Node Value); dissolves when
 // v2 gains compile-graph access. Enumeration lives in v2.std.node_query (node_labeled_child_edges).
 // syntactic_coproduct_arm_keys: irreducible raw-source scan (Path 3 independence from parse+resolve).
-// 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival: v2
-// compile-graph access replaces resolve_type_node intercept; forbidden: parallel enumeration in Rust.
+// 🟡 gated — feature:coproduct-reflection-bridge
+// origin: gunbc#4863 (R-reflect Phase-2a) — the PR that INTRODUCED this bridge; provenance only,
+//   NOT the dissolve trigger (a scaffold cannot dissolve on its own birth PR).
+// dissolve-on-arrival: gunbc#5364 — v2 self-host gains compile-graph access (a corpus-as-node
+//   handle); that replaces the resolve_type_node intercept with a pure .dag walk over the resolved
+//   graph. forbidden: parallel enumeration in Rust.
 fn resolve_type_node(type_name: Symbol) -> Node {
   resolve_type_node(type_name: type_name)
 }

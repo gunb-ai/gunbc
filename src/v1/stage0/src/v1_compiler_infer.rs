@@ -5607,6 +5607,100 @@ pub fn record_lit_alias_struct_fields(
     }
 }
 
+pub fn record_lit_construction_field_names(
+    type_name: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Vec<String>>> {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        match lookup_type_by_name(scope.type_env.clone(), type_name) {
+            Some(decl) => {
+                if ((((decl.params.clone().len() as i64) == 0)
+                    && (decl.connective.clone() == Connective::Conj))
+                    && ((decl.children.clone().len() as i64) > 0))
+                {
+                    Some(Rc::new({
+                        let mut __result = Vec::new();
+                        for f in decl.children.clone().iter().cloned() {
+                            __result.push(authored_name_at(si.clone(), f.clone()));
+                        }
+                        __result
+                    }))
+                } else {
+                    None
+                }
+            }
+            None => None,
+        }
+    }
+}
+
+pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<InferScope>) -> bool {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        {
+            let mut __found = false;
+            for binding in Rc::new(v1_rt::map_values(&scope.type_env.clone().bindings.clone()))
+                .iter()
+                .cloned()
+            {
+                if {
+                    let node = binding.resolved.clone();
+                    if (node.connective.clone() == Connective::Disj) {
+                        {
+                            let mut __found = false;
+                            for arm in node.children.clone().iter().cloned() {
+                                if if (authored_name_at(si.clone(), arm.clone()).as_str()
+                                    == type_name.clone().as_str())
+                                {
+                                    {
+                                        let ea = expand_type_for_field_access(
+                                            arm.clone(),
+                                            scope.type_env.clone(),
+                                            scope.module_name.clone(),
+                                        );
+                                        let fields = if (ea.connective.clone() == Connective::Conj)
+                                        {
+                                            ea.children.clone()
+                                        } else {
+                                            arm.children.clone()
+                                        };
+                                        {
+                                            let mut __found = false;
+                                            for f in fields.clone().iter().cloned() {
+                                                if (authored_name_at(si.clone(), f.clone())
+                                                    .as_str()
+                                                    == field.clone().as_str())
+                                                {
+                                                    __found = true;
+                                                    break;
+                                                }
+                                            }
+                                            __found
+                                        }
+                                    }
+                                } else {
+                                    false
+                                } {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }
+                    } else {
+                        false
+                    }
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn infer_record_lit(
     type_name: Rc<FreeMonoid<Nat>>,
     field_inits: Rc<Vec<Rc<Node>>>,
@@ -5654,6 +5748,14 @@ pub fn infer_record_lit(
                 },
             },
         };
+        let construction_field_names = match type_name.clone() {
+            Some(tn) => record_lit_construction_field_names(tn.clone(), scope.clone()),
+            None => None,
+        };
+        let tn_str = match type_name.clone() {
+            Some(tn) => tn.clone(),
+            None => "".to_string(),
+        };
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
             for fi in field_inits.iter().cloned() {
@@ -5662,6 +5764,36 @@ pub fn infer_record_lit(
                         fi.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     );
+                    let unknown_field_diags = match construction_field_names.clone() {
+                        Some(names) => {
+                            if ({
+                                let mut __found = false;
+                                for n in names.clone().iter().cloned() {
+                                    if (n.clone().as_str() == fi_name.clone().as_str()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } || field_in_any_variant_named(
+                                tn_str.clone(),
+                                fi_name.clone(),
+                                scope.clone(),
+                            )) {
+                                Rc::new(vec![])
+                            } else {
+                                Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::FieldNotFound {
+                                        field: fi_name.clone(),
+                                        type_name: tn_str.clone(),
+                                        span: fi.span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
+                        }
+                        None => Rc::new(vec![]),
+                    };
                     let field_expected = match Rc::new({
                         let mut __result = Vec::new();
                         for sf in struct_fields.clone().iter().cloned() {
@@ -5737,7 +5869,10 @@ pub fn infer_record_lit(
                             node_name_span(fi.clone()),
                         ),
                         infer_result: ar.clone(),
-                        diagnostics: v1_rt::concat(ar_diags.clone(), field_type_diags.clone()),
+                        diagnostics: v1_rt::concat(
+                            v1_rt::concat(ar_diags.clone(), field_type_diags.clone()),
+                            unknown_field_diags.clone(),
+                        ),
                     })
                 });
             }

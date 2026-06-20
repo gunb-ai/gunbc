@@ -24,13 +24,15 @@ import product.compute_fabric {
   Dram,
   WorkDemand,
   ResourceEnvelope,
+  MemoryRequirement,
   IsolationRequirement,
   IndependentShards,
   offer_placement_supply_row,
   placement_spawn_width,
+  placement_floor_memory_budget_bytes,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
-import std.measure { byte_size, hertz, hardware_thread_count, HardwareThreadCount }
+import std.measure { byte_size, byte_size_count, hertz, hardware_thread_count, hardware_thread_count_value, HardwareThreadCount }
 import std.os.types {
   OperatingSystemSurface,
   Linux,
@@ -58,7 +60,12 @@ data gunbc_ci_host: ComputeHost = ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
-  memory: [MemoryDevice { capacity: byte_size(274877906944), memory_kind: Dram, bandwidth: none }],
+  // 125 GiB measured on the real fleet host (Ampere Altra Max M128, 1 NUMA node). The prior
+  // 256 GiB was a stub; the memory-aware spawn-width bound (placement_spawn_width) needs a
+  // real RAM figure or it cannot back fan-out off before the cgroup OOM. CPU thread count
+  // (catalog) is still the 64-thread stub — corrected with the ctrl fleet grounding; the
+  // memory bound dominates the floor width regardless, so it is not load-bearing here.
+  memory: [MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],
 }
@@ -92,20 +99,28 @@ fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
 
-// Phase 1: corpus as IndependentShards WorkDemand (degenerate shard_count=1 today).
-fn gunbc_ci_floor_corpus_work_demand() -> WorkDemand {
+// Corpus parallel breadth is the CALLER's fact: the floor plan derives it from the
+// single-authority spec (gates + corpus cardinality), so it is NOT a tuned constant.
+// This keeps the §3 split honest — demand = the work (floor plan), supply = the fleet.
+fn gunbc_ci_floor_corpus_work_demand(corpus_shard_count: Int) -> WorkDemand {
   WorkDemand {
     resources: ResourceEnvelope {
       cpu: none,
       gpu: none,
-      memory: none,
+      // Per-shard peak resolve memory. Grounded in the deterministic floor-OOM evidence
+      // (eager-boar-790, 3 runs of a grown corpus at width=7): srv2's ~87.6 GiB cgroup cap
+      // passes 7 concurrent ~2900-item resolves only by a thin margin (~12.5 GiB/unit), and
+      // srv1's ~65.6 GiB cap OOM-kills (exit 137). 14 GiB/unit carries headroom for corpus
+      // growth; the memory-aware width then floors batch-2 below the OOM ceiling on both
+      // hosts. Grounds-tighter when a peak-RSS probe per resolve lands.
+      memory: Present { value: MemoryRequirement { min_bytes: byte_size(15032385536) } },
       storage: none,
       network: none,
     },
     os: none,
     isolation: IsolationRequirement { boundary: PerJobFilesystem },
     toolchains: [],
-    parallelism: IndependentShards { shard_count: 1 },
+    parallelism: IndependentShards { shard_count: corpus_shard_count },
     data_locality: [],
     effects: [],
   }
@@ -115,11 +130,34 @@ fn gunbc_ci_floor_placement_supply() -> PlacementSupplyRow? {
   offer_placement_supply_row(offer: gunbc_ci_fleet_offer)
 }
 
-// Host spawn-width authority for the CI fleet offer + corpus WorkDemand.
-fn ci_fleet_floor_spawn_width() -> HardwareThreadCount {
+// Host spawn-width = min(corpus breadth, hardware threads, memory_budget / per-shard peak).
+// No hand-tuned width: add a gate to the spec → breadth re-derives; change the host → supply
+// re-derives; raise the per-shard memory → the memory bound re-derives; spawn_width follows
+// from all three via placement_spawn_width with zero edits here. The memory term is what
+// keeps batch-2 from OOM-killing as the corpus grows (the CPU-only bound was memory-blind).
+fn ci_fleet_floor_spawn_width(corpus_shard_count: Int) -> HardwareThreadCount {
   match gunbc_ci_floor_placement_supply() {
     Absent => hardware_thread_count(1)
     Present { value: row } =>
-      placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand())
+      placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count))
+  }
+}
+
+// §5 OOM oracle: the chosen floor width times the per-shard peak memory must fit the
+// conservative memory budget — i.e. batch-2's concurrent memory peak stays under the cgroup
+// MemoryMax. Discriminating: a memory-blind width (= min(breadth, threads), ignoring the
+// memory term) would exceed the budget and flip this false. Absent supply / Absent memory
+// demand are vacuously safe (no concurrent memory pressure to bound).
+fn ci_fleet_floor_spawn_fits_memory_budget(corpus_shard_count: Int) -> Bool {
+  match gunbc_ci_floor_placement_supply() {
+    Absent => true
+    Present { value: row } =>
+      match gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count).resources.memory {
+        Absent => true
+        Present { value: req } => {
+          let width = hardware_thread_count_value(t: ci_fleet_floor_spawn_width(corpus_shard_count: corpus_shard_count))
+          width * byte_size_count(req.min_bytes) <= placement_floor_memory_budget_bytes(supply: row)
+        }
+      }
   }
 }
