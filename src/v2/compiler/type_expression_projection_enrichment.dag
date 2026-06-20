@@ -34,6 +34,7 @@ import v2.std.logic { Bool }
 import v2.std.node {
   Disj,
   Edge,
+  Hash,
   Node,
   NodeFold,
   Symbol,
@@ -465,24 +466,57 @@ fn tepe_subtree_contains_disj_anchor(root: Node, disj_anchor: Node) -> Bool {
   )
 }
 
+fn tepe_enum_sym_if_type_decl_contains_disj_kernel(
+  type_decl: Node,
+  disj_hash: Hash
+) -> Optional<Symbol> {
+  match tepe_type_decl_name_optional(type_decl: type_decl) {
+    Present { value: enum_sym } =>
+      match tepe_disj_in_subtree(node: type_decl) {
+        Present { value: disj } =>
+          if content_hash(n: disj) == disj_hash {
+            optional_present(value: enum_sym)
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn tepe_enum_sym_if_type_decl_contains_disj(
+  candidate: Node,
+  disj_hash: Hash
+) -> Optional<Symbol> {
+  match parse_production_emitted_identity_optional(node: candidate) {
+    Present { value: surface } =>
+      if surface == ^dag_surface_type_decl {
+        tepe_enum_sym_if_type_decl_contains_disj_kernel(
+          type_decl: candidate,
+          disj_hash: disj_hash
+        )
+      } else {
+        optional_absent()
+      }
+    Absent =>
+      tepe_enum_sym_if_type_decl_contains_disj_kernel(
+        type_decl: candidate,
+        disj_hash: disj_hash
+      )
+  }
+}
+
 fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
+  let disj_hash = content_hash(n: disj_anchor)
   fold_node(
     n: root,
     algebra: NodeFold {
       init: fn(node) {
-        if tepe_node_has_surface(root: node, surface: ^dag_surface_module) {
-          optional_absent()
-        } else {
-          match tepe_type_decl_name_optional(type_decl: node) {
-            Present { value: enum_sym } =>
-              if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
-                optional_present(value: enum_sym)
-              } else {
-                optional_absent()
-              }
-            Absent => optional_absent()
-          }
-        }
+        tepe_enum_sym_if_type_decl_contains_disj(
+          candidate: node,
+          disj_hash: disj_hash
+        )
       },
       step: fn(acc, _edge, child_acc) {
         match acc {

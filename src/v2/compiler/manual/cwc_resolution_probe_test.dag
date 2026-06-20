@@ -36,7 +36,9 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_disj_form_from_catalog,
   tepe_lookup_contract_row,
   tepe_contract_row_for_disj_anchor,
-  tepe_enum_sym_for_disj
+  tepe_enum_sym_for_disj,
+  tepe_type_decl_name_optional,
+  tepe_disj_in_subtree
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -256,18 +258,14 @@ fn cwc_optional_disj_for_enum_sym(root: Node, enum_sym: Symbol) -> Optional<Node
     n: root,
     algebra: NodeFold {
       init: fn(node) {
-        match node.kind {
-          TypeNode { connective: Disj } =>
-            match tepe_enum_sym_for_disj(root: root, disj_anchor: node) {
-              Present { value: sym } =>
-                if sym == enum_sym {
-                  optional_present(value: node)
-                } else {
-                  optional_absent()
-                }
-              Absent => optional_absent()
+        match tepe_type_decl_name_optional(type_decl: node) {
+          Present { value: name } =>
+            if name == enum_sym {
+              tepe_disj_in_subtree(node: node)
+            } else {
+              optional_absent()
             }
-          _ => optional_absent()
+          Absent => optional_absent()
         }
       },
       step: fn(acc, _edge, child_acc) {
@@ -1068,6 +1066,32 @@ fn cwc_sg2_sum_serialized_text() -> String {
 
 test fn cwc_sum_leading_tokens_regression_byte_unchanged() -> Bool {
   cwc_sg2_sum_serialized_text() == cwc_expected_sum_regression_text
+}
+
+test fn cwc_diag_review_disj_present_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_disj_for_enum_sym(root: tree.root, enum_sym: ^ReviewEvent) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_enum_sym_review_resolves_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_disj_for_enum_sym(root: tree.root, enum_sym: ^ReviewEvent) {
+        Present { value: disj } =>
+          match tepe_enum_sym_for_disj(root: tree.root, disj_anchor: disj) {
+            Present { value: sym } => sym == ^ReviewEvent
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn cwc_translate_serde_two_contract_discriminates_holds() -> Bool {
