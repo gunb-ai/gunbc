@@ -149,12 +149,8 @@ fn dependency_kind_from_edge(parent: Node, edge: Edge) -> DependencyKind {
   }
 }
 
-fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
-  dependency_kind_from_edge(parent: parent, edge: edge)
-}
-
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
-  let kind = classify_node_edge_usage(parent: parent, edge: edge)
+  let kind = dependency_kind_from_edge(parent: parent, edge: edge)
   DependencyView {
     source: parent,
     dependent: edge.target,
