@@ -4901,11 +4901,26 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
       // resolve exactly as the direct `Measure { .. }` literal already does.
       // For a non-alias literal `resolved_type` is already the concrete record,
       // and the expansion returns it unchanged.
+      let si = scope.type_env.source_indices
       let resolved_rt = resolved_type(n: expr)
       let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
-      let raw = emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      let si = scope.type_env.source_indices
       let variant_name = match tn { Present { value: n } => n  Absent => "" }
+      // The struct-literal NAME passed to emit_typed_record_lit must be the
+      // CONCRETE struct (`Measure`), not the authored alias (`Gibibyte` =
+      // `Rc<Measure<..>>`, not brace-constructible). `record_lit_type_name_at`
+      // gives the alias; `expanded_rt` is the peeled struct decl. Pass its name
+      // so the literal name, the `Box<M>` field boxing (keyed on the type_name),
+      // and the `PhantomData` population (E0392) all resolve on the real struct
+      // — every one of these keys on this name, so they must agree (cursor
+      // review 31502). Only override for a plain struct-alias literal (peeled
+      // type is a named product, not an enum variant); variants / non-aliases
+      // keep their authored name.
+      let peeled_type_name =
+        if parent_enum == none && expanded_rt.connective == Conj && expanded_rt.ident_span != none {
+          let concrete = authored_name_at(source_indices: si, node: expanded_rt)
+          if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
+        } else { tn }
+      let raw = emit_typed_record_lit(type_name: peeled_type_name, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let rc_name = match parent_enum {
         Present { value: en } => en
         Absent =>
@@ -6284,7 +6299,16 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         Absent =>
           let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
           let rt_name = authored_name_at(source_indices: si, node: resolved_type)
-          if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error" {
+          // Only treat `rt_name` as an enum PARENT (prefixing `display_tn` as
+          // `Enum::Variant`) when `tn` is genuinely a variant of it -- the
+          // guard the sibling sites already use. Without it, a struct-alias
+          // literal whose expanded `resolved_type` names a different concrete
+          // struct than the written name would wrongly emit `Measure::Gibibyte`
+          // (cursor review 31502). For a plain struct it is not a variant, so
+          // the fallback yields `parent_enum` and `display_tn` stays the bare
+          // struct name.
+          if resolved_type.ident_span != none && rt_name != tn && !rt_is_type_var && rt_name != "Error"
+            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: tn, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
             parent_enum
@@ -6385,10 +6409,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         // Populate the synthetic PhantomData field (E0392) whenever the target
         // struct carries unused generic params -- the construction counterpart
-        // of the phantom field appended in emit_struct_from_children. Keyed on
-        // the concrete struct decl (`tn` is the peeled struct name after the
-        // alias-peel above), so it fires for `Measure`/its aliases and stays
-        // silent for every fully-used-param struct and for enum variants.
+        // of the phantom field appended in emit_struct_from_children. `tn` here
+        // is the CONCRETE struct name (the caller passes the peeled
+        // `expanded_rt` name as type_name, not the alias), so this lookup hits
+        // the `Measure` decl (connective==Conj) and fires for Measure/its
+        // aliases, staying silent for every fully-used-param struct and variant.
         let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: tn) {
           Present { value: struct_decl } =>
             let is_struct = struct_decl.connective == Conj
