@@ -23,6 +23,11 @@ import v2.compiler.translate {
 import v2.compiler.type_expression_projection_enrichment {
   type_expression_projection_for_translate,
   tepe_data_decl_parts_present,
+  tepe_data_decl_type_sym_optional,
+  tepe_data_decl_field_value_optional,
+  tepe_data_decl_coproduct_ref_sym_accepts,
+  tepe_data_decl_encoding_naming_tag_accepts,
+  tepe_data_decl_coproduct_row_present,
   tepe_wire_contract_index_nonempty
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -355,6 +360,68 @@ test fn cwc_data_decl_parts_present_holds() -> Bool {
   match cwc_inferred_of(src: cwc_src_cwc_module) {
     Accepted { value: tree, diagnostics: _ } =>
       tepe_data_decl_parts_present(root: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_type_sym_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match tepe_data_decl_type_sym_optional(root: tree.root) {
+        Present { value: sym } => sym == ^CoproductWireContract
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_coproduct_field_present_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match tepe_data_decl_field_value_optional(root: tree.root, field: ^coproduct) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_encoding_field_present_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match tepe_data_decl_field_value_optional(root: tree.root, field: ^encoding) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_coproduct_ref_sym_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      tepe_data_decl_coproduct_ref_sym_accepts(root: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_encoding_naming_tag_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      tepe_data_decl_encoding_naming_tag_accepts(root: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_coproduct_row_present_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      tepe_data_decl_coproduct_row_present(
+        root: tree.root,
+        field_coproduct: ^coproduct,
+        field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      )
     Rejected { diagnostics: _ } => false
   }
 }

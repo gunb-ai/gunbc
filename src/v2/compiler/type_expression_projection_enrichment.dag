@@ -1082,6 +1082,80 @@ fn tepe_data_decl_parts_present(root: Node) -> Bool {
   }
 }
 
+fn tepe_data_decl_type_sym_optional(root: Node) -> Optional<Symbol> {
+  match tepe_first_data_decl_optional(root: root) {
+    Present { value: decl } =>
+      match tepe_data_decl_type_and_expr_optional(decl: decl) {
+        Present { value: parts } => tepe_atom_sym_optional(node: parts.type_expr)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn tepe_data_decl_field_value_optional(root: Node, field: Symbol) -> Optional<Node> {
+  match tepe_first_data_decl_optional(root: root) {
+    Present { value: decl } =>
+      match tepe_data_decl_type_and_expr_optional(decl: decl) {
+        Present { value: parts } =>
+          tepe_named_field_target(root: parts.expr, field: field)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn tepe_data_decl_coproduct_ref_sym_accepts(root: Node) -> Bool {
+  match tepe_first_data_decl_optional(root: root) {
+    Present { value: decl } =>
+      match tepe_data_decl_field_value_optional(root: root, field: ^coproduct) {
+        Present { value: coproduct_node } =>
+          match tepe_declaration_ref_sym_from_value(node: coproduct_node, decl: decl) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn tepe_data_decl_encoding_naming_tag_accepts(root: Node) -> Bool {
+  match tepe_first_data_decl_optional(root: root) {
+    Present { value: decl } =>
+      match tepe_data_decl_field_value_optional(root: root, field: ^encoding) {
+        Present { value: encoding } =>
+          match tepe_variant_naming_tag_from_encoding(encoding: encoding, decl: decl) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn tepe_data_decl_coproduct_row_present(
+  root: Node,
+  field_coproduct: Symbol,
+  field_encoding: Symbol,
+  type_coproduct_wire_contract: Symbol
+) -> Bool {
+  match tepe_first_data_decl_optional(root: root) {
+    Present { value: decl } =>
+      match tepe_coproduct_sym_from_decl(
+        decl: decl,
+        field_coproduct: field_coproduct,
+        field_encoding: field_encoding,
+        type_coproduct_wire_contract: type_coproduct_wire_contract
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
 fn tepe_wire_contract_index_nonempty(tree: InferredTree, target: TargetModel) -> Bool {
   match tepe_target_bundle_optional_child(
     target: target,
