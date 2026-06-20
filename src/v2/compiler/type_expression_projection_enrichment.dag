@@ -305,14 +305,31 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
 }
 
 fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
-  match tepe_sequence_right_optional(seq: expr) {
-    Present { value: after_kw_type } =>
-      match tepe_sequence_left_optional(seq: after_kw_type) {
-        Present { value: ident_node } => tepe_atom_sym_optional(node: ident_node)
-        Absent => optional_absent()
+  fold_node(
+    n: expr,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_atom_sym_optional(node: node) {
+          Present { value: sym } =>
+            if sym == ^dag_token_kw_type
+              || sym == ^dag_token_eq
+              || sym == ^dag_token_colon
+            {
+              optional_absent()
+            } else {
+              optional_present(value: sym)
+            }
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
       }
-    Absent => optional_absent()
-  }
+    }
+  )
 }
 
 fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
