@@ -1,0 +1,127 @@
+// test/claim/bmc_redfish_grounding_witness_test.dag — by-execution witness (DESIGN §5)
+// for the BMC → host-facts grounding seam.
+//
+// Fixture grounded on live srv2 Redfish probe 2026-06-20 (operator warm-crane-135):
+//   Systems/system: CoreCount=128, 128GiB, Model=ALTRAD8UD-1L2T, Manufacturer=ASRockRack
+//   Chassis ALTRAD8UD_1L2T: Power/Thermal empty; sensors power_PWR_Core_VRD ~95W,
+//   power_PWR_SOC_VRD ~17W (Nat whole-watt fixture).
+
+module test.claim.bmc_redfish_grounding
+
+import std.logic { Bool }
+import std.measure {
+  byte_size_count,
+  watt,
+  watt_count,
+  hardware_thread_count,
+  hardware_thread_count_value,
+  gibibyte,
+  gibibyte_to_byte_size,
+  memory_scale_factor_bytes,
+  Mega,
+  gibibyte_scale_factor_bytes,
+}
+import extdeps.bmc.types {
+  BmcTelemetrySnapshot,
+  RedfishChassisSensorCollection,
+  RedfishPowerControl,
+  RedfishPowerSubsystem,
+  RedfishSensorReading,
+  RedfishSystemInventory,
+  On,
+}
+import extdeps.bmc.redfish {
+  bmc_ground_host_observations,
+  redfish_system_inventory,
+}
+import extdeps.bmc { bmc_ground_snapshot }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
+
+// Live srv2 system inventory shape.
+data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_inventory(
+  model: "ALTRAD8UD-1L2T",
+  manufacturer: Present { value: "ASRockRack" },
+  processor_model: "Ampere(R) Altra(R) Processor",
+  processor_count: 1,
+  processor_core_count: hardware_thread_count(128),
+  total_memory_gib: gibibyte(128),
+  power_state: On,
+  logical_processor_count: Present { value: hardware_thread_count(128) }
+)
+
+// OpenBMC ALTRAD8UD: Chassis Power collection is empty — power from sensor docs.
+data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
+  chassis_id: asrock_altrad8ud_redfish_chassis_id,
+  sensors: [
+    PowerSensor {
+      name: "power_PWR_Core_VRD",
+      watts: Present { value: watt(count: 95) },
+    },
+    PowerSensor {
+      name: "power_PWR_SOC_VRD",
+      watts: Present { value: watt(count: 17) },
+    },
+  ],
+}
+
+data example_srv2_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: example_srv2_redfish_system,
+  power: none,
+  thermal: none,
+  sensors: Present { value: example_srv2_sensor_power },
+}
+
+test fn bmc_redfish_grounding_holds() -> Bool {
+  let obs = bmc_ground_snapshot(snapshot: example_srv2_telemetry)
+  hardware_thread_count_value(
+    bmc_ground_host_observations(snapshot: example_srv2_telemetry).processor_core_count
+  ) == 128
+    && example_srv2_redfish_system.processor.processor_count == 1
+    && example_srv2_redfish_system.manufacturer == Present { value: "ASRockRack" }
+    && obs.processor_model == "Ampere(R) Altra(R) Processor"
+    && byte_size_count(obs.total_memory_bytes) == byte_size_count(gibibyte_to_byte_size(g: gibibyte(128)))
+    && match obs.power_consumed_watts {
+      Present { value: w } => watt_count(w) == 112
+      Absent => false
+    }
+}
+
+// Power subsystem present but every PowerControl omits PowerConsumedWatts → Absent, not 0 W.
+data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
+  controls: [
+    RedfishPowerControl {
+      member_id: "0",
+      name: Present { value: "total_power" },
+      power_consumed_watts: none,
+      power_limit_watts: none,
+    },
+  ],
+}
+
+data example_srv_telemetry_power_unread: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: example_srv2_redfish_system,
+  power: Present { value: example_srv_power_unread },
+  thermal: none,
+  sensors: none,
+}
+
+test fn bmc_redfish_grounding_power_unread_is_absent() -> Bool {
+  match bmc_ground_host_observations(snapshot: example_srv_telemetry_power_unread).power_consumed_watts {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn memory_scale_factor_bytes_rejects_si_scale() -> Bool {
+  match memory_scale_factor_bytes(s: Mega) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn gibibyte_scale_factor_bytes_matches_memory_table() -> Bool {
+  match memory_scale_factor_bytes(s: Gibi) {
+    Present { value: n } => n == gibibyte_scale_factor_bytes()
+    Absent => false
+  }
+}
