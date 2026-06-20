@@ -106,8 +106,8 @@ fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Wat
             Absent => acc
             Present { value: w } =>
               match acc {
-                Absent => Present { value: watt(count: w) }
-                Present { value: sum } => Present { value: watt(count: watt_count(sum) + w) }
+                Absent => Present { value: w }
+                Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
               }
           }
         TemperatureSensor { name: _, celsius: _ } => acc

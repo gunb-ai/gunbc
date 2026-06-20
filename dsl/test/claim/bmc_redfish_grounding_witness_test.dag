@@ -52,11 +52,11 @@ data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisS
   sensors: [
     PowerSensor {
       name: "power_PWR_Core_VRD",
-      watts: Present { value: 95 },
+      watts: Present { value: watt(count: 95) },
     },
     PowerSensor {
       name: "power_PWR_SOC_VRD",
-      watts: Present { value: 17 },
+      watts: Present { value: watt(count: 17) },
     },
   ],
 }

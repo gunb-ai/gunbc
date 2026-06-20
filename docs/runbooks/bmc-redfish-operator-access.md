@@ -29,7 +29,7 @@ If connection fails:
 
 ## 2. Authenticate (factory vs rotated)
 
-**Fleet BMC addresses (operator LAN 192.168.1.0/24):** srv1 `192.168.1.183`, srv2 `192.168.1.184`.
+Resolve each host's BMC management IP from **ctrl** `plans.fabric.operator_fleet` (not the host OS address). Do not record fleet IPs in this public repo.
 
 **First contact (factory default only — already rotated on srv1/srv2):**
 
@@ -40,7 +40,7 @@ curl -sk -u 'root:0penBmc' "https://${BMC_HOST}/redfish/v1/Systems/system"
 **Production (rotated secret):** use a `0600` netrc file — password MUST NOT appear on curl argv:
 
 ```bash
-# ~/.bmc-netrc (mode 0600): machine 192.168.1.184 login root password <rotated>
+# ~/.bmc-netrc (mode 0600): machine <srvN-bmc-ip> login root password <rotated>
 export BMC_NETRC_FILE=~/.bmc-netrc
 curl -sk --netrc-file "$BMC_NETRC_FILE" "https://${BMC_HOST}/redfish/v1/Systems/system"
 ```
@@ -62,7 +62,7 @@ Chassis member id is `ALTRAD8UD_1L2T` (underscores), cited in `extdeps/boards/as
 Example reads (netrc auth):
 
 ```bash
-export BMC_HOST=192.168.1.184
+export BMC_HOST=<srvN-bmc-ip>
 curl -sk --netrc-file "$BMC_NETRC_FILE" "https://${BMC_HOST}/redfish/v1/Systems/system" \
   | jq '{Model, Manufacturer, PowerState, ProcessorSummary, MemorySummary}'
 
@@ -79,7 +79,7 @@ curl -sk --netrc-file "$BMC_NETRC_FILE" \
 From the gunbc repo worktree (rotated cred — requires netrc):
 
 ```bash
-BMC_HOST=192.168.1.184 BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
+BMC_HOST=<srvN-bmc-ip> BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
   --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
 ```
 
@@ -117,7 +117,7 @@ For each host:
 - [ ] Redfish `/redfish/v1/` reachable from operator network.
 - [ ] Auth works (factory or rotated secret).
 - [ ] `Systems/system` reports expected `ProcessorSummary` and `MemorySummary` (128 GiB = 8×16 GiB DIMMs on current fleet).
-- [ ] `Chassis/Self/Power` reports `PowerConsumedWatts` when host is on.
+- [ ] `Chassis/{chassis_id}/Sensors` reports `power_PWR_*` readings when host is on (ALTRAD8UD Chassis Power/Thermal are empty — see §3).
 - [ ] Factory password rotated; ctrl holds live BMC credential.
 - [ ] `bmc_read_telemetry` exits 0 from gunbc worktree.
 

@@ -76,7 +76,7 @@ type RedfishThermalSubsystem {
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
 // Coproduct over sensor families — illegal states (Power+Celsius, FanTach+Watts) unrepresentable.
 type RedfishSensorReading =
-    PowerSensor { name: NonEmptyStr, watts: Int? }
+    PowerSensor { name: NonEmptyStr, watts: Watt? }
   | TemperatureSensor { name: NonEmptyStr, celsius: Int? }
   | FanTachSensor { name: NonEmptyStr, rpm: Int? }
 
