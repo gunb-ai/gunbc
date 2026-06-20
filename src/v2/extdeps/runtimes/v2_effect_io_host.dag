@@ -18,7 +18,13 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   effect_io_pure_invoke_handler,
   effect_io_pure_locator_from_args,
   effect_io_pure_operation_node,
+  effect_io_pure_store_lookup,
   effect_io_pure_write_payload_from_args
+}
+import v2.std.execution_mode {
+  ExecutionMode,
+  Hermetic,
+  execution_mode_is_hermetic
 }
 import v2.std.collection { Absent, List, Map }
 import v2.std.diagnostic {
@@ -63,10 +69,12 @@ type EffectIoHostBackendContext
   | HostHttpContext { context: EffectIoHostHttpContext }
   | HostStorageContext { context: EffectIoHostStorageContext }
 
-// Co-located inject-per-run authority: backend, context, fixture, and handlers wire together.
+// Co-located inject-per-run authority: backend, context, mode, fixture, and handlers wire
+// together. `mode` (v2.std.execution_mode) selects hermetic fixture replay vs live host dispatch.
 type EffectIoHostHandlerBundle {
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
+  mode: ExecutionMode
   fixture: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
@@ -75,6 +83,7 @@ type V4EffectIoHostRuntime {
   bundle_identity: Symbol
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
+  mode: ExecutionMode
   fixture_store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
@@ -134,41 +143,62 @@ fn effect_io_host_storage_write(
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_write_deferred))
 }
 
+// M5 step 4 (node://adhoc-7e32be31-47c): the host door is gated on ExecutionMode. Hermetic
+// (dry-run) replays from the content-addressed fixture store — the SAME content-addressed lookup
+// the pure handler uses — and fails closed on a miss (MissIsDiagnostic), with NO live host I/O.
+// Wet/Record route to the per-backend live host door (deferred honest stub until host_run
+// transport receipts land). This is the §5 hermetic-by-default safety boundary: no accidental
+// live effect unless the mode explicitly opts into wet dispatch.
 fn effect_io_host_dispatch_read(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
+  mode: ExecutionMode,
+  fixture: EffectIoFixtureStore,
   request: EffectRequest
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
-      match host_ctx {
-        HostFileContext { context: ctx } =>
-          effect_io_host_file_read(ctx: ctx, locator: locator)
-        HostHttpContext { context: ctx } =>
-          effect_io_host_http_read(ctx: ctx, locator: locator)
-        HostStorageContext { context: ctx } =>
-          effect_io_host_storage_read(ctx: ctx, locator: locator)
+      if execution_mode_is_hermetic(mode: mode) {
+        effect_io_pure_store_lookup(store: fixture, locator: locator)
+      } else {
+        match host_ctx {
+          HostFileContext { context: ctx } =>
+            effect_io_host_file_read(ctx: ctx, locator: locator)
+          HostHttpContext { context: ctx } =>
+            effect_io_host_http_read(ctx: ctx, locator: locator)
+          HostStorageContext { context: ctx } =>
+            effect_io_host_storage_read(ctx: ctx, locator: locator)
+        }
       }
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
+// Hermetic (dry-run) performs NO live mutation: a write is fail-closed (wet capture into the
+// fixture store is Record mode, deferred until host_run lands). Wet/Record route to the live door.
 fn effect_io_host_dispatch_write(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
+  mode: ExecutionMode,
   request: EffectRequest
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
         Holds { value: payload } =>
-          match host_ctx {
-            HostFileContext { context: ctx } =>
-              effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
-            HostHttpContext { context: ctx } =>
-              effect_io_host_http_write(ctx: ctx, locator: locator, payload: payload)
-            HostStorageContext { context: ctx } =>
-              effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
+          if execution_mode_is_hermetic(mode: mode) {
+            outcome_rejected(
+              d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_hermetic_write_rejected)
+            )
+          } else {
+            match host_ctx {
+              HostFileContext { context: ctx } =>
+                effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
+              HostHttpContext { context: ctx } =>
+                effect_io_host_http_write(ctx: ctx, locator: locator, payload: payload)
+              HostStorageContext { context: ctx } =>
+                effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
+            }
           }
         Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
@@ -176,15 +206,18 @@ fn effect_io_host_dispatch_write(
   }
 }
 
-// Inject-per-run: handlers close over backend + context declared at binding construction.
+// Inject-per-run: handlers close over backend + context + mode + fixture declared at binding
+// construction. The mode gates hermetic fixture replay vs live host dispatch (see dispatch_read).
 fn effect_io_host_handler_binding(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
+  mode: ExecutionMode,
   fixture: EffectIoFixtureStore
 ) -> EffectIoHostHandlerBundle {
   EffectIoHostHandlerBundle {
     declared_backend: backend,
     backend_context: host_ctx,
+    mode: mode,
     fixture: fixture,
     handlers: EffectHandlerBinding {
       read_resource: EffectHandler {
@@ -192,6 +225,8 @@ fn effect_io_host_handler_binding(
           effect_io_host_dispatch_read(
             backend: backend,
             host_ctx: host_ctx,
+            mode: mode,
+            fixture: fixture,
             request: request
           )
         }
@@ -201,6 +236,7 @@ fn effect_io_host_handler_binding(
           effect_io_host_dispatch_write(
             backend: backend,
             host_ctx: host_ctx,
+            mode: mode,
             request: request
           )
         }
@@ -251,19 +287,37 @@ fn effect_io_host_backend_context(backend: EffectIoResourceBackend) -> EffectIoH
   }
 }
 
-fn effect_io_host_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoHostRuntime {
+// Inject-per-run host runtime under an explicit ExecutionMode + fixture store. Hermetic replays
+// the fixture (content-addressed, fail-closed on miss); Wet/Record dispatch the live host door.
+fn effect_io_host_runtime(
+  backend: EffectIoResourceBackend,
+  mode: ExecutionMode,
+  fixture: EffectIoFixtureStore
+) -> V4EffectIoHostRuntime {
   let host_ctx = effect_io_host_backend_context(backend: backend)
-  let fixture = effect_io_pure_empty_fixture_store(backend: backend)
   let bundle = effect_io_host_handler_binding(
     backend: backend,
     host_ctx: host_ctx,
+    mode: mode,
     fixture: fixture
   )
   V4EffectIoHostRuntime {
     bundle_identity: ^v2_effect_io_host_runtime_id,
     declared_backend: bundle.declared_backend,
     backend_context: bundle.backend_context,
+    mode: bundle.mode,
     fixture_store: bundle.fixture,
     handlers: bundle.handlers
   }
+}
+
+// Hermetic-by-default (DESIGN.md §5 safe default: no accidental live I/O) over an empty fixture —
+// a hermetic read fails closed on miss until the fixture is populated (effect_io_host_runtime with
+// a Record-captured store).
+fn effect_io_host_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoHostRuntime {
+  effect_io_host_runtime(
+    backend: backend,
+    mode: Hermetic,
+    fixture: effect_io_pure_empty_fixture_store(backend: backend)
+  )
 }

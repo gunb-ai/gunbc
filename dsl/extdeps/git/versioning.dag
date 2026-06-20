@@ -7,9 +7,7 @@
 // Git does not follow semver.org semantics for its own releases.
 //
 // Layer-2 ecosystem model on extdeps.version (VersionIdentity + VersionScheme).
-//
-// Consumers:
-//   (layer 3) extdeps/tools/tools.dag — git CliTool min_version constraint grounding
+// Layer-3 constraint grounding: min_git_version (GitVersionConstraint).
 
 module extdeps.git.versioning
 
@@ -17,7 +15,7 @@ import std.types { Url }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import std.nat { nat_compare }
-import extdeps.version { VersionIdentity, VersionScheme }
+import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 
 // Git release triple since the Git 2.0 numbering policy.
 type GitReleaseVersion {
@@ -46,6 +44,15 @@ data git_2_0_release: GitReleaseVersion = {
 
 // Spec citation for the release-numbering policy.
 data git_release_versioning_spec_url: Url = "https://git-scm.com/docs/BreakingChanges.html"
+
+// Git release constraint wire text — predicate over identities, not a version.
+// Distinct use site from generic VersionConstraint (§3 distinct facts).
+type GitVersionConstraint = VersionConstraint where brand("GitVersionConstraint")
+
+// Minimum git for the Git 2.0 numbering policy anchor (BreakingChanges doc).
+// Worktree modeling in extdeps/git/git.dag needs 2.5+ at runtime; this row
+// is the honest policy floor, not a per-feature matrix.
+data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
 // Canonical wire label for a GitReleaseVersion (git version / release tag core).
 fn git_release_version_label(v: GitReleaseVersion) -> String {
