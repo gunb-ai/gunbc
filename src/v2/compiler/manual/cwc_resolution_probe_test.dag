@@ -38,10 +38,16 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_contract_row_for_disj_anchor,
   tepe_enum_sym_for_disj,
   tepe_disj_for_enum_sym_optional,
-  tepe_type_decl_name_optional
+  tepe_type_decl_name_optional,
+  tepe_node_has_surface,
+  tepe_type_decl_name_from_decl_expr_optional
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag {
+  dag_language_model_wave1,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
 import v2.extdeps.languages.rust {
   rust_sg2_sum_xy_emitted,
   rust_sg2_type_expr_target_model
@@ -251,6 +257,55 @@ fn cwc_inferred_of(src: String) -> Outcome<InferredTree> {
 
 fn cwc_optional_review_event_disj(n: Node) -> Optional<Node> {
   cwc_optional_disj_for_enum_sym(root: n, enum_sym: ^ReviewEvent)
+}
+
+fn cwc_tree_has_type_decl_named_via_capture(root: Node, enum_sym: Symbol) -> Bool {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match parse_production_emitted_identity_optional(node: node) {
+          Present { value: surface } =>
+            if surface == ^dag_surface_type_decl {
+              match parse_production_captured_child_optional(node: node) {
+                Present { value: expr } =>
+                  match tepe_type_decl_name_from_decl_expr_optional(expr: expr) {
+                    Present { value: name } => name == enum_sym
+                    Absent => false
+                  }
+                Absent => false
+              }
+            } else {
+              false
+            }
+          Absent => false
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        if acc {
+          true
+        } else {
+          child_acc
+        }
+      }
+    }
+  )
+}
+
+fn cwc_tree_has_surface(root: Node, surface: Symbol) -> Bool {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) { tepe_node_has_surface(root: node, surface: surface) },
+      step: fn(acc, _edge, child_acc) {
+        if acc {
+          true
+        } else {
+          child_acc
+        }
+      }
+    }
+  )
 }
 
 fn cwc_tree_has_type_decl_named(root: Node, enum_sym: Symbol) -> Bool {
@@ -1133,6 +1188,22 @@ test fn cwc_diag_review_disj_present_holds() -> Bool {
         Present { value: _ } => true
         Absent => false
       }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_type_decl_capture_name_on_norm_holds() -> Bool {
+  match cwc_norm_of(src: cwc_src_cwc_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      cwc_tree_has_type_decl_named_via_capture(root: root, enum_sym: ^ReviewEvent)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_type_decl_surface_on_norm_holds() -> Bool {
+  match cwc_norm_of(src: cwc_src_cwc_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      cwc_tree_has_surface(root: root, surface: ^dag_surface_type_decl)
     Rejected { diagnostics: _ } => false
   }
 }
