@@ -8,7 +8,8 @@
 //
 // Also runs:
 //   * perturb RED receipt — planted bad module fails typecheck against the live pools;
-//   * cross-tree GREEN receipt — planted dsl module importing v2.* resolves and compiles.
+//   * cross-tree GREEN receipt — heredoc-planted dsl module importing v2.* (not a committed
+//     dsl/ fixture: single-root mock-corpus precompute would fail on v2 imports).
 //
 // Both transports are modeled off hand-written `let script = "..."` blobs onto structured
 // `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
