@@ -26,7 +26,6 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
-  diagnostics_singleton,
   node_locus,
   outcome_accepted,
   outcome_rejected
@@ -254,6 +253,18 @@ fn tepe_field_init_value_from_colon_sequence_optional(seq: Node) -> Optional<Nod
   match tepe_sequence_right_optional(seq: seq) {
     Present { value: expr_node } => optional_present(value: expr_node)
     Absent => optional_absent()
+  }
+}
+
+fn tepe_canonical_data_decl_parts_optional(decl: Node) -> Optional<TepeDataDeclParts> {
+  match find_named_child(root: decl, name: ^dag_surface_data_decl_type) {
+    Accepted { value: type_expr, diagnostics: _ } =>
+      match find_named_child(root: decl, name: ^dag_surface_data_decl_expr) {
+        Accepted { value: expr, diagnostics: _ } =>
+          optional_present(TepeDataDeclParts { type_expr: type_expr, expr: expr })
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -666,13 +677,46 @@ fn tepe_rows_contain_coproduct(rows: List<CoproductWireContractIndexRow>, sym: S
   }
 }
 
+fn tepe_rows_contain_equivalent_contract(
+  rows: List<CoproductWireContractIndexRow>,
+  row: CoproductWireContractIndexRow
+) -> Bool {
+  match row {
+    CoproductWireContractIndexRow { coproduct_sym: rsym, naming_tag: rtag, decl: _ } =>
+      match list_at_optional(xs: rows, index: 0) {
+        Absent => false
+        Present { value: head } =>
+          match head {
+            CoproductWireContractIndexRow {
+              coproduct_sym: csym,
+              naming_tag: ctag,
+              decl: _
+            } =>
+              if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: rsym)
+                && ctag == rtag
+              {
+                true
+              } else {
+                match list_tail(xs: rows) {
+                  TailAbsent => false
+                  TailFound { tail: tail } =>
+                    tepe_rows_contain_equivalent_contract(rows: tail, row: row)
+                }
+              }
+          }
+      }
+  }
+}
+
 fn tepe_append_contract_row(
   rows: List<CoproductWireContractIndexRow>,
   row: CoproductWireContractIndexRow
 ) -> Outcome<List<CoproductWireContractIndexRow>> {
   match row {
     CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: decl } =>
-      if tepe_rows_contain_coproduct(rows: rows, sym: csym) {
+      if tepe_rows_contain_equivalent_contract(rows: rows, row: row) {
+        outcome_accepted(rows)
+      } else if tepe_rows_contain_coproduct(rows: rows, sym: csym) {
         outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
       } else {
         outcome_accepted(list_snoc_item(xs: rows, item: row))
