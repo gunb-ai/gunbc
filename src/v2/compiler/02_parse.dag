@@ -1184,6 +1184,39 @@ fn parse_production_tree(
 }
 
 
+// Gap-4 locate probe — first unconsumed token when parse_expr accepts with trailing tokens.
+// Read-only observability over the existing parse walk; does not change parse_module semantics.
+fn parse_production_first_remain(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  production_name: Symbol
+) -> Optional<Token> {
+  let root = validated.root
+  match grammar_lookup_production(root: root, name: production_name) {
+    Holds { value: production } =>
+      let prov = parse_prov_initial()
+      let table = parse_table_for_production(validated: validated, all_tokens: tokens)
+      match parse_expr(
+        expr: production.expression,
+        tokens: tokens,
+        all_tokens: tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprAccepted { remaining: remaining, captured: _, diagnostics: _, prov: _ } =>
+          if is_empty(xs: remaining) {
+            Absent
+          } else {
+            list_at_optional(xs: remaining, index: 0)
+          }
+        ParseExprRejected { diagnostics: _ } => Absent
+      }
+    Violates { diagnostic: _ } => Absent
+  }
+}
+
+
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: ^parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
