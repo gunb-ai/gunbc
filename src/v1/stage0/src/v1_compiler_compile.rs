@@ -69,9 +69,10 @@ pub use crate::v1_std_core::{
     field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
-    is_error_diagnostic, lambda_param_names_at, make_error_node, module_imports, module_items,
-    no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
-    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic, lambda_param_names_at,
+    make_error_node, module_imports, module_items, no_span, param_node_default_value,
+    param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -87,8 +88,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
-    pub path: Rc<FreeMonoid<Nat>>,
-    pub content: Rc<FreeMonoid<Nat>>,
+    pub path: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -332,7 +333,7 @@ pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {
     })
 }
 
-pub fn compile_bundle_error(message: Rc<FreeMonoid<Nat>>) -> Rc<ErrorNode> {
+pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
     make_error_node(
         Rc::new(CompilerDiagnostic::InternalError {
             message: message,
@@ -351,14 +352,14 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
     }
 }
 
-pub fn json_list(items: Rc<Vec<String>>) -> Rc<FreeMonoid<Nat>> {
+pub fn json_list(items: Rc<Vec<String>>) -> String {
     v1_rt::concat(
         v1_rt::concat("[".to_string(), items.join(&", ".to_string())),
         "]".to_string(),
     )
 }
 
-pub fn json_optional_string(value: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn json_optional_string(value: Option<String>) -> String {
     match value {
         Some(inner) => json_quote(inner.clone()),
         None => "null".to_string(),
@@ -536,17 +537,12 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
+        v1_rt::rc_empty_map::<String, String>(),
         |acc: Rc<HashMap<String, String>>, pair: (i64, Rc<Node>)| {
             v1_rt::rc_map_insert(
                 acc,
                 dag_node_key(pair.1.clone()),
-                v1_rt::concat(
-                    "n".to_string(),
-                    crate::v2_std_text::host_string_text_from_rust_host(
-                        (pair.0.clone()).to_string(),
-                    ),
-                ),
+                v1_rt::concat("n".to_string(), (pair.0.clone()).to_string()),
             )
         },
     )
@@ -554,17 +550,14 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
 
 pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     typed.modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
 }
 
-pub fn serialize_node_ref(
-    node: Rc<Node>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
     match v1_rt::map_get(&key_to_id, dag_node_key(node)) {
         Some(id) => v1_rt::concat(
             v1_rt::concat("{\"$ref\": ".to_string(), json_quote(id.clone())),
@@ -577,7 +570,7 @@ pub fn serialize_node_ref(
 pub fn json_optional_node_ref(
     value: Option<Rc<Node>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match value {
         Some(inner) => serialize_node_ref(inner.clone(), key_to_id),
         None => "null".to_string(),
@@ -587,21 +580,21 @@ pub fn json_optional_node_ref(
 pub fn json_optional_inferred_node_ref(
     value: Option<Rc<InferredNode>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match value {
         Some(inner) => serialize_inferred_node_ref(inner.clone(), key_to_id),
         None => "null".to_string(),
     }
 }
 
-pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> Rc<FreeMonoid<Nat>> {
+pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
     match value {
         Some(inner) => serialize_span(inner.clone()),
         None => "null".to_string(),
     }
 }
 
-pub fn json_bool(value: bool) -> Rc<FreeMonoid<Nat>> {
+pub fn json_bool(value: bool) -> String {
     if value {
         "true".to_string()
     } else {
@@ -609,14 +602,14 @@ pub fn json_bool(value: bool) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn cardinality_name(value: Cardinality) -> Rc<FreeMonoid<Nat>> {
+pub fn cardinality_name(value: Cardinality) -> String {
     match value {
         Cardinality::Required => "Required".to_string(),
         Cardinality::CardOptional => "CardOptional".to_string(),
     }
 }
 
-pub fn field_access_style_name(value: FieldAccessStyle) -> Rc<FreeMonoid<Nat>> {
+pub fn field_access_style_name(value: FieldAccessStyle) -> String {
     match value {
         FieldAccessStyle::StoredField => "StoredField".to_string(),
         FieldAccessStyle::EnumAccessor => "EnumAccessor".to_string(),
@@ -626,14 +619,14 @@ pub fn field_access_style_name(value: FieldAccessStyle) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn field_value_shape_name(value: FieldValueShape) -> Rc<FreeMonoid<Nat>> {
+pub fn field_value_shape_name(value: FieldValueShape) -> String {
     match value {
         FieldValueShape::PlainValue => "PlainValue".to_string(),
         FieldValueShape::OptionalValue => "OptionalValue".to_string(),
     }
 }
 
-pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> Rc<FreeMonoid<Nat>> {
+pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
     match (*value).clone() {
         VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
         VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
@@ -644,14 +637,14 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn call_semantics_name(value: CallSemantics) -> Rc<FreeMonoid<Nat>> {
+pub fn call_semantics_name(value: CallSemantics) -> String {
     match value {
         CallSemantics::PlainCallSemantics => "PlainCallSemantics".to_string(),
         CallSemantics::LookupCallSemantics => "LookupCallSemantics".to_string(),
     }
 }
 
-pub fn expr_error_kind_name(value: ExprErrorKind) -> Rc<FreeMonoid<Nat>> {
+pub fn expr_error_kind_name(value: ExprErrorKind) -> String {
     match value {
         ExprErrorKind::ParseRecoveryError => "ParseRecoveryError".to_string(),
         ExprErrorKind::SemanticExprError => "SemanticExprError".to_string(),
@@ -659,7 +652,7 @@ pub fn expr_error_kind_name(value: ExprErrorKind) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn bin_op_name(value: BinOp) -> Rc<FreeMonoid<Nat>> {
+pub fn bin_op_name(value: BinOp) -> String {
     match value {
         BinOp::Add => "Add".to_string(),
         BinOp::Sub => "Sub".to_string(),
@@ -678,26 +671,21 @@ pub fn bin_op_name(value: BinOp) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn unary_op_name(value: UnaryOpKind) -> Rc<FreeMonoid<Nat>> {
+pub fn unary_op_name(value: UnaryOpKind) -> String {
     match value {
         UnaryOpKind::Not => "Not".to_string(),
         UnaryOpKind::Neg => "Neg".to_string(),
     }
 }
 
-pub fn serialize_span(span: Rc<SourceSpan>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_span(span: Rc<SourceSpan>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    "{\"start\": ".to_string(),
-                    crate::v2_std_text::host_string_text_from_rust_host(
-                        (span.start.clone()).to_string(),
-                    ),
-                ),
+                v1_rt::concat("{\"start\": ".to_string(), (span.start.clone()).to_string()),
                 ", \"end\": ".to_string(),
             ),
-            crate::v2_std_text::host_string_text_from_rust_host((span.end.clone()).to_string()),
+            (span.end.clone()).to_string(),
         ),
         "}".to_string(),
     )
@@ -706,7 +694,7 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> Rc<FreeMonoid<Nat>> {
 pub fn serialize_import_node(
     imp: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
@@ -750,7 +738,7 @@ pub fn serialize_import_node(
     }
 }
 
-pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -766,7 +754,7 @@ pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> Rc<FreeMonoid<Nat>>
     )
 }
 
-pub fn serialize_literal(value: Rc<LiteralValue>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
     match (*value).clone() {
         LiteralValue::LitStr { value: inner, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -778,7 +766,7 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> Rc<FreeMonoid<Nat>> {
         LiteralValue::LitInt { value: inner, .. } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"LitInt\", \"value\": ".to_string(),
-                crate::v2_std_text::host_string_text_from_rust_host((inner.clone()).to_string()),
+                (inner.clone()).to_string(),
             ),
             "}".to_string(),
         ),
@@ -810,7 +798,7 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> Rc<FreeMonoid<Nat>> {
 pub fn serialize_field_binding(
     binding: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -835,7 +823,7 @@ pub fn serialize_field_binding(
 pub fn serialize_match_pattern(
     pattern: Rc<MatchPattern>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match (*pattern).clone() {
         MatchPattern::Bind { name: inner, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -889,7 +877,7 @@ pub fn serialize_named_arg(
     arg: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -909,7 +897,7 @@ pub fn serialize_match_arm(
     arm: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -935,7 +923,7 @@ pub fn serialize_field_init(
     field_init: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -955,7 +943,7 @@ pub fn serialize_string_part(
     part: Rc<StringPart>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match (*part).clone() {
         StringPart::Text { value: inner, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -974,7 +962,7 @@ pub fn serialize_string_part(
     }
 }
 
-pub fn serialize_call_semantics(value: Option<CallSemantics>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
     match value {
         Some(inner) => v1_rt::concat(
             v1_rt::concat(
@@ -991,7 +979,7 @@ pub fn serialize_method_semantics(
     value: Option<Rc<MethodSemantics>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match value.as_deref().cloned() {
         Some(MethodSemantics::PlainMethodSemantics) => {
             "{\"kind\": \"PlainMethodSemantics\"}".to_string()
@@ -1047,7 +1035,7 @@ pub fn serialize_method_semantics(
     }
 }
 
-pub fn serialize_recursion_shape(shape: RecursionShape) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_recursion_shape(shape: RecursionShape) -> String {
     match shape {
         RecursionShape::DirectRecursion => "{\"_variant\": \"DirectRecursion\"}".to_string(),
         RecursionShape::ListRecursion => "{\"_variant\": \"ListRecursion\"}".to_string(),
@@ -1057,7 +1045,7 @@ pub fn serialize_recursion_shape(shape: RecursionShape) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn serialize_inductive_field(field: Rc<InductiveField>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1085,7 +1073,7 @@ pub fn serialize_inductive_field(field: Rc<InductiveField>) -> Rc<FreeMonoid<Nat
     )
 }
 
-pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
         PositiveDescentAmount::OneStep => "{\"_variant\": \"OneStep\"}".to_string(),
         PositiveDescentAmount::AdditionalStep { previous: p, .. } => v1_rt::concat(
@@ -1098,7 +1086,7 @@ pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> Rc
     })
 }
 
-pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d).clone() {
         ProportionalDivisor::DivideByTwo => "{\"_variant\": \"DivideByTwo\"}".to_string(),
         ProportionalDivisor::StrictlyLarger { inner: i, .. } => v1_rt::concat(
@@ -1111,7 +1099,7 @@ pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> Rc<FreeMono
     })
 }
 
-pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> String {
     match (*factor).clone() {
         ShrinkFactor::UnitShrink => "{\"_variant\": \"UnitShrink\"}".to_string(),
         ShrinkFactor::ConstantShrink { steps: s, .. } => v1_rt::concat(
@@ -1131,7 +1119,7 @@ pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> Rc<FreeMonoid<Nat>> 
     }
 }
 
-pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
     match (*rel).clone() {
         SubValueRelation::StrictSubValue {
             field: f,
@@ -1184,9 +1172,7 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> Rc<FreeMonoid<
     }
 }
 
-pub fn serialize_descent_evidence(
-    de: Option<Rc<Vec<Rc<SubValueRelation>>>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> String {
     match de {
         Some(evidence) => json_list(Rc::new({
             let mut __result = Vec::new();
@@ -1203,7 +1189,7 @@ pub fn serialize_expr_data(
     expr_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let ch = expr_node.children.clone();
         let name = authored_name_at(source_indices.clone(), expr_node.clone());
@@ -1674,7 +1660,7 @@ pub fn serialize_expr_data(
 pub fn serialize_inferred_node_ref(
     inferred: Rc<InferredNode>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match (*inferred).clone() {
         InferredNode::Resolved { node: node, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -1710,7 +1696,7 @@ pub fn serialize_resource_use(
     resource_use: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1736,7 +1722,7 @@ pub fn serialize_field(
     field: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1794,7 +1780,7 @@ pub fn serialize_param(
     param: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1865,7 +1851,7 @@ pub fn serialize_node_params_json(
     node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     if is_module_shell_node(node.clone()) {
         "[]".to_string()
     } else {
@@ -1886,7 +1872,7 @@ pub fn serialize_node_params_json(
 pub fn serialize_module_imports_json(
     node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let imports = module_imports(node);
         if ((imports.clone().len() as i64) == 0) {
@@ -1920,7 +1906,7 @@ pub fn serialize_node_record(
     node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
@@ -1932,7 +1918,7 @@ pub fn serialize_node_record(
 pub fn serialize_typed_module(
     module: Rc<TypedModule>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1973,7 +1959,7 @@ pub fn serialize_dag_nodes_table(
     order: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for pair in Rc::new(
@@ -1989,12 +1975,7 @@ pub fn serialize_dag_nodes_table(
         {
             __result.push(v1_rt::concat(
                 v1_rt::concat(
-                    json_quote(v1_rt::concat(
-                        "n".to_string(),
-                        crate::v2_std_text::host_string_text_from_rust_host(
-                            (pair.0.clone()).to_string(),
-                        ),
-                    )),
+                    json_quote(v1_rt::concat("n".to_string(), (pair.0.clone()).to_string())),
                     ": ".to_string(),
                 ),
                 serialize_node_record(pair.1.clone(), source_indices.clone(), key_to_id.clone()),
@@ -2005,7 +1986,7 @@ pub fn serialize_dag_nodes_table(
     .join(&", ".to_string())
 }
 
-pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> Rc<FreeMonoid<Nat>> {
+pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
     {
         let severity = "error".to_string();
         v1_rt::concat(
@@ -2127,16 +2108,11 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
-pub fn boundary_ref_error(
-    names: Rc<Vec<String>>,
-    ref_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     if {
         let mut __found = false;
         for n in names.iter().cloned() {
-            if (crate::v2_std_text::host_string_text_to_rust_host(n.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host(ref_name.clone()))
-            {
+            if (n.clone().as_str() == ref_name.clone().as_str()) {
                 __found = true;
                 break;
             }
@@ -2239,6 +2215,18 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
     )
 }
 
+pub fn successful_parse_modules(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in parse_results.iter().cloned() {
+            if p.error.clone() == None {
+                __result.push(p.module.clone().clone().unwrap());
+            }
+        }
+        __result
+    })
+}
+
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
         let prepared = Rc::new({
@@ -2271,7 +2259,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     let parsed = parse_with_table(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
+                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                             p.newline_index.clone().file.clone(),
                             p.newline_index.clone(),
                         ),
@@ -2294,46 +2282,37 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parse_results = parsed.parse_results.clone();
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
-        let has_parse_errors = {
-            let mut __found = false;
-            for p in parse_results.clone().iter().cloned() {
-                if (p.error.clone() != None) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        if has_parse_errors {
+        let modules = successful_parse_modules(parse_results.clone());
+        if sources.is_empty() {
+            let source_indices = v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>();
+            let graph = resolve_modules(Rc::new(vec![]), source_indices.clone());
+            Rc::new(FrontendResult {
+                graph: Some(graph.clone()),
+                diagnostics: Rc::new(vec![]),
+                newline_indices: Rc::new(vec![]),
+                intern_table: parsed.intern_table.clone(),
+            })
+        } else if (modules.len() as i64) > 0 {
+            let source_indices = newline_indices.clone().iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
+                    v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
+                },
+            );
+            let graph = resolve_modules(modules, source_indices);
+            Rc::new(FrontendResult {
+                graph: Some(graph.clone()),
+                diagnostics: v1_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
+                newline_indices: newline_indices.clone(),
+                intern_table: parsed.intern_table.clone(),
+            })
+        } else {
             Rc::new(FrontendResult {
                 graph: None,
                 diagnostics: parse_diagnostics,
                 newline_indices: newline_indices.clone(),
                 intern_table: parsed.intern_table.clone(),
             })
-        } else {
-            {
-                let modules = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parse_results.clone().iter().cloned() {
-                        __result.push(p.module.clone().clone().unwrap());
-                    }
-                    __result
-                });
-                let source_indices = newline_indices.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
-                        v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
-                    },
-                );
-                let graph = resolve_modules(modules, source_indices);
-                Rc::new(FrontendResult {
-                    graph: Some(graph.clone()),
-                    diagnostics: v1_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
-                    newline_indices: newline_indices.clone(),
-                    intern_table: parsed.intern_table.clone(),
-                })
-            }
         }
     }
 }
@@ -2377,9 +2356,40 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
     compile_to_resolved_with_options(sources, default_compile_pipeline_options())
 }
 
+/// Discovery-corpus merged resolve: same pipeline as [`compile_to_resolved`], but
+/// advisory-demoted typecheck diagnostics do not nil the typed graph (SCAFFOLD in
+/// `00_core.dag`; consumed by `discover_owned_data_decls`).
+pub fn compile_to_resolved_discovery_corpus_advisory(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+) -> Rc<ResolvedPipelineResult> {
+    compile_to_resolved_with_options_gated(sources, default_compile_pipeline_options(), true)
+}
+
+fn is_resolved_pipeline_typecheck_blocking(
+    diagnostic: Rc<CompilerDiagnostic>,
+    discovery_corpus_advisory_typecheck: bool,
+) -> bool {
+    if !is_error_diagnostic(diagnostic.clone()) {
+        return false;
+    }
+    if discovery_corpus_advisory_typecheck {
+        is_discovery_corpus_blocking_diagnostic(diagnostic)
+    } else {
+        true
+    }
+}
+
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     options: CompilePipelineOptions,
+) -> Rc<ResolvedPipelineResult> {
+    compile_to_resolved_with_options_gated(sources, options, false)
+}
+
+fn compile_to_resolved_with_options_gated(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    options: CompilePipelineOptions,
+    discovery_corpus_advisory_typecheck: bool,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let frontend = front_end_sources(sources);
@@ -2388,7 +2398,7 @@ pub fn compile_to_resolved_with_options(
             None => Rc::new(ResolvedPipelineResult {
                 graph: None,
                 diagnostics: frontend.diagnostics.clone(),
-                source_indices: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
+                source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 complexity: empty_complexity_report(),
                 ownership: Rc::new(vec![]),
                 newline_indices: newline_indices.clone(),
@@ -2408,15 +2418,14 @@ pub fn compile_to_resolved_with_options(
                     return Rc::new(ResolvedPipelineResult {
                         graph: None,
                         diagnostics: frontend.diagnostics.clone(),
-                        source_indices: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(
-                        ),
+                        source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                         complexity: empty_complexity_report(),
                         ownership: Rc::new(vec![]),
                         newline_indices: newline_indices.clone(),
                     });
                 }
                 let source_indices = newline_indices.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
+                    v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                     |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
@@ -2465,7 +2474,10 @@ pub fn compile_to_resolved_with_options(
                 let type_errors = Rc::new({
                     let mut __result = Vec::new();
                     for d in typed_diags.clone().iter().cloned() {
-                        if is_error_diagnostic(d.diagnostic.clone()) {
+                        if is_resolved_pipeline_typecheck_blocking(
+                            d.diagnostic.clone(),
+                            discovery_corpus_advisory_typecheck,
+                        ) {
                             __result.push(d);
                         }
                     }
