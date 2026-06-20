@@ -482,9 +482,9 @@ fn gap4_single_module_discriminator() {
     let path = v1_interpreter::run_in_context(&ctx, "gap4_probe_found_file_path", true)
         .unwrap_or_else(|e| panic!("gap4_probe_found_file_path: {e:?}"));
     eprintln!("gap4 single-module probe file_path: {path:?}");
-    let byte = v1_interpreter::run_in_context(&ctx, "gap4_probe_found_byte_start", true)
-        .unwrap_or_else(|e| panic!("gap4_probe_found_byte_start: {e:?}"));
-    eprintln!("gap4 single-module probe byte_start: {byte:?}");
+    let probe = v1_interpreter::run_in_context(&ctx, "gap4_probe_first_ingest_reject", true)
+        .unwrap_or_else(|e| panic!("gap4_probe_first_ingest_reject: {e:?}"));
+    eprintln!("gap4 single-module probe state: {probe:?}");
 }
 
 #[test]
