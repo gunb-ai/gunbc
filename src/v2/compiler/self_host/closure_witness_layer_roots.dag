@@ -2,11 +2,9 @@
 //
 // Single re-export of gunbc.ci_layer_roots.witness_layer_roots for N_v2 closure gates
 // (compiler_closure_emit_from_ingest_gate, discover_source_root_ingest overlay).
-// Shell transport: scripts/lib/witness_layer_roots.sh projects the same row.
 //
-// DISSOLUTION (tracked): host ingest transport + claim_executor read this row at runtime;
-// delete scripts/lib/witness_layer_roots.sh shell fork when src/v2/workflow/source_root_ingest_transport
-// and nv2 gate entry consume witness_layer_roots directly (parity with ci_floor_plan.dag).
+// DISSOLUTION (tracked): host ingest transport + claim_executor read this row at runtime
+// (parity with ci_floor_plan.dag); Rust test harnesses may project the row until then.
 
 module v2.compiler.self_host.closure_witness_layer_roots
 

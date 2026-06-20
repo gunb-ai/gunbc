@@ -374,7 +374,7 @@ pub const REPRESENTATIVE_SLICE_PATHS: &[&str] = &[
 ];
 
 #[test]
-#[ignore = "emit bounded slice manifest for v2-compiler-closure-nv2-slice-gate.sh"]
+#[ignore = "emit bounded slice manifest for gap-lane diagnostic runs"]
 fn emit_representative_slice_manifest() {
     let ws = workspace_root();
     let v2_root = ws.join("src/v2").to_string_lossy().to_string();
