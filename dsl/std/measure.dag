@@ -171,6 +171,11 @@ fn scale_exponent(s: Scale) -> Int {
   }
 }
 
+// Single authority: bytes per gibibyte (IEC 80000-13 GiB = 2^30 bytes).
+fn gibibyte_scale_factor_bytes() -> Nat {
+  1073741824
+}
+
 // Bytes per unit at Memory scale `s` (One = byte; Gibi = 2^30 bytes per gibibyte).
 // Fail-closed (§5): SI decimal scales are not memory-capacity factors — returns Absent.
 fn memory_scale_factor_bytes(s: Scale) -> Nat? {
@@ -178,7 +183,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     One  => Present { value: 1 }
     Kibi => Present { value: 1024 }
     Mebi => Present { value: 1048576 }
-    Gibi => Present { value: 1073741824 }
+    Gibi => Present { value: gibibyte_scale_factor_bytes() }
     Tebi => Present { value: 1099511627776 }
     Atto  => none
     Femto => none
@@ -307,10 +312,7 @@ fn gibibyte_count(g: Gibibyte) -> Nat {
 }
 
 fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
-  match memory_scale_factor_bytes(s: Gibi) {
-    Present { value: factor } => byte_size(count: gibibyte_count(g) * factor)
-    Absent => byte_size(count: 0)
-  }
+  byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
 }
 
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
