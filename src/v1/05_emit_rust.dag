@@ -1224,13 +1224,25 @@ fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>
   }
 }
 
+// Phantom ZST type-tag markers (enum variants used as type-level kinds, e.g. the
+// Quantity/Scale tags Memory/One/Power in Measure<Memory, One, Nat>) must derive the
+// same trait set as the carriers that mention them (Measure derives Debug/Clone/
+// PartialEq + serde), or those derives fail closed (E0277 Memory: !Debug, E0369 == on
+// Measure, E0392 unused param). Single authority for the marker definition.
+fn rust_phantom_zst_marker_def(vname: String) -> String {
+  concat(
+    "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n",
+    rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, ";"
+  )
+}
+
 fn emit_phantom_zst_markers_for_enum(children: List<Node>, env: TypeEnv) -> String {
   let markers = children
     |> filter(child => child.children |> count == 0)
     |> filter(child => is_phantom_unit_variant_type_arg(env: env, variant_name: authored_name(env: env, node: child)))
     |> map(child =>
       let vname = authored_name(env: env, node: child)
-      concat(rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, ";")
+      rust_phantom_zst_marker_def(vname: vname)
     )
     |> join(separator: "\n")
   markers
@@ -1253,7 +1265,7 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
 
 fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> String {
   collect_phantom_zst_marker_names(items: items, env: env)
-    |> map(vname => concat(rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, ";"))
+    |> map(vname => rust_phantom_zst_marker_def(vname: vname))
     |> join(separator: "\n")
 }
 
