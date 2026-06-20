@@ -12,7 +12,7 @@ import std.types { Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
-type CpuArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
+import extdeps.toolchain.types { Architecture }
 
 // CpuSocket — the physical CPU mount, decomposed from the marketing string (e.g.
 // "LGA4926" = a Land Grid Array package with 4926 contacts/lands). `package` is the
@@ -34,7 +34,7 @@ type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
   vendor: Vendor<Hardware>
-  architecture: CpuArchitecture
+  architecture: Architecture
   cores: Int
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz

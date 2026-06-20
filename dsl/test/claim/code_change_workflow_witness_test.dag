@@ -1,0 +1,377 @@
+// test/claim/code_change_workflow_witness_test.dag — §5 witnesses for ctrl.code_change_workflow.
+
+module test.claim.code_change_workflow_witness_test
+
+import ctrl.code_change_workflow {
+  CodeChangeFacts, CodeChangeStage, CodeChangeActiveStage, CodeChangeTerminalStage,
+  CodeChangeBinding, CodeChangeTransitionRequest, CodeChangeGithubPrContext,
+  CodeChangeEventTag, MarkReadyForReview, RecordMergeReady,
+  ChangeOpen, ChangeUnderReview, ChangeMergeReady, ChangeMerged, ChangeClosed,
+  CodeChangeActive, CodeChangeTerminal,
+  ChangeDraftBlocksReview, CodeChangeDigestNotReady, CodeChangePolicyNotPermitted,
+  CodeChangeMissingReviewTally, CodeChangeMissingDigestVerdict, CodeChangeHeadShaMismatch,
+  CodeChangeTallyRequestChanges, CodeChangeTallyBlockingFindings, CodeChangeNotMergeableClean,
+  CodeChangeAlreadyTerminal,
+  CanTransition, TransitionRefused,
+  decide_code_change_transition, classify_github_pr_terminal_anchor,
+}
+import ctrl.pr_digests { Ready, NotReady }
+import ctrl.review_verdict { MergeReadinessTally }
+import ctrl.process_algebra { ProcessNodeId }
+import extdeps.github.pulls {
+  PullRequest, PullRequestRef, PullRequestState, Open, Closed,
+}
+import extdeps.github.github { GitHubUser, User }
+import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
+
+data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
+data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
+data witness_node: ProcessNodeId = "session-calm-swift-738"
+data witness_change_ref: NonEmptyStr = "change-1"
+
+fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
+  PullRequest {
+    number: 1,
+    title: "witness",
+    body: none,
+    state: state,
+    html_url: witness_pr_url,
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef {
+      ref: "feature",
+      sha: witness_head_sha,
+      label: "gunb-ai:feature",
+    },
+    base: PullRequestRef {
+      ref: "main",
+      sha: "def456789012345678901234567890abcdef12",
+      label: "gunb-ai:main",
+    },
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T00:00:00Z",
+    merged_at: merged_at,
+    draft: draft,
+  }
+}
+
+fn witness_github_ctx(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> CodeChangeGithubPrContext {
+  CodeChangeGithubPrContext {
+    pr: witness_github_pr(draft: draft, state: state, merged_at: merged_at),
+  }
+}
+
+fn witness_binding() -> CodeChangeBinding {
+  CodeChangeBinding {
+    node_id: witness_node,
+    change_ref: witness_change_ref,
+  }
+}
+
+fn witness_active_facts(active: CodeChangeActiveStage) -> CodeChangeFacts {
+  CodeChangeFacts {
+    binding: witness_binding(),
+    stage: CodeChangeActive { stage: active },
+    head_sha: Present { value: witness_head_sha },
+    marked_ready_at: none,
+    merge_ready_at: none,
+    merged_at: none,
+    closed_at: none,
+  }
+}
+
+fn witness_terminal_facts(terminal: CodeChangeTerminalStage) -> CodeChangeFacts {
+  CodeChangeFacts {
+    binding: witness_binding(),
+    stage: CodeChangeTerminal { stage: terminal },
+    head_sha: Present { value: witness_head_sha },
+    marked_ready_at: none,
+    merge_ready_at: none,
+    merged_at: none,
+    closed_at: none,
+  }
+}
+
+fn witness_tally_green() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 0,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_terminal_stages_refuse() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_terminal_facts(terminal: ChangeMerged),
+      event: MarkReadyForReview,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: none,
+      tally: none,
+      policy_permitted: none,
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeAlreadyTerminal { stage: _ } } => true
+    _ => false
+  }
+}
+
+fn witness_draft_blocks_mark_ready() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeOpen),
+      event: MarkReadyForReview,
+      github_pr: Present { value: witness_github_ctx(draft: true, state: Open, merged_at: none) },
+      digest: none,
+      tally: none,
+      policy_permitted: none,
+    }
+  ) {
+    TransitionRefused { refusal: ChangeDraftBlocksReview } => true
+    _ => false
+  }
+}
+
+fn witness_merge_ready_requires_policy() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: none,
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangePolicyNotPermitted } => true
+    _ => false
+  }
+}
+
+fn witness_missing_tally_blocks_merge_ready() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: none,
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeMissingReviewTally } => true
+    _ => false
+  }
+}
+
+fn witness_missing_digest_blocks_merge_ready() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: none,
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeMissingDigestVerdict } => true
+    _ => false
+  }
+}
+
+fn witness_tally_stale_head() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 0,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_stale_tally_head_sha_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_stale_head() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeHeadShaMismatch { expected: _, actual: _ } } => true
+    _ => false
+  }
+}
+
+fn witness_tally_request_changes() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 1,
+    blocking_finding_count: 0,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_tally_blocking_findings() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 1,
+    mergeable_clean: true,
+  }
+}
+
+fn witness_tally_not_mergeable_clean() -> MergeReadinessTally {
+  MergeReadinessTally {
+    repo: witness_repo,
+    pr_number: 1,
+    head_sha: witness_head_sha,
+    source_artifact_ids: [],
+    approval_count: 2,
+    request_changes_count: 0,
+    blocking_finding_count: 0,
+    mergeable_clean: false,
+  }
+}
+
+fn witness_tally_request_changes_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_request_changes() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeTallyRequestChanges { count: 1 } } => true
+    _ => false
+  }
+}
+
+fn witness_tally_blocking_findings_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_blocking_findings() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeTallyBlockingFindings { count: 1 } } => true
+    _ => false
+  }
+}
+
+fn witness_tally_not_mergeable_clean_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_not_mergeable_clean() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeNotMergeableClean } => true
+    _ => false
+  }
+}
+
+fn witness_merge_ready_green_with_policy() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    CanTransition { to: CodeChangeActive { stage: ChangeMergeReady } } => true
+    _ => false
+  }
+}
+
+fn witness_digest_not_ready_blocks() -> Bool {
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: NotReady { first_reason: "draft", more_reasons: [] } },
+      tally: Present { value: witness_tally_green() },
+      policy_permitted: Present { value: true },
+    }
+  ) {
+    TransitionRefused { refusal: CodeChangeDigestNotReady { first_reason: "draft" } } => true
+    _ => false
+  }
+}
+
+fn witness_merged_anchor_from_github() -> Bool {
+  match classify_github_pr_terminal_anchor(
+    pr: witness_github_pr(
+      draft: false,
+      state: Open,
+      merged_at: Present { value: witness_merged_at },
+    )
+  ) {
+    Present { value: CodeChangeTerminal { stage: ChangeMerged } } => true
+    _ => false
+  }
+}
+
+fn witness_closed_anchor_from_github() -> Bool {
+  match classify_github_pr_terminal_anchor(
+    pr: witness_github_pr(draft: false, state: Closed, merged_at: none)
+  ) {
+    Present { value: CodeChangeTerminal { stage: ChangeClosed } } => true
+    _ => false
+  }
+}
+
+fn all_code_change_workflow_witnesses() -> Bool {
+  witness_terminal_stages_refuse()
+    && witness_draft_blocks_mark_ready()
+    && witness_merge_ready_requires_policy()
+    && witness_missing_tally_blocks_merge_ready()
+    && witness_missing_digest_blocks_merge_ready()
+    && witness_stale_tally_head_sha_blocks()
+    && witness_tally_request_changes_blocks()
+    && witness_tally_blocking_findings_blocks()
+    && witness_tally_not_mergeable_clean_blocks()
+    && witness_merge_ready_green_with_policy()
+    && witness_digest_not_ready_blocks()
+    && witness_merged_anchor_from_github()
+    && witness_closed_anchor_from_github()
+}
+
+test fn code_change_workflow_witnesses() -> Bool {
+  all_code_change_workflow_witnesses()
+}

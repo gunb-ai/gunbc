@@ -20,6 +20,7 @@ import extdeps.git.versioning {
   git_release_version_compare,
   git_release_to_version_identity,
   git_release_version_scheme,
+  min_git_version,
 }
 
 fn w_git_2_0_anchor() -> Bool {
@@ -88,6 +89,10 @@ fn w_git_release_version_scheme_equal() -> Bool {
   }
 }
 
+fn w_min_git_version_grounded() -> Bool {
+  min_git_version == ">= 2.0.0"
+}
+
 test fn extdeps_git_versioning_witnesses() -> Bool {
   w_git_2_0_anchor()
     && w_release_version_compare_major_minor_patch()
@@ -96,4 +101,5 @@ test fn extdeps_git_versioning_witnesses() -> Bool {
     && w_spec_citation_points_at_breaking_changes_doc()
     && w_git_release_to_version_identity()
     && w_git_release_version_scheme_equal()
+    && w_min_git_version_grounded()
 }

@@ -14,8 +14,10 @@ import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_ci_floor_batches, corpus_runnable
+  gunbc_ci_floor_batches, corpus_runnable,
+  gunbc_ci_floor_breadth, gunbc_ci_floor_spawn_width
 }
+import std.measure { hardware_thread_count_value }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
@@ -25,7 +27,7 @@ data corpus_sentinel: String = "__corpus__"
 fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => corpus_sentinel
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _ } => corpus_sentinel
   }
 }
 
@@ -65,7 +67,7 @@ fn witness_independent_jobs_parallelize() -> Bool {
 // Scan dirs are carried by the plan discovery batch — authority from ci_layer_roots.
 fn witness_discovery_scan_dirs_in_plan() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _ } =>
       list_contains_str(xs: dirs, target: "dsl/test/claim")
     _ => false
   }
@@ -73,7 +75,7 @@ fn witness_discovery_scan_dirs_in_plan() -> Bool {
 
 fn witness_scan_dirs_match_layer_authority() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, skip_unaffected_node_frontier: _ } =>
       list_contains_str(xs: dirs, target: witness_discovery_scan_dirs.first())
     _ => false
   }
@@ -83,13 +85,35 @@ fn witness_scan_dirs_match_layer_authority() -> Bool {
 // is marker-driven only — no hand-listed explicit_entries (§3/§5).
 fn witness_corpus_has_no_explicit_entries() -> Bool {
   match corpus_runnable() {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries } =>
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _ } =>
       (length(xs: entries) == 0) &&
         list_contains_str(xs: roots, target: "src/v2") &&
         list_contains_str(xs: roots, target: "dsl") &&
         list_contains_str(xs: roots, target: witness_layer_roots.first())
     _ => false
   }
+}
+
+fn witness_corpus_skip_node_frontier_enabled() -> Bool {
+  match corpus_runnable() {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: enabled } =>
+      enabled
+    _ => false
+  }
+}
+
+// Connected relationship: spawn_width is DERIVED from the floor breadth, not tuned.
+// When breadth <= hardware threads (true on the real fleet), spawn_width == breadth —
+// so the host runs the independent layer concurrently, not one-at-a-time.
+fn witness_spawn_width_tracks_breadth() -> Bool {
+  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) == gunbc_ci_floor_breadth()
+}
+
+// Discriminating: the floor is NOT serial. A revert to a constant shard_count (=1) or a
+// supply that collapsed to one thread makes breadth/width 1 → this goes RED.
+fn witness_floor_not_serial() -> Bool {
+  (gunbc_ci_floor_breadth() > 1) &&
+    (hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 1)
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
@@ -99,5 +123,8 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_independent_jobs_parallelize() &&
     witness_discovery_scan_dirs_in_plan() &&
     witness_scan_dirs_match_layer_authority() &&
-    witness_corpus_has_no_explicit_entries()
+    witness_corpus_has_no_explicit_entries() &&
+    witness_corpus_skip_node_frontier_enabled() &&
+    witness_spawn_width_tracks_breadth() &&
+    witness_floor_not_serial()
 }

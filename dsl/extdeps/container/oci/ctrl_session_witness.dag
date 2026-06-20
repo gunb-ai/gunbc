@@ -84,8 +84,9 @@ import extdeps.container.oci.types {
   parse_image_config_goos,
   parse_oci_media_type,
 }
-import extdeps.container.oci.types { Aarch64, Armv7, ImageConfigArchitecture }
-import std.types { Bool, ContentHash, Linux }
+import extdeps.container.oci.types { Aarch64, Armv7, Architecture }
+import extdeps.toolchain.types { Linux }
+import std.types { Bool, ContentHash }
 
 data ctrl_session_config_digest: ContentHash = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
 
