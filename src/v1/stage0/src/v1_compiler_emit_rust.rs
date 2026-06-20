@@ -36,9 +36,9 @@ pub use crate::v1_compiler_emit::{
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
-    has_mock_prefix, is_data_def_item, is_function_item, is_resource_def_item, is_service_def_item,
-    is_service_item, is_type_alias_item, is_type_alias_return_node, is_type_decl_item,
-    is_type_def_item, is_upper, language_spec, make_indent, module_to_filename,
+    has_mock_prefix, is_bare_leaf_item, is_data_def_item, is_function_item, is_resource_def_item,
+    is_service_def_item, is_service_item, is_type_alias_item, is_type_alias_return_node,
+    is_type_decl_item, is_type_def_item, is_upper, language_spec, make_indent, module_to_filename,
     sanitize_service_name, service_var_name, test_function_name, to_lower_char, to_pascal,
     to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
 };
