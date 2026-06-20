@@ -140,7 +140,7 @@ pub struct TokenResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NameResult {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub span: Rc<SourceSpan>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub err: Option<Rc<ErrorNode>>,
@@ -284,7 +284,7 @@ pub struct ResUseResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemPrefixResult {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub name_span: Rc<SourceSpan>,
     pub type_params: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
@@ -322,7 +322,7 @@ pub struct BindingPower {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExpectedToken {
-    ExpectKeyword { text: String },
+    ExpectKeyword { text: Rc<FreeMonoid<Nat>> },
     ExpectLBrace,
     ExpectRBrace,
     ExpectLParen,
@@ -341,7 +341,7 @@ pub enum ExpectedToken {
     ExpectPipe,
 }
 impl ExpectedToken {
-    pub fn text(&self) -> String {
+    pub fn text(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             ExpectedToken::ExpectKeyword { text: __val, .. } => __val.clone(),
             ExpectedToken::ExpectLBrace => panic!("no text on unit variant"),
@@ -484,7 +484,7 @@ pub struct BindingsResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
+pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
     make_expr_error_node(ExprErrorKind::ParseRecoveryError, message, span)
 }
 
@@ -510,7 +510,7 @@ pub struct GuardResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FromKeyResult {
-    pub from_key: Option<String>,
+    pub from_key: Rc<FreeMonoid<Nat>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
     pub err: Option<Rc<ErrorNode>>,
@@ -527,7 +527,7 @@ pub struct PostfixResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserParam {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub span: Rc<SourceSpan>,
 }
 
@@ -560,7 +560,7 @@ pub struct RangeArgsResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NamedIntResult {
-    pub arg_name: String,
+    pub arg_name: Rc<FreeMonoid<Nat>>,
     pub arg_value: i64,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
@@ -657,7 +657,7 @@ pub struct UnitResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringLitResult {
-    pub value: String,
+    pub value: Rc<FreeMonoid<Nat>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -683,7 +683,7 @@ pub enum ParserHelperIdentity {
 #[serde(tag = "_variant")]
 pub enum ParserCallIdentity {
     ParserCallHelper { helper: ParserHelperIdentity },
-    ParserCallFunction { name: String },
+    ParserCallFunction { name: Rc<FreeMonoid<Nat>> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -709,7 +709,7 @@ impl ParserResultWitness {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescResult {
-    pub desc: Option<String>,
+    pub desc: Rc<FreeMonoid<Nat>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
 }
 
@@ -737,7 +737,7 @@ pub fn advance(tokens: Rc<Vec<Rc<Token>>>) -> Rc<AdvanceResult> {
     }
 }
 
-pub fn parse_error(msg: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
+pub fn parse_error(msg: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
     make_error_node(
         Rc::new(CompilerDiagnostic::ParseError {
             message: msg,
@@ -1144,14 +1144,18 @@ pub fn is_pipe_arrow_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn tok_is_keyword(tok: Option<Rc<Token>>, kw: String) -> bool {
+pub fn tok_is_keyword(tok: Option<Rc<Token>>, kw: Rc<FreeMonoid<Nat>>) -> bool {
     match tok {
-        Some(t) => (is_keyword_shape(t.shape.clone()) && (t.text.clone().as_str() == kw.as_str())),
+        Some(t) => {
+            (is_keyword_shape(t.shape.clone())
+                && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(kw)))
+        }
         None => false,
     }
 }
 
-pub fn tok_keyword_text(tok: Option<Rc<Token>>) -> String {
+pub fn tok_keyword_text(tok: Option<Rc<Token>>) -> Rc<FreeMonoid<Nat>> {
     match tok {
         Some(t) => {
             if is_keyword_shape(t.shape.clone()) {
@@ -1171,16 +1175,20 @@ pub fn tok_is_ident(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: String) -> bool {
+pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: Rc<FreeMonoid<Nat>>) -> bool {
     match tok {
-        Some(t) => (is_ident_shape(t.shape.clone()) && (t.text.clone().as_str() == text.as_str())),
+        Some(t) => {
+            (is_ident_shape(t.shape.clone())
+                && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(text)))
+        }
         None => false,
     }
 }
 
 pub fn drop_leading_type_modifier(
     tokens: Rc<Vec<Rc<Token>>>,
-    modifier: String,
+    modifier: Rc<FreeMonoid<Nat>>,
 ) -> Rc<Vec<Rc<Token>>> {
     if tok_is_ident_text(tokens.clone().first().cloned(), modifier) {
         skip_newlines(Rc::new(
@@ -1198,8 +1206,9 @@ pub fn drop_leading_type_modifier(
 
 pub fn drop_leading_test_marker(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
     if (tok_is_ident_text(tokens.clone().first().cloned(), "test".to_string())
-        && (tok_keyword_text(tokens.clone().get(1 as usize).cloned()).as_str()
-            != "".to_string().as_str()))
+        && (crate::v2_std_text::host_string_text_to_rust_host(tok_keyword_text(
+            tokens.clone().get(1 as usize).cloned(),
+        )) != crate::v2_std_text::host_string_text_to_rust_host("".to_string())))
     {
         Rc::new(
             tokens
@@ -1372,7 +1381,7 @@ pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Option<String> {
+pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Rc<FreeMonoid<Nat>> {
     match tok {
         Some(t) => {
             if is_name_keyword(t.clone()) {
@@ -1392,7 +1401,7 @@ pub fn tok_is_keyword_name(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn shape_display_name(shape: TokenShape) -> String {
+pub fn shape_display_name(shape: TokenShape) -> Rc<FreeMonoid<Nat>> {
     match shape {
         TokenShape::ShKeyword => "keyword".to_string(),
         TokenShape::ShLBrace => "LBrace".to_string(),
@@ -1440,7 +1449,7 @@ pub fn shape_display_name(shape: TokenShape) -> String {
     }
 }
 
-pub fn token_display_name(token: Rc<Token>) -> String {
+pub fn token_display_name(token: Rc<Token>) -> Rc<FreeMonoid<Nat>> {
     if is_keyword_shape(token.shape.clone()) {
         v1_rt::concat(
             "keyword '".to_string(),
@@ -1451,7 +1460,7 @@ pub fn token_display_name(token: Rc<Token>) -> String {
     }
 }
 
-pub fn expected_token_name(expected: Rc<ExpectedToken>) -> String {
+pub fn expected_token_name(expected: Rc<ExpectedToken>) -> Rc<FreeMonoid<Nat>> {
     match (*expected).clone() {
         ExpectedToken::ExpectKeyword { text: kw, .. } => v1_rt::concat(
             "keyword '".to_string(),
@@ -1480,7 +1489,8 @@ pub fn token_matches_expected(token: Rc<Token>, expected: Rc<ExpectedToken>) -> 
     match (*expected).clone() {
         ExpectedToken::ExpectKeyword { text: kw, .. } => {
             (is_keyword_shape(token.shape.clone())
-                && (token.text.clone().as_str() == kw.clone().as_str()))
+                && (crate::v2_std_text::host_string_text_to_rust_host(token.text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(kw.clone())))
         }
         ExpectedToken::ExpectLBrace => is_lbrace_shape(token.shape.clone()),
         ExpectedToken::ExpectRBrace => is_rbrace_shape(token.shape.clone()),
@@ -1536,7 +1546,10 @@ pub fn expect(tokens: Rc<Vec<Rc<Token>>>, expected: Rc<ExpectedToken>) -> Rc<Tok
                     }),
                     tokens: tokens.clone(),
                     err: Some(parse_error(
-                        format!("expected {}, found {}", wanted, found),
+                        crate::v2_std_text::host_string_text_from_rust_host(format!(
+                            "expected {}, found {}",
+                            wanted, found
+                        )),
                         token_span(tok.clone()),
                     )),
                 })
@@ -1745,7 +1758,7 @@ pub fn eat(tokens: Rc<Vec<Rc<Token>>>, expected: Rc<ExpectedToken>) -> Rc<EatRes
 pub fn parser_result_base_var(
     expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
             Some(base) => match (*base.expr_data.clone()).clone() {
@@ -1785,8 +1798,14 @@ pub fn parser_helper_state_arg_expr(
                 let arg_node = pair.1.clone();
                 let matches_state = match arg_name_at(arg_node.clone(), source_indices.clone()) {
                     Some(name) => {
-                        ((name.clone().as_str() == "state".to_string().as_str())
-                            || (name.clone().as_str() == "tokens".to_string().as_str()))
+                        ((crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "state".to_string(),
+                            ))
+                            || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "tokens".to_string(),
+                                )))
                     }
                     None => (idx.clone() == 0),
                 };
@@ -1803,12 +1822,14 @@ pub fn parser_helper_state_arg_expr(
 pub fn parser_progress_flag_var(
     expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => {
             let field = field_access_field_at(expr.clone(), source_indices.clone());
-            if ((field.clone().as_str() == "consumed".to_string().as_str())
-                || (field.clone().as_str() == "changed".to_string().as_str()))
+            if ((crate::v2_std_text::host_string_text_to_rust_host(field.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("consumed".to_string()))
+                || (crate::v2_std_text::host_string_text_to_rust_host(field.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("changed".to_string())))
             {
                 parser_result_base_var(expr.clone(), source_indices.clone())
             } else {
@@ -1819,14 +1840,22 @@ pub fn parser_progress_flag_var(
     }
 }
 
-pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
-    if (callee.clone().as_str() == "skip_newlines".to_string().as_str()) {
+pub fn parser_helper_identity(callee: Rc<FreeMonoid<Nat>>) -> Option<ParserHelperIdentity> {
+    if (crate::v2_std_text::host_string_text_to_rust_host(callee.clone())
+        == crate::v2_std_text::host_string_text_to_rust_host("skip_newlines".to_string()))
+    {
         Some(ParserHelperIdentity::ParserHelperSkipNewlines)
     } else {
-        if (callee.clone().as_str() == "skip_continuation_newlines".to_string().as_str()) {
+        if (crate::v2_std_text::host_string_text_to_rust_host(callee.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(
+                "skip_continuation_newlines".to_string(),
+            ))
+        {
             Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines)
         } else {
-            if (callee.clone().as_str() == "with".to_string().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(callee.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("with".to_string()))
+            {
                 Some(ParserHelperIdentity::ParserHelperWith)
             } else {
                 None
@@ -1887,11 +1916,13 @@ pub fn parser_result_witness(
     }
 }
 
-pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn leaf_type_node(name: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
-        ident_span: if (name.clone().as_str() == "".to_string().as_str()) {
+        ident_span: if (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+        {
             None
         } else {
             Some(span.clone())
@@ -2047,7 +2078,7 @@ pub fn parse_dotted_ident(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
 
 pub fn parse_dotted_ident_rest(
     mut tokens: Rc<Vec<Rc<Token>>>,
-    mut acc: String,
+    mut acc: Rc<FreeMonoid<Nat>>,
     mut span: Rc<SourceSpan>,
 ) -> Rc<NameResult> {
     loop {
@@ -2438,7 +2469,7 @@ pub fn parse_import_names(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> 
     parse_import_names_acc(tokens, ctx, Rc::new(vec![]))
 }
 
-pub fn parsed_name_leaf(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn parsed_name_leaf(name: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>) -> Rc<Node> {
     leaf_node_with_span(name, span)
 }
 
@@ -2482,12 +2513,17 @@ pub fn parse_import_names_acc(
     }
 }
 
-pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<Rc<ItemForm>> {
+pub fn find_item_form(
+    forms: Rc<Vec<Rc<ItemForm>>>,
+    keyword: Rc<FreeMonoid<Nat>>,
+) -> Option<Rc<ItemForm>> {
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
             for f in forms.iter().cloned() {
-                if (f.keyword.clone().as_str() == keyword.clone().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(f.keyword.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(keyword.clone()))
+                {
                     __result.push(f);
                 }
             }
@@ -2916,7 +2952,7 @@ pub fn outputs_to_inferred(
 }
 
 pub fn make_operation_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     ident_span: Option<Rc<SourceSpan>>,
     inputs: Rc<Vec<Rc<Node>>>,
     outputs: Rc<Vec<Rc<Node>>>,
@@ -2969,7 +3005,7 @@ pub fn make_operation_node(
 }
 
 pub fn make_capability_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     ident_span: Option<Rc<SourceSpan>>,
     inputs: Rc<Vec<Rc<Node>>>,
     outputs: Rc<Vec<Rc<Node>>>,
@@ -3357,7 +3393,7 @@ pub fn parse_type_body_from_prefix(
 pub fn parse_type_body_after_eq(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
@@ -4175,24 +4211,34 @@ pub fn parse_named_int_args(
                         err: r2.err.clone(),
                     });
                 }
-                let min_val = if (r.arg_name.clone().as_str() == "min".to_string().as_str()) {
-                    Some(r.arg_value.clone())
-                } else {
-                    if (r2.arg_name.clone().as_str() == "min".to_string().as_str()) {
-                        Some(r2.arg_value.clone())
+                let min_val =
+                    if (crate::v2_std_text::host_string_text_to_rust_host(r.arg_name.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("min".to_string()))
+                    {
+                        Some(r.arg_value.clone())
                     } else {
-                        None
-                    }
-                };
-                let max_val = if (r.arg_name.clone().as_str() == "max".to_string().as_str()) {
-                    Some(r.arg_value.clone())
-                } else {
-                    if (r2.arg_name.clone().as_str() == "max".to_string().as_str()) {
-                        Some(r2.arg_value.clone())
+                        if (crate::v2_std_text::host_string_text_to_rust_host(r2.arg_name.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host("min".to_string()))
+                        {
+                            Some(r2.arg_value.clone())
+                        } else {
+                            None
+                        }
+                    };
+                let max_val =
+                    if (crate::v2_std_text::host_string_text_to_rust_host(r.arg_name.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("max".to_string()))
+                    {
+                        Some(r.arg_value.clone())
                     } else {
-                        None
-                    }
-                };
+                        if (crate::v2_std_text::host_string_text_to_rust_host(r2.arg_name.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host("max".to_string()))
+                        {
+                            Some(r2.arg_value.clone())
+                        } else {
+                            None
+                        }
+                    };
                 Rc::new(RangeArgsResult {
                     min_val: min_val,
                     max_val: max_val,
@@ -4202,16 +4248,22 @@ pub fn parse_named_int_args(
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let min_val = if (r.arg_name.clone().as_str() == "min".to_string().as_str()) {
-                    Some(r.arg_value.clone())
-                } else {
-                    None
-                };
-                let max_val = if (r.arg_name.clone().as_str() == "max".to_string().as_str()) {
-                    Some(r.arg_value.clone())
-                } else {
-                    None
-                };
+                let min_val =
+                    if (crate::v2_std_text::host_string_text_to_rust_host(r.arg_name.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("min".to_string()))
+                    {
+                        Some(r.arg_value.clone())
+                    } else {
+                        None
+                    };
+                let max_val =
+                    if (crate::v2_std_text::host_string_text_to_rust_host(r.arg_name.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("max".to_string()))
+                    {
+                        Some(r.arg_value.clone())
+                    } else {
+                        None
+                    };
                 Rc::new(RangeArgsResult {
                     min_val: min_val,
                     max_val: max_val,
@@ -4314,7 +4366,7 @@ pub fn parse_positional_variant_type_fields(
 pub fn parse_variant_fields(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    vname: String,
+    vname: Rc<FreeMonoid<Nat>>,
     vname_span: Rc<SourceSpan>,
 ) -> Rc<VariantResult> {
     {
@@ -4564,7 +4616,10 @@ pub fn parse_type_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<
                 })
             }
             Some(TokenShape::ShKeyword) => {
-                if (tok.clone().unwrap().text.clone().as_str() == "fn".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(
+                    tok.clone().unwrap().text.clone(),
+                ) == crate::v2_std_text::host_string_text_to_rust_host("fn".to_string()))
+                {
                     parse_callable_type_expr(
                         Rc::new(
                             tokens
@@ -4763,7 +4818,7 @@ pub fn parse_callable_param_types(
 pub fn finish_type_expr_from_name(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    type_name: String,
+    type_name: Rc<FreeMonoid<Nat>>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     {
@@ -5173,7 +5228,10 @@ pub fn parse_optional_from_key(
         };
         match sh {
             Some(TokenShape::ShIdent) => {
-                if (tok.clone().unwrap().text.clone().as_str() == "from".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(
+                    tok.clone().unwrap().text.clone(),
+                ) == crate::v2_std_text::host_string_text_to_rust_host("from".to_string()))
+                {
                     {
                         let tok2 = tokens.clone().get(1 as usize).cloned();
                         let sh2 = match tok2.clone() {
@@ -5512,7 +5570,9 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<I
             ident: None,
         });
         let kw = tok_keyword_text(tokens.clone().first().cloned());
-        let r = if (kw.clone().as_str() == "func".to_string().as_str()) {
+        let r = if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("func".to_string()))
+        {
             expect(
                 tokens.clone(),
                 Rc::new(ExpectedToken::ExpectKeyword {
@@ -5520,7 +5580,9 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<I
                 }),
             )
         } else {
-            if (kw.clone().as_str() == "pattern".to_string().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("pattern".to_string()))
+            {
                 expect(
                     tokens.clone(),
                     Rc::new(ExpectedToken::ExpectKeyword {
@@ -5528,7 +5590,9 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<I
                     }),
                 )
             } else {
-                if (kw.clone().as_str() == "interface".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("interface".to_string()))
+                {
                     expect(
                         tokens.clone(),
                         Rc::new(ExpectedToken::ExpectKeyword {
@@ -5553,7 +5617,8 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<I
                 err: r.err.clone(),
             });
         }
-        let has_uses = (kw.clone().as_str() == "func".to_string().as_str());
+        let has_uses = (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("func".to_string()));
         let form = Rc::new(ItemForm {
             kind: ItemFormKind::OtherForm,
             keyword: kw.clone(),
@@ -5831,7 +5896,8 @@ pub fn parse_uses_clause(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
         let is_uses = match tok {
             Some(t) => {
                 (is_ident_shape(t.shape.clone())
-                    && (t.text.clone().as_str() == "uses".to_string().as_str()))
+                    && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("uses".to_string())))
             }
             None => false,
         };
@@ -6355,7 +6421,9 @@ pub fn parse_service_entries(
             match sh {
                 Some(TokenShape::ShIdent) => {
                     let id = tok.clone().unwrap().text.clone();
-                    if (id.clone().as_str() == "config".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(id.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("config".to_string()))
+                    {
                         let r = expect(
                             Rc::new(
                                 tokens
@@ -6413,7 +6481,11 @@ pub fn parse_service_entries(
                             continue;
                         }
                     } else {
-                        if (id.clone().as_str() == "transport".to_string().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(id.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "transport".to_string(),
+                            ))
+                        {
                             let r = parse_transport_binding(
                                 Rc::new(
                                     tokens
@@ -6462,7 +6534,11 @@ pub fn parse_service_entries(
                 }
                 Some(TokenShape::ShKeyword) => {
                     let kw_text = tok.clone().unwrap().text.clone();
-                    if (kw_text.as_str() == "operation".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(kw_text)
+                        == crate::v2_std_text::host_string_text_to_rust_host(
+                            "operation".to_string(),
+                        ))
+                    {
                         let r = parse_operation_def(tokens.clone(), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ServiceBodyResult {
@@ -6674,7 +6750,9 @@ pub fn parse_transport_binding(
         };
         match sh {
             Some(TokenShape::ShIdent) => {
-                if (tok_text.clone().as_str() == "rest".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(tok_text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("rest".to_string()))
+                {
                     {
                         let r = expect(
                             Rc::new(
@@ -6725,7 +6803,9 @@ pub fn parse_transport_binding(
                         })
                     }
                 } else {
-                    if (tok_text.clone().as_str() == "shell".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(tok_text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("shell".to_string()))
+                    {
                         {
                             let r = expect(
                                 Rc::new(
@@ -6778,7 +6858,11 @@ pub fn parse_transport_binding(
                             })
                         }
                     } else {
-                        if (tok_text.clone().as_str() == "file".to_string().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(tok_text.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "file".to_string(),
+                            ))
+                        {
                             {
                                 let r = expect(
                                     Rc::new(
@@ -6950,52 +7034,73 @@ pub fn parse_rest_fields(
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             };
             ctx = r3.ctx.clone();
-            if (fname.clone().as_str() == transport_url_key().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host(transport_url_key()))
+            {
                 {
                     let __tco_0 = Some(r3.expr.clone());
                     base_url = __tco_0;
                     continue;
                 }
             } else {
-                if (fname.clone().as_str() == transport_method_key().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(transport_method_key()))
+                {
                     {
                         let __tco_0 = Some(r3.expr.clone());
                         method = __tco_0;
                         continue;
                     }
                 } else {
-                    if (fname.clone().as_str() == transport_path_template_key().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(
+                            transport_path_template_key(),
+                        ))
+                    {
                         {
                             let __tco_0 = Some(r3.expr.clone());
                             path_template = __tco_0;
                             continue;
                         }
                     } else {
-                        if (fname.clone().as_str() == transport_query_key().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                transport_query_key(),
+                            ))
+                        {
                             {
                                 let __tco_0 = Some(r3.expr.clone());
                                 query = __tco_0;
                                 continue;
                             }
                         } else {
-                            if (fname.clone().as_str() == transport_body_key().as_str()) {
+                            if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    transport_body_key(),
+                                ))
+                            {
                                 {
                                     let __tco_0 = Some(r3.expr.clone());
                                     request_body = __tco_0;
                                     continue;
                                 }
                             } else {
-                                if (fname.clone().as_str()
-                                    == transport_response_format_key().as_str())
-                                {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    fname.clone(),
+                                ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                    transport_response_format_key(),
+                                )) {
                                     {
                                         let __tco_0 = Some(r3.expr.clone());
                                         response_format = __tco_0;
                                         continue;
                                     }
                                 } else {
-                                    if (fname.clone().as_str() == transport_headers_key().as_str())
-                                    {
+                                    if (crate::v2_std_text::host_string_text_to_rust_host(
+                                        fname.clone(),
+                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                        transport_headers_key(),
+                                    )) {
                                         let h = match (*r3.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => r3.expr.clone().children.clone(),
     _ => return Rc::new(TransportResult {
@@ -7074,7 +7179,9 @@ pub fn parse_shell_fields(
                     err: r2.err.clone(),
                 });
             }
-            if (fname.clone().as_str() == "argv".to_string().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("argv".to_string()))
+            {
                 let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
                 if has_err(r3.err.clone()) {
                     return Rc::new(TransportResult {
@@ -7119,7 +7226,9 @@ pub fn parse_shell_fields(
                     continue;
                 }
             } else {
-                if (fname.clone().as_str() == transport_stdin_key().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(transport_stdin_key()))
+                {
                     let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
                     if has_err(r3.err.clone()) {
                         return Rc::new(TransportResult {
@@ -7239,8 +7348,10 @@ pub fn parse_file_fields(
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             };
-            if ((fname.clone().as_str() == "path".to_string().as_str())
-                || (fname.clone().as_str() == transport_path_key().as_str()))
+            if ((crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("path".to_string()))
+                || (crate::v2_std_text::host_string_text_to_rust_host(fname.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(transport_path_key())))
             {
                 {
                     let __tco_0 = r3.ctx.clone();
@@ -7325,7 +7436,7 @@ pub fn parse_operation_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) ->
 pub fn parse_operation_v2_inline(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<OpResult> {
@@ -7445,7 +7556,7 @@ pub fn parse_operation_v2_inline(
 pub fn parse_operation_v1_body(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<OpResult> {
@@ -7563,7 +7674,9 @@ pub fn parse_op_body_entries(
             match sh {
                 Some(TokenShape::ShKeyword) => {
                     let kw_text = tok.clone().unwrap().text.clone();
-                    if (kw_text.clone().as_str() == "input".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("input".to_string()))
+                    {
                         let r = expect(
                             Rc::new(
                                 tokens
@@ -7632,7 +7745,11 @@ pub fn parse_op_body_entries(
                             continue;
                         }
                     } else {
-                        if (kw_text.clone().as_str() == "output".to_string().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "output".to_string(),
+                            ))
+                        {
                             let r = expect(
                                 Rc::new(
                                     tokens
@@ -7701,7 +7818,11 @@ pub fn parse_op_body_entries(
                                 continue;
                             }
                         } else {
-                            if (kw_text.clone().as_str() == "idempotent".to_string().as_str()) {
+                            if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "idempotent".to_string(),
+                                ))
+                            {
                                 let prop = modifier_to_prop("idempotent".to_string(), span);
                                 {
                                     let __tco_0 = Rc::new(
@@ -7713,7 +7834,11 @@ pub fn parse_op_body_entries(
                                     continue;
                                 }
                             } else {
-                                if (kw_text.clone().as_str() == "readonly".to_string().as_str()) {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    kw_text.clone(),
+                                ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "readonly".to_string(),
+                                )) {
                                     let prop = modifier_to_prop("readonly".to_string(), span);
                                     {
                                         let __tco_0 = Rc::new(
@@ -7729,8 +7854,11 @@ pub fn parse_op_body_entries(
                                         continue;
                                     }
                                 } else {
-                                    if (kw_text.clone().as_str() == "hermetic".to_string().as_str())
-                                    {
+                                    if (crate::v2_std_text::host_string_text_to_rust_host(
+                                        kw_text.clone(),
+                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                        "hermetic".to_string(),
+                                    )) {
                                         let prop = modifier_to_prop("hermetic".to_string(), span);
                                         {
                                             let __tco_0 = Rc::new(
@@ -7755,7 +7883,11 @@ pub fn parse_op_body_entries(
                 }
                 Some(TokenShape::ShIdent) => {
                     let id = tok.clone().unwrap().text.clone();
-                    if (id.clone().as_str() == "transport".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(id.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(
+                            "transport".to_string(),
+                        ))
+                    {
                         let r = parse_transport_binding(
                             Rc::new(
                                 tokens
@@ -7791,7 +7923,11 @@ pub fn parse_op_body_entries(
                             continue;
                         }
                     } else {
-                        if (id.clone().as_str() == "exit".to_string().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(id.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "exit".to_string(),
+                            ))
+                        {
                             let r = expect(
                                 Rc::new(
                                     tokens
@@ -7861,7 +7997,11 @@ pub fn parse_op_body_entries(
                                 continue;
                             }
                         } else {
-                            if (id.clone().as_str() == "response".to_string().as_str()) {
+                            if (crate::v2_std_text::host_string_text_to_rust_host(id.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "response".to_string(),
+                                ))
+                            {
                                 let r = parse_optional_response_block(tokens.clone(), ctx.clone());
                                 if has_err(r.err.clone()) {
                                     return Rc::new(OpBodyResult {
@@ -7887,7 +8027,11 @@ pub fn parse_op_body_entries(
                                     continue;
                                 }
                             } else {
-                                if (id.clone().as_str() == "mock_response".to_string().as_str()) {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(id.clone())
+                                    == crate::v2_std_text::host_string_text_to_rust_host(
+                                        "mock_response".to_string(),
+                                    ))
+                                {
                                     let r = parse_optional_mock_response_block(
                                         tokens.clone(),
                                         ctx.clone(),
@@ -7984,9 +8128,11 @@ pub fn parse_op_body_entries(
                                             tokens: tokens.clone(),
                                             ctx: ctx.clone(),
                                             err: Some(parse_error(
-                                                format!(
-                                                    "unexpected '{}' in operation body",
-                                                    id.clone()
+                                                crate::v2_std_text::host_string_text_from_rust_host(
+                                                    format!(
+                                                        "unexpected '{}' in operation body",
+                                                        id.clone()
+                                                    ),
                                                 ),
                                                 span,
                                             )),
@@ -8019,7 +8165,7 @@ pub fn parse_op_body_entries(
     }
 }
 
-pub fn modifier_to_prop(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn modifier_to_prop(name: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>) -> Rc<Node> {
     make_field_init_node(
         name,
         make_expr_node(
@@ -8061,7 +8207,7 @@ pub fn modifiers_to_props(
 pub fn status_expr_to_str(
     expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitInt { value: n, .. } => int_to_string(n.clone()),
@@ -8075,7 +8221,7 @@ pub fn status_expr_to_str(
     }
 }
 
-pub fn int_to_string(value: i64) -> String {
+pub fn int_to_string(value: i64) -> Rc<FreeMonoid<Nat>> {
     if (value.clone() == 0) {
         "0".to_string()
     } else {
@@ -8158,7 +8304,7 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 pub fn node_to_name_str(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
@@ -8341,7 +8487,9 @@ pub fn parse_operation_modifiers_acc(
 ) -> Rc<ModsResult> {
     loop {
         let kw = tok_keyword_text(tokens.clone().first().cloned());
-        if (kw.clone().as_str() == "idempotent".to_string().as_str()) {
+        if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("idempotent".to_string()))
+        {
             {
                 let __tco_0 = Rc::new(tokens.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                 let __tco_1 = v1_rt::rc_list_push(acc, OperationModifier::Idempotent);
@@ -8350,7 +8498,9 @@ pub fn parse_operation_modifiers_acc(
                 continue;
             }
         } else {
-            if (kw.clone().as_str() == "readonly".to_string().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("readonly".to_string()))
+            {
                 {
                     let __tco_0 =
                         Rc::new(tokens.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
@@ -8360,7 +8510,9 @@ pub fn parse_operation_modifiers_acc(
                     continue;
                 }
             } else {
-                if (kw.clone().as_str() == "hermetic".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("hermetic".to_string()))
+                {
                     {
                         let __tco_0 =
                             Rc::new(tokens.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
@@ -8419,13 +8571,19 @@ pub fn parse_status_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -
                 match next_tok {
                     Some(t) => {
                         if (is_ident_shape(t.shape.clone())
-                            && (t.text.clone().as_str() == "xx".to_string().as_str()))
+                            && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "xx".to_string(),
+                                )))
                         {
                             Rc::new(ExprResult {
                                 expr: make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitStr {
-                                            value: format!("{}xx", n),
+                                            value:
+                                                crate::v2_std_text::host_string_text_from_rust_host(
+                                                    format!("{}xx", n),
+                                                ),
                                         }),
                                     }),
                                     Rc::new(vec![]),
@@ -8546,7 +8704,10 @@ pub fn parse_optional_response_block(
         let is_response = match tok {
             Some(t) => {
                 (is_ident_shape(t.shape.clone())
-                    && (t.text.clone().as_str() == "response".to_string().as_str()))
+                    && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(
+                            "response".to_string(),
+                        )))
             }
             None => false,
         };
@@ -8703,7 +8864,10 @@ pub fn parse_optional_mock_response_block(
         let is_mock = match tok {
             Some(t) => {
                 (is_ident_shape(t.shape.clone())
-                    && (t.text.clone().as_str() == "mock_response".to_string().as_str()))
+                    && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(
+                            "mock_response".to_string(),
+                        )))
             }
             None => false,
         };
@@ -9043,7 +9207,11 @@ pub fn parse_resource_entries(
             match sh {
                 Some(TokenShape::ShKeyword) => {
                     let kw_text = tok_keyword_text(tok.clone());
-                    if (kw_text.clone().as_str() == "capability".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(
+                            "capability".to_string(),
+                        ))
+                    {
                         let r = parse_capability(tokens.clone(), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ResPropResult {
@@ -9064,7 +9232,11 @@ pub fn parse_resource_entries(
                             continue;
                         }
                     } else {
-                        if (kw_text.clone().as_str() == "acquire".to_string().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "acquire".to_string(),
+                            ))
+                        {
                             let r = expect(
                                 Rc::new(
                                     tokens
@@ -9103,7 +9275,11 @@ pub fn parse_resource_entries(
                                 continue;
                             }
                         } else {
-                            if (kw_text.clone().as_str() == "release".to_string().as_str()) {
+                            if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "release".to_string(),
+                                ))
+                            {
                                 let r = expect(
                                     Rc::new(
                                         tokens
@@ -9481,7 +9657,9 @@ pub fn parse_io_blocks_acc(
             });
         } else {
             let kw = tok_keyword_text(tokens.clone().first().cloned());
-            if (kw.clone().as_str() == "input".to_string().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("input".to_string()))
+            {
                 let r = expect(
                     Rc::new(
                         tokens
@@ -9535,7 +9713,9 @@ pub fn parse_io_blocks_acc(
                     continue;
                 }
             } else {
-                if (kw.clone().as_str() == "output".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(kw.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("output".to_string()))
+                {
                     let r = expect(
                         Rc::new(
                             tokens
@@ -10073,10 +10253,14 @@ pub fn parse_stmt(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprR
         match sh {
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok_keyword_text(tok.clone());
-                if (kw_text.clone().as_str() == "let".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("let".to_string()))
+                {
                     parse_let(tokens.clone(), ctx)
                 } else {
-                    if (kw_text.clone().as_str() == "return".to_string().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("return".to_string()))
+                    {
                         parse_return(tokens.clone(), ctx)
                     } else {
                         if peek_is_eq_after_ident(tokens.clone()) {
@@ -10229,10 +10413,12 @@ pub fn parse_constrained_assignment(
     }
 }
 
-pub fn peek_text_is(tokens: Rc<Vec<Rc<Token>>>, expected: String) -> bool {
+pub fn peek_text_is(tokens: Rc<Vec<Rc<Token>>>, expected: Rc<FreeMonoid<Nat>>) -> bool {
     match tokens.first().cloned() {
         Some(t) => {
-            (is_ident_shape(t.shape.clone()) && (t.text.clone().as_str() == expected.as_str()))
+            (is_ident_shape(t.shape.clone())
+                && (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(expected)))
         }
         None => false,
     }
@@ -10631,12 +10817,17 @@ pub fn parse_expr_loop(
     }
 }
 
-pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
+pub fn find_operator_bp(
+    ops: Rc<Vec<Rc<OperatorSpec>>>,
+    symbol: Rc<FreeMonoid<Nat>>,
+) -> Option<BindingPower> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
             for op in ops.iter().cloned() {
-                if (op.symbol.clone().as_str() == symbol.clone().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(op.symbol.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(symbol.clone()))
+                {
                     __result.push(op);
                 }
             }
@@ -10663,12 +10854,17 @@ pub fn infix_bp(tokens: Rc<Vec<Rc<Token>>>) -> Option<BindingPower> {
     }
 }
 
-pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
+pub fn find_operator_binop(
+    ops: Rc<Vec<Rc<OperatorSpec>>>,
+    symbol: Rc<FreeMonoid<Nat>>,
+) -> Option<BinOp> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
             for op in ops.iter().cloned() {
-                if (op.symbol.clone().as_str() == symbol.clone().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(op.symbol.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(symbol.clone()))
+                {
                     __result.push(op);
                 }
             }
@@ -10959,18 +11155,18 @@ pub fn parse_caret_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc
                 Rc::new(ExprResult {
                     expr: parse_recovery_expr(
                         span.clone(),
-                        format!(
+                        crate::v2_std_text::host_string_text_from_rust_host(format!(
                             "expected identifier or `(` after `^`, found {}",
                             found.clone()
-                        ),
+                        )),
                     ),
                     tokens: after_caret.clone(),
                     ctx: ctx.clone(),
                     err: Some(parse_error(
-                        format!(
+                        crate::v2_std_text::host_string_text_from_rust_host(format!(
                             "expected identifier or `(` after `^`, found {}",
                             found.clone()
-                        ),
+                        )),
                         span.clone(),
                     )),
                 })
@@ -11012,41 +11208,57 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                         err: None,
                     }),
                     v1_rt::Witness::Violates { diagnostic: _, .. } => {
-                        if (kw_text.clone().as_str() == "match".to_string().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "match".to_string(),
+                            ))
+                        {
                             parse_match(tokens.clone(), ctx.clone())
                         } else {
-                            if (kw_text.clone().as_str() == "if".to_string().as_str()) {
+                            if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone())
+                                == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "if".to_string(),
+                                ))
+                            {
                                 parse_if(tokens.clone(), ctx.clone())
                             } else {
-                                if (kw_text.clone().as_str() == "for".to_string().as_str()) {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    kw_text.clone(),
+                                ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "for".to_string(),
+                                )) {
                                     parse_for(tokens.clone(), ctx.clone())
                                 } else {
-                                    if (kw_text.clone().as_str() == "let".to_string().as_str()) {
+                                    if (crate::v2_std_text::host_string_text_to_rust_host(
+                                        kw_text.clone(),
+                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                        "let".to_string(),
+                                    )) {
                                         parse_let(tokens.clone(), ctx.clone())
                                     } else {
-                                        if (kw_text.clone().as_str()
-                                            == "return".to_string().as_str())
-                                        {
+                                        if (crate::v2_std_text::host_string_text_to_rust_host(
+                                            kw_text.clone(),
+                                        ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                            "return".to_string(),
+                                        )) {
                                             parse_return(tokens.clone(), ctx.clone())
                                         } else {
-                                            if (kw_text.clone().as_str()
-                                                == "fn".to_string().as_str())
-                                            {
-                                                parse_fn_lambda(tokens.clone(), ctx.clone())
-                                            } else {
-                                                {
-                                                    let kw_name = tok_keyword_to_name(tok.clone());
-                                                    match kw_name {
+                                            if (crate::v2_std_text::host_string_text_to_rust_host(kw_text.clone()) == crate::v2_std_text::host_string_text_to_rust_host("fn".to_string())) {
+                                    parse_fn_lambda(tokens.clone(), ctx.clone())
+                                } else {
+                                    {
+                                        let kw_name = tok_keyword_to_name(tok.clone());
+match kw_name {
     Some(n) => parse_ident_expr(tokens.clone(), ctx.clone(), n.clone()),
     None => Rc::new(ExprResult {
-    expr: parse_recovery_expr(span.clone(), format!("expected expression, found keyword '{}'", kw_text.clone())),
+    expr: parse_recovery_expr(span.clone(), crate::v2_std_text::host_string_text_from_rust_host(format!("expected expression, found keyword '{}'", kw_text.clone()))),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(parse_error(format!("expected expression, found keyword '{}'", kw_text.clone()), span.clone())),
+    err: Some(parse_error(crate::v2_std_text::host_string_text_from_rust_host(format!("expected expression, found keyword '{}'", kw_text.clone())), span.clone())),
 }),
 }
-                                                }
-                                            }
+}
+                                }
                                         }
                                     }
                                 }
@@ -11163,12 +11375,18 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                 Rc::new(ExprResult {
                     expr: parse_recovery_expr(
                         span.clone(),
-                        format!("expected expression, found {}", tag.clone()),
+                        crate::v2_std_text::host_string_text_from_rust_host(format!(
+                            "expected expression, found {}",
+                            tag.clone()
+                        )),
                     ),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
                     err: Some(parse_error(
-                        format!("expected expression, found {}", tag.clone()),
+                        crate::v2_std_text::host_string_text_from_rust_host(format!(
+                            "expected expression, found {}",
+                            tag.clone()
+                        )),
                         span.clone(),
                     )),
                 })
@@ -11263,7 +11481,7 @@ pub fn parse_lambda_stmts(
 pub fn parse_ident_expr(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
 ) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
@@ -11329,7 +11547,7 @@ pub fn parse_ident_expr(
     }
 }
 
-pub fn is_uppercase_start(name: String) -> bool {
+pub fn is_uppercase_start(name: Rc<FreeMonoid<Nat>>) -> bool {
     {
         let ch = v1_rt::char_at(&name, 0);
         ((ch.clone() >= "A".to_string()) && (ch.clone() <= "Z".to_string()))
@@ -11388,7 +11606,10 @@ pub fn try_postfix(
                 }
             }
             Some(TokenShape::ShIdent) => {
-                if (tok.clone().unwrap().text.clone().as_str() == "as".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(
+                    tok.clone().unwrap().text.clone(),
+                ) == crate::v2_std_text::host_string_text_to_rust_host("as".to_string()))
+                {
                     if (13 < min_bp) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
@@ -11562,8 +11783,10 @@ pub fn is_constraint_bracket(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     match tokens.get(1 as usize).cloned() {
         Some(t) => {
             if is_ident_shape(t.shape.clone()) {
-                ((t.text.clone().as_str() == "after".to_string().as_str())
-                    || (t.text.clone().as_str() == "when".to_string().as_str()))
+                ((crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("after".to_string()))
+                    || (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("when".to_string())))
             } else {
                 false
             }
@@ -11626,8 +11849,12 @@ pub fn parse_constraint_list(
         let is_constraint_kw = match tok.clone() {
             Some(t) => {
                 (is_ident_shape(t.shape.clone())
-                    && ((t.text.clone().as_str() == "after".to_string().as_str())
-                        || (t.text.clone().as_str() == "when".to_string().as_str())))
+                    && ((crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("after".to_string()))
+                        || (crate::v2_std_text::host_string_text_to_rust_host(t.text.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "when".to_string(),
+                            ))))
             }
             None => false,
         };
@@ -12590,7 +12817,9 @@ pub fn looks_like_arm_start(tokens: Rc<Vec<Rc<Token>>>) -> bool {
         match sh {
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
-                if (n.clone().as_str() == "_".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(n.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("_".to_string()))
+                {
                     peek_is_fat_arrow_at(tokens.clone(), 1)
                 } else {
                     if is_uppercase_start(n.clone()) {
@@ -12761,7 +12990,9 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Pa
         match sh {
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
-                if (n.clone().as_str() == "_".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(n.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("_".to_string()))
+                {
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: Rc::new(
@@ -12901,7 +13132,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Pa
 pub fn parse_variant_pattern(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
 ) -> Rc<PatternResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
@@ -13395,7 +13626,7 @@ pub fn parse_for(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprRe
 pub fn parse_record_literal(
     tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     {
@@ -14304,8 +14535,15 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc
                 match sh {
                     Some(TokenShape::ShKeyword) => {
                         let brace_kw = tok_keyword_text(tok.clone());
-                        if ((brace_kw.clone().as_str() == "let".to_string().as_str())
-                            || (brace_kw.clone().as_str() == "return".to_string().as_str()))
+                        if ((crate::v2_std_text::host_string_text_to_rust_host(brace_kw.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(
+                                "let".to_string(),
+                            ))
+                            || (crate::v2_std_text::host_string_text_to_rust_host(
+                                brace_kw.clone(),
+                            ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                "return".to_string(),
+                            )))
                         {
                             {
                                 let r = parse_stmts(tokens.clone(), ctx);
@@ -14558,3 +14796,7 @@ pub fn peek_is_colon_after_ident(tokens: Rc<Vec<Rc<Token>>>) -> bool {
         None => false,
     }
 }
+
+pub struct ParserHelperSkipNewlines;
+pub struct ParserHelperSkipContinuationNewlines;
+pub struct ParserHelperWith;

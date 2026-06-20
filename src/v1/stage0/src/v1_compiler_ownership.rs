@@ -43,13 +43,13 @@ pub enum EdgeKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EdgeClassification {
     pub kind: EdgeKind,
-    pub site: String,
+    pub site: Rc<FreeMonoid<Nat>>,
     pub span_start: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub binding_kind: Option<Rc<VarBindingKind>>,
     pub consumers: Rc<Vec<Rc<EdgeClassification>>>,
 }
@@ -90,21 +90,21 @@ pub fn binding_fan_out(usage: Rc<BindingUsage>) -> i64 {
 #[serde(tag = "_variant")]
 pub enum OwnershipDecision {
     SoleOwner {
-        binding: String,
-        site: String,
+        binding: Rc<FreeMonoid<Nat>>,
+        site: Rc<FreeMonoid<Nat>>,
     },
     SharedError {
-        binding: String,
+        binding: Rc<FreeMonoid<Nat>>,
         consumer_count: i64,
         sites: Rc<Vec<String>>,
     },
     Unclassified {
-        binding: String,
-        reason: String,
+        binding: Rc<FreeMonoid<Nat>>,
+        reason: Rc<FreeMonoid<Nat>>,
     },
 }
 impl OwnershipDecision {
-    pub fn binding(&self) -> String {
+    pub fn binding(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             OwnershipDecision::SoleOwner { binding: __val, .. } => __val.clone(),
             OwnershipDecision::SharedError { binding: __val, .. } => __val.clone(),
@@ -115,9 +115,9 @@ impl OwnershipDecision {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUnwrapProof {
-    pub site_key: String,
-    pub acc_param_name: String,
-    pub acc_type_name: String,
+    pub site_key: Rc<FreeMonoid<Nat>>,
+    pub acc_param_name: Rc<FreeMonoid<Nat>>,
+    pub acc_type_name: Rc<FreeMonoid<Nat>>,
     pub body_constructs_acc: bool,
     pub whole_acc_single_use: bool,
     pub safe_field_moves: bool,
@@ -133,7 +133,7 @@ pub struct FoldAccUseSummary {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProof {
-    pub func_name: String,
+    pub func_name: Rc<FreeMonoid<Nat>>,
     pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
     pub decisions: Rc<Vec<Rc<OwnershipDecision>>>,
     pub fold_acc_unwrap: Rc<Vec<Rc<FoldAccUnwrapProof>>>,
@@ -147,16 +147,16 @@ pub struct UsageAccum {
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
-        bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
+        bindings: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<BindingUsage>>(),
         fold_call_nodes: Rc::new(vec![]),
     })
 }
 
 pub fn record_use(
     accum: Rc<UsageAccum>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     kind: EdgeKind,
-    site: String,
+    site: Rc<FreeMonoid<Nat>>,
     binding_kind: Option<Rc<VarBindingKind>>,
     span_start: i64,
 ) -> Rc<UsageAccum> {
@@ -201,7 +201,7 @@ pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<Bind
 
 pub fn map_usage_merge_at(
     base: Rc<HashMap<String, Rc<BindingUsage>>>,
-    key: String,
+    key: Rc<FreeMonoid<Nat>>,
     new_val: Rc<BindingUsage>,
 ) -> Rc<HashMap<String, Rc<BindingUsage>>> {
     match v1_rt::map_get(&base, key.clone()) {
@@ -314,14 +314,18 @@ pub fn walk_expr(
             }
             ExprData::ExprCall { .. } => {
                 let fname = expr_call_func_at(texpr.clone(), si.clone());
-                if (fname.as_str() == "fold".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(fname)
+                    == crate::v2_std_text::host_string_text_to_rust_host("fold".to_string()))
+                {
                     {
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()).as_str()
-                                    == "init".to_string().as_str())
-                                {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    authored_name_at(si.clone(), a.clone()),
+                                ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "init".to_string(),
+                                )) {
                                     __result.push(a);
                                 }
                             }
@@ -354,9 +358,11 @@ pub fn walk_expr(
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()).as_str()
-                                    != "init".to_string().as_str())
-                                {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    authored_name_at(si.clone(), a.clone()),
+                                ) != crate::v2_std_text::host_string_text_to_rust_host(
+                                    "init".to_string(),
+                                )) {
                                     __result.push(a);
                                 }
                             }
@@ -382,15 +388,19 @@ pub fn walk_expr(
                 let recv = method_receiver(texpr.clone());
                 let mc_args = method_arg_nodes(texpr.clone());
                 let mname = expr_method_name_at(texpr.clone(), si.clone());
-                if (mname.as_str() == "fold".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(mname)
+                    == crate::v2_std_text::host_string_text_to_rust_host("fold".to_string()))
+                {
                     {
                         let recv_accum = walk_expr(accum, recv, false, si.clone());
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()).as_str()
-                                    == "init".to_string().as_str())
-                                {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    authored_name_at(si.clone(), a.clone()),
+                                ) == crate::v2_std_text::host_string_text_to_rust_host(
+                                    "init".to_string(),
+                                )) {
                                     __result.push(a);
                                 }
                             }
@@ -423,9 +433,11 @@ pub fn walk_expr(
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()).as_str()
-                                    != "init".to_string().as_str())
-                                {
+                                if (crate::v2_std_text::host_string_text_to_rust_host(
+                                    authored_name_at(si.clone(), a.clone()),
+                                ) != crate::v2_std_text::host_string_text_to_rust_host(
+                                    "init".to_string(),
+                                )) {
                                     __result.push(a);
                                 }
                             }
@@ -922,7 +934,7 @@ pub fn merge_fold_acc_use_summaries(
 
 pub fn summarize_fold_acc_uses(
     node: Rc<Node>,
-    acc_name: String,
+    acc_name: Rc<FreeMonoid<Nat>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     inside_nested: bool,
 ) -> Rc<FoldAccUseSummary> {
@@ -931,8 +943,10 @@ pub fn summarize_fold_acc_uses(
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => {
-                if (expr_var_name_at(node.clone(), si.clone()).as_str()
-                    == acc_name.clone().as_str())
+                if (crate::v2_std_text::host_string_text_to_rust_host(expr_var_name_at(
+                    node.clone(),
+                    si.clone(),
+                )) == crate::v2_std_text::host_string_text_to_rust_host(acc_name.clone()))
                 {
                     if inside_nested.clone() {
                         Rc::new(FoldAccUseSummary {
@@ -957,8 +971,10 @@ pub fn summarize_fold_acc_uses(
                     ExprData::ExprVar {
                         binding_kind: _, ..
                     } => {
-                        (expr_var_name_at(base.clone(), si.clone()).as_str()
-                            == acc_name.clone().as_str())
+                        (crate::v2_std_text::host_string_text_to_rust_host(expr_var_name_at(
+                            base.clone(),
+                            si.clone(),
+                        )) == crate::v2_std_text::host_string_text_to_rust_host(acc_name.clone()))
                     }
                     _ => false,
                 };
@@ -1063,7 +1079,7 @@ pub fn summarize_fold_acc_uses(
 
 pub fn fold_lambda_acc_use_summary(
     lambda_node: Rc<Node>,
-    acc_name: String,
+    acc_name: Rc<FreeMonoid<Nat>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
@@ -1076,7 +1092,7 @@ pub fn fold_lambda_acc_use_summary(
 
 pub fn fold_body_constructs_acc_struct(
     lambda_node: Rc<Node>,
-    acc_type_name: String,
+    acc_type_name: Rc<FreeMonoid<Nat>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
@@ -1085,7 +1101,10 @@ pub fn fold_body_constructs_acc_struct(
             let terminal = fold_terminal_expr(body);
             match (*terminal.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    (authored_name_at(si, terminal.clone()).as_str() == acc_type_name.as_str())
+                    (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
+                        si,
+                        terminal.clone(),
+                    )) == crate::v2_std_text::host_string_text_to_rust_host(acc_type_name))
                 }
                 _ => false,
             }
@@ -1096,14 +1115,14 @@ pub fn fold_body_constructs_acc_struct(
 
 pub fn fold_body_safe_field_moves(
     lambda_node: Rc<Node>,
-    acc_name: String,
+    acc_name: Rc<FreeMonoid<Nat>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary = fold_lambda_acc_use_summary(lambda_node, acc_name, si);
         let deduped = summary.field_moves.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |seen: Rc<HashMap<String, bool>>, field: String| {
+            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+            |seen: Rc<HashMap<String, bool>>, field: Rc<FreeMonoid<Nat>>| {
                 v1_rt::rc_map_insert(seen, field.clone(), true)
             },
         );
@@ -1115,7 +1134,7 @@ pub fn fold_body_safe_field_moves(
 
 pub fn fold_body_consumes_acc_once(
     lambda_node: Rc<Node>,
-    acc_name: String,
+    acc_name: Rc<FreeMonoid<Nat>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -1179,10 +1198,13 @@ pub fn analyze_single_fold(
             si.clone(),
         );
         let eligible = ((cond_required
-            && (acc_type_name.clone().as_str() != "".to_string().as_str()))
+            && (crate::v2_std_text::host_string_text_to_rust_host(acc_type_name.clone())
+                != crate::v2_std_text::host_string_text_to_rust_host("".to_string())))
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
         Rc::new(FoldAccUnwrapProof {
-            site_key: (method_call.span.clone().start.clone()).to_string(),
+            site_key: crate::v2_std_text::host_string_text_from_rust_host(
+                (method_call.span.clone().start.clone()).to_string(),
+            ),
             acc_param_name: acc_param_name.clone(),
             acc_type_name: acc_type_name.clone(),
             body_constructs_acc: cond_struct.clone(),
@@ -1194,7 +1216,7 @@ pub fn analyze_single_fold(
 }
 
 pub fn analyze_ownership(
-    func_name: String,
+    func_name: Rc<FreeMonoid<Nat>>,
     params: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1246,3 +1268,8 @@ pub fn analyze_ownership(
         })
     }
 }
+
+pub struct Consumed;
+pub struct Read;
+pub struct Threaded;
+pub struct Projected;

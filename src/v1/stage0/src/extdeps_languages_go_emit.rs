@@ -15,13 +15,13 @@ pub fn go_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true".to_string(), "true".to_string());
-            __m.insert("false".to_string(), "false".to_string());
-            __m.insert("null".to_string(), "nil".to_string());
-            __m.insert("and".to_string(), "&&".to_string());
-            __m.insert("or".to_string(), "||".to_string());
-            __m.insert("not".to_string(), "!".to_string());
-            __m.insert("div".to_string(), "/".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), "true".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), "false".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), "nil".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("and"), "&&".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("or"), "||".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("not"), "!".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("div"), "/".to_string());
             Rc::new(__m)
         };
     }
@@ -32,13 +32,13 @@ pub fn go_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list".to_string(), "[]{0}".to_string());
-            __m.insert("set".to_string(), "map[{0}]struct{}".to_string());
-            __m.insert("optional".to_string(), "*{0}".to_string());
-            __m.insert("map".to_string(), "map[{0}]{1}".to_string());
-            __m.insert("free_monoid".to_string(), "[]{0}".to_string());
-            __m.insert("partial_function".to_string(), "map[{0}]{1}".to_string());
-            __m.insert("boolean_algebra".to_string(), "bool".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("list"), "[]{0}".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("set"), "map[{0}]struct{}".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("optional"), "*{0}".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("map"), "map[{0}]{1}".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("free_monoid"), "[]{0}".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("partial_function"), "map[{0}]{1}".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("boolean_algebra"), "bool".to_string());
             Rc::new(__m)
         };
     }
@@ -54,130 +54,130 @@ pub fn go_reserved() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn go_reserved_escape_suffix() -> String {
+pub fn go_reserved_escape_suffix() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "_".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_func_keyword() -> String {
+pub fn go_func_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "func".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_async_prefix() -> String {
+pub fn go_async_prefix() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_struct_keyword() -> String {
+pub fn go_struct_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "struct".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_enum_keyword() -> String {
+pub fn go_enum_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_type_alias_keyword() -> String {
+pub fn go_type_alias_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_param_separator() -> String {
+pub fn go_param_separator() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_return_arrow() -> String {
+pub fn go_return_arrow() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             " ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_param_type_sep() -> String {
+pub fn go_param_type_sep() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             " ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_module_keyword() -> String {
+pub fn go_module_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "package".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_import_keyword() -> String {
+pub fn go_import_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "import".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_import_from_keyword() -> String {
+pub fn go_import_from_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_manifest_file() -> String {
+pub fn go_manifest_file() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "go.mod".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_source_extension() -> String {
+pub fn go_source_extension() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ".go".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
 pub fn go_string_types() -> Rc<Vec<String>> {
@@ -201,126 +201,126 @@ pub fn go_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 
 pub fn go_method_templates_flat() -> Rc<HashMap<String, String>> {
     go_simple_method_specs().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
+        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
         |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
 }
 
-pub fn go_lambda_template() -> String {
+pub fn go_lambda_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "func({0}) interface{} { {1} }".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_error_expr_template() -> String {
+pub fn go_error_expr_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "panic({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_list_literal_empty() -> String {
+pub fn go_list_literal_empty() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[]interface{}{}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_list_literal_template() -> String {
+pub fn go_list_literal_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[]interface{}{{0}}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_null_coalesce_template() -> String {
+pub fn go_null_coalesce_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "func() interface{} { if {0} != nil { return {0} }; return {1} }()".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_error_type_template() -> String {
+pub fn go_error_type_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "__EMIT_BUG_{0}__".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_type_arg_open() -> String {
+pub fn go_type_arg_open() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "<".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_type_arg_close() -> String {
+pub fn go_type_arg_close() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ">".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_void_type() -> String {
+pub fn go_void_type() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_tuple_empty() -> String {
+pub fn go_tuple_empty() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "struct{}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_tuple_pair_template() -> String {
+pub fn go_tuple_pair_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "struct{ First {0}; Second {1} }".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_tuple_multi_template() -> String {
+pub fn go_tuple_multi_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "struct{ {0} }".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn go_tuple_separator() -> String {
+pub fn go_tuple_separator() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "; ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }

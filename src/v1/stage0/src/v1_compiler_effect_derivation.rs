@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub fn re_export_derive_op_effect(
-    operation_name: String,
+    operation_name: Rc<FreeMonoid<Nat>>,
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
@@ -49,7 +49,7 @@ pub fn re_export_check_modifier(
     check_modifier_vs_derivation(op, declared_idempotent, declared_readonly)
 }
 
-pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
+pub fn re_export_parse_path_template(raw: Rc<FreeMonoid<Nat>>) -> Rc<PathTemplateParseResult> {
     parse_path_template(raw)
 }
 

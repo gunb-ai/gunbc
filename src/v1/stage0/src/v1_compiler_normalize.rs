@@ -28,7 +28,7 @@ pub struct NormalizeResult {
 
 pub fn check_bare_containers(
     n: Rc<Node>,
-    module_name: String,
+    module_name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {

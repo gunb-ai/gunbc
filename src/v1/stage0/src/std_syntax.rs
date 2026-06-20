@@ -39,12 +39,12 @@ pub enum BinOp {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralValue {
-    LitStr { value: String },
+    LitStr { value: Rc<FreeMonoid<Nat>> },
     LitInt { value: i64 },
-    LitFloat { value: String },
+    LitFloat { value: Rc<FreeMonoid<Nat>> },
     LitBool { value: bool },
     LitNull,
-    LitSymbol { value: String },
+    LitSymbol { value: Rc<FreeMonoid<Nat>> },
 }
 
 #[derive(
@@ -77,7 +77,7 @@ pub enum ItemFormKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemForm {
     pub kind: ItemFormKind,
-    pub keyword: String,
+    pub keyword: Rc<FreeMonoid<Nat>>,
     pub has_type_params: bool,
     pub has_params: bool,
     pub has_return_type: bool,
@@ -104,7 +104,7 @@ pub enum AlgebraFieldKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldEntry {
     pub kind: AlgebraFieldKind,
-    pub field_name: String,
+    pub field_name: Rc<FreeMonoid<Nat>>,
 }
 
 pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
@@ -142,7 +142,7 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
-    pub symbol: String,
+    pub symbol: Rc<FreeMonoid<Nat>>,
     pub left_bp: i64,
     pub right_bp: i64,
     pub binop: Option<BinOp>,
@@ -156,3 +156,39 @@ pub struct SyntaxSpec {
     pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
     pub keyword_set: Rc<HashMap<String, bool>>,
 }
+
+pub struct Add;
+pub struct Sub;
+pub struct Mul;
+pub struct Div;
+pub struct Mod;
+pub struct Eq;
+pub struct Ne;
+pub struct Lt;
+pub struct Gt;
+pub struct Le;
+pub struct Ge;
+pub struct And;
+pub struct Or;
+pub struct NullCoalesce;
+pub struct ExprBody;
+pub struct BlockBody;
+pub struct TypeBody;
+pub struct ValueBody;
+pub struct NoBody;
+pub struct ServiceBody;
+pub struct ResourceBody;
+pub struct FuncForm;
+pub struct StructForm;
+pub struct EnumForm;
+pub struct TypeAliasForm;
+pub struct ModuleForm;
+pub struct OtherForm;
+pub struct AlgAdd;
+pub struct AlgMul;
+pub struct AlgReciprocal;
+pub struct AlgQuotient;
+pub struct AlgRemainder;
+pub struct AlgCompare;
+pub struct AlgMeet;
+pub struct AlgJoin;

@@ -59,7 +59,7 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
     }
 }
 
-pub fn target_optional_template(target: RenderTarget) -> String {
+pub fn target_optional_template(target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
     match target {
         RenderTarget::Rust => rust_optional_template(),
         RenderTarget::Python => python_optional_template(),
@@ -77,13 +77,19 @@ pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
     }
 }
 
-pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> bool {
+pub fn can_cast(
+    target: RenderTarget,
+    source_type: Rc<FreeMonoid<Nat>>,
+    target_type: Rc<FreeMonoid<Nat>>,
+) -> bool {
     match target_cast_syntax(target) {
         Some(syntax) => {
             let mut __found = false;
             for r in syntax.cast_rules.clone().iter().cloned() {
-                if ((r.from_type.clone().as_str() == source_type.clone().as_str())
-                    && (r.to_type.clone().as_str() == target_type.clone().as_str()))
+                if ((crate::v2_std_text::host_string_text_to_rust_host(r.from_type.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(source_type.clone()))
+                    && (crate::v2_std_text::host_string_text_to_rust_host(r.to_type.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(target_type.clone())))
                 {
                     __found = true;
                     break;
@@ -95,7 +101,11 @@ pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) 
     }
 }
 
-pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
+pub fn render_cast(
+    expr_str: Rc<FreeMonoid<Nat>>,
+    type_str: Rc<FreeMonoid<Nat>>,
+    target: RenderTarget,
+) -> Rc<FreeMonoid<Nat>> {
     {
         let syntax = match target_cast_syntax(target) {
             Some(s) => s.clone(),
@@ -112,11 +122,16 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     }
 }
 
-pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<TypeCheckpoint>> {
+pub fn lookup_checkpoint(
+    target: RenderTarget,
+    dag_name: Rc<FreeMonoid<Nat>>,
+) -> Option<Rc<TypeCheckpoint>> {
     Rc::new({
         let mut __result = Vec::new();
         for cp in target_checkpoints(target).iter().cloned() {
-            if (cp.dag_name.clone().as_str() == dag_name.clone().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(cp.dag_name.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host(dag_name.clone()))
+            {
                 __result.push(cp);
             }
         }
@@ -126,21 +141,24 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
     .cloned()
 }
 
-pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
+pub fn coerce_primitive_type(
+    target: RenderTarget,
+    dag_name: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     match lookup_checkpoint(target, dag_name.clone()) {
         Some(cp) => cp.target_type.clone(),
         None => dag_name.clone(),
     }
 }
 
-pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
+pub fn is_copy(target: RenderTarget, dag_name: Rc<FreeMonoid<Nat>>) -> Option<bool> {
     match lookup_checkpoint(target, dag_name) {
         Some(cp) => cp.is_copy.clone(),
         None => None,
     }
 }
 
-pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
+pub fn literal_suffix(target: RenderTarget, dag_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     match lookup_checkpoint(target, dag_name) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
@@ -150,11 +168,16 @@ pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> 
     }
 }
 
-pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<InhabitantDecl>> {
+pub fn lookup_inhabitant(
+    target: RenderTarget,
+    algebra: Rc<FreeMonoid<Nat>>,
+) -> Option<Rc<InhabitantDecl>> {
     Rc::new({
         let mut __result = Vec::new();
         for inh in target_inhabitants(target).iter().cloned() {
-            if (inh.algebra.clone().as_str() == algebra.clone().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(inh.algebra.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host(algebra.clone()))
+            {
                 __result.push(inh);
             }
         }
@@ -164,7 +187,10 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
     .cloned()
 }
 
-pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
+pub fn coerce_container_template(
+    target: RenderTarget,
+    container_name: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     match container_template_algebra(container_name) {
         Some(algebra) => match lookup_inhabitant(target, algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
@@ -174,11 +200,18 @@ pub fn coerce_container_template(target: RenderTarget, container_name: String) -
     }
 }
 
-pub fn apply_inhabitant_template1(template: String, inner: String) -> String {
+pub fn apply_inhabitant_template1(
+    template: Rc<FreeMonoid<Nat>>,
+    inner: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     v1_rt::replace(template, "{0}".to_string(), inner)
 }
 
-pub fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
+pub fn apply_inhabitant_template2(
+    template: Rc<FreeMonoid<Nat>>,
+    first: Rc<FreeMonoid<Nat>>,
+    second: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     v1_rt::replace(
         v1_rt::replace(template, "{0}".to_string(), first),
         "{1}".to_string(),
@@ -191,33 +224,33 @@ pub fn apply_inhabitant_template2(template: String, first: String, second: Strin
 pub enum CoercionAssertion {
     CheckpointAssertion {
         target: RenderTarget,
-        dag_name: String,
-        expected_type: String,
+        dag_name: Rc<FreeMonoid<Nat>>,
+        expected_type: Rc<FreeMonoid<Nat>>,
     },
     ContainerAssertion {
         target: RenderTarget,
-        container_name: String,
-        expected_template: String,
+        container_name: Rc<FreeMonoid<Nat>>,
+        expected_template: Rc<FreeMonoid<Nat>>,
     },
     CopyAssertion {
         target: RenderTarget,
-        dag_name: String,
+        dag_name: Rc<FreeMonoid<Nat>>,
         expected_copy: bool,
     },
     TemplateAssertion {
-        template: String,
+        template: Rc<FreeMonoid<Nat>>,
         args: Rc<Vec<String>>,
-        expected: String,
+        expected: Rc<FreeMonoid<Nat>>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
-    pub test_name: String,
+    pub test_name: Rc<FreeMonoid<Nat>>,
     pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
 }
 
-pub fn target_label(target: RenderTarget) -> String {
+pub fn target_label(target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
     match target {
         RenderTarget::Rust => "rust".to_string(),
         RenderTarget::Python => "python".to_string(),

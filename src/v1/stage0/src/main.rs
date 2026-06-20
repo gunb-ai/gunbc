@@ -44,8 +44,6 @@ enum Commands {
         #[arg(long, default_value = "rust")]
         target: String,
     },
-    /// Run repo CI from CiSpec (delegates to dsl/tools/gunbc_ci.dag)
-    Ci,
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -384,10 +382,6 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-        }
-
-        Commands::Ci {} => {
-            cli_run::handle_ci();
         }
 
         Commands::Run {

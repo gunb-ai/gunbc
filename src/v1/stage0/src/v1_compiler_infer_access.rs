@@ -35,7 +35,11 @@ pub struct KeyedCollectionParts {
     pub value_type: Rc<Node>,
 }
 
-pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
+pub fn access_error(
+    message: Rc<FreeMonoid<Nat>>,
+    span: Rc<SourceSpan>,
+    module_name: Rc<FreeMonoid<Nat>>,
+) -> Rc<ErrorNode> {
     make_error_node(
         Rc::new(CompilerDiagnostic::InternalError {
             message: message,
@@ -49,7 +53,7 @@ pub fn access_result(
     inferred: Rc<Node>,
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     span: Rc<SourceSpan>,
-    fallback_message: String,
+    fallback_message: Rc<FreeMonoid<Nat>>,
 ) -> Rc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
         Rc::new(AccessCheckResultNode {
@@ -99,7 +103,7 @@ pub fn check_index_access_node(
     base_type: Rc<Node>,
     index_type: Rc<Node>,
     span: Rc<SourceSpan>,
-    module_name: String,
+    module_name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
@@ -205,7 +209,7 @@ pub fn check_slice_access_node(
     start_type: Rc<Node>,
     end_type: Rc<Node>,
     span: Rc<SourceSpan>,
-    module_name: String,
+    module_name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
