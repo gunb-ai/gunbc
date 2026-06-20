@@ -58,3 +58,11 @@ test fn named_arg_call_parse_holds() -> Bool {
 test fn nested_if_blocks_parse_holds() -> Bool {
   parses(src: "module m.t\nfn f() -> Bool {\n  if true {\n    if false { false } else { true }\n  } else {\n    false\n  }\n}\n")
 }
+
+test fn method_call_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f(t: Int) -> Int { t.apply(x: 1) }\n")
+}
+
+test fn parse_expr_result_coproduct_parse_holds() -> Bool {
+  parses(src: "module m.t\ntype R\n  = Ok {\n      remaining: List<Int>\n      captured: Int\n      diagnostics: List<Int>\n      prov: Int\n    }\n  | Err { diagnostics: List<Int> }\n")
+}
