@@ -3,12 +3,16 @@ module v2.test.manual.pbp_body_producer_wrong_type_repro
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
 import v2.std.logic { Bool }
+import v2.std.refinement { Refined }
 import v2.std.text { String }
 
-fn takes_string(s: String) -> Bool {
-  true
+type UserId = Refined<String>
+type AccountId = Refined<String>
+
+fn take_acct(acct: AccountId) -> String {
+  ""
 }
 
 fn pbp_wrong() -> Bool {
-  takes_string(s: 0)
+  take_acct(acct: UserId { refined: Refined { base: "" } }) == ""
 }
