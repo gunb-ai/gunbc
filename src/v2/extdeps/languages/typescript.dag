@@ -133,6 +133,7 @@ import v2.std.compilers.target_model {
   target_atom_realization_catalog_node,
   type_expr_projection_step_algebra,
   target_value_template_for_kind,
+  grammar_relation_row_attach_bodied_scaffold,
   ValueBoolLiteral,
   ValueStringLiteral,
   CanonicalOperation,
@@ -1420,7 +1421,7 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
     Holds { value: task_row } =>
       match ts_pr3_identity_relation_row_witness() {
         Holds { value: pr3_row } =>
-          match ts_mvp1_fn_add_relation_row_witness() {
+          match ts_mvp1_fn_add_relation_row_with_bodied_scaffold() {
             Holds { value: mvp1_row } =>
               Holds {
                 value: Node {
@@ -1567,8 +1568,21 @@ fn ts_mvp1_fn_add_serialize_source_witness() -> Witness<Node> {
   }
 }
 
-fn ts_mvp1_translation_rules_node() -> Node {
+fn ts_mvp1_fn_add_relation_row_with_bodied_scaffold() -> Witness<Node> {
   match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: row } =>
+      Holds {
+        value: grammar_relation_row_attach_bodied_scaffold(
+          row: row,
+          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
+        )
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn ts_mvp1_translation_rules_node() -> Node {
+  match ts_mvp1_fn_add_relation_row_with_bodied_scaffold() {
     Holds { value: mvp1_row } =>
       Node {
         kind: TypeNode { connective: Conj },
@@ -1592,7 +1606,7 @@ fn ts_mvp1_translation_rules_node() -> Node {
 fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
   match ts_wave2a_task_type_alias_relation_row_witness() {
     Holds { value: task_row } =>
-      match ts_mvp1_fn_add_relation_row_witness() {
+      match ts_mvp1_fn_add_relation_row_with_bodied_scaffold() {
         Holds { value: mvp1_row } =>
           Holds {
             value: Node {
