@@ -104,6 +104,8 @@ mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
+mod scan_v2_parse_temp;
+#[cfg(test)]
 mod source_audit;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
