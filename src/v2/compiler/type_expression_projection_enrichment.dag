@@ -465,12 +465,63 @@ fn tepe_subtree_contains_disj_anchor(root: Node, disj_anchor: Node) -> Bool {
   )
 }
 
+fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
+  match tepe_sequence_right_optional(seq: expr) {
+    Present { value: s2 } =>
+      match tepe_sequence_left_optional(seq: s2) {
+        Present { value: name_node } => tepe_atom_sym_optional(node: name_node)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn tepe_type_decl_candidate(node: Node) -> Bool {
+  tepe_node_has_surface(root: node, surface: ^dag_surface_type_decl)
+}
+
+fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        if tepe_node_has_surface(root: node, surface: ^dag_surface_module) {
+          optional_absent()
+        } else if !tepe_type_decl_candidate(node: node) {
+          optional_absent()
+        } else {
+          match tepe_type_decl_name_optional(type_decl: node) {
+            Present { value: name } =>
+              if tepe_declaration_ref_spelling_matches_enum(
+                coproduct_sym: name,
+                enum_sym: enum_sym
+              ) {
+                tepe_disj_in_subtree(node: node)
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
 fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
   fold_node(
     n: root,
     algebra: NodeFold {
       init: fn(node) {
         if tepe_node_has_surface(root: node, surface: ^dag_surface_module) {
+          optional_absent()
+        } else if !tepe_type_decl_candidate(node: node) {
           optional_absent()
         } else {
           match tepe_type_decl_name_optional(type_decl: node) {
@@ -494,33 +545,34 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
   )
 }
 
-fn tepe_singleton_contract_row_optional(
-  rows: List<CoproductWireContractIndexRow>
-) -> Optional<CoproductWireContractIndexRow> {
-  match list_at_optional(xs: rows, index: 0) {
-    Absent => optional_absent()
-    Present { value: head } =>
-      match list_tail(xs: rows) {
-        TailAbsent => optional_present(value: head)
-        TailFound { tail: tail } =>
-          match list_at_optional(xs: tail, index: 0) {
-            Absent => optional_present(value: head)
-            Present { value: _ } => optional_absent()
-          }
-      }
-  }
-}
-
 fn tepe_contract_row_for_disj_anchor(
   rows: List<CoproductWireContractIndexRow>,
   root: Node,
   disj_anchor: Node
 ) -> Optional<CoproductWireContractIndexRow> {
-  match tepe_enum_sym_for_disj(root: root, disj_anchor: disj_anchor) {
-    Present { value: enum_sym } =>
-      tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym)
-    Absent => optional_absent()
-  }
+  let anchor_hash = content_hash(n: disj_anchor)
+  fold(
+    rows,
+    init: optional_absent(),
+    f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match row {
+            CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _ } =>
+              match tepe_disj_for_enum_sym_optional(root: root, enum_sym: csym) {
+                Present { value: disj } =>
+                  if content_hash(n: disj) == anchor_hash {
+                    optional_present(value: row)
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+    }
+  )
 }
 
 fn tepe_apply_enriched_disj_form(
