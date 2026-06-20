@@ -106,7 +106,8 @@ import v1.compiler.infer {
   build_params_scope, extend_scope,
   build_emit_graph_info,
   expr_span,
-  resolved_type_name
+  resolved_type_name,
+  expand_type_for_field_access
 }
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
@@ -114,7 +115,7 @@ import v1.compiler.infer_emit_info {
   variant_belongs_to_enum, variant_summary_key
 }
 import v1.compiler.resolve { get_exported_names }
-import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type }
+import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type, is_width_nat_type_literal }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
@@ -309,6 +310,37 @@ fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
   )
 }
 
+// MachineWidth<8> etc.: phantom width-nat args ground to () in Rust, not empty <> (E0107).
+fn is_parametric_opaque_type_by_name(env: TypeEnv, type_name: String) -> Bool {
+  match lookup_type_by_name(env: env, name: type_name) {
+    Present { value: item } => is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices)
+    Absent => false
+  }
+}
+
+fn is_parametric_opaque_type_base(type_name: String, def_mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match type_item_by_name_in_module_filename(rhs_name: type_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: item } => is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices)
+    Absent => false
+  }
+}
+
+fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+  if is_width_nat_type_literal(n: n) {
+    "()"
+  } else {
+    render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+  }
+}
+
+fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_width_nat_type_literal(n: n) {
+    "()"
+  } else {
+    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
+}
+
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
@@ -317,11 +349,19 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let base = rust_named_type_base(name: authored_name_at(source_indices: source_indices, node: n), source_indices: source_indices)
+  let base_name = authored_name_at(source_indices: source_indices, node: n)
+  let base = rust_named_type_base(name: base_name, source_indices: source_indices)
   if n.children |> count == 0 {
     base
   } else {
-    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)) |> join(separator: ", ")
+    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
+    let args = n.children |> map(arg =>
+      if peel {
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      } else {
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      }
+    ) |> join(separator: ", ")
     concat(base, "<", args, ">")
   }
 }
@@ -365,7 +405,14 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
         } else {
         let base = rust_named_type_base(name: name, source_indices: source_indices)
-        let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)) |> join(separator: ", ")
+        let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
+        let args = n.children |> map(arg =>
+          if peel {
+            render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          } else {
+            render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          }
+        ) |> join(separator: ", ")
         let applied_ty = concat(base, "<", args, ">")
         render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
         }
@@ -454,7 +501,14 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     } else {
       name
     }
-    let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
+    let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let args = n.children |> map(arg =>
+      if peel {
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      } else {
+        render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      }
+    ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
     if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
@@ -3122,6 +3176,46 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
 }
 
 
+// True iff the type node `n` (or any nested child) names `target` -- the
+// structural "does this field type mention this generic param" test.
+fn type_node_mentions_name(n: Node, target: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if authored_name_at(source_indices: source_indices, node: n) == target {
+    true
+  } else {
+    n.children |> any(c => type_node_mentions_name(n: c, target: target, source_indices: source_indices))
+  }
+}
+
+// A struct generic param that no field's type references is UNUSED -- Rust
+// rejects it (E0392 "parameter is never used"). The phantom dimensional tags on
+// `Measure<Q, S, M>` (only `M` reaches the `count` field; `Q`/`S` tag the
+// dimension) are the canonical case. Such params must be carried in a
+// `PhantomData` field for the emitted struct to be well-formed, and every
+// construction must then populate that field (see emit_typed_record_lit).
+fn struct_unused_param_names(generic_param_names: List<String>, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  generic_param_names |> filter(p =>
+    !(children |> any(child => type_node_mentions_name(n: field_node_type_expr(n: child), target: p, source_indices: source_indices)))
+  )
+}
+
+// The `<...>` arg of the synthetic `PhantomData` carrier for a struct's unused
+// params: a single param bare (`PhantomData<Q>`), several as a tuple
+// (`PhantomData<(Q, S)>`) so one field "uses" them all.
+fn rust_phantom_marker_inner(unused: List<String>) -> String {
+  if unused |> count == 1 {
+    match unused |> first {
+      Present { value: u } => u
+      Absent => "()"
+    }
+  } else {
+    concat("(", unused |> join(separator: ", "), ")")
+  }
+}
+
+// The unused-param `PhantomData` field name -- single authority shared by the
+// struct definition and every construction so they always agree.
+fn rust_phantom_field_name() -> String { "_phantom" }
+
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = match map_get(emit_info.type_summaries, name) {
     Present { value: ts } => ts.has_fn_fields
@@ -3140,7 +3234,16 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(struct_name: name, child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
-    let fields_str = field_lines |> join(separator: "\n")
+    // E0392: carry any generic param unused by the fields in a PhantomData
+    // field (`Measure<Q, S, M>`'s phantom `Q`/`S`). The `#[derive]` on the
+    // struct adds the standard `Q: Trait` bounds, satisfied by the concrete
+    // marker tags at every instantiation; serde special-cases PhantomData and
+    // adds no Serialize/Deserialize bound.
+    let unused_params = struct_unused_param_names(generic_param_names: generic_param_names, children: children, source_indices: env.source_indices)
+    let all_field_lines = if unused_params |> count > 0 {
+      concat(field_lines, [concat("    ", rust_visibility_prefix(), rust_phantom_field_name(), ": std::marker::PhantomData<", rust_phantom_marker_inner(unused: unused_params), ">,")])
+    } else { field_lines }
+    let fields_str = all_field_lines |> join(separator: "\n")
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
@@ -4827,15 +4930,35 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
     ExprRecordLit { parent_enum: parent_enum } =>
       let tn = record_lit_type_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
       let fs = expr.children
-      let raw = emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: resolved_type(n: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      // Peel a struct-alias literal to its underlying concrete struct before
+      // emission. `Gibibyte { count: x }` (where `type Gibibyte =
+      // Measure<Memory, Gibi, Nat>`) leaves `resolved_type` a bare alias leaf,
+      // so the emitter would name the alias (E0560: `Rc<Measure>` has no field
+      // `count`), skip `Box`-wrapping the field, and skip the `Rc::new` share
+      // wrap. Expanding the alias chain to the `Measure { count }` struct
+      // (G3, same machinery the field-access TYPE lookup uses) makes the struct
+      // NAME, the field `Box<M>` boxing, and the shared-type `Rc::new` all
+      // resolve exactly as the direct `Measure { .. }` literal already does.
+      // For a non-alias literal `resolved_type` is already the concrete record,
+      // and the expansion returns it unchanged.
+      let resolved_rt = resolved_type(n: expr)
+      let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
+      let raw = emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let si = scope.type_env.source_indices
       let variant_name = match tn { Present { value: n } => n  Absent => "" }
       let rc_name = match parent_enum {
         Present { value: en } => en
         Absent =>
-          match contextual_variant_parent(variant_name: variant_name, parent_enum: parent_enum, resolved_type: resolved_type(n: expr), emit_info: emit_info, source_indices: si) {
+          match contextual_variant_parent(variant_name: variant_name, parent_enum: parent_enum, resolved_type: expanded_rt, emit_info: emit_info, source_indices: si) {
             Present { value: p } => p
-            Absent => variant_name
+            Absent =>
+              // Share-wrap on the peeled concrete struct (`Measure`) when the
+              // literal was written through an alias whose own name is not a
+              // shared type; falls back to the written name otherwise.
+              let expanded_name = authored_name_at(source_indices: si, node: expanded_rt)
+              if expanded_rt.ident_span != none && expanded_name != "" && expanded_name != variant_name && set_contains(shared_types, expanded_name) {
+                expanded_name
+              } else { variant_name }
           }
       }
       if rc_name != "" && set_contains(shared_types, rc_name) {
@@ -6300,7 +6423,24 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             } else { [] }
           Absent => []
         }
-        let all_field_strs = concat(field_strs, default_strs)
+        // Populate the synthetic PhantomData field (E0392) whenever the target
+        // struct carries unused generic params -- the construction counterpart
+        // of the phantom field appended in emit_struct_from_children. Keyed on
+        // the concrete struct decl (`tn` is the peeled struct name after the
+        // alias-peel above), so it fires for `Measure`/its aliases and stays
+        // silent for every fully-used-param struct and for enum variants.
+        let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: tn) {
+          Present { value: struct_decl } =>
+            let is_struct = struct_decl.connective == Conj
+            let pnames = struct_decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))
+            let unused = struct_unused_param_names(generic_param_names: pnames, children: struct_decl.children, source_indices: si)
+            let has_unused = (unused |> count) > 0
+            if is_struct && has_unused {
+              [concat("    ", rust_phantom_field_name(), ": std::marker::PhantomData,")]
+            } else { [] }
+          Absent => []
+        }
+        let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
         raw
