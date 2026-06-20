@@ -1,0 +1,102 @@
+// v2.workflow.compiler_closure_ingest_transport — scoped 00_compile closure manifest gate.
+//
+// SCAFFOLD — modeled ShellProgram transport (serialize_bash → shell.Exec.Run).
+// Dissolve-on: collapse to modeled ProcessExit host effects (parameterized argv for
+//   discover_source_root_ingest + gunbc claim-run legs; no shell.Exec.Run) — same
+//   dissolution target as the CI-floor *_transport.dag family (emit(intent, Bash) /
+//   v2 bash TargetModel rows). Gap-4 minimal RED witness enrolled (same-module entry until
+//   dag.dag match_arm stmt fix lands). Full-manifest gap4_probe_* follows substrate fix.
+// Emit acceptance (former shell nv2-gate third leg / compiler_closure_v2_emit_*)
+//   is intentionally NOT enrolled — dissolved to regen/measurement oracle lane;
+//   dissolve-on: add emit acceptance claim-run when N_v2 emit milestone unblocks.
+//
+// Roots: gunbc.ci_layer_roots.witness_layer_roots = [dsl, src/v2] (same as real_ingest gate).
+// Does NOT invoke scripts/v2-compiler-closure-nv2-gate.sh (deleted).
+
+module v2.workflow.compiler_closure_ingest_transport
+
+import extdeps.shell
+import std.logic { Bool }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt,
+  Command, Concat, CmdSubst,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_discover_source_root_ingest_built, ensure_gunbc_built }
+
+data closure_source_root: String = "src/v2"
+data closure_entry: String = "src/v2/compiler/00_compile.dag"
+data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag"
+data closure_witness_module_count: String = "compiler_closure_scoped_ingest_module_count_ok_holds"
+data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
+data closure_gap4_entry: String = "src/v2/test/claim/languages/gap4_parse_tokens_remain_test.dag"
+data closure_gap4_witness: String = "gap4_minimal_red_tokens_remain_holds"
+
+fn emit_closure_manifest_stmt() -> ShellStmt {
+  command(words: [
+    var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST"),
+    lit(text: "--source-root"), lit(text: closure_source_root),
+    lit(text: "--entry"), lit(text: closure_entry),
+    lit(text: "--emit-dag-manifest"),
+    Concat {
+      parts: [
+        var_ref(name: "CLOSURE_MANIFEST_DIR"),
+        lit(text: "/host_source_root_ingest_manifest.dag")
+      ]
+    }
+  ])
+}
+
+fn closure_gunbc_claim_run(function: String) -> ShellStmt {
+  command(words: [
+    var_ref(name: "GUNBC"), lit(text: "run"),
+    lit(text: "--source-root"), lit(text: "dsl"),
+    lit(text: "--source-root"), lit(text: closure_source_root),
+    lit(text: "--source-root"), var_ref(name: "CLOSURE_MANIFEST_DIR"),
+    lit(text: "--entry"), lit(text: closure_test_entry),
+    lit(text: "--function"), lit(text: function),
+    lit(text: "--claim-run")
+  ])
+}
+
+fn closure_gunbc_claim_run_no_overlay(function: String) -> ShellStmt {
+  command(words: [
+    var_ref(name: "GUNBC"), lit(text: "run"),
+    lit(text: "--source-root"), lit(text: "dsl"),
+    lit(text: "--source-root"), lit(text: closure_source_root),
+    lit(text: "--entry"), lit(text: closure_test_entry),
+    lit(text: "--function"), lit(text: function),
+    lit(text: "--claim-run")
+  ])
+}
+
+fn closure_gunbc_gap4_claim_run() -> ShellStmt {
+  command(words: [
+    var_ref(name: "GUNBC"), lit(text: "run"),
+    lit(text: "--source-root"), lit(text: "dsl"),
+    lit(text: "--source-root"), lit(text: closure_source_root),
+    lit(text: "--entry"), lit(text: closure_gap4_entry),
+    lit(text: "--function"), lit(text: closure_gap4_witness),
+    lit(text: "--claim-run")
+  ])
+}
+
+func run_compiler_closure_ingest_gate() -> Bool {
+  let prog = ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), ensure_discover_source_root_ingest_built(), [
+      command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
+      closure_gunbc_claim_run_no_overlay(function: closure_witness_layer_roots),
+      closure_gunbc_gap4_claim_run(),
+      assign(
+        name: "CLOSURE_MANIFEST_DIR",
+        value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }
+      ),
+      emit_closure_manifest_stmt(),
+      closure_gunbc_claim_run(function: closure_witness_module_count),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), var_ref(name: "CLOSURE_MANIFEST_DIR")])
+    ])
+  }
+  let result = shell.Exec.Run(script: serialize_bash(p: prog))
+  result.success
+}
