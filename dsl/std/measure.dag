@@ -86,7 +86,8 @@ type Quantity =
   // of demand). Anchor: https://en.wikipedia.org/wiki/Watt  (P = dE/dt; 1 W = 1 J/s)
   | Power
   // Thermal axis (Q-Unit-5 minted-with-consumer: extdeps.bmc Redfish thermal + sensor
-  // coproduct grounding witness). Celsius degrees at scale One.
+  // coproduct grounding witness). Absolute Celsius at scale One (M=Int — inlet sensors
+  // can read below 0°C; affine ΔCelsius split deferred until a consumer demands it).
   | Temperature
   // Fan tach axis (revolutions per minute; Redfish ReadingUnits=Rpm). Q-Unit-5
   // minted-with-consumer: extdeps.bmc Redfish sensor coproduct grounding witness.
@@ -348,8 +349,9 @@ type HardwareThreadCount = Measure<Count, One, Nat>
 // would instantiate `<M>` like the signed electrical carriers, not a new alias.
 type Watt = Measure<Power, One, Nat>
 
-// Thermal magnitude in degrees Celsius (Redfish ReadingUnits=Cel).
-type Celsius = Measure<Temperature, One, Nat>
+// Absolute thermal magnitude in degrees Celsius (Redfish ReadingUnits=Cel). M=Int —
+// cold-aisle inlet readings can be sub-zero; ΔCelsius affine split deferred.
+type Celsius = Measure<Temperature, One, Int>
 
 // Fan tach magnitude in revolutions per minute (Redfish ReadingUnits=Rpm).
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
@@ -362,11 +364,11 @@ fn watt_count(w: Watt) -> Nat {
   w.count
 }
 
-fn celsius(count: Nat) -> Celsius {
+fn celsius(count: Int) -> Celsius {
   Celsius { count: count }
 }
 
-fn celsius_count(c: Celsius) -> Nat {
+fn celsius_count(c: Celsius) -> Int {
   c.count
 }
 
