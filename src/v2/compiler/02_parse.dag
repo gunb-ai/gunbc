@@ -11,6 +11,11 @@
 module v2.compiler.parse
 
 
+import v2.compiler.parse_engine_hooks {
+  parse_engine_expr_production,
+  parse_engine_match_arm_body_production,
+  parse_engine_match_arm_stmt_body_production
+}
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
