@@ -15,12 +15,8 @@ import std.realization {
 }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_runnable,
-<<<<<<< HEAD
   gunbc_ci_floor_breadth, gunbc_ci_floor_spawn_width,
   gunbc_ci_floor_spawn_fits_memory_budget
-=======
-  gunbc_ci_floor_breadth, gunbc_ci_floor_spawn_width
->>>>>>> origin/main
 }
 import std.measure { hardware_thread_count_value }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
@@ -107,20 +103,12 @@ fn witness_corpus_skip_node_frontier_enabled() -> Bool {
   }
 }
 
-<<<<<<< HEAD
 // Connected relationship: spawn_width is DERIVED (min of breadth, hardware threads, and the
 // memory budget / per-shard peak), never a tuned constant. It is positive and never exceeds
 // the work breadth — fanning out more workers than shards would be wasted concurrency.
 fn witness_spawn_width_bounded_by_breadth() -> Bool {
   let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width())
   (width >= 1) && (width <= gunbc_ci_floor_breadth())
-=======
-// Connected relationship: spawn_width is DERIVED from the floor breadth, not tuned.
-// When breadth <= hardware threads (true on the real fleet), spawn_width == breadth —
-// so the host runs the independent layer concurrently, not one-at-a-time.
-fn witness_spawn_width_tracks_breadth() -> Bool {
-  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) == gunbc_ci_floor_breadth()
->>>>>>> origin/main
 }
 
 // Discriminating: the floor is NOT serial. A revert to a constant shard_count (=1) or a
@@ -130,7 +118,6 @@ fn witness_floor_not_serial() -> Bool {
     (hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 1)
 }
 
-<<<<<<< HEAD
 // Connected memory relationship (the §5 OOM oracle): the scheduled width's concurrent memory
 // peak fits the fleet memory budget. DISCRIMINATING against the memory-blind regression — if
 // placement_spawn_width dropped its memory term, width would jump to min(breadth, threads)=7
@@ -147,8 +134,6 @@ fn witness_floor_width_memory_bounded() -> Bool {
   hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) < gunbc_ci_floor_breadth()
 }
 
-=======
->>>>>>> origin/main
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_two_readiness_layers() &&
     witness_compile_root_runs_first() &&
@@ -158,13 +143,8 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_scan_dirs_match_layer_authority() &&
     witness_corpus_has_no_explicit_entries() &&
     witness_corpus_skip_node_frontier_enabled() &&
-<<<<<<< HEAD
     witness_spawn_width_bounded_by_breadth() &&
     witness_floor_not_serial() &&
     witness_floor_width_fits_memory_budget() &&
     witness_floor_width_memory_bounded()
-=======
-    witness_spawn_width_tracks_breadth() &&
-    witness_floor_not_serial()
->>>>>>> origin/main
 }
