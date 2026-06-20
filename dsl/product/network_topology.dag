@@ -4,13 +4,13 @@
 // srv1/srv2 topology is instantiated in gunbc/operator_fleet_network.dag (3a-ours,
 // public-in-repo meta-model — same tier as gunbc/ci_fleet.dag). Secrets stay in ctrl.
 //
-// Extends NetworkLocality / NetworkEgressClass vocabulary from product.compute_fabric.
+// Extends NetworkLocality vocabulary from product.compute_fabric.
 
 module product.network_topology
 
 import product.compute_fabric { NetworkLocality, Lan, DockerBridge, TailscaleOverlay }
 import product.placement_supply { HostIdentity }
-import std.types { NonEmptyStr, Bool, Int, List }
+import std.types { NonEmptyStr, Bool, List }
 
 // Which network plane an endpoint attachment serves.
 type NetworkAttachmentRole =
@@ -28,8 +28,9 @@ type NetworkReachabilityZone =
   | BmcManagement
   | TailscaleMesh
 
-type NetworkReachabilityVerdict = Allowed | Denied
-
+// 🟡 feature:ipv4-cidr-decomposition — dissolve-on: first consumer requiring octet-range
+// validation or prefix arithmetic (DESIGN §2). Display spellings stay NonEmptyStr until
+// IpV4Address / IpV4Cidr records land.
 type NetworkSegment {
   cidr: NonEmptyStr
   gateway: NonEmptyStr?
@@ -55,49 +56,35 @@ type NetworkTopology {
 fn network_reachability(
   from: NetworkReachabilityZone,
   to: NetworkReachabilityZone
-) -> NetworkReachabilityVerdict {
+) -> Bool {
   match from {
     ContainerRunner =>
       match to {
-        BmcManagement => Allowed
-        HostLan => Denied
-        ContainerRunner => Allowed
-        TailscaleMesh => Denied
+        BmcManagement => true
+        HostLan => false
+        ContainerRunner => true
+        TailscaleMesh => false
       }
     HostLan =>
       match to {
-        BmcManagement => Allowed
-        HostLan => Allowed
-        ContainerRunner => Allowed
-        TailscaleMesh => Allowed
+        BmcManagement => true
+        HostLan => true
+        ContainerRunner => true
+        TailscaleMesh => true
       }
     BmcManagement =>
       match to {
-        BmcManagement => Allowed
-        HostLan => Allowed
-        ContainerRunner => Denied
-        TailscaleMesh => Denied
+        BmcManagement => true
+        HostLan => true
+        ContainerRunner => false
+        TailscaleMesh => false
       }
     TailscaleMesh =>
       match to {
-        HostLan => Allowed
-        BmcManagement => Allowed
-        ContainerRunner => Denied
-        TailscaleMesh => Allowed
+        HostLan => true
+        BmcManagement => true
+        ContainerRunner => false
+        TailscaleMesh => true
       }
   }
-}
-
-fn network_reachability_allowed(
-  from: NetworkReachabilityZone,
-  to: NetworkReachabilityZone
-) -> Bool {
-  match network_reachability(from: from, to: to) {
-    Allowed => true
-    Denied => false
-  }
-}
-
-fn network_endpoint_count(endpoints: List<NetworkEndpoint>) -> Int {
-  fold(endpoints, init: 0, f: (acc, _) => acc + 1)
 }
