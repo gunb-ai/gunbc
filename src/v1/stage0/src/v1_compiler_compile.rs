@@ -70,9 +70,9 @@ pub use crate::v1_std_core::{
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_span,
     field_node_type_expr, foreach_variable_at, import_is_all, import_specific_names_at,
     is_discovery_corpus_blocking_diagnostic, is_error_diagnostic, lambda_param_names_at,
-    make_error_node, module_imports, module_items,
-    no_span, param_node_default_value, param_node_name_at, param_node_span, param_node_type_expr,
-    pre_intern_tokens, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    make_error_node, module_imports, module_items, no_span, param_node_default_value,
+    param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -2362,11 +2362,7 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
 pub fn compile_to_resolved_discovery_corpus_advisory(
     sources: Rc<Vec<Rc<SourceFile>>>,
 ) -> Rc<ResolvedPipelineResult> {
-    compile_to_resolved_with_options_gated(
-        sources,
-        default_compile_pipeline_options(),
-        true,
-    )
+    compile_to_resolved_with_options_gated(sources, default_compile_pipeline_options(), true)
 }
 
 fn is_resolved_pipeline_typecheck_blocking(

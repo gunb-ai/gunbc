@@ -802,9 +802,7 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => {
-            v1_compiler_compile::compile_to_resolved(Rc::new(sources))
-        }
+        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
             v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
         }
