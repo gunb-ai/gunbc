@@ -616,23 +616,23 @@ data allocation_class_xlarge: AllocationClassSpec = AllocationClassSpec {
 //
 // Placeholder bytes for operator/dashboard containment. Each row names its dissolution
 // trigger; final values are generated-from-the-ledger (measured peaks + BMC grantable).
-// Authority: docs/runbooks/ci-runner-cgroup-memory-cap.md
+// bind: docs/runbooks/ci-runner-cgroup-memory-cap.md (scaffold register table)
 
-// 🟡 scaffold — host-runner-slice-cap · dissolve-on: max(measured normal-CI floor
-// peak_vmhwm_kib from claim_executor [measurement] @ width=4, memory.peak runner slice)
-// + pig-tail margin
+// 🟡 scaffold — host-runner-slice-cap · bind: runbook ledger row "CI runner slice"
+// dissolve-on: max(measured normal-CI floor peak_vmhwm_kib from claim_executor
+// [measurement] @ width=4, memory.peak runner slice) + pig-tail margin
 data host_memory_scaffold_runner_slice_cap: ByteSize = byte_size(68719476736)
 
-// 🟡 scaffold — ci-per-shard-peak (#5375 width input; §3 fork) · dissolve-on: measured
-// per-witness resolve peak distribution (claim_batch [interp-stats] VmHWM)
+// 🟡 scaffold — ci-per-shard-peak (#5375 width input; §3 fork) · consumer: ci_fleet.demand
+// dissolve-on: measured per-witness resolve peak distribution (claim_batch [interp-stats] VmHWM)
 data host_memory_scaffold_ci_per_shard_peak: ByteSize = byte_size(15032385536)
 
-// 🟡 scaffold — session-container-cap (live dashboard default) · dissolve-on: operator-
-// signed cap from measured per-session peak-RSS distribution + concurrency policy
+// 🟡 scaffold — session-container-cap (live dashboard default) · bind: runbook Part B
+// dissolve-on: operator-signed cap from measured per-session peak-RSS distribution
 data host_memory_scaffold_session_container_cap: ByteSize = byte_size(33578549248)
 
-// 🟡 scaffold — session-spawn-reservation (kernel census fact) · dissolve-on: generated-
-// from-the-ledger admit() reservation per AllocationClass
+// 🟡 scaffold — session-spawn-reservation (kernel census) · consumer: admit() reserve_bytes
+// dissolve-on: generated-from-the-ledger admit() reservation per AllocationClass
 data host_memory_scaffold_session_spawn_reservation: ByteSize = byte_size(268435456)
 
 fn allocation_class_spec(class: AllocationClass) -> AllocationClassSpec {
@@ -689,74 +689,6 @@ fn placement_grantable_memory_bytes(supply: PlacementSupplyRow, reserve_bytes: B
   let budget = placement_floor_memory_budget_bytes(supply: supply)
   let reserve = byte_size_count(reserve_bytes)
   if budget <= reserve { 1 } else { budget - reserve }
-}
-
-fn placement_memory_width_bound_with_reserve(
-  supply: PlacementSupplyRow,
-  demand: WorkDemand,
-  reserve_bytes: ByteSize,
-) -> Int? {
-  match demand.resources.memory {
-    Absent => none
-    Present { value: req } => {
-      let per_unit = byte_size_count(req.min_bytes)
-      if per_unit <= 0 { none } else {
-        let grantable = placement_grantable_memory_bytes(
-          supply: supply,
-          reserve_bytes: reserve_bytes,
-        )
-        let fits = grantable / per_unit
-        Present { value: if fits < 1 { 1 } else { fits } }
-      }
-    }
-  }
-}
-
-fn placement_spawn_width_with_reserve(
-  supply: PlacementSupplyRow,
-  demand: WorkDemand,
-  reserve_bytes: ByteSize,
-) -> HardwareThreadCount {
-  let cpu_width = hardware_thread_count_value(
-    t: bounded_host_spawn_width(
-      shard_count: work_demand_shard_count(demand: demand),
-      hardware_threads: supply.hardware_threads,
-    )
-  )
-  match placement_memory_width_bound_with_reserve(
-    supply: supply,
-    demand: demand,
-    reserve_bytes: reserve_bytes,
-  ) {
-    Absent => hardware_thread_count(count: cpu_width)
-    Present { value: mem_width } =>
-      hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
-  }
-}
-
-fn compute_request_work_demand(request: ComputeRequest, shard_count: Int) -> WorkDemand {
-  WorkDemand {
-    resources: allocation_class_resource_envelope(class: request.class),
-    os: none,
-    isolation: IsolationRequirement { boundary: PerJobFilesystem },
-    toolchains: [],
-    parallelism: IndependentShards { shard_count: shard_count },
-    data_locality: [],
-    effects: [],
-  }
-}
-
-fn placement_spawn_width_for_request(
-  supply: PlacementSupplyRow,
-  request: ComputeRequest,
-  shard_count: Int,
-  reserve_bytes: ByteSize,
-) -> HardwareThreadCount {
-  placement_spawn_width_with_reserve(
-    supply: supply,
-    demand: compute_request_work_demand(request: request, shard_count: shard_count),
-    reserve_bytes: reserve_bytes,
-  )
 }
 
 // --- §1.2 demand -------------------------------------------------------------
@@ -1557,7 +1489,7 @@ fn witness_admit_grants_on_empty_host() -> Bool {
     provider: example_admit_provider,
     live_receipts: [],
     request: ComputeRequest { class: Medium },
-    reserve_bytes: byte_size(0),
+    reserve_bytes: host_memory_scaffold_session_spawn_reservation,
     acquired_at: example_admit_logical_time,
   ) {
     Present { value: _ } => true
@@ -1572,7 +1504,7 @@ fn witness_admit_refuses_when_host_full() -> Bool {
     provider: example_admit_provider,
     live_receipts: [example_admit_live_large],
     request: ComputeRequest { class: Large },
-    reserve_bytes: byte_size(0),
+    reserve_bytes: host_memory_scaffold_session_spawn_reservation,
     acquired_at: example_admit_logical_time,
   ) {
     Absent => true
