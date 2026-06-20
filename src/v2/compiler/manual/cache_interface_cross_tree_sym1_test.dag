@@ -1,0 +1,56 @@
+// SYM1 discriminating witness — spike adhoc-0dd96c93-6a8 / parent quick-ram-347.
+//
+// v2 module imports dsl std.cache_interface AND v2.std.algebra { Cons, Empty }.
+// If v1 infer uses flat bare-string intern across merged closures, dsl std
+// transitive types (Empty/Cons/FreeMonoid/…) collide with v2.std.algebra and
+// build_type_env fails to resolve. If module-qualified (or last-wins) keying
+// already handles it, this compiles and runs GREEN.
+//
+// Run: gunbc run --source-root src/v2 --source-root dsl \
+//        --entry src/v2/compiler/manual/cache_interface_cross_tree_sym1_test.dag \
+//        --function cache_interface_cross_tree_sym1_holds --claim-run
+
+module v2.test.manual.cache_interface_cross_tree_sym1
+
+import std.cache_interface {
+  CacheLookupResult,
+  CacheRejectReason,
+  Miss,
+  RejectedHit,
+  FreshnessExpired
+}
+import v2.std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+
+// Force both namespaces into one module: dsl CacheLookupResult + v2 Empty/Cons.
+fn sym1_miss_is_miss() -> Bool {
+  match (Miss: CacheLookupResult<String>) {
+    Miss => true
+    RejectedHit { reason: _ } => false
+    Hit { receipt: _ } => false
+  }
+}
+
+fn sym1_rejected_hit_is_rejected() -> Bool {
+  match (RejectedHit { reason: FreshnessExpired }: CacheLookupResult<String>) {
+    Miss => false
+    RejectedHit { reason: FreshnessExpired } => true
+    RejectedHit { reason: _ } => false
+    Hit { receipt: _ } => false
+  }
+}
+
+fn sym1_v2_algebra_nonempty() -> Bool {
+  match (Cons { head: ^sym1, tail: Empty }: FreeMonoid<String>) {
+    Empty => false
+    Cons { head: h, tail: _ } => h == ^sym1
+  }
+}
+
+test fn cache_interface_cross_tree_sym1_holds() -> Bool {
+  sym1_miss_is_miss()
+    && sym1_rejected_hit_is_rejected()
+    && sym1_v2_algebra_nonempty()
+}
