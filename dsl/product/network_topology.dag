@@ -1,0 +1,90 @@
+// product/network_topology.dag — measured network topology for placement + BMC reachability.
+//
+// LAYER: product (domain model). Generic shapes live here; the operator's measured
+// srv1/srv2 topology is instantiated in gunbc/operator_fleet_network.dag (3a-ours,
+// public-in-repo meta-model — same tier as gunbc/ci_fleet.dag). Secrets stay in ctrl.
+//
+// Extends NetworkLocality vocabulary from product.compute_fabric.
+
+module product.network_topology
+
+import product.compute_fabric { NetworkLocality, Lan, DockerBridge, TailscaleOverlay }
+import product.placement_supply { HostIdentity }
+import std.types { NonEmptyStr, Bool, List }
+
+// Which network plane an endpoint attachment serves.
+type NetworkAttachmentRole =
+    HostOperatingSystem
+  | BmcOutOfBand
+  | ContainerBridgeDefault
+  | ContainerBridgeSecondary
+  | TailscaleEndpoint
+  | LanGateway
+
+// Policy zones for reachability (who is asking → who is the target).
+type NetworkReachabilityZone =
+    ContainerRunner
+  | HostLan
+  | BmcManagement
+  | TailscaleMesh
+
+// 🟡 feature:ipv4-cidr-decomposition — dissolve-on: first consumer requiring octet-range
+// validation or prefix arithmetic (DESIGN §2). Display spellings stay NonEmptyStr until
+// IpV4Address / IpV4Cidr records land.
+type NetworkSegment {
+  cidr: NonEmptyStr
+  gateway: NonEmptyStr?
+  locality: NetworkLocality
+}
+
+type NetworkEndpoint {
+  label: NonEmptyStr
+  host: HostIdentity?
+  address: NonEmptyStr
+  role: NetworkAttachmentRole
+  locality: NetworkLocality
+}
+
+type NetworkTopology {
+  tailnet_domain: NonEmptyStr?
+  segments: List<NetworkSegment>
+  endpoints: List<NetworkEndpoint>
+}
+
+// Closed reachability policy for the operator fleet class. Grounded by operator probes
+// (container→BMC via docker0 NAT yes; container→host LAN no).
+fn network_reachability(
+  from: NetworkReachabilityZone,
+  to: NetworkReachabilityZone
+) -> Bool {
+  match from {
+    ContainerRunner =>
+      match to {
+        BmcManagement => true
+        HostLan => false
+        ContainerRunner => true
+        TailscaleMesh => false
+      }
+    HostLan =>
+      match to {
+        BmcManagement => true
+        HostLan => true
+        ContainerRunner => true
+        TailscaleMesh => true
+      }
+    BmcManagement =>
+      match to {
+        BmcManagement => true
+        HostLan => true
+        ContainerRunner => false
+        TailscaleMesh => false
+      }
+    TailscaleMesh =>
+      match to {
+        HostLan => true
+        BmcManagement => true
+        ContainerRunner => false
+        TailscaleMesh => true
+      }
+  }
+}

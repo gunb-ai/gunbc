@@ -451,6 +451,95 @@ pub fn eval_resolve_type_node(
     marshal_disj_type_item(ctx, item)
 }
 
+// ---------------------------------------------------------------------------
+// v2.std.concept_index — host-fed SOURCE for a WHOLE-CORPUS LENS (same family as
+// v2.lens.layering_imports / v2.lens.resolved_imports), NOT a freestanding "enumeration bridge".
+// This is the family's fact-source half: it returns `ConceptDecl` facts (cf. layering_imports'
+// host `layer_import_facts`), and the LENS proper is the pure .dag folds in v2.std.concept_index.
+// Where resolve_type_node materializes ONE decl BY NAME (Disj only), concept_decl_facts_live
+// materializes EVERY declared TypeItem across the compiled corpus as a `ConceptDecl`
+// { qualified_name, name, node } — the SAME substrate currency (a Node), just plural and
+// any-connective. It does NO index-contract shaping: ConceptStruct / FieldRef are projected
+// from `node` entirely in .dag (v2.std.concept_index) via the existing public node_query readers
+// (coproduct_arm_list_from_node / coproduct_arm_payload_pair_from_arm, which fold Conj records
+// and Disj coproducts into (field, type) pairs identically). This keeps the index contract
+// single-authority in the model. This is a COMPILE-TIME host scan (runtime reflection is the
+// banned thing — this is in-bounds), irreducible only because v2 has no corpus-as-node handle yet:
+// it dissolves INTO a lens over the corpus-node, converging onto apply_lens over that Node when v2
+// self-host gains compile-graph access (tracked: gunbc#5364). Same unmet trigger as sibling
+// resolve_type_node. NOTE:
+// gunbc#4863 is this bridge's ORIGIN PR (R-reflect Phase-2a, where resolve_type_node + this file
+// were introduced) — it is NOT the dissolve trigger; recorded as provenance only.
+// ---------------------------------------------------------------------------
+
+/// Logical (import-path) module-qualified name: the dotted module path followed by the concept's
+/// leaf name, with the bootstrap `v2.` source-tree prefix stripped so names match the logical
+/// import namespace the consumer uses — e.g. module `v2.std.node` + `Connective` ->
+/// "std.node.Connective" (NOT "v2.std.node.Connective"). The downstream consumer contract
+/// (plans.namespace_index) keys homonym/synonym detection on these logical paths.
+fn logical_qualified_name(module_name: &str, name: &str) -> String {
+    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
+    if logical.is_empty() {
+        name.to_string()
+    } else {
+        format!("{logical}.{name}")
+    }
+}
+
+/// Materialize a declared type item as a substrate `Node` Value — the same currency
+/// resolve_type_node returns, generalized to any connective by reusing the SAME internal marshal
+/// helpers (no change to resolve_type_node's public contract):
+///   - Disj (coproduct) -> marshal_disj_type_item (Named arm edges, payload sub-nodes).
+///   - Conj (record)    -> marshal_variant_arm_target (Named field edges -> field-type atoms;
+///                          empty record -> unit Conj node).
+///   - other (alias/atom/arrow) -> unit Conj node (no named-edge field substrate; the .dag
+///                          readers fold it to an empty field list — honest, not fabricated).
+/// All FieldRef/ConceptStruct shaping happens in .dag over this node, NOT here.
+fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
+    match item.connective {
+        Connective::Disj => marshal_disj_type_item(ctx, item),
+        Connective::Conj => marshal_variant_arm_target(ctx, item),
+        _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+pub fn eval_concept_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            // Per-module registry: the item's module is unambiguous here (no cross-module
+            // name collision, unlike the global registry).
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::TypeItem {
+                continue;
+            }
+            let qualified_name = logical_qualified_name(&info.module_name, &name);
+            let node = concept_decl_node(ctx, item)?;
+            rows.push(Value::Record {
+                type_name: ctx.sym("ConceptDecl"),
+                fields: Rc::new(HashMap::from([
+                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("node"), node),
+                ])),
+            });
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 pub fn eval_syntactic_coproduct_arm_keys(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
