@@ -985,6 +985,40 @@ service github.Gist {
     }
 
     #[test]
+    fn external_authority_live_violations_diagnostic() {
+        let backfill = backfill_pending_module_paths();
+        let exempt = ["extdeps.uri", "extdeps.external_authority"];
+        let exclusions = [
+            "extdeps.fixture.external_authority_bogus_scheme",
+            "extdeps.fixture.external_authority_missing",
+            "extdeps.fixture.external_authority_clean_https_no_anchor",
+            "extdeps.fixture.external_authority_file_anchor",
+        ];
+        let mut violations = Vec::new();
+        for path in derived_extdeps_module_paths() {
+            if exclusions.iter().any(|p| *p == path.as_str()) {
+                continue;
+            }
+            if exempt.iter().any(|p| *p == path.as_str()) || backfill.contains(&path) {
+                continue;
+            }
+            match project_external_authority_anchor(&path) {
+                ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
+                ExternalAuthorityAnchorProjection::Present {
+                    scheme_identity, ..
+                } if scheme_identity != "Http" && scheme_identity != "Https" => {
+                    violations.push(format!("non_external:{path}:{scheme_identity}"))
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "live-policy violations: {violations:?}"
+        );
+    }
+
+    #[test]
     fn external_authority_clean_https_fixture_projects_https_locator() {
         assert_eq!(
             external_authority_anchor_kind_for_module_path(
