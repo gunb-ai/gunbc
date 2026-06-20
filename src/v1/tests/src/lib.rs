@@ -45,7 +45,6 @@ mod fact_cardinality_lens_test;
 mod floor_skip_discovery_host_test;
 #[cfg(test)]
 mod fn_as_value_test;
-mod gap4_export_debug_test;
 #[cfg(test)]
 mod fold_list_generic_instantiation_test;
 #[cfg(test)]
