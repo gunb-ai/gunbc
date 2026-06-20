@@ -20,13 +20,16 @@ import v2.compiler.translate {
   target_serialize_source_from_model,
   translate,
 }
+import v2.extdeps.languages.dag {
+  dag_mvp1_add_arrow_with_body_fixture,
+  dag_mvp1_add_binary_body_fixture,
+  dag_mvp1_arrow_domain_conj_node
+}
 import v2.extdeps.languages.typescript {
   ts_facts_number,
   ts_inhabitant_atom,
   ts_inhabitant_number_node,
-  ts_mvp1_add_binary_body_node,
   ts_mvp1_binding_spellings,
-  ts_mvp1_emitted_add_fn_with_body_node,
   ts_mvp1_source_text,
   ts_mvp1_target_model,
   ts_mvp1_target_model_node,
@@ -86,7 +89,7 @@ import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data mvp1_typescript_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 data mvp1_ts_number_inhabitant: Node = ts_inhabitant_number_node()
 
-data mvp1_ts_emitted_root: Node = ts_mvp1_emitted_add_fn_with_body_node()
+data mvp1_ts_emitted_root: Node = dag_mvp1_add_arrow_with_body_fixture
 
 data mvp1_ts_number_facts_node: Node = ts_number_facts_node(facts: ts_facts_number)
 
@@ -172,7 +175,28 @@ fn mvp1_ts_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
         algebra: node
       )
     }
-  } else if node == ts_mvp1_add_binary_body_node() {
+  } else if node == dag_mvp1_add_arrow_with_body_fixture {
+    Holds {
+      value: mvp1_ts_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == dag_mvp1_add_binary_body_fixture {
+    Holds {
+      value: mvp1_ts_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == dag_mvp1_arrow_domain_conj_node() {
+    Holds {
+      value: mvp1_ts_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == ts_inhabitant_atom(id: ^dag_binding_type_int) {
     Holds {
       value: mvp1_ts_canonical_grounding(
         node: node,
@@ -328,6 +352,17 @@ fn anchor_mvp1_ts_compile_inferred_accepts() -> Outcome<CompileOutput> {
 }
 
 data mvp1_ts_emit_receipt: Outcome<Medium<String>> = anchor_mvp1_ts_emit_accepts()
+
+test fn mvp1_ts_serialize_bodied_add_fn_accepts_holds() -> Bool {
+  match target_serialize_source_from_model(
+    target: mvp1_ts_target_model,
+    emitted: mvp1_ts_emitted_root
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == ts_mvp1_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 // R2 keystone execution witness — emit(add) must produce the canonical ts_mvp1 add-fn source.
 test fn mvp1_ts_emit_add_fn_accepts_holds() -> Bool {
