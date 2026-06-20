@@ -558,15 +558,7 @@ fn parse_nonterminal_memoized(
   prod_name: Symbol,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  if prod_name == ^dag_production_match_arm_body {
-    parse_match_arm_body(
-      all_tokens: all_tokens,
-      tokens: tokens,
-      root: root,
-      table: table,
-      prov: prov
-    )
-  } else if prod_name == ^dag_production_match_arm_stmt_body {
+  if prod_name == ^dag_production_match_arm_stmt_body {
     parse_match_arm_stmt_body(
       all_tokens: all_tokens,
       tokens: tokens,
@@ -685,43 +677,6 @@ fn parse_looks_like_match_arm_start(tokens: List<Token>) -> Bool {
           }
         CharAbsent => false
       }
-  }
-}
-
-
-fn parse_token_starts_match_arm_stmt_body(tokens: List<Token>) -> Bool {
-  match parse_token_first(tokens: tokens) {
-    Absent => false
-    Present { value: tok } =>
-      parse_token_lexeme_is(tok: tok, lit: "let") || parse_token_lexeme_is(tok: tok, lit: "return")
-  }
-}
-
-
-fn parse_match_arm_body(
-  all_tokens: List<Token>,
-  tokens: List<Token>,
-  root: GrammarRoot,
-  table: ParseTable,
-  prov: ParseProvenanceState
-) -> ParseExprResult {
-  if parse_token_starts_match_arm_stmt_body(tokens: tokens) {
-    parse_match_arm_stmt_body(
-      all_tokens: all_tokens,
-      tokens: tokens,
-      root: root,
-      table: table,
-      prov: prov
-    )
-  } else {
-    parse_nonterminal_memoized_core(
-      all_tokens: all_tokens,
-      tokens: tokens,
-      root: root,
-      table: table,
-      prod_name: ^dag_production_expr,
-      prov: prov
-    )
   }
 }
 
