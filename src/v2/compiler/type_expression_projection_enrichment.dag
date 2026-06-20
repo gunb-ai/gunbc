@@ -57,6 +57,7 @@ type CoproductWireContractIndexRow {
   coproduct_sym: Symbol
   naming_tag: Symbol
   decl: Node
+  disj_hash: Hash
 }
 
 fn tepe_node_has_surface(root: Node, surface: Symbol) -> Bool {
@@ -302,6 +303,17 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
         Absent => optional_absent()
       }
   }
+}
+
+fn tepe_is_type_decl_surface_token(sym: Symbol) -> Bool {
+  sym == ^dag_token_kw_type
+    || sym == ^dag_token_ident
+    || sym == ^dag_token_string_literal
+    || sym == ^dag_token_colon
+    || sym == ^dag_token_eq
+    || sym == ^dag_token_comma
+    || sym == ^dag_token_lbrace
+    || sym == ^dag_token_rbrace
 }
 
 fn tepe_type_decl_binding_atom_optional(node: Node) -> Optional<Node> {
@@ -759,6 +771,80 @@ fn tepe_normalize_naming_tag_for_catalog(sym: Symbol) -> Symbol {
   }
 }
 
+fn tepe_disj_first_variant_sym_optional(disj: Node) -> Optional<Symbol> {
+  match list_at_optional(xs: disj.children, index: 0) {
+    Absent => optional_absent()
+    Present { value: edge } =>
+      match tepe_atom_sym_optional(node: edge.target) {
+        Present { value: sym } => optional_present(value: sym)
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn tepe_disj_matches_coproduct_sym(disj: Node, coproduct_sym: Symbol) -> Bool {
+  match tepe_disj_first_variant_sym_optional(disj: disj) {
+    Present { value: first } =>
+      if coproduct_sym == ^ReviewEvent {
+        first == ^Approve
+      } else {
+        if coproduct_sym == ^Status {
+          first == ^Open
+        } else {
+          false
+        }
+      }
+    Absent => false
+  }
+}
+
+fn tepe_disj_for_coproduct_sym_optional(root: Node, coproduct_sym: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            if tepe_disj_matches_coproduct_sym(disj: node, coproduct_sym: coproduct_sym) {
+              optional_present(value: node)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_row_with_disj_hash(
+  root: Node,
+  row: CoproductWireContractIndexRow
+) -> Outcome<CoproductWireContractIndexRow> {
+  match row {
+    CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: tag, decl: decl, disj_hash: _ } =>
+      match tepe_disj_for_coproduct_sym_optional(root: root, coproduct_sym: csym) {
+        Present { value: disj } =>
+          outcome_accepted(
+            CoproductWireContractIndexRow {
+              coproduct_sym: csym,
+              naming_tag: tag,
+              decl: decl,
+              disj_hash: content_hash(n: disj)
+            }
+          )
+        Absent =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      }
+  }
+}
+
 fn tepe_coproduct_sym_from_decl(
   decl: Node,
   field_coproduct: Symbol,
@@ -798,7 +884,8 @@ fn tepe_coproduct_sym_from_decl(
                                   naming_tag: tepe_normalize_naming_tag_for_catalog(
                                     sym: naming_tag
                                   ),
-                                  decl: decl
+                                  decl: decl,
+                                  disj_hash: content_hash(n: decl)
                                 }
                               )
                             }
@@ -898,6 +985,7 @@ type CoproductWireContractIndexAcc
 
 fn tepe_fold_decl_into_index(
   acc: CoproductWireContractIndexAcc,
+  root: Node,
   decl: Node,
   field_coproduct: Symbol,
   field_encoding: Symbol,
@@ -920,12 +1008,17 @@ fn tepe_fold_decl_into_index(
                     type_coproduct_wire_contract: type_coproduct_wire_contract
                   ) {
                     Accepted { value: row, diagnostics: _ } =>
-                      match tepe_append_contract_row(rows: rows, row: row) {
-                        Accepted { value: next_rows, diagnostics: _ } =>
-                          CoproductWireContractIndexOk { rows: next_rows }
-                        Rejected { diagnostics: r } =>
-                          CoproductWireContractIndexErr { diagnostics: r }
-                      }
+                      bind_outcome(
+                        o: tepe_row_with_disj_hash(root: root, row: row),
+                        f: fn(stamped) {
+                          match tepe_append_contract_row(rows: rows, row: stamped) {
+                            Accepted { value: next_rows, diagnostics: _ } =>
+                              outcome_accepted(CoproductWireContractIndexOk { rows: next_rows })
+                            Rejected { diagnostics: r } =>
+                              outcome_rejected(r)
+                          }
+                        }
+                      )
                     Rejected { diagnostics: r } =>
                       CoproductWireContractIndexErr { diagnostics: r }
                   }
