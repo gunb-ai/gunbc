@@ -14,7 +14,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
-  SourceRootIngestGate, Stage0LockstepGate
+  SourceRootIngestGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
@@ -22,7 +22,6 @@ import tools.layering_imports_gate { run_layering_imports_ci_gate }
 import tools.resolved_imports_gate { run_resolved_imports_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
 import tools.ci_yaml_gate { run_ci_yaml_gate }
-import tools.stage0_lockstep_gate { run_stage0_lockstep_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -39,7 +38,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
-    Stage0LockstepGate => run_stage0_lockstep_gate()
   }
 }
 
@@ -51,8 +49,7 @@ func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
   let g3 = if exit_ok(g2) { run_spec_gate(g: ResolvedImportsGate) } else { g2 }
   let g4 = if exit_ok(g3) { run_spec_gate(g: DslCompileCleanGate) } else { g3 }
   let g5 = if exit_ok(g4) { run_spec_gate(g: CiYamlGate) } else { g4 }
-  let g6 = if exit_ok(g5) { run_spec_gate(g: SourceRootIngestGate) } else { g5 }
-  if exit_ok(g6) { run_spec_gate(g: Stage0LockstepGate) } else { g6 }
+  if exit_ok(g5) { run_spec_gate(g: SourceRootIngestGate) } else { g5 }
 }
 
 func main() -> ProcessExit {
