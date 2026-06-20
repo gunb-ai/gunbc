@@ -1325,8 +1325,8 @@ fn bare_import_wildcard_survives_pipeline() {
 fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
     use std::rc::Rc;
     use v1_compiler::v1_std_core::{
-        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic,
-        no_span, CompilerDiagnostic,
+        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
+        CompilerDiagnostic,
     };
 
     let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -1348,9 +1348,8 @@ fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
 fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
     use std::rc::Rc;
     use v1_compiler::v1_std_core::{
-        is_discovery_corpus_advisory_typecheck_diagnostic,
-        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic,
-        no_span, CompilerDiagnostic,
+        is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
+        is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
     };
 
     let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -1359,7 +1358,9 @@ fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
         span: no_span(),
     });
     assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
-    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(typecheck.clone()));
+    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
+        typecheck.clone()
+    ));
     // Discovery gate demotes; strict gate (= interpreter blocking) does not.
     assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
     assert!(is_interpreter_blocking_diagnostic(typecheck));
@@ -1409,8 +1410,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         .into_owned();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &sample)
         .expect("load ci_floor_plan closure");
-    let resolved =
-        v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
     for d in resolved.diagnostics.iter() {
         if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
             continue;
@@ -1485,17 +1485,13 @@ fn resolve_entry_parse_cache_skips_closure_parse_errors() {
         "module broken\nfn x( -> Int { 1 }\n",
     )
     .expect("write broken.dag");
-    std::fs::write(
-        dir.join("good.dag"),
-        "module good\nfn ok() -> Int { 0 }\n",
-    )
-    .expect("write good.dag");
+    std::fs::write(dir.join("good.dag"), "module good\nfn ok() -> Int { 0 }\n")
+        .expect("write good.dag");
     let good_path = dir.join("good.dag").to_string_lossy().into_owned();
     let index = build_multi_entry_index(&[root.clone()]);
     let good_resolve = resolve_entry_with_index(&index, &good_path);
     cleanup();
-    good_resolve
-        .expect("good entry should resolve when only a non-imported sibling fails parse");
+    good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
 
     std::fs::create_dir_all(&dir).expect("recreate temp dir");
     std::fs::write(

@@ -24,10 +24,10 @@ use crate::v1_rt;
 use crate::v1_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
-    field_init_node_value, has_child_named, intern, is_error_diagnostic,
-    is_discovery_corpus_blocking_diagnostic, is_discovery_corpus_advisory_typecheck_diagnostic,
-    is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    CompilerDiagnostic, NewlineIndex, Node,
+    field_init_node_value, has_child_named, intern,
+    is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, CompilerDiagnostic, ErrorNode,
+    ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -45,15 +45,10 @@ pub enum ResolveTypecheckGate {
     DiscoveryCorpusAdvisory,
 }
 
-fn is_resolve_typecheck_blocking(
-    d: Rc<CompilerDiagnostic>,
-    gate: ResolveTypecheckGate,
-) -> bool {
+fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            is_discovery_corpus_blocking_diagnostic(d)
-        }
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
     }
 }
 
@@ -603,10 +598,7 @@ fn resolve_entry_with_parse_cache(
 
     let source_indices = Rc::new(si_map);
     if modules.is_empty() && !sources.is_empty() {
-        return Err(format_error_nodes(
-            &Rc::new(parse_diags),
-            &source_indices,
-        ));
+        return Err(format_error_nodes(&Rc::new(parse_diags), &source_indices));
     }
     // Snapshot the accumulated intern table after all files in this closure
     // have been parsed; pass it to reconcile for type-name lookup.
@@ -935,7 +927,8 @@ pub fn precompute_whole_tree_published_mock_keys(
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let (graph, source_indices) = resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) =
+        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
         source_indices,
@@ -1824,10 +1817,8 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_values().collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) = resolved_graph_from_sources(
-            sources,
-            ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-        )?;
+        let (graph, source_indices) =
+            resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
