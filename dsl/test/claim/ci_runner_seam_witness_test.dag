@@ -6,7 +6,7 @@ module test.claim.ci_runner_seam_witness
 
 import gunbc.ci_fleet { gunbc_ci_fleet_offer, gunbc_ci_runner_spec }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.ci_workflow { ci_workflow }
+import gunbc.ci_workflow { ci_workflow, ci_workflow_primary_job_runner, ci_workflow_primary_job_steps, ci_workflow_primary_step }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import extdeps.github.actions { SelfHosted }
 import std.algebra { HeadAbsent, HeadFound, length, list_head, list_head_value, skip }
@@ -16,10 +16,7 @@ fn witness_ci_runner_spec_derives_from_fleet_offer() -> Bool {
 }
 
 fn witness_ci_workflow_runner_matches_fleet_offer() -> Bool {
-  match list_head(xs: ci_workflow.jobs) {
-    HeadFound { value: job } => job.runner == gunbc_ci_runner_spec()
-    HeadAbsent => false
-  }
+  ci_workflow_primary_job_runner() == gunbc_ci_runner_spec()
 }
 
 fn witness_ci_yaml_runs_on_projects_fleet_labels() -> Bool {

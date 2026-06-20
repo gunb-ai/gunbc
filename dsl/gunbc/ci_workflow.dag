@@ -19,8 +19,9 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
   checkout_action, setup_rust_action, cache_action,
-  default_job_timeout_minutes
+  default_job_timeout_minutes, RunnerSpec
 }
+import std.algebra { HeadAbsent, HeadFound, list_head, list_head_value }
 
 data ci_workflow: Workflow = {
   name: "ci",
@@ -191,4 +192,19 @@ data ci_workflow: Workflow = {
     continue_on_error: none,
     concurrency: none
   }]
+}
+
+fn ci_workflow_primary_job_runner() -> RunnerSpec {
+  fold(ci_workflow.jobs, init: gunbc_ci_runner_spec(), f: fn(_acc, job) { job.runner })
+}
+
+fn ci_workflow_primary_job_steps() -> List<Step> {
+  fold(ci_workflow.jobs, init: [], f: fn(_acc, job) { job.steps })
+}
+
+fn ci_workflow_primary_step() -> Step {
+  match list_head(xs: ci_workflow_primary_job_steps()) {
+    HeadFound { value: step } => step
+    HeadAbsent => list_head_value(xs: ci_workflow_primary_job_steps())
+  }
 }
