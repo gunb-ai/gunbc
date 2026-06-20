@@ -14,6 +14,7 @@ import std.baseboard {
   AsrockRackAltrad8ud1l2t,
 }
 import std.bmc { OpenBmc }
+import std.types { NonEmptyStr }
 
 // Manufacturer (AsrockRack) is not stored here — it derives from `model` via
 // std.baseboard.baseboard_manufacturer (DESIGN §2, one fact derived).
@@ -22,3 +23,7 @@ data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   bmc_firmware: OpenBmc,
 }
+
+// Redfish member ids on OpenBMC for this board (live-verified srv2 2026-06-20).
+data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
+data asrock_altrad8ud_redfish_chassis_id: NonEmptyStr = "ALTRAD8UD_1L2T"
