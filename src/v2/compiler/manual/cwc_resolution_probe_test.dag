@@ -65,7 +65,7 @@ import v2.std.collection {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
-import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
+import v2.std.node { Disj, Edge, Node, NodeFold, TypeNode, fold_node }
 import v2.std.node_query { find_named_child }
 import v2.std.text { String }
 
@@ -368,16 +368,10 @@ fn cwc_node_connective_tag(n: Node) -> Symbol {
 }
 
 fn cwc_disj_first_variant_target_optional(n: Node) -> Optional<Node> {
-  fold(
-    n.children,
-    init: optional_absent(),
-    f: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => optional_present(value: e.target)
-      }
-    }
-  )
+  match list_at_optional(xs: n.children, index: 0) {
+    Present { value: edge } => optional_present(value: edge.target)
+    Absent => optional_absent()
+  }
 }
 
 test fn cwc_review_disj_first_variant_atom_sym_holds() -> Bool {

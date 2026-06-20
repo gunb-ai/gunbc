@@ -134,8 +134,11 @@ fn tepe_field_binding_symbols_equivalent(left: Symbol, right: Symbol) -> Bool {
       Accepted { value: left_spelling, diagnostics: _ } =>
         match symbol_interned_spelling(binding: right) {
           Accepted { value: right_spelling, diagnostics: _ } =>
-            tepe_naming_spelling_basename(spelling: left_spelling)
-              == tepe_naming_spelling_basename(spelling: right_spelling)
+            if left_spelling == right_spelling {
+              true
+            } else {
+              false
+            }
           Rejected { diagnostics: _ } => false
         }
       Rejected { diagnostics: _ } => false
@@ -155,140 +158,6 @@ fn tepe_field_init_value_node_optional(node: Node) -> Optional<Node> {
     Present { value: parts } => optional_present(value: parts.value)
     Absent => optional_present(value: node)
   }
-}
-
-fn tepe_field_init_value_is_encoding_shape(value: Node) -> Bool {
-  match tepe_field_init_value_structural_fallback(root: value, field: ^naming) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn tepe_coproduct_field_value_optional(root: Node) -> Optional<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match tepe_field_init_parts_optional(node: node) {
-          Present { value: parts } =>
-            if tepe_field_init_value_is_encoding_shape(value: parts.value) {
-              optional_absent()
-            } else {
-              match tepe_atom_sym_optional(node: parts.value) {
-                Present { value: _ } => optional_present(value: parts.value)
-                Absent => optional_absent()
-              }
-            }
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
-      }
-    }
-  )
-}
-
-fn tepe_encoding_field_value_optional(root: Node) -> Optional<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match tepe_field_init_parts_optional(node: node) {
-          Present { value: parts } =>
-            if tepe_field_init_value_is_encoding_shape(value: parts.value) {
-              optional_present(value: parts.value)
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
-      }
-    }
-  )
-}
-
-fn tepe_sole_field_init_value_optional(root: Node) -> Optional<Node> {
-  match fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match tepe_field_init_parts_optional(node: node) {
-          Present { value: parts } =>
-            optional_present(value: parts.value)
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } =>
-            match child_acc {
-              Present { value: _ } => optional_absent()
-              Absent => acc
-            }
-          Absent => child_acc
-        }
-      }
-    }
-  ) {
-    Present { value: only } => optional_present(value: only)
-    Absent => optional_absent()
-  }
-}
-
-// 🟡 scaffold — dissolve-on: replace spelling-dispatch with enrichment-protocol field
-// rows keyed by ^coproduct/^encoding/^naming atoms (no runtime string compare arms).
-fn tepe_field_init_value_structural_fallback(
-  root: Node,
-  field: Symbol
-) -> Optional<Node> {
-  match symbol_interned_spelling(binding: field) {
-    Accepted { value: spelling, diagnostics: _ } =>
-      if spelling == "encoding" {
-        tepe_encoding_field_value_optional(root: root)
-      } else if spelling == "coproduct" {
-        tepe_coproduct_field_value_optional(root: root)
-      } else if spelling == "naming" {
-        tepe_sole_field_init_value_optional(root: root)
-      } else {
-        optional_absent()
-      }
-    Rejected { diagnostics: _ } => optional_absent()
-  }
-}
-
-fn tepe_find_field_init_value_by_name_only(root: Node, field: Symbol) -> Optional<Node> {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match tepe_field_init_parts_optional(node: node) {
-          Present { value: parts } =>
-            if tepe_field_init_parts_match_name(parts: parts, field: field) {
-              optional_present(value: parts.value)
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
-      }
-    }
-  )
 }
 
 fn tepe_field_init_value_from_colon_sequence_optional(seq: Node) -> Optional<Node> {
@@ -345,21 +214,25 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
 }
 
 fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
-  match fold(type_decl.children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: sym } =>
-            if sym == ^dag_surface_type_decl {
-              acc
-            } else {
-              optional_present(value: sym)
-            }
-          Positional => acc
-        }
+  match fold_list(
+    xs: type_decl.children,
+    empty: optional_absent(),
+    cons: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: sym } =>
+              if sym == ^dag_surface_type_decl {
+                acc
+              } else {
+                optional_present(value: sym)
+              }
+            Positional => acc
+          }
+      }
     }
-  }) {
+  ) {
     Present { value: sym } => optional_present(value: sym)
     Absent =>
       match tepe_production_captured_optional(node: type_decl) {
@@ -455,22 +328,7 @@ fn tepe_unwrap_to_conj_optional(node: Node) -> Optional<Node> {
 }
 
 fn tepe_named_field_target(root: Node, field: Symbol) -> Optional<Node> {
-  match tepe_find_field_init_value_optional(root: root, field: field) {
-    Present { value: child } => optional_present(value: child)
-    Absent =>
-      match tepe_unwrap_to_conj_optional(node: root) {
-        Present { value: conj } =>
-          match find_named_child(root: conj, name: field) {
-            Accepted { value: child, diagnostics: _ } =>
-              match tepe_field_init_parts_optional(node: child) {
-                Present { value: parts } => optional_present(value: parts.value)
-                Absent => optional_present(value: child)
-              }
-            Rejected { diagnostics: _ } => optional_absent()
-          }
-        Absent => optional_absent()
-      }
-  }
+  tepe_find_field_init_value_optional(root: root, field: field)
 }
 
 fn tepe_disj_in_subtree(node: Node) -> Optional<Node> {
@@ -544,9 +402,9 @@ fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Nod
         }
       },
       step: fn(acc, _edge, child_acc) {
-        match child_acc {
-          Present { value: _ } => child_acc
-          Absent => acc
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
         }
       }
     }
@@ -578,9 +436,9 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
         }
       },
       step: fn(acc, _edge, child_acc) {
-        match child_acc {
-          Present { value: _ } => child_acc
-          Absent => acc
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
         }
       }
     }
@@ -593,10 +451,10 @@ fn tepe_contract_row_for_disj_anchor(
   disj_anchor: Node
 ) -> Optional<CoproductWireContractIndexRow> {
   let anchor_hash = content_hash(n: disj_anchor)
-  match fold(
-    rows,
-    init: optional_absent(),
-    f: fn(acc, row) {
+  let matched = fold_list(
+    xs: rows,
+    empty: optional_absent(),
+    cons: fn(acc, row) {
       match acc {
         Present { value: _ } => acc
         Absent =>
@@ -614,7 +472,8 @@ fn tepe_contract_row_for_disj_anchor(
           }
       }
     }
-  ) {
+  )
+  match matched {
     Present { value: row } => optional_present(value: row)
     Absent =>
       match list_at_optional(xs: rows, index: 0) {
@@ -666,12 +525,17 @@ fn tepe_apply_contract_row_enrichment(
 }
 
 fn tepe_declaration_ref_sym_from_value(node: Node, decl: Node) -> Outcome<Symbol> {
-  match tepe_atom_sym_optional(node: node) {
-    Present { value: sym } =>
-      if sym == ^dag_token_string_literal {
-        outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
-      } else {
-        outcome_accepted(sym)
+  match tepe_field_init_value_node_optional(node: node) {
+    Present { value: value_node } =>
+      match tepe_atom_sym_optional(node: value_node) {
+        Present { value: sym } =>
+          if sym == ^dag_token_string_literal {
+            outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+          } else {
+            outcome_accepted(sym)
+          }
+        Absent =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
       }
     Absent =>
       outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
@@ -1118,12 +982,12 @@ fn tepe_disj_form_from_catalog_row(
 }
 
 fn tepe_disj_form_from_catalog(catalog: Node, naming_tag: Symbol) -> Outcome<TargetSumTypeShape> {
-  fold(
-    catalog.children,
-    init: outcome_rejected(
+  fold_list(
+    xs: catalog.children,
+    empty: outcome_rejected(
       tepe_coproduct_wire_contract_malformed_diagnostic(node: catalog)
     ),
-    f: fn(acc, e) {
+    cons: fn(acc, e) {
       match acc {
         Accepted { value: _, diagnostics: _ } => acc
         Rejected { diagnostics: _ } =>
@@ -1315,10 +1179,10 @@ fn tepe_bundle_child_lookup_step(
 fn tepe_target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
-      match fold(
-        target.bundle.children,
-        init: TepeBundleChildMissing,
-        f: fn(acc, e) {
+      match fold_list(
+        xs: target.bundle.children,
+        empty: TepeBundleChildMissing,
+        cons: fn(acc, e) {
           tepe_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
         }
       ) {
@@ -1536,5 +1400,8 @@ fn tepe_wire_contract_index_nonempty(tree: InferredTree, target: TargetModel) ->
         Absent => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+ostics: _ } => false
   }
 }
