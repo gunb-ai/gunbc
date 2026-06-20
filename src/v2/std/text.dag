@@ -28,6 +28,16 @@ fn host_string_text_value(value: HostStringText) -> String {
   value.text
 }
 
+// §2 — sole host↔substrate String conversion authority at explicit IO/FFI boundaries.
+// Rust realization owns the bodies (host_string_text_from_rust_host /
+// host_string_text_to_rust_host); emitter routes all boundary bridges through these names.
+fn host_string_text_from_rust_host(host: String) -> String {
+  host_string_text_value(host_string_text(text: host))
+}
+fn host_string_text_to_rust_host(text: String) -> String {
+  host_string_text_value(host_string_text(text: text))
+}
+
 // 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type CharResult
   = CharFound { value: Char }
