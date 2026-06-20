@@ -5465,151 +5465,98 @@ pub fn record_lit_alias_struct_fields(
     }
 }
 
-// Strict record construction (§5 fail-closed): resolve the field-name set of the CONCRETE
-// record a construction targets, returning `None` whenever resolution is not confident — so
-// the undefined-field check stays silent rather than false-positive. Two precision rules the
-// fail-open path elided: (1) a variant constructed against an expected COPRODUCT resolves to
-// that arm's fields (disambiguates a constructed name that also names a top-level type, e.g.
-// `GrammarExpr.Optional` vs the collection `Optional<T>`); (2) a type ALIAS
-// (`type Set<T> = PointwisePower<T>`) is followed to its target record. Only a Conj record
-// with fields yields `Some`.
 pub fn record_lit_construction_field_names(
     type_name: String,
-    expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
 ) -> Option<Rc<Vec<String>>> {
-    let si = scope.type_env.clone().source_indices.clone();
-    let arm_from_expected: Option<Rc<Node>> = match expected.clone() {
-        Some(exp) => {
-            let exp_resolved = resolved_type(exp.clone());
-            if (exp_resolved.connective.clone() == Connective::Disj) {
-                {
-                    let mut found: Option<Rc<Node>> = None;
-                    for arm in exp_resolved.children.clone().iter().cloned() {
-                        if (authored_name_at(si.clone(), arm.clone()).as_str()
-                            == type_name.as_str())
-                        {
-                            found = Some(arm.clone());
-                        }
-                    }
-                    found
-                }
-            } else {
-                None
-            }
-        }
-        None => None,
-    };
-    let toplevel = lookup_type_by_name(scope.type_env.clone(), type_name.clone());
-    let confident_record: Option<Rc<Node>> = match arm_from_expected.clone() {
-        Some(arm) => {
-            let e = expand_type_for_field_access(
-                arm.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
-            if ((e.connective.clone() == Connective::Conj)
-                && ((e.children.clone().len() as i64) > 0))
-            {
-                Some(e.clone())
-            } else {
-                None
-            }
-        }
-        None => match toplevel.clone() {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        match lookup_type_by_name(scope.type_env.clone(), type_name) {
             Some(decl) => {
-                let e = expand_type_for_field_access(
-                    decl.clone(),
-                    scope.type_env.clone(),
-                    scope.module_name.clone(),
-                );
-                if ((e.connective.clone() == Connective::Conj)
-                    && ((e.children.clone().len() as i64) > 0))
+                if ((((decl.params.clone().len() as i64) == 0)
+                    && (decl.connective.clone() == Connective::Conj))
+                    && ((decl.children.clone().len() as i64) > 0))
                 {
-                    Some(e.clone())
+                    Some(Rc::new({
+                        let mut __result = Vec::new();
+                        for f in decl.children.clone().iter().cloned() {
+                            __result.push(authored_name_at(si.clone(), f.clone()));
+                        }
+                        __result
+                    }))
                 } else {
                     None
                 }
             }
             None => None,
-        },
-    };
-    match confident_record {
-        Some(rn) => Some(Rc::new({
-            let mut __result = Vec::new();
-            for f in rn.children.clone().iter().cloned() {
-                __result.push(authored_name_at(si.clone(), f.clone()));
-            }
-            __result
-        })),
-        None => {
-            // A variant name that is NOT a top-level type (e.g. `NodeLocus`, an arm of
-            // `Locus`) — resolve its fields via the variant→parent-enum path. Skipped when
-            // the name IS a top-level type, so a directly-constructed coproduct's arms are
-            // never mistaken for record fields.
-            match toplevel.clone() {
-                Some(_) => None,
-                None => {
-                    let vf =
-                        record_lit_expected_fields(Some(type_name.clone()), scope.clone());
-                    if ((vf.clone().len() as i64) > 0) {
-                        Some(Rc::new({
-                            let mut __result = Vec::new();
-                            for f in vf.clone().iter().cloned() {
-                                __result.push(authored_name_at(si.clone(), f.clone()));
-                            }
-                            __result
-                        }))
-                    } else {
-                        None
-                    }
-                }
-            }
         }
     }
 }
 
-// Strict record construction: is `field` a member of ANY coproduct arm named `type_name`
-// anywhere in the type env? A variant name can legitimately arm two different coproducts with
-// different field sets (e.g. `TextNode` is `Fragment.TextNode { content }` and
-// `MarkupNode.TextNode { text }`). Only a field present in NO same-named arm is genuinely
-// undefined; this guards the undefined-field error against that ambiguity. Runs only on a
-// would-be error (a field missing from the primary resolution), so the scan is rare.
-pub fn field_in_any_variant_named(
-    type_name: String,
-    field: String,
-    scope: Rc<InferScope>,
-) -> bool {
-    let si = scope.type_env.clone().source_indices.clone();
-    let mut found = false;
-    for binding in v1_rt::map_values(&scope.type_env.clone().bindings.clone())
-        .iter()
-        .cloned()
+pub fn field_in_any_variant_named(type_name: String, field: String, scope: Rc<InferScope>) -> bool {
     {
-        let node = binding.resolved.clone();
-        if (node.connective.clone() == Connective::Disj) {
-            for arm in node.children.clone().iter().cloned() {
-                if (authored_name_at(si.clone(), arm.clone()).as_str() == type_name.as_str()) {
-                    let ea = expand_type_for_field_access(
-                        arm.clone(),
-                        scope.type_env.clone(),
-                        scope.module_name.clone(),
-                    );
-                    let fields = if (ea.connective.clone() == Connective::Conj) {
-                        ea.children.clone()
-                    } else {
-                        arm.children.clone()
-                    };
-                    for f in fields.iter().cloned() {
-                        if (authored_name_at(si.clone(), f.clone()).as_str() == field.as_str()) {
-                            found = true;
+        let si = scope.type_env.clone().source_indices.clone();
+        {
+            let mut __found = false;
+            for binding in Rc::new(v1_rt::map_values(&scope.type_env.clone().bindings.clone()))
+                .iter()
+                .cloned()
+            {
+                if {
+                    let node = binding.resolved.clone();
+                    if (node.connective.clone() == Connective::Disj) {
+                        {
+                            let mut __found = false;
+                            for arm in node.children.clone().iter().cloned() {
+                                if if (authored_name_at(si.clone(), arm.clone()).as_str()
+                                    == type_name.clone().as_str())
+                                {
+                                    {
+                                        let ea = expand_type_for_field_access(
+                                            arm.clone(),
+                                            scope.type_env.clone(),
+                                            scope.module_name.clone(),
+                                        );
+                                        let fields = if (ea.connective.clone() == Connective::Conj)
+                                        {
+                                            ea.children.clone()
+                                        } else {
+                                            arm.children.clone()
+                                        };
+                                        {
+                                            let mut __found = false;
+                                            for f in fields.clone().iter().cloned() {
+                                                if (authored_name_at(si.clone(), f.clone())
+                                                    .as_str()
+                                                    == field.clone().as_str())
+                                                {
+                                                    __found = true;
+                                                    break;
+                                                }
+                                            }
+                                            __found
+                                        }
+                                    }
+                                } else {
+                                    false
+                                } {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
                         }
+                    } else {
+                        false
                     }
+                } {
+                    __found = true;
+                    break;
                 }
             }
+            __found
         }
     }
-    found
 }
 
 pub fn infer_record_lit(
@@ -5660,10 +5607,12 @@ pub fn infer_record_lit(
             },
         };
         let construction_field_names = match type_name.clone() {
-            Some(tn) => {
-                record_lit_construction_field_names(tn.clone(), expected.clone(), scope.clone())
-            }
+            Some(tn) => record_lit_construction_field_names(tn.clone(), scope.clone()),
             None => None,
+        };
+        let tn_str = match type_name.clone() {
+            Some(tn) => tn.clone(),
+            None => "".to_string(),
         };
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
@@ -5673,7 +5622,37 @@ pub fn infer_record_lit(
                         fi.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     );
-                    let matched_sf = Rc::new({
+                    let unknown_field_diags = match construction_field_names.clone() {
+                        Some(names) => {
+                            if ({
+                                let mut __found = false;
+                                for n in names.clone().iter().cloned() {
+                                    if (n.clone().as_str() == fi_name.clone().as_str()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } || field_in_any_variant_named(
+                                tn_str.clone(),
+                                fi_name.clone(),
+                                scope.clone(),
+                            )) {
+                                Rc::new(vec![])
+                            } else {
+                                Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::FieldNotFound {
+                                        field: fi_name.clone(),
+                                        type_name: tn_str.clone(),
+                                        span: fi.span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
+                        }
+                        None => Rc::new(vec![]),
+                    };
+                    let field_expected = match Rc::new({
                         let mut __result = Vec::new();
                         for sf in struct_fields.clone().iter().cloned() {
                             if (authored_name_at(
@@ -5689,8 +5668,8 @@ pub fn infer_record_lit(
                         __result
                     })
                     .first()
-                    .cloned();
-                    let field_expected = match matched_sf.clone() {
+                    .cloned()
+                    {
                         Some(sf) => {
                             let ft = match sf.inferred.clone().as_deref().cloned() {
                                 Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
@@ -5705,42 +5684,6 @@ pub fn infer_record_lit(
                             }
                         }
                         None => None,
-                    };
-                    // Strict record construction (§5 fail-closed): a field that matches
-                    // no field of a RESOLVED type is a loud, located error, not silently
-                    // ignored. Guarded on a known `type_name` and a non-empty resolved
-                    // field set, so an anonymous/unresolved record (empty `struct_fields`)
-                    // never false-positives — closes the fail-open `infer_record_lit` hole.
-                    let unknown_field_diags = match construction_field_names.clone() {
-                        Some(names) => {
-                            let mut present = false;
-                            for n in names.iter().cloned() {
-                                if (n.as_str() == fi_name.clone().as_str()) {
-                                    present = true;
-                                }
-                            }
-                            if (present
-                                || field_in_any_variant_named(
-                                    type_name.clone().unwrap_or_else(|| "".to_string()),
-                                    fi_name.clone(),
-                                    scope.clone(),
-                                ))
-                            {
-                                Rc::new(vec![])
-                            } else {
-                                Rc::new(vec![make_error_node(
-                                    Rc::new(CompilerDiagnostic::FieldNotFound {
-                                        field: fi_name.clone(),
-                                        type_name: type_name
-                                            .clone()
-                                            .unwrap_or_else(|| "".to_string()),
-                                        span: fi.span.clone(),
-                                    }),
-                                    scope.module_name.clone(),
-                                )])
-                            }
-                        }
-                        None => Rc::new(vec![]),
                     };
                     let ar = infer_expr(
                         field_init_node_value(fi.clone()),
