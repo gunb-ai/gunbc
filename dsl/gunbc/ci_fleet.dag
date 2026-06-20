@@ -9,17 +9,12 @@ module gunbc.ci_fleet
 import extdeps.cpu.ampere { altra_q6430_catalog }
 import extdeps.github.actions { RunnerSpec }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import extdeps.bmc.types {
-  BmcGroundedHostObservations,
-  BmcTelemetrySnapshot,
-  RedfishChassisSensorCollection,
-  RedfishSensorReading,
-  RedfishSystemInventory,
-  On,
+import gunbc.fleet_srv2_bmc_fixture {
+  fleet_srv2_bmc_redfish_system,
+  fleet_srv2_bmc_telemetry,
 }
-import extdeps.bmc.redfish { redfish_system_inventory }
+import extdeps.bmc.types { BmcGroundedHostObservations }
 import extdeps.bmc { bmc_ground_snapshot }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 import product.compute_fabric {
   ComputeOffer,
   ComputeSupplyFacts,
@@ -38,7 +33,6 @@ import product.compute_fabric {
   MemoryRequirement,
   IsolationRequirement,
   IndependentShards,
-  offer_placement_supply_row,
   placement_spawn_width,
   placement_floor_memory_budget_bytes,
   placement_supply_row_from_bmc,
@@ -53,7 +47,6 @@ import std.measure {
   hardware_thread_count,
   hardware_thread_count_value,
   HardwareThreadCount,
-  watt,
 }
 import std.os.types {
   OperatingSystemSurface,
@@ -65,41 +58,8 @@ import product.placement_supply { HostIdentity, PlacementSupplyRow }
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
-// BMC-grounded srv2 inventory (live Redfish probe 2026-06-20, operator warm-crane-135).
-data gunbc_ci_bmc_redfish_system: RedfishSystemInventory = redfish_system_inventory(
-  model: "ALTRAD8UD-1L2T",
-  manufacturer: Present { value: "ASRockRack" },
-  processor_model: "Ampere(R) Altra(R) Processor",
-  processor_count: 1,
-  processor_core_count: hardware_thread_count(128),
-  total_memory_gib: gibibyte(128),
-  power_state: On,
-  logical_processor_count: Present { value: hardware_thread_count(128) },
-)
-
-data gunbc_ci_bmc_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
-  chassis_id: asrock_altrad8ud_redfish_chassis_id,
-  sensors: [
-    PowerSensor {
-      name: "power_PWR_Core_VRD",
-      watts: Present { value: watt(count: 95) },
-    },
-    PowerSensor {
-      name: "power_PWR_SOC_VRD",
-      watts: Present { value: watt(count: 17) },
-    },
-  ],
-}
-
-data gunbc_ci_bmc_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
-  system: gunbc_ci_bmc_redfish_system,
-  power: none,
-  thermal: none,
-  sensors: Present { value: gunbc_ci_bmc_sensor_power },
-}
-
 fn gunbc_ci_bmc_grounded() -> BmcGroundedHostObservations {
-  bmc_ground_snapshot(snapshot: gunbc_ci_bmc_telemetry)
+  bmc_ground_snapshot(snapshot: fleet_srv2_bmc_telemetry)
 }
 
 data gunbc_ci_cpu: CpuFacts = CpuFacts {

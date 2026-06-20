@@ -1,0 +1,52 @@
+// gunbc/fleet_srv2_bmc_fixture.dag — single-authority srv2 BMC live-probe fixture.
+//
+// Grounded on live srv2 Redfish probe 2026-06-20 (operator warm-crane-135):
+//   Systems/system: CoreCount=128, 128GiB, Model=ALTRAD8UD-1L2T, Manufacturer=ASRockRack
+//   Chassis ALTRAD8UD_1L2T: Power/Thermal empty; sensors power_PWR_Core_VRD ~95W,
+//   power_PWR_SOC_VRD ~17W (Nat whole-watt fixture).
+//
+// Consumed by gunbc.ci_fleet (supply grounding) and bmc_redfish_grounding witness.
+
+module gunbc.fleet_srv2_bmc_fixture
+
+import extdeps.bmc.types {
+  BmcTelemetrySnapshot,
+  RedfishChassisSensorCollection,
+  RedfishSystemInventory,
+  On,
+}
+import extdeps.bmc.redfish { redfish_system_inventory }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
+import std.measure { gibibyte, hardware_thread_count, watt }
+
+data fleet_srv2_bmc_redfish_system: RedfishSystemInventory = redfish_system_inventory(
+  model: "ALTRAD8UD-1L2T",
+  manufacturer: Present { value: "ASRockRack" },
+  processor_model: "Ampere(R) Altra(R) Processor",
+  processor_count: 1,
+  processor_core_count: hardware_thread_count(128),
+  total_memory_gib: gibibyte(128),
+  power_state: On,
+  logical_processor_count: Present { value: hardware_thread_count(128) },
+)
+
+data fleet_srv2_bmc_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
+  chassis_id: asrock_altrad8ud_redfish_chassis_id,
+  sensors: [
+    PowerSensor {
+      name: "power_PWR_Core_VRD",
+      watts: Present { value: watt(count: 95) },
+    },
+    PowerSensor {
+      name: "power_PWR_SOC_VRD",
+      watts: Present { value: watt(count: 17) },
+    },
+  ],
+}
+
+data fleet_srv2_bmc_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: fleet_srv2_bmc_redfish_system,
+  power: none,
+  thermal: none,
+  sensors: Present { value: fleet_srv2_bmc_sensor_power },
+}
