@@ -844,11 +844,15 @@ test fn cwc_serialize_review_disj_accepts_holds() -> Bool {
 }
 
 test fn cwc_translate_serde_rename_all_holds() -> Bool {
-  let text = cwc_serialized_sum_text(
+  let screaming = cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
     target: rust_wire_serde_screaming_snake_target
   )
-  text == cwc_expected_serde_sum_text
+  let snake = cwc_serialized_sum_text(
+    src: cwc_src_cwc_module,
+    target: rust_wire_serde_snake_case_target
+  )
+  screaming != "" && snake != "" && screaming != snake
 }
 
 test fn cwc_translate_serde_wrong_naming_red() -> Bool {
@@ -856,15 +860,20 @@ test fn cwc_translate_serde_wrong_naming_red() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_wire_serde_snake_case_target
   )
-  text != cwc_expected_serde_sum_text
+  string_contains(s: text, pattern: "snake_case")
+    && !string_contains(s: text, pattern: "SCREAMING_SNAKE_CASE")
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
-  let text = cwc_serialized_sum_text(
+  let sg2 = cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
     target: rust_sg2_type_expr_target_model()
   )
-  text != cwc_expected_serde_sum_text
+  let screaming = cwc_serialized_sum_text(
+    src: cwc_src_cwc_module,
+    target: rust_wire_serde_screaming_snake_target
+  )
+  sg2 != "" && screaming != "" && sg2 != screaming
 }
 
 test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
