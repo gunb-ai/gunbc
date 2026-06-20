@@ -21,9 +21,9 @@
 
 module v2.std.reducible
 
-import v2.std.algebra { Equal, Magma, Semigroup, fold_list }
+import v2.std.algebra { Magma, Semigroup, fold_list }
 import v2.std.collection { List }
-import v2.std.integer { Int, int_compare }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String, string_is_empty }
 
@@ -50,35 +50,24 @@ fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
   Semigroup { magma: Magma { op: reduce_verdict_combine } }
 }
 
-fn reduce_verdict_int_eq(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Equal => true
-    _ => false
-  }
-}
-
-fn reduce_verdict_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 // dissolve-on: derived structural == on ReduceVerdict (closed coproduct equality)
 // replaces this hand-rolled predicate; interim owner: workflow_recursive witnesses.
 fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
   match a {
     Reduced { last_parts: pa } => match b {
-      Reduced { last_parts: pb } => reduce_verdict_int_eq(a: pa, b: pb)
+      Reduced { last_parts: pb } => pa == pb
       Irreducible { witness: _ } => false
       Unknown { missing: _ } => false
     }
     Irreducible { witness: wa } => match b {
       Reduced { last_parts: _ } => false
-      Irreducible { witness: wb } => reduce_verdict_string_eq(a: wa, b: wb)
+      Irreducible { witness: wb } => wa == wb
       Unknown { missing: _ } => false
     }
     Unknown { missing: ma } => match b {
       Reduced { last_parts: _ } => false
       Irreducible { witness: _ } => false
-      Unknown { missing: mb } => reduce_verdict_string_eq(a: ma, b: mb)
+      Unknown { missing: mb } => ma == mb
     }
   }
 }
