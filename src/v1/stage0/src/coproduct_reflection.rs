@@ -452,7 +452,10 @@ pub fn eval_resolve_type_node(
 }
 
 // ---------------------------------------------------------------------------
-// v2.std.concept_index — corpus enumeration SOURCE bridge (sibling to resolve_type_node).
+// v2.std.concept_index — host-fed SOURCE for a WHOLE-CORPUS LENS (same family as
+// v2.lens.layering_imports / v2.lens.resolved_imports), NOT a freestanding "enumeration bridge".
+// This is the family's fact-source half: it returns `ConceptDecl` facts (cf. layering_imports'
+// host `layer_import_facts`), and the LENS proper is the pure .dag folds in v2.std.concept_index.
 // Where resolve_type_node materializes ONE decl BY NAME (Disj only), enumerate_concept_decls
 // materializes EVERY declared TypeItem across the compiled corpus as a `ConceptDecl`
 // { qualified_name, name, node } — the SAME substrate currency (a Node), just plural and
@@ -460,8 +463,10 @@ pub fn eval_resolve_type_node(
 // from `node` entirely in .dag (v2.std.concept_index) via the existing public node_query readers
 // (coproduct_arm_list_from_node / coproduct_arm_payload_pair_from_arm, which fold Conj records
 // and Disj coproducts into (field, type) pairs identically). This keeps the index contract
-// single-authority in the model; the bridge is only the irreducible host boundary (v2 has no
-// corpus-as-node handle yet). Dissolves on the same trigger as resolve_type_node (#4863).
+// single-authority in the model. This is a COMPILE-TIME host scan (runtime reflection is the
+// banned thing — this is in-bounds), irreducible only because v2 has no corpus-as-node handle yet:
+// it dissolves INTO a lens over the corpus-node, converging onto apply_lens over that Node — the
+// same trigger that dissolves sibling resolve_type_node (#4863).
 // ---------------------------------------------------------------------------
 
 /// Logical (import-path) module-qualified name: the dotted module path followed by the concept's
