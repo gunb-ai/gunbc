@@ -6699,15 +6699,29 @@ pub fn render_rust_type_with_applied_binding(
                 let outer_name = authored_name_at(source_indices.clone(), n.clone());
                 let applied_name = authored_name_at(source_indices.clone(), applied.clone());
                 if outer_name.as_str() != ""
-                    && outer_name != applied_name
                     && n.connective.clone() == Connective::NoConnective
                     && (n.children.clone().len() as i64) == 0
                 {
-                    render_rust_shared_type_if_needed(
-                        outer_name.clone(),
-                        outer_name,
-                        shared_types.clone(),
-                    )
+                    if outer_name != applied_name {
+                        render_rust_shared_type_if_needed(
+                            outer_name.clone(),
+                            outer_name,
+                            shared_types.clone(),
+                        )
+                    } else if v1_rt::set_contains(&shared_types, outer_name.clone()) {
+                        render_rust_shared_type_if_needed(
+                            outer_name.clone(),
+                            outer_name,
+                            shared_types.clone(),
+                        )
+                    } else {
+                        render_rust_applied_type_shared(
+                            applied.clone(),
+                            Rc::new(vec![]),
+                            shared_types,
+                            source_indices.clone(),
+                        )
+                    }
                 } else {
                     render_rust_applied_type_shared(
                         applied.clone(),

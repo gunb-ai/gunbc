@@ -3028,8 +3028,14 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
       if applied.children |> count > 0 {
         let outer_name = authored_name_at(source_indices: source_indices, node: n)
         let applied_name = authored_name_at(source_indices: source_indices, node: applied)
-        if outer_name != "" && outer_name != applied_name && n.connective == NoConnective && (n.children |> count) == 0 {
-          render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+        if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 {
+          if outer_name != applied_name {
+            render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+          } else if set_contains(shared_types, outer_name) {
+            render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+          } else {
+            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
+          }
         } else {
           render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
         }
