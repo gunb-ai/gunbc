@@ -27,7 +27,7 @@ use crate::v1_std_core::{
     field_init_node_value, has_child_named, intern, is_error_diagnostic,
     is_discovery_corpus_blocking_diagnostic, is_discovery_corpus_advisory_typecheck_diagnostic,
     is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    NewlineIndex, Node,
+    CompilerDiagnostic, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -46,7 +46,7 @@ pub enum ResolveTypecheckGate {
 }
 
 fn is_resolve_typecheck_blocking(
-    d: Rc<v1_std_core::CompilerDiagnostic>,
+    d: Rc<CompilerDiagnostic>,
     gate: ResolveTypecheckGate,
 ) -> bool {
     match gate {
@@ -58,7 +58,7 @@ fn is_resolve_typecheck_blocking(
 }
 
 fn log_discovery_advisory_typecheck(
-    d: &ErrorNode,
+    d: &Rc<ErrorNode>,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     gate: ResolveTypecheckGate,
 ) {
@@ -68,9 +68,12 @@ fn log_discovery_advisory_typecheck(
     if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone())
         && is_interpreter_blocking_diagnostic(d.diagnostic.clone())
     {
+        let span = diagnostic_to_span(d.diagnostic.clone());
+        let loc = format_error_loc(&span.file, span.start, source_indices);
         eprintln!(
-            "advisory(typecheck): {}",
-            format_error_node(d, source_indices)
+            "advisory(typecheck): {}: error: {}",
+            loc,
+            diagnostic_to_message(d.diagnostic.clone())
         );
     }
 }
