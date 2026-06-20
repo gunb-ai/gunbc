@@ -27,6 +27,7 @@ const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
     "extdeps_cargo.rs",
+    "extdeps_cargo_version.rs",
     "extdeps_languages_dag_emit.rs",
     "extdeps_languages_dag_syntax.rs",
     "extdeps_languages_dag_types.rs",
@@ -39,6 +40,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_emit.rs",
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
+    "extdeps_version.rs",
+    "extdeps_version_semver.rs",
     "lib.rs",
     "main.rs",
     "std_algebra.rs",
@@ -52,6 +55,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_induction.rs",
     "std_iteration.rs",
     "std_node.rs",
+    "std_serialization.rs",
     "std_syntax.rs",
     "std_termination.rs",
     "std_types.rs",
@@ -94,11 +98,27 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_std_core.rs",
 ];
 
+// MUST stay in lockstep with the emitter's `hand_maintained_mods` declaration in
+// src/v1/05_emit_rust.dag (`emit_lib_rs_from_files`): every `pub mod X;` the emitter
+// writes into the generated lib.rs for a hand-maintained module must be copied into
+// the fresh-compile temp dir here, or `cargo fmt` of the emitted crate fails to
+// resolve the module. These two lists are a §3 parallel-authority pair (the deeper
+// fix is a single source); until then this is the synced copy of the emitter's set
+// (13 modules) plus the two dag_collect bootstrap modules injected by
+// patch_bootstrap_dag_collect. The lens-`*_project` / `*_census` / recorded_fixture
+// modules are hand-maintained Rust seed, not regenerated, so they live here.
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",
+    "extdeps_shape_transport_policy_project.rs",
+    "fact_cardinality_census.rs",
+    "import_resolution_project.rs",
+    "layering_imports_project.rs",
+    "module_path_index.rs",
+    "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
+    "transport_script_position_project.rs",
     "wire_value_serialize.rs",
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
