@@ -1049,3 +1049,100 @@ fn type_expression_projection_for_translate(
     }
   )
 }
+
+fn tepe_first_data_decl_optional(root: Node) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        if tepe_node_has_surface(root: node, surface: ^dag_surface_data_decl) {
+          optional_present(value: node)
+        } else {
+          optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_data_decl_parts_present(root: Node) -> Bool {
+  match tepe_first_data_decl_optional(root: root) {
+    Present { value: decl } =>
+      match tepe_data_decl_type_and_expr_optional(decl: decl) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn tepe_wire_contract_index_nonempty(tree: InferredTree, target: TargetModel) -> Bool {
+  match tepe_target_bundle_optional_child(
+    target: target,
+    edge_name: ^target_model_edge_type_expression_projection_enrichment
+  ) {
+    Accepted { value: optional_enrichment, diagnostics: _ } =>
+      match optional_enrichment {
+        Present { value: enrichment } =>
+          match bind_outcome(
+            o: find_named_child(
+              root: enrichment,
+              name: ^target_type_expr_projection_enrichment_field_coproduct
+            ),
+            f: fn(field_coproduct_child) {
+              bind_outcome(
+                o: find_named_child(
+                  root: enrichment,
+                  name: ^target_type_expr_projection_enrichment_field_encoding
+                ),
+                f: fn(field_encoding_child) {
+                  bind_outcome(
+                    o: find_named_child(
+                      root: enrichment,
+                      name: ^target_type_expr_projection_enrichment_type_coproduct_wire_contract
+                    ),
+                    f: fn(type_child) {
+                      match field_coproduct_child.kind {
+                        TypeNode { connective: Atom { identity: field_coproduct } } =>
+                          match field_encoding_child.kind {
+                            TypeNode { connective: Atom { identity: field_encoding } } =>
+                              match type_child.kind {
+                                TypeNode {
+                                  connective: Atom { identity: type_coproduct_wire_contract }
+                                } =>
+                                  match tepe_build_coproduct_wire_contract_index(
+                                    root: tree.root,
+                                    field_coproduct: field_coproduct,
+                                    field_encoding: field_encoding,
+                                    type_coproduct_wire_contract: type_coproduct_wire_contract
+                                  ) {
+                                    Accepted { value: rows, diagnostics: _ } =>
+                                      outcome_accepted(!is_empty(xs: rows))
+                                    Rejected { diagnostics: _ } => outcome_accepted(false)
+                                  }
+                                _ => outcome_accepted(false)
+                              }
+                            _ => outcome_accepted(false)
+                          }
+                        _ => outcome_accepted(false)
+                      }
+                    }
+                  )
+                }
+              )
+            }
+          ) {
+            Accepted { value: ok, diagnostics: _ } => ok
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}

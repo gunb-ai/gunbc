@@ -21,7 +21,9 @@ import v2.compiler.translate {
   target_serialize_source_from_model_with_projection
 }
 import v2.compiler.type_expression_projection_enrichment {
-  type_expression_projection_for_translate
+  type_expression_projection_for_translate,
+  tepe_data_decl_parts_present,
+  tepe_wire_contract_index_nonempty
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
@@ -347,6 +349,25 @@ test fn cwc_translate_project_disj_accepts_holds() -> Bool {
 
 test fn cwc_inferred_review_disj_present_holds() -> Bool {
   cwc_inferred_review_disj_present()
+}
+
+test fn cwc_data_decl_parts_present_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      tepe_data_decl_parts_present(root: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_wire_contract_index_nonempty_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      tepe_wire_contract_index_nonempty(
+        tree: tree,
+        target: rust_wire_serde_screaming_snake_target
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn cwc_projection_for_review_disj_accepts_holds() -> Bool {
