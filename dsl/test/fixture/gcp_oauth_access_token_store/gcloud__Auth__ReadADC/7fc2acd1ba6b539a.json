@@ -1,0 +1,20 @@
+{
+  "operation": "gcloud.Auth.ReadADC",
+  "input_hash": "7fc2acd1ba6b539a",
+  "inputs": [
+    {
+      "name": "path",
+      "value": { "__tag": "Str", "value": "/tmp/gunbc_gcp_oauth_witness_adc.json" }
+    }
+  ],
+  "response": {
+    "__tag": "Record",
+    "__type": "ReadADC",
+    "fields": {
+      "client_id": { "__tag": "Str", "value": "witness-client-id" },
+      "client_secret": { "__tag": "Str", "value": "witness-client-secret" },
+      "refresh_token": { "__tag": "Str", "value": "witness-refresh-token" }
+    }
+  },
+  "recorded_at": 1781905567
+}

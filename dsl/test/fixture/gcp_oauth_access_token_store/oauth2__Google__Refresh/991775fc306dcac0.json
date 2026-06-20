@@ -1,0 +1,18 @@
+{
+  "operation": "oauth2.Google.Refresh",
+  "input_hash": "991775fc306dcac0",
+  "inputs": [
+    { "name": "client_id", "value": { "__tag": "Str", "value": "witness-client-id" } },
+    { "name": "client_secret", "value": { "__tag": "Str", "value": "witness-client-secret" } },
+    { "name": "refresh_token", "value": { "__tag": "Str", "value": "witness-refresh-token" } }
+  ],
+  "response": {
+    "__tag": "Record",
+    "__type": "Refresh",
+    "fields": {
+      "access_token": { "__tag": "Str", "value": "ya29.WITNESS_ADC_REFRESH_TOKEN" },
+      "expires_in": { "__tag": "Int", "value": 3600 }
+    }
+  },
+  "recorded_at": 1781905649
+}

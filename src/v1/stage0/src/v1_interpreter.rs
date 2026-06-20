@@ -1463,16 +1463,18 @@ pub fn run_in_context_with_args(
     args: &[(Option<String>, Value)],
     eager_data_env: bool,
 ) -> InterpResult<Value> {
-    let item_node = ctx
-        .lookup_fn(entry_fn)
-        .ok_or(InterpError::NoMainFunction)?
-        .clone();
-    let env = if eager_data_env {
-        build_initial_env(ctx)?
-    } else {
-        Env::empty()
-    };
-    call_function(ctx, &item_node, args, &env)
+    with_active_ctx(ctx, || {
+        let item_node = ctx
+            .lookup_fn(entry_fn)
+            .ok_or(InterpError::NoMainFunction)?
+            .clone();
+        let env = if eager_data_env {
+            build_initial_env(ctx)?
+        } else {
+            Env::empty()
+        };
+        call_function(ctx, &item_node, args, &env)
+    })
 }
 
 /// Evaluate all `data` items to build the initial environment.
@@ -1489,6 +1491,38 @@ fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
         }
     }
     Ok(Env::extend(&Env::empty(), bindings))
+}
+
+/// Evaluate every `data` initializer in `ctx` (the same values `build_initial_env` binds).
+pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Value>> {
+    let mut out = Vec::new();
+    for (name, info) in ctx.item_registry.iter() {
+        if info.kind == ItemKind::DataItem {
+            if let Some(node) = ctx.lookup_fn(name) {
+                if let Some(ref body) = node.body {
+                    out.push(eval_expr(body, &Env::empty(), ctx)?);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Evaluate one named `data` initializer (fail-closed if missing or not data).
+pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResult<Option<Value>> {
+    let Some(info) = ctx.item_registry.get(item_name) else {
+        return Ok(None);
+    };
+    if info.kind != ItemKind::DataItem {
+        return Ok(None);
+    }
+    let Some(node) = ctx.lookup_fn(item_name) else {
+        return Ok(None);
+    };
+    let Some(body) = node.body.as_ref() else {
+        return Ok(None);
+    };
+    Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
 // ---------------------------------------------------------------------------

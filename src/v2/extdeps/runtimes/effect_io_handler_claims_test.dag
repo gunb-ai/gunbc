@@ -152,9 +152,12 @@ test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
   }
 }
 
-// --- host bundle: dispatch through EffectHandlerBinding; HTTP host door fail-closed until host_run ---
+// --- host bundle: dispatch through EffectHandlerBinding; hermetic-by-default fail-closed on miss ---
 
-// Representable locator so the reject is the HOST-DOOR deferral, not a locator-formation fault.
+// M5 step 4 (node://adhoc-7e32be31-47c): wave2 is hermetic-by-default over an EMPTY fixture, so a
+// read fails closed on the hermetic MISS (no fabricated value). Representable locator, so the reject
+// is the miss, not a locator-formation fault. (Mode-gated live-door / replay dispatch is exercised
+// in effect_io_host_mode_test.dag.)
 test fn effect_io_host_read_fail_closed_holds() -> Bool {
   let runtime = effect_io_host_runtime_wave2(backend: FileResourceBackend)
   let read_args = Cons {
