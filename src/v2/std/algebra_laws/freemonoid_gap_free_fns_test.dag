@@ -1,0 +1,165 @@
+// Scope: execution witnesses for Route C Algebra PR-1 FreeMonoid gap free-fns.
+// Status: load-bearing — each new std.algebra gap fn must stay green by execution.
+
+module v2.test.algebra_laws.freemonoid_gap_free_fns
+
+import v2.std.algebra {
+  Cons,
+  Empty,
+  Equal,
+  FreeMonoid,
+  Greater,
+  HeadAbsent,
+  HeadFound,
+  IndexedElement,
+  Less,
+  enumerate,
+  first,
+  flat_map,
+  fold,
+  last,
+  map,
+  reverse,
+  skip,
+  slice,
+  sort_by,
+  take,
+  zip_eq
+}
+import v2.std.integer { int_compare }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+
+fn gap_sym_eq(a: Symbol, b: Symbol) -> Bool { a == b }
+fn gap_int_cmp(a: Int, b: Int) -> Int {
+  match int_compare(a: a, b: b) {
+    Less => -1
+    Equal => 0
+    Greater => 1
+  }
+}
+
+fn gap_sym_a() -> Symbol { ^gap_freemonoid_sym_a }
+fn gap_sym_b() -> Symbol { ^gap_freemonoid_sym_b }
+fn gap_sym_c() -> Symbol { ^gap_freemonoid_sym_c }
+
+fn gap_sym_ab() -> FreeMonoid<Symbol> {
+  Cons { head: gap_sym_a(), tail: Cons { head: gap_sym_b(), tail: Empty } }
+}
+fn gap_sym_abc() -> FreeMonoid<Symbol> {
+  Cons {
+    head: gap_sym_a(),
+    tail: Cons { head: gap_sym_b(), tail: Cons { head: gap_sym_c(), tail: Empty } }
+  }
+}
+
+fn gap_map_identity_holds() -> Bool {
+  zip_eq(
+    a: map(xs: gap_sym_ab(), f: fn(x) { x }),
+    b: gap_sym_ab(),
+    eq: fn(x, y) { gap_sym_eq(a: x, b: y) }
+  )
+}
+
+fn gap_flat_map_singleton_holds() -> Bool {
+  zip_eq(
+    a: flat_map(xs: gap_sym_ab(), f: fn(x) { Cons { head: x, tail: Empty } }),
+    b: gap_sym_ab(),
+    eq: fn(x, y) { gap_sym_eq(a: x, b: y) }
+  )
+}
+
+fn gap_reverse_holds() -> Bool {
+  zip_eq(
+    a: reverse(xs: gap_sym_abc()),
+    b: Cons {
+      head: gap_sym_c(),
+      tail: Cons { head: gap_sym_b(), tail: Cons { head: gap_sym_a(), tail: Empty } }
+    },
+    eq: fn(x, y) { gap_sym_eq(a: x, b: y) }
+  )
+}
+
+fn gap_skip_holds() -> Bool {
+  zip_eq(
+    a: skip(xs: gap_sym_abc(), n: 1),
+    b: Cons { head: gap_sym_b(), tail: Cons { head: gap_sym_c(), tail: Empty } },
+    eq: fn(x, y) { gap_sym_eq(a: x, b: y) }
+  )
+}
+
+fn gap_take_holds() -> Bool {
+  zip_eq(
+    a: take(xs: gap_sym_abc(), n: 2),
+    b: gap_sym_ab(),
+    eq: fn(x, y) { gap_sym_eq(a: x, b: y) }
+  )
+}
+
+fn gap_slice_holds() -> Bool {
+  zip_eq(
+    a: slice(xs: gap_sym_abc(), start: 1, end: 3),
+    b: Cons { head: gap_sym_b(), tail: Cons { head: gap_sym_c(), tail: Empty } },
+    eq: fn(x, y) { gap_sym_eq(a: x, b: y) }
+  )
+}
+
+fn gap_sort_by_holds() -> Bool {
+  zip_eq(
+    a: sort_by(xs: [3, 1, 2], cmp: fn(a, b) { gap_int_cmp(a: a, b: b) }),
+    b: [1, 2, 3],
+    eq: fn(a, b) { a == b }
+  )
+}
+
+fn gap_first_last_holds() -> Bool {
+  match first(xs: gap_sym_ab()) {
+    HeadFound { value: a } =>
+      match last(xs: gap_sym_ab()) {
+        HeadFound { value: b } =>
+          gap_sym_eq(a: a, b: gap_sym_a()) && gap_sym_eq(a: b, b: gap_sym_b())
+        HeadAbsent => false
+      }
+    HeadAbsent => false
+  }
+}
+
+fn gap_first_empty_holds() -> Bool {
+  match first(xs: Empty) {
+    HeadAbsent => true
+    HeadFound { value: _ } => false
+  }
+}
+
+fn gap_fold_sum_holds() -> Bool {
+  fold(xs: [1, 2, 3], init: 0, step: fn(acc, item) { acc + item }) == 6
+}
+
+fn gap_enumerate_holds() -> Bool {
+  match enumerate(xs: gap_sym_ab()) {
+    Cons {
+      head: IndexedElement { index: i0, value: v0 },
+      tail: Cons {
+        head: IndexedElement { index: i1, value: v1 },
+        tail: Empty
+      }
+    } =>
+      i0 == 0
+        && i1 == 1
+        && gap_sym_eq(a: v0, b: gap_sym_a())
+        && gap_sym_eq(a: v1, b: gap_sym_b())
+    _ => false
+  }
+}
+
+test fn freemonoid_gap_map_identity_holds() -> Bool { gap_map_identity_holds() }
+test fn freemonoid_gap_flat_map_singleton_holds() -> Bool { gap_flat_map_singleton_holds() }
+test fn freemonoid_gap_reverse_holds() -> Bool { gap_reverse_holds() }
+test fn freemonoid_gap_skip_holds() -> Bool { gap_skip_holds() }
+test fn freemonoid_gap_take_holds() -> Bool { gap_take_holds() }
+test fn freemonoid_gap_slice_holds() -> Bool { gap_slice_holds() }
+test fn freemonoid_gap_sort_by_holds() -> Bool { gap_sort_by_holds() }
+test fn freemonoid_gap_first_last_holds() -> Bool { gap_first_last_holds() }
+test fn freemonoid_gap_first_empty_holds() -> Bool { gap_first_empty_holds() }
+test fn freemonoid_gap_fold_sum_holds() -> Bool { gap_fold_sum_holds() }
+test fn freemonoid_gap_enumerate_holds() -> Bool { gap_enumerate_holds() }
