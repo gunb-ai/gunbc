@@ -2270,9 +2270,10 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parse_results = parsed.parse_results.clone();
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
-        let has_parse_errors = parse_results.iter().cloned().any(|p: Rc<ParseResult>| {
-            p.error.clone() != None
-        });
+        let has_parse_errors = parse_results
+            .iter()
+            .cloned()
+            .any(|p: Rc<ParseResult>| p.error.clone() != None);
         if has_parse_errors {
             Rc::new(FrontendResult {
                 graph: None,
