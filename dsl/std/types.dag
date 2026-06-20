@@ -547,7 +547,7 @@ type Document {
   trailing_newline: Bool
 }
 
-type TextFile {
+type DocumentFile {
   path: String
   document: Document
 }

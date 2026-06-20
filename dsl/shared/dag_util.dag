@@ -15,10 +15,10 @@ import std.types {
   Document,
   DocumentLine,
   DocumentSection,
+  DocumentFile,
   RenderedTextFile,
   StageResult,
   Summary,
-  TextFile,
   TextFilePath
 }
 // --- Result aggregation -----------------------------------------------
@@ -73,7 +73,7 @@ fn generated_header(tool: String) -> String {
 }
 
 // --- Structured document rendering -------------------------------------
-// Shared "rendering engine" for Document/TextFile trees.
+// Shared "rendering engine" for Document/DocumentFile trees.
 
 fn text_line(text: String) -> DocumentLine {
   { text: text, is_comment: false, is_blank: false }
