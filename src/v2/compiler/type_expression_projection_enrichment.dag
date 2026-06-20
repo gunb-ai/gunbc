@@ -26,6 +26,7 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
+  diagnostics_singleton,
   node_locus,
   outcome_accepted,
   outcome_rejected
@@ -695,21 +696,38 @@ fn tepe_fold_decl_into_index(
       CoproductWireContractIndexErr { diagnostics: d }
     CoproductWireContractIndexOk { rows: rows } =>
       if tepe_node_has_surface(root: decl, surface: ^dag_surface_data_decl) {
-        match tepe_coproduct_sym_from_decl(
-          decl: decl,
-          field_coproduct: field_coproduct,
-          field_encoding: field_encoding,
-          type_coproduct_wire_contract: type_coproduct_wire_contract
-        ) {
-          Accepted { value: row, diagnostics: _ } =>
-            match tepe_append_contract_row(rows: rows, row: row) {
-              Accepted { value: next_rows, diagnostics: _ } =>
-                CoproductWireContractIndexOk { rows: next_rows }
-              Rejected { diagnostics: r } =>
-                CoproductWireContractIndexErr { diagnostics: r }
+        match tepe_data_decl_type_and_expr_optional(decl: decl) {
+          Present { value: parts } =>
+            match tepe_atom_sym_optional(node: parts.type_expr) {
+              Present { value: type_sym } =>
+                if type_sym == type_coproduct_wire_contract {
+                  match tepe_coproduct_sym_from_decl(
+                    decl: decl,
+                    field_coproduct: field_coproduct,
+                    field_encoding: field_encoding,
+                    type_coproduct_wire_contract: type_coproduct_wire_contract
+                  ) {
+                    Accepted { value: row, diagnostics: _ } =>
+                      match tepe_append_contract_row(rows: rows, row: row) {
+                        Accepted { value: next_rows, diagnostics: _ } =>
+                          CoproductWireContractIndexOk { rows: next_rows }
+                        Rejected { diagnostics: r } =>
+                          CoproductWireContractIndexErr { diagnostics: r }
+                      }
+                    Rejected { diagnostics: r } =>
+                      CoproductWireContractIndexErr { diagnostics: r }
+                  }
+                } else {
+                  CoproductWireContractIndexOk { rows: rows }
+                }
+              Absent => CoproductWireContractIndexOk { rows: rows }
             }
-          Rejected { diagnostics: r } =>
-            CoproductWireContractIndexErr { diagnostics: r }
+          Absent =>
+            CoproductWireContractIndexErr {
+              diagnostics: diagnostics_singleton(
+                d: tepe_coproduct_wire_contract_malformed_diagnostic(node: decl)
+              )
+            }
         }
       } else {
         CoproductWireContractIndexOk { rows: rows }
