@@ -24,6 +24,7 @@ import v2.extdeps.languages.rust {
   rust_inhabitant_atom,
   rust_named_edge,
   rust_reference_layer_tokens,
+  rust_sg2_wave1_lex_rules,
   rust_type_expression_projection_bundle_node
 }
 import v2.std.algebra { Empty, fold_list, list_append }
@@ -176,7 +177,14 @@ fn rust_ws_lex_rules() -> LexRuleSet {
 }
 
 fn rust_ws_lex() -> LexRules {
-  ModeledLexRules { root: rust_ws_lex_rules() }
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: list_append(
+        left: rust_sg2_wave1_lex_rules().rules,
+        right: rust_ws_lex_rules().rules
+      )
+    }
+  }
 }
 
 type RustWireSerdeGrammarRow {

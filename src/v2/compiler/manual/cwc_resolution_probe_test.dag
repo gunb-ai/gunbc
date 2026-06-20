@@ -36,7 +36,6 @@ import v2.compiler.type_expression_projection_enrichment {
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
 import v2.extdeps.languages.rust {
   rust_sg2_sum_xy_emitted,
   rust_sg2_type_expr_target_model
@@ -48,7 +47,9 @@ import v2.extdeps.languages.rust_wire_serde {
 import v2.std.compilers.target_model {
   TargetModel,
   type_expression_projection_from_target,
-  type_expr_projection_row_closedness_from_target
+  type_expr_projection_row_closedness_from_target,
+  target_type_expr_emitted_kind,
+  TypeExprKindAuthority
 }
 import v2.std.algebra { is_empty }
 import v2.std.collection {
@@ -83,6 +84,7 @@ data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored
 data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming = ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
 data cwc_expected_sum_regression_text: String = "X | Y"
+data cwc_serde_rename_all_screaming_pattern: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -585,6 +587,101 @@ test fn cwc_translate_base_projection_disj_accepts_holds() -> Bool {
   }
 }
 
+test fn cwc_translated_review_disj_emitted_kind_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_wire_serde_screaming_snake_target
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: rust_wire_serde_screaming_snake_target,
+                projection: base
+              ) {
+                Accepted { value: emitted, diagnostics: _ } =>
+                  match target_type_expr_emitted_kind(node: emitted) {
+                    TypeExprKindAuthority { value: _ } => true
+                    _ => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_serialize_review_disj_sg2_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_sg2_type_expr_target_model()
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: rust_sg2_type_expr_target_model(),
+                projection: base
+              ) {
+                Accepted { value: emitted, diagnostics: _ } =>
+                  match target_serialize_source_from_model_with_projection(
+                    target: rust_sg2_type_expr_target_model(),
+                    emitted: emitted,
+                    projection: base
+                  ) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_serialize_review_disj_base_projection_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_wire_serde_screaming_snake_target
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: rust_wire_serde_screaming_snake_target,
+                projection: base
+              ) {
+                Accepted { value: emitted, diagnostics: _ } =>
+                  match target_serialize_source_from_model_with_projection(
+                    target: rust_wire_serde_screaming_snake_target,
+                    emitted: emitted,
+                    projection: base
+                  ) {
+                    Accepted { value: _, diagnostics: _ } => true
+                    Rejected { diagnostics: _ } => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn cwc_translate_project_disj_accepts_holds() -> Bool {
   cwc_translate_project_disj_accepts(
     src: cwc_src_cwc_module,
@@ -751,7 +848,7 @@ test fn cwc_translate_serde_rename_all_holds() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_wire_serde_screaming_snake_target
   )
-  string_contains(s: text, pattern: rust_serde_rename_all_screaming_snake_case)
+  string_contains(s: text, pattern: cwc_serde_rename_all_screaming_pattern)
     && string_contains(s: text, pattern: "Approve")
     && string_contains(s: text, pattern: "RequestChanges")
 }
@@ -761,7 +858,7 @@ test fn cwc_translate_serde_wrong_naming_red() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_wire_serde_snake_case_target
   )
-  !string_contains(s: text, pattern: rust_serde_rename_all_screaming_snake_case)
+  !string_contains(s: text, pattern: cwc_serde_rename_all_screaming_pattern)
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
@@ -769,7 +866,7 @@ fn cwc_translate_serde_fail_open_control() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_sg2_type_expr_target_model()
   )
-  !string_contains(s: text, pattern: rust_serde_rename_all_screaming_snake_case)
+  !string_contains(s: text, pattern: cwc_serde_rename_all_screaming_pattern)
 }
 
 test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
