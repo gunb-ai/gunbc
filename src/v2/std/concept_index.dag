@@ -16,14 +16,16 @@
 //   - the LENS proper is the pure folds below (`field_refs_from_node`, `concept_from_decl`,
 //     `enumerate_concepts`), exactly as layering_imports' `scan_facts_for_violations` /
 //     `*_clean_holds` fold over their fact list.
-// The whole-corpus lens family is host-fed for ONE reason — v2 has no corpus-as-node handle yet
-// (#4863); layering_imports hits the SAME wall and host-scans for its source too. apply_lens
+// The whole-corpus lens family is host-fed for ONE reason — v2 has no corpus-as-node handle yet;
+// layering_imports hits the SAME wall and host-scans for its source too. apply_lens
 // (v2.lens.application) is section-scoped (Declaration/Node only) — there is no Module/Program
 // SectionRef variant and no corpus Node to apply over — so a section-scoped lens is NOT a nearer
-// path here; this lens converges onto apply_lens over the corpus-node when #4863 lands.
+// path here; this lens converges onto apply_lens over the corpus-node once that handle exists
+// (the dissolution trigger, below — NOT gunbc#4863, which is this bridge's ORIGIN PR, not its
+// trigger).
 //
 // Source/projection split (DESIGN.md §3 single authority + §6 lens-not-Rust):
-//   - SOURCE (host boundary, irreducible today — v2 has no corpus-as-node handle, #4863):
+//   - SOURCE (host boundary, irreducible today — v2 has no corpus-as-node handle):
 //     the host-fed enumerator `concept_decl_facts_live()` materializes each decl as a substrate
 //     `Node` (the same currency resolve_type_node returns, just plural + any-connective). It does
 //     NO index-contract shaping.
@@ -82,14 +84,20 @@ type ConceptDecl {
 }
 
 
-// 🟡 gated — feature:coproduct-reflection-bridge — bind gunbc#4863 — dissolve-on-arrival:
-// dissolves INTO a lens over the corpus-node — when v2 gains compile-graph access (a corpus-as-node
-// handle), this host-fed SOURCE is replaced by a pure .dag walk over the resolved graph (one walk
-// over every module's items), and the whole-corpus lens family (this, layering_imports,
-// resolved_imports) converges onto apply_lens (v2.lens.application) over that corpus Node — the
-// same trigger that dissolves sibling v2.std.node.resolve_type_node. forbidden: parallel corpus
-// enumeration in Rust outside this intercept, or any ConceptStruct/FieldRef shaping in Rust
-// (projection is .dag, below).
+// 🟡 gated — feature:coproduct-reflection-bridge
+// origin: gunbc#4863 (R-reflect Phase-2a) — the PR that INTRODUCED this bridge + resolve_type_node.
+//   It is NOT the dissolve trigger (a scaffold cannot be dissolved by its own birth PR); it is
+//   recorded only as provenance. #4863 delivered per-node enumeration (node_query), NOT a
+//   corpus-as-node handle.
+// dissolve-on-arrival: v2 self-host gains compile-graph access — a corpus-as-node handle (the point
+//   at which v2.std.value_carrier's `^resolved_graph_declared_types/_variants/_fields` authorities
+//   become a LIVE accessor rather than aspirational symbol refs). Then this host-fed SOURCE is
+//   replaced by a pure .dag walk over the resolved graph (one walk over every module's items), and
+//   the whole-corpus lens family (this, layering_imports, resolved_imports) converges onto
+//   apply_lens (v2.lens.application) over that corpus Node. Same unmet trigger as sibling
+//   v2.std.node.resolve_type_node.
+// forbidden: parallel corpus enumeration in Rust outside this intercept, or any
+//   ConceptStruct/FieldRef shaping in Rust (projection is .dag, below).
 //
 // SOURCE: materializes every TypeItem in the compiled corpus as { qualified_name, name, node }.
 fn concept_decl_facts_live() -> List<ConceptDecl> {

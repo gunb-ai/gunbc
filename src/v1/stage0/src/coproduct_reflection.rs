@@ -465,8 +465,10 @@ pub fn eval_resolve_type_node(
 // and Disj coproducts into (field, type) pairs identically). This keeps the index contract
 // single-authority in the model. This is a COMPILE-TIME host scan (runtime reflection is the
 // banned thing — this is in-bounds), irreducible only because v2 has no corpus-as-node handle yet:
-// it dissolves INTO a lens over the corpus-node, converging onto apply_lens over that Node — the
-// same trigger that dissolves sibling resolve_type_node (#4863).
+// it dissolves INTO a lens over the corpus-node, converging onto apply_lens over that Node when v2
+// self-host gains compile-graph access. Same unmet trigger as sibling resolve_type_node. NOTE:
+// gunbc#4863 is this bridge's ORIGIN PR (R-reflect Phase-2a, where resolve_type_node + this file
+// were introduced) — it is NOT the dissolve trigger; recorded as provenance only.
 // ---------------------------------------------------------------------------
 
 /// Logical (import-path) module-qualified name: the dotted module path followed by the concept's
