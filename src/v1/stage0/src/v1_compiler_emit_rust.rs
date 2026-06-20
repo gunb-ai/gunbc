@@ -231,12 +231,19 @@ pub fn render_rust_type_without_applied_binding(
                 None => emit_rust_compile_error_expr("Set missing element type".to_string()),
             }
         } else {
-            render_node_type(
-                n.clone(),
-                RenderTarget::Rust,
-                shared_types,
-                source_indices.clone(),
-            )
+            let tn = authored_name_at(source_indices.clone(), n.clone());
+            if (tn.clone().as_str() == "String".to_string().as_str()
+                && ((n.children.clone().len() as i64) == 0))
+            {
+                render_rust_text_carrier(shared_types.clone())
+            } else {
+                render_node_type(
+                    n.clone(),
+                    RenderTarget::Rust,
+                    shared_types,
+                    source_indices.clone(),
+                )
+            }
         }
     }
 }
@@ -248,36 +255,6 @@ pub fn empty_string_bool_map() -> Rc<HashMap<String, bool>> {
 pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
     ((v1_rt::string_length(&type_name) >= 3)
         && (v1_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
-}
-
-pub fn rust_resolved_type_is_freemonoid_char(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    let rname = authored_name_at(env.source_indices.clone(), resolved.clone());
-    if rname.as_str() != "FreeMonoid" && rname.as_str() != "free_monoid" {
-        false
-    } else {
-        match resolved.children.first() {
-            Some(elem) => {
-                let ename = authored_name_at(env.source_indices.clone(), elem.clone());
-                ename.as_str() == "Char" || ename.as_str() == "Nat"
-            }
-            None => false,
-        }
-    }
-}
-
-pub fn rust_use_substrate_text_carrier(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
-    let name = authored_name_at(env.source_indices.clone(), n.clone());
-    if name.as_str() != "String" || (n.children.len() as i64) > 0 {
-        false
-    } else {
-        match lookup_type_for(env.clone(), n.clone()) {
-            Some(resolved) => rust_resolved_type_is_freemonoid_char(resolved, env.clone()),
-            None => match lookup_type_by_name(env.clone(), name.clone()) {
-                Some(resolved) => rust_resolved_type_is_freemonoid_char(resolved, env),
-                None => false,
-            },
-        }
-    }
 }
 
 pub fn render_rust_text_carrier(shared_types: Rc<std::collections::BTreeSet<String>>) -> String {
@@ -351,6 +328,8 @@ pub fn rust_named_type_base(name: String) -> String {
         || (name.clone().as_str() == "witness".to_string().as_str()))
     {
         "Witness".to_string()
+    } else if name.clone().as_str() == "String".to_string().as_str() {
+        "FreeMonoid<Nat>".to_string()
     } else {
         coerce_primitive_type(RenderTarget::Rust, name.clone())
     }
@@ -506,6 +485,12 @@ pub fn render_rust_decl_type(
                 } else if ((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) == 0)
                     && !has_applied_prop
+                    && name.clone().as_str() == "String".to_string().as_str())
+                {
+                    render_rust_text_carrier(shared_types.clone())
+                } else if ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 0)
+                    && !has_applied_prop
                     && v1_rt::set_contains(&shared_types, name.clone()))
                 {
                     let stub_env = Rc::new(TypeEnv {
@@ -596,8 +581,6 @@ pub fn render_rust_fn_sig_type(
         && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
     {
         render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
-    } else if rust_use_substrate_text_carrier(env.clone(), n.clone()) {
-        render_rust_text_carrier(shared_types.clone())
     } else if ((generic_param_names.clone().len() as i64) > 0) {
         render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
     } else {
@@ -673,7 +656,7 @@ pub fn render_rust_alias_rhs_type(
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
         {
-            if rust_use_substrate_text_carrier(scope.type_env.clone(), n.clone()) {
+            if name.clone().as_str() == "String".to_string().as_str() {
                 render_rust_text_carrier(shared_types.clone())
             } else if let Some(carrier) = rust_opaque_kernel_alias_carrier(name.clone()) {
                 carrier

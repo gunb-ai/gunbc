@@ -190,7 +190,12 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       Absent => emit_rust_compile_error_expr(message: "Set missing element type")
     }
   } else {
-    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+    let tn = authored_name_at(source_indices: source_indices, node: n)
+    if tn == "String" && n.children |> count == 0 {
+      render_rust_text_carrier(shared_types: shared_types)
+    } else {
+      render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+    }
   }
 }
 
@@ -203,38 +208,6 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 }
 
 // §3 faithful DAG String carrier for v2 Rust self-host (String = FreeMonoid<Char>, Char = Nat).
-fn rust_resolved_type_is_freemonoid_char(resolved: Node, env: TypeEnv) -> Bool {
-  let rname = authored_name_at(source_indices: env.source_indices, node: resolved)
-  if rname != "FreeMonoid" && rname != "free_monoid" {
-    false
-  } else {
-    match resolved.children |> first {
-      Present { value: elem } =>
-        let ename = authored_name_at(source_indices: env.source_indices, node: elem)
-        ename == "Char" || ename == "Nat"
-      Absent => false
-    }
-  }
-}
-
-// Only expand substrate `type String = FreeMonoid<Char>` (v2.std.text); kernel/host String in
-// v1.compiler and runtime bridges stay `String` so stage0 self-compile remains valid.
-fn rust_use_substrate_text_carrier(env: TypeEnv, n: Node) -> Bool {
-  let name = authored_name_at(source_indices: env.source_indices, node: n)
-  if name != "String" || n.children |> count > 0 {
-    false
-  } else {
-    match lookup_type_for(env: env, node: n) {
-      Present { value: resolved } => rust_resolved_type_is_freemonoid_char(resolved: resolved, env: env)
-      Absent =>
-        match lookup_type_by_name(env: env, name: name) {
-          Present { value: resolved } => rust_resolved_type_is_freemonoid_char(resolved: resolved, env: env)
-          Absent => false
-        }
-    }
-  }
-}
-
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Nat>", shared_types: shared_types)
 }
@@ -278,6 +251,8 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
 fn rust_named_type_base(name: String) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
+  } else if name == "String" {
+    "FreeMonoid<Nat>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
   }
@@ -343,7 +318,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         name
-      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && rust_use_substrate_text_carrier(env: env, n: n) {
+      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" {
         render_rust_text_carrier(shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
@@ -392,8 +367,6 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else if rust_use_substrate_text_carrier(env: env, n: n) {
-    render_rust_text_carrier(shared_types: shared_types)
   } else {
     render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
   }
@@ -423,7 +396,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    if rust_use_substrate_text_carrier(env: scope.type_env, n: n) {
+    if name == "String" {
       render_rust_text_carrier(shared_types: shared_types)
     } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
