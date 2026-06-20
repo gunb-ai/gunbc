@@ -456,7 +456,7 @@ pub fn eval_resolve_type_node(
 // v2.lens.layering_imports / v2.lens.resolved_imports), NOT a freestanding "enumeration bridge".
 // This is the family's fact-source half: it returns `ConceptDecl` facts (cf. layering_imports'
 // host `layer_import_facts`), and the LENS proper is the pure .dag folds in v2.std.concept_index.
-// Where resolve_type_node materializes ONE decl BY NAME (Disj only), enumerate_concept_decls
+// Where resolve_type_node materializes ONE decl BY NAME (Disj only), concept_decl_facts_live
 // materializes EVERY declared TypeItem across the compiled corpus as a `ConceptDecl`
 // { qualified_name, name, node } — the SAME substrate currency (a Node), just plural and
 // any-connective. It does NO index-contract shaping: ConceptStruct / FieldRef are projected
@@ -500,7 +500,7 @@ fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value
     }
 }
 
-pub fn eval_enumerate_concept_decls(
+pub fn eval_concept_decl_facts_live(
     ctx: &InterpContext,
     _args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {

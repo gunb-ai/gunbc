@@ -10,8 +10,8 @@
 // NOT a parallel "enumeration bridge" abstraction: it conforms to the family's fact-source +
 // pure-fold convention exactly —
 //   - the FACT type is `ConceptDecl` (cf. layering_imports' `LayerImportFact`);
-//   - the SOURCE is the host-fed enumerator `enumerate_concept_decls() -> List<ConceptDecl>`
-//     (cf. `layer_import_facts_live`): a compile-time host scan, NOT runtime reflection, so it
+//   - the SOURCE is the host-fed enumerator `concept_decl_facts_live() -> List<ConceptDecl>`
+//     (mirrors `layer_import_facts_live`): a compile-time host scan, NOT runtime reflection, so it
 //     is in-bounds; it does NO index-contract shaping;
 //   - the LENS proper is the pure folds below (`field_refs_from_node`, `concept_from_decl`,
 //     `enumerate_concepts`), exactly as layering_imports' `scan_facts_for_violations` /
@@ -24,7 +24,7 @@
 //
 // Source/projection split (DESIGN.md §3 single authority + §6 lens-not-Rust):
 //   - SOURCE (host boundary, irreducible today — v2 has no corpus-as-node handle, #4863):
-//     the host-fed enumerator `enumerate_concept_decls()` materializes each decl as a substrate
+//     the host-fed enumerator `concept_decl_facts_live()` materializes each decl as a substrate
 //     `Node` (the same currency resolve_type_node returns, just plural + any-connective). It does
 //     NO index-contract shaping.
 //   - PROJECTION (here, in the model): ConceptStruct / FieldRef are shaped from each decl `node`
@@ -92,8 +92,8 @@ type ConceptDecl {
 // (projection is .dag, below).
 //
 // SOURCE: materializes every TypeItem in the compiled corpus as { qualified_name, name, node }.
-fn enumerate_concept_decls() -> List<ConceptDecl> {
-  enumerate_concept_decls()
+fn concept_decl_facts_live() -> List<ConceptDecl> {
+  concept_decl_facts_live()
 }
 
 // PROJECTION: a decl's field list, projected from its materialized node by composing the public
@@ -119,7 +119,7 @@ fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
 // The concept index: every declared concept, projected to the consumer contract. Total — a
 // corpus with no concepts yields the empty list.
 fn enumerate_concepts() -> List<QualifiedConcept> {
-  fold(enumerate_concept_decls(), init: Empty, f: fn(acc, decl) {
+  fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
 }
