@@ -72,16 +72,13 @@ type RedfishThermalSubsystem {
 // OpenBMC on ALTRAD8UD-1L2T (Redfish 1.15): Chassis Power/Thermal collections are EMPTY;
 // per-sensor docs live under /redfish/v1/Chassis/{chassis_id}/Sensors/{name} with
 // {Reading, ReadingUnits}. Verified live on srv2 2026-06-20 (operator probe).
-type RedfishSensorUnits = Watts | Celsius | Rpm
-
-type RedfishSensorKind = Power | Temperature | FanTach
-
-type RedfishSensorReading {
-  name: NonEmptyStr
-  kind: RedfishSensorKind
-  reading: Int?
-  units: RedfishSensorUnits?
-}
+//
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
+// Coproduct over sensor families — illegal states (Power+Celsius, FanTach+Watts) unrepresentable.
+type RedfishSensorReading =
+    PowerSensor { name: NonEmptyStr, watts: Int? }
+  | TemperatureSensor { name: NonEmptyStr, celsius: Int? }
+  | FanTachSensor { name: NonEmptyStr, rpm: Int? }
 
 type RedfishChassisSensorCollection {
   chassis_id: NonEmptyStr

@@ -26,8 +26,6 @@ import extdeps.bmc.types {
   RedfishSensorReading,
   RedfishSystemInventory,
   On,
-  Power,
-  Watts,
 }
 import extdeps.bmc.redfish {
   bmc_ground_host_observations,
@@ -52,17 +50,13 @@ data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_invent
 data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
   chassis_id: asrock_altrad8ud_redfish_chassis_id,
   sensors: [
-    RedfishSensorReading {
+    PowerSensor {
       name: "power_PWR_Core_VRD",
-      kind: Power,
-      reading: Present { value: 95 },
-      units: Present { value: Watts },
+      watts: Present { value: 95 },
     },
-    RedfishSensorReading {
+    PowerSensor {
       name: "power_PWR_SOC_VRD",
-      kind: Power,
-      reading: Present { value: 17 },
-      units: Present { value: Watts },
+      watts: Present { value: 17 },
     },
   ],
 }

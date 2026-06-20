@@ -15,11 +15,9 @@ import extdeps.bmc.types {
   RedfishPowerControl,
   RedfishPowerSubsystem,
   RedfishProcessorSummary,
-  RedfishSensorKind,
   RedfishSensorReading,
   RedfishSystemInventory,
   RedfishPowerState,
-  Power,
 }
 import std.measure {
   ByteSize,
@@ -102,9 +100,9 @@ fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Wat
     sensors,
     init: Absent,
     f: (acc, sensor) =>
-      match sensor.kind {
-        Power =>
-          match sensor.reading {
+      match sensor {
+        PowerSensor { name: _, watts: reading } =>
+          match reading {
             Absent => acc
             Present { value: w } =>
               match acc {
@@ -112,8 +110,8 @@ fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Wat
                 Present { value: sum } => Present { value: watt(count: watt_count(sum) + w) }
               }
           }
-        Temperature => acc
-        FanTach => acc
+        TemperatureSensor { name: _, celsius: _ } => acc
+        FanTachSensor { name: _, rpm: _ } => acc
       }
   )
 }

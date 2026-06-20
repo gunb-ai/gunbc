@@ -128,17 +128,20 @@ type Scale =
   | Tera       // 10^12
   | Peta       // 10^15
   | Exa        // 10^18
+  // IEC 60027-2 binary memory prefixes (powers of 2). DMTF Redfish TotalSystemMemoryGiB
+  // names gibibytes (GiB = 2^30 bytes), not SI gigabytes. Q-Unit-5 minted-with-consumer:
+  // extdeps.bmc Redfish memory grounding witness.
+  | Kibi       // 2^10 bytes per unit
+  | Mebi       // 2^20
+  | Gibi       // 2^30
+  | Tebi       // 2^40
 
 // --- scale_exponent: typed exponent authority -----------------------------
 //
-// Structural projection from `Scale` to its SI decimal exponent. This is
-// the canonical query Grounding consumers and any downstream algebraic
-// consumer (e.g., scale-arithmetic for unit conversion) bind against,
-// rather than the bare variant names. Centralizing the table here means
-// adding a new Scale value updates the exponent authority in one place.
-//
-// Total over all `Scale` inhabitants; exponents are i64-representable
-// (range [-18, 18] in this enumeration).
+// Structural projection from `Scale` to its exponent in the scale's native base:
+// SI decimal scales → power of 10; IEC binary memory scales → power of 2.
+// Memory capacity conversion binds `memory_scale_factor_bytes` (below), not bare
+// exponent arithmetic across bases.
 fn scale_exponent(s: Scale) -> Int {
   match s {
     Atto  => -18
@@ -154,6 +157,22 @@ fn scale_exponent(s: Scale) -> Int {
     Tera  =>  12
     Peta  =>  15
     Exa   =>  18
+    Kibi  =>  10
+    Mebi  =>  20
+    Gibi  =>  30
+    Tebi  =>  40
+  }
+}
+
+// Bytes per unit at Memory scale `s` (One = byte; Gibi = 2^30 bytes per gibibyte).
+fn memory_scale_factor_bytes(s: Scale) -> Nat {
+  match s {
+    One  => 1
+    Kibi => 1024
+    Mebi => 1048576
+    Gibi => 1073741824
+    Tebi => 1099511627776
+    _    => 1
   }
 }
 
@@ -257,28 +276,8 @@ fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 
-// IEC 60027-2 binary memory prefixes (powers of 2). Distinct from SI decimal `Scale` —
-// DMTF Redfish `TotalSystemMemoryGiB` names gibibytes (GiB = 2^30 bytes), not SI gigabytes.
-// Q-Unit-5 minted-with-consumer: extdeps.bmc Redfish memory grounding witness.
-type IecBinaryMemoryScale =
-    Kibi   // 2^10 bytes per unit
-  | Mebi   // 2^20
-  | Gibi   // 2^30
-  | Tebi   // 2^40
-
-fn iec_binary_memory_bytes_per_unit(scale: IecBinaryMemoryScale) -> Nat {
-  match scale {
-    Kibi => 1024
-    Mebi => 1048576
-    Gibi => 1073741824
-    Tebi => 1099511627776
-  }
-}
-
-// Memory capacity in gibibytes (IEC GiB). The Redfish field is explicit about binary units.
-type Gibibyte {
-  count: Nat
-}
+// Memory capacity in gibibytes (IEC GiB). Redfish TotalSystemMemoryGiB is explicit binary units.
+type Gibibyte = Measure<Memory, Gibi, Nat>
 
 fn gibibyte(count: Nat) -> Gibibyte {
   Gibibyte { count: count }
@@ -289,7 +288,7 @@ fn gibibyte_count(g: Gibibyte) -> Nat {
 }
 
 fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
-  byte_size(count: gibibyte_count(g) * iec_binary_memory_bytes_per_unit(scale: Gibi))
+  byte_size(count: gibibyte_count(g) * memory_scale_factor_bytes(s: Gibi))
 }
 
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
