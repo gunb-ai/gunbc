@@ -2,13 +2,18 @@
 module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
 
 import v2.extdeps.languages.typescript {
+  ts_eager_grammar_relation_row_witness,
+  ts_exemplar_emitted_for_lhs,
   ts_formal_production_mvp1_fn_add,
   ts_grammar_relation_row_node,
   ts_inhabitant_atom,
   ts_mvp1_emitted_add_fn_node,
+  ts_mvp1_fn_add_scaffold_relation_row_node,
   ts_mvp1_grammar_relation_row,
   ts_mvp1_canonical_add_fn_tokens,
   ts_concrete_token_node,
+  ts_pr3_identity_relation_row_witness,
+  ts_pr3_identity_typed_fn_emitted,
   ts_wave2a_task_formal_productions,
   ts_wave2a_task_type_alias_emitted,
   ts_wave2a_task_type_alias_relation_row_witness,
@@ -170,6 +175,28 @@ data claim_typescript_derive_grammar_relation_row_arrow_emitted_rejects: TestCla
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_wave2a_lhs_exact_arrow_emitted_rejects()
+  ),
+  expected_value: ts_grammar_relation_round_trip_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+fn ts_pr3_identity_derive_row_round_trip_holds() -> Bool {
+  match ts_pr3_identity_relation_row_witness() {
+    Holds { value: eager_row } =>
+      match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl) {
+        Holds { value: rederived } =>
+          content_hash(n: eager_row) == content_hash(n: rederived)
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data claim_typescript_pr3_identity_derive_grammar_relation_row_round_trip: TestClaim = CompilesClaim {
+  label: "T-11 FINISH-LINE-B Arc 1: pr3_identity eager row content_hash round-trips derive_grammar_relation_row_node",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: ts_grammar_relation_round_trip_claim_input(
+    ok: ts_pr3_identity_derive_row_round_trip_holds()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }

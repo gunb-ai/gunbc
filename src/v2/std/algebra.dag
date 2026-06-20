@@ -116,6 +116,28 @@ fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
     Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
+// 🟢 coproduct dissolution — feature: FreeMonoid substrate head<T> accessor; dissolves when stdlib provides substrate-derived head projection returning Option<T> directly, eliminating the per-use carrier type.
+type ListHeadResult<T>
+  = HeadFound { value: T }
+  | HeadAbsent
+
+fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
+  match xs {
+    Empty => HeadAbsent
+    Cons { head: h, tail: _ } => HeadFound { value: h }
+  }
+}
+// Skip the first n elements; n <= 0 is identity; n > length yields Empty.
+fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  if n <= 0 {
+    xs
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
+    }
+  }
+}
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
   item_node: fn(T) -> Node
