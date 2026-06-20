@@ -10,11 +10,10 @@ use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 const ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_perf_repro.dag";
-const WRONG_TYPE_ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_wrong_type_repro.dag";
 
 // Embedded negative control (no on-disk .dag): if/else branch-type mismatch is
 // rejected by inference with a non-empty error diagnostic.
-const WRONG_TYPE_INLINE: &str = r#"module v2.test.manual.pbp_body_producer_wrong_type_repro
+const WRONG_TYPE_SRC: &str = r#"module v2.test.manual.pbp_body_producer_wrong_type_repro
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
 import v2.std.logic { Bool }
@@ -64,7 +63,10 @@ fn body_producer_infer_perf_witness_resolves_clean() {
 
 #[test]
 fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
-    let sources = sources_for_inline(WRONG_TYPE_ENTRY, WRONG_TYPE_INLINE);
+    let sources = sources_for_inline(
+        "src/v2/compiler/manual/pbp_body_producer_wrong_type_repro.dag",
+        WRONG_TYPE_SRC,
+    );
     let resolved = compile_to_resolved(Rc::new(sources));
     let errs = non_complexity_errors(&resolved);
     assert!(
