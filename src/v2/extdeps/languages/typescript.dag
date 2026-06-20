@@ -1398,20 +1398,19 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
               Holds {
                 value: Node {
                   kind: TypeNode { connective: Conj },
-                  children: [
-                    ts_named_edge(
-                      name: ^ts_relation_rule_mvp1_fn_add,
-                      target: mvp1_row
-                    ),
-                    ts_named_edge(
-                      name: ^ts_relation_rule_type_alias_task,
-                      target: task_row
-                    ),
-                    ts_named_edge(
-                      name: ^ts_relation_rule_pr3_identity,
-                      target: pr3_row
-                    )
-                  ],
+                  children: list_append(
+                    left: ts_mvp1_translation_rules_mvp1_edges(mvp1_eager_row: mvp1_row),
+                    right: [
+                      ts_named_edge(
+                        name: ^ts_relation_rule_type_alias_task,
+                        target: task_row
+                      ),
+                      ts_named_edge(
+                        name: ^ts_relation_rule_pr3_identity,
+                        target: pr3_row
+                      )
+                    ]
+                  ),
                   occurrence_id: SyntheticOccurrence
 }
               }
@@ -1553,17 +1552,31 @@ fn ts_mvp1_fn_add_relation_row_with_bodied_scaffold() -> Witness<Node> {
   }
 }
 
+// Cross-language / inhabitant-neutralization emit: Arrow-no-body trees match via exact
+// fixture equality on grammar_relation_field_emitted (not the eager Conj syntax row).
+fn ts_mvp1_semantic_arrow_relation_row_node() -> Node {
+  ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+}
+
+fn ts_mvp1_translation_rules_mvp1_edges(mvp1_eager_row: Node) -> List<Edge> {
+  [
+    ts_named_edge(
+      name: ^ts_relation_rule_mvp1_fn_add,
+      target: mvp1_eager_row
+    ),
+    ts_named_edge(
+      name: ^ts_relation_rule_mvp1_fn_add_semantic_arrow,
+      target: ts_mvp1_semantic_arrow_relation_row_node()
+    )
+  ]
+}
+
 fn ts_mvp1_translation_rules_node() -> Node {
   match ts_mvp1_fn_add_relation_row_with_bodied_scaffold() {
     Holds { value: mvp1_row } =>
       Node {
         kind: TypeNode { connective: Conj },
-        children: [
-          ts_named_edge(
-            name: ^ts_relation_rule_mvp1_fn_add,
-            target: mvp1_row
-          )
-        ],
+        children: ts_mvp1_translation_rules_mvp1_edges(mvp1_eager_row: mvp1_row),
         occurrence_id: SyntheticOccurrence
       }
     Violates { diagnostic: _ } =>
@@ -1583,16 +1596,15 @@ fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
           Holds {
             value: Node {
               kind: TypeNode { connective: Conj },
-              children: [
-                ts_named_edge(
-                  name: ^ts_relation_rule_mvp1_fn_add,
-                  target: mvp1_row
-                ),
-                ts_named_edge(
-                  name: ^ts_relation_rule_type_alias_task,
-                  target: task_row
-                )
-              ],
+              children: list_append(
+                left: ts_mvp1_translation_rules_mvp1_edges(mvp1_eager_row: mvp1_row),
+                right: [
+                  ts_named_edge(
+                    name: ^ts_relation_rule_type_alias_task,
+                    target: task_row
+                  )
+                ]
+              ),
               occurrence_id: SyntheticOccurrence
 }
           }
