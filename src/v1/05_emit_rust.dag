@@ -114,7 +114,7 @@ import v1.compiler.infer_emit_info {
   variant_belongs_to_enum, variant_summary_key
 }
 import v1.compiler.resolve { get_exported_names }
-import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type }
+import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type, is_width_nat_type_literal }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
@@ -266,6 +266,25 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   }
 }
 
+// SEED host-numeric carrier: in the v1-compiler seed corpus (NOT the v2 faithful
+// target), the algebraic numeric tower (Nat = CommutativeSemiring<Magnitude>,
+// Int = AbelianGroup<GroupCompletion<Nat>>) maps to the host primitive i64 -- the
+// numeric analogue of String -> host String in the seed branch. Gated by the SAME
+// rust_corpus_includes_v1_compiler authority as the text carrier (single lever, no
+// parallel mechanism). The v2-target faithful numeric representation is escalated to
+// operator + non-blocking, so the faithful branch leaves the algebraic alias intact.
+// The seed numeric ops (nat_compare/nat_max/nat_min) use </>/.clone(), all native to
+// i64, so the alias-RHS override alone clears them and the Nat-as-number consumers
+// (E0277/E0369). DISSOLUTION: remove when the numeric tower gains a faithful
+// host-realization seam mirroring the text carrier (emit_rust_host_to_dag_string_via_seam).
+fn rust_seed_host_numeric_alias(name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  if (name == "Nat" || name == "Int") && rust_corpus_includes_v1_compiler(source_indices: source_indices) {
+    Present { value: "i64" }
+  } else {
+    none
+  }
+}
+
 fn rust_named_type_base(name: String, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
@@ -290,6 +309,37 @@ fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
   )
 }
 
+// MachineWidth<8> etc.: phantom width-nat args ground to () in Rust, not empty <> (E0107).
+fn is_parametric_opaque_type_by_name(env: TypeEnv, type_name: String) -> Bool {
+  match lookup_type_by_name(env: env, name: type_name) {
+    Present { value: item } => is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices)
+    Absent => false
+  }
+}
+
+fn is_parametric_opaque_type_base(type_name: String, def_mod_filename: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match type_item_by_name_in_module_filename(rhs_name: type_name, mod_filename: def_mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: item } => is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices)
+    Absent => false
+  }
+}
+
+fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+  if is_width_nat_type_literal(n: n) {
+    "()"
+  } else {
+    render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+  }
+}
+
+fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if is_width_nat_type_literal(n: n) {
+    "()"
+  } else {
+    render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
+}
+
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
@@ -298,11 +348,19 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let base = rust_named_type_base(name: authored_name_at(source_indices: source_indices, node: n), source_indices: source_indices)
+  let base_name = authored_name_at(source_indices: source_indices, node: n)
+  let base = rust_named_type_base(name: base_name, source_indices: source_indices)
   if n.children |> count == 0 {
     base
   } else {
-    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)) |> join(separator: ", ")
+    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
+    let args = n.children |> map(arg =>
+      if peel {
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      } else {
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      }
+    ) |> join(separator: ", ")
     concat(base, "<", args, ">")
   }
 }
@@ -346,7 +404,14 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
         } else {
         let base = rust_named_type_base(name: name, source_indices: source_indices)
-        let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)) |> join(separator: ", ")
+        let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
+        let args = n.children |> map(arg =>
+          if peel {
+            render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          } else {
+            render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+          }
+        ) |> join(separator: ", ")
         let applied_ty = concat(base, "<", args, ">")
         render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
         }
@@ -435,7 +500,14 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     } else {
       name
     }
-    let args = n.children |> map(arg => render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)) |> join(separator: ", ")
+    let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let args = n.children |> map(arg =>
+      if peel {
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      } else {
+        render_rust_alias_rhs_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+      }
+    ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
     if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
@@ -2839,19 +2911,24 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
-        n: resolved_type(n: item),
-        generic_param_names: [],
-        shared_types: shared_types,
-        source_indices: env.source_indices,
-        scope: scope,
-        imports: imports,
-        registry: registry,
-        module_name: module_name,
-        export_sets: export_sets,
-        typed_modules: typed_modules,
-        module_index: module_index,
-        variant_to_enum: emit_info.variant_to_enum), ";")
+      match rust_seed_host_numeric_alias(name: item_text, source_indices: env.source_indices) {
+        Present { value: host } =>
+          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
+        Absent =>
+          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
+            n: resolved_type(n: item),
+            generic_param_names: [],
+            shared_types: shared_types,
+            source_indices: env.source_indices,
+            scope: scope,
+            imports: imports,
+            registry: registry,
+            module_name: module_name,
+            export_sets: export_sets,
+            typed_modules: typed_modules,
+            module_index: module_index,
+            variant_to_enum: emit_info.variant_to_enum), ";")
+      }
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
