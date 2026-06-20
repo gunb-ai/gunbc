@@ -395,6 +395,10 @@ fn rust_ws_enrichment_disj_form_catalog() -> Node {
       rust_named_edge(
         name: ^rust_ws_enrichment_row_snake,
         target: rust_ws_enrichment_catalog_row(naming: SnakeCase)
+      ),
+      rust_named_edge(
+        name: ^rust_ws_enrichment_row_as_authored,
+        target: rust_ws_enrichment_catalog_row(naming: AsAuthored)
       )
     ],
     occurrence_id: SyntheticOccurrence

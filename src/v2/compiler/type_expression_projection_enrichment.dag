@@ -494,35 +494,14 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
   )
 }
 
-fn tepe_singleton_contract_row_optional(
-  rows: List<CoproductWireContractIndexRow>
-) -> Optional<CoproductWireContractIndexRow> {
-  match list_at_optional(xs: rows, index: 0) {
-    Absent => optional_absent()
-    Present { value: head } =>
-      match list_tail(xs: rows) {
-        TailAbsent => optional_present(value: head)
-        TailFound { tail: tail } =>
-          match list_at_optional(xs: tail, index: 0) {
-            Absent => optional_present(value: head)
-            Present { value: _ } => optional_absent()
-          }
-      }
-  }
-}
-
 fn tepe_contract_row_for_disj_anchor(
   rows: List<CoproductWireContractIndexRow>,
   root: Node,
   disj_anchor: Node
 ) -> Optional<CoproductWireContractIndexRow> {
   match tepe_enum_sym_for_disj(root: root, disj_anchor: disj_anchor) {
-    Present { value: enum_sym } =>
-      match tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym) {
-        Present { value: row } => optional_present(value: row)
-        Absent => tepe_singleton_contract_row_optional(rows: rows)
-      }
-    Absent => tepe_singleton_contract_row_optional(rows: rows)
+    Present { value: enum_sym } => tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym)
+    Absent => optional_absent()
   }
 }
 
@@ -661,6 +640,7 @@ fn tepe_normalize_naming_tag_for_catalog(sym: Symbol) -> Symbol {
       match tepe_naming_spelling_basename(spelling: spelling) {
         "ScreamingSnakeCase" => ^ScreamingSnakeCase
         "SnakeCase" => ^SnakeCase
+        "AsAuthored" => ^AsAuthored
         _ => sym
       }
     Rejected { diagnostics: _ } => sym
