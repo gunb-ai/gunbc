@@ -83,3 +83,10 @@ test fn gap4_unrecognized_char_rejects_not_tokens_remain_holds() -> Bool {
       }
   }
 }
+
+// 7. Gap-5 — escaped quotes inside string literals (v2.bin.main trampoline shape).
+test fn gap5_string_escape_quote_in_literal_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\ndata main_rs_trampoline_authority: String = \"include!(\\\"v2_main_generated.rs\\\");\"\n"
+  )
+}

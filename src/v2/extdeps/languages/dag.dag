@@ -378,12 +378,45 @@ fn dag_int_literal_lex_rule() -> LexRule {
   }
 }
 
+fn dag_string_escape_char_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharPattern { char: 34 },
+    right: ChoicePattern {
+      left: CharPattern { char: 92 },
+      right: ChoicePattern {
+        left: CharPattern { char: 110 },
+        right: ChoicePattern {
+          left: CharPattern { char: 116 },
+          right: ChoicePattern {
+            left: CharPattern { char: 123 },
+            right: CharPattern { char: 125 }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dag_string_escape_sequence_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharPattern { char: 92 },
+    right: dag_string_escape_char_pattern()
+  }
+}
+
+fn dag_string_body_element_pattern() -> LexPattern {
+  ChoicePattern {
+    left: dag_string_escape_sequence_pattern(),
+    right: CharClassPattern { class: StringTextChar }
+  }
+}
+
 fn dag_string_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_string_literal,
     pattern: DelimitedPattern {
       open: LiteralPattern { text: "\"" },
-      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      body: RepeatPattern { element: dag_string_body_element_pattern() },
       close: LiteralPattern { text: "\"" }
     }
   }
