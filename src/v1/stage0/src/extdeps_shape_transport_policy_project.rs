@@ -790,6 +790,41 @@ pub fn is_clean_tree_roster_excluded_for_qualified_name(qn: &crate::v1_interpret
     is_clean_tree_roster_excluded_for_module_path(&module_path)
 }
 
+fn live_violation_module_paths() -> Vec<String> {
+    let backfill = backfill_pending_module_paths();
+    let mut violations = Vec::new();
+    for path in derived_extdeps_module_paths() {
+        if is_clean_tree_roster_excluded_for_module_path(&path) {
+            continue;
+        }
+        if is_machinery_exempt_for_module_path(&path) || backfill.contains(&path) {
+            continue;
+        }
+        match project_external_authority_anchor(&path) {
+            ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
+            ExternalAuthorityAnchorProjection::Present {
+                scheme_identity, ..
+            } if scheme_identity != "Http" && scheme_identity != "Https" => {
+                violations.push(format!("non_external:{path}:{scheme_identity}"))
+            }
+            _ => {}
+        }
+    }
+    violations
+}
+
+/// Host-backed live clean-tree verdict (single authority for CI + lens).
+pub fn external_authority_live_clean_tree_holds() -> bool {
+    live_violation_module_paths().is_empty()
+}
+
+pub fn external_authority_live_roster_module_count() -> i64 {
+    derived_extdeps_module_paths()
+        .into_iter()
+        .filter(|path| !is_clean_tree_roster_excluded_for_module_path(path))
+        .count() as i64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1027,6 +1062,12 @@ service github.Gist {
         assert!(is_clean_tree_roster_excluded_for_module_path(
             "extdeps.fixture.external_authority_bogus_scheme"
         ));
+    }
+
+    #[test]
+    fn external_authority_live_clean_tree_holds_via_host() {
+        assert!(external_authority_live_clean_tree_holds());
+        assert!(external_authority_live_roster_module_count() > 150);
     }
 
     #[test]

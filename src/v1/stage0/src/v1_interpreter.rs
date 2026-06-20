@@ -5799,6 +5799,12 @@ fn eval_builtin(
                 ),
             )))
         }
+        "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_clean_tree_holds(),
+        ))),
+        "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
+        ))),
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),

@@ -142,6 +142,8 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "extdeps_external_authority_is_backfill_pending_for_qualified_name", bool_type)
   let m = map_insert(m, "extdeps_external_authority_is_machinery_exempt_for_qualified_name", bool_type)
   let m = map_insert(m, "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name", bool_type)
+  let m = map_insert(m, "extdeps_external_authority_live_clean_tree_holds", bool_type)
+  let m = map_insert(m, "extdeps_external_authority_live_roster_module_count", int_type)
   let m = map_insert(m, "transport_script_literal_violation_count_for_path", int_type)
   let m = map_insert(m, "languages_consumer_census_data_decl_count", int_type)
   let m = map_insert(m, "languages_consumer_census_per_language_row_count", int_type)

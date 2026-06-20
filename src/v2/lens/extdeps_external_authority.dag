@@ -232,22 +232,4 @@ fn extdeps_external_authority_has_non_external_scheme(
     }
 }
 
-// Live projection roster: all derived extdeps.* modules minus explicit RED perturb exclusions.
-fn extdeps_external_authority_live_roster_modules() -> List<QualifiedName> {
-  filter(
-    xs: extdeps_derived_extdeps_modules(),
-    predicate: fn(mod_qn) {
-      !extdeps_external_authority_is_clean_tree_roster_excluded(module: mod_qn)
-    }
-  )
-}
-
-fn extdeps_external_authority_live_roster_module_count() -> Int {
-  length(xs: extdeps_external_authority_live_roster_modules())
-}
-
-fn extdeps_external_authority_live_clean_tree_holds() -> Bool {
-  extdeps_external_authority_clean_holds(
-    modules: extdeps_external_authority_live_roster_modules()
-  )
-}
+// Live projection roster: host-backed (extdeps_shape_transport_policy_project.rs).
