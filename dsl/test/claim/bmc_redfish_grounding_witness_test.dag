@@ -1,0 +1,66 @@
+// test/claim/bmc_redfish_grounding_witness_test.dag — by-execution witness (DESIGN §5)
+// for the BMC → host-facts grounding seam.
+//
+// Exercises the pure projection: structured Redfish telemetry shapes (as returned by
+// OpenBMC on ASRock ALTRAD8UD-class boards) fold into BmcGroundedHostObservations —
+// the record that replaces hand-typed srv1/srv2 CPU model / core-count / RAM / power.
+//
+// Wet transport (redfish.Http.GetSystem/GetPower/GetThermal) is proven separately in
+// diagnostic_redfish_witness.dag and gunbc.tools.bmc_first_contact; JSON parse from
+// curl stdout into these shapes dissolves when v2.extdeps.formats.json crosses dsl/.
+
+module test.claim.bmc_redfish_grounding
+
+import std.logic { Bool }
+import std.measure { byte_size_count, watt, watt_count }
+import extdeps.bmc.types {
+  BmcTelemetrySnapshot,
+  RedfishPowerControl,
+  RedfishPowerSubsystem,
+  RedfishSystemInventory,
+  On,
+}
+import extdeps.bmc.redfish {
+  bmc_ground_host_observations,
+  redfish_system_inventory,
+}
+import extdeps.bmc { bmc_ground_snapshot }
+
+// Fixture shaped like OpenBMC Redfish on srv-class Ampere hosts: 8×16 GiB DIMMs (128 GiB),
+// 64-core Altra Q64-30 class processor string, ~180 W wall draw on the total PowerControl.
+data example_srv_redfish_system: RedfishSystemInventory = redfish_system_inventory(
+  model: "ALTRAD8UD-1L2T",
+  processor_model: "Ampere(R) Altra(R) Processor",
+  processor_core_count: 64,
+  total_memory_gib: 128,
+  power_state: On
+)
+
+data example_srv_redfish_power: RedfishPowerSubsystem = RedfishPowerSubsystem {
+  controls: [
+    RedfishPowerControl {
+      member_id: "0",
+      name: Present { value: "total_power" },
+      power_consumed_watts: Present { value: watt(178) },
+      power_limit_watts: none,
+    },
+  ],
+}
+
+data example_srv_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: example_srv_redfish_system,
+  power: Present { value: example_srv_redfish_power },
+  thermal: none,
+}
+
+test fn bmc_redfish_grounding_holds() -> Bool {
+  let obs = bmc_ground_snapshot(snapshot: example_srv_telemetry)
+  // 128 GiB = 128 * 1073741824 bytes — matches 8× HMA82GR7AFR4N-VK sticks on srv1/srv2.
+  bmc_ground_host_observations(snapshot: example_srv_telemetry).processor_core_count == 64
+    && obs.processor_model == "Ampere(R) Altra(R) Processor"
+    && byte_size_count(obs.total_memory_bytes) == 128 * 1073741824
+    && match obs.power_consumed_watts {
+      Present { value: w } => watt_count(w) == 178
+      Absent => false
+    }
+}

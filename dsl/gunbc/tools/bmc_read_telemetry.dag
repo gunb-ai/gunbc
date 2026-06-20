@@ -1,0 +1,48 @@
+// gunbc/tools/bmc_read_telemetry.dag — runnable: poll BMC Redfish telemetry (read-only).
+//
+// Reaches the BMC at $BMC_HOST with the OpenBMC factory login (extdeps/bmc/openbmc.dag),
+// then GETs System + Power + Thermal resources. Safe — no state is changed.
+//
+// Run (management network required; set BMC_HOST to the board's dedicated BMC IP):
+//   BMC_HOST=10.0.0.10 gunbc run --source-root dsl \
+//     --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
+//
+// stdout is not yet parsed into extdeps/bmc/types shapes — curl bodies are captured for
+// operator inspection until the JSON parse handler lands (§3 peripheral realization).
+// Grounding projections are proven in test.claim.bmc_redfish_grounding.
+
+module gunbc.tools.bmc_read_telemetry
+
+import extdeps.shell
+import extdeps.diagnostic.redfish
+import extdeps.bmc.openbmc { openbmc_factory_login }
+import std.types { NonEmptyStr, String }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+func bmc_read_telemetry() -> ProcessExit
+  uses net: Network
+{
+  host = shell.Env.Get(name: "BMC_HOST")
+  let bmc = host.value as NonEmptyStr
+  let user = openbmc_factory_login.username
+  let pass = openbmc_factory_login.published_password
+
+  system_resp = redfish.Http.GetSystem(bmc_host: bmc, username: user, password: pass)
+  if system_resp.success == false {
+    return exit_failure(reason: system_resp.body)
+  }
+
+  power_resp = redfish.Http.GetPower(bmc_host: bmc, username: user, password: pass)
+  if power_resp.success == false {
+    return exit_failure(reason: power_resp.body)
+  }
+
+  thermal_resp = redfish.Http.GetThermal(bmc_host: bmc, username: user, password: pass)
+  if thermal_resp.success == false {
+    return exit_failure(reason: thermal_resp.body)
+  }
+
+  // All three reads succeeded; bodies are on the transport stdout (not yet folded).
+  return ExitSuccess
+}

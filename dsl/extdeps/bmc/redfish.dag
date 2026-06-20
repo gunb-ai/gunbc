@@ -1,0 +1,95 @@
+// extdeps/bmc/redfish.dag — Redfish telemetry projections and host-grounding seam.
+//
+// Pure folds over extdeps/bmc/types shapes. Transport that fetches the raw JSON lives
+// in extdeps/diagnostic/redfish.dag; JSON parse → these records is a peripheral handler
+// (dissolve-on: v2.extdeps.formats.json crosses the dsl/ tree). Until then, grounding
+// witnesses exercise the projection with structured fixture rows (DESIGN §5).
+
+module extdeps.bmc.redfish
+
+import extdeps.bmc.types {
+  BmcGroundedHostObservations,
+  BmcTelemetrySnapshot,
+  RedfishMemorySummary,
+  RedfishPowerControl,
+  RedfishPowerSubsystem,
+  RedfishProcessorSummary,
+  RedfishSystemInventory,
+  RedfishPowerState,
+}
+import std.measure { ByteSize, Watt, byte_size, watt, watt_count, byte_size_count }
+import std.types { Int, List, NonEmptyStr }
+
+// Redfish reports TotalSystemMemoryGiB (binary GiB). Convert to ByteSize.
+fn redfish_gib_to_bytes(gib: Int) -> ByteSize {
+  byte_size(count: gib * 1073741824)
+}
+
+fn redfish_memory_summary_from_gib(total_gib: Int) -> RedfishMemorySummary {
+  RedfishMemorySummary { total_memory_bytes: redfish_gib_to_bytes(gib: total_gib) }
+}
+
+fn redfish_processor_summary(model: NonEmptyStr, core_count: Int) -> RedfishProcessorSummary {
+  RedfishProcessorSummary { model: model, core_count: core_count }
+}
+
+fn redfish_system_inventory(
+  model: NonEmptyStr,
+  processor_model: NonEmptyStr,
+  processor_core_count: Int,
+  total_memory_gib: Int,
+  power_state: RedfishPowerState
+) -> RedfishSystemInventory {
+  RedfishSystemInventory {
+    model: model,
+    serial_number: none,
+    processor: redfish_processor_summary(model: processor_model, core_count: processor_core_count),
+    memory: redfish_memory_summary_from_gib(total_gib: total_memory_gib),
+    power_state: power_state,
+  }
+}
+
+// Sum PowerControl.PowerConsumedWatts across members (OpenBMC often reports one "total").
+fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt {
+  fold(
+    controls,
+    init: watt(0),
+    f: (acc, ctrl) =>
+      match ctrl.power_consumed_watts {
+        Absent => acc
+        Present { value: w } => watt(count: watt_count(acc) + watt_count(w))
+      }
+  )
+}
+
+fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerControl? {
+  fold(
+    power.controls,
+    init: Absent,
+    f: (acc, ctrl) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => Present { value: ctrl }
+      }
+  )
+}
+
+// Project a telemetry snapshot to the host observations record ctrl consumes instead of
+// hand-typed fleet rows.
+fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
+  let consumed = match snapshot.power {
+    Absent => none
+    Present { value: p } => Present { value: redfish_power_consumed_total_watts(controls: p.controls) }
+  }
+  BmcGroundedHostObservations {
+    processor_model: snapshot.system.processor.model,
+    processor_core_count: snapshot.system.processor.core_count,
+    total_memory_bytes: snapshot.system.memory.total_memory_bytes,
+    power_consumed_watts: consumed,
+  }
+}
+
+// Convenience: total RAM bytes from system inventory alone.
+fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
+  inv.memory.total_memory_bytes
+}

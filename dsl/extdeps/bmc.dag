@@ -1,0 +1,31 @@
+// extdeps/bmc.dag — BMC telemetry projections over Redfish resource shapes.
+//
+// Types: extdeps.bmc.types. Per-firmware cited facts: extdeps.bmc.<family>.
+// Redfish projections: extdeps.bmc.redfish.
+
+module extdeps.bmc
+
+import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot }
+import extdeps.bmc.redfish { bmc_ground_host_observations }
+import std.measure { ByteSize, Watt }
+import std.types { Int, NonEmptyStr }
+
+fn bmc_observed_processor_model(obs: BmcGroundedHostObservations) -> NonEmptyStr {
+  obs.processor_model
+}
+
+fn bmc_observed_processor_core_count(obs: BmcGroundedHostObservations) -> Int {
+  obs.processor_core_count
+}
+
+fn bmc_observed_total_memory_bytes(obs: BmcGroundedHostObservations) -> ByteSize {
+  obs.total_memory_bytes
+}
+
+fn bmc_observed_power_consumed_watts(obs: BmcGroundedHostObservations) -> Watt? {
+  obs.power_consumed_watts
+}
+
+fn bmc_ground_snapshot(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
+  bmc_ground_host_observations(snapshot: snapshot)
+}
