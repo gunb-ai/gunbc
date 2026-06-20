@@ -193,6 +193,10 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     let tn = authored_name_at(source_indices: source_indices, node: n)
     if tn == "String" && n.children |> count == 0 {
       render_rust_text_carrier(shared_types: shared_types)
+    } else if n.connective == NoConnective && n.children |> count == 0 && set_contains(shared_types, tn) {
+      let stub_env = TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() }
+      let rendered = rust_render_type_leaf_name(name: tn, variant_to_enum: empty_map(), env: stub_env)
+      render_rust_shared_type_if_needed(type_name: tn, rendered: rendered, shared_types: shared_types)
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
@@ -367,6 +371,9 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  } else if n.connective == NoConnective && n.children |> count == 0 && set_contains(shared_types, name) {
+    let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
+    render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
   } else {
     render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
   }
@@ -398,11 +405,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   } else if n.connective == NoConnective && n.children |> count == 0 {
     if name == "String" {
       render_rust_text_carrier(shared_types: shared_types)
-    } else if match rust_opaque_kernel_alias_carrier(name: name) {
-      Present { value: carrier } => carrier
-      Absent => {
-        let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
-        render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
+    } else {
+      match rust_opaque_kernel_alias_carrier(name: name) {
+        Present { value: carrier } => carrier
+        Absent => {
+          let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
+          render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
+        }
       }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
