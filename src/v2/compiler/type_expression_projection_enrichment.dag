@@ -483,18 +483,21 @@ fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Nod
     n: root,
     algebra: NodeFold {
       init: fn(node) {
-        if tepe_node_has_surface(root: node, surface: ^dag_surface_module) {
-          optional_absent()
-        } else {
-          match tepe_type_decl_name_optional(type_decl: node) {
-            Present { value: name } =>
-              if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: name, enum_sym: enum_sym) {
-                tepe_disj_in_subtree(node: node)
-              } else {
-                optional_absent()
-              }
-            Absent => optional_absent()
-          }
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            match tepe_enum_sym_for_disj(root: root, disj_anchor: node) {
+              Present { value: sym } =>
+                if tepe_declaration_ref_spelling_matches_enum(
+                  coproduct_sym: sym,
+                  enum_sym: enum_sym
+                ) {
+                  optional_present(value: node)
+                } else {
+                  optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          _ => optional_absent()
         }
       },
       step: fn(acc, _edge, child_acc) {
