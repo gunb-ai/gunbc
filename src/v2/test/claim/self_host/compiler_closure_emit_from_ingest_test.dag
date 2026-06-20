@@ -2,8 +2,9 @@
 // Host manifest overlay required at runtime for ingest-backed claims (see
 //   v2.workflow.compiler_closure_ingest_transport).
 // Anchor: DESIGN.md §5/§7 — fast in-substrate carrier check + manifest receipt claims;
-//   gap-4 discriminating probe stays a test fn (excluded from discovery) until bounded
-//   slice manifest transport lands (dissolve transport exclusion then).
+//   gap-4 discriminating probe stays a test fn (excluded from discovery) until bounded-
+//   slice manifest transport lands — dissolve-on: enroll gap4_probe_all_ingest_reads_accept_holds
+//   (+ parses_holds if needed) in compiler_closure_ingest_transport as the active RED gate.
 
 module v2.test.self_host.compiler_closure_emit_from_ingest
 

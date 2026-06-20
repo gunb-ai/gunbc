@@ -1,8 +1,15 @@
 // v2.workflow.compiler_closure_ingest_transport — scoped 00_compile closure manifest gate.
 //
-// Modeled shell transport (serialize_bash): emit isolated host manifest + claim-run witnesses.
+// SCAFFOLD — modeled ShellProgram transport (serialize_bash → shell.Exec.Run).
+// Dissolve-on: collapse to modeled ProcessExit host effects (parameterized argv for
+//   discover_source_root_ingest + gunbc claim-run legs; no shell.Exec.Run) — same
+//   dissolution target as the CI-floor *_transport.dag family (emit(intent, Bash) /
+//   v2 bash TargetModel rows). Bounded-slice gap-4 RED gate (gap4_probe_* /
+//   compiler_closure_scoped_ingest_parses_holds) enrolls here when locate lands;
+//   until then transport runs module_count receipt only.
+//
 // Roots: gunbc.ci_layer_roots.witness_layer_roots = [dsl, src/v2] (same as real_ingest gate).
-// Does NOT invoke scripts/v2-compiler-closure-nv2-gate.sh.
+// Does NOT invoke scripts/v2-compiler-closure-nv2-gate.sh (deleted).
 
 module v2.workflow.compiler_closure_ingest_transport
 
