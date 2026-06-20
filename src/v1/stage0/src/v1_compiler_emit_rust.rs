@@ -16382,7 +16382,13 @@ pub fn emit_typed_record_lit(
                                                             fname.clone(),
                                                         ) {
                                                             Some(ft) => {
-                                                                match rust_zero_value(ft.clone()) {
+                                                                match rust_zero_value(
+                                                                    ft.clone(),
+                                                                    scope
+                                                                        .type_env
+                                                                        .source_indices
+                                                                        .clone(),
+                                                                ) {
                                                                     Some(_) => true,
                                                                     None => false,
                                                                 }
@@ -16410,7 +16416,10 @@ pub fn emit_typed_record_lit(
                                             Rc::new(vec![v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": None,".to_string())])
                                         } else {
                                             match v1_rt::map_get(&ftm, fname.clone()) {
-    Some(ft) => match rust_zero_value(ft.clone()) {
+    Some(ft) => match rust_zero_value(
+        ft.clone(),
+        scope.type_env.source_indices.clone(),
+    ) {
     Some(zv) => Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), zv.clone()), ",".to_string())]),
     None => Rc::new(vec![]),
 },
@@ -16446,7 +16455,10 @@ pub fn emit_typed_record_lit(
     }
 }
 
-pub fn rust_zero_value(type_name: String) -> Option<String> {
+pub fn rust_zero_value(
+    type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     if (type_name.clone().as_str() == "Int".to_string().as_str()) {
         Some("0".to_string())
     } else {
@@ -16454,10 +16466,14 @@ pub fn rust_zero_value(type_name: String) -> Option<String> {
             Some("false".to_string())
         } else {
             if (type_name.clone().as_str() == "String".to_string().as_str()) {
-                Some(
-                    "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()"
-                        .to_string(),
-                )
+                if rust_emit_faithful_text_carrier(source_indices) {
+                    Some(
+                        "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()"
+                            .to_string(),
+                    )
+                } else {
+                    Some("\"\".to_string()".to_string())
+                }
             } else {
                 None
             }
