@@ -101,6 +101,7 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
 
 
 // In-substrate carrier consumption (§3): no Rust/bash projection of witness_layer_roots.
+// Enrolled via compiler_closure_ingest_transport (no manifest overlay).
 test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
   (length(xs: self_host_closure_witness_layer_roots) == length(xs: witness_layer_roots))
     && fold_list(

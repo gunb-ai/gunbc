@@ -478,9 +478,6 @@ fn gap4_single_module_discriminator() {
     eprintln!(
         "gap4 single-module discriminator ({single}): parses={parses:?} probe_all_accept={probe_ok:?}"
     );
-    let path = v1_interpreter::run_in_context(&ctx, "gap4_probe_first_ingest_reject", true)
-        .unwrap_or_else(|e| panic!("gap4_probe_first_ingest_reject: {e:?}"));
-    eprintln!("gap4 single-module probe file_path: {path:?}");
     let probe = v1_interpreter::run_in_context(&ctx, "gap4_probe_first_ingest_reject", true)
         .unwrap_or_else(|e| panic!("gap4_probe_first_ingest_reject: {e:?}"));
     eprintln!("gap4 single-module probe state: {probe:?}");
