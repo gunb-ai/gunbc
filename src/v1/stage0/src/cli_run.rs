@@ -2312,8 +2312,7 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "host_source_root_ingest_manifest.dag",
     // Gate-only: requires host manifest overlay (v2.workflow.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
-    // Gate-only: N_v2 substrate witnesses (scripts/v2-compiler-closure-nv2-gate.sh).
-    "compiler_closure_emit_from_ingest_gate.dag",
+    "self_host/compiler_closure_emit_from_ingest_test.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
