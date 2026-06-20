@@ -3137,11 +3137,11 @@ fn struct_unused_param_names(generic_param_names: List<String>, children: List<N
 // params: a single param bare (`PhantomData<Q>`), several as a tuple
 // (`PhantomData<(Q, S)>`) so one field "uses" them all.
 fn rust_phantom_marker_inner(unused: List<String>) -> String {
+  // Single unused param -> bare `PhantomData<Q>`; several -> `PhantomData<(Q, S)>`.
+  // `join` of a one-element list is that element, so the single case needs no
+  // Optional peel (avoids a `match` whose `Absent` arm is unreachable here).
   if unused |> count == 1 {
-    match unused |> first {
-      Present { value: u } => u
-      Absent => "()"
-    }
+    unused |> join(separator: ", ")
   } else {
     concat("(", unused |> join(separator: ", "), ")")
   }
