@@ -4589,6 +4589,23 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   }
 }
 
+// True iff the dot-accessed `field` on `base` is stored as `Box<..>` -- the
+// struct-def emitter boxes a field whose type `needs_box_wrapping` (recursive
+// types, and generic-param magnitudes like `Measure.count: Box<M>`). Reading
+// such a field as a plain `base.field.clone()` is an E0308 (`Box<M>` vs `M`);
+// it must deref through the Box. Reuses the SAME `needs_box_wrapping` the def
+// uses, so the read always agrees with how the field was stored. The base type
+// is alias-chain-expanded first so a cross-module alias (`Gibibyte` ->
+// `Measure { count }`) resolves to the struct carrying the field.
+fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> Bool {
+  let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name)
+  match find_child_named(n: base_struct, name: field, source_indices: scope.type_env.source_indices) {
+    Present { value: field_child } =>
+      needs_box_wrapping(n: resolved_type(n: field_child), recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+}
+
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let base_is_anon_record = match base.inferred {
@@ -4626,7 +4643,15 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
                 set_contains(emit_info.owned_bindings, base_name)
               _ => false
             }
-            if base_is_owned {
+            let field_is_boxed = field_access_field_is_boxed(base: base, field: field, scope: scope, shared_types: shared_types, emit_info: emit_info)
+            if field_is_boxed {
+              // Box<M> stored field: deref through the Box to the magnitude, then
+              // clone. The parens group the deref before `.clone()` (unary `*`
+              // binds looser than `.`), so they are NOT redundant and stay
+              // warning-clean under -D warnings in sole-return, chained, and
+              // receiver positions alike.
+              concat("(*", base_str, ".", emit_ident(name: field, target: Rust), ").clone()")
+            } else if base_is_owned {
               concat(base_str, ".", emit_ident(name: field, target: Rust))
             } else {
               apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
