@@ -111,9 +111,25 @@ fn tepe_atom_sym_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn tepe_field_init_spelling_matches_field(name_sym: Symbol, field: Symbol) -> Bool {
+  match symbol_interned_spelling(binding: name_sym) {
+    Accepted { value: name_spelling, diagnostics: _ } =>
+      match symbol_interned_spelling(binding: field) {
+        Accepted { value: field_spelling, diagnostics: _ } => name_spelling == field_spelling
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn tepe_field_init_parts_match_name(parts: TepeFieldInitParts, field: Symbol) -> Bool {
   match tepe_atom_sym_optional(node: parts.name) {
-    Present { value: sym } => sym == field
+    Present { value: sym } =>
+      if sym == field {
+        true
+      } else {
+        tepe_field_init_spelling_matches_field(name_sym: sym, field: field)
+      }
     Absent => false
   }
 }
