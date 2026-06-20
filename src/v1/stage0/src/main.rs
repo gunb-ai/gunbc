@@ -113,7 +113,8 @@ fn extract_import_paths(content: &str) -> Vec<String> {
 }
 
 /// Build module index: scan all source roots, map module_path -> file_path.
-/// Fail-closed: panics on missing roots, unreadable files, and duplicate module paths.
+/// Fail-closed: panics on missing roots and unreadable files. Duplicate module paths
+/// across roots use co-root overlay — later `source_roots` win (matches cli_run).
 fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {
     let mut index = HashMap::new();
     for root in source_roots {
@@ -127,12 +128,6 @@ fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::Pat
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    panic!(
-                        "duplicate module path '{}': declared in both {:?} and {:?}",
-                        module_path, existing, path
-                    );
-                }
                 index.insert(module_path, path);
             }
         }
