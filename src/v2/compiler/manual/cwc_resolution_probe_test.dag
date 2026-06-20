@@ -32,7 +32,8 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_collect_data_decl_nodes,
   tepe_build_coproduct_wire_contract_index,
   tepe_target_bundle_optional_child,
-  tepe_atom_sym_optional
+  tepe_atom_sym_optional,
+  tepe_disj_form_from_catalog
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -720,6 +721,34 @@ test fn cwc_data_decl_coproduct_row_present_holds() -> Bool {
         field_encoding: ^encoding,
         type_coproduct_wire_contract: ^CoproductWireContract
       )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_enrichment_disj_catalog_lookup_holds() -> Bool {
+  match tepe_target_bundle_optional_child(
+    target: rust_wire_serde_screaming_snake_target,
+    edge_name: ^target_model_edge_type_expression_projection_enrichment
+  ) {
+    Accepted { value: optional_enrichment, diagnostics: _ } =>
+      match optional_enrichment {
+        Present { value: enrichment } =>
+          match find_named_child(
+            root: enrichment,
+            name: ^target_type_expr_projection_enrichment_disj_form_catalog
+          ) {
+            Accepted { value: catalog, diagnostics: _ } =>
+              match tepe_disj_form_from_catalog(
+                catalog: catalog,
+                naming_tag: ^ScreamingSnakeCase
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
