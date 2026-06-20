@@ -256,3 +256,7 @@ pub struct ProofEdge {
     pub callee: String,
     pub evidence: Rc<Vec<DescentEvidence>>,
 }
+
+pub struct Strict;
+pub struct NonIncreasing;
+pub struct DescentUnknown;

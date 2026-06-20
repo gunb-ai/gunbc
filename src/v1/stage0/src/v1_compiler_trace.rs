@@ -152,7 +152,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
         } => Rc::new({
             let mut __result = Vec::new();
             for e in trace.events.clone().iter().cloned() {
-                if (event_node_id(e.clone()).as_str() == name.clone().as_str()) {
+                if (event_node_id(e.clone()) == name.clone()) {
                     __result.push(e);
                 }
             }

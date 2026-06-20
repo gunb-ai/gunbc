@@ -108,14 +108,14 @@ pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
+                __m.insert("true", Rc::new(LiteralValue::LitBool {
         value: true,
     }));
-                __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
+                __m.insert("false", Rc::new(LiteralValue::LitBool {
         value: false,
     }));
-                __m.insert("none".to_string(), Rc::new(LiteralValue::LitNull));
-                __m.insert("null".to_string(), Rc::new(LiteralValue::LitNull));
+                __m.insert("none", Rc::new(LiteralValue::LitNull));
+                __m.insert("null", Rc::new(LiteralValue::LitNull));
                 Rc::new(__m)
             };
         }
@@ -126,41 +126,41 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("module".to_string(), true);
-            __m.insert("import".to_string(), true);
-            __m.insert("type".to_string(), true);
-            __m.insert("fn".to_string(), true);
-            __m.insert("func".to_string(), true);
-            __m.insert("resource".to_string(), true);
-            __m.insert("service".to_string(), true);
-            __m.insert("data".to_string(), true);
-            __m.insert("interface".to_string(), true);
-            __m.insert("pipeline".to_string(), true);
-            __m.insert("profile".to_string(), true);
-            __m.insert("pattern".to_string(), true);
-            __m.insert("let".to_string(), true);
-            __m.insert("return".to_string(), true);
-            __m.insert("match".to_string(), true);
-            __m.insert("if".to_string(), true);
-            __m.insert("then".to_string(), true);
-            __m.insert("else".to_string(), true);
-            __m.insert("for".to_string(), true);
-            __m.insert("in".to_string(), true);
-            __m.insert("where".to_string(), true);
-            __m.insert("with".to_string(), true);
-            __m.insert("true".to_string(), true);
-            __m.insert("false".to_string(), true);
-            __m.insert("none".to_string(), true);
-            __m.insert("null".to_string(), true);
-            __m.insert("acquire".to_string(), true);
-            __m.insert("release".to_string(), true);
-            __m.insert("capability".to_string(), true);
-            __m.insert("operation".to_string(), true);
-            __m.insert("input".to_string(), true);
-            __m.insert("output".to_string(), true);
-            __m.insert("idempotent".to_string(), true);
-            __m.insert("readonly".to_string(), true);
-            __m.insert("hermetic".to_string(), true);
+            __m.insert("module", true);
+            __m.insert("import", true);
+            __m.insert("type", true);
+            __m.insert("fn", true);
+            __m.insert("func", true);
+            __m.insert("resource", true);
+            __m.insert("service", true);
+            __m.insert("data", true);
+            __m.insert("interface", true);
+            __m.insert("pipeline", true);
+            __m.insert("profile", true);
+            __m.insert("pattern", true);
+            __m.insert("let", true);
+            __m.insert("return", true);
+            __m.insert("match", true);
+            __m.insert("if", true);
+            __m.insert("then", true);
+            __m.insert("else", true);
+            __m.insert("for", true);
+            __m.insert("in", true);
+            __m.insert("where", true);
+            __m.insert("with", true);
+            __m.insert("true", true);
+            __m.insert("false", true);
+            __m.insert("none", true);
+            __m.insert("null", true);
+            __m.insert("acquire", true);
+            __m.insert("release", true);
+            __m.insert("capability", true);
+            __m.insert("operation", true);
+            __m.insert("input", true);
+            __m.insert("output", true);
+            __m.insert("idempotent", true);
+            __m.insert("readonly", true);
+            __m.insert("hermetic", true);
             Rc::new(__m)
         };
     }
@@ -171,12 +171,12 @@ pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("true".to_string(), true);
-            __m.insert("false".to_string(), true);
-            __m.insert("none".to_string(), true);
-            __m.insert("null".to_string(), true);
-            __m.insert("acquire".to_string(), true);
-            __m.insert("release".to_string(), true);
+            __m.insert("true", true);
+            __m.insert("false", true);
+            __m.insert("none", true);
+            __m.insert("null", true);
+            __m.insert("acquire", true);
+            __m.insert("release", true);
             Rc::new(__m)
         };
     }
@@ -292,20 +292,20 @@ pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("||".to_string(), true);
-            __m.insert("&&".to_string(), true);
-            __m.insert("==".to_string(), true);
-            __m.insert("!=".to_string(), true);
-            __m.insert("<".to_string(), true);
-            __m.insert(">".to_string(), true);
-            __m.insert("<=".to_string(), true);
-            __m.insert(">=".to_string(), true);
-            __m.insert("+".to_string(), true);
-            __m.insert("-".to_string(), true);
-            __m.insert("*".to_string(), true);
-            __m.insert("/".to_string(), true);
-            __m.insert("|>".to_string(), true);
-            __m.insert(".".to_string(), true);
+            __m.insert("||", true);
+            __m.insert("&&", true);
+            __m.insert("==", true);
+            __m.insert("!=", true);
+            __m.insert("<", true);
+            __m.insert(">", true);
+            __m.insert("<=", true);
+            __m.insert(">=", true);
+            __m.insert("+", true);
+            __m.insert("-", true);
+            __m.insert("*", true);
+            __m.insert("/", true);
+            __m.insert("|>", true);
+            __m.insert(".", true);
             Rc::new(__m)
         };
     }

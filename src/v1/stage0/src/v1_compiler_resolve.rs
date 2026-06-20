@@ -490,7 +490,7 @@ pub fn adjacency_add_edge(
 }
 
 pub fn topo_sort_key(name: String) -> String {
-    if (name.clone().as_str() == "std.types".to_string().as_str()) {
+    if (name.clone() == "std.types".to_string()) {
         "".to_string()
     } else {
         name.clone()
@@ -512,7 +512,7 @@ pub fn topological_sort(
         let has_std_types = {
             let mut __found = false;
             for name in module_names.clone().iter().cloned() {
-                if (name.clone().as_str() == "std.types".to_string().as_str()) {
+                if (name.clone() == "std.types".to_string()) {
                     __found = true;
                     break;
                 }
@@ -550,8 +550,7 @@ pub fn topological_sort(
                                 let mut __found = false;
                                 for imp in module_imports(m.clone()).iter().cloned() {
                                     if (authored_name_at(source_indices.clone(), imp.clone())
-                                        .as_str()
-                                        == "std.types".to_string().as_str())
+                                        == "std.types".to_string())
                                     {
                                         __found = true;
                                         break;
@@ -559,11 +558,9 @@ pub fn topological_sort(
                                 }
                                 __found
                             };
-                            if ((((m_name.clone().as_str() != "std.types".to_string().as_str())
-                                && (m_name.clone().as_str()
-                                    != "std.algebra".to_string().as_str()))
-                                && (m_name.clone().as_str()
-                                    != "std.error_primitives".to_string().as_str()))
+                            if ((((m_name.clone() != "std.types".to_string())
+                                && (m_name.clone() != "std.algebra".to_string()))
+                                && (m_name.clone() != "std.error_primitives".to_string()))
                                 && (imports_std_types.clone() == false))
                             {
                                 Rc::new(vec![Rc::new(DepEdge {
@@ -599,8 +596,8 @@ pub fn topological_sort(
                 let imports_std_types = {
                     let mut __found = false;
                     for imp in module_imports(m.clone()).iter().cloned() {
-                        if (authored_name_at(source_indices.clone(), imp.clone()).as_str()
-                            == "std.types".to_string().as_str())
+                        if (authored_name_at(source_indices.clone(), imp.clone())
+                            == "std.types".to_string())
                         {
                             __found = true;
                             break;
@@ -609,9 +606,9 @@ pub fn topological_sort(
                     __found
                 };
                 let implicit_std_types_in_degree = if ((((has_std_types.clone()
-                    && (m_name.clone().as_str() != "std.types".to_string().as_str()))
-                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str()))
-                    && (m_name.clone().as_str() != "std.error_primitives".to_string().as_str()))
+                    && (m_name.clone() != "std.types".to_string()))
+                    && (m_name.clone() != "std.algebra".to_string()))
+                    && (m_name.clone() != "std.error_primitives".to_string()))
                     && (imports_std_types.clone() == false))
                 {
                     1

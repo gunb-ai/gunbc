@@ -14,13 +14,13 @@ pub fn dag_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true".to_string(), "true".to_string());
-            __m.insert("false".to_string(), "false".to_string());
-            __m.insert("null".to_string(), "none".to_string());
-            __m.insert("and".to_string(), "&&".to_string());
-            __m.insert("or".to_string(), "||".to_string());
-            __m.insert("not".to_string(), "!".to_string());
-            __m.insert("div".to_string(), "/".to_string());
+            __m.insert("true", "true".to_string());
+            __m.insert("false", "false".to_string());
+            __m.insert("null", "none".to_string());
+            __m.insert("and", "&&".to_string());
+            __m.insert("or", "||".to_string());
+            __m.insert("not", "!".to_string());
+            __m.insert("div", "/".to_string());
             Rc::new(__m)
         };
     }
@@ -31,15 +31,15 @@ pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list".to_string(), "List<{0}>".to_string());
-            __m.insert("set".to_string(), "Set<{0}>".to_string());
-            __m.insert("non_empty_list".to_string(), "NonEmptyList<{0}>".to_string());
-            __m.insert("non_empty_set".to_string(), "NonEmptySet<{0}>".to_string());
-            __m.insert("optional".to_string(), "{0}?".to_string());
-            __m.insert("map".to_string(), "Map<{0}, {1}>".to_string());
-            __m.insert("free_monoid".to_string(), "List<{0}>".to_string());
-            __m.insert("partial_function".to_string(), "Map<{0}, {1}>".to_string());
-            __m.insert("boolean_algebra".to_string(), "Bool".to_string());
+            __m.insert("list", "List<{0}>".to_string());
+            __m.insert("set", "Set<{0}>".to_string());
+            __m.insert("non_empty_list", "NonEmptyList<{0}>".to_string());
+            __m.insert("non_empty_set", "NonEmptySet<{0}>".to_string());
+            __m.insert("optional", "{0}?".to_string());
+            __m.insert("map", "Map<{0}, {1}>".to_string());
+            __m.insert("free_monoid", "List<{0}>".to_string());
+            __m.insert("partial_function", "Map<{0}, {1}>".to_string());
+            __m.insert("boolean_algebra", "Bool".to_string());
             Rc::new(__m)
         };
     }

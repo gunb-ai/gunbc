@@ -11,11 +11,14 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type Product = Product;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Product(pub std::marker::PhantomData<()>);
 
-pub type Coproduct = Coproduct;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Coproduct(pub std::marker::PhantomData<()>);
 
-pub type Phantom = Phantom;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Phantom(pub std::marker::PhantomData<()>);
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,

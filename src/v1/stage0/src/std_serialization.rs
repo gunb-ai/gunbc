@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type DeclarationRef = Rc<FreeMonoid<Nat>>;
+pub type DeclarationRef = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -21,16 +21,9 @@ pub enum VariantNaming {
     AsAuthored,
     SnakeCase,
     ScreamingSnakeCase,
-    StripPrefixAndSnakeCase {
-        prefix: Rc<FreeMonoid<Nat>>,
-    },
-    StripSuffixAndSnakeCase {
-        suffix: Rc<FreeMonoid<Nat>>,
-    },
-    StripPrefixSuffixAndSnakeCase {
-        prefix: Rc<FreeMonoid<Nat>>,
-        suffix: Rc<FreeMonoid<Nat>>,
-    },
+    StripPrefixAndSnakeCase { prefix: String },
+    StripSuffixAndSnakeCase { suffix: String },
+    StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -40,7 +33,7 @@ pub enum VariantEncoding {
         naming: Rc<VariantNaming>,
     },
     InternallyTaggedObject {
-        tag_field: Rc<FreeMonoid<Nat>>,
+        tag_field: String,
         naming: Rc<VariantNaming>,
     },
     UntaggedVariant,
