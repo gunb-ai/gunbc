@@ -92,7 +92,12 @@ data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored
 // Present-but-broken wire contract: CoproductWireContract row missing coproduct field.
 data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming = ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
-// Two contracts in one module — singleton fallback cannot guess; each disj must resolve its own row.
+// TWO-CONTRACT discriminating source (zl54 §5 gate): each coproduct has its OWN contract + naming.
+data cwc_src_two_contract: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ntype Status = Open | Closed | Merged | Draft | Locked\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: SnakeCase } }\n"
+
+data cwc_src_status_only: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype Status = Open | Closed | Merged | Draft | Locked\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: SnakeCase } }\n"
+
+// Legacy two-contract serde slice (AsAuthored on Status).
 data cwc_src_two_contract_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ntype Status = Open | Closed\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: AsAuthored } }\n"
 
 data cwc_expected_sum_regression_text: String = "X | Y"

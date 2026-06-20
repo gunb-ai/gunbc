@@ -206,6 +206,8 @@ fn tepe_sole_field_init_value_optional(root: Node) -> Optional<Node> {
   }
 }
 
+// 🟡 scaffold — dissolve-on: replace spelling-dispatch with enrichment-protocol field
+// rows keyed by ^coproduct/^encoding/^naming atoms (no runtime string compare arms).
 fn tepe_field_init_value_structural_fallback(
   root: Node,
   field: Symbol
@@ -420,7 +422,11 @@ fn tepe_named_field_target(root: Node, field: Symbol) -> Optional<Node> {
       match tepe_unwrap_to_conj_optional(node: root) {
         Present { value: conj } =>
           match find_named_child(root: conj, name: field) {
-            Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+            Accepted { value: child, diagnostics: _ } =>
+              match tepe_field_init_parts_optional(node: child) {
+                Present { value: parts } => optional_present(value: parts.value)
+                Absent => optional_present(value: child)
+              }
             Rejected { diagnostics: _ } => optional_absent()
           }
         Absent => optional_absent()
