@@ -96,8 +96,6 @@ import v2.std.grammar {
   grammar_named_edge,
   grammar_to_node
 }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
 
 
 // PROV A-pivot wave-2: per-compile occurrence mint + off-tree SpanIndex; global coherence via
@@ -1184,41 +1182,6 @@ fn parse_production_tree(
       Rejected { diagnostics: r }
   }
 }
-
-
-// Gap-4 locate probe — first unconsumed token when parse_expr accepts with trailing tokens.
-// Read-only observability over the existing parse walk; does not change parse_module semantics.
-fn parse_production_first_remain(
-  tokens: List<Token>,
-  validated: ValidatedGrammarRoot,
-  production_name: Symbol
-) -> Optional<Token> {
-  let root = validated.root
-  match grammar_lookup_production(root: root, name: production_name) {
-    Holds { value: production } =>
-      let prov = parse_prov_initial()
-      let table = parse_table_for_production(validated: validated, all_tokens: tokens)
-      match parse_expr(
-        expr: production.expression,
-        tokens: tokens,
-        all_tokens: tokens,
-        root: root,
-        table: table,
-        prov: prov
-      ) {
-        ParseExprAccepted { remaining: remaining, captured: _, diagnostics: _, prov: _ } =>
-          if is_empty(xs: remaining) {
-            Absent
-          } else {
-            list_at_optional(xs: remaining, index: 0)
-          }
-        ParseExprRejected { diagnostics: _ } => Absent
-      }
-    Violates { diagnostic: _ } => Absent
-  }
-}
-
-
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: ^parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
@@ -1254,19 +1217,5 @@ fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
       Accepted { value: artifact.tree, diagnostics: d }
     Rejected { diagnostics: r } =>
       Rejected { diagnostics: r }
-  }
-}
-
-
-// Gap-4 same-module harness (dissolves when v2.compiler.parse import/export restores post-fix).
-fn gap4_rejects_parse_g0_tokens_remain(src: String) -> Bool {
-  let lm = dag_language_model_wave1()
-  match tokenize(text: src, file: ^gap4_probe, rules: lm.lex) {
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: d } => d.head.reason == ^parse_g0_tokens_remain
-        Accepted { value: _, diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
   }
 }

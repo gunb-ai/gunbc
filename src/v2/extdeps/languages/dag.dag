@@ -1261,7 +1261,8 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_pattern),
         grammar_formal_terminal(identity: ^dag_token_fat_arrow),
-        grammar_formal_nonterminal_occurrence(identity: ^dag_production_stmt_seq)
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_stmt),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_stmt_seq_repeat_suffix)
       ]
     ),
     grammar_formal_production(
@@ -2405,6 +2406,13 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   )
 }
 
+fn dag_grammar_match_arm_stmt_body_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_stmt),
+    right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
+  )
+}
+
 fn dag_grammar_match_arm_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_pattern),
@@ -2412,7 +2420,7 @@ fn dag_grammar_match_arm_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_expr),
-        right: dag_grammar_nonterminal(production: ^dag_production_stmt_seq)
+        right: dag_grammar_match_arm_stmt_body_expr()
       )
     )
   )

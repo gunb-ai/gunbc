@@ -10,11 +10,7 @@ module v2.test.self_host.compiler_closure_emit_from_ingest
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse {
-  grammar_validate_for_parse,
-  parse_module,
-  parse_production_first_remain,
-}
+import v2.compiler.parse { parse_module }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.self_host.closure_witness_layer_roots {
   self_host_closure_witness_layer_roots
@@ -23,15 +19,12 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { Absent, Optional, Present }
+import v2.std.collection { Absent, Optional }
 import v2.std.diagnostic {
   Accepted,
   Locus,
   Rejected,
-  port_locus,
 }
-import v2.std.compilers.lexing { Token, TokenStream }
-import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
 import v2.test.workflow.host_source_root_ingest_manifest {
@@ -54,69 +47,20 @@ type Gap4IngestProbeState
     }
 
 
-fn gap4_optional_symbol(value: Symbol) -> Optional<Symbol> {
-  Present { value: value }
-}
-
-
-fn gap4_optional_string(value: String) -> Optional<String> {
-  Present { value: value }
-}
-
-
-fn gap4_optional_int(value: Int) -> Optional<Int> {
-  Present { value: value }
-}
-
-
-fn gap4_parse_first_remain_token(ts: TokenStream, grammar: ParseGrammar) -> Optional<Token> {
-  let at = port_locus(port: ^parse_stage_locus_port)
-  match grammar {
-    VoidGrammar => Absent
-    ModeledGrammar { root: root } =>
-      match grammar_validate_for_parse(root: root, at: at) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: validated, diagnostics: _ } =>
-          parse_production_first_remain(
-            tokens: ts.tokens,
-            validated: validated,
-            production_name: root.start
-          )
-      }
-  }
-}
-
-
 fn gap4_probe_found_from_parse_reject(
   path: String,
   reason: Symbol,
-  at: Locus,
-  ts: TokenStream,
-  grammar: ParseGrammar
+  at: Locus
 ) -> Gap4IngestProbeState {
-  match gap4_parse_first_remain_token(ts: ts, grammar: grammar) {
-    Present { value: tok } =>
-      Gap4IngestProbeFound {
-        path: path,
-        reason: reason,
-        stage: ^parse,
-        at: at,
-        remain_class: gap4_optional_symbol(value: tok.class),
-        remain_lexeme: gap4_optional_string(value: tok.lexeme),
-        remain_start: gap4_optional_int(value: tok.start),
-        remain_end: gap4_optional_int(value: tok.end),
-      }
-    Absent =>
-      Gap4IngestProbeFound {
-        path: path,
-        reason: reason,
-        stage: ^parse,
-        at: at,
-        remain_class: Absent,
-        remain_lexeme: Absent,
-        remain_start: Absent,
-        remain_end: Absent,
-      }
+  Gap4IngestProbeFound {
+    path: path,
+    reason: reason,
+    stage: ^parse,
+    at: at,
+    remain_class: Absent,
+    remain_lexeme: Absent,
+    remain_start: Absent,
+    remain_end: Absent,
   }
 }
 
@@ -149,9 +93,7 @@ fn gap4_ingest_probe_step(
               gap4_probe_found_from_parse_reject(
                 path: read.artifact.file_path,
                 reason: d.head.reason,
-                at: d.head.at,
-                ts: ts,
-                grammar: lm.grammar
+                at: d.head.at
               )
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize(parse_tree: artifact.tree) {
