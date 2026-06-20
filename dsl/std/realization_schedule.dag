@@ -221,14 +221,18 @@ fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<
   } else if length(xs: left) == 0 {
     true
   } else {
-    match (list_head(xs: left), list_head(xs: right)) {
-      (HeadFound { value: la }, HeadFound { value: ra }) =>
-        if !schedule_witness_entry_eq(a: la, b: ra) {
-          false
-        } else {
-          schedule_witness_entry_list_eq(left: skip(xs: left, n: 1), right: skip(xs: right, n: 1))
+    match list_head(xs: left) {
+      HeadFound { value: la } =>
+        match list_head(xs: right) {
+          HeadFound { value: ra } =>
+            if !schedule_witness_entry_eq(a: la, b: ra) {
+              false
+            } else {
+              schedule_witness_entry_list_eq(left: skip(xs: left, n: 1), right: skip(xs: right, n: 1))
+            }
+          HeadAbsent => false
         }
-      _ => false
+      HeadAbsent => false
     }
   }
 }
@@ -256,14 +260,18 @@ fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
   } else if length(xs: left) == 0 {
     true
   } else {
-    match (list_head(xs: left), list_head(xs: right)) {
-      (HeadFound { value: la }, HeadFound { value: ra }) =>
-        if !runnable_eq(left: la, right: ra) {
-          false
-        } else {
-          runnable_batch_eq(left: skip(xs: left, n: 1), right: skip(xs: right, n: 1))
+    match list_head(xs: left) {
+      HeadFound { value: la } =>
+        match list_head(xs: right) {
+          HeadFound { value: ra } =>
+            if !runnable_eq(left: la, right: ra) {
+              false
+            } else {
+              runnable_batch_eq(left: skip(xs: left, n: 1), right: skip(xs: right, n: 1))
+            }
+          HeadAbsent => false
         }
-      _ => false
+      HeadAbsent => false
     }
   }
 }
@@ -274,14 +282,18 @@ fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
   } else if length(xs: left) == 0 {
     true
   } else {
-    match (list_head(xs: left), list_head(xs: right)) {
-      (HeadFound { value: la }, HeadFound { value: ra }) =>
-        if !runnable_batch_eq(left: la, right: ra) {
-          false
-        } else {
-          schedule_eq(left: skip(xs: left, n: 1), right: skip(xs: right, n: 1))
+    match list_head(xs: left) {
+      HeadFound { value: la } =>
+        match list_head(xs: right) {
+          HeadFound { value: ra } =>
+            if !runnable_batch_eq(left: la, right: ra) {
+              false
+            } else {
+              schedule_eq(left: skip(xs: left, n: 1), right: skip(xs: right, n: 1))
+            }
+          HeadAbsent => false
         }
-      _ => false
+      HeadAbsent => false
     }
   }
 }

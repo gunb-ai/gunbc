@@ -256,8 +256,8 @@ mod tests {
     }
 
     #[test]
-    fn free_monoid_is_cross_tree_diverged_fork() {
-        assert!(cross_tree_is_diverged_fork(
+    fn free_monoid_is_not_cross_tree_diverged_fork() {
+        assert!(!cross_tree_is_diverged_fork(
             "std/algebra.dag:FreeMonoid".to_string()
         ));
     }

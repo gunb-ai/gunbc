@@ -20,5 +20,6 @@ import std.algebra {
   list_append,
   list_head,
   list_head_eq,
+  list_head_value,
   skip,
 }

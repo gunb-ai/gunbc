@@ -21,7 +21,7 @@
 module extdeps.version.pep440
 
 import extdeps.version { VersionConstraint, VersionIdentity }
-import std.algebra { Equal, Greater, Less, Ordering }
+import std.algebra { Equal, Greater, Less, Ordering, length, list_head, list_head_value, skip }
 import std.integer { NonNegativeInt }
 import std.list { List }
 import std.types { NonEmptyStr }
@@ -134,25 +134,28 @@ fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSeg
 }
 
 fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNegativeInt>) -> Ordering {
-  if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
-  else if a_rest.length() == 0 {
+  if length(xs: a_rest) == 0 && length(xs: b_rest) == 0 { Equal }
+  else if length(xs: a_rest) == 0 {
     // PEP 440: shorter release tuples are zero-padded before comparison.
-    if b_rest.first() == 0 {
-      pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
+    if list_head_value(xs: b_rest) == 0 {
+      pep440_compare_release_rest(a_rest: a_rest, b_rest: skip(xs: b_rest, n: 1))
     } else {
       Less
     }
-  } else if b_rest.length() == 0 {
-    if a_rest.first() == 0 {
-      pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
+  } else if length(xs: b_rest) == 0 {
+    if list_head_value(xs: a_rest) == 0 {
+      pep440_compare_release_rest(a_rest: skip(xs: a_rest, n: 1), b_rest: b_rest)
     } else {
       Greater
     }
   } else {
-    match pep440_compare_non_negative_int(a: a_rest.first(), b: b_rest.first()) {
+    match pep440_compare_non_negative_int(
+      a: list_head_value(xs: a_rest),
+      b: list_head_value(xs: b_rest)
+    ) {
       Equal => pep440_compare_release_rest(
-        a_rest: a_rest.skip(n: 1),
-        b_rest: b_rest.skip(n: 1)
+        a_rest: skip(xs: a_rest, n: 1),
+        b_rest: skip(xs: b_rest, n: 1)
       )
       other => other
     }
@@ -276,7 +279,7 @@ fn pep440_pre_release_label(pre: Pep440PreRelease) -> String {
 
 fn pep440_release_segments_label(segments: Pep440ReleaseSegments) -> String {
   let head = "{segments.first}"
-  if segments.rest.length() == 0 {
+  if length(xs: segments.rest) == 0 {
     head
   } else {
     concat(head, concat(".", segments.rest |> map(n => "{n}") |> join(separator: ".")))
@@ -319,7 +322,7 @@ fn pep440_local_version_label(local: List<Pep440LocalSegment>) -> String {
 
 fn pep440_version_label(v: Pep440Version) -> String {
   let public_label = pep440_public_version_label(v: v.public)
-  if v.local.length() == 0 {
+  if length(xs: v.local) == 0 {
     public_label
   } else {
     concat(public_label, concat("+", pep440_local_version_label(local: v.local)))

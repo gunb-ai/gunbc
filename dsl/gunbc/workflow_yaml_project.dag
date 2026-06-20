@@ -10,6 +10,7 @@ import extdeps.formats.yaml {
   yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
   empty_yaml_values
 }
+import std.algebra { length }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, ActionRef,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
@@ -69,7 +70,7 @@ fn pr_activities_flow(types: List<PullRequestActivity>) -> YamlValue {
 }
 
 fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> YamlKeyValue {
-  let entries = if paths.length() == 0 {
+  let entries = if length(xs: paths) == 0 {
     [kv(key: "branches", value: string_list_flow(items: branches))]
   } else {
     concat(
@@ -177,14 +178,14 @@ fn yaml_key_values(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
 fn optional_kv_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "with", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if length(xs: es) == 0 { [] } else { [kv(key: "with", value: yaml_mapping(entries: es))] }
   }
 }
 
 fn optional_env_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if length(xs: es) == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
   }
 }
 
@@ -318,7 +319,7 @@ fn jobs_yaml(jobs: List<Job>) -> YamlValue {
 fn optional_env_top(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if length(xs: es) == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
   }
 }
 

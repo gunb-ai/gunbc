@@ -6,6 +6,7 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
 }
+import std.algebra { list_head_value, skip }
 
 type Gate
   = RustMonolithGate
@@ -170,8 +171,8 @@ fn join_slash(parts: List<String>) -> String {
 
 fn git_fetch_script(policy: DiffPolicy) -> String {
   let parts = split(s: policy.base, delimiter: "/")
-  let remote = parts.first()
-  let ref_name = join_slash(parts: parts.skip(n: 1))
+  let remote = list_head_value(xs: parts)
+  let ref_name = join_slash(parts: skip(xs: parts, n: 1))
   concat(
     concat(concat("git fetch --no-tags ", remote), " "),
     concat(ref_name, " 2>/dev/null || true")

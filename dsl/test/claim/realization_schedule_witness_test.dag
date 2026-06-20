@@ -18,6 +18,7 @@ import std.realization_schedule {
   cost_account_predicted_zero,
 }
 import std.types { ContentHash }
+import std.algebra { HeadAbsent, HeadFound, list_head, list_head_value, skip }
 
 data synthetic_target: ContentHash = "realization-schedule-witness-v1"
 data compile_gate_fn: String = "dsl_compile_clean_gate_passes"
@@ -50,8 +51,8 @@ fn synthetic_correct_plan() -> RealizationPlan {
 // Discriminating RED: swap batch-0 and batch-1 — compile gate no longer first.
 fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Runnable>> {
   [
-    correct.skip(n: 1).first(),
-    correct.first()
+    list_head_value(xs: skip(xs: correct, n: 1)),
+    list_head_value(xs: correct)
   ]
 }
 

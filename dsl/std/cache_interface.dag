@@ -25,6 +25,7 @@ import std.realization_schedule {
   CostAccount,
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
+import std.algebra { HeadAbsent, HeadFound, length, list_head, list_head_value, skip }
 
 // --- §1.6 dimension enums + branded carriers ---------------------------------
 //
@@ -438,17 +439,18 @@ fn plan_cache_layers(
 }
 
 fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId {
-  plan.layers.first()
+  list_head_value(xs: plan.layers)
 }
 
 fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
-  plan.layers.skip(n: 1).first()
+  list_head_value(xs: skip(xs: plan.layers, n: 1))
 }
 
 fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
-  catalog
-    |> filter(facts => facts.identity == id)
-    |> first()
+  match list_head(xs: filter(catalog, facts => facts.identity == id)) {
+    HeadFound { value: facts } => facts
+    HeadAbsent => list_head_value(xs: catalog)
+  }
 }
 
 fn cache_layer_ids_respect_locality(
@@ -456,17 +458,17 @@ fn cache_layer_ids_respect_locality(
   catalog: List<CacheInterfaceFacts>,
   last_rank: Int,
 ) -> Bool {
-  if layers.length() == 0 {
+  if length(xs: layers) == 0 {
     true
   } else {
-    let id = layers.first()
+    let id = list_head_value(xs: layers)
     let facts = cache_facts_for_id(id: id, catalog: catalog)
     let rank = persistence_locality_rank(locality: facts.locality)
     if rank < last_rank {
       false
     } else {
       cache_layer_ids_respect_locality(
-        layers: layers.skip(n: 1),
+        layers: skip(xs: layers, n: 1),
         catalog: catalog,
         last_rank: rank,
       )

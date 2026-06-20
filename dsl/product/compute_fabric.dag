@@ -15,6 +15,7 @@ module product.compute_fabric
 
 import std.nat { Nat }
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime, List }
+import std.algebra { HeadAbsent, HeadFound, length, list_head, list_head_value, skip }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.nvidia { nvidia }
@@ -374,9 +375,9 @@ fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: 
 }
 
 fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
-  match host.processors.first() {
-    Absent => none
-    Present { value: kind } =>
+  match list_head(xs: host.processors) {
+    HeadAbsent => none
+    HeadFound { value: kind } =>
       match kind {
         CpuProcessor { cpu: c } => Present { value: c }
         GpuProcessor { gpu: _ } => none
@@ -1128,10 +1129,10 @@ fn witness_resource_offer_rejects_insufficient_memory() -> Bool {
 fn witness_resource_offer_admits_feasible_demand() -> Bool {
   match satisfies(offer: example_resource_offer, demand: example_feasible_resource_work_demand) {
     Eligible { witness: w } =>
-      w.satisfied.length() == 3
-        && w.satisfied.first() == DemandIsolation
-        && w.satisfied.skip(n: 1).first() == DemandCpu
-        && w.satisfied.skip(n: 2).first() == DemandMemory
+      length(xs: w.satisfied) == 3
+        && list_head_value(xs: w.satisfied) == DemandIsolation
+        && list_head_value(xs: skip(xs: w.satisfied, n: 1)) == DemandCpu
+        && list_head_value(xs: skip(xs: w.satisfied, n: 2)) == DemandMemory
     Rejected { reason: _ } => false
   }
 }

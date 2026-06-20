@@ -431,10 +431,25 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
 }
 
 fn list_head_eq<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> Bool {
-  match (list_head(xs: left), list_head(xs: right)) {
-    (HeadAbsent, HeadAbsent) => true
-    (HeadFound { value: a }, HeadFound { value: b }) => a == b
-    _ => false
+  match list_head(xs: left) {
+    HeadAbsent =>
+      match list_head(xs: right) {
+        HeadAbsent => true
+        HeadFound { value: _ } => false
+      }
+    HeadFound { value: a } =>
+      match list_head(xs: right) {
+        HeadAbsent => false
+        HeadFound { value: b } => a == b
+      }
+  }
+}
+
+// Precondition: xs is non-empty (witness-guarded call sites only).
+fn list_head_value<T>(xs: FreeMonoid<T>) -> T {
+  match list_head(xs: xs) {
+    HeadFound { value: v } => v
+    HeadAbsent => list_head_value(xs: xs)
   }
 }
 

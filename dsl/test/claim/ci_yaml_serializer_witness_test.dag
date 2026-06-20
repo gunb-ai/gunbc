@@ -13,6 +13,25 @@ import gunbc.workflow_yaml_project { project_workflow_to_yaml, steps_yaml, jobs_
 import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
+import std.algebra { HeadAbsent, HeadFound, length, list_head, skip }
+import extdeps.github.actions { Step }
+
+fn ci_workflow_first_job_steps() -> List<Step> {
+  match list_head(xs: ci_workflow.jobs) {
+    HeadFound { value: job } => job.steps
+    HeadAbsent => []
+  }
+}
+
+fn ci_workflow_first_step() -> Step {
+  match list_head(xs: ci_workflow_first_job_steps()) {
+    HeadFound { value: step } => step
+    HeadAbsent => match list_head(xs: ci_workflow_first_job_steps()) {
+      HeadFound { value: step } => step
+      HeadAbsent => ci_workflow_first_step()
+    }
+  }
+}
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -26,27 +45,26 @@ fn witness_rustflags_empty_string_quoted() -> Bool {
 }
 
 fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
-  let job = ci_workflow.jobs.first()
-  match steps_yaml(steps: job.steps) {
-    YamlSequence { elements: els } => els.length() == 6
+  match steps_yaml(steps: ci_workflow_first_job_steps()) {
+    YamlSequence { elements: els } => length(xs: els) == 6
     _ => false
   }
 }
 
 fn witness_step_sequence_only_serializes() -> Bool {
-  let step = step_yaml(step: ci_workflow.jobs.first().steps.first())
+  let step = step_yaml(step: ci_workflow_first_step())
   serialize_yaml(v: yaml_sequence(elements: concat(empty_yaml_values, [step]))) != ""
 }
 
 fn witness_step_mapping_serializes() -> Bool {
-  serialize_yaml(v: step_yaml(step: ci_workflow.jobs.first().steps.first())) != ""
+  serialize_yaml(v: step_yaml(step: ci_workflow_first_step())) != ""
 }
 
 fn witness_first_step_is_mapping() -> Bool {
-  match steps_yaml(steps: ci_workflow.jobs.first().steps) {
+  match steps_yaml(steps: ci_workflow_first_job_steps()) {
     YamlSequence { elements: els } =>
-      match els.first() {
-        YamlMapping { entries: _ } => true
+      match list_head(xs: els) {
+        HeadFound { value: YamlMapping { entries: _ } } => true
         _ => false
       }
     _ => false
@@ -54,7 +72,7 @@ fn witness_first_step_is_mapping() -> Bool {
 }
 
 fn witness_one_step_serializes() -> Bool {
-  let first = ci_workflow.jobs.first().steps.first()
+  let first = ci_workflow_first_step()
   serialize_yaml(v: yaml_mapping(entries: [
     kv(key: "steps", value: yaml_sequence(elements: concat(empty_yaml_values, [step_yaml(step: first)])))
   ])) != ""
@@ -62,7 +80,7 @@ fn witness_one_step_serializes() -> Bool {
 
 fn witness_steps_wrapped_serializes() -> Bool {
   serialize_yaml(v: yaml_mapping(entries: [
-    kv(key: "steps", value: steps_yaml(steps: ci_workflow.jobs.first().steps))
+    kv(key: "steps", value: steps_yaml(steps: ci_workflow_first_job_steps()))
   ])) != ""
 }
 

@@ -26,6 +26,7 @@ import extdeps.cache.cache {
   cargo_target_dir_projected,
 }
 import std.cache_interface { NativeInternalEncoding }
+import std.algebra { length }
 import extdeps.cache.github_actions { gha_actions_cache_id }
 import extdeps.cache.rustup { rustup_toolchain_store_id }
 import extdeps.cache.sccache { sccache_local_id }
@@ -116,7 +117,7 @@ fn witness_empty_plan_means_recompute_only() -> Bool {
     catalog: cache_catalog_rows,
     default_order: cache_layer_default_order,
   )
-  plan.layers.length() == 0
+  length(xs: plan.layers) == 0
 }
 
 fn witness_vendor_only_key_inputs_omission_is_explicit() -> Bool {

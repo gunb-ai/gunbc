@@ -13,7 +13,7 @@
 module extdeps.version.semver
 
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
-import std.algebra { Ordering, Less, Equal, Greater }
+import std.algebra { Ordering, Less, Equal, Greater, length, list_head, list_head_value, skip }
 import std.integer { NonNegativeInt }
 import std.list { List }
 import std.nat { nat_compare }
@@ -60,16 +60,16 @@ fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Orderi
 }
 
 fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
-  if a.length() == 0 && b.length() == 0 { Equal }
+  if length(xs: a) == 0 && length(xs: b) == 0 { Equal }
   // semver.org §11.4.4: when all preceding identifiers are equal, the longer set wins.
-  else if a.length() == 0 { Less }
-  else if b.length() == 0 { Greater }
+  else if length(xs: a) == 0 { Less }
+  else if length(xs: b) == 0 { Greater }
   else {
-    match semver_compare_identifier(a: a.first(), b: b.first()) {
+    match semver_compare_identifier(a: list_head_value(xs: a), b: list_head_value(xs: b)) {
       Equal =>
         semver_compare_identifiers(
-          a: a.skip(n: 1),
-          b: b.skip(n: 1)
+          a: skip(xs: a, n: 1),
+          b: skip(xs: b, n: 1)
         )
       other => other
     }
@@ -77,9 +77,9 @@ fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifie
 }
 
 fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
-  if a.length() == 0 && b.length() == 0 { Equal }
-  else if a.length() == 0 { Greater }
-  else if b.length() == 0 { Less }
+  if length(xs: a) == 0 && length(xs: b) == 0 { Equal }
+  else if length(xs: a) == 0 { Greater }
+  else if length(xs: b) == 0 { Less }
   else { semver_compare_identifiers(a: a, b: b) }
 }
 
@@ -114,12 +114,12 @@ fn semver_version_label(v: SemVerVersion) -> String {
     to_string(v.major),
     concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
   )
-  let with_pre = if v.pre_release.length() == 0 {
+  let with_pre = if length(xs: v.pre_release) == 0 {
     core
   } else {
     concat(core, concat("-", semver_identifiers_label(ids: v.pre_release)))
   }
-  if v.build.length() == 0 {
+  if length(xs: v.build) == 0 {
     with_pre
   } else {
     concat(with_pre, concat("+", semver_identifiers_label(ids: v.build)))
