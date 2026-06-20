@@ -1,39 +1,30 @@
-// extdeps/diagnostic/redfish.dag — DMTF Redfish REST BMC sensor/state read.
+// extdeps/bmc/http.dag — DMTF Redfish REST transport (curl argv bindings).
+//
 // Anchor: https://www.dmtf.org/standards/redfish
-
-module extdeps.diagnostic.redfish
-
-import std.types { NonEmptyStr }
-
-// Service name is 2-segment (`redfish.Http`) so it is actually callable from a fn —
-// the prior `diagnostic.redfish.Http` (3-segment) could not be referenced as a call path
-// (and had zero callers; it was spec-without-execution).
+//
+// Interface shapes and grounding projections live in extdeps/bmc/{types,redfish}.dag
+// (git.dag pattern: types + projections co-located; transport in this file).
+//
+// Service name is 2-segment (`redfish.Http`) so it is callable from a fn — a 3-segment
+// `diagnostic.redfish.Http` could not be referenced as a call path.
 //
 // 🟡 dissolved — feature:diagnostic-redfish-mock-response — scaffold:hand-authored mock_response —
 // dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
+// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) governs
 // WHICH redfish.Http ops are hermetically realizable, and the fixture store owns the payloads (§3).
 // forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
-service redfish.Http {
-  operation GetSensors {
-    input { base_url: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "-sfS", "{base_url}/redfish/v1/Chassis/Self/Sensors"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish sensors GET failed"
-    }
-  }
 
+module extdeps.bmc.http
+
+import std.types { NonEmptyStr }
+
+service redfish.Http {
   // Authenticated read of the system resource (power state, manufacturer, etc.) — the
   // minimal "first contact" that proves the BMC is reachable AND the credentials work.
   // Read-only / safe. `-k` accepts the BMC's self-signed cert (standard for OOB mgmt).
   // NOTE: the password rides the curl argv here, acceptable ONLY because first contact
-  // uses the PUBLISHED factory default; a rotated Secret must move to --netrc/-K file
-  // (so it never lands in process args) when the rotation phase lands.
+  // uses the PUBLISHED factory default; a rotated Secret must use GetSystemWithNetrc
+  // (password never on argv) once rotation has happened.
   operation GetSystem {
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }

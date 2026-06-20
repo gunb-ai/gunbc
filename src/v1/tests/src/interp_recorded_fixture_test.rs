@@ -1044,7 +1044,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() {
     ]);
     assert!(
         record.status.success(),
-        "redfish.Http.GetSensors record capture must pass (wet); stderr={}",
+        "redfish.Http.GetChassisSensors record capture must pass (wet); stderr={}",
         String::from_utf8_lossy(&record.stderr)
     );
 
@@ -1064,7 +1064,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() {
     let _ = fs::remove_dir_all(&store_dir);
     assert!(
         hermetic.status.success(),
-        "hermetic redfish.Http.GetSensors replay must pass from recorded fixtures; stderr={}",
+        "hermetic redfish.Http.GetChassisSensors replay must pass from recorded fixtures; stderr={}",
         String::from_utf8_lossy(&hermetic.stderr)
     );
 }
@@ -1086,7 +1086,7 @@ fn diagnostic_redfish_hermetic_without_fixture_store_fails_closed() {
     ]);
     assert!(
         !hermetic.status.success(),
-        "redfish.Http.GetSensors in Hermetic without fixture store must fail closed"
+        "redfish.Http.GetChassisSensors in Hermetic without fixture store must fail closed"
     );
     let combined = format!(
         "{}{}",

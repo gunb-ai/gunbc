@@ -2215,18 +2215,6 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
     )
 }
 
-pub fn successful_parse_modules(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for p in parse_results.iter().cloned() {
-            if p.error.clone() == None {
-                __result.push(p.module.clone().clone().unwrap());
-            }
-        }
-        __result
-    })
-}
-
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
         let prepared = Rc::new({
@@ -2282,17 +2270,25 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parse_results = parsed.parse_results.clone();
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
-        let modules = successful_parse_modules(parse_results.clone());
-        if sources.is_empty() {
-            let source_indices = v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>();
-            let graph = resolve_modules(Rc::new(vec![]), source_indices.clone());
+        let has_parse_errors = parse_results
+            .iter()
+            .cloned()
+            .any(|p: Rc<ParseResult>| p.error.clone() != None);
+        if has_parse_errors {
             Rc::new(FrontendResult {
-                graph: Some(graph.clone()),
-                diagnostics: Rc::new(vec![]),
-                newline_indices: Rc::new(vec![]),
+                graph: None,
+                diagnostics: parse_diagnostics,
+                newline_indices: newline_indices.clone(),
                 intern_table: parsed.intern_table.clone(),
             })
-        } else if (modules.len() as i64) > 0 {
+        } else {
+            let modules = Rc::new({
+                let mut __result = Vec::new();
+                for p in parse_results.iter().cloned() {
+                    __result.push(p.module.clone().clone().unwrap());
+                }
+                __result
+            });
             let source_indices = newline_indices.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
@@ -2303,13 +2299,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             Rc::new(FrontendResult {
                 graph: Some(graph.clone()),
                 diagnostics: v1_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
-                newline_indices: newline_indices.clone(),
-                intern_table: parsed.intern_table.clone(),
-            })
-        } else {
-            Rc::new(FrontendResult {
-                graph: None,
-                diagnostics: parse_diagnostics,
                 newline_indices: newline_indices.clone(),
                 intern_table: parsed.intern_table.clone(),
             })

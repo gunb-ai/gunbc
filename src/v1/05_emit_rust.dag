@@ -266,6 +266,25 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   }
 }
 
+// SEED host-numeric carrier: in the v1-compiler seed corpus (NOT the v2 faithful
+// target), the algebraic numeric tower (Nat = CommutativeSemiring<Magnitude>,
+// Int = AbelianGroup<GroupCompletion<Nat>>) maps to the host primitive i64 -- the
+// numeric analogue of String -> host String in the seed branch. Gated by the SAME
+// rust_corpus_includes_v1_compiler authority as the text carrier (single lever, no
+// parallel mechanism). The v2-target faithful numeric representation is escalated to
+// operator + non-blocking, so the faithful branch leaves the algebraic alias intact.
+// The seed numeric ops (nat_compare/nat_max/nat_min) use </>/.clone(), all native to
+// i64, so the alias-RHS override alone clears them and the Nat-as-number consumers
+// (E0277/E0369). DISSOLUTION: remove when the numeric tower gains a faithful
+// host-realization seam mirroring the text carrier (emit_rust_host_to_dag_string_via_seam).
+fn rust_seed_host_numeric_alias(name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  if (name == "Nat" || name == "Int") && rust_corpus_includes_v1_compiler(source_indices: source_indices) {
+    Present { value: "i64" }
+  } else {
+    none
+  }
+}
+
 fn rust_named_type_base(name: String, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
@@ -2839,19 +2858,24 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
-      concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
-        n: resolved_type(n: item),
-        generic_param_names: [],
-        shared_types: shared_types,
-        source_indices: env.source_indices,
-        scope: scope,
-        imports: imports,
-        registry: registry,
-        module_name: module_name,
-        export_sets: export_sets,
-        typed_modules: typed_modules,
-        module_index: module_index,
-        variant_to_enum: emit_info.variant_to_enum), ";")
+      match rust_seed_host_numeric_alias(name: item_text, source_indices: env.source_indices) {
+        Present { value: host } =>
+          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
+        Absent =>
+          concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_alias_rhs_type(
+            n: resolved_type(n: item),
+            generic_param_names: [],
+            shared_types: shared_types,
+            source_indices: env.source_indices,
+            scope: scope,
+            imports: imports,
+            registry: registry,
+            module_name: module_name,
+            export_sets: export_sets,
+            typed_modules: typed_modules,
+            module_index: module_index,
+            variant_to_enum: emit_info.variant_to_enum), ";")
+      }
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
