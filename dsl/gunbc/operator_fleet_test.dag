@@ -1,0 +1,53 @@
+// gunbc/operator_fleet_test.dag — witnesses that the fleet authority is real-grounded and
+// feeds the compute-fabric allocator. Auto-enrolled in the CI floor by `*_test.dag` naming.
+
+module gunbc.operator_fleet_test
+
+import std.types { Bool }
+import std.measure { hardware_thread_count_value, byte_size }
+import gunbc.operator_fleet { srv1_placement_supply }
+import product.compute_fabric {
+  admit,
+  ComputeRequest,
+  Medium,
+  Small,
+  host_memory_scaffold_session_spawn_reservation,
+}
+
+// REAL grounding: srv1's BMC-grounded placement reports 128 hardware threads (the live Altra
+// M128), not the synthetic 64-thread stub the old single fleet offer used.
+test fn srv1_placement_threads_grounded() -> Bool {
+  let row = srv1_placement_supply()
+  hardware_thread_count_value(t: row.hardware_threads) == 128
+}
+
+// The per-host offer feeds the allocator: a Medium fits an empty srv1 (128 GiB − reserve).
+test fn srv1_admits_medium_on_empty_host() -> Bool {
+  match admit(
+    host: srv1_placement_supply(),
+    provider: "gunbc-operator-srv1",
+    live_receipts: [],
+    request: ComputeRequest { class: Medium },
+    reserve_bytes: host_memory_scaffold_session_spawn_reservation,
+    acquired_at: "t0",
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// Discriminating: grantable is computed from REAL RAM — a reserve larger than the host's 128 GiB
+// drives grantable to the floor, so even a Small is refused (the §5 admit invariant in action).
+test fn srv1_refuses_when_reserve_exceeds_ram() -> Bool {
+  match admit(
+    host: srv1_placement_supply(),
+    provider: "gunbc-operator-srv1",
+    live_receipts: [],
+    request: ComputeRequest { class: Small },
+    reserve_bytes: byte_size(count: 549755813888),
+    acquired_at: "t0",
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
