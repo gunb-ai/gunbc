@@ -61,7 +61,6 @@ import v2.std.collection {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
-import std.serialization { ScreamingSnakeCase }
 import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
 import v2.std.node_query { find_named_child }
 import v2.std.text { String }
