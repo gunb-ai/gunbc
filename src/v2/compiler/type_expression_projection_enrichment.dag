@@ -305,47 +305,95 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
   }
 }
 
-fn tepe_is_type_decl_surface_token(sym: Symbol) -> Bool {
+fn tepe_type_decl_surface_punctuation(sym: Symbol) -> Bool {
   sym == ^dag_token_kw_type
-    || sym == ^dag_token_ident
-    || sym == ^dag_token_string_literal
-    || sym == ^dag_token_colon
     || sym == ^dag_token_eq
+    || sym == ^dag_token_colon
     || sym == ^dag_token_comma
     || sym == ^dag_token_lbrace
     || sym == ^dag_token_rbrace
 }
 
-fn tepe_type_decl_binding_atom_optional(node: Node) -> Optional<Node> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match tepe_atom_identity_optional(node: n0) {
-          Present { value: sym } =>
-            if tepe_is_type_decl_surface_token(sym: sym) {
-              optional_absent()
-            } else {
-              optional_present(value: n0)
-            }
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
+fn tepe_type_name_ident_slot_optional(node: Node) -> Optional<Symbol> {
+  match tepe_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      if tepe_type_decl_surface_punctuation(sym: sym) {
+        optional_absent()
+      } else {
+        optional_present(value: sym)
       }
-    }
-  )
+    Absent =>
+      match tepe_sequence_child_optional(seq: node, side: ^grammar_sequence_left_node_projection) {
+        Present { value: left } => tepe_type_name_ident_slot_optional(node: left)
+        Absent =>
+          match parse_production_captured_child_optional(node: node) {
+            Present { value: captured } =>
+              tepe_type_name_ident_slot_optional(node: captured)
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+fn tepe_type_name_after_kw_type_optional(node: Node) -> Optional<Symbol> {
+  match tepe_sequence_child_optional(seq: node, side: ^grammar_sequence_left_node_projection) {
+    Present { value: left } =>
+      match tepe_atom_identity_optional(node: left) {
+        Present { value: sym } =>
+          if sym == ^dag_token_kw_type {
+            match tepe_sequence_child_optional(seq: node, side: ^grammar_sequence_right_node_projection) {
+              Present { value: rest } => tepe_type_name_ident_slot_optional(node: rest)
+              Absent => optional_absent()
+            }
+          } else {
+            match tepe_type_name_after_kw_type_optional(node: left) {
+              Present { value: name } => optional_present(value: name)
+              Absent =>
+                match tepe_sequence_child_optional(
+                  seq: node,
+                  side: ^grammar_sequence_right_node_projection
+                ) {
+                  Present { value: right } =>
+                    tepe_type_name_after_kw_type_optional(node: right)
+                  Absent =>
+                    match parse_production_captured_child_optional(node: node) {
+                      Present { value: captured } =>
+                        tepe_type_name_after_kw_type_optional(node: captured)
+                      Absent => optional_absent()
+                    }
+                }
+            }
+          }
+        Absent =>
+          match tepe_type_name_after_kw_type_optional(node: left) {
+            Present { value: name } => optional_present(value: name)
+            Absent =>
+              match tepe_sequence_child_optional(
+                seq: node,
+                side: ^grammar_sequence_right_node_projection
+              ) {
+                Present { value: right } =>
+                  tepe_type_name_after_kw_type_optional(node: right)
+                Absent =>
+                  match parse_production_captured_child_optional(node: node) {
+                    Present { value: captured } =>
+                      tepe_type_name_after_kw_type_optional(node: captured)
+                    Absent => optional_absent()
+                  }
+              }
+          }
+      }
+    Absent =>
+      match parse_production_captured_child_optional(node: node) {
+        Present { value: captured } =>
+          tepe_type_name_after_kw_type_optional(node: captured)
+        Absent => optional_absent()
+      }
+  }
 }
 
 fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
-  match tepe_type_decl_binding_atom_optional(node: expr) {
-    Present { value: atom_node } => tepe_atom_identity_optional(node: atom_node)
-    Absent => optional_absent()
-  }
+  tepe_type_name_after_kw_type_optional(node: expr)
 }
 
 fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
@@ -353,34 +401,13 @@ fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
     Present { value: surface } =>
       if surface == ^dag_surface_type_decl {
         match parse_production_captured_child_optional(node: type_decl) {
-          Present { value: expr } =>
-            match tepe_type_decl_name_from_decl_expr_optional(expr: expr) {
-              Present { value: name } => optional_present(value: name)
-              Absent =>
-                match tepe_type_decl_binding_atom_optional(node: type_decl) {
-                  Present { value: atom_node } =>
-                    tepe_atom_identity_optional(node: atom_node)
-                  Absent => optional_absent()
-                }
-            }
-          Absent =>
-            match tepe_type_decl_binding_atom_optional(node: type_decl) {
-              Present { value: atom_node } =>
-                tepe_atom_identity_optional(node: atom_node)
-              Absent => optional_absent()
-            }
+          Present { value: expr } => tepe_type_name_after_kw_type_optional(node: expr)
+          Absent => tepe_type_name_after_kw_type_optional(node: type_decl)
         }
       } else {
-        match tepe_type_decl_binding_atom_optional(node: type_decl) {
-          Present { value: atom_node } => tepe_atom_identity_optional(node: atom_node)
-          Absent => optional_absent()
-        }
+        optional_absent()
       }
-    Absent =>
-      match tepe_type_decl_binding_atom_optional(node: type_decl) {
-        Present { value: atom_node } => tepe_atom_identity_optional(node: atom_node)
-        Absent => optional_absent()
-      }
+    Absent => tepe_type_name_after_kw_type_optional(node: type_decl)
   }
 }
 
@@ -545,7 +572,7 @@ fn tepe_disj_in_type_decl_candidate(candidate: Node, enum_sym: Symbol) -> Option
 fn tepe_disj_in_type_decl_kernel(type_decl: Node, enum_sym: Symbol) -> Optional<Node> {
   match tepe_type_decl_name_optional(type_decl: type_decl) {
     Present { value: name } =>
-      if name == enum_sym {
+      if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: name, enum_sym: enum_sym) {
         tepe_disj_in_subtree(node: type_decl)
       } else {
         optional_absent()
