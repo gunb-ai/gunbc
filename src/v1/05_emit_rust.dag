@@ -502,6 +502,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
   } else if n.connective == NoConnective && n.children |> count == 0 {
+    match rust_seed_host_numeric_alias(name: name, source_indices: source_indices) {
+      Present { value: host } => host
+      Absent =>
     if name == "String" && rust_emit_faithful_text_carrier(source_indices: source_indices) {
       render_rust_text_carrier(shared_types: shared_types)
     } else {
@@ -512,6 +515,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
         }
       }
+    }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let local_mod = module_to_filename(name: module_name)
