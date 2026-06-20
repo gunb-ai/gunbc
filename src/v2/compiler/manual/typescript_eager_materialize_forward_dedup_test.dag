@@ -1,10 +1,12 @@
-// FINISH-LINE-B Arc 1 — dedup-cutover forward selection gates (separate entry: fn/test-fn
+// FINISH-LINE-B Arc 1/2 — dedup-cutover forward selection gates (separate entry: fn/test-fn
 // name collision in the same module blows resolve RSS ~45×; helper bodies use *_body suffix).
 module v2.test.manual.typescript_eager_materialize_forward_dedup
 
 import v2.compiler.ingest { grammar_relation_row_forward_selection }
 import v2.extdeps.languages.typescript {
   ts_named_edge,
+  ts_mvp1_fn_add_relation_row_witness,
+  ts_mvp1_fn_add_syntax_emitted,
   ts_wave2a_task_type_alias_emitted,
   ts_wave2a_task_type_alias_relation_row_witness
 }
@@ -147,4 +149,97 @@ test fn ts_arc1_forward_row_many_without_dedup_red_holds() -> Bool {
 
 test fn ts_arc1_forward_row_dedup_cutover_green_holds() -> Bool {
   ts_arc1_forward_row_dedup_cutover_green_body()
+}
+
+fn ts_arc2_mvp1_rules_with_duplicate_spine_rows() -> Node {
+  match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: eager_row } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ts_named_edge(
+            name: ^ts_relation_rule_mvp1_fn_add,
+            target: eager_row
+          ),
+          ts_named_edge(
+            name: ^ts_arc2_forward_row_many_collision_dup,
+            target: eager_row
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Violates { diagnostic: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn ts_arc2_mvp1_dedup_cutover_rules() -> Node {
+  match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: eager_row } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ts_named_edge(
+            name: ^ts_relation_rule_mvp1_fn_add,
+            target: eager_row
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Violates { diagnostic: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn ts_arc2_mvp1_forward_row_many_without_dedup_red_body() -> Bool {
+  match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: row } =>
+      match ts_arc1_row_token_spine_classes(row: row) {
+        Accepted { value: frontier, diagnostics: _ } =>
+          match grammar_relation_row_forward_selection(
+            frontier: frontier,
+            rules: ts_arc2_mvp1_rules_with_duplicate_spine_rows()
+          ) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: _ } => true
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn ts_arc2_mvp1_forward_row_dedup_cutover_green_body() -> Bool {
+  match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: row } =>
+      match ts_arc1_row_token_spine_classes(row: row) {
+        Accepted { value: frontier, diagnostics: _ } =>
+          match grammar_relation_row_forward_selection(
+            frontier: frontier,
+            rules: ts_arc2_mvp1_dedup_cutover_rules()
+          ) {
+            Accepted { value: emitted, diagnostics: d } =>
+              (d == None) && (emitted == ts_mvp1_fn_add_syntax_emitted())
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn ts_arc2_mvp1_forward_row_many_without_dedup_red_holds() -> Bool {
+  ts_arc2_mvp1_forward_row_many_without_dedup_red_body()
+}
+
+test fn ts_arc2_mvp1_forward_row_dedup_cutover_green_holds() -> Bool {
+  ts_arc2_mvp1_forward_row_dedup_cutover_green_body()
 }

@@ -147,7 +147,6 @@ import v2.std.compilers.target_model {
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
-  grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node
