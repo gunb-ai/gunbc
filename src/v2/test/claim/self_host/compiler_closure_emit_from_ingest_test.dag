@@ -17,7 +17,7 @@ import v2.compiler.self_host.closure_witness_layer_roots {
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.algebra { fold, fold_list, length }
+import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic {
   Accepted,
   Locus,
@@ -95,17 +95,17 @@ fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
 
 
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == target) })
 }
 
 
 // In-substrate carrier consumption (§3): no Rust/bash projection of witness_layer_roots.
 test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
   (length(xs: self_host_closure_witness_layer_roots) == length(xs: witness_layer_roots))
-    && fold(
+    && fold_list(
       xs: self_host_closure_witness_layer_roots,
-      init: true,
-      f: fn(acc, item) {
+      empty: true,
+      cons: fn(acc, item) {
         acc && list_contains_str(xs: witness_layer_roots, target: item)
       }
     )
