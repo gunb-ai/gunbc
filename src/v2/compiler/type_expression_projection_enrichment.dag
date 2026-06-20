@@ -469,7 +469,9 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
     n: root,
     algebra: NodeFold {
       init: fn(node) {
-        if tepe_node_has_surface(root: node, surface: ^dag_surface_type_decl) {
+        if tepe_node_has_surface(root: node, surface: ^dag_surface_module) {
+          optional_absent()
+        } else {
           match tepe_type_decl_name_optional(type_decl: node) {
             Present { value: enum_sym } =>
               if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
@@ -479,8 +481,6 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
               }
             Absent => optional_absent()
           }
-        } else {
-          optional_absent()
         }
       },
       step: fn(acc, _edge, child_acc) {
