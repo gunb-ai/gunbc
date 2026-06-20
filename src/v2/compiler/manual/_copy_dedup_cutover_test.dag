@@ -5,7 +5,7 @@
 // Dag self-emit regression: existing candidate_generation_test (floor corpus), not duplicated here (OOM).
 // RED: perturbed eager emitted breaks derive.
 
-module v2.test.manual.typescript_eager_materialize_dedup_cutover
+module v2.test.manual._copy_dedup_cutover
 
 import v2.compiler.ingest { grammar_relation_row_forward_selection }
 import v2.std.grammar {
