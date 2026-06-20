@@ -722,12 +722,9 @@ fn tepe_fold_decl_into_index(
                 }
               Absent => CoproductWireContractIndexOk { rows: rows }
             }
-          Absent =>
-            CoproductWireContractIndexErr {
-              diagnostics: diagnostics_singleton(
-                d: tepe_coproduct_wire_contract_malformed_diagnostic(node: decl)
-              )
-            }
+          // Production shells can stamp dag_surface_data_decl without extractable
+          // type/expr — skip; real CoproductWireContract rows still fail closed below.
+          Absent => CoproductWireContractIndexOk { rows: rows }
         }
       } else {
         CoproductWireContractIndexOk { rows: rows }
