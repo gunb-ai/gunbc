@@ -57,7 +57,7 @@ import v2.std.compilers.target_model {
   TypeExprKindAuthority,
   symbol_interned_spelling
 }
-import v2.std.algebra { is_empty, length }
+import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.collection {
   Absent,
   Optional,
@@ -356,10 +356,10 @@ fn cwc_node_connective_tag(n: Node) -> Symbol {
 }
 
 fn cwc_disj_first_variant_target_optional(n: Node) -> Optional<Node> {
-  fold(
-    n.children,
-    init: optional_absent(),
-    f: fn(acc, e) {
+  fold_list(
+    xs: n.children,
+    empty: optional_absent(),
+    cons: fn(acc, e) {
       match acc {
         Present { value: _ } => acc
         Absent => optional_present(value: e.target)
