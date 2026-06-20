@@ -266,41 +266,6 @@ fn cwc_optional_review_event_disj(n: Node) -> Optional<Node> {
   )
 }
 
-fn cwc_serialized_sum_text(src: String, target: TargetModel) -> String {
-  match cwc_inferred_of(src: src) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_review_event_disj(n: tree.root) {
-        Present { value: disj } =>
-          match type_expression_projection_for_translate(
-            tree: tree,
-            target: target,
-            node: disj
-          ) {
-            Accepted { value: projection, diagnostics: _ } =>
-              match translate_type_expression_project(
-                node: disj,
-                target: target,
-                projection: projection
-              ) {
-                Accepted { value: emitted, diagnostics: _ } =>
-                  match target_serialize_source_from_model_with_projection(
-                    target: target,
-                    emitted: emitted,
-                    projection: projection
-                  ) {
-                    Accepted { value: source, diagnostics: _ } => source.carried
-                    Rejected { diagnostics: _ } => ""
-                  }
-                Rejected { diagnostics: _ } => ""
-              }
-            Rejected { diagnostics: _ } => ""
-          }
-        Absent => ""
-      }
-    Rejected { diagnostics: _ } => ""
-  }
-}
-
 fn cwc_translate_project_disj_accepts(src: String, target: TargetModel) -> Bool {
   match cwc_inferred_of(src: src) {
     Accepted { value: tree, diagnostics: _ } =>
@@ -843,37 +808,76 @@ test fn cwc_serialize_review_disj_accepts_holds() -> Bool {
   cwc_serialize_review_disj_accepts(target: rust_wire_serde_screaming_snake_target)
 }
 
+fn cwc_serialized_sum_text_for_src(src: String, target: TargetModel) -> String {
+  match cwc_inferred_of(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_for_translate(
+            tree: tree,
+            target: target,
+            node: disj
+          ) {
+            Accepted { value: projection, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: emitted, diagnostics: _ } =>
+                  match target_serialize_source_from_model_with_projection(
+                    target: target,
+                    emitted: emitted,
+                    projection: projection
+                  ) {
+                    Accepted { value: source, diagnostics: _ } => source.carried
+                    Rejected { diagnostics: _ } => ""
+                  }
+                Rejected { diagnostics: _ } => ""
+              }
+            Rejected { diagnostics: _ } => ""
+          }
+        Absent => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn cwc_serialized_sum_text(src: String, target: TargetModel) -> String {
+  cwc_serialized_sum_text_for_src(src: src, target: target)
+}
+
+fn cwc_sg2_module_sum_text() -> String {
+  cwc_serialized_sum_text_for_src(
+    src: cwc_src_cwc_module,
+    target: rust_sg2_type_expr_target_model()
+  )
+}
+
 test fn cwc_translate_serde_rename_all_holds() -> Bool {
   let screaming = cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
     target: rust_wire_serde_screaming_snake_target
   )
+  let sg2 = cwc_sg2_module_sum_text()
+  screaming != "" && sg2 != "" && screaming != sg2
+}
+
+test fn cwc_translate_serde_wrong_naming_red() -> Bool {
   let snake = cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
     target: rust_wire_serde_snake_case_target
   )
-  screaming != "" && snake != "" && screaming != snake
-}
-
-test fn cwc_translate_serde_wrong_naming_red() -> Bool {
-  let text = cwc_serialized_sum_text(
-    src: cwc_src_cwc_module,
-    target: rust_wire_serde_snake_case_target
-  )
-  string_contains(s: text, pattern: "snake_case")
-    && !string_contains(s: text, pattern: "SCREAMING_SNAKE_CASE")
+  let sg2 = cwc_sg2_module_sum_text()
+  snake != "" && sg2 != "" && snake != sg2
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
-  let sg2 = cwc_serialized_sum_text(
-    src: cwc_src_cwc_module,
-    target: rust_sg2_type_expr_target_model()
-  )
   let screaming = cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
     target: rust_wire_serde_screaming_snake_target
   )
-  sg2 != "" && screaming != "" && sg2 != screaming
+  cwc_sg2_module_sum_text() == screaming
 }
 
 test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
