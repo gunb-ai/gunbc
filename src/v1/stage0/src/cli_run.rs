@@ -5,15 +5,16 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::rc::Rc;
 
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
-use crate::std_types::kernel_type_set;
+use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::lookup_type_by_name;
-use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
@@ -284,6 +285,7 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
 
 /// Outcome of running a single Bool witness (`--claim-run` semantics), without
 /// touching the process exit code. The exit-code contract lives in the caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     /// Function returned `Bool(true)` — witness holds.
     Pass,
@@ -2074,12 +2076,24 @@ pub struct EntryResolveReceipt {
     pub resolve_nanos: u128,
 }
 
+/// One witness verdict from a discovery-corpus run (for wet/hermetic equivalence).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveryWitnessOutcome {
+    pub entry: String,
+    pub function: String,
+    pub outcome: ClaimOutcome,
+}
+
 /// Summary of running the floor discovery corpus: how many witnesses ran, how
-/// many passed, and a rendered failure line per non-pass (empty on full green).
+/// many passed, how many were skipped (stateless node-frontier), and a rendered
+/// failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
+    pub skipped: usize,
     pub failures: Vec<String>,
+    /// Per-witness outcomes in roster order (wet/hermetic equivalence gate).
+    pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
     /// Aggregate resolve wall time across distinct entries (nanoseconds).
@@ -2088,6 +2102,128 @@ pub struct DiscoverySummary {
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
     /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
     pub total_measured_nanos: u128,
+}
+
+/// Enrolled witness `.dag` carrying the scaffold roster entry-prefix authority.
+pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
+    "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
+/// `data` binding name for the single-authority roster entry prefix (§3).
+pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
+    "wet_hermetic_equivalence_representative_prefix";
+
+fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Result<String, String> {
+    let path = Path::new(entry);
+    if path.is_file() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    for root in source_roots {
+        let root_path = Path::new(root);
+        let root_name = root_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if !root_name.is_empty() {
+            let prefix = format!("{root_name}/");
+            if let Some(suffix) = entry.strip_prefix(&prefix) {
+                let candidate = root_path.join(suffix);
+                if candidate.is_file() {
+                    return Ok(candidate.to_string_lossy().into_owned());
+                }
+            }
+        }
+        let candidate = root_path.join(entry);
+        if candidate.is_file() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err(format!(
+        "entry file does not exist or is not a file: {}",
+        entry
+    ))
+}
+
+/// Load the scaffold roster entry-prefix from the enrolled witness `.dag` data
+/// binding. Rust filter code must use this — no parallel substring authority.
+pub fn wet_hermetic_scaffold_roster_entry_prefix(
+    source_roots: &[String],
+) -> Result<String, String> {
+    let entry =
+        resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
+    let (graph, source_indices) = resolve_entry_graph(source_roots, &entry)?;
+    let sources = load_sources_for_entry(source_roots, &entry)?;
+    let entry_source = sources
+        .iter()
+        .find(|s| s.path == entry || s.path.ends_with(WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY))
+        .ok_or_else(|| format!("{entry}: missing from entry closure"))?;
+    let entry_module = extract_module_path(&entry_source.content)
+        .ok_or_else(|| format!("{entry}: missing module declaration"))?;
+    let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
+    let si = Rc::new((*source_indices).clone());
+    for item in typed_module.items.iter() {
+        if item.body.is_none() {
+            continue;
+        }
+        let decl_name = authored_name_at(si.clone(), item.clone());
+        if decl_name != WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA {
+            continue;
+        }
+        let body = item.body.as_ref().ok_or_else(|| {
+            format!("{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' missing body")
+        })?;
+        return literal_string_from_expr(body).ok_or_else(|| {
+            format!(
+                "{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' must be a string literal"
+            )
+        });
+    }
+    Err(format!(
+        "{entry}: missing data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}'"
+    ))
+}
+
+/// Scaffold roster filter: one discoverable `test fn` per extdeps layer with a
+/// published mock corpus under `prefix` (from
+/// `wet_hermetic_scaffold_roster_entry_prefix`). These witnesses exercise the M4
+/// hermetic-realization *model* in pure `.dag` — they do NOT traverse
+/// `eval_service_call` under either Wet or Hermetic, so they cannot observe
+/// mock-vs-live faithfulness. Dissolution: replace with witnesses that dispatch
+/// live transport under Wet and published-mock under Hermetic.
+pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
+    !prefix.is_empty() && row.entry.contains(prefix)
+}
+
+/// Row-for-row outcome comparator for the P3c scaffold gate. Returns divergence
+/// lines (empty when equivalent). Teeth: unit-tested with synthetic vectors;
+/// roster integration is vacuous until live-transport witnesses enroll.
+pub fn wet_hermetic_discovery_outcome_divergences(
+    wet: &[DiscoveryWitnessOutcome],
+    hermetic: &[DiscoveryWitnessOutcome],
+) -> Vec<String> {
+    let mut divergences = Vec::new();
+    if wet.len() != hermetic.len() {
+        divergences.push(format!(
+            "roster size mismatch: wet={} hermetic={}",
+            wet.len(),
+            hermetic.len()
+        ));
+        return divergences;
+    }
+    for (w, h) in wet.iter().zip(hermetic.iter()) {
+        if w.entry != h.entry || w.function != h.function {
+            divergences.push(format!(
+                "roster order mismatch: wet=({},{}) hermetic=({},{})",
+                w.function, w.entry, h.function, h.entry
+            ));
+            continue;
+        }
+        if w.outcome != h.outcome {
+            divergences.push(format!(
+                "{} ({}): wet={:?} hermetic={:?}",
+                w.function, w.entry, w.outcome, h.outcome
+            ));
+        }
+    }
+    divergences
 }
 
 /// Default exclude set for floor discovery. Manifest/law files that import the
@@ -2142,8 +2278,20 @@ pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
 /// keyword, so the marker is detected in source text — same posture as the
 /// `data unified_claim_` scan).
 fn scan_test_decl_names(content: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    for line in content.lines() {
+    scan_test_decl_lines(content)
+        .into_iter()
+        .map(|(name, _line)| name)
+        .collect()
+}
+
+/// Like `scan_test_decl_names` but pairs each name with its 1-based declaration line. A
+/// `test fn` is not an AST `module.items` entry (the parser drops the contextual `test`
+/// keyword before the span is recorded), so the node-frontier partition gets its decl line
+/// from source text — the only way to bound a witness body the way an item span bounds a
+/// `data` decl.
+fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    for (i, line) in content.lines().enumerate() {
         let trimmed = line.trim_start();
         let rest = trimmed
             .strip_prefix("test fn ")
@@ -2154,11 +2302,11 @@ fn scan_test_decl_names(content: &str) -> Vec<String> {
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
                 .collect();
             if !name.is_empty() {
-                names.push(name);
+                out.push((name, (i + 1) as i64));
             }
         }
     }
-    names
+    out
 }
 
 /// Fail-closed filename hygiene: `.dag` basenames under the source roots must not
@@ -2281,68 +2429,616 @@ pub fn discover_floor_corpus_rows(
     Ok(rows)
 }
 
-/// Run an ordered slice of discovery rows against a shared multi-entry index.
-/// Rows must be sorted by `(entry, function)` so resolve-once-per-entry holds.
-fn run_discovery_rows(
-    rows: &[DiscoveryRow],
-    index: &MultiEntryIndex,
-    execution_mode: v1_interpreter::ExecutionMode,
-) -> Result<DiscoverySummary, String> {
-    let mut summary = DiscoverySummary {
-        total: rows.len(),
-        passed: 0,
-        failures: Vec::new(),
-        entry_resolve_receipts: Vec::new(),
-        total_resolve_nanos: 0,
-        performance_receipts: Vec::new(),
-        total_measured_nanos: 0,
-    };
-    let mut current_entry: Option<String> = None;
-    let mut current_closure_subject: Option<String> = None;
-    let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    for row in rows {
-        if current_entry.as_deref() != Some(row.entry.as_str()) {
-            let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
-                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
-            let closure_subject = subject_digest_for_closure(&sources);
-            let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) = resolve_entry_with_index(index, &row.entry)
-                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
-            let resolve_nanos = resolve_started.elapsed().as_nanos();
-            summary.total_resolve_nanos += resolve_nanos;
-            summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                entry: row.entry.clone(),
-                closure_subject: closure_subject.clone(),
-                resolve_nanos,
-            });
-            current_closure_subject = Some(closure_subject);
-            ctx = Some(make_eval_context(&graph, source_indices, execution_mode));
-            current_entry = Some(row.entry.clone());
-        }
-        let ctx_ref = ctx.as_ref().expect("ctx set above");
-        let closure_subject = current_closure_subject
-            .as_deref()
-            .expect("closure subject set above");
-        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        summary.total_measured_nanos += receipt.wall_nanos;
-        summary.performance_receipts.push(receipt);
-        match outcome {
-            ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => summary.failures.push(format!(
-                "{} ({}) returned Bool(false)",
-                row.function, row.entry
-            )),
-            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
-                "{} ({}) returned `{}`, not Bool",
-                row.function, row.entry, got
-            )),
-            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
-                "{} ({}) runtime error: {}",
-                row.function, row.entry, message
-            )),
+/// Phase 1.5a REDO v2 — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
+pub struct DiscoveryCorpusOptions {
+    pub skip_unaffected_node_frontier: bool,
+    /// When true, skip marker/`test fn` roster discovery and run only `explicit_entries`.
+    /// Host tests use this to exercise skip transport without walking the full floor corpus.
+    pub explicit_roster_only: bool,
+}
+
+impl Default for DiscoveryCorpusOptions {
+    fn default() -> Self {
+        Self {
+            skip_unaffected_node_frontier: false,
+            explicit_roster_only: false,
         }
     }
-    Ok(summary)
+}
+
+/// Default diff policy — witness-gated to `floor_skip_git_diff_policy()` /
+/// `gunbc.ci_spec.diff_policy` (`floor_test_diff_policy_matches_ci_spec_holds`).
+const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
+const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
+
+enum FloorGitDiffOutcome {
+    ObservationFailClosed { reason: String },
+    UnifiedProduced(String),
+}
+
+/// New-side inclusive line range from one unified-diff hunk (`git diff -U0`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileLineRange {
+    start: i64,
+    end: i64,
+}
+
+fn floor_git_diff_range() -> Result<String, String> {
+    // Injection seam: the unified diff text is the real input to the affected-set; git is
+    // one transport for obtaining it. A caller (host test / CI step) may supply the text
+    // directly via GUNBC_CI_DIFF_UNIFIED; production leaves it unset and shells to git.
+    if let Ok(injected) = std::env::var("GUNBC_CI_DIFF_UNIFIED") {
+        return Ok(injected);
+    }
+    let base = std::env::var("GUNBC_CI_DIFF_BASE")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
+    let head = std::env::var("GUNBC_CI_DIFF_HEAD")
+        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_HEAD.to_string());
+    let merge_base = std::env::var("GUNBC_CI_DIFF_MERGE_BASE")
+        .map(|v| v != "0" && v != "false")
+        .unwrap_or(true);
+    let range = if merge_base {
+        format!("{base}...{head}")
+    } else {
+        format!("{base} {head}")
+    };
+    let output = Command::new("git")
+        .args(["diff", "-U0", &range])
+        .output()
+        .map_err(|e| format!("git diff spawn failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff -U0 {} failed (status {})",
+            range, output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn normalize_repo_path(path: &str) -> String {
+    path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
+}
+
+/// Match a diff-side repo-relative path to a witness entry path (absolute or relative).
+fn diff_file_matches_entry(diff_file: &str, entry_path: &str) -> bool {
+    let file = normalize_repo_path(diff_file);
+    let entry = normalize_repo_path(entry_path);
+    file == entry || entry.ends_with(&file) || file.ends_with(&entry)
+}
+
+/// Parse unified diff output into new-side line ranges per repo-relative file path.
+fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
+    let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
+    let mut current_file: Option<String> = None;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
+            current_file = Some(normalize_repo_path(rest));
+        } else if line.starts_with("@@ ") {
+            let Some(file) = current_file.clone() else {
+                continue;
+            };
+            let plus = line.split_whitespace().nth(2).unwrap_or("");
+            let plus = plus.trim_start_matches('+');
+            let (start, count) = if let Some((s, c)) = plus.split_once(',') {
+                (s.parse::<i64>().unwrap_or(1), c.parse::<i64>().unwrap_or(1))
+            } else {
+                (plus.parse::<i64>().unwrap_or(1), 1)
+            };
+            let end = if count <= 0 { start } else { start + count - 1 };
+            out.entry(file)
+                .or_default()
+                .push(FileLineRange { start, end });
+        }
+    }
+    out
+}
+
+fn newline_index_for_span<'a>(
+    span: &SourceSpan,
+    source_indices: &'a HashMap<String, Rc<NewlineIndex>>,
+) -> Option<&'a Rc<NewlineIndex>> {
+    let file = normalize_repo_path(&span.file);
+    source_indices.get(&span.file).or_else(|| {
+        source_indices.iter().find_map(|(path, idx)| {
+            let norm = normalize_repo_path(path);
+            if norm == file || file.ends_with(&norm) || norm.ends_with(&file) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+/// Fuzzy repo-path equality (abs vs repo-relative): one path ends with the other after
+/// normalization. Mirrors the lookup in `newline_index_for_span`.
+fn span_file_matches(span_file: &str, target_norm: &str) -> bool {
+    let s = normalize_repo_path(span_file);
+    s == target_norm || s.ends_with(target_norm) || target_norm.ends_with(&s)
+}
+
+fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
+    match val {
+        v1_interpreter::Value::Variant { variant_name, .. } => matches!(
+            ctx.resolve(*variant_name).as_str(),
+            "EqualsClaim"
+                | "CompilesClaim"
+                | "DiagnosticClaim"
+                | "StructuralEqualsClaim"
+                | "RoundTripClaim"
+                | "BoolWitnessClaim"
+        ),
+        _ => false,
+    }
+}
+
+/// Is `val` a substrate `Node` record value?
+fn value_is_node(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
+    matches!(
+        val,
+        v1_interpreter::Value::Record { type_name, .. } if ctx.resolve(*type_name).as_str() == "Node"
+    )
+}
+
+/// Collect every `Node`-valued sub-tree reachable from `val` (the evaluated value of a
+/// changed data item). A changed data item conservatively contributes every Node it
+/// denotes to the rerun frontier — seeding only from changed *TestClaims* is fail-open
+/// (editing a plain `Node` datum or a std fn a witness depends on would seed nothing and
+/// the witness would skip silently). The witness-touch check (`==` / subtree-by-identity)
+/// then decides which witnesses actually depend on a changed node. Over-collect within a
+/// changed item, never under-collect (fail-closed).
+fn collect_node_values(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+    out: &mut Vec<v1_interpreter::Value>,
+) {
+    if value_is_node(val, ctx) {
+        out.push(val.clone());
+    }
+    match val {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => {
+            for v in fields.values() {
+                collect_node_values(v, ctx, out);
+            }
+        }
+        v1_interpreter::Value::List(items) => {
+            for v in items.iter() {
+                collect_node_values(v, ctx, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn call_test_claim_fn_bool(
+    ctx: &v1_interpreter::InterpContext,
+    fn_name: &str,
+    claim: &v1_interpreter::Value,
+    frontier: &v1_interpreter::Value,
+    claim_param: &str,
+) -> Result<Option<bool>, String> {
+    if !ctx.item_registry.contains_key(fn_name) {
+        return Ok(None);
+    }
+    let args = [
+        (Some(claim_param.to_string()), claim.clone()),
+        (Some("frontier".to_string()), frontier.clone()),
+    ];
+    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(Some(b)),
+        Ok(other) => Err(format!(
+            "{} returned `{}`, expected Bool",
+            fn_name,
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("{}: {}", fn_name, e)),
+    }
+}
+
+fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Value {
+    v1_interpreter::list_value(items)
+}
+
+/// Node-precise skip seeds from git unified-diff line ranges. String-keyed (no `Value`)
+/// so the struct is `Send` and a clone can ride into each width-shard thread.
+#[derive(Clone, Default)]
+struct NodeFrontierSeeds {
+    /// `(repo-relative file, data item name)` for every `data` declaration whose span
+    /// overlaps the diff (re-evaluated per entry into substrate `Node`s).
+    overlapping_data_items: HashSet<(String, String)>,
+    /// `(repo-relative file, witness fn name)` for every `test fn` whose own body span was
+    /// edited — that witness's behavior IS the diff, so it must run (finding 1, fail-closed).
+    edited_test_fns: HashSet<(String, String)>,
+    /// Fail-closed escape hatch: a change the node-frontier cannot bound — a non-`.dag`
+    /// file (e.g. the Rust seed), a `.dag` that fails to resolve (finding 2), an
+    /// unparsed/empty `.dag`, a module/import (preamble) edit, or a `fn`/`type`/`service`
+    /// declaration edit — disables the skip so the full corpus runs.
+    force_run_all: bool,
+}
+
+impl NodeFrontierSeeds {
+    fn run_all() -> Self {
+        Self {
+            force_run_all: true,
+            ..Default::default()
+        }
+    }
+}
+
+/// Node-precise frontier seeds: classify each changed line of each changed `.dag` file by
+/// the top-level declaration whose source span owns it. A `data` decl joins the rerun
+/// frontier; a `test fn` decl force-runs that witness; anything the frontier cannot bound
+/// (see `force_run_all`) fails closed to a full run. Pure over the AST — the per-entry
+/// touch check (`entry_touches_frontier_seeds`) does the substrate evaluation.
+fn collect_frontier_seeds_from_diff_line_ranges(
+    index: &MultiEntryIndex,
+    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+) -> Result<NodeFrontierSeeds, String> {
+    let mut overlapping_data_items = HashSet::new();
+    let mut edited_test_fns = HashSet::new();
+    for (file_path, ranges) in line_ranges_by_file {
+        if !file_path.ends_with(".dag") {
+            // A non-`.dag` change (the Rust seed / interpreter) can flip any witness's
+            // result; the node-frontier only models the `.dag` substrate → fail closed.
+            return Ok(NodeFrontierSeeds::run_all());
+        }
+        let file_norm = normalize_repo_path(file_path);
+        let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
+            // Finding 2: a changed `.dag` we cannot resolve contributes nothing to the
+            // frontier; witnesses depending on it must not be assumed green → fail closed.
+            Ok(pair) => pair,
+            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
+        };
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
+        };
+        // `test fn` is stripped of its `test` marker before parse, so the AST cannot tell a
+        // witness from a plain `fn`; match names against the same text scan discovery uses.
+        let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
+        // Unified, source-ordered line partition of every top-level declaration. `data`/`fn`/
+        // `type`/`service` come from the AST (`module.items`) at their decl line; a `test fn`
+        // is NOT an AST item, so its decl line comes from the same text scan discovery uses.
+        // Both kinds are needed as boundaries: without the scanned `test fn` lines every
+        // witness body would fall into the *last* `data` item's trailing span, so a
+        // witness-body edit would be misattributed to that node and the witness could skip on
+        // a change to its own behavior — a fail-open hole (finding 1). Each declaration owns
+        // [its line .. next decl's line − 1] (EOF for the last), so every changed line maps to
+        // exactly one declaration. (line, name, is_data)
+        let mut decls: Vec<(i64, String, bool)> = Vec::new();
+        for module in graph.modules.iter() {
+            for item in module.items.iter() {
+                if !span_file_matches(&item.span.file, &file_norm) {
+                    continue;
+                }
+                let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
+                    return Ok(NodeFrontierSeeds::run_all());
+                };
+                let line = byte_to_line_col(nl, item.span.start).line;
+                let name = authored_name_at(source_indices.clone(), item.clone());
+                let is_data = item_kind(item.clone()) == ItemKind::DataItem;
+                decls.push((line, name, is_data));
+            }
+        }
+        for (name, line) in scan_test_decl_lines(&content) {
+            if !decls.iter().any(|(_, n, _)| n == &name) {
+                decls.push((line, name, false));
+            }
+        }
+        if decls.is_empty() {
+            return Ok(NodeFrontierSeeds::run_all());
+        }
+        decls.sort_by_key(|(line, _, _)| *line);
+        // A change in the preamble (module decl / imports, before the first declaration)
+        // can re-resolve every symbol in the file → unbounded effect → fail closed.
+        if ranges.iter().any(|r| r.start < decls[0].0) {
+            return Ok(NodeFrontierSeeds::run_all());
+        }
+        for i in 0..decls.len() {
+            let (line, name, is_data) = &decls[i];
+            let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
+            if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
+                continue;
+            }
+            if test_fn_names.contains(name) {
+                edited_test_fns.insert((file_norm.clone(), name.clone()));
+            } else if *is_data {
+                overlapping_data_items.insert((file_norm.clone(), name.clone()));
+            } else {
+                // A changed `fn`/`type`/`service` declaration can affect any dependent
+                // witness transitively; the node-frontier can't bound that → fail closed.
+                return Ok(NodeFrontierSeeds::run_all());
+            }
+        }
+    }
+    Ok(NodeFrontierSeeds {
+        overlapping_data_items,
+        edited_test_fns,
+        force_run_all: false,
+    })
+}
+
+/// Re-evaluate changed data items in the *entry* context so frontier `Node` values share
+/// the same `InterpContext` as the witness claims (`==` / subtree checks are ctx-sensitive).
+fn entry_frontier_nodes_from_seeds(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    seeds: &NodeFrontierSeeds,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for (_file, name) in &seeds.overlapping_data_items {
+        // A witness depends on a changed node whether it lives in the entry's OWN file or an
+        // imported one, so the gate is "does this entry's closure declare `name`?" — not
+        // "is the changed file the entry file?". The old file-equals-entry filter was a §5
+        // fail-open hole: an edit to a shared imported `.dag` (e.g. a std node) was invisible
+        // to every importing witness, which then skipped on a change it actually depends on.
+        if !ctx.item_registry.contains_key(name) {
+            continue;
+        }
+        let Some(val) = v1_interpreter::with_active_context(ctx, || {
+            v1_interpreter::eval_data_item_value(ctx, name)
+        })
+        .map_err(|e| format!("re-eval `{name}` in {entry_path}: {e}"))?
+        else {
+            continue;
+        };
+        let mut item_nodes = Vec::new();
+        collect_node_values(&val, ctx, &mut item_nodes);
+        for node in item_nodes {
+            let key = ctx.format_value(&node);
+            if seen.insert(key) {
+                out.push(node);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Does any witness in `entry_path` depend on a changed `data` node? Re-evaluates the
+/// overlapping data items in *this* entry's context (a claim edited in its own file lands
+/// here too: its `lhs`/`rhs` `Node`s join the frontier and the claim touches them). An
+/// edited `test fn` body is handled separately at the row level (`edited_test_fns`).
+fn entry_touches_frontier_seeds(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    seeds: &NodeFrontierSeeds,
+) -> Result<bool, String> {
+    let entry_frontier = entry_frontier_nodes_from_seeds(ctx, entry_path, seeds)?;
+    if entry_frontier.is_empty() {
+        return Ok(false);
+    }
+    entry_claims_touch_frontier(ctx, &list_value_from_vec(entry_frontier))
+}
+
+fn entry_claims_touch_frontier(
+    ctx: &v1_interpreter::InterpContext,
+    frontier: &v1_interpreter::Value,
+) -> Result<bool, String> {
+    let mut saw_claim = false;
+    // Same active-context guard as the frontier-seed path: the data initializers
+    // include FreeMonoid Variant chains (`test_claim_evaluation_nodes`) that only
+    // decode while ACTIVE_CTX is set (root fix, #5295).
+    let initializer_values = v1_interpreter::with_active_context(ctx, || {
+        v1_interpreter::eval_data_initializer_values(ctx)
+    })
+    .map_err(|e| format!("{e}"))?;
+    for val in initializer_values {
+        if !value_is_test_claim(&val, ctx) {
+            continue;
+        }
+        saw_claim = true;
+        match call_test_claim_fn_bool(
+            ctx,
+            "test_claim_evaluation_touches_rerun_frontier",
+            &val,
+            frontier,
+            "c",
+        ) {
+            Ok(Some(true)) => return Ok(true),
+            Ok(Some(false)) | Ok(None) => {}
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: test_claim_evaluation_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
+                );
+                return Ok(true);
+            }
+        }
+        match call_test_claim_fn_bool(
+            ctx,
+            "floor_claim_touches_rerun_frontier",
+            &val,
+            frontier,
+            "claim",
+        ) {
+            Ok(Some(true)) => return Ok(true),
+            Ok(Some(false)) | Ok(None) => {}
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: floor_claim_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
+                );
+                return Ok(true);
+            }
+        }
+    }
+    // Fail-closed: no TestClaim surface in this entry → always run the witness.
+    Ok(!saw_claim)
+}
+
+/// Run the whole floor discovery corpus through one shared module index
+/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
+/// are appended to the discovered roster with `(entry, function)` dedup — exactly
+/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
+/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
+/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
+/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
+/// `claim_batch` keeps its own timing/stats loop but shares the roster.
+pub fn run_discovery_corpus(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    parallel_width: usize,
+) -> Result<DiscoverySummary, String> {
+    run_discovery_corpus_with_options(
+        source_roots,
+        scan_dirs,
+        explicit_entries,
+        execution_mode,
+        parallel_width,
+        DiscoveryCorpusOptions::default(),
+    )
+}
+
+pub fn run_discovery_corpus_with_options(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    explicit_entries: &[(String, String)],
+    execution_mode: v1_interpreter::ExecutionMode,
+    parallel_width: usize,
+    options: DiscoveryCorpusOptions,
+) -> Result<DiscoverySummary, String> {
+    check_floor_filename_hygiene(source_roots)?;
+    // Roster-only (skip the whole-tree walk): either a caller that pins a
+    // representative witness set via `explicit_roster_only` (host skip tests), or the
+    // wet/hermetic equivalence gate (empty scan_dirs + explicit entries).
+    let mut rows =
+        if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
+            Vec::new()
+        } else {
+            discover_floor_corpus_rows(source_roots, scan_dirs)?
+        };
+    // Append explicit rows with (entry, function) dedup, then re-sort so each
+    // entry's witnesses stay grouped for the resolve-once loop below.
+    let mut seen: std::collections::BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.entry.clone(), r.function.clone()))
+        .collect();
+    for (entry, function) in explicit_entries {
+        if seen.insert((entry.clone(), function.clone())) {
+            rows.push(DiscoveryRow {
+                label: function.clone(),
+                entry: entry.clone(),
+                function: function.clone(),
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.entry
+            .cmp(&b.entry)
+            .then_with(|| a.function.cmp(&b.function))
+    });
+    if rows.is_empty() {
+        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
+    }
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(keys),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
+        }
+    };
+    let index = build_multi_entry_index(source_roots);
+
+    let diff_outcome = if options.skip_unaffected_node_frontier {
+        match floor_git_diff_range() {
+            Ok(text) => FloorGitDiffOutcome::UnifiedProduced(text),
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: git diff unavailable ({msg}) — fail-closed, running full corpus"
+                );
+                FloorGitDiffOutcome::ObservationFailClosed { reason: msg }
+            }
+        }
+    } else {
+        FloorGitDiffOutcome::UnifiedProduced(String::new())
+    };
+    let line_ranges_by_file = match diff_outcome {
+        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
+        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
+    };
+    let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier
+        && !line_ranges_by_file.is_empty()
+    {
+        // The frontier analysis resolves only the changed `.dag` files, to locate which of
+        // their declarations moved. `resolve_entry_with_index` warms the index's
+        // interior-mutable caches (parse / intern / typed-module), so resolving over the
+        // corpus's own `index` would let this read-only analysis pre-seed — and, under the
+        // known v2 generic-instantiation bootstrap limitation, corrupt — a module the corpus
+        // later reuses: a workflow entry resolved first caches `FreeMonoid<T>` without its
+        // variants, and every later witness then reports `Empty`/`Cons` "not found". Resolve
+        // over a throwaway index so the analysis cannot perturb the corpus it decides over
+        // (the width>1 shards already build a fresh index per thread; this gives the width==1
+        // path the same isolation). Cache impurity oracle: cold-vs-warm resolve must agree.
+        let frontier_index = build_multi_entry_index(source_roots);
+        match collect_frontier_seeds_from_diff_line_ranges(&frontier_index, &line_ranges_by_file) {
+            // `force_run_all` (a change the frontier can't bound) disables the skip.
+            Ok(seeds) => (!seeds.force_run_all, seeds),
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: node-frontier population failed ({msg}) — fail-closed, running full corpus"
+                );
+                (false, NodeFrontierSeeds::default())
+            }
+        }
+    } else {
+        (false, NodeFrontierSeeds::default())
+    };
+
+    // Width realization (§3 peripheral): shard whole entry-groups across worker threads;
+    // the topology (which witnesses run vs. skip) is unchanged — only host fan-out differs.
+    // Seeds are string-keyed (Send), so each shard shares a clone of the skip decision.
+    let width = parallel_width.max(1);
+    if width == 1 {
+        return run_discovery_rows(
+            &rows,
+            &index,
+            execution_mode,
+            skip_enabled,
+            &frontier_seeds,
+            whole_tree_published_keys.clone(),
+        );
+    }
+    let shards = shard_row_indices_by_entry(&rows, width);
+    eprintln!(
+        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
+        width,
+        shards.iter().filter(|s| !s.is_empty()).count()
+    );
+    let source_roots_owned = source_roots.to_vec();
+    let mut handles = Vec::new();
+    for shard in shards {
+        if shard.is_empty() {
+            continue;
+        }
+        let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
+        let roots = source_roots_owned.clone();
+        let seeds = frontier_seeds.clone();
+        let keys = whole_tree_published_keys.clone();
+        handles.push(std::thread::spawn(move || {
+            let index = build_multi_entry_index(&roots);
+            run_discovery_rows(
+                &shard_rows,
+                &index,
+                execution_mode,
+                skip_enabled,
+                &seeds,
+                keys,
+            )
+        }));
+    }
+    let mut summaries = Vec::new();
+    for handle in handles {
+        summaries.push(
+            handle
+                .join()
+                .map_err(|_| "discovery corpus shard thread panicked".to_string())??,
+        );
+    }
+    Ok(merge_discovery_summaries(summaries))
 }
 
 /// Partition row indices by whole entry groups (preserve resolve-once warmth), then
@@ -2377,7 +3073,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     let mut merged = DiscoverySummary {
         total: 0,
         passed: 0,
+        skipped: 0,
         failures: Vec::new(),
+        witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
         total_resolve_nanos: 0,
         performance_receipts: Vec::new(),
@@ -2386,7 +3084,9 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     for summary in summaries {
         merged.total += summary.total;
         merged.passed += summary.passed;
+        merged.skipped += summary.skipped;
         merged.failures.extend(summary.failures);
+        merged.witness_outcomes.extend(summary.witness_outcomes);
         merged
             .entry_resolve_receipts
             .extend(summary.entry_resolve_receipts);
@@ -2399,81 +3099,247 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
-/// Run the whole floor discovery corpus through one shared module index
-/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
-/// are appended to the discovered roster with `(entry, function)` dedup — exactly
-/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
-/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
-/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
-/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
-/// `claim_batch` keeps its own timing/stats loop but shares the roster.
-pub fn run_discovery_corpus(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
+/// Run an ordered slice of discovery rows against a shared multi-entry index. Rows must be
+/// sorted by `(entry, function)` so resolve-once-per-entry holds. `skip_enabled` +
+/// `frontier_seeds` carry the node-precise floor skip decision.
+fn run_discovery_rows(
+    rows: &[DiscoveryRow],
+    index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
-    parallel_width: usize,
+    skip_enabled: bool,
+    frontier_seeds: &NodeFrontierSeeds,
+    whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
-    check_floor_filename_hygiene(source_roots)?;
-    let mut rows = discover_floor_corpus_rows(source_roots, scan_dirs)?;
-    // Append explicit rows with (entry, function) dedup, then re-sort so each
-    // entry's witnesses stay grouped for the resolve-once loop below.
-    let mut seen: std::collections::BTreeSet<(String, String)> = rows
-        .iter()
-        .map(|r| (r.entry.clone(), r.function.clone()))
-        .collect();
-    for (entry, function) in explicit_entries {
-        if seen.insert((entry.clone(), function.clone())) {
-            rows.push(DiscoveryRow {
-                label: function.clone(),
-                entry: entry.clone(),
-                function: function.clone(),
+    let mut summary = DiscoverySummary {
+        total: rows.len(),
+        passed: 0,
+        skipped: 0,
+        failures: Vec::new(),
+        witness_outcomes: Vec::with_capacity(rows.len()),
+        entry_resolve_receipts: Vec::new(),
+        total_resolve_nanos: 0,
+        performance_receipts: Vec::new(),
+        total_measured_nanos: 0,
+    };
+    let mut current_entry: Option<String> = None;
+    let mut current_closure_subject: Option<String> = None;
+    let mut ctx: Option<v1_interpreter::InterpContext> = None;
+    let mut current_entry_touches = true;
+    let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
+    for row in rows {
+        if current_entry.as_deref() != Some(row.entry.as_str()) {
+            let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
+                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
+            let closure_subject = subject_digest_for_closure(&sources);
+            let resolve_started = std::time::Instant::now();
+            let (graph, source_indices) = resolve_entry_with_index(index, &row.entry)
+                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let resolve_nanos = resolve_started.elapsed().as_nanos();
+            summary.total_resolve_nanos += resolve_nanos;
+            summary.entry_resolve_receipts.push(EntryResolveReceipt {
+                entry: row.entry.clone(),
+                closure_subject: closure_subject.clone(),
+                resolve_nanos,
             });
+            current_closure_subject = Some(closure_subject);
+            let entry_ctx = make_eval_context_with_runtime_options(
+                &graph,
+                source_indices,
+                execution_mode,
+                None,
+                whole_tree_published_keys.clone(),
+            );
+            current_entry_touches = if skip_enabled {
+                entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
+            } else {
+                true
+            };
+            ctx = Some(entry_ctx);
+            current_entry = Some(row.entry.clone());
         }
-    }
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    if rows.is_empty() {
-        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
-    }
-    let index = build_multi_entry_index(source_roots);
-    let width = parallel_width.max(1);
-    if width == 1 {
-        return run_discovery_rows(&rows, &index, execution_mode);
-    }
-    // Peripheral width realization: shard whole entry-groups across workers; topology
-    // (which witnesses run) is unchanged — only host fan-out differs.
-    let shards = shard_row_indices_by_entry(&rows, width);
-    eprintln!(
-        "run_discovery_corpus: parallel_width={} ({} entry-group shard(s))",
-        width,
-        shards.iter().filter(|s| !s.is_empty()).count()
-    );
-    let source_roots_owned = source_roots.to_vec();
-    let mut handles = Vec::new();
-    for shard in shards {
-        if shard.is_empty() {
+        // Finding 1 (fail-closed): a witness whose own `test fn` body span was edited must
+        // run even when no `data` node it reads changed — its behavior IS the diff.
+        let function_edited = skip_enabled
+            && frontier_seeds.edited_test_fns.iter().any(|(file, func)| {
+                diff_file_matches_entry(file, &row.entry) && func == &row.function
+            });
+        if skip_enabled && !current_entry_touches && !function_edited {
+            summary.skipped += 1;
+            eprintln!(
+                "SKIP [assumed-green node-frontier] {} ({})",
+                row.function, row.entry
+            );
             continue;
         }
-        let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
-        let roots = source_roots_owned.clone();
-        handles.push(std::thread::spawn(move || {
-            let index = build_multi_entry_index(&roots);
-            run_discovery_rows(&shard_rows, &index, execution_mode)
-        }));
+        let ctx_ref = ctx.as_ref().expect("ctx set above");
+        let closure_subject = current_closure_subject
+            .as_deref()
+            .expect("closure subject set above");
+        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+        summary.total_measured_nanos += receipt.wall_nanos;
+        summary.performance_receipts.push(receipt);
+        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
+            entry: row.entry.clone(),
+            function: row.function.clone(),
+            outcome: outcome.clone(),
+        });
+        match outcome {
+            ClaimOutcome::Pass => summary.passed += 1,
+            ClaimOutcome::Fail => summary.failures.push(format!(
+                "{} ({}) returned Bool(false)",
+                row.function, row.entry
+            )),
+            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
+                "{} ({}) returned `{}`, not Bool",
+                row.function, row.entry, got
+            )),
+            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+                "{} ({}) runtime error: {}",
+                row.function, row.entry, message
+            )),
+        }
     }
-    let mut summaries = Vec::new();
-    for handle in handles {
-        summaries.push(
-            handle
-                .join()
-                .map_err(|_| "discovery corpus shard thread panicked".to_string())??,
+    Ok(summary)
+}
+
+#[cfg(test)]
+mod floor_skip_frontier_tests {
+    use super::{
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        entry_touches_frontier_seeds, parse_unified_diff_line_ranges, scan_test_decl_lines,
+        FileLineRange,
+    };
+    use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
+    use crate::v1_interpreter::ExecutionMode;
+    use crate::v1_std_core::{authored_name_at, byte_to_line_col};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn fixture_path() -> String {
+        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag".to_string()
+    }
+
+    fn data_item_line(
+        fixture: &str,
+        source_indices: &std::rc::Rc<
+            HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+        >,
+        graph: &std::rc::Rc<ResolvedGraph>,
+        name: &str,
+    ) -> i64 {
+        for module in graph.modules.iter() {
+            for item in module.items.iter() {
+                if item_kind(item.clone()) != ItemKind::DataItem {
+                    continue;
+                }
+                if authored_name_at(source_indices.clone(), item.clone()) != name {
+                    continue;
+                }
+                let span = &item.span;
+                let index = source_indices.get(&span.file).expect("newline index");
+                return byte_to_line_col(index.clone(), span.start).line;
+            }
+        }
+        panic!("data item `{name}` not found in {fixture}");
+    }
+
+    fn unified_diff_for_line(file: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n@@ -{line},0 +{line},1 @@\n+// node-precise touch\n"
+        )
+    }
+
+    #[test]
+    fn parse_unified_diff_extracts_new_side_line_ranges() {
+        let diff = "\
+diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
+--- a/src/v2/lens/affected_set.dag
++++ b/src/v2/lens/affected_set.dag
+@@ -100,0 +101,3 @@
++line1
++line2
++line3
+";
+        let ranges = parse_unified_diff_line_ranges(diff);
+        let file = "src/v2/lens/affected_set.dag";
+        assert_eq!(
+            ranges.get(file),
+            Some(&vec![FileLineRange {
+                start: 101,
+                end: 103
+            }])
         );
     }
-    Ok(merge_discovery_summaries(summaries))
+
+    /// `test fn`s are not AST items, so the partition gets their decl lines from source text.
+    /// Without these boundaries a witness-body edit would fall into the last `data` item's
+    /// trailing span (the finding-1 fail-open). Pin the 1-based line pairing.
+    #[test]
+    fn scan_test_decl_lines_pairs_names_with_1_based_lines() {
+        let source = "module m\n\ndata d: Int = 1\n\ntest fn witness_a() -> Bool { true }\n\ntest data witness_b: Int = 2\n";
+        let pairs = scan_test_decl_lines(source);
+        assert_eq!(
+            pairs,
+            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
+        );
+    }
+
+    /// §5 discriminating receipt: same FILE, two different nodes. A node a claim references
+    /// → the entry touches the frontier (runs). An ORPHAN node referenced by no claim → the
+    /// entry does NOT touch (skips). Same file, different nodes, different outcomes: only
+    /// true node precision (not file-level) can produce the orphan skip.
+    #[test]
+    fn node_precise_same_file_referenced_vs_orphan_discriminates() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let fixture = fixture_path();
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
+            .expect("discriminator fixture resolves");
+        let referenced_line =
+            data_item_line(&fixture, &source_indices, &graph, "floor_disc_node_c");
+        let orphan_line =
+            data_item_line(&fixture, &source_indices, &graph, "floor_disc_orphan_node");
+        assert_ne!(
+            referenced_line, orphan_line,
+            "fixture must place the two nodes on distinct lines"
+        );
+
+        let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
+
+        let referenced_ranges =
+            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, referenced_line));
+        let referenced_seeds =
+            collect_frontier_seeds_from_diff_line_ranges(&index, &referenced_ranges)
+                .expect("frontier for referenced-node diff");
+        assert!(
+            entry_touches_frontier_seeds(&ctx, &fixture, &referenced_seeds)
+                .expect("touch check (referenced)"),
+            "a diff on a node some claim references must touch the entry (runs)"
+        );
+
+        let orphan_ranges =
+            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, orphan_line));
+        let orphan_seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &orphan_ranges)
+            .expect("frontier for orphan-node diff");
+        assert!(
+            !entry_touches_frontier_seeds(&ctx, &fixture, &orphan_seeds)
+                .expect("touch check (orphan)"),
+            "a diff on an orphan node (no claim references it) must NOT touch the entry (skips)"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

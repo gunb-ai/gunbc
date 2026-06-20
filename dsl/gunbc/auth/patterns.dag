@@ -112,7 +112,7 @@ pattern credential_chain(
 
   return {
     token: build_token(
-      payload: secret.payload,
+      payload: utf8_secret_from_access_payload(payload: secret.payload),
       scheme: scheme,
       header_name: header_name,
       source_id: source_id,
@@ -147,6 +147,7 @@ func metadata_oidc(audience: String) -> { token: Secret }
 
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
 // Commented: parser doesn't support if/else as inline expression yet.
+// Materializers (when enabled): gunbc.auth.credentials.gcp_oauth_access_token(strategy).
 //
 // func local_auth() -> Secret
 //   uses fs: Filesystem

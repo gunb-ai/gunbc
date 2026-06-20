@@ -5,11 +5,6 @@
 //   Wikipedia "Version (computing)": https://en.wikipedia.org/wiki/Version_(computing)
 //
 // Models version IDENTITY and ORDERING only — not any specific scheme.
-// Ecosystem schemes live in their own extdeps slices and build on this:
-//   extdeps/version/semver.dag     — Semantic Versioning (semver.org)
-//   extdeps/version/pep440.dag     — Python PEP 440
-//   extdeps/version/go_module.dag  — Go module versioning
-//   extdeps/version/git.dag        — Git tag versioning
 //
 // Key invariants:
 //   VersionIdentity — opaque label as the upstream ecosystem names it; no parsing here.
@@ -19,8 +14,7 @@
 //                       from VersionIdentity (">= 1.0.0" is not a version).
 //
 // Do NOT use std.types.SemVer as the authority for VersionIdentity.
-// std.types.SemVer remains a String alias; the structured SemVer model with
-// decomposed major/minor/patch fields is slice-2 (extdeps/version/semver.dag).
+// std.types.SemVer remains a String alias; structured SemVer lives in extdeps.version.semver.
 
 module extdeps.version
 

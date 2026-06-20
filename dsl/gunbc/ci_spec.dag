@@ -159,7 +159,7 @@ fn ci_rust_gate_test_command() -> String {
   // known-green subset. The `--` is required: `cargo test` accepts a single
   // positional TESTNAME, so a second bare filter errors ("unexpected argument");
   // multiple substring filters must follow `--` to reach the test binary.
-  "cargo test -p v1-compiler-tests -- interp_recorded_fixture resolve_expr_types_retraversal"
+  "cargo test -p v1-compiler-tests -- interp_recorded_fixture wet_hermetic resolve_expr_types_retraversal"
 }
 
 fn claim_executor_bin_shell() -> String {

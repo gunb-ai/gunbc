@@ -17,6 +17,9 @@ import std.markup {
   Attribute,
   AttributeContext,
   UrlContext,
+  MarkupSerializeResult,
+  Serialized,
+  Rejected,
   serialize_fragment,
   RejectedUrlScheme,
   SafeHref,
@@ -128,11 +131,6 @@ fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? 
 fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlScheme? {
   find_first_rejected_url_in_blocks(blocks: doc.blocks)
 }
-
-// 🟢 TERMINAL coproduct at markdown-consumer scope — fail-closed serialize outcome.
-type MarkdownSerializeResult
-  = Serialized { html: String }
-  | Rejected { reason: String }
 
 // --- Markdown -> Fragment adapter -------------------------------------------
 
@@ -263,7 +261,7 @@ fn serialize_markdown_document(doc: MarkdownDocument) -> String {
   serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
 }
 
-fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkdownSerializeResult {
+fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
   match find_first_rejected_url_in_document(doc: doc) {
     Present { value: _ } =>
       Rejected { reason: "URL scheme not allowlisted for markdown link/image" }

@@ -5,35 +5,23 @@
 
 module extdeps.container.oci.types
 
-import std.types {
-  Aarch64,
+import extdeps.toolchain.types {
   Android,
-  Arch,
-  Arm,
+  Aarch64,
   Armv7,
-  ContentHash,
-  FilePath,
+  Architecture,
   Freebsd,
   Ios,
   Linux,
   Macos,
-  Mips,
-  Mips64,
-  Mips64el,
-  Mipsel,
-  NonEmptyStr,
   Os,
-  Port,
-  Riscv64,
-  SemVer,
   Wasi,
-  Wasm32,
   Windows,
-  X86,
-  X86_64,
 }
+import std.types { ContentHash, FilePath, NonEmptyStr, Port, SemVer, String }
 
-// GOARCH/GOOS boundary decode (image-spec config.md) → std Arch/Os.
+// OCI image-spec GOARCH vocabulary (image-spec config.md `architecture` field).
+// Uses extdeps.toolchain.types.Architecture — decode/label functions own the wire boundary.
 data goarch_amd64_wire: String = "amd64"
 data goarch_arm64_wire: String = "arm64"
 data goarch_386_wire: String = "386"
@@ -46,7 +34,7 @@ data goos_windows_wire: String = "windows"
 data goos_darwin_wire: String = "darwin"
 
 type ImageConfigGoarchParse
-  = ImageConfigGoarchKnown { value: Arch }
+  = ImageConfigGoarchKnown { value: Architecture }
   | ImageConfigGoarchUnknown { wire: String }
 
 type ImageConfigGoosParse
@@ -71,7 +59,7 @@ fn parse_image_config_goarch(raw: String) -> ImageConfigGoarchParse {
   else { ImageConfigGoarchUnknown { wire: raw } }
 }
 
-fn image_config_goarch_label(arch: Arch) -> ImageConfigGoarchLabel {
+fn image_config_goarch_label(arch: Architecture) -> ImageConfigGoarchLabel {
   match arch {
     X86_64 => ImageConfigGoarchWireLabel { wire: goarch_amd64_wire }
     Aarch64 => ImageConfigGoarchWireLabel { wire: goarch_arm64_wire }
