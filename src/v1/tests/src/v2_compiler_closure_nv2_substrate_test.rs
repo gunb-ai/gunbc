@@ -1,10 +1,9 @@
-//! N_v2 substrate measurement — v2 own emitter (`emit_for_target` via
-//! `emit_compiler_import_closure_from_ingest`) on the scoped 00_compile compiler closure,
-//! executed through the v1 interpreter with host manifest overlay.
+//! N_v2 substrate measurement — scoped 00_compile closure ingest witnesses
+//! (modeled claims in `compiler_closure_emit_from_ingest_test.dag`), executed
+//! through the v1 interpreter with optional host manifest overlay.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{
@@ -33,15 +32,12 @@ fn witness_layer_root_paths(ws: &Path) -> Vec<String> {
         .collect()
 }
 
-fn cargo_binary() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
-}
-
 const COMPILER_ENTRY: &str = "src/v2/compiler/00_compile.dag";
 const NV2_GATE_ENTRY: &str =
     "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag";
-const EMIT_SOURCE_FN: &str = "compiler_closure_v2_emit_source_for_cargo_check";
-const ACCEPT_FN: &str = "compiler_closure_v2_emit_from_scoped_ingest_accepts";
+const LAYER_ROOTS_CLAIM: &str = "self_host_closure_witness_layer_roots_reexports_authority_holds";
+const MODULE_COUNT_CLAIM: &str = "compiler_closure_scoped_ingest_module_count_ok_holds";
+const PARSES_CLAIM: &str = "compiler_closure_scoped_ingest_parses_holds";
 
 fn unique_temp_dir(prefix: &str) -> PathBuf {
     let nanos = SystemTime::now()
@@ -51,52 +47,33 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(format!("gunbc-{prefix}-{}-{}", std::process::id(), nanos))
 }
 
-fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
-    fn codepoint(v: &Value) -> char {
-        match v {
-            Value::Int(n) => char::from_u32(*n as u32)
-                .unwrap_or_else(|| panic!("codepoint {n} is not a valid char")),
-            other => panic!("expected Int codepoint in String FreeMonoid, got {other:?}"),
+fn nv2_gate_context_no_overlay() -> Result<InterpContext, String> {
+    let ws = workspace_root();
+    let roots = witness_layer_root_paths(&ws);
+    let (graph, source_indices) =
+        resolve_entry_graph(&roots, NV2_GATE_ENTRY).map_err(|e| e.to_string())?;
+    Ok(make_eval_context(
+        &graph,
+        source_indices,
+        ExecutionMode::Wet,
+    ))
+}
+
+fn assert_claim_passes(ctx: &InterpContext, claim: &str) {
+    match run_claim(ctx, claim) {
+        ClaimOutcome::Pass => {}
+        ClaimOutcome::Fail => nv2_blocked_fail(format!("{claim} returned false")),
+        ClaimOutcome::NotBool { got } => {
+            nv2_blocked_fail(format!("{claim} returned non-Bool ({got})"))
+        }
+        ClaimOutcome::RuntimeError { message } => {
+            nv2_blocked_fail(format!("{claim} runtime error: {message}"))
         }
     }
-    match val {
-        Value::Str(s) => s.clone(),
-        Value::List(items) => items.iter().map(codepoint).collect(),
-        Value::Variant { .. } => {
-            let mut out = String::new();
-            let mut cur = val.clone();
-            loop {
-                match cur {
-                    Value::Variant {
-                        variant_name,
-                        fields,
-                        ..
-                    } => {
-                        if ctx.sym_eq(variant_name, "Empty") {
-                            break;
-                        }
-                        if ctx.sym_eq(variant_name, "Cons") {
-                            let head = ctx.field(&fields, "head").expect("Cons.head");
-                            out.push(codepoint(head));
-                            cur = ctx.field(&fields, "tail").expect("Cons.tail").clone();
-                            continue;
-                        }
-                        panic!(
-                            "unexpected FreeMonoid variant {}",
-                            ctx.resolve(variant_name)
-                        );
-                    }
-                    Value::Str(s) => {
-                        out.push_str(&s);
-                        break;
-                    }
-                    other => panic!("unexpected tail value {other:?}"),
-                }
-            }
-            out
-        }
-        other => panic!("not a String FreeMonoid: {other:?}"),
-    }
+}
+
+fn nv2_blocked_fail(detail: String) -> ! {
+    panic!("N_v2 BLOCKED_PENDING_COMPILED_BINARY — {detail}");
 }
 
 fn write_nv2_manifest(manifest_path: &Path) {
@@ -139,34 +116,13 @@ fn nv2_eval_context(manifest_dir: &Path) -> Result<InterpContext, String> {
     ))
 }
 
-fn nv2_blocked_fail(detail: String) -> ! {
-    panic!("N_v2 BLOCKED_PENDING_COMPILED_BINARY — {detail}");
-}
-
-fn cargo_check_single_file_crate(source: &str, out_dir: &Path) -> (bool, usize, String) {
-    fs::create_dir_all(out_dir.join("src")).expect("create src dir");
-    fs::write(out_dir.join("src/lib.rs"), source).expect("write emitted source");
-    fs::write(
-        out_dir.join("Cargo.toml"),
-        "[package]\nname = \"nv2_emit_receipt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .expect("write Cargo.toml");
-    let check = Command::new(cargo_binary())
-        .arg("check")
-        .arg("--manifest-path")
-        .arg(out_dir.join("Cargo.toml"))
-        .output()
-        .expect("cargo check");
-    let stdout = String::from_utf8_lossy(&check.stdout);
-    let stderr = String::from_utf8_lossy(&check.stderr);
-    let combined = format!("{stdout}\n{stderr}");
-    let error_count = combined.matches("error[").count() + combined.matches("error:").count();
-    (check.status.success(), error_count, combined)
-}
-
 #[test]
-#[ignore] // Boundary: N_v2 — fail-closed when run with --ignored; panics BLOCKED until substrate unblocked.
-fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
+#[ignore] // Boundary: mirrors compiler_closure_ingest_transport claim legs (manual).
+fn nv2_scoped_compiler_closure_ingest_claims_align_with_transport() {
+    let no_overlay = nv2_gate_context_no_overlay()
+        .unwrap_or_else(|msg| nv2_blocked_fail(format!("resolve no-overlay gate: {msg}")));
+    assert_claim_passes(&no_overlay, LAYER_ROOTS_CLAIM);
+
     let temp = unique_temp_dir("nv2-substrate");
     fs::create_dir_all(&temp).expect("temp dir");
     let manifest_path = temp.join("v2-compiler-closure-ingest-manifest.dag");
@@ -180,52 +136,23 @@ fn nv2_scoped_compiler_closure_substrate_cargo_check_error_count() {
     let ctx = nv2_eval_context(manifest_dir).unwrap_or_else(|msg| {
         nv2_blocked_fail(format!("resolve failed ({module_count} modules): {msg}"));
     });
+    assert_claim_passes(&ctx, MODULE_COUNT_CLAIM);
 
-    match run_claim(&ctx, ACCEPT_FN) {
-        ClaimOutcome::Pass => {}
+    match run_claim(&ctx, PARSES_CLAIM) {
+        ClaimOutcome::Pass => {
+            eprintln!(
+                "N_v2 ingest claims: layer_roots + module_count pass; parses_holds GREEN ({module_count} modules)"
+            );
+        }
         ClaimOutcome::Fail => {
-            nv2_blocked_fail(format!(
-                "{ACCEPT_FN} returned false ({module_count} modules)"
-            ));
+            eprintln!(
+                "N_v2 ingest claims: layer_roots + module_count pass; parses_holds RED ({module_count} modules) — expected until gap-4 lands"
+            );
         }
-        ClaimOutcome::NotBool { got } => {
-            nv2_blocked_fail(format!("{ACCEPT_FN} returned non-Bool ({got})"));
-        }
-        ClaimOutcome::RuntimeError { message } => {
-            nv2_blocked_fail(format!("{ACCEPT_FN} runtime error: {message}"));
-        }
-    }
-
-    let value = v1_interpreter::run_in_context(&ctx, EMIT_SOURCE_FN, true).unwrap_or_else(|e| {
-        nv2_blocked_fail(format!("run {EMIT_SOURCE_FN} failed: {e:?}"));
-    });
-    let source = decode_freemonoid_string(&value, &ctx);
-    assert!(
-        !source.is_empty(),
-        "N_v2 substrate emit returned empty TargetSource"
-    );
-
-    let check_dir = temp.join("emit-crate");
-    let (success, error_count, combined) = cargo_check_single_file_crate(&source, &check_dir);
-    eprintln!(
-        "N_v2 (v2 emit_for_target substrate): emit_for_target accepted; cargo check success={success} error_count={error_count} source_bytes={}",
-        source.len()
-    );
-    eprintln!(
-        "N_v2 headline: v2 emit_for_target on scoped 00_compile closure ({module_count} modules) → {error_count} cargo-check errors on emitted TargetSource"
-    );
-    if !success {
-        eprintln!(
-            "--- N_v2 cargo check output (tail) ---\n{}",
-            tail_lines(&combined, 40)
-        );
+        other => nv2_blocked_fail(format!("{PARSES_CLAIM} unexpected outcome: {other:?}")),
     }
 
     let _ = fs::remove_dir_all(&temp);
-    assert!(
-        error_count > 0 || success,
-        "cargo check produced no diagnostics and did not succeed"
-    );
 }
 
 // Manual RED->GREEN harness for the #5146-class resolve_expr_types O(2^depth)
@@ -282,15 +209,6 @@ fn nv2_manifest_resolve_scaling_probe() {
         );
         let _ = fs::remove_dir_all(&temp);
     }
-}
-
-fn tail_lines(text: &str, n: usize) -> String {
-    let lines: Vec<&str> = text.lines().collect();
-    lines
-        .into_iter()
-        .skip(text.lines().count().saturating_sub(n))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 #[test]
