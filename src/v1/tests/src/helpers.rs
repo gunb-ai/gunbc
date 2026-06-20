@@ -417,7 +417,7 @@ mod tests {
             "later root wins on duplicate module paths"
         );
 
-        let index_ba = build_module_index_for_roots(&[dir_b, dir_a]);
+        let index_ba = build_module_index_for_roots(&[dir_b, dir_a.clone()]);
         assert_eq!(
             index_ba.get("duplicate.test"),
             Some(&dir_a.join("a.dag")),
