@@ -1333,6 +1333,11 @@ fn compile_sources_filters_none_parse_diagnostics() {
         !msgs.is_empty(),
         "bad.dag (no module) should produce at least 1 diagnostic"
     );
+    let content = find_file(&result, "src/good.rs");
+    assert!(
+        !content.is_empty(),
+        "good.dag should still compile when bad.dag fails parse (parse-resilient front_end_sources)"
+    );
 }
 
 // ── Semantic / typecheck tests ──────────────────────────────────────────
