@@ -756,6 +756,37 @@ pub fn is_backfill_pending_for_qualified_name(qn: &crate::v1_interpreter::Value)
     is_backfill_pending_for_module_path(&module_path)
 }
 
+fn machinery_exempt_module_paths() -> &'static [&'static str] {
+    &["extdeps.uri", "extdeps.external_authority"]
+}
+
+fn clean_tree_roster_exclusion_paths() -> &'static [&'static str] {
+    &[
+        "extdeps.fixture.external_authority_bogus_scheme",
+        "extdeps.fixture.external_authority_missing",
+        "extdeps.fixture.external_authority_clean_https_no_anchor",
+        "extdeps.fixture.external_authority_file_anchor",
+    ]
+}
+
+pub fn is_machinery_exempt_for_module_path(module_path: &str) -> bool {
+    machinery_exempt_module_paths().contains(&module_path)
+}
+
+pub fn is_machinery_exempt_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    is_machinery_exempt_for_module_path(&module_path)
+}
+
+pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
+    clean_tree_roster_exclusion_paths().contains(&module_path)
+}
+
+pub fn is_clean_tree_roster_excluded_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    is_clean_tree_roster_excluded_for_module_path(&module_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -985,6 +1016,17 @@ service github.Gist {
     }
 
     #[test]
+    fn machinery_exempt_and_roster_exclusion_paths_are_fixed() {
+        assert!(is_machinery_exempt_for_module_path("extdeps.uri"));
+        assert!(is_machinery_exempt_for_module_path(
+            "extdeps.external_authority"
+        ));
+        assert!(is_clean_tree_roster_excluded_for_module_path(
+            "extdeps.fixture.external_authority_bogus_scheme"
+        ));
+    }
+
+    #[test]
     fn external_authority_live_violations_diagnostic() {
         let backfill = backfill_pending_module_paths();
         let exempt = ["extdeps.uri", "extdeps.external_authority"];
@@ -1003,7 +1045,9 @@ service github.Gist {
                 continue;
             }
             match project_external_authority_anchor(&path) {
-                ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
+                ExternalAuthorityAnchorProjection::Absent => {
+                    violations.push(format!("missing:{path}"))
+                }
                 ExternalAuthorityAnchorProjection::Present {
                     scheme_identity, ..
                 } if scheme_identity != "Http" && scheme_identity != "Https" => {
