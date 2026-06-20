@@ -1454,7 +1454,7 @@ fn compile_sources_filters_none_parse_diagnostics() {
         "bad.dag (no module) should produce at least 1 diagnostic"
     );
     assert!(
-        find_file(&result, "src/good.rs").is_empty(),
+        !has_file(&result, "src/good.rs"),
         "fail-closed front_end_sources must not emit good.dag when bad.dag fails parse"
     );
 }
