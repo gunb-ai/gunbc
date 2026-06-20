@@ -5000,9 +5000,10 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
     if !ctx.service_ops.contains_key("Filesystem.Read") {
         return Err(if ctx.execution_mode.is_hermetic() {
             InterpError::TypeError {
-                msg: "hermetic mode: filesystem_read requires Filesystem.Read in the import \
+                msg:
+                    "hermetic mode: filesystem_read requires Filesystem.Read in the import \
                       closure (import extdeps.filesystem.filesystem_io) — refusing direct disk read"
-                    .to_string(),
+                        .to_string(),
             }
         } else {
             InterpError::Unimplemented {
