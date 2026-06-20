@@ -748,3 +748,22 @@ fn gap4_02_parse_chunk_bisect_fast() {
     eprintln!("{report}");
     panic!("{report}");
 }
+
+#[test]
+#[ignore = "gap4 prefix probe: GAP4_PREFIX=N tests header+first N chunks of 02_parse"]
+fn gap4_02_parse_prefix_probe() {
+    let n: usize = std::env::var("GAP4_PREFIX")
+        .unwrap_or_else(|_| "72".to_string())
+        .parse()
+        .expect("GAP4_PREFIX usize");
+    let ctx = gap4_parse_probe_context();
+    let (header, chunks) = gap4_split_02_parse_chunks();
+    assert!(n <= chunks.len(), "GAP4_PREFIX {n} > chunk count {}", chunks.len());
+    let src = format!("{header}{}", chunks[..n].join(""));
+    let ok = gap4_parses_source(&ctx, &src);
+    let first = chunks[n - 1].lines().next().unwrap_or("");
+    eprintln!("gap4 prefix probe: chunks={n}/{} last={first} parses={ok}", chunks.len());
+    if std::env::var("GAP4_PREFIX_EXPECT").ok().as_deref() == Some("fail") {
+        assert!(!ok, "expected prefix {n} to fail parse");
+    }
+}
