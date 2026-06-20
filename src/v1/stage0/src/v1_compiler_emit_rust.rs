@@ -506,11 +506,7 @@ pub fn render_rust_decl_type(
                         v1_rt::rc_empty_map::<String, String>(),
                         stub_env,
                     );
-                    render_rust_shared_type_if_needed(
-                        name.clone(),
-                        rendered,
-                        shared_types.clone(),
-                    )
+                    render_rust_shared_type_if_needed(name.clone(), rendered, shared_types.clone())
                 } else {
                     if ((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) > 0))
