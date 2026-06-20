@@ -1,5 +1,0 @@
-module v2._adv_parse_probe
-fn probe() -> Bool {
-  let bad: Int = true
-  bad == 0
-}
