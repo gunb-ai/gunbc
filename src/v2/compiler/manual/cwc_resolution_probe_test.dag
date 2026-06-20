@@ -31,7 +31,8 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_wire_contract_index_nonempty,
   tepe_collect_data_decl_nodes,
   tepe_build_coproduct_wire_contract_index,
-  tepe_target_bundle_optional_child
+  tepe_target_bundle_optional_child,
+  tepe_atom_sym_optional
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -410,6 +411,25 @@ fn cwc_disj_first_variant_target_optional(n: Node) -> Optional<Node> {
       }
     }
   )
+}
+
+test fn cwc_review_disj_first_variant_atom_sym_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match cwc_disj_first_variant_target_optional(n: disj) {
+            Present { value: target } =>
+              match tepe_atom_sym_optional(node: target) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn cwc_review_disj_first_variant_unwrapped_conj_holds() -> Bool {

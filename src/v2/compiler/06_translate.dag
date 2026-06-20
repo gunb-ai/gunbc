@@ -37,7 +37,8 @@ import v2.compiler.infer {
   canonical_grounding_for_node
 }
 import v2.compiler.type_expression_projection_enrichment {
-  type_expression_projection_for_translate
+  type_expression_projection_for_translate,
+  tepe_atom_sym_optional
 }
 import v2.std.coercion {
   CoercionCandidateSet,
@@ -1679,6 +1680,18 @@ type TypeExprTranslateAcc
   | TypeExprTranslatePositional { items: List<Node> }
   | TypeExprTranslateDone { node: Node }
 
+fn type_expr_disj_variant_kernel_target(target: Node) -> Node {
+  match tepe_atom_sym_optional(node: target) {
+    Present { value: sym } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: target.occurrence_id
+      }
+    Absent => sugar_unwrap_production_shell(node: target)
+  }
+}
+
 fn type_expr_disj_unwrap_variant_shells(disj: Node) -> Node {
   Node {
     kind: disj.kind,
@@ -1690,7 +1703,7 @@ fn type_expr_disj_unwrap_variant_shells(disj: Node) -> Node {
           xs: acc,
           item: Edge {
             label: e.label,
-            target: sugar_unwrap_production_shell(node: e.target)
+            target: type_expr_disj_variant_kernel_target(target: e.target)
           }
         )
       }
