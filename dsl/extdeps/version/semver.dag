@@ -1,4 +1,4 @@
-// extdeps/version/semver.dag — Semantic Versioning scheme (slice 2).
+// extdeps/version/semver.dag — Semantic Versioning scheme (slice 2 + 2b).
 //
 // Spec: https://semver.org/
 //
@@ -6,13 +6,18 @@
 // is a separate escalation-gated PR). Ecosystem consumers (Cargo package version, etc.)
 // import SemVerIdentity / SemVerConstraint from here.
 //
-// Structured MAJOR.MINOR.PATCH decomposition and semver-aware ordering land in slice-2b;
-// semver_scheme below uses wire-label equality until then (dissolve-on).
+// Slice 2b: structured MAJOR.MINOR.PATCH decomposition + semver-aware ordering on
+// `SemVerVersion`. `VersionScheme.compare` on opaque `VersionIdentity` values remains
+// equality-only until parse ingress lands (DESIGN.md §5 fail-closed).
 
 module extdeps.version.semver
 
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 import std.algebra { Ordering, Less, Equal, Greater }
+import std.integer { NonNegativeInt }
+import std.list { List }
+import std.nat { nat_compare }
+import std.types { NonEmptyStr }
 
 // Published semver version label (MAJOR.MINOR.PATCH wire form).
 type SemVerIdentity = VersionIdentity
@@ -20,9 +25,116 @@ type SemVerIdentity = VersionIdentity
 // Semver version requirement / comparator wire text — not a published identity.
 type SemVerConstraint = VersionConstraint
 
-// Interim compare: equality on wire labels only (slice-2b adds semver-aware ordering).
+// Pre-release / build identifier (semver.org §9–§10).
+type SemVerIdentifier
+  = SemVerNumericIdentifier { value: NonNegativeInt }
+  | SemVerAlphanumericIdentifier { label: NonEmptyStr }
+
+// Decomposed semver version. Build metadata is informational and ignored in
+// precedence (semver.org §11).
+type SemVerVersion {
+  major: NonNegativeInt
+  minor: NonNegativeInt
+  patch: NonNegativeInt
+  pre_release: List<SemVerIdentifier>
+  build: List<SemVerIdentifier>
+}
+
+fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
+  nat_compare(a: a, b: b)
+}
+
+fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Ordering {
+  match a {
+    SemVerNumericIdentifier { value: av } => match b {
+      SemVerNumericIdentifier { value: bv } =>
+        semver_compare_non_negative_int(a: av, b: bv)
+      SemVerAlphanumericIdentifier { label: _ } => Less
+    }
+    SemVerAlphanumericIdentifier { label: al } => match b {
+      SemVerNumericIdentifier { value: _ } => Greater
+      SemVerAlphanumericIdentifier { label: bl } =>
+        if al < bl { Less } else { if al > bl { Greater } else { Equal } }
+    }
+  }
+}
+
+fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
+  if a.length() == 0 && b.length() == 0 { Equal }
+  else if a.length() == 0 { Greater }
+  else if b.length() == 0 { Less }
+  else {
+    match semver_compare_identifier(a: a.first(), b: b.first()) {
+      Equal =>
+        semver_compare_identifiers(
+          a: a.skip(n: 1),
+          b: b.skip(n: 1)
+        )
+      other => other
+    }
+  }
+}
+
+fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
+  if a.length() == 0 && b.length() == 0 { Equal }
+  else if a.length() == 0 { Greater }
+  else if b.length() == 0 { Less }
+  else { semver_compare_identifiers(a: a, b: b) }
+}
+
+fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
+  match semver_compare_non_negative_int(a: a.major, b: b.major) {
+    Equal =>
+      match semver_compare_non_negative_int(a: a.minor, b: b.minor) {
+        Equal =>
+          match semver_compare_non_negative_int(a: a.patch, b: b.patch) {
+            Equal => semver_compare_pre_release(a: a.pre_release, b: b.pre_release)
+            other => other
+          }
+        other => other
+      }
+    other => other
+  }
+}
+
+fn semver_identifier_label(id: SemVerIdentifier) -> String {
+  match id {
+    SemVerNumericIdentifier { value: v } => "{v}"
+    SemVerAlphanumericIdentifier { label: s } => s
+  }
+}
+
+fn semver_identifiers_label(ids: List<SemVerIdentifier>) -> String {
+  ids |> map(id => semver_identifier_label(id: id)) |> join(separator: ".")
+}
+
+fn semver_version_label(v: SemVerVersion) -> String {
+  let core = concat(
+    to_string(v.major),
+    concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+  )
+  let with_pre = if v.pre_release.length() == 0 {
+    core
+  } else {
+    concat(core, concat("-", semver_identifiers_label(ids: v.pre_release)))
+  }
+  if v.build.length() == 0 {
+    with_pre
+  } else {
+    concat(with_pre, concat("+", semver_identifiers_label(ids: v.build)))
+  }
+}
+
+fn semver_to_version_identity(v: SemVerVersion) -> VersionIdentity {
+  semver_version_label(v: v)
+}
+
+// VersionIdentity ingress for extdeps.version.VersionScheme.
+// Equality case is correct; full ordering requires parse ingress.
+// Scaffold: dissolve-on: parse_semver_version lands — replace body with:
+//   (a, b) => semver_compare(a: parse_semver_version(a), b: parse_semver_version(b))
 fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal } else { if a < b { Less } else { Greater } }
+  if a == b { Equal } else { Greater }
 }
 
 data semver_scheme: VersionScheme = {

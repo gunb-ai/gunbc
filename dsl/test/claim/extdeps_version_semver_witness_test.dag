@@ -1,4 +1,4 @@
-// By-execution witnesses for extdeps.version.semver (slice 2).
+// By-execution witnesses for extdeps.version.semver (slice 2 + 2b).
 //
 // Run via:
 //   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_version_semver_witness_test.dag \
@@ -6,13 +6,53 @@
 
 module test.claim.extdeps_version_semver
 
-import extdeps.version.semver { SemVerIdentity, SemVerConstraint, semver_scheme }
-import std.algebra { Equal }
+import extdeps.version.semver {
+  SemVerIdentity,
+  SemVerConstraint,
+  SemVerVersion,
+  SemVerNumericIdentifier,
+  SemVerAlphanumericIdentifier,
+  semver_scheme,
+  semver_compare,
+  semver_to_version_identity,
+  semver_version_label,
+}
+import std.algebra { Equal, Less, Greater }
 
 fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
 fn semver_constraint_caret() -> SemVerConstraint { "^1.2" }
 fn semver_identity_1_0_0() -> SemVerIdentity { "1.0.0" }
 fn semver_constraint_one() -> SemVerConstraint { "1" }
+
+fn semver_1_0_0() -> SemVerVersion {
+  SemVerVersion {
+    major: 1,
+    minor: 0,
+    patch: 0,
+    pre_release: [],
+    build: []
+  }
+}
+
+fn semver_1_0_0_alpha_1() -> SemVerVersion {
+  SemVerVersion {
+    major: 1,
+    minor: 0,
+    patch: 0,
+    pre_release: [SemVerNumericIdentifier { value: 0 }, SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { value: 1 }],
+    build: []
+  }
+}
+
+fn semver_1_0_0_build_1() -> SemVerVersion {
+  SemVerVersion {
+    major: 1,
+    minor: 0,
+    patch: 0,
+    pre_release: [],
+    build: [SemVerNumericIdentifier { value: 1 }]
+  }
+}
 
 fn w_semver_identity_inhabits_version_identity() -> Bool {
   semver_identity_1_2_3() == "1.2.3"
@@ -30,9 +70,52 @@ fn w_semver_scheme_equality_compare() -> Bool {
   semver_scheme.compare("1.0.0", "1.0.0") == Equal
 }
 
+fn w_semver_version_label_core() -> Bool {
+  semver_version_label(v: semver_1_0_0()) == "1.0.0"
+}
+
+fn w_semver_version_label_pre_release() -> Bool {
+  semver_version_label(v: semver_1_0_0_alpha_1()) == "1.0.0-0.alpha.1"
+}
+
+fn w_semver_version_label_build_ignored_in_compare() -> Bool {
+  semver_version_label(v: semver_1_0_0_build_1()) == "1.0.0+1"
+    && semver_compare(a: semver_1_0_0(), b: semver_1_0_0_build_1()) == Equal
+}
+
+fn w_semver_compare_pre_release_less_than_release() -> Bool {
+  match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0()) {
+    Less => true
+    _ => false
+  }
+}
+
+fn w_semver_compare_major_minor_patch() -> Bool {
+  let older = SemVerVersion { major: 1, minor: 2, patch: 3, pre_release: [], build: [] }
+  let newer = SemVerVersion { major: 1, minor: 2, patch: 4, pre_release: [], build: [] }
+  match semver_compare(a: older, b: newer) {
+    Less =>
+      match semver_compare(a: newer, b: older) {
+        Greater => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn w_semver_to_version_identity() -> Bool {
+  semver_to_version_identity(v: semver_1_0_0()) == "1.0.0"
+}
+
 test fn extdeps_version_semver_witnesses() -> Bool {
   w_semver_identity_inhabits_version_identity()
     && w_semver_constraint_inhabits_version_constraint()
     && w_identity_distinct_from_constraint()
     && w_semver_scheme_equality_compare()
+    && w_semver_version_label_core()
+    && w_semver_version_label_pre_release()
+    && w_semver_version_label_build_ignored_in_compare()
+    && w_semver_compare_pre_release_less_than_release()
+    && w_semver_compare_major_minor_patch()
+    && w_semver_to_version_identity()
 }
