@@ -398,11 +398,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   } else if n.connective == NoConnective && n.children |> count == 0 {
     if name == "String" {
       render_rust_text_carrier(shared_types: shared_types)
-    } else if match rust_opaque_kernel_alias_carrier(name: name) {
-      Present { value: carrier } => carrier
-      Absent => {
-        let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
-        render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
+    } else {
+      match rust_opaque_kernel_alias_carrier(name: name) {
+        Present { value: carrier } => carrier
+        Absent => {
+          let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: scope.type_env)
+          render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
+        }
       }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
