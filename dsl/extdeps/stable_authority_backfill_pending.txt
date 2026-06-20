@@ -150,6 +150,8 @@ extdeps.transports.file
 extdeps.transports.rest
 extdeps.transports.shell
 extdeps.transports.sql
+extdeps.toolchain.architecture_profile
+extdeps.toolchain.types
 extdeps.vendor
 extdeps.vendor.amd
 extdeps.vendor.ampere
@@ -160,4 +162,5 @@ extdeps.vendor.nvidia
 extdeps.vendor.qualcomm
 extdeps.vendor.sk_hynix
 extdeps.version
+extdeps.version.pep440
 extdeps.version.semver
