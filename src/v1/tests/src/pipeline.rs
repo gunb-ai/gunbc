@@ -1460,6 +1460,65 @@ fn compile_sources_filters_none_parse_diagnostics() {
     );
 }
 
+#[test]
+fn resolve_entry_parse_cache_skips_closure_parse_errors() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "gunbc_parse_resilience_{}_{}",
+        std::process::id(),
+        stamp
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let root = dir.to_string_lossy().into_owned();
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    std::fs::write(
+        dir.join("broken.dag"),
+        "module broken\nfn x( -> Int { 1 }\n",
+    )
+    .expect("write broken.dag");
+    std::fs::write(
+        dir.join("good.dag"),
+        "module good\nfn ok() -> Int { 0 }\n",
+    )
+    .expect("write good.dag");
+    let good_path = dir.join("good.dag").to_string_lossy().into_owned();
+    let index = build_multi_entry_index(&[root.clone()]);
+    let good_resolve = resolve_entry_with_index(&index, &good_path);
+    cleanup();
+    good_resolve
+        .expect("good entry should resolve when only a non-imported sibling fails parse");
+
+    std::fs::create_dir_all(&dir).expect("recreate temp dir");
+    std::fs::write(
+        dir.join("broken.dag"),
+        "module broken\nfn x( -> Int { 1 }\n",
+    )
+    .expect("rewrite broken.dag");
+    std::fs::write(
+        dir.join("main.dag"),
+        "module main\nimport broken {}\nfn run() -> Int { 0 }\n",
+    )
+    .expect("write main.dag");
+    let main_path = dir.join("main.dag").to_string_lossy().into_owned();
+    let index = build_multi_entry_index(&[root]);
+    let err = resolve_entry_with_index(&index, &main_path)
+        .expect_err("main should fail when imported dep does not parse");
+    cleanup();
+    assert!(
+        !err.contains("fn x("),
+        "resolve must not short-circuit on dep parse error; got: {err}"
+    );
+}
+
 // ── Semantic / typecheck tests ──────────────────────────────────────────
 
 #[test]
