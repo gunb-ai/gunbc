@@ -22,6 +22,7 @@ module v1.compiler.stage0_crates
 import v1.std.core { TextFile }
 import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
+import extdeps.cargo_version { render_cargo_package_header_prefix }
 
 // =========================================================================
 // Crate-boundary model
@@ -155,7 +156,8 @@ fn render_stage0_crate_features_section(features: List<CargoFeature>) -> String 
 fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
   let deps = spec.dependencies |> map(render_stage0_crate_dep) |> join(separator: "")
   let content = concat(
-    "[package]\nname = \"", spec.package_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"",
+    render_cargo_package_header_prefix(name: spec.package_name),
+    "\nedition = \"2021\"",
     render_stage0_crate_features_section(features: spec.features),
     "\n\n[dependencies]\n",
     deps

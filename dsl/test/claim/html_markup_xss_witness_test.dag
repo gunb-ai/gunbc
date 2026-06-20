@@ -21,10 +21,10 @@ import std.markup {
   JavascriptScheme,
   DataScheme,
   validate_href,
-}
-import std.html_markup {
   Serialized,
   Rejected,
+}
+import std.html_markup {
   try_serialize_html_node,
 }
 

@@ -4,13 +4,12 @@ module gunbc.gunbhub_serve_html
 
 import std.markup {
   MarkupNode,
+  Serialized,
+  Rejected,
   ElementNode,
   TextNode,
 }
 import std.html_markup {
-  Serialized,
-  Rejected,
-  HtmlSerializeResult,
   try_serialize_html_node,
 }
 

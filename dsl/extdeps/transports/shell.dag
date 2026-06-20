@@ -11,6 +11,15 @@
 
 module extdeps.transports.shell
 
+import std.fidelity { TransportFidelity }
+
+// Fidelity row for the shell realization (§3: cited specifics live with the
+// realization, not in std). A local subprocess fork/exec is sub-second
+// (POSIX.1-2017 exec family, no network) and hermetic — stdout/stderr are
+// captured deterministically from a local process, replayable without a
+// remote dependency.
+data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
+
 // Process output channels (POSIX.1-2017).
 // Each variant names the source a shell output field reads from.
 // Output fields declare their channel via `from "VariantName"`.

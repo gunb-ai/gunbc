@@ -10,7 +10,8 @@ import extdeps.container.oci.types {
   ContainerPortProtocol,
   Tcp,
 }
-import std.types { Arch, Bool, ContentHash, FilePath, NonEmptyStr, Os }
+import extdeps.container.oci.types { ImageConfigArchitecture }
+import std.types { Bool, ContentHash, FilePath, NonEmptyStr, Os }
 
 type ContainerImageConfig {
   User: NonEmptyStr?
@@ -25,7 +26,7 @@ type ImageRootfs
   = RootfsLayers { diff_ids: List<ContentHash> }
 
 type ImageConfiguration {
-  architecture: Arch
+  architecture: ImageConfigArchitecture
   os: Os
   config: ContainerImageConfig?
   rootfs: ImageRootfs
