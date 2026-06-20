@@ -106,3 +106,9 @@ func probe_chained_lets_tail_record_tokens_remain() -> Bool {
     src: "module gap4.b\n\ntype Prov { x: Int }\ntype Stamp { node: Int, prov: Prov }\n\ntype Acc = Accepted { remaining: Int, captured: Int, diagnostics: Int, prov: Prov }\n\nfn f(prov: Prov) -> Acc {\n  let merged_prov = Prov { x: prov.x }\n  let stamped = Stamp { node: 1, prov: merged_prov }\n  Accepted { remaining: 0, captured: stamped.node, diagnostics: 0, prov: stamped.prov }\n}\n"
   )
 }
+
+func probe_malformed_let_reason() -> String {
+  parse_reason(
+    src: "module m.t\nfn f() -> Int {\n  let key ParsePositionKey { position: 0 }\n  0\n}\n"
+  )
+}
