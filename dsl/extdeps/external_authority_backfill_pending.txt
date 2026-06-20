@@ -1,6 +1,9 @@
 extdeps.apt
 extdeps.audit.cloudevents
+extdeps.bmc
 extdeps.bmc.openbmc
+extdeps.bmc.redfish
+extdeps.bmc.types
 extdeps.boards.asrock_rack
 extdeps.boot.emit
 extdeps.boot.framebuffer

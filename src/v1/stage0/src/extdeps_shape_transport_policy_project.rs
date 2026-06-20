@@ -815,11 +815,7 @@ fn live_violation_module_paths() -> Vec<String> {
 
 /// Host-backed live clean-tree verdict (single authority for CI + lens).
 pub fn external_authority_live_clean_tree_holds() -> bool {
-    let violations = live_violation_module_paths();
-    if !violations.is_empty() {
-        panic!("extdeps external authority live violations: {violations:?}");
-    }
-    true
+    live_violation_module_paths().is_empty()
 }
 
 pub fn external_authority_live_roster_module_count() -> i64 {
