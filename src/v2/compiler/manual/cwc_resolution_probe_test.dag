@@ -1049,7 +1049,29 @@ test fn cwc_sum_leading_tokens_regression_byte_unchanged() -> Bool {
 test fn cwc_diag_review_disj_present_holds() -> Bool {
   match cwc_inferred_of(src: cwc_src_cwc_module) {
     Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_disj_for_enum_sym(root: tree.root, enum_sym: ^ReviewEvent) {
+      match cwc_optional_disj_by_arm_count(root: tree.root, arm_count: 4) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_disj_for_enum_on_norm_holds() -> Bool {
+  match cwc_norm_of(src: cwc_src_cwc_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_disj_for_enum_sym_optional(root: root, enum_sym: ^ReviewEvent) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_disj_for_enum_on_infer_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match tepe_disj_for_enum_sym_optional(root: tree.root, enum_sym: ^ReviewEvent) {
         Present { value: _ } => true
         Absent => false
       }
