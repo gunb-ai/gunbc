@@ -30,6 +30,8 @@ mod cron_tag_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
+mod dependency_pool_index_compile_test;
+#[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
 mod diagnostics;
@@ -102,9 +104,9 @@ mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
-mod source_root_ingest_manifest_host_test;
-#[cfg(test)]
 mod source_audit;
+#[cfg(test)]
+mod source_root_ingest_manifest_host_test;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
