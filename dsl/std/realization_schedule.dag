@@ -135,14 +135,14 @@ fn schedule_lens_violation_diagnostic(
 }
 
 fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_fn: String) -> LensVerdict {
-  if plan.schedule.length() == 0 {
+  if plan.schedule.count() == 0 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(
         kind: EmptySchedule,
         compile_gate_fn: compile_gate_fn
       )
     }
-  } else if plan.schedule.length() < 2 {
+  } else if plan.schedule.count() < 2 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(
         kind: SingleBatchOnly,
@@ -151,7 +151,7 @@ fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_
     }
   } else {
     let batch0 = plan.schedule.first()
-    if batch0.length() != 1 {
+    if batch0.count() != 1 {
       Violation {
         diagnostic: schedule_lens_violation_diagnostic(
           kind: CompileGateNotFirst { expected: compile_gate_fn },
@@ -174,7 +174,7 @@ fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_
       }
     } else {
       let batch1 = plan.schedule.skip(n: 1).first()
-      if batch1.length() < 2 {
+      if batch1.count() < 2 {
         Violation {
           diagnostic: schedule_lens_violation_diagnostic(
             kind: SingleBatchOnly,
@@ -189,7 +189,7 @@ fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_
 }
 
 fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: RealizationPlan<S>) -> Bool {
-  left.schedule.length() == right.schedule.length()
+  left.schedule.count() == right.schedule.count()
 }
 
 fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -> Bool {
@@ -197,9 +197,9 @@ fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -
 }
 
 fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
-  if left.length() != right.length() {
+  if left.count() != right.count() {
     false
-  } else if left.length() == 0 {
+  } else if left.count() == 0 {
     true
   } else if left.first() != right.first() {
     false
@@ -209,9 +209,9 @@ fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
 }
 
 fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<ScheduleWitnessEntry>) -> Bool {
-  if left.length() != right.length() {
+  if left.count() != right.count() {
     false
-  } else if left.length() == 0 {
+  } else if left.count() == 0 {
     true
   } else if !schedule_witness_entry_eq(a: left.first(), b: right.first()) {
     false
@@ -238,9 +238,9 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
 }
 
 fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
-  if left.length() != right.length() {
+  if left.count() != right.count() {
     false
-  } else if left.length() == 0 {
+  } else if left.count() == 0 {
     true
   } else if !runnable_eq(left: left.first(), right: right.first()) {
     false
@@ -250,9 +250,9 @@ fn runnable_batch_eq(left: List<Runnable>, right: List<Runnable>) -> Bool {
 }
 
 fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
-  if left.length() != right.length() {
+  if left.count() != right.count() {
     false
-  } else if left.length() == 0 {
+  } else if left.count() == 0 {
     true
   } else if !runnable_batch_eq(left: left.first(), right: right.first()) {
     false
