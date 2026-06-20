@@ -1488,7 +1488,7 @@ fn resolve_entry_parse_cache_skips_closure_parse_errors() {
     std::fs::write(dir.join("good.dag"), "module good\nfn ok() -> Int { 0 }\n")
         .expect("write good.dag");
     let good_path = dir.join("good.dag").to_string_lossy().into_owned();
-    let index = build_multi_entry_index(&[root.clone()]);
+    let index = build_multi_entry_index(std::slice::from_ref(&root));
     let good_resolve = resolve_entry_with_index(&index, &good_path);
     cleanup();
     good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
