@@ -281,24 +281,38 @@ pub fn render_rust_text_carrier(shared_types: Rc<std::collections::BTreeSet<Stri
     )
 }
 
-pub fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
-    v1_rt::concat(
+pub fn emit_rust_host_to_dag_string_via_seam(
+    host_expr: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if rust_emit_faithful_text_carrier(source_indices) {
         v1_rt::concat(
-            "crate::v2_std_text::host_string_text_from_rust_host(".to_string(),
-            host_expr,
-        ),
-        ")".to_string(),
-    )
+            v1_rt::concat(
+                "crate::v2_std_text::host_string_text_from_rust_host(".to_string(),
+                host_expr,
+            ),
+            ")".to_string(),
+        )
+    } else {
+        host_expr
+    }
 }
 
-pub fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
-    v1_rt::concat(
+pub fn emit_rust_dag_string_to_host_via_seam(
+    dag_expr: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if rust_emit_faithful_text_carrier(source_indices) {
         v1_rt::concat(
-            "crate::v2_std_text::host_string_text_to_rust_host(".to_string(),
-            dag_expr,
-        ),
-        ")".to_string(),
-    )
+            v1_rt::concat(
+                "crate::v2_std_text::host_string_text_to_rust_host(".to_string(),
+                dag_expr,
+            ),
+            ")".to_string(),
+        )
+    } else {
+        dag_expr
+    }
 }
 
 pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {

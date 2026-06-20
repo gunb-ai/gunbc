@@ -222,12 +222,21 @@ fn render_rust_text_carrier(shared_types: Set<String>) -> String {
 }
 
 // §2 — route ALL host→DAG String boundary bridges through HostStringText seam (one authority).
-fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
-  concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
+// §7: seam wrappers are v2-self-host only; v1 seed keeps host String (no v2_std_text module).
+fn emit_rust_host_to_dag_string_via_seam(host_expr: String, source_indices: Map<String, NewlineIndex>) -> String {
+  if rust_emit_faithful_text_carrier(source_indices: source_indices) {
+    concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
+  } else {
+    host_expr
+  }
 }
 
-fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
-  concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
+fn emit_rust_dag_string_to_host_via_seam(dag_expr: String, source_indices: Map<String, NewlineIndex>) -> String {
+  if rust_emit_faithful_text_carrier(source_indices: source_indices) {
+    concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
+  } else {
+    dag_expr
+  }
 }
 
 fn rust_host_string_seam_fn_emit(name: String) -> String? {
@@ -3449,10 +3458,11 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
 // =========================================================================
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match rust_host_string_seam_fn_emit(name: name) {
-    Present { value: seam_fn } => seam_fn
-    Absent => {
   let si = scope.type_env.source_indices
+  match rust_host_string_seam_fn_emit(name: name) {
+    Present { value: seam_fn } =>
+      if rust_emit_faithful_text_carrier(source_indices: si) { seam_fn } else { "" }
+    Absent => {
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
   // Fail closed on the `fn f<T>(T: T)` name-shadowing ambiguity — the
@@ -4871,7 +4881,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\"")), ",")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\""), source_indices: scope.type_env.source_indices), ",")
         )
         // Borrow the scrutinee so the arms (which never bind fields) don't move it. Shared types
         // are Rc-wrapped, so deref through the Rc with `&*` to reach `&T`; owned values use `&`.
@@ -4883,9 +4893,9 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
         concat("(match ", scrut_ref, " {\n", arms |> join(separator: "\n"), "\n    })")
       } else {
         // Product/record type: the discriminant is the type's own name (interpreter returns type_name).
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), source_indices: scope.type_env.source_indices)
       }
-    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""))
+    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), source_indices: scope.type_env.source_indices)
   }
 }
 
@@ -4967,7 +4977,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"), source_indices: scope.type_env.source_indices)
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -6206,11 +6216,11 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), ")") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")") }
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, source_indices: scope.type_env.source_indices), ")") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, source_indices: scope.type_env.source_indices), ")") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
-        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str), ")")
+        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, source_indices: scope.type_env.source_indices), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, source_indices: scope.type_env.source_indices), ")")
       }
     } else {
       concat("(", l_str, " ", op_str, " ", r_str, ")")
@@ -6252,10 +6262,10 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
     |> map(p => p.arg_expr)
     |> filter(a => a != "")
   if args |> count == 0 {
-    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""))
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""), source_indices: scope.type_env.source_indices)
   } else {
     let args_str = args |> join(separator: ", ")
-    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"))
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"), source_indices: scope.type_env.source_indices)
   }
 }
 
@@ -6710,7 +6720,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
                       Absent => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
                     }
                   } else {
-                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
                   }
                 _ =>
                   concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
@@ -6883,7 +6893,7 @@ fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineInde
     Present { value: q } => {
       let pairs = q.children |> map(fi =>
         concat("(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
-          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices)),
+          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices), source_indices: source_indices),
           ")")
       )
       if pairs |> count > 0 {
@@ -7062,12 +7072,12 @@ fn escape_json_pointer_segment(seg: String) -> String {
   seg |> replace("~", "~0") |> replace("/", "~1")
 }
 
-fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String) -> String {
+fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String, source_indices: Map<String, NewlineIndex>) -> String {
   let escaped_path = from_path |> split("/") |> map(seg => escape_json_pointer_segment(seg: seg)) |> join(separator: "/")
   let pointer = concat("/", escaped_path)
   let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name)
   let accessor = if dag_type_name == "String" {
-    concat(".and_then(|v| v.as_str()).map(|s| crate::v2_std_text::host_string_text_from_rust_host(s.to_string())).ok_or(\"missing field: ", from_path, "\")?")
+    concat(".and_then(|v| v.as_str()).map(|s| ", emit_rust_host_to_dag_string_via_seam(host_expr: "s.to_string()", source_indices: source_indices), ").ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "i64" {
     concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "f64" {
@@ -7122,7 +7132,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
             Absent => concat("let ", field_name, " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n")
           }
         } else {
-          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
         }
       _ =>
         concat("let ", field_name, " = compile_error!(\"unresolved type for output field: ", ch_name, "\");")
@@ -7206,7 +7216,7 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node, source_indices: Map<St
     let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(crate::v2_std_text::host_string_text_from_rust_host(stderr)) }," }
+      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", source_indices: source_indices), ") },") }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -7225,7 +7235,7 @@ fn emit_exit_arm(prop: Node, inferred: Node, source_indices: Map<String, Newline
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred, source_indices: source_indices), " },")
   } else {
-    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(crate::v2_std_text::host_string_text_from_rust_host(stderr)) },")
+    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", source_indices: source_indices), ") },")
   }
 }
 
@@ -7324,9 +7334,9 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         Absent => false
       }
       if is_opt {
-        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"))
+        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"), source_indices: source_indices)
       } else {
-        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name)
+        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name, source_indices: source_indices)
       }
     }
     _ => emit_simple_expr(expr: arg, target: Rust, source_indices: source_indices)
@@ -7580,7 +7590,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
         ExprRecordLit { parent_enum: _ } =>
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("            __m.insert(", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\"")), ", ", val_str, ");")
+            concat("            __m.insert(", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\""), source_indices: scope.type_env.source_indices), ", ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",
