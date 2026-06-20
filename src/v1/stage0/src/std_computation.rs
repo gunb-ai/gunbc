@@ -33,17 +33,17 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SizeBound {
-    CollectionSize { param: String },
-    ParserStreamSize { witness: String },
-    WorklistDrainSize { element: String },
-    TreeSize { param: String },
-    ArithmeticParam { param: String },
+    CollectionSize { param: Rc<FreeMonoid<Nat>> },
+    ParserStreamSize { witness: Rc<FreeMonoid<Nat>> },
+    WorklistDrainSize { element: Rc<FreeMonoid<Nat>> },
+    TreeSize { param: Rc<FreeMonoid<Nat>> },
+    ArithmeticParam { param: Rc<FreeMonoid<Nat>> },
     ExplicitCountZero,
     ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
     Forever,
 }
 
-pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
+pub fn tree_size_bound(param: Rc<FreeMonoid<Nat>>) -> Rc<SizeBound> {
     Rc::new(SizeBound::TreeSize { param: param })
 }
 
@@ -51,28 +51,28 @@ pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
 #[serde(tag = "_variant")]
 pub enum CallPattern {
     ChildAccessorCall {
-        accessor: String,
+        accessor: Rc<FreeMonoid<Nat>>,
     },
     CollectionShrinkCall {
         amount: Rc<PositiveDescentAmount>,
-        collection: String,
+        collection: Rc<FreeMonoid<Nat>>,
     },
     ArithmeticSubtractCall {
         steps: Rc<PositiveDescentAmount>,
-        ring_param: String,
+        ring_param: Rc<FreeMonoid<Nat>>,
     },
     ArithmeticDivideCall {
         divisor: Rc<ProportionalDivisor>,
-        ring_param: String,
+        ring_param: Rc<FreeMonoid<Nat>>,
     },
     ParserAdvanceCall {
-        witness: String,
+        witness: Rc<FreeMonoid<Nat>>,
     },
     WorklistDrainCall {
-        element: String,
+        element: Rc<FreeMonoid<Nat>>,
     },
     FoldBodyCall {
-        outer_collection: String,
+        outer_collection: Rc<FreeMonoid<Nat>>,
     },
     SameArgumentCall,
 }
@@ -173,7 +173,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     }
 }
 
-pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
+pub fn size_bound_param(bound: Rc<SizeBound>) -> Rc<FreeMonoid<Nat>> {
     match (*bound).clone() {
         SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
@@ -232,8 +232,10 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
     }
 }
 
-pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
-    if (type_name.clone().as_str() == "Node".to_string().as_str()) {
+pub fn type_iteration_dimension(type_name: Rc<FreeMonoid<Nat>>) -> Option<IterationDimension> {
+    if (crate::v2_std_text::host_string_text_to_rust_host(type_name.clone())
+        == crate::v2_std_text::host_string_text_to_rust_host("Node".to_string()))
+    {
         Some(IterationDimension::TreeDescent)
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {

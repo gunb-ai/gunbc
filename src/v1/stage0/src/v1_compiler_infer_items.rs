@@ -43,8 +43,8 @@ pub enum ItemKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemInfo {
-    pub name: String,
-    pub module_name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
+    pub module_name: Rc<FreeMonoid<Nat>>,
     pub kind: ItemKind,
     pub service_names: Rc<Vec<String>>,
     pub resource_names: Rc<Vec<String>>,

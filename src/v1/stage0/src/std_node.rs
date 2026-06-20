@@ -105,17 +105,17 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("Node".to_string(), true);
-            __m.insert("InferredNode".to_string(), true);
-            __m.insert("MatchPattern".to_string(), true);
-            __m.insert("MethodSemantics".to_string(), true);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Node"), true);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("InferredNode"), true);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("MatchPattern"), true);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("MethodSemantics"), true);
             Rc::new(__m)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn is_compiler_recursive_type(name: String) -> bool {
+pub fn is_compiler_recursive_type(name: Rc<FreeMonoid<Nat>>) -> bool {
     match v1_rt::map_get(&compiler_recursive_types(), name) {
         Some(_) => true,
         None => false,

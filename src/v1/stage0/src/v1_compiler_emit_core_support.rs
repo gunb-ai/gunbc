@@ -29,16 +29,16 @@ pub struct EmitResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestProjection {
-    pub module_name: String,
-    pub service_name: String,
-    pub operation_name: String,
+    pub module_name: Rc<FreeMonoid<Nat>>,
+    pub service_name: Rc<FreeMonoid<Nat>>,
+    pub operation_name: Rc<FreeMonoid<Nat>>,
     pub inferred: Rc<Node>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub mock_field_inits: Rc<Vec<Rc<Node>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-pub fn escape_json_string(s: String) -> String {
+pub fn escape_json_string(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     Rc::new(
         Rc::new(
             Rc::new(
@@ -65,7 +65,7 @@ pub fn escape_json_string(s: String) -> String {
     .join(&"\\t".to_string())
 }
 
-pub fn module_to_filename(name: String) -> String {
+pub fn module_to_filename(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     Rc::new(
         name.split(&".".to_string())
             .map(|s| s.to_string())
@@ -74,7 +74,7 @@ pub fn module_to_filename(name: String) -> String {
     .join(&"_".to_string())
 }
 
-pub fn make_indent(level: i64) -> String {
+pub fn make_indent(level: i64) -> Rc<FreeMonoid<Nat>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (level.clone() <= 0) {
             "".to_string()
@@ -88,10 +88,10 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.iter().cloned().fold(
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
                 result: Rc::new(vec![]),
             }),
-            |acc: Rc<UniqueAccum>, item: String| {
+            |acc: Rc<UniqueAccum>, item: Rc<FreeMonoid<Nat>>| {
                 if emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
@@ -106,10 +106,15 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-pub fn to_string(value: i64) -> String {
+pub fn to_string(value: i64) -> Rc<FreeMonoid<Nat>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() < 0) {
-            v1_rt::concat("-".to_string(), (0 - value.clone()).to_string())
+            v1_rt::concat(
+                "-".to_string(),
+                crate::v2_std_text::host_string_text_from_rust_host(
+                    (0 - value.clone()).to_string(),
+                ),
+            )
         } else {
             if (value.clone() == 0) {
                 "0".to_string()
@@ -189,7 +194,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
     }
 }
 
-pub fn to_snake(name: String) -> String {
+pub fn to_snake(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     {
         let chars_list = Rc::new(name.chars().map(|c| c as i64).collect::<Vec<_>>());
         let result = Rc::new({
@@ -225,7 +230,7 @@ pub fn to_snake(name: String) -> String {
     }
 }
 
-pub fn to_screaming_snake(name: String) -> String {
+pub fn to_screaming_snake(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     {
         let snake = to_snake(name);
         Rc::new({
@@ -246,7 +251,7 @@ pub fn is_upper(ch: i64) -> bool {
     ((ch.clone() >= 65) && (ch.clone() <= 90))
 }
 
-pub fn to_lower_char(ch: i64) -> String {
+pub fn to_lower_char(ch: i64) -> Rc<FreeMonoid<Nat>> {
     {
         let cp = ch.clone();
         if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
@@ -260,7 +265,7 @@ pub fn to_lower_char(ch: i64) -> String {
     }
 }
 
-pub fn to_upper_char(ch: i64) -> String {
+pub fn to_upper_char(ch: i64) -> Rc<FreeMonoid<Nat>> {
     {
         let cp = ch.clone();
         if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
@@ -274,7 +279,7 @@ pub fn to_upper_char(ch: i64) -> String {
     }
 }
 
-pub fn sanitize_service_name(name: String) -> String {
+pub fn sanitize_service_name(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     {
         let parts = Rc::new(
             name.split(&".".to_string())
@@ -292,7 +297,7 @@ pub fn sanitize_service_name(name: String) -> String {
     }
 }
 
-pub fn capitalize_first(s: String) -> String {
+pub fn capitalize_first(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     {
         let chars_list = Rc::new(s.chars().map(|c| c as i64).collect::<Vec<_>>());
         if ((chars_list.clone().len() as i64) == 0) {
@@ -325,11 +330,11 @@ pub fn capitalize_first(s: String) -> String {
     }
 }
 
-pub fn service_var_name(service_name: String) -> String {
+pub fn service_var_name(service_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     to_snake(sanitize_service_name(service_name))
 }
 
-pub fn to_pascal(name: String) -> String {
+pub fn to_pascal(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     {
         let snake = to_snake(name);
         let parts = Rc::new(
@@ -349,7 +354,10 @@ pub fn to_pascal(name: String) -> String {
     }
 }
 
-pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
+pub fn test_function_name(
+    projection: Rc<TestProjection>,
+    target: RenderTarget,
+) -> Rc<FreeMonoid<Nat>> {
     {
         let conventions = test_conventions_for_target(target);
         let formatted = match conventions.name_style.clone() {
@@ -369,7 +377,10 @@ pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) 
     }
 }
 
-pub fn apply_type_template1(template: String, arg0: String) -> String {
+pub fn apply_type_template1(
+    template: Rc<FreeMonoid<Nat>>,
+    arg0: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     Rc::new(
         template
             .split(&"{0}".to_string())
@@ -379,7 +390,11 @@ pub fn apply_type_template1(template: String, arg0: String) -> String {
     .join(&arg0)
 }
 
-pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
+pub fn apply_type_template2(
+    template: Rc<FreeMonoid<Nat>>,
+    arg0: Rc<FreeMonoid<Nat>>,
+    arg1: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     {
         let parts = Rc::new(
             template
@@ -406,7 +421,12 @@ pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> Str
     }
 }
 
-pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
+pub fn apply_type_template3(
+    template: Rc<FreeMonoid<Nat>>,
+    arg0: Rc<FreeMonoid<Nat>>,
+    arg1: Rc<FreeMonoid<Nat>>,
+    arg2: Rc<FreeMonoid<Nat>>,
+) -> Rc<FreeMonoid<Nat>> {
     {
         let parts0 = Rc::new(
             template
@@ -448,7 +468,10 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
     }
 }
 
-pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
+pub fn apply_named_template(
+    template: Rc<FreeMonoid<Nat>>,
+    bindings: Rc<HashMap<String, String>>,
+) -> Rc<FreeMonoid<Nat>> {
     apply_named_template_nested(
         template,
         bindings.clone(),
@@ -457,10 +480,10 @@ pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, Strin
 }
 
 pub fn apply_named_template_nested(
-    template: String,
+    template: Rc<FreeMonoid<Nat>>,
     bindings: Rc<HashMap<String, String>>,
     keys: Rc<Vec<String>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
             None => template,
@@ -508,7 +531,7 @@ pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
     language_spec_for_target(target)
 }
 
-pub fn escape_string_literal_body(s: String) -> String {
+pub fn escape_string_literal_body(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     {
         let escaped_backslash = Rc::new(
             s.split(&"\\".to_string())
@@ -547,11 +570,12 @@ pub fn escape_string_literal_body(s: String) -> String {
     }
 }
 
-pub fn has_mock_prefix(name: String) -> bool {
+pub fn has_mock_prefix(name: Rc<FreeMonoid<Nat>>) -> bool {
     if (v1_rt::string_length(&name) < 5) {
         false
     } else {
-        (v1_rt::substring(&name, 0, 5).as_str() == "mock_".to_string().as_str())
+        (crate::v2_std_text::host_string_text_to_rust_host(v1_rt::substring(&name, 0, 5))
+            == crate::v2_std_text::host_string_text_to_rust_host("mock_".to_string()))
     }
 }
 
@@ -651,7 +675,8 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (authored_name_at(source_indices, n).as_str() != "Unit".to_string().as_str())
+    (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(source_indices, n))
+        != crate::v2_std_text::host_string_text_to_rust_host("Unit".to_string()))
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {

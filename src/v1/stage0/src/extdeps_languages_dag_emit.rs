@@ -14,13 +14,13 @@ pub fn dag_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true".to_string(), "true".to_string());
-            __m.insert("false".to_string(), "false".to_string());
-            __m.insert("null".to_string(), "none".to_string());
-            __m.insert("and".to_string(), "&&".to_string());
-            __m.insert("or".to_string(), "||".to_string());
-            __m.insert("not".to_string(), "!".to_string());
-            __m.insert("div".to_string(), "/".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), "true".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), "false".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), "none".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("and"), "&&".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("or"), "||".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("not"), "!".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("div"), "/".to_string());
             Rc::new(__m)
         };
     }
@@ -31,15 +31,15 @@ pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list".to_string(), "List<{0}>".to_string());
-            __m.insert("set".to_string(), "Set<{0}>".to_string());
-            __m.insert("non_empty_list".to_string(), "NonEmptyList<{0}>".to_string());
-            __m.insert("non_empty_set".to_string(), "NonEmptySet<{0}>".to_string());
-            __m.insert("optional".to_string(), "{0}?".to_string());
-            __m.insert("map".to_string(), "Map<{0}, {1}>".to_string());
-            __m.insert("free_monoid".to_string(), "List<{0}>".to_string());
-            __m.insert("partial_function".to_string(), "Map<{0}, {1}>".to_string());
-            __m.insert("boolean_algebra".to_string(), "Bool".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("list"), "List<{0}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("set"), "Set<{0}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("non_empty_list"), "NonEmptyList<{0}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("non_empty_set"), "NonEmptySet<{0}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("optional"), "{0}?".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("map"), "Map<{0}, {1}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("free_monoid"), "List<{0}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("partial_function"), "Map<{0}, {1}>".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("boolean_algebra"), "Bool".to_string());
             Rc::new(__m)
         };
     }
@@ -64,227 +64,227 @@ pub fn dag_string_types() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn dag_func_keyword() -> String {
+pub fn dag_func_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "fn".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_async_prefix() -> String {
+pub fn dag_async_prefix() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_struct_keyword() -> String {
+pub fn dag_struct_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_enum_keyword() -> String {
+pub fn dag_enum_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_type_alias_keyword() -> String {
+pub fn dag_type_alias_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_param_separator() -> String {
+pub fn dag_param_separator() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_return_arrow() -> String {
+pub fn dag_return_arrow() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_param_type_sep() -> String {
+pub fn dag_param_type_sep() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ": ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_module_keyword() -> String {
+pub fn dag_module_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "module".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_import_keyword() -> String {
+pub fn dag_import_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "import".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_import_from_keyword() -> String {
+pub fn dag_import_from_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_lambda_template() -> String {
+pub fn dag_lambda_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "({0}) => {1}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_error_expr_template() -> String {
+pub fn dag_error_expr_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "error({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_list_literal_empty() -> String {
+pub fn dag_list_literal_empty() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_list_literal_template() -> String {
+pub fn dag_list_literal_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_null_coalesce_template() -> String {
+pub fn dag_null_coalesce_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "{0} ?? {1}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_error_type_template() -> String {
+pub fn dag_error_type_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "__EMIT_BUG_{0}__".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_type_arg_open() -> String {
+pub fn dag_type_arg_open() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "<".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_type_arg_close() -> String {
+pub fn dag_type_arg_close() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ">".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_void_type() -> String {
+pub fn dag_void_type() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_tuple_empty() -> String {
+pub fn dag_tuple_empty() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_tuple_pair_template() -> String {
+pub fn dag_tuple_pair_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "({0}, {1})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_tuple_multi_template() -> String {
+pub fn dag_tuple_multi_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_tuple_separator() -> String {
+pub fn dag_tuple_separator() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn dag_source_extension() -> String {
+pub fn dag_source_extension() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ".dag".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }

@@ -48,7 +48,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
-    pub text: String,
+    pub text: Rc<FreeMonoid<Nat>>,
     pub span: Rc<SourceSpan>,
     pub shape: TokenShape,
 }
@@ -157,11 +157,11 @@ pub enum InferredNode {
         node: Rc<Node>,
     },
     CompilerError {
-        message: String,
+        message: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     TypeVariable {
-        id: String,
+        id: Rc<FreeMonoid<Nat>>,
     },
 }
 
@@ -190,11 +190,11 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
 pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
-    VariantValueBinding { parent_enum: String },
+    VariantValueBinding { parent_enum: Rc<FreeMonoid<Nat>> },
     MatchBoundBinding,
 }
 impl VarBindingKind {
-    pub fn parent_enum(&self) -> String {
+    pub fn parent_enum(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
@@ -227,7 +227,7 @@ pub enum MethodSemantics {
         algebra_template: Option<Rc<AlgebraFieldTemplate>>,
     },
     ServiceMethodSemantics {
-        service_name: String,
+        service_name: Rc<FreeMonoid<Nat>>,
         op_params: Rc<Vec<Rc<Node>>>,
     },
 }
@@ -251,7 +251,7 @@ pub enum ExprData {
     },
     ExprError {
         kind: ExprErrorKind,
-        message: String,
+        message: Rc<FreeMonoid<Nat>>,
     },
     ExprVar {
         binding_kind: Option<Rc<VarBindingKind>>,
@@ -270,7 +270,7 @@ pub enum ExprData {
     ExprIf,
     ExprLet,
     ExprRecordLit {
-        parent_enum: Option<String>,
+        parent_enum: Rc<FreeMonoid<Nat>>,
     },
     ExprListLit,
     ExprBinOp {
@@ -294,14 +294,14 @@ pub enum ExprData {
 #[serde(tag = "_variant")]
 pub enum MatchPattern {
     Bind {
-        name: String,
+        name: Rc<FreeMonoid<Nat>>,
     },
     LitPattern {
         value: Rc<LiteralValue>,
     },
     VariantPattern {
-        name: String,
-        parent_enum: Option<String>,
+        name: Rc<FreeMonoid<Nat>>,
+        parent_enum: Rc<FreeMonoid<Nat>>,
         field_bindings: Rc<Vec<Rc<Node>>>,
     },
     Wildcard,
@@ -319,7 +319,7 @@ pub enum UnaryOpKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringPart {
-    Text { value: String },
+    Text { value: Rc<FreeMonoid<Nat>> },
     Interpolation { expr: Rc<Node> },
 }
 
@@ -342,46 +342,46 @@ pub struct CompileResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
     pub path: FilePath,
-    pub content: String,
+    pub content: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CompilerDiagnostic {
     UnresolvedImport {
-        module_path: String,
-        importing_module: String,
+        module_path: Rc<FreeMonoid<Nat>>,
+        importing_module: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     MissingExport {
-        name: String,
-        module_path: String,
-        importing_module: String,
+        name: Rc<FreeMonoid<Nat>>,
+        module_path: Rc<FreeMonoid<Nat>>,
+        importing_module: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     UnresolvedType {
-        name: String,
+        name: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     TypeMismatch {
-        expected: String,
-        got: String,
+        expected: Rc<FreeMonoid<Nat>>,
+        got: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     ArityMismatch {
-        name: String,
+        name: Rc<FreeMonoid<Nat>>,
         expected: i64,
         got: i64,
         span: Rc<SourceSpan>,
     },
     VariantNotFound {
-        variant: String,
-        type_name: String,
+        variant: Rc<FreeMonoid<Nat>>,
+        type_name: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     FieldNotFound {
-        field: String,
-        type_name: String,
+        field: Rc<FreeMonoid<Nat>>,
+        type_name: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     NonExhaustiveMatch {
@@ -393,37 +393,37 @@ pub enum CompilerDiagnostic {
         span: Rc<SourceSpan>,
     },
     DuplicateModule {
-        name: String,
+        name: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     MissingAnnotation {
-        fn_name: String,
-        what: String,
+        fn_name: Rc<FreeMonoid<Nat>>,
+        what: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     ParseError {
-        message: String,
+        message: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     InternalError {
-        message: String,
+        message: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     ComplexityUnknown {
-        func_name: String,
-        reason: String,
+        func_name: Rc<FreeMonoid<Nat>>,
+        reason: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
     OwnershipViolation {
-        binding: String,
-        fn_name: String,
+        binding: Rc<FreeMonoid<Nat>>,
+        fn_name: Rc<FreeMonoid<Nat>>,
         consumers: i64,
         span: Rc<SourceSpan>,
     },
     VariantCollision {
-        variant: String,
-        enum1: String,
-        enum2: String,
+        variant: Rc<FreeMonoid<Nat>>,
+        enum1: Rc<FreeMonoid<Nat>>,
+        enum2: Rc<FreeMonoid<Nat>>,
         span: Rc<SourceSpan>,
     },
 }
@@ -453,7 +453,7 @@ impl CompilerDiagnostic {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorNode {
     pub diagnostic: Rc<CompilerDiagnostic>,
-    pub module_name: String,
+    pub module_name: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -482,7 +482,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
+pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> Rc<FreeMonoid<Nat>> {
     match (*d).clone() {
         CompilerDiagnostic::UnresolvedImport {
             module_path: m,
@@ -549,11 +549,11 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                         v1_rt::concat("type ".to_string(), n.clone()),
                         " expects ".to_string(),
                     ),
-                    (e.clone()).to_string(),
+                    crate::v2_std_text::host_string_text_from_rust_host((e.clone()).to_string()),
                 ),
                 " type arguments, got ".to_string(),
             ),
-            (g.clone()).to_string(),
+            crate::v2_std_text::host_string_text_from_rust_host((g.clone()).to_string()),
         ),
         CompilerDiagnostic::VariantNotFound {
             variant: v,
@@ -639,7 +639,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                     ),
                     "' has ".to_string(),
                 ),
-                (c.clone()).to_string(),
+                crate::v2_std_text::host_string_text_from_rust_host((c.clone()).to_string()),
             ),
             " consumers".to_string(),
         ),
@@ -678,7 +678,10 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     }
 }
 
-pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
+pub fn make_error_node(
+    diagnostic: Rc<CompilerDiagnostic>,
+    module_name: Rc<FreeMonoid<Nat>>,
+) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
         diagnostic: diagnostic,
         module_name: module_name,
@@ -687,7 +690,7 @@ pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) 
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFuncSig {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<Node>>,
     pub is_async: bool,
@@ -703,7 +706,7 @@ pub struct DeclaredFuncEnv {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
@@ -723,8 +726,13 @@ pub struct Node {
     pub expr_data: Rc<ExprData>,
 }
 
-pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
-    if (name.as_str() == "".to_string().as_str()) {
+pub fn default_ident_span(
+    name: Rc<FreeMonoid<Nat>>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<SourceSpan>> {
+    if (crate::v2_std_text::host_string_text_to_rust_host(name)
+        == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+    {
         None
     } else {
         Some(span)
@@ -767,7 +775,7 @@ pub fn make_expr_node(
 }
 
 pub fn make_named_expr_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
@@ -798,7 +806,7 @@ pub fn make_named_expr_node(
 
 pub fn make_expr_error_node(
     kind: ExprErrorKind,
-    message: String,
+    message: Rc<FreeMonoid<Nat>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -830,7 +838,7 @@ pub fn make_expr_error_node(
 }
 
 pub fn make_arg_node(
-    name: Option<String>,
+    name: Rc<FreeMonoid<Nat>>,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -898,7 +906,7 @@ pub fn make_arm_node(
 }
 
 pub fn make_resource_use_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     resource: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -928,7 +936,7 @@ pub fn make_resource_use_node(
 pub fn resource_use_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
@@ -944,7 +952,7 @@ pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn make_field_init_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -972,7 +980,7 @@ pub fn make_field_init_node(
 }
 
 pub fn make_field_binding_node(
-    field_name: String,
+    field_name: Rc<FreeMonoid<Nat>>,
     binding: Rc<MatchPattern>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1002,7 +1010,7 @@ pub fn make_field_binding_node(
 pub fn field_binding_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
@@ -1013,7 +1021,7 @@ pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     }
 }
 
-pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_text_part_node(text: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
         span: span,
@@ -1062,7 +1070,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn make_param_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
@@ -1097,7 +1105,7 @@ pub fn make_param_node(
 }
 
 pub fn make_resolved_param_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
     properties: Rc<Vec<Rc<Node>>>,
@@ -1137,26 +1145,28 @@ pub fn make_resolved_param_node(
 pub fn param_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
 pub fn generic_param_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
 pub fn authored_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     node: Rc<Node>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(index) => {
                 let text = source_text_at(index.clone(), span.clone());
-                if (text.clone().as_str() == "".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(text.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+                {
                     "".to_string()
                 } else {
                     text.clone()
@@ -1164,8 +1174,13 @@ pub fn authored_name_at(
             }
             None => {
                 if ((v1_rt::string_length(&span.file.clone()) > 8)
-                    && (v1_rt::substring(&span.file.clone(), 0, 8).as_str()
-                        == "<kernel:".to_string().as_str()))
+                    && (crate::v2_std_text::host_string_text_to_rust_host(v1_rt::substring(
+                        &span.file.clone(),
+                        0,
+                        8,
+                    )) == crate::v2_std_text::host_string_text_to_rust_host(
+                        "<kernel:".to_string(),
+                    )))
                 {
                     v1_rt::substring(
                         &span.file.clone(),
@@ -1183,14 +1198,16 @@ pub fn authored_name_at(
 
 pub fn find_child_named(
     n: Rc<Node>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
         for c in n.children.clone().iter().cloned() {
-            if (authored_name_at(source_indices.clone(), c.clone()).as_str()
-                == name.clone().as_str())
+            if (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
+                source_indices.clone(),
+                c.clone(),
+            )) == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
             {
                 __result.push(c);
             }
@@ -1207,14 +1224,16 @@ pub fn find_child_named(
 
 pub fn has_child_named(
     n: Rc<Node>,
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for c in n.children.clone().iter().cloned() {
-            if (authored_name_at(source_indices.clone(), c.clone()).as_str()
-                == name.clone().as_str())
+            if (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
+                source_indices.clone(),
+                c.clone(),
+            )) == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
             {
                 __found = true;
                 break;
@@ -1248,11 +1267,11 @@ pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 }
 
 pub fn make_field_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     type_expr: Rc<Node>,
     cardinality: Cardinality,
     default_value: Option<Rc<Node>>,
-    from_key: Option<String>,
+    from_key: Rc<FreeMonoid<Nat>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -1315,7 +1334,7 @@ pub fn make_field_node(
 pub fn field_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
@@ -1345,7 +1364,7 @@ pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
 pub fn field_node_from_key(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     match find_property(
         n.properties.clone(),
         "from_key".to_string(),
@@ -1361,7 +1380,7 @@ pub fn field_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 }
 
 pub fn make_variant_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     fields: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1391,7 +1410,7 @@ pub fn make_variant_node(
 pub fn variant_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
@@ -1405,8 +1424,8 @@ pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChildRole {
-    pub name: String,
-    pub accessor: String,
+    pub name: Rc<FreeMonoid<Nat>>,
+    pub accessor: Rc<FreeMonoid<Nat>>,
     pub position: i64,
     pub required: bool,
 }
@@ -1431,7 +1450,7 @@ pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
 }
 
-pub fn is_child_accessor_in_model(name: String) -> bool {
+pub fn is_child_accessor_in_model(name: Rc<FreeMonoid<Nat>>) -> bool {
     ({
         let mut __found = false;
         for roles in Rc::new(v1_rt::map_values(&expr_child_roles()))
@@ -1441,7 +1460,9 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
             if {
                 let mut __found = false;
                 for r in roles.clone().iter().cloned() {
-                    if (r.accessor.clone().as_str() == name.clone().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(r.accessor.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
+                    {
                         __found = true;
                         break;
                     }
@@ -1462,7 +1483,9 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
             if {
                 let mut __found = false;
                 for r in roles.clone().iter().cloned() {
-                    if (r.accessor.clone().as_str() == name.clone().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(r.accessor.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
+                    {
                         __found = true;
                         break;
                     }
@@ -1477,7 +1500,9 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
     })
 }
 
-pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
+pub fn child_roles_for_variant(
+    variant_name: Rc<FreeMonoid<Nat>>,
+) -> Option<Rc<Vec<Rc<ChildRole>>>> {
     v1_rt::map_get(&expr_child_roles(), variant_name)
 }
 
@@ -1495,18 +1520,18 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, NodeFieldRole>> = {
             let mut __m = HashMap::new();
-            __m.insert("children".to_string(), NodeFieldRole::ChildrenListField);
-            __m.insert("params".to_string(), NodeFieldRole::ChildrenListField);
-            __m.insert("body".to_string(), NodeFieldRole::SubValueField);
-            __m.insert("expr_data".to_string(), NodeFieldRole::SubValueField);
-            __m.insert("match_pattern".to_string(), NodeFieldRole::SubValueField);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("children"), NodeFieldRole::ChildrenListField);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("params"), NodeFieldRole::ChildrenListField);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("body"), NodeFieldRole::SubValueField);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("expr_data"), NodeFieldRole::SubValueField);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("match_pattern"), NodeFieldRole::SubValueField);
             Rc::new(__m)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, NodeFieldRole>>| c.clone())
 }
 
-pub fn is_children_list_field(field_name: String) -> bool {
+pub fn is_children_list_field(field_name: Rc<FreeMonoid<Nat>>) -> bool {
     match v1_rt::lookup(&node_field_roles(), field_name) {
         v1_rt::Witness::Holds {
             value: NodeFieldRole::ChildrenListField,
@@ -1516,7 +1541,7 @@ pub fn is_children_list_field(field_name: String) -> bool {
     }
 }
 
-pub fn is_sub_value_field(field_name: String) -> bool {
+pub fn is_sub_value_field(field_name: Rc<FreeMonoid<Nat>>) -> bool {
     match v1_rt::lookup(&node_field_roles(), field_name) {
         v1_rt::Witness::Holds {
             value: NodeFieldRole::SubValueField,
@@ -1553,22 +1578,22 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<FunctionSizeEffect>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("with_required_cardinality".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("with_required_cardinality"), Rc::new(FunctionSizeEffect::PropertyContraction {
         domain_size: 2,
     }));
-                __m.insert("resolved_type".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("param_node_type_expr".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("field_binding_pattern".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("wrapper_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("extractor_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("child_type_node".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("resolved_type"), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("param_node_type_expr"), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("field_binding_pattern"), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("wrapper_inner_arg"), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("extractor_inner_arg"), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("child_type_node"), Rc::new(FunctionSizeEffect::TreeSizeReducing));
                 Rc::new(__m)
             };
         }
     CACHED.with(|c: &Rc<HashMap<String, Rc<FunctionSizeEffect>>>| c.clone())
 }
 
-pub fn is_tree_size_preserving(func_name: String) -> bool {
+pub fn is_tree_size_preserving(func_name: Rc<FreeMonoid<Nat>>) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name) {
         v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizePreserving => true,
@@ -1579,7 +1604,7 @@ pub fn is_tree_size_preserving(func_name: String) -> bool {
     }
 }
 
-pub fn is_tree_size_reducing(func_name: String) -> bool {
+pub fn is_tree_size_reducing(func_name: Rc<FreeMonoid<Nat>>) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name) {
         v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizeReducing => true,
@@ -1589,7 +1614,7 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
     }
 }
 
-pub fn is_property_contraction(func_name: String) -> bool {
+pub fn is_property_contraction(func_name: Rc<FreeMonoid<Nat>>) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name) {
         v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
@@ -1599,7 +1624,7 @@ pub fn is_property_contraction(func_name: String) -> bool {
     }
 }
 
-pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
+pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
     match texpr.children.clone().get(index as usize).cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
@@ -1613,10 +1638,12 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
 pub fn arg_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     {
         let name = authored_name_at(source_indices, n);
-        if (name.clone().as_str() == "".to_string().as_str()) {
+        if (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+        {
             None
         } else {
             Some(name.clone())
@@ -1664,7 +1691,7 @@ pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
 pub fn field_init_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, n)
 }
 
@@ -1722,7 +1749,7 @@ pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
 pub fn expr_var_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, texpr)
 }
 
@@ -1733,7 +1760,7 @@ pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
 pub fn field_access_field_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, texpr)
 }
 
@@ -1747,7 +1774,7 @@ pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
 pub fn expr_call_func_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, texpr)
 }
 
@@ -1780,7 +1807,7 @@ pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn expr_method_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, texpr)
 }
 
@@ -1833,7 +1860,7 @@ pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
 pub fn let_binding_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, texpr)
 }
 
@@ -1856,7 +1883,7 @@ pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
 pub fn foreach_variable_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<FreeMonoid<Nat>> {
     authored_name_at(source_indices, texpr)
 }
 
@@ -1891,10 +1918,12 @@ pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn record_lit_type_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     {
         let name = authored_name_at(source_indices, texpr);
-        if (name.clone().as_str() == "".to_string().as_str()) {
+        if (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+        {
             None
         } else {
             Some(name.clone())
@@ -1902,112 +1931,112 @@ pub fn record_lit_type_name_at(
     }
 }
 
-pub fn transport_url_key() -> String {
+pub fn transport_url_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "base_url".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_path_key() -> String {
+pub fn transport_path_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "base_path".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_auth_token_key() -> String {
+pub fn transport_auth_token_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "auth_token".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_auth_header_key() -> String {
+pub fn transport_auth_header_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "auth_header".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_auth_scheme_key() -> String {
+pub fn transport_auth_scheme_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "auth_scheme".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_method_key() -> String {
+pub fn transport_method_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "method".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_path_template_key() -> String {
+pub fn transport_path_template_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "path".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_query_key() -> String {
+pub fn transport_query_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "query".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_body_key() -> String {
+pub fn transport_body_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "body".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_stdin_key() -> String {
+pub fn transport_stdin_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "stdin".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_response_format_key() -> String {
+pub fn transport_response_format_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "response_format".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn transport_headers_key() -> String {
+pub fn transport_headers_key() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "headers".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
 pub fn make_transport_node(
@@ -2204,14 +2233,16 @@ pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node
 
 pub fn find_property(
     props: Rc<Vec<Rc<Node>>>,
-    prop_name: String,
+    prop_name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
         for p in props.iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone()).as_str()
-                == prop_name.clone().as_str())
+            if (crate::v2_std_text::host_string_text_to_rust_host(field_init_node_name_at(
+                p.clone(),
+                source_indices.clone(),
+            )) == crate::v2_std_text::host_string_text_to_rust_host(prop_name.clone()))
             {
                 __result.push(p);
             }
@@ -2228,9 +2259,9 @@ pub fn find_property(
 
 pub fn find_property_string(
     props: Rc<Vec<Rc<Node>>>,
-    prop_name: String,
+    prop_name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     match find_property(props, prop_name, source_indices) {
         Some(n) => match (*n.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. } => {
@@ -2288,13 +2319,19 @@ pub fn field_init_operation_modifier(
 ) -> Option<OperationModifier> {
     {
         let fi_name = field_init_node_name_at(field_init, source_indices);
-        if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
+        if (crate::v2_std_text::host_string_text_to_rust_host(fi_name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host("idempotent".to_string()))
+        {
             Some(OperationModifier::Idempotent)
         } else {
-            if (fi_name.clone().as_str() == "readonly".to_string().as_str()) {
+            if (crate::v2_std_text::host_string_text_to_rust_host(fi_name.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host("readonly".to_string()))
+            {
                 Some(OperationModifier::Readonly)
             } else {
-                if (fi_name.clone().as_str() == "hermetic".to_string().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(fi_name.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host("hermetic".to_string()))
+                {
                     Some(OperationModifier::Hermetic)
                 } else {
                     None
@@ -2304,7 +2341,7 @@ pub fn field_init_operation_modifier(
     }
 }
 
-pub fn operation_modifier_name(modifier: OperationModifier) -> String {
+pub fn operation_modifier_name(modifier: OperationModifier) -> Rc<FreeMonoid<Nat>> {
     match modifier {
         OperationModifier::Idempotent => "idempotent".to_string(),
         OperationModifier::Readonly => "readonly".to_string(),
@@ -2333,7 +2370,7 @@ pub fn transport_auth_token(
 pub fn transport_auth_header_name(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     find_property_string(
         t.properties.clone(),
         transport_auth_header_key(),
@@ -2405,19 +2442,37 @@ pub fn transport_response_format(
     )
 }
 
-pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((((name.clone().as_str() == transport_url_key().as_str())
-        || (name.clone().as_str() == transport_path_key().as_str()))
-        || (name.clone().as_str() == transport_auth_scheme_key().as_str()))
-        || (name.clone().as_str() == transport_auth_header_key().as_str()))
-        || (name.clone().as_str() == transport_auth_token_key().as_str()))
-        || (name.clone().as_str() == transport_method_key().as_str()))
-        || (name.clone().as_str() == transport_path_template_key().as_str()))
-        || (name.clone().as_str() == transport_query_key().as_str()))
-        || (name.clone().as_str() == transport_body_key().as_str()))
-        || (name.clone().as_str() == transport_stdin_key().as_str()))
-        || (name.clone().as_str() == transport_response_format_key().as_str()))
-        || (name.clone().as_str() == transport_headers_key().as_str()))
+pub fn is_config_reserved_key(name: Rc<FreeMonoid<Nat>>) -> bool {
+    ((((((((((((crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+        == crate::v2_std_text::host_string_text_to_rust_host(transport_url_key()))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_path_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(
+                transport_auth_scheme_key(),
+            )))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(
+                transport_auth_header_key(),
+            )))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_auth_token_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_method_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(
+                transport_path_template_key(),
+            )))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_query_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_body_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_stdin_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_response_format_key())))
+        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(transport_headers_key())))
 }
 
 pub fn transport_headers(
@@ -2481,14 +2536,16 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
 
 pub fn expr_has_self_call(
     texpr: Rc<Node>,
-    fn_name: String,
+    fn_name: Rc<FreeMonoid<Nat>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str()
-                    == fn_name.clone().as_str())
+                if (crate::v2_std_text::host_string_text_to_rust_host(expr_call_func_at(
+                    texpr.clone(),
+                    source_indices.clone(),
+                )) == crate::v2_std_text::host_string_text_to_rust_host(fn_name.clone()))
                 {
                     true
                 } else {
@@ -2524,15 +2581,17 @@ pub fn expr_has_self_call(
 
 pub fn expr_has_non_tail_self_call(
     texpr: Rc<Node>,
-    fn_name: String,
+    fn_name: Rc<FreeMonoid<Nat>>,
     in_tail: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str()
-                    == fn_name.clone().as_str())
+                if (crate::v2_std_text::host_string_text_to_rust_host(expr_call_func_at(
+                    texpr.clone(),
+                    source_indices.clone(),
+                )) == crate::v2_std_text::host_string_text_to_rust_host(fn_name.clone()))
                 {
                     if (in_tail.clone() == false) {
                         true
@@ -2861,8 +2920,10 @@ pub fn has_service_config(
     {
         let mut __found = false;
         for p in n.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone()).as_str()
-                == "svc_endpoint".to_string().as_str())
+            if (crate::v2_std_text::host_string_text_to_rust_host(field_init_node_name_at(
+                p.clone(),
+                source_indices.clone(),
+            )) == crate::v2_std_text::host_string_text_to_rust_host("svc_endpoint".to_string()))
             {
                 __found = true;
                 break;
@@ -2935,7 +2996,7 @@ pub fn service_config_auth_source(
 }
 
 pub fn module_node(
-    name: String,
+    name: Rc<FreeMonoid<Nat>>,
     imports: Rc<Vec<Rc<Node>>>,
     items: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
@@ -2963,7 +3024,7 @@ pub fn module_node(
 }
 
 pub fn import_node(
-    module_path: String,
+    module_path: Rc<FreeMonoid<Nat>>,
     is_all: bool,
     specific_names: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
@@ -3042,7 +3103,7 @@ pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
-pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn leaf_node_with_span(name: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
         span: span.clone(),
@@ -3065,7 +3126,7 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     })
 }
 
-pub fn kernel_span(name: String) -> Rc<SourceSpan> {
+pub fn kernel_span(name: Rc<FreeMonoid<Nat>>) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
         file: v1_rt::concat(
             v1_rt::concat("<kernel:".to_string(), name.clone()),
@@ -3272,13 +3333,13 @@ pub fn none_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn tuple_type_name() -> String {
+pub fn tuple_type_name() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "Tuple".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
 pub fn error_type() -> Rc<Node> {
@@ -3323,7 +3384,7 @@ pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
     })
 }
 
-pub fn make_file_span(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
+pub fn make_file_span(file: Rc<FreeMonoid<Nat>>, start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
         file: file,
         start: start,
@@ -3343,12 +3404,15 @@ pub struct LineCol {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NewlineIndex {
-    pub file: String,
+    pub file: Rc<FreeMonoid<Nat>>,
     pub offsets: Rc<Vec<i64>>,
     pub char_codes: Rc<Vec<i64>>,
 }
 
-pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
+pub fn build_newline_index(
+    file: Rc<FreeMonoid<Nat>>,
+    source: Rc<FreeMonoid<Nat>>,
+) -> Rc<NewlineIndex> {
     {
         let char_codes = Rc::new(source.chars().map(|c| c as i64).collect::<Vec<_>>());
         let offsets = Rc::new(
@@ -3416,7 +3480,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
     }
 }
 
-pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
+pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> Rc<FreeMonoid<Nat>> {
     {
         let src_len = (index.char_codes.clone().len() as i64);
         let line_start = if (line.clone() <= 1) {
@@ -3445,7 +3509,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     }
 }
 
-pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
+pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> Rc<FreeMonoid<Nat>> {
     v1_rt::chars_to_string(
         &index.char_codes.clone(),
         span.start.clone(),
@@ -3469,12 +3533,16 @@ pub struct InternResult {
 pub fn empty_intern_table() -> Rc<InternTable> {
     Rc::new(InternTable {
         strings: Rc::new(vec!["".to_string()]),
-        index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
+        index: v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, i64>(),
+            "".to_string(),
+            0,
+        ),
         next_id: 1,
     })
 }
 
-pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
+pub fn intern(table: Rc<InternTable>, s: Rc<FreeMonoid<Nat>>) -> Rc<InternResult> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Rc::new(InternResult {
             table: table.clone(),
@@ -3494,21 +3562,21 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
     }
 }
 
-pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
+pub fn intern_str(table: Rc<InternTable>, id: i64) -> Rc<FreeMonoid<Nat>> {
     match table.strings.clone().get(id as usize).cloned() {
         Some(s) => s.clone(),
         None => "".to_string(),
     }
 }
 
-pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
+pub fn intern_find(table: Rc<InternTable>, s: Rc<FreeMonoid<Nat>>) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s) {
         Some(id) => Some(id.clone()),
         None => None,
     }
 }
 
-pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
+pub fn intern_find_or_empty(table: Rc<InternTable>, s: Rc<FreeMonoid<Nat>>) -> i64 {
     match v1_rt::map_get(&table.index.clone(), s) {
         Some(id) => id.clone(),
         None => 0,
@@ -3519,17 +3587,18 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            t.strings
-                .clone()
-                .iter()
-                .cloned()
-                .fold(merged, |m: Rc<InternTable>, s: String| {
-                    if (s.clone().as_str() == "".to_string().as_str()) {
+            t.strings.clone().iter().cloned().fold(
+                merged,
+                |m: Rc<InternTable>, s: Rc<FreeMonoid<Nat>>| {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(s.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
+                    {
                         m.clone()
                     } else {
                         intern(m.clone(), s.clone()).table.clone()
                     }
-                })
+                },
+            )
         },
     )
 }

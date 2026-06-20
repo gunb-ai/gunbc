@@ -12,8 +12,8 @@ use crate::std_http_path::PathTemplateParseResult::{MalformedPathTemplate, Parse
 pub use crate::std_http_path::{has_path_params, last_path_param, parse_path_template};
 pub use crate::std_http_path::{PathTemplate, PathTemplateParseResult};
 pub use crate::std_types::string_list_eq;
-pub use crate::std_types::HttpMethod;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
+pub use crate::std_types::{HttpMethod, List};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -53,8 +53,8 @@ impl CreateCause {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeySource {
-    PathParam { param: String },
-    InputField { field: String },
+    PathParam { param: Rc<FreeMonoid<Nat>> },
+    InputField { field: Rc<FreeMonoid<Nat>> },
     CompositeKey { fields: Rc<Vec<String>> },
 }
 
@@ -67,7 +67,7 @@ pub enum IdempotencyEvidence {
     IdentityEffect,
     NonIdempotent {
         shape: Rc<EffectShape>,
-        reason: String,
+        reason: Rc<FreeMonoid<Nat>>,
     },
 }
 impl IdempotencyEvidence {
@@ -99,11 +99,17 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
 pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
     match (*left).clone() {
         KeySource::PathParam { param: pa, .. } => match (*right).clone() {
-            KeySource::PathParam { param: pb, .. } => (pa.clone().as_str() == pb.clone().as_str()),
+            KeySource::PathParam { param: pb, .. } => {
+                (crate::v2_std_text::host_string_text_to_rust_host(pa.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(pb.clone()))
+            }
             _ => false,
         },
         KeySource::InputField { field: fa, .. } => match (*right).clone() {
-            KeySource::InputField { field: fb, .. } => (fa.clone().as_str() == fb.clone().as_str()),
+            KeySource::InputField { field: fb, .. } => {
+                (crate::v2_std_text::host_string_text_to_rust_host(fa.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(fb.clone()))
+            }
             _ => false,
         },
         KeySource::CompositeKey { fields: fa, .. } => match (*right).clone() {
@@ -148,7 +154,7 @@ pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) ->
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
-    pub operation_name: String,
+    pub operation_name: Rc<FreeMonoid<Nat>>,
     pub shape: Rc<EffectShape>,
     pub evidence: Rc<IdempotencyEvidence>,
 }
@@ -196,7 +202,7 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
-    pub operation_name: String,
+    pub operation_name: Rc<FreeMonoid<Nat>>,
     pub method: HttpMethod,
     pub path_template: Rc<PathTemplate>,
     pub shape: Rc<EffectShape>,
@@ -209,11 +215,11 @@ pub enum DeriveOpEffectResult {
         effect: Rc<DerivedOpEffect>,
     },
     MalformedPathInput {
-        operation_name: String,
+        operation_name: Rc<FreeMonoid<Nat>>,
         method: HttpMethod,
-        raw_path: String,
-        segment: String,
-        reason: String,
+        raw_path: Rc<FreeMonoid<Nat>>,
+        segment: Rc<FreeMonoid<Nat>>,
+        reason: Rc<FreeMonoid<Nat>>,
     },
 }
 
@@ -253,7 +259,7 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 }
 
 pub fn derive_op_effect(
-    operation_name: String,
+    operation_name: Rc<FreeMonoid<Nat>>,
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
@@ -274,11 +280,11 @@ pub fn derive_op_effect(
 #[serde(tag = "_variant")]
 pub enum ModifierAgreement {
     Agrees,
-    Disagrees { reason: String },
-    DerivationUnknown { reason: String },
+    Disagrees { reason: Rc<FreeMonoid<Nat>> },
+    DerivationUnknown { reason: Rc<FreeMonoid<Nat>> },
 }
 impl ModifierAgreement {
-    pub fn reason(&self) -> String {
+    pub fn reason(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             ModifierAgreement::Agrees => panic!("no reason on unit variant"),
             ModifierAgreement::Disagrees { reason: __val, .. } => __val.clone(),
@@ -289,7 +295,7 @@ impl ModifierAgreement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModifierCheck {
-    pub operation_name: String,
+    pub operation_name: Rc<FreeMonoid<Nat>>,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
     pub derived_shape: Rc<EffectShape>,
@@ -367,9 +373,9 @@ pub fn check_modifier_vs_derivation(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
-    pub operation_name: String,
+    pub operation_name: Rc<FreeMonoid<Nat>>,
     pub effect_shape: Rc<EffectShape>,
-    pub claim: String,
+    pub claim: Rc<FreeMonoid<Nat>>,
     pub witness_required: bool,
 }
 
@@ -403,7 +409,7 @@ pub fn generate_idempotency_obligations(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEffectConcern {
-    pub workflow_name: String,
-    pub create_op: String,
-    pub reason: String,
+    pub workflow_name: Rc<FreeMonoid<Nat>>,
+    pub create_op: Rc<FreeMonoid<Nat>>,
+    pub reason: Rc<FreeMonoid<Nat>>,
 }

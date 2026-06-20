@@ -12,40 +12,40 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeCheckpoint {
-    pub dag_name: String,
-    pub target_type: String,
-    pub default_expr: Option<String>,
+    pub dag_name: Rc<FreeMonoid<Nat>>,
+    pub target_type: Rc<FreeMonoid<Nat>>,
+    pub default_expr: Rc<FreeMonoid<Nat>>,
     pub is_copy: Option<bool>,
-    pub literal_suffix: Option<String>,
+    pub literal_suffix: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InhabitantDecl {
-    pub algebra: String,
-    pub template: String,
+    pub algebra: Rc<FreeMonoid<Nat>>,
+    pub template: Rc<FreeMonoid<Nat>>,
     pub arity: i64,
-    pub identity_expr: Option<String>,
-    pub import_path: Option<String>,
+    pub identity_expr: Rc<FreeMonoid<Nat>>,
+    pub import_path: Rc<FreeMonoid<Nat>>,
     pub is_copy: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallableRepr {
-    pub template: String,
-    pub param_separator: String,
-    pub return_separator: String,
-    pub import_path: Option<String>,
+    pub template: Rc<FreeMonoid<Nat>>,
+    pub param_separator: Rc<FreeMonoid<Nat>>,
+    pub return_separator: Rc<FreeMonoid<Nat>>,
+    pub import_path: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastRule {
-    pub from_type: String,
-    pub to_type: String,
+    pub from_type: Rc<FreeMonoid<Nat>>,
+    pub to_type: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
-    pub template: String,
+    pub template: Rc<FreeMonoid<Nat>>,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
@@ -59,12 +59,14 @@ pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
-pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
+pub fn dag_can_cast(source_type: Rc<FreeMonoid<Nat>>, target_type: Rc<FreeMonoid<Nat>>) -> bool {
     {
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
-            if ((r.from_type.clone().as_str() == source_type.clone().as_str())
-                && (r.to_type.clone().as_str() == target_type.clone().as_str()))
+            if ((crate::v2_std_text::host_string_text_to_rust_host(r.from_type.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host(source_type.clone()))
+                && (crate::v2_std_text::host_string_text_to_rust_host(r.to_type.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(target_type.clone())))
             {
                 __found = true;
                 break;
@@ -74,12 +76,14 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     }
 }
 
-pub fn is_dag_cast_domain_type(name: String) -> bool {
+pub fn is_dag_cast_domain_type(name: Rc<FreeMonoid<Nat>>) -> bool {
     {
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
-            if ((r.from_type.clone().as_str() == name.clone().as_str())
-                || (r.to_type.clone().as_str() == name.clone().as_str()))
+            if ((crate::v2_std_text::host_string_text_to_rust_host(r.from_type.clone())
+                == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
+                || (crate::v2_std_text::host_string_text_to_rust_host(r.to_type.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(name.clone())))
             {
                 __found = true;
                 break;

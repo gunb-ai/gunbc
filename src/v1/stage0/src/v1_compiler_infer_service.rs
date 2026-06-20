@@ -34,7 +34,7 @@ pub struct UniqueAccum {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpEntry {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
 }
@@ -73,7 +73,7 @@ pub fn is_typed_service_call_receiver(
 pub fn extract_typed_service_name(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+) -> Rc<FreeMonoid<Nat>> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
             let f = field_access_field_at(receiver.clone(), source_indices.clone());
@@ -100,7 +100,7 @@ pub fn collect_typed_service_calls(
         let result = collect_typed_service_calls_into(
             texpr,
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices,
@@ -196,7 +196,7 @@ pub fn collect_called_func_names(
         let result = collect_called_func_names_into(
             texpr,
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices,
@@ -223,7 +223,7 @@ let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.c
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone().as_str() == svc.clone().as_str()) { __found = true; break; } } __found } {
+let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: Rc<FreeMonoid<Nat>>| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (crate::v2_std_text::host_string_text_to_rust_host(s.clone()) == crate::v2_std_text::host_string_text_to_rust_host(svc.clone())) { __found = true; break; } } __found } {
                         svc_list.clone()
                     } else {
                         v1_rt::rc_list_push(svc_list.clone(), svc.clone())
@@ -289,7 +289,7 @@ pub fn expand_transitive_services(
 
 pub fn check_service_field_access_node(
     base_type: Rc<Node>,
-    field: String,
+    field: Rc<FreeMonoid<Nat>>,
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
@@ -316,7 +316,7 @@ pub fn check_service_field_access_node(
 
 pub fn check_service_method_call_node(
     receiver_type: Rc<Node>,
-    method: String,
+    method: Rc<FreeMonoid<Nat>>,
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ServiceMethodResult>> {
@@ -331,7 +331,9 @@ pub fn check_service_method_call_node(
                 let matching = Rc::new({
                     let mut __result = Vec::new();
                     for op in ops.clone().iter().cloned() {
-                        if (op.name.clone().as_str() == method.clone().as_str()) {
+                        if (crate::v2_std_text::host_string_text_to_rust_host(op.name.clone())
+                            == crate::v2_std_text::host_string_text_to_rust_host(method.clone()))
+                        {
                             __result.push(op);
                         }
                     }

@@ -199,10 +199,10 @@ pub enum AlgebraProfile {
 #[serde(tag = "_variant")]
 pub enum ContainerSource {
     SameAsReceiver,
-    Named { name: String },
+    Named { name: Rc<FreeMonoid<Nat>> },
 }
 impl ContainerSource {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             ContainerSource::SameAsReceiver => panic!("no name on unit variant"),
             ContainerSource::Named { name: __val, .. } => __val.clone(),
@@ -218,7 +218,7 @@ pub enum AlgebraTypeTemplate {
     ReceiverKey,
     ReceiverValue,
     NamedTemplate {
-        name: String,
+        name: Rc<FreeMonoid<Nat>>,
     },
     ContainerOf {
         source: Rc<ContainerSource>,
@@ -239,7 +239,7 @@ pub enum AlgebraTypeTemplate {
         return_type: Rc<AlgebraTypeTemplate>,
     },
     AlgebraTypeVariable {
-        id: String,
+        id: Rc<FreeMonoid<Nat>>,
     },
 }
 
@@ -266,7 +266,7 @@ pub enum CostShape {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldTemplate {
-    pub name: String,
+    pub name: Rc<FreeMonoid<Nat>>,
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
     pub return_type: Rc<AlgebraTypeTemplate>,
     pub size_effect: Option<CollectionSizeEffect>,
@@ -278,13 +278,13 @@ pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
             let mut __m = HashMap::new();
-            __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
-            __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
-            __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
-            __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
-            __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-            __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
-            __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Int"), AlgebraProfile::OrderedRingProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Float"), AlgebraProfile::ApproximateFieldProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Bool"), AlgebraProfile::BooleanAlgebraProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("String"), AlgebraProfile::FreeMonoidScalarProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("List"), AlgebraProfile::FreeMonoidCollectionProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Set"), AlgebraProfile::BooleanAlgebraCollectionProfile);
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Map"), AlgebraProfile::PartialFunctionProfile);
             Rc::new(__m)
         };
     }

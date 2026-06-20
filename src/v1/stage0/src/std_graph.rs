@@ -14,8 +14,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphEdge {
-    pub caller: String,
-    pub callee: String,
+    pub caller: Rc<FreeMonoid<Nat>>,
+    pub callee: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -49,8 +49,8 @@ pub struct SccCycleAcc {
 
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
+        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: Rc<FreeMonoid<Nat>>| {
             v1_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
         },
     )
@@ -66,7 +66,9 @@ pub fn build_call_graph_from_proof_edges(
             for e in Rc::new({
                 let mut __result = Vec::new();
                 for e in edges.iter().cloned() {
-                    if (e.caller.clone().as_str() != e.callee.clone().as_str()) {
+                    if (crate::v2_std_text::host_string_text_to_rust_host(e.caller.clone())
+                        != crate::v2_std_text::host_string_text_to_rust_host(e.callee.clone()))
+                    {
                         __result.push(e);
                     }
                 }
@@ -140,7 +142,7 @@ pub fn reverse_adjacency(
 }
 
 pub fn dfs_finish_order(
-    node: String,
+    node: Rc<FreeMonoid<Nat>>,
     adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
@@ -159,7 +161,7 @@ pub fn dfs_finish_order(
                         visited: next_visited,
                         order: acc.order.clone(),
                     }),
-                    |inner: Rc<DfsFinishAcc>, neighbor: String| {
+                    |inner: Rc<DfsFinishAcc>, neighbor: Rc<FreeMonoid<Nat>>| {
                         dfs_finish_order(neighbor.clone(), adjacency.clone(), inner)
                     },
                 );
@@ -173,7 +175,7 @@ pub fn dfs_finish_order(
 }
 
 pub fn dfs_collect_component(
-    node: String,
+    node: Rc<FreeMonoid<Nat>>,
     adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
@@ -193,7 +195,7 @@ pub fn dfs_collect_component(
                         visited: next_visited,
                         members: next_members,
                     }),
-                    |inner: Rc<SccComponentAcc>, neighbor: String| {
+                    |inner: Rc<SccComponentAcc>, neighbor: Rc<FreeMonoid<Nat>>| {
                         dfs_collect_component(neighbor.clone(), adjacency.clone(), inner)
                     },
                 )
@@ -210,7 +212,7 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                 visited: v1_rt::rc_empty_set::<String>(),
                 order: Rc::new(vec![]),
             }),
-            |acc: Rc<DfsFinishAcc>, name: String| {
+            |acc: Rc<DfsFinishAcc>, name: Rc<FreeMonoid<Nat>>| {
                 dfs_finish_order(name.clone(), adjacency.forward.clone(), acc)
             },
         );
@@ -219,7 +221,7 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                 visited: v1_rt::rc_empty_set::<String>(),
                 has_cycle: false,
             }),
-            |acc: Rc<SccCycleAcc>, name: String| {
+            |acc: Rc<SccCycleAcc>, name: Rc<FreeMonoid<Nat>>| {
                 if (acc.has_cycle.clone()
                     || v1_rt::set_contains(&acc.visited.clone(), name.clone()))
                 {
@@ -292,7 +294,9 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
         let has_self_cycle = {
             let mut __found = false;
             for e in non_descending.clone().iter().cloned() {
-                if (e.caller.clone().as_str() == e.callee.clone().as_str()) {
+                if (crate::v2_std_text::host_string_text_to_rust_host(e.caller.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(e.callee.clone()))
+                {
                     __found = true;
                     break;
                 }

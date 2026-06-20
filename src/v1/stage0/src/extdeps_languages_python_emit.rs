@@ -15,13 +15,13 @@ pub fn python_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true".to_string(), "True".to_string());
-            __m.insert("false".to_string(), "False".to_string());
-            __m.insert("null".to_string(), "None".to_string());
-            __m.insert("and".to_string(), "and".to_string());
-            __m.insert("or".to_string(), "or".to_string());
-            __m.insert("not".to_string(), "not ".to_string());
-            __m.insert("div".to_string(), "//".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), "True".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), "False".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), "None".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("and"), "and".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("or"), "or".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("not"), "not ".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("div"), "//".to_string());
             Rc::new(__m)
         };
     }
@@ -32,13 +32,13 @@ pub fn python_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list".to_string(), "list[{0}]".to_string());
-            __m.insert("set".to_string(), "set[{0}]".to_string());
-            __m.insert("optional".to_string(), "Optional[{0}]".to_string());
-            __m.insert("map".to_string(), "dict[{0}, {1}]".to_string());
-            __m.insert("free_monoid".to_string(), "list[{0}]".to_string());
-            __m.insert("partial_function".to_string(), "dict[{0}, {1}]".to_string());
-            __m.insert("boolean_algebra".to_string(), "bool".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("list"), "list[{0}]".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("set"), "set[{0}]".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("optional"), "Optional[{0}]".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("map"), "dict[{0}, {1}]".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("free_monoid"), "list[{0}]".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("partial_function"), "dict[{0}, {1}]".to_string());
+            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("boolean_algebra"), "bool".to_string());
             Rc::new(__m)
         };
     }
@@ -54,148 +54,148 @@ pub fn python_reserved() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn python_reserved_escape_suffix() -> String {
+pub fn python_reserved_escape_suffix() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "_".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_derive_attribute() -> String {
+pub fn python_derive_attribute() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "@dataclass".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_default_value() -> String {
+pub fn python_default_value() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_func_keyword() -> String {
+pub fn python_func_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "def".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_async_prefix() -> String {
+pub fn python_async_prefix() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "async ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_struct_keyword() -> String {
+pub fn python_struct_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "class".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_enum_keyword() -> String {
+pub fn python_enum_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "class".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_type_alias_keyword() -> String {
+pub fn python_type_alias_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_param_separator() -> String {
+pub fn python_param_separator() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_return_arrow() -> String {
+pub fn python_return_arrow() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_param_type_sep() -> String {
+pub fn python_param_type_sep() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ": ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_module_keyword() -> String {
+pub fn python_module_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_import_keyword() -> String {
+pub fn python_import_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "import".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_import_from_keyword() -> String {
+pub fn python_import_from_keyword() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "from".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_source_extension() -> String {
+pub fn python_source_extension() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ".py".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_module_init() -> String {
+pub fn python_module_init() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "__init__.py".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
 pub fn python_string_types() -> Rc<Vec<String>> {
@@ -219,126 +219,126 @@ pub fn python_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 
 pub fn python_method_templates_flat() -> Rc<HashMap<String, String>> {
     python_simple_method_specs().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
+        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
         |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
 }
 
-pub fn python_lambda_template() -> String {
+pub fn python_lambda_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "lambda {0}: {1}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_error_expr_template() -> String {
+pub fn python_error_expr_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "raise RuntimeError({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_list_literal_empty() -> String {
+pub fn python_list_literal_empty() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_list_literal_template() -> String {
+pub fn python_list_literal_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_null_coalesce_template() -> String {
+pub fn python_null_coalesce_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "({0} if {0} is not None else {1})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_error_type_template() -> String {
+pub fn python_error_type_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "__EMIT_BUG_{0}__".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_type_arg_open() -> String {
+pub fn python_type_arg_open() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "[".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_type_arg_close() -> String {
+pub fn python_type_arg_close() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_void_type() -> String {
+pub fn python_void_type() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_tuple_empty() -> String {
+pub fn python_tuple_empty() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "Tuple".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_tuple_pair_template() -> String {
+pub fn python_tuple_pair_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "Tuple[{0}, {1}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_tuple_multi_template() -> String {
+pub fn python_tuple_multi_template() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "Tuple[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
-pub fn python_tuple_separator() -> String {
+pub fn python_tuple_separator() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
