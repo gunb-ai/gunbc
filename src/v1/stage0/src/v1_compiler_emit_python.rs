@@ -123,12 +123,11 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
-                                if (p.module_name.clone().as_str()
+                                if (p.module_name.clone()
                                     == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
                                         tm.module.clone(),
-                                    )
-                                    .as_str())
+                                    ))
                                 {
                                     __result.push(p);
                                 }
@@ -142,7 +141,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (f.path.clone().as_str() != "".to_string().as_str()) {
+                if (f.path.clone() != "".to_string()) {
                     __result.push(f);
                 }
             }
@@ -371,7 +370,7 @@ pub fn emit_py_module(
         let mod_name_str = authored_name_at(si.clone(), m.clone());
         let prelude = emit_py_prelude(typed_module.clone());
         let imports_str = emit_py_imports(module_imports(m.clone()), si.clone());
-        let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
+        let imports_section = if (imports_str.clone() == "".to_string()) {
             "".to_string()
         } else {
             v1_rt::concat("\n".to_string(), imports_str.clone())
@@ -500,7 +499,7 @@ pub fn emit_py_imports(
             Rc::new({
                 let mut __result = Vec::new();
                 for line in import_lines.iter().cloned() {
-                    if (line.clone().as_str() != "".to_string().as_str()) {
+                    if (line.clone() != "".to_string()) {
                         __result.push(line);
                     }
                 }
@@ -1291,7 +1290,7 @@ pub fn emit_py_headers_dict(
             }
             __result
         });
-        let all_entries = if (auth_entry.clone().as_str() == "".to_string().as_str()) {
+        let all_entries = if (auth_entry.clone() == "".to_string()) {
             header_entries.join(&", ".to_string())
         } else {
             v1_rt::concat(auth_entry.clone(), header_entries.join(&", ".to_string()))
@@ -1471,7 +1470,7 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String
             __result
         });
         let params_str = input_params.join(&", ".to_string());
-        let all_params = if (params_str.clone().as_str() == "".to_string().as_str()) {
+        let all_params = if (params_str.clone() == "".to_string()) {
             "self".to_string()
         } else {
             v1_rt::concat("self, ".to_string(), params_str.clone())

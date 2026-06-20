@@ -66,7 +66,7 @@ pub fn build_call_graph_from_proof_edges(
             for e in Rc::new({
                 let mut __result = Vec::new();
                 for e in edges.iter().cloned() {
-                    if (e.caller.clone().as_str() != e.callee.clone().as_str()) {
+                    if (e.caller.clone() != e.callee.clone()) {
                         __result.push(e);
                     }
                 }
@@ -292,7 +292,7 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
         let has_self_cycle = {
             let mut __found = false;
             for e in non_descending.clone().iter().cloned() {
-                if (e.caller.clone().as_str() == e.callee.clone().as_str()) {
+                if (e.caller.clone() == e.callee.clone()) {
                     __found = true;
                     break;
                 }

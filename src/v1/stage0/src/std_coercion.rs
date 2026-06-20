@@ -63,8 +63,8 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     {
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
-            if ((r.from_type.clone().as_str() == source_type.clone().as_str())
-                && (r.to_type.clone().as_str() == target_type.clone().as_str()))
+            if ((r.from_type.clone() == source_type.clone())
+                && (r.to_type.clone() == target_type.clone()))
             {
                 __found = true;
                 break;
@@ -78,9 +78,7 @@ pub fn is_dag_cast_domain_type(name: String) -> bool {
     {
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
-            if ((r.from_type.clone().as_str() == name.clone().as_str())
-                || (r.to_type.clone().as_str() == name.clone().as_str()))
-            {
+            if ((r.from_type.clone() == name.clone()) || (r.to_type.clone() == name.clone())) {
                 __found = true;
                 break;
             }

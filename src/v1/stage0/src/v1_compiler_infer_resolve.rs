@@ -74,8 +74,8 @@ pub fn unit_variant_in_coproduct(
                     if (acc.clone() != None) {
                         acc.clone()
                     } else {
-                        if ((authored_name_at(env.source_indices.clone(), v.clone()).as_str()
-                            == variant_name.clone().as_str())
+                        if ((authored_name_at(env.source_indices.clone(), v.clone())
+                            == variant_name.clone())
                             && is_unit_variant_node(v.clone()))
                         {
                             Some(v.clone())
@@ -188,9 +188,8 @@ pub fn preserve_nominal_brand_on_resolve(
     brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((brand_name.clone().as_str() != "".to_string().as_str())
-        && (brand_name.clone().as_str()
-            != authored_name_at(source_indices, structural.clone()).as_str()))
+    if (((brand_name.clone() != "".to_string())
+        && (brand_name.clone() != authored_name_at(source_indices, structural.clone())))
         && !is_declared_container_alias_spelling(brand_name.clone()))
     {
         with_authored_identity(identity, structural.clone())
@@ -232,9 +231,9 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         .resolved
                         .clone()
                 };
-                if (((brand.clone().as_str() != "".to_string().as_str())
-                    && (brand.clone().as_str()
-                        != authored_name_at(source_indices.clone(), structural.clone()).as_str()))
+                if (((brand.clone() != "".to_string())
+                    && (brand.clone()
+                        != authored_name_at(source_indices.clone(), structural.clone())))
                     && !is_declared_container_alias_spelling(brand.clone()))
                 {
                     with_authored_identity(n.clone(), structural.clone())
@@ -346,8 +345,8 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
                     decl.clone()
                 } else {
                     if ((((n.children.clone().len() as i64) > 0)
-                        && (n.name.clone().as_str() != "".to_string().as_str()))
-                        && (n.name.clone().as_str() != brand.as_str()))
+                        && (n.name.clone() != "".to_string()))
+                        && (n.name.clone() != brand))
                     {
                         match lookup_type_by_name(env.clone(), n.name.clone()) {
                             Some(structural) => structural.clone(),
@@ -417,8 +416,8 @@ pub fn substitute_type_slots(
                     let mut __result = Vec::new();
                     for child in n.children.clone().iter().cloned() {
                         __result.push(
-                            if (authored_name_at(source_indices.clone(), child.clone()).as_str()
-                                == decl_name.clone().as_str())
+                            if (authored_name_at(source_indices.clone(), child.clone())
+                                == decl_name.clone())
                             {
                                 {
                                     let substituted_args = Rc::new({
@@ -839,17 +838,14 @@ pub fn resolve_node_bounded(
                                                                 let field_rt = resolved_type(
                                                                     field_child.clone(),
                                                                 );
-                                                                let is_self_ref = ((authored_name(
-                                                                    env.clone(),
-                                                                    field_rt.clone(),
-                                                                )
-                                                                .as_str()
-                                                                    == authored_name(
+                                                                let is_self_ref =
+                                                                    ((authored_name(
+                                                                        env.clone(),
+                                                                        field_rt.clone(),
+                                                                    ) == authored_name(
                                                                         env.clone(),
                                                                         n.clone(),
-                                                                    )
-                                                                    .as_str())
-                                                                    && ((field_rt
+                                                                    )) && ((field_rt
                                                                         .children
                                                                         .clone()
                                                                         .len()
@@ -2015,9 +2011,6 @@ pub fn resolve_expr_types(
                 descent_evidence: de,
                 ..
             } => {
-                // bind-once: resolve each arg child a SINGLE time, then split
-                // into resolved children + diagnostics. Resolving twice made a
-                // nested constructor literal O(2^depth).
                 let arg_results = Rc::new({
                     let mut __result = Vec::new();
                     for arg_node in texpr.children.clone().iter().cloned() {
@@ -2047,14 +2040,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
+                    for r in arg_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
+                    for r in arg_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2078,7 +2071,6 @@ pub fn resolve_expr_types(
                 method_semantics: ms,
                 ..
             } => {
-                // bind-once: resolve each child a SINGLE time (see ExprCall).
                 let mc_results = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
@@ -2144,14 +2136,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
+                    for r in mc_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
+                    for r in mc_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2171,7 +2163,6 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprMatch => {
-                // bind-once: resolve each scrutinee/arm a SINGLE time (see ExprCall).
                 let match_results = Rc::new({
                     let mut __result = Vec::new();
                     for pair in Rc::new(
@@ -2282,14 +2273,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
+                    for r in match_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
+                    for r in match_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2390,9 +2381,6 @@ pub fn resolve_expr_types(
             ExprData::ExprRecordLit {
                 parent_enum: pe, ..
             } => {
-                // bind-once: resolve each field-init value a SINGLE time. This is
-                // the arm hit by deep nested constructor literals (Cons/record
-                // chains) — resolving twice per field was O(2^depth).
                 let fi_results = Rc::new({
                     let mut __result = Vec::new();
                     for fi_node in texpr.children.clone().iter().cloned() {
@@ -2418,14 +2406,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
+                    for r in fi_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
+                    for r in fi_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2559,7 +2547,6 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprStringInterp => {
-                // bind-once: resolve each interpolation part a SINGLE time (see ExprCall).
                 let part_results = Rc::new({
                     let mut __result = Vec::new();
                     for part_node in texpr.children.clone().iter().cloned() {
@@ -2594,14 +2581,14 @@ pub fn resolve_expr_types(
                 });
                 let resolved_children = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
+                    for r in part_results.clone().iter().cloned() {
                         __result.push(r.expr.clone());
                     }
                     __result
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
+                    for r in part_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2817,9 +2804,8 @@ pub fn fn_type_param_names(
         for p in Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
-                if (param_node_name_at(p.clone(), source_indices.clone()).as_str()
-                    == authored_name_at(source_indices.clone(), param_node_type_expr(p.clone()))
-                        .as_str())
+                if (param_node_name_at(p.clone(), source_indices.clone())
+                    == authored_name_at(source_indices.clone(), param_node_type_expr(p.clone())))
                 {
                     __result.push(p);
                 }
@@ -2866,7 +2852,7 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
                     .iter()
                     .cloned()
                     {
-                        if (other.clone().as_str() == s.clone().as_str()) {
+                        if (other.clone() == s.clone()) {
                             __found = true;
                             break;
                         }
@@ -3316,3 +3302,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         })
     })
 }
+
+pub struct AliasParameterized;
+pub struct AliasLeaf;
+pub struct AliasPassthrough;

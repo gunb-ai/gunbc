@@ -693,12 +693,14 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
 }
 
 pub fn is_discovery_corpus_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    if !is_interpreter_blocking_diagnostic(d.clone()) {
-        false
-    } else if is_discovery_corpus_advisory_typecheck_diagnostic(d.clone()) {
+    if (is_interpreter_blocking_diagnostic(d.clone()) == false) {
         false
     } else {
-        true
+        if is_discovery_corpus_advisory_typecheck_diagnostic(d.clone()) {
+            false
+        } else {
+            true
+        }
     }
 }
 
@@ -748,7 +750,7 @@ pub struct Node {
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
-    if (name.as_str() == "".to_string().as_str()) {
+    if (name == "".to_string()) {
         None
     } else {
         Some(span)
@@ -1180,7 +1182,7 @@ pub fn authored_name_at(
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(index) => {
                 let text = source_text_at(index.clone(), span.clone());
-                if (text.clone().as_str() == "".to_string().as_str()) {
+                if (text.clone() == "".to_string()) {
                     "".to_string()
                 } else {
                     text.clone()
@@ -1188,8 +1190,7 @@ pub fn authored_name_at(
             }
             None => {
                 if ((v1_rt::string_length(&span.file.clone()) > 8)
-                    && (v1_rt::substring(&span.file.clone(), 0, 8).as_str()
-                        == "<kernel:".to_string().as_str()))
+                    && (v1_rt::substring(&span.file.clone(), 0, 8) == "<kernel:".to_string()))
                 {
                     v1_rt::substring(
                         &span.file.clone(),
@@ -1213,9 +1214,7 @@ pub fn find_child_named(
     match Rc::new({
         let mut __result = Vec::new();
         for c in n.children.clone().iter().cloned() {
-            if (authored_name_at(source_indices.clone(), c.clone()).as_str()
-                == name.clone().as_str())
-            {
+            if (authored_name_at(source_indices.clone(), c.clone()) == name.clone()) {
                 __result.push(c);
             }
         }
@@ -1237,9 +1236,7 @@ pub fn has_child_named(
     {
         let mut __found = false;
         for c in n.children.clone().iter().cloned() {
-            if (authored_name_at(source_indices.clone(), c.clone()).as_str()
-                == name.clone().as_str())
-            {
+            if (authored_name_at(source_indices.clone(), c.clone()) == name.clone()) {
                 __found = true;
                 break;
             }
@@ -1465,7 +1462,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
             if {
                 let mut __found = false;
                 for r in roles.clone().iter().cloned() {
-                    if (r.accessor.clone().as_str() == name.clone().as_str()) {
+                    if (r.accessor.clone() == name.clone()) {
                         __found = true;
                         break;
                     }
@@ -1486,7 +1483,7 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
             if {
                 let mut __found = false;
                 for r in roles.clone().iter().cloned() {
-                    if (r.accessor.clone().as_str() == name.clone().as_str()) {
+                    if (r.accessor.clone() == name.clone()) {
                         __found = true;
                         break;
                     }
@@ -1519,11 +1516,11 @@ pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, NodeFieldRole>> = {
             let mut __m = HashMap::new();
-            __m.insert("children".to_string(), NodeFieldRole::ChildrenListField);
-            __m.insert("params".to_string(), NodeFieldRole::ChildrenListField);
-            __m.insert("body".to_string(), NodeFieldRole::SubValueField);
-            __m.insert("expr_data".to_string(), NodeFieldRole::SubValueField);
-            __m.insert("match_pattern".to_string(), NodeFieldRole::SubValueField);
+            __m.insert("children", NodeFieldRole::ChildrenListField);
+            __m.insert("params", NodeFieldRole::ChildrenListField);
+            __m.insert("body", NodeFieldRole::SubValueField);
+            __m.insert("expr_data", NodeFieldRole::SubValueField);
+            __m.insert("match_pattern", NodeFieldRole::SubValueField);
             Rc::new(__m)
         };
     }
@@ -1577,15 +1574,15 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<FunctionSizeEffect>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("with_required_cardinality".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
+                __m.insert("with_required_cardinality", Rc::new(FunctionSizeEffect::PropertyContraction {
         domain_size: 2,
     }));
-                __m.insert("resolved_type".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("param_node_type_expr".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("field_binding_pattern".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("wrapper_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("extractor_inner_arg".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
-                __m.insert("child_type_node".to_string(), Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("resolved_type", Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("param_node_type_expr", Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("field_binding_pattern", Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("wrapper_inner_arg", Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("extractor_inner_arg", Rc::new(FunctionSizeEffect::TreeSizeReducing));
+                __m.insert("child_type_node", Rc::new(FunctionSizeEffect::TreeSizeReducing));
                 Rc::new(__m)
             };
         }
@@ -1640,7 +1637,7 @@ pub fn arg_name_at(
 ) -> Option<String> {
     {
         let name = authored_name_at(source_indices, n);
-        if (name.clone().as_str() == "".to_string().as_str()) {
+        if (name.clone() == "".to_string()) {
             None
         } else {
             Some(name.clone())
@@ -1918,7 +1915,7 @@ pub fn record_lit_type_name_at(
 ) -> Option<String> {
     {
         let name = authored_name_at(source_indices, texpr);
-        if (name.clone().as_str() == "".to_string().as_str()) {
+        if (name.clone() == "".to_string()) {
             None
         } else {
             Some(name.clone())
@@ -2234,9 +2231,7 @@ pub fn find_property(
     match Rc::new({
         let mut __result = Vec::new();
         for p in props.iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone()).as_str()
-                == prop_name.clone().as_str())
-            {
+            if (field_init_node_name_at(p.clone(), source_indices.clone()) == prop_name.clone()) {
                 __result.push(p);
             }
         }
@@ -2312,13 +2307,13 @@ pub fn field_init_operation_modifier(
 ) -> Option<OperationModifier> {
     {
         let fi_name = field_init_node_name_at(field_init, source_indices);
-        if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
+        if (fi_name.clone() == "idempotent".to_string()) {
             Some(OperationModifier::Idempotent)
         } else {
-            if (fi_name.clone().as_str() == "readonly".to_string().as_str()) {
+            if (fi_name.clone() == "readonly".to_string()) {
                 Some(OperationModifier::Readonly)
             } else {
-                if (fi_name.clone().as_str() == "hermetic".to_string().as_str()) {
+                if (fi_name.clone() == "hermetic".to_string()) {
                     Some(OperationModifier::Hermetic)
                 } else {
                     None
@@ -2430,18 +2425,18 @@ pub fn transport_response_format(
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((((name.clone().as_str() == transport_url_key().as_str())
-        || (name.clone().as_str() == transport_path_key().as_str()))
-        || (name.clone().as_str() == transport_auth_scheme_key().as_str()))
-        || (name.clone().as_str() == transport_auth_header_key().as_str()))
-        || (name.clone().as_str() == transport_auth_token_key().as_str()))
-        || (name.clone().as_str() == transport_method_key().as_str()))
-        || (name.clone().as_str() == transport_path_template_key().as_str()))
-        || (name.clone().as_str() == transport_query_key().as_str()))
-        || (name.clone().as_str() == transport_body_key().as_str()))
-        || (name.clone().as_str() == transport_stdin_key().as_str()))
-        || (name.clone().as_str() == transport_response_format_key().as_str()))
-        || (name.clone().as_str() == transport_headers_key().as_str()))
+    ((((((((((((name.clone() == transport_url_key())
+        || (name.clone() == transport_path_key()))
+        || (name.clone() == transport_auth_scheme_key()))
+        || (name.clone() == transport_auth_header_key()))
+        || (name.clone() == transport_auth_token_key()))
+        || (name.clone() == transport_method_key()))
+        || (name.clone() == transport_path_template_key()))
+        || (name.clone() == transport_query_key()))
+        || (name.clone() == transport_body_key()))
+        || (name.clone() == transport_stdin_key()))
+        || (name.clone() == transport_response_format_key()))
+        || (name.clone() == transport_headers_key()))
 }
 
 pub fn transport_headers(
@@ -2511,9 +2506,7 @@ pub fn expr_has_self_call(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str()
-                    == fn_name.clone().as_str())
-                {
+                if (expr_call_func_at(texpr.clone(), source_indices.clone()) == fn_name.clone()) {
                     true
                 } else {
                     {
@@ -2555,9 +2548,7 @@ pub fn expr_has_non_tail_self_call(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str()
-                    == fn_name.clone().as_str())
-                {
+                if (expr_call_func_at(texpr.clone(), source_indices.clone()) == fn_name.clone()) {
                     if (in_tail.clone() == false) {
                         true
                     } else {
@@ -2885,8 +2876,8 @@ pub fn has_service_config(
     {
         let mut __found = false;
         for p in n.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone()).as_str()
-                == "svc_endpoint".to_string().as_str())
+            if (field_init_node_name_at(p.clone(), source_indices.clone())
+                == "svc_endpoint".to_string())
             {
                 __found = true;
                 break;
@@ -3548,7 +3539,7 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
                 .iter()
                 .cloned()
                 .fold(merged, |m: Rc<InternTable>, s: String| {
-                    if (s.clone().as_str() == "".to_string().as_str()) {
+                    if (s.clone() == "".to_string()) {
                         m.clone()
                     } else {
                         intern(m.clone(), s.clone()).table.clone()
@@ -3624,3 +3615,73 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         expr_data: n.expr_data.clone(),
     })
 }
+
+pub struct ShKeyword;
+pub struct ShLBrace;
+pub struct ShRBrace;
+pub struct ShLParen;
+pub struct ShRParen;
+pub struct ShLBracket;
+pub struct ShRBracket;
+pub struct ShLt;
+pub struct ShGt;
+pub struct ShLe;
+pub struct ShGe;
+pub struct ShFatArrow;
+pub struct ShArrow;
+pub struct ShColon;
+pub struct ShComma;
+pub struct ShDot;
+pub struct ShDotDot;
+pub struct ShEq;
+pub struct ShEqEq;
+pub struct ShNe;
+pub struct ShPlus;
+pub struct ShMinus;
+pub struct ShStar;
+pub struct ShSlash;
+pub struct ShPercent;
+pub struct ShBang;
+pub struct ShAnd;
+pub struct ShOr;
+pub struct ShQuestion;
+pub struct ShNullCoalesce;
+pub struct ShCaret;
+pub struct ShPipe;
+pub struct ShPipeArrow;
+pub struct ShLitStr;
+pub struct ShLitInt;
+pub struct ShLitFloat;
+pub struct ShIdent;
+pub struct ShStrBegin;
+pub struct ShStrMid;
+pub struct ShStrEnd;
+pub struct ShNewline;
+pub struct ShEof;
+pub struct ShUnknown;
+pub struct Conj;
+pub struct Disj;
+pub struct NoConnective;
+pub struct Arrow;
+pub struct Required;
+pub struct CardOptional;
+pub struct StoredField;
+pub struct EnumAccessor;
+pub struct OptionalUnwrap;
+pub struct TupleFirst;
+pub struct TupleSecond;
+pub struct PlainValue;
+pub struct OptionalValue;
+pub struct PlainCallSemantics;
+pub struct LookupCallSemantics;
+pub struct ParseRecoveryError;
+pub struct SemanticExprError;
+pub struct InternalExprError;
+pub struct Not;
+pub struct Neg;
+pub struct Idempotent;
+pub struct Readonly;
+pub struct Hermetic;
+pub struct ChildrenListField;
+pub struct SubValueField;
+pub struct MetadataField;

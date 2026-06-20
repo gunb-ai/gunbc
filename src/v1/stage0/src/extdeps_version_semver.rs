@@ -141,16 +141,14 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
     }
 }
 
-pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> Rc<FreeMonoid<Nat>> {
+pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
     match (*id).clone() {
-        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => {
-            crate::v2_std_text::host_string_text_from_rust_host(format!("{}", v.clone()))
-        }
+        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
 }
 
-pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> Rc<FreeMonoid<Nat>> {
+pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for id in ids.iter().cloned() {
@@ -161,22 +159,15 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> Rc<FreeMo
     .join(&".".to_string())
 }
 
-pub fn semver_version_label(v: Rc<SemVerVersion>) -> Rc<FreeMonoid<Nat>> {
+pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
     {
         let core = v1_rt::concat(
-            crate::v2_std_text::host_string_text_from_rust_host((v.major.clone()).to_string()),
+            (v.major.clone()).to_string(),
             v1_rt::concat(
                 ".".to_string(),
                 v1_rt::concat(
-                    crate::v2_std_text::host_string_text_from_rust_host(
-                        (v.minor.clone()).to_string(),
-                    ),
-                    v1_rt::concat(
-                        ".".to_string(),
-                        crate::v2_std_text::host_string_text_from_rust_host(
-                            (v.patch.clone()).to_string(),
-                        ),
-                    ),
+                    (v.minor.clone()).to_string(),
+                    v1_rt::concat(".".to_string(), (v.patch.clone()).to_string()),
                 ),
             ),
         );
