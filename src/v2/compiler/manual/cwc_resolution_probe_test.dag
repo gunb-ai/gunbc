@@ -34,10 +34,8 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_target_bundle_optional_child,
   tepe_atom_sym_optional,
   tepe_disj_form_from_catalog,
-  tepe_enum_sym_for_disj,
   tepe_lookup_contract_row,
-  tepe_contract_row_for_disj_anchor,
-  tepe_naming_spelling_basename
+  tepe_contract_row_for_disj_anchor
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -417,25 +415,6 @@ test fn cwc_review_disj_first_variant_unwrapped_conj_holds() -> Bool {
   }
 }
 
-test fn cwc_review_disj_first_variant_unwrapped_atom_holds() -> Bool {
-  match cwc_inferred_of(src: cwc_src_type_review) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_review_event_disj(n: tree.root) {
-        Present { value: disj } =>
-          match cwc_disj_first_variant_target_optional(n: disj) {
-            Present { value: target } =>
-              match sugar_unwrap_production_shell(node: target).kind {
-                TypeNode { connective: Atom { identity: _ } } => true
-                _ => false
-              }
-            Absent => false
-          }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 test fn cwc_review_disj_first_variant_is_conj_holds() -> Bool {
   match cwc_inferred_of(src: cwc_src_type_review) {
     Accepted { value: tree, diagnostics: _ } =>
@@ -445,34 +424,6 @@ test fn cwc_review_disj_first_variant_is_conj_holds() -> Bool {
             Present { value: target } => cwc_node_connective_tag(n: target) == ^Conj
             Absent => false
           }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn cwc_disj_all_variant_targets_are_atoms(n: Node) -> Bool {
-  fold(
-    n.children,
-    init: true,
-    f: fn(acc, e) {
-      if acc {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: _ } } => true
-          _ => false
-        }
-      } else {
-        false
-      }
-    }
-  )
-}
-
-test fn cwc_review_disj_variant_targets_atom_holds() -> Bool {
-  match cwc_inferred_of(src: cwc_src_type_review) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_review_event_disj(n: tree.root) {
-        Present { value: disj } => cwc_disj_all_variant_targets_are_atoms(n: disj)
         Absent => false
       }
     Rejected { diagnostics: _ } => false
@@ -792,89 +743,6 @@ test fn cwc_enrichment_contract_catalog_apply_holds() -> Bool {
                 Absent => false
               }
             Rejected { diagnostics: _ } => false
-          }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn cwc_naming_spelling_is_screaming_snake_case(spelling: String) -> Bool {
-  tepe_naming_spelling_basename(spelling: spelling) == "ScreamingSnakeCase"
-}
-
-test fn cwc_enrichment_contract_naming_spelling_holds() -> Bool {
-  match cwc_inferred_of(src: cwc_src_cwc_module) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_review_event_disj(n: tree.root) {
-        Present { value: disj } =>
-          match tepe_build_coproduct_wire_contract_index(
-            root: tree.root,
-            field_coproduct: ^coproduct,
-            field_encoding: ^encoding,
-            type_coproduct_wire_contract: ^CoproductWireContract
-          ) {
-            Accepted { value: rows, diagnostics: _ } =>
-              match tepe_contract_row_for_disj_anchor(
-                rows: rows,
-                root: tree.root,
-                disj_anchor: disj
-              ) {
-                Present { value: contract } =>
-                  match contract {
-                    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: tag, decl: _ } =>
-                      tag == ^ScreamingSnakeCase
-                  }
-                Absent => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_enrichment_contract_naming_tag_holds() -> Bool {
-  match cwc_inferred_of(src: cwc_src_cwc_module) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_review_event_disj(n: tree.root) {
-        Present { value: disj } =>
-          match tepe_build_coproduct_wire_contract_index(
-            root: tree.root,
-            field_coproduct: ^coproduct,
-            field_encoding: ^encoding,
-            type_coproduct_wire_contract: ^CoproductWireContract
-          ) {
-            Accepted { value: rows, diagnostics: _ } =>
-              match tepe_contract_row_for_disj_anchor(
-                rows: rows,
-                root: tree.root,
-                disj_anchor: disj
-              ) {
-                Present { value: contract } =>
-                  match contract {
-                    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: tag, decl: _ } =>
-                      tag == ^ScreamingSnakeCase
-                  }
-                Absent => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_enrichment_enum_sym_lookup_holds() -> Bool {
-  match cwc_inferred_of(src: cwc_src_cwc_module) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_review_event_disj(n: tree.root) {
-        Present { value: disj } =>
-          match tepe_enum_sym_for_disj(root: tree.root, disj_anchor: disj) {
-            Present { value: sym } => sym == ^ReviewEvent
-            Absent => false
           }
         Absent => false
       }

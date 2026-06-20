@@ -2044,10 +2044,35 @@ fn decode_sum_type_shape_bundle(bundle: Node) -> Outcome<TargetSumTypeShape> {
           field: ^target_type_expr_field_variant_separator
         ),
         f: fn(variant_separator) {
-          outcome_accepted(
-            TargetSumTypeShape {
-              surface: surface,
-              variant_separator: variant_separator
+          bind_outcome(
+            o: target_optional_named_child(
+              root: bundle,
+              name: ^target_type_expr_field_leading_fixed_tokens
+            ),
+            f: fn(maybe_tokens) {
+              match maybe_tokens {
+                Present { value: tokens_node } =>
+                  bind_outcome(
+                    o: concrete_syntax_token_list_from_node(list_node: tokens_node),
+                    f: fn(leading_fixed_tokens) {
+                      outcome_accepted(
+                        TargetSumTypeShape {
+                          surface: surface,
+                          variant_separator: variant_separator,
+                          leading_fixed_tokens: leading_fixed_tokens
+                        }
+                      )
+                    }
+                  )
+                Absent =>
+                  outcome_accepted(
+                    TargetSumTypeShape {
+                      surface: surface,
+                      variant_separator: variant_separator,
+                      leading_fixed_tokens: Empty
+                    }
+                  )
+              }
             }
           )
         }
@@ -7261,9 +7286,11 @@ type TargetGenericApply {
 }
 
 // SG-2 — sum / disj coproduct type.
+// leading_fixed_tokens: optional fixed decorations emitted before variant arms (any target).
 type TargetSumTypeShape {
   surface: Symbol
   variant_separator: Symbol
+  leading_fixed_tokens: List<ConcreteSyntaxToken>
 }
 
 // SG-2 — labeled Conj field slot (substrate LabeledEdges preserved through projection).
@@ -9280,18 +9307,32 @@ fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
 }
 
 fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
+  let base = [
+    target_model_named_edge(
+      name: ^target_type_expr_field_surface,
+      target: target_type_expr_symbol_atom(id: form.surface)
+    ),
+    target_model_named_edge(
+      name: ^target_type_expr_field_variant_separator,
+      target: target_type_expr_symbol_atom(id: form.variant_separator)
+    )
+  ]
   Node {
     kind: TypeNode { connective: Conj },
-    children: [
-      target_model_named_edge(
-        name: ^target_type_expr_field_surface,
-        target: target_type_expr_symbol_atom(id: form.surface)
-      ),
-      target_model_named_edge(
-        name: ^target_type_expr_field_variant_separator,
-        target: target_type_expr_symbol_atom(id: form.variant_separator)
+    children: if is_empty(xs: form.leading_fixed_tokens) {
+      base
+    } else {
+      list_append(
+        left: base,
+        right: Cons {
+          head: target_model_named_edge(
+            name: ^target_type_expr_field_leading_fixed_tokens,
+            target: concrete_syntax_token_list_to_node(tokens: form.leading_fixed_tokens)
+          ),
+          tail: Empty
+        }
       )
-    ],
+    },
     occurrence_id: SyntheticOccurrence
   }
 }

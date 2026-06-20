@@ -1172,17 +1172,39 @@ fn target_serialize_source_from_model_bounded(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<String> {
-  bind_outcome(
-    o: type_expression_projection_from_target(target: target),
-    f: fn(projection) {
-      target_serialize_source_from_model_bounded_with_projection(
-        remaining: remaining,
-        target: target,
-        emitted: emitted,
-        projection: projection
-      )
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+  } else {
+    match target_type_expr_emitted_kind(node: emitted) {
+      TypeExprKindAuthority { value: _ } =>
+        bind_outcome(
+          o: type_expression_projection_from_target(target: target),
+          f: fn(projection) {
+            serialize_type_expr_emitted_bounded(
+              remaining: remaining - 1,
+              target: target,
+              projection: projection,
+              emitted: emitted
+            )
+          }
+        )
+      TypeExprKindNotEmitted =>
+        bind_outcome(
+          o: grammar_inverse_source_validated(target: target, emitted: emitted),
+          f: fn(_) {
+            target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
+          }
+        )
+      TypeExprKindAuthorityInvalid =>
+        outcome_rejected(
+          translate_type_expr_kind_authority_invalid_diagnostic(node: emitted)
+        )
     }
-  )
+  }
 }
 fn target_serialize_source_from_model(
   target: TargetModel,
