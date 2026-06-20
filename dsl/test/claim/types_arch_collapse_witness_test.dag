@@ -10,6 +10,7 @@
 
 module test.claim.types_arch_collapse
 
+import extdeps.filesystem.filesystem_io
 import extdeps.container.oci.types {
   Aarch64,
   Armv7,
