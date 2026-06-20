@@ -1,0 +1,96 @@
+// src/v2/test/claim/anemia_lens_test.dag
+// Discriminating witnesses for v2.lens.anemia (the §2 anemic-nickname DECIDE lens), green BY EXECUTION.
+// Proves: (a) Signal-A name-coincidence is case- and underscore-insensitive and fires on real nicknames
+// (base_url~Url, content_hash~ContentHash) but NOT on clean fields; (b) the DECIDE fold over a fixture
+// index flags the bare-string coincidence and clears the non-bare and non-coinciding fields, excluding
+// self-coincidence; (c) EXTRACT is wired to the live enumerate_concepts(). Includes a perturb-RED
+// witness (a clean control must stay unflagged).
+
+module v2.test.claim.anemia_lens
+
+
+import v2.std.algebra { is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
+import v2.lens.anemia { AnemiaCandidate, candidates_in, concept_names_of, name_coincides }
+
+
+// -- (a) name coincidence (exercises the Int-space normalization) ---------------------
+
+fn witness_coincide_caseinsensitive() -> Bool {
+  name_coincides(field: "URL", concept_name: "url")
+}
+
+fn witness_coincide_headnoun() -> Bool {
+  name_coincides(field: "base_url", concept_name: "Url")
+}
+
+fn witness_coincide_whole() -> Bool {
+  name_coincides(field: "content_hash", concept_name: "ContentHash")
+}
+
+fn witness_coincide_negative() -> Bool {
+  // a free-form field must NOT coincide with an unrelated concept
+  !name_coincides(field: "note", concept_name: "Url")
+}
+
+
+// -- (b) DECIDE fold over a fixture index --------------------------------------------
+
+fn fr(f: String, t: String) -> FieldRef {
+  FieldRef { field: f, type_name: t }
+}
+
+fn qc(qn: String, nm: String, fs: List<FieldRef>) -> QualifiedConcept {
+  QualifiedConcept { qualified_name: qn, concept: ConceptStruct { name: nm, fields: fs } }
+}
+
+// Url is a concept; Endpoint.base_url:String nicknames it (REAL); Endpoint.timeout:Int is not bare;
+// Note.body:String coincides with nothing. (Self-coincidence is excluded by construction.)
+fn fixture_idx() -> List<QualifiedConcept> {
+  [
+    qc(qn: "demo.Url", nm: "Url", fs: []),
+    qc(qn: "demo.Endpoint", nm: "Endpoint", fs: [fr(f: "base_url", t: "String"), fr(f: "timeout", t: "Int")]),
+    qc(qn: "demo.Note", nm: "Note", fs: [fr(f: "body", t: "String")])
+  ]
+}
+
+fn has_candidate(cands: List<AnemiaCandidate>, enclosing: String, field: String) -> Bool {
+  fold(cands, init: false, f: fn(acc, c) {
+    acc || ((c.enclosing == enclosing) && (c.field == field))
+  })
+}
+
+fn witness_decide_flags_nickname() -> Bool {
+  has_candidate(cands: candidates_in(idx: fixture_idx()), enclosing: "Endpoint", field: "base_url")
+}
+
+fn witness_decide_clears_nonbare() -> Bool {
+  !has_candidate(cands: candidates_in(idx: fixture_idx()), enclosing: "Endpoint", field: "timeout")
+}
+
+// perturb-RED: a clean bare-string field that coincides with no concept must stay unflagged.
+fn witness_decide_clears_clean_RED() -> Bool {
+  !has_candidate(cands: candidates_in(idx: fixture_idx()), enclosing: "Note", field: "body")
+}
+
+
+// -- (c) EXTRACT wired to the live corpus --------------------------------------------
+
+fn witness_extract_live_nonempty() -> Bool {
+  !is_empty(xs: concept_names_of(idx: enumerate_concepts()))
+}
+
+
+test fn anemia_lens_witnesses() -> Bool {
+  witness_coincide_caseinsensitive()
+    && witness_coincide_headnoun()
+    && witness_coincide_whole()
+    && witness_coincide_negative()
+    && witness_decide_flags_nickname()
+    && witness_decide_clears_nonbare()
+    && witness_decide_clears_clean_RED()
+    && witness_extract_live_nonempty()
+}

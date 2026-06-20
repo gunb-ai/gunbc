@@ -1,0 +1,130 @@
+// src/v2/lens/anemia.dag
+// Scope: the anemia lens — DESIGN.md §2 leaf-side decomposition (the "anemic nickname" detector).
+//        A field typed as a bare primitive (`String`/`NonEmptyStr`) whose NAME coincides with an
+//        already-modeled concept is a candidate nickname: the field should point at the type, not
+//        re-spell it as text (`base_url: String` while `Url` exists; `content_hash: String` →
+//        `ContentHash`). This is Signal A — name-coincidence — the residual that the haiku CONFIRM
+//        judge adjudicates (the §B closed-set-by-comparison and §C consumer-cracks-the-leaf signals
+//        are decided deterministically elsewhere).
+//
+// This is a WHOLE-CORPUS LENS in the host-fed family (cf. v2.lens.layering_imports, v2.std.concept_index):
+// a pure fold over the substrate Node tree, storing nothing (DESIGN.md §6). Its EXTRACT source is the
+// real concept index `v2.std.concept_index.enumerate_concepts()` (#5335), NOT a text/regex scan — so
+// coincidence is checked against type-level concept NAMES only, never coproduct arm names. (A
+// mechanical regex scan conflates the two and mis-grounds `cursor`→a `Cursor` arm; enumerate_concepts
+// distinguishes types from arms structurally, so that whole class of false-positive is impossible here.)
+//
+// SCAFFOLD (promotion candidates): the case-fold/underscore/segment helpers below are general String
+// ops with their rightful home in v2.std.text (which today carries only string_head/_tail/_is_empty).
+// They live here for the first execution-proven increment to keep the std blast-radius zero; promote to
+// std.text once green. They normalize in Nat-space (Char = Nat) because `type Char = Nat` is nominal:
+// `nat_add` returns Nat and cannot re-enter a `Char` slot, so the normalized form is `List<Nat>`.
+// forbidden: a second copy of these in another consumer (import this or std.text).
+
+module v2.lens.anemia
+
+
+import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.concept_index { ConceptStruct, FieldRef, QualifiedConcept, enumerate_concepts }
+
+
+// -- string normalization (promotion candidates -> v2.std.text) -----------------------
+// ASCII code points (inline literals): 'A'=65  'Z'=90  '_'=95  case offset 'a'-'A'=32.
+// Char code points behave as Int at runtime, so we use native Int arithmetic (NOT Peano nat_add,
+// whose Succ-chain result does not compare equal to an Int literal). The normalized form is List<Int>.
+
+// ASCII uppercase 'A'..'Z' -> lowercase (+32); other code points unchanged.
+fn lower_code(c: Int) -> Int {
+  if (c >= 65) && (c <= 90) { c + 32 } else { c }
+}
+
+// Normalized whole name: lowercased, underscores dropped (content_hash ~ ContentHash).
+fn norm_whole(s: String) -> List<Int> {
+  fold_list(xs: s, empty: Empty, cons: fn(acc, c) {
+    if c == 95 { acc } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
+  })
+}
+
+// Normalized head-noun: the last '_'-delimited segment, lowercased (base_url ~ Url). Each '_' resets
+// the accumulator, so what survives is everything after the final underscore.
+fn norm_head(s: String) -> List<Int> {
+  fold_list(xs: s, empty: Empty, cons: fn(acc, c) {
+    if c == 95 { Empty } else { list_snoc_item(xs: acc, item: lower_code(c: c)) }
+  })
+}
+
+
+// -- DECIDE: Signal-A name-coincidence over the concept index ------------------------
+
+// One flagged site routed to CONFIRM: a bare-string field whose name coincides with a concept.
+type AnemiaCandidate {
+  enclosing: String
+  field: String
+  declared_type: String
+  coincides_with: String
+}
+
+// The bare primitives a nickname hides behind.
+fn is_bare_string(type_name: String) -> Bool {
+  (type_name == "String") || (type_name == "NonEmptyStr")
+}
+
+// Does a field name coincide with a concept name? Whole-name (content_hash ~ ContentHash) OR
+// head-noun (base_url ~ Url). Both sides normalized to lowercased Nat lists.
+fn name_coincides(field: String, concept_name: String) -> Bool {
+  let cn = norm_whole(s: concept_name)
+  (norm_whole(s: field) == cn) || (norm_head(s: field) == cn)
+}
+
+// Every declared concept's (short) name — the coincidence universe (type-level only).
+fn concept_names_of(idx: List<QualifiedConcept>) -> List<String> {
+  fold(idx, init: Empty, f: fn(acc, qc) { list_snoc_item(xs: acc, item: qc.concept.name) })
+}
+
+// The concept name a field coincides with, or "" if none. Self-coincidence (the field's own enclosing
+// concept) is excluded. First match wins.
+fn matched_concept(field: String, enclosing: String, names: List<String>) -> String {
+  fold(names, init: "", f: fn(acc, n) {
+    if (acc == "") && !(n == enclosing) && name_coincides(field: field, concept_name: n) {
+      n
+    } else {
+      acc
+    }
+  })
+}
+
+// Candidates within one concept's fields.
+fn candidates_of_concept(qc: QualifiedConcept, names: List<String>, acc0: List<AnemiaCandidate>) -> List<AnemiaCandidate> {
+  fold(qc.concept.fields, init: acc0, f: fn(acc, fr) {
+    if is_bare_string(type_name: fr.type_name) {
+      let m = matched_concept(field: fr.field, enclosing: qc.concept.name, names: names)
+      if m == "" {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: AnemiaCandidate {
+          enclosing: qc.concept.name,
+          field: fr.field,
+          declared_type: fr.type_name,
+          coincides_with: m
+        })
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+// DECIDE over a supplied index (testable with a fixture).
+fn candidates_in(idx: List<QualifiedConcept>) -> List<AnemiaCandidate> {
+  let names = concept_names_of(idx: idx)
+  fold(idx, init: Empty, f: fn(acc, qc) { candidates_of_concept(qc: qc, names: names, acc0: acc) })
+}
+
+// EXTRACT + DECIDE over the live corpus: the Signal-A residual routed to the haiku CONFIRM judge.
+fn candidates() -> List<AnemiaCandidate> {
+  candidates_in(idx: enumerate_concepts())
+}
