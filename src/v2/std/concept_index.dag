@@ -21,8 +21,8 @@
 // (v2.lens.application) is section-scoped (Declaration/Node only) — there is no Module/Program
 // SectionRef variant and no corpus Node to apply over — so a section-scoped lens is NOT a nearer
 // path here; this lens converges onto apply_lens over the corpus-node once that handle exists
-// (the dissolution trigger, below — NOT gunbc#4863, which is this bridge's ORIGIN PR, not its
-// trigger).
+// (the dissolution trigger gunbc#5364, below — NOT gunbc#4863, which is this bridge's ORIGIN PR,
+// not its trigger).
 //
 // Source/projection split (DESIGN.md §3 single authority + §6 lens-not-Rust):
 //   - SOURCE (host boundary, irreducible today — v2 has no corpus-as-node handle):
@@ -89,9 +89,10 @@ type ConceptDecl {
 //   It is NOT the dissolve trigger (a scaffold cannot be dissolved by its own birth PR); it is
 //   recorded only as provenance. #4863 delivered per-node enumeration (node_query), NOT a
 //   corpus-as-node handle.
-// dissolve-on-arrival: v2 self-host gains compile-graph access — a corpus-as-node handle (the point
-//   at which v2.std.value_carrier's `^resolved_graph_declared_types/_variants/_fields` authorities
-//   become a LIVE accessor rather than aspirational symbol refs). Then this host-fed SOURCE is
+// dissolve-on-arrival: gunbc#5364 — v2 self-host gains compile-graph access — a corpus-as-node
+//   handle (the point at which v2.std.value_carrier's
+//   `^resolved_graph_declared_types/_variants/_fields` authorities become a LIVE accessor rather
+//   than aspirational symbol refs). Then this host-fed SOURCE is
 //   replaced by a pure .dag walk over the resolved graph (one walk over every module's items), and
 //   the whole-corpus lens family (this, layering_imports, resolved_imports) converges onto
 //   apply_lens (v2.lens.application) over that corpus Node. Same unmet trigger as sibling
