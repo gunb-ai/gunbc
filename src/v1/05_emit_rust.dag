@@ -61,7 +61,8 @@ import v1.std.core {
   make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
-  is_rest_transport, is_shell_transport, is_file_transport
+  is_rest_transport, is_shell_transport, is_file_transport,
+  empty_intern_table
 }
 
 import v1.compiler.artifact { RenderTarget, Rust }
@@ -117,7 +118,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve { lookup_unit_variant_phantom_type, is_width_nat_type_literal }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
-import std.induction { SubValueUnknown }
+import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
   BlockEmitState, TcoFrame, TcoReassignInput, InterpPart,
@@ -153,7 +154,8 @@ import v1.compiler.emit_core_support {
   is_type_alias_return_node, is_service_item,
   is_type_def_item, is_type_alias_item, is_type_decl_item,
   is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, has_mock_prefix, extract_test_projections
+  is_resource_def_item, has_mock_prefix, extract_test_projections,
+  is_bare_leaf_item
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
