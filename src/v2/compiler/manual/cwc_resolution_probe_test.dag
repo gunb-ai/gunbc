@@ -28,7 +28,9 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_data_decl_coproduct_ref_sym_accepts,
   tepe_data_decl_encoding_naming_tag_accepts,
   tepe_data_decl_coproduct_row_present,
-  tepe_wire_contract_index_nonempty
+  tepe_wire_contract_index_nonempty,
+  tepe_collect_data_decl_nodes,
+  tepe_build_coproduct_wire_contract_index
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
@@ -41,6 +43,7 @@ import v2.extdeps.languages.rust_wire_serde {
   rust_wire_serde_snake_case_target
 }
 import v2.std.compilers.target_model { TargetModel }
+import v2.std.algebra { is_empty }
 import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
@@ -422,6 +425,30 @@ test fn cwc_data_decl_coproduct_row_present_holds() -> Bool {
         field_encoding: ^encoding,
         type_coproduct_wire_contract: ^CoproductWireContract
       )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_data_decl_collect_nonempty_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      !is_empty(xs: tepe_collect_data_decl_nodes(root: tree.root))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_wire_contract_index_build_accepts_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: tree.root,
+        field_coproduct: ^coproduct,
+        field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } => !is_empty(xs: rows)
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }

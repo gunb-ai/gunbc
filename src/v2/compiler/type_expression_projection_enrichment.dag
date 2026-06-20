@@ -256,18 +256,6 @@ fn tepe_field_init_value_from_colon_sequence_optional(seq: Node) -> Optional<Nod
   }
 }
 
-fn tepe_canonical_data_decl_parts_optional(decl: Node) -> Optional<TepeDataDeclParts> {
-  match find_named_child(root: decl, name: ^dag_surface_data_decl_type) {
-    Accepted { value: type_expr, diagnostics: _ } =>
-      match find_named_child(root: decl, name: ^dag_surface_data_decl_expr) {
-        Accepted { value: expr, diagnostics: _ } =>
-          optional_present(TepeDataDeclParts { type_expr: type_expr, expr: expr })
-        Rejected { diagnostics: _ } => optional_absent()
-      }
-    Rejected { diagnostics: _ } => optional_absent()
-  }
-}
-
 fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclParts> {
   match find_named_child(root: decl, name: ^dag_surface_data_decl_type) {
     Accepted { value: type_expr, diagnostics: _ } =>
@@ -795,28 +783,81 @@ fn tepe_merge_index_acc(
   }
 }
 
+fn tepe_collect_data_decl_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        if tepe_node_has_surface(root: node, surface: ^dag_surface_data_decl) {
+          match tepe_data_decl_type_and_expr_optional(decl: node) {
+            Present { value: _ } => [node]
+            Absent => Empty
+          }
+        } else {
+          Empty
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        list_append(left: acc, right: child_acc)
+      }
+    }
+  )
+}
+
+fn tepe_fold_index_over_decls(
+  acc: CoproductWireContractIndexAcc,
+  decls: List<Node>,
+  field_coproduct: Symbol,
+  field_encoding: Symbol,
+  type_coproduct_wire_contract: Symbol
+) -> CoproductWireContractIndexAcc {
+  match list_at_optional(xs: decls, index: 0) {
+    Absent => acc
+    Present { value: decl } =>
+      match acc {
+        CoproductWireContractIndexErr { diagnostics: d } =>
+          CoproductWireContractIndexErr { diagnostics: d }
+        CoproductWireContractIndexOk { rows: rows } =>
+          match list_tail(xs: decls) {
+            TailAbsent =>
+              tepe_fold_decl_into_index(
+                acc: CoproductWireContractIndexOk { rows: rows },
+                decl: decl,
+                field_coproduct: field_coproduct,
+                field_encoding: field_encoding,
+                type_coproduct_wire_contract: type_coproduct_wire_contract
+              )
+            TailFound { tail: tail } =>
+              tepe_fold_index_over_decls(
+                acc: tepe_fold_decl_into_index(
+                  acc: CoproductWireContractIndexOk { rows: rows },
+                  decl: decl,
+                  field_coproduct: field_coproduct,
+                  field_encoding: field_encoding,
+                  type_coproduct_wire_contract: type_coproduct_wire_contract
+                ),
+                decls: tail,
+                field_coproduct: field_coproduct,
+                field_encoding: field_encoding,
+                type_coproduct_wire_contract: type_coproduct_wire_contract
+              )
+          }
+      }
+  }
+}
+
 fn tepe_build_coproduct_wire_contract_index(
   root: Node,
   field_coproduct: Symbol,
   field_encoding: Symbol,
   type_coproduct_wire_contract: Symbol
 ) -> Outcome<List<CoproductWireContractIndexRow>> {
-  match fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(n0) {
-        tepe_fold_decl_into_index(
-          acc: CoproductWireContractIndexOk { rows: Empty },
-          decl: n0,
-          field_coproduct: field_coproduct,
-          field_encoding: field_encoding,
-          type_coproduct_wire_contract: type_coproduct_wire_contract
-        )
-      },
-      step: fn(acc, _edge, child_acc) {
-        tepe_merge_index_acc(left: acc, right: child_acc)
-      }
-    }
+  match tepe_fold_index_over_decls(
+    acc: CoproductWireContractIndexOk { rows: Empty },
+    decls: tepe_collect_data_decl_nodes(root: root),
+    field_coproduct: field_coproduct,
+    field_encoding: field_encoding,
+    type_coproduct_wire_contract: type_coproduct_wire_contract
   ) {
     CoproductWireContractIndexOk { rows: rows } => outcome_accepted(rows)
     CoproductWireContractIndexErr { diagnostics: r } => Rejected { diagnostics: r }
