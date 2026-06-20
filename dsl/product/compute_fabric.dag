@@ -60,17 +60,18 @@ import std.content_hash {
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest }
 import extdeps.cpu {
   CpuFacts,
-  CpuArchitecture,
   cpu_facts_architecture,
   cpu_facts_sustained_per_thread_hz,
   cpu_facts_threads,
 }
 import extdeps.cpu.types {
-  CpuArchitecture,
   CpuDeploymentFacts,
   CpuModelCatalogRow,
   CpuSocket,
   SocketPackage,
+}
+import extdeps.toolchain.types {
+  Architecture,
   Aarch64,
   X86_64,
   Armv7,
@@ -509,7 +510,7 @@ type ResourceEnvelope {
   network: NetworkRequirement?
 }
 
-type CpuRequirement { min_threads: HardwareThreadCount, architecture: CpuArchitecture? }
+type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
 type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
 type MemoryRequirement { min_bytes: ByteSize }
 type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
@@ -1094,11 +1095,17 @@ fn isolation_boundary_digest(boundary: IsolationBoundary) -> ContentHash {
 
 // File-scoped arch label for digest only — lift to extdeps/cpu/types.cpu_architecture_label
 // if a second consumer appears (§3 single authority).
-fn cpu_architecture_digest(arch: CpuArchitecture) -> ContentHash {
+fn cpu_architecture_digest(arch: Architecture) -> ContentHash {
   match arch {
     X86_64 => content_hash_atom(value: "arch:X86_64")
+    X86 => content_hash_atom(value: "arch:X86")
     Aarch64 => content_hash_atom(value: "arch:Aarch64")
+    Arm => content_hash_atom(value: "arch:Arm")
     Armv7 => content_hash_atom(value: "arch:Armv7")
+    Mips => content_hash_atom(value: "arch:Mips")
+    Mipsel => content_hash_atom(value: "arch:Mipsel")
+    Mips64 => content_hash_atom(value: "arch:Mips64")
+    Mips64el => content_hash_atom(value: "arch:Mips64el")
     Riscv64 => content_hash_atom(value: "arch:Riscv64")
     Wasm32 => content_hash_atom(value: "arch:Wasm32")
   }
