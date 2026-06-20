@@ -61,8 +61,9 @@ fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Orderi
 
 fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
   if a.length() == 0 && b.length() == 0 { Equal }
-  else if a.length() == 0 { Greater }
-  else if b.length() == 0 { Less }
+  // semver.org §11.4.4: when all preceding identifiers are equal, the longer set wins.
+  else if a.length() == 0 { Less }
+  else if b.length() == 0 { Greater }
   else {
     match semver_compare_identifier(a: a.first(), b: b.first()) {
       Equal =>
