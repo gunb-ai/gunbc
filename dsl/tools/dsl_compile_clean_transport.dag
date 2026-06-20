@@ -33,6 +33,10 @@ fn dcc_source_root_flags() -> List<ShellWord> {
   fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
 
+fn dcc_pool_index_flags() -> List<ShellWord> {
+  [lit(text: "--dependency-pool-index"), lit(text: "primary-precedence")]
+}
+
 // set -e; <prelude>; cd "$ROOT"; OUT=$(mktemp -d); "$GUNBC" compile <witness roots> ... ; rm -rf "$OUT"
 fn clean_tree_compile_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
@@ -45,10 +49,10 @@ fn clean_tree_compile_program() -> ShellProgram {
       assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
       command(words: concat(
         [gunbc, lit(text: "compile")],
-        concat(dcc_source_root_flags(), [
+        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
           lit(text: "--target"), lit(text: "rust")
-        ])
+        ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out])
     ])
@@ -87,10 +91,10 @@ fn compile_clean_perturb_program() -> ShellProgram {
         cond: WithRedir {
           stmt: command(words: concat(
             [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
-            concat(dcc_source_root_flags(), [
+            concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
               lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
               lit(text: "--target"), lit(text: "rust")
-            ])
+            ]))
           )),
           redir: StdoutAndStderrToNull
         },
@@ -130,10 +134,10 @@ fn compile_cross_tree_green_program() -> ShellProgram {
       assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
       command(words: concat(
         [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
-        concat(dcc_source_root_flags(), [
+        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
           lit(text: "--target"), lit(text: "rust")
-        ])
+        ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
       command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
