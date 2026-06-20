@@ -14,6 +14,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { resolve }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.translate {
   translate_type_expression_project,
@@ -37,7 +38,10 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_lookup_contract_row,
   tepe_contract_row_for_disj_anchor,
   tepe_enum_sym_for_disj,
-  tepe_disj_for_enum_sym_optional
+  tepe_disj_for_enum_sym_optional,
+  tepe_coproduct_sym_from_decl,
+  tepe_rows_contain_coproduct,
+  CoproductWireContractIndexRow
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -57,7 +61,7 @@ import v2.std.compilers.target_model {
   TypeExprKindAuthority,
   symbol_interned_spelling
 }
-import v2.std.algebra { is_empty }
+import v2.std.algebra { count, is_empty }
 import v2.std.collection {
   Absent,
   Optional,
@@ -1044,6 +1048,28 @@ fn cwc_sg2_sum_serialized_text() -> String {
 
 test fn cwc_sum_leading_tokens_regression_byte_unchanged() -> Bool {
   cwc_sg2_sum_serialized_text() == cwc_expected_sum_regression_text
+}
+
+test fn cwc_diag_disj_for_enum_on_norm_holds() -> Bool {
+  match cwc_norm_of(src: cwc_src_cwc_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_disj_for_enum_sym_optional(root: root, enum_sym: ^ReviewEvent) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_disj_for_enum_on_infer_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match tepe_disj_for_enum_sym_optional(root: tree.root, enum_sym: ^ReviewEvent) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn cwc_translate_serde_two_contract_discriminates_holds() -> Bool {
