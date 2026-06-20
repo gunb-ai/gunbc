@@ -426,7 +426,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     name
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    if name == "String" {
+    if name == "String" && rust_emit_faithful_text_carrier(source_indices: source_indices) {
       render_rust_text_carrier(shared_types: shared_types)
     } else {
       match rust_opaque_kernel_alias_carrier(name: name) {

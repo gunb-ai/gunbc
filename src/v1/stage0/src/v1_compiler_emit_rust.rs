@@ -233,7 +233,8 @@ pub fn render_rust_type_without_applied_binding(
         } else {
             let tn = authored_name_at(source_indices.clone(), n.clone());
             if (tn.clone().as_str() == "String".to_string().as_str()
-                && ((n.children.clone().len() as i64) == 0))
+                && ((n.children.clone().len() as i64) == 0)
+                && rust_emit_faithful_text_carrier(source_indices.clone()))
             {
                 render_rust_text_carrier(shared_types.clone())
             } else {
@@ -255,6 +256,36 @@ pub fn empty_string_bool_map() -> Rc<HashMap<String, bool>> {
 pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
     ((v1_rt::string_length(&type_name) >= 3)
         && (v1_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
+}
+
+pub fn rust_corpus_includes_v1_compiler(
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    v1_rt::map_keys(&source_indices)
+        .iter()
+        .cloned()
+        .any(|k| k.contains("/v1/") || k.contains("src/v1"))
+}
+
+pub fn rust_emit_faithful_text_carrier(
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    !rust_corpus_includes_v1_compiler(source_indices)
+}
+
+pub fn rust_is_brand_preserved_substrate_text_string(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    let name = authored_name_at(env.source_indices.clone(), n.clone());
+    if name.as_str() != "String" || (n.children.len() as i64) == 0 {
+        false
+    } else {
+        match n.children.first() {
+            Some(elem) => {
+                let ename = authored_name_at(env.source_indices.clone(), elem.clone());
+                ename.as_str() == "Char" || ename.as_str() == "Nat"
+            }
+            None => false,
+        }
+    }
 }
 
 pub fn render_rust_text_carrier(shared_types: Rc<std::collections::BTreeSet<String>>) -> String {
@@ -323,12 +354,17 @@ pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
     }
 }
 
-pub fn rust_named_type_base(name: String) -> String {
+pub fn rust_named_type_base(
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((name.clone().as_str() == "Witness".to_string().as_str())
         || (name.clone().as_str() == "witness".to_string().as_str()))
     {
         "Witness".to_string()
-    } else if name.clone().as_str() == "String".to_string().as_str() {
+    } else if name.clone().as_str() == "String".to_string().as_str()
+        && rust_emit_faithful_text_carrier(source_indices)
+    {
         "FreeMonoid<Nat>".to_string()
     } else {
         coerce_primitive_type(RenderTarget::Rust, name.clone())
@@ -378,7 +414,10 @@ pub fn render_rust_applied_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let base = rust_named_type_base(authored_name_at(source_indices.clone(), n.clone()));
+        let base = rust_named_type_base(
+            authored_name_at(source_indices.clone(), n.clone()),
+            source_indices.clone(),
+        );
         if ((n.children.clone().len() as i64) == 0) {
             base
         } else {
@@ -485,7 +524,8 @@ pub fn render_rust_decl_type(
                 } else if ((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) == 0)
                     && !has_applied_prop
-                    && name.clone().as_str() == "String".to_string().as_str())
+                    && name.clone().as_str() == "String".to_string().as_str()
+                    && rust_emit_faithful_text_carrier(source_indices.clone()))
                 {
                     render_rust_text_carrier(shared_types.clone())
                 } else if ((n.connective.clone() == Connective::NoConnective)
@@ -511,8 +551,23 @@ pub fn render_rust_decl_type(
                     if ((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) > 0))
                     {
+                        let stub_env = Rc::new(TypeEnv {
+                            bindings: Rc::new(HashMap::new()),
+                            recursive_types: Rc::new(vec![]),
+                            recursive_type_set: Rc::new(HashMap::new()),
+                            inductive_fields: Rc::new(HashMap::new()),
+                            source_indices: source_indices.clone(),
+                            intern_table: empty_intern_table(),
+                        });
+                        if rust_emit_faithful_text_carrier(source_indices.clone())
+                            && rust_is_brand_preserved_substrate_text_string(
+                                n.clone(),
+                                stub_env,
+                            )
                         {
-                            let base = rust_named_type_base(name.clone());
+                            render_rust_text_carrier(shared_types.clone())
+                        } else {
+                            let base = rust_named_type_base(name.clone(), source_indices.clone());
                             let args = Rc::new({
                                 let mut __result = Vec::new();
                                 for arg in n.children.clone().iter().cloned() {
@@ -575,7 +630,17 @@ pub fn render_rust_fn_sig_type(
     env: Rc<TypeEnv>,
 ) -> String {
     let name = authored_name_at(source_indices.clone(), n.clone());
-    if ((n.connective.clone() == Connective::NoConnective)
+    if rust_emit_faithful_text_carrier(source_indices.clone())
+        && rust_is_brand_preserved_substrate_text_string(n.clone(), env.clone())
+    {
+        render_rust_text_carrier(shared_types.clone())
+    } else if ((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) == 0)
+        && name.clone().as_str() == "String".to_string().as_str()
+        && rust_emit_faithful_text_carrier(source_indices.clone()))
+    {
+        render_rust_text_carrier(shared_types.clone())
+    } else if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0)
         && !is_container_type(name.clone())
         && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
@@ -656,7 +721,9 @@ pub fn render_rust_alias_rhs_type(
         } else if ((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
         {
-            if name.clone().as_str() == "String".to_string().as_str() {
+            if name.clone().as_str() == "String".to_string().as_str()
+                && rust_emit_faithful_text_carrier(source_indices.clone())
+            {
                 render_rust_text_carrier(shared_types.clone())
             } else if let Some(carrier) = rust_opaque_kernel_alias_carrier(name.clone()) {
                 carrier
