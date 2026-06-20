@@ -1,178 +1,205 @@
-# Postmortem — "CI is extremely flakey": the fleet-overcommit root cause
+# Postmortem — "CI is extremely flakey": root-causing by execution
 
 **Date:** 2026-06-20
 **Author:** warm-crane-135 (with eager-boar-790, vivid-bee-801)
-**Status:** root cause identified; one structural fix merged (#5375), the load-bearing fix still open (host-level admission)
-**Trigger:** operator report — *"CI is extremely flakey"* and, hours later, *"srv2 is crashing every ~hour … my concern is that we are treading water."*
+**Status:** root cause identified by execution; one structural fix merged (#5375); the proven fix
+(Arc 1 per-unit) is in progress; a real latent gap (per-host admission) is modeled but was NOT this bug.
+**Trigger:** operator report — *"CI is extremely flakey"* and, hours later, *"srv2 is crashing every
+~hour … my concern is that we are treading water."*
+
+> **Note on this document (it is the lesson):** the root cause below was reached only after *three*
+> hypotheses were proposed and two were refuted — and every correction came from **discriminating
+> execution overruling plausible reasoning** (DESIGN §5), including refuting a hypothesis this very
+> doc asserted in its first draft. The thrash is not noise to be cleaned up; it *is* the finding. A
+> postmortem that hid it would repeat the mistake it documents.
 
 ---
 
 ## TL;DR
 
-CI flakiness was **not one bug**. It was four compounding failures stacked on a single
-under-modeled fact, and we spent real effort chasing the *wrong layer* of it more than once. The
-deepest root cause is:
+CI flakiness was **not one bug**. It was several independent flakes sharing one symptom ("CI fails"),
+plus one OOM whose cause took three tries to pin. The decisive evidence is a three-run table (below):
+at the same fan-out width, in the same time window, the **main corpus passed on both hosts** while
+**one branch's corpus was OOM-killed**. That isolates the cause to *that branch's content*, and rules
+out every host-level and width-level explanation.
 
-> **There is no authority bounding the aggregate memory of concurrent CI runs on a host.**
-> Per-run resource use is now modeled (#5375); the *sum over runs sharing a host* is not. srv2 ran
-> 7–11 floor runs at once, their combined peak exceeded 125 GiB physical RAM, and the host
-> livelocked before any single per-run cap could fire.
+- **The OOM (proven):** a specific branch (Arc 1) inflated **per-unit resolve memory** past the
+  hand-set `14 GiB/unit` estimate, so even at the reduced width-4 it exceeded the runner cgroup cap
+  and was killed (exit 137). This is the **per-run / per-unit** scale.
+- **The flakes (separate):** WIP-merge breakage, sccache corruption, and the crash-cancel loop each
+  produced "CI fails" independently, which is why no single fix made the symptom disappear.
+- **srv2's hourly host reboots (separate, under-diagnosed):** OS-level memory-exhaustion livelock
+  (hardware ruled out via BMC), but **not** execution-pinned to floor concurrency — a strong
+  candidate is the uncapped agent containers, not the CI floor.
 
-Everything else — the memory-blind floor width, the WIP-merge breakage, sccache corruption, the
-approval-reset livelock — was either a contributing flake or a *symptom of the same missing model
-seen at a different scale*. The "treading water" feeling was real and diagnostic: we kept fixing the
-**per-run** scale while the failure lived at the **per-host** scale.
-
----
-
-## The one-sentence root cause, stated as a model
-
-It is the **same inequality at two scales** (DESIGN §2 horizontal — one concept, every scale), and
-only one scale was ever modeled:
-
-| scale | inequality | status |
-|---|---|---|
-| **per-run** | `width × per_unit_peak ≤ per_run_budget` | **modeled** — `placement_spawn_width`, merged in #5375 |
-| **per-host** | `Σ_concurrent_runs(per_run_peak) ≤ host_physical_RAM` | **UNMODELED** — this is the crash |
-
-A second, orthogonal §3 (single-authority) violation hides inside the per-run term: `per_unit_peak`
-is a **hand-set constant** (`14 GiB/unit` in `dsl/gunbc/ci_fleet.dag`), calibrated once against
-*main's* corpus. A constant is a second authority for "what the corpus costs" that silently forks
-from the actual corpus, so any corpus growth outruns it. It must become **probe-derived**:
-`WorkDemand.memory = f(corpus)`.
+Two hypotheses were proposed and **refuted by execution**, and naming them is the point:
+1. *(refuted)* "Arc 1's diff is too small to matter; it's not per-unit." → refuted: the +39-line diff
+   reasoning lost to the run that OOM'd.
+2. *(refuted, and it was THIS doc's first headline)* "It's per-host overcommit — sum of concurrent
+   runs exceeds RAM." → refuted: main-corpus runs at the same width in the same window passed on both
+   hosts; overcommit would have taken them too.
 
 ---
 
-## Timeline & the chase (where we burned time, and why)
+## The decisive evidence (why we know)
+
+| run | corpus | width | host | result |
+|---|---|---|---|---|
+| `637e4a9b2c` (main post-#5375) | main | 4 | srv1-32 | **PASS** |
+| `27859412294` (#5375 branch) | main | 4 | srv2-17 | **PASS** (533 witnesses) |
+| `27859296640` (Arc1+#5375) | **Arc 1** | 4 | srv2-15 | **Killed (exit 137)** |
+
+All three are width-4, overlapping ~04:00–04:14. The two **main-corpus** runs passed on **both** hosts.
+Therefore:
+- It is **not width** — width-4 passes for main.
+- It is **not the host** (overcommit/crash-load) — same window, same hosts, main passed.
+- The **only** remaining variable is **Arc 1's corpus content**.
+
+This is a textbook discriminating experiment: hold width and host fixed, vary only the corpus, observe
+the flip. It overruled two rounds of plausible static reasoning.
+
+---
+
+## Root cause, stated as a model
+
+The OOM lives at the **per-run** scale, and the failure was a **stale single-authority constant**, not
+a missing model:
+
+`per_run_peak = width × per_unit_peak`, and the run is killed when `per_run_peak > cgroup_cap`.
+
+The width term is now modeled and correct (#5375). The defect is `per_unit_peak`: it is a **hand-set
+constant** (`14 GiB/unit` in `dsl/gunbc/ci_fleet.dag`), calibrated once against *main's* corpus
+(measured ~12.5 GiB/unit, padded to 14). A constant is a **second authority** for "what the corpus
+costs" (DESIGN §3) that silently forks from the actual corpus — so when Arc 1's content pushed the
+*real* per-unit past 14, the budget held a line the corpus had already crossed, and width-4 OOM'd. The
+fix is to make per-unit **probe-derived**: `WorkDemand.memory = f(corpus)` via a peak-RSS probe, so the
+estimate cannot fork from the corpus it describes. (eager-boar-790 offered to be the first consumer.)
+
+### The latent gap that is NOT this bug (kept, demoted)
+
+There genuinely is no authority bounding `Σ_concurrent_runs(per_run_peak) ≤ host_physical_RAM` — the
+**per-host admission** scale. It is the same `demand ≤ supply` inequality one scale up (DESIGN §2
+horizontal), and worth modeling so a future load surge can't oversubscribe a host. But the execution
+table shows it did **not** cause this OOM, so it is recorded here as a **modeled latent risk**, not the
+root cause. Modeling a plausible gap and *asserting it caused an observed failure* are different claims;
+only the second needs a discriminating witness, and here that witness refuted it.
+
+---
+
+## Timeline & the chase (where time went, and why)
 
 ### 1. Symptom: "CI is extremely flakey"
-PR CI ran 30–45 min and failed intermittently with unrelated errors each retry. Initial surface
-read found **four** distinct contributors, which is why no single fix "stuck":
+Four independent contributors shared one symptom, which is why no single fix "stuck":
+- **WIP/partial merges breaking main.** A dangling `bash_lex_rule` ref (#5347) reddened main
+  tree-wide; PR branches inherited it via main-merge and looked like *their* bug.
+- **sccache corruption.** `"failed to fill whole buffer"` → spurious build failures; worse,
+  `ctrl-build` returned **exit 0 with no binary** (false green). *Always `ls` the artifact.*
+- **Memory-blind floor width.** batch-2 fanned out at `min(breadth, threads) = 7` with **no memory
+  term** → OOM risk as the corpus grows.
+- **srv2 crashing ~hourly**, cancelling in-flight CI (the `cancelled`-not-`failed` runs the dashboard
+  surfaced as "1 failing").
 
-- **WIP/partial merges breaking main.** A `bash_lex_rule` dangling ref from a WIP commit (#5347)
-  made main red tree-wide; PR branches inherited it via main-merge and looked like *their* bug.
-  → *Lesson already in memory: a floor resolve-fail in a file your PR didn't touch usually means
-  main is already red.*
-- **sccache corruption.** `"failed to fill whole buffer"` → spurious build failures naming a
-  different dep each retry. Worse: `ctrl-build` returned **exit 0 with no binary** (false green).
-  → *Always `ls` the artifact; `--stop-server` + `RUSTC_WRAPPER="" SCCACHE_DISABLE=1` to bypass.*
-- **Memory-blind floor width.** The CI floor fanned out batch-2 at `width = min(breadth, threads) = 7`
-  with **no memory term** → deterministic exit-137 OOM as the corpus grew.
-- **srv2 crashing every ~hour**, cancelling in-flight CI (the `cancelled`-not-`failed` runs that the
-  dashboard surfaced as "1 failing").
+### 2. #5375 — memory-aware per-run width (correct, merged)
+`placement_spawn_width = min(cpu_width, mem_budget / per_unit_peak)`, dropping batch-2 to width-4, with
+a discriminating §5 witness. A real, correct fix at the per-run scale — it just isn't what failed for
+Arc 1 (Arc 1 OOM'd *at* width-4).
 
-### 2. First root-cause attempt: the per-run width (#5375) — correct, but not the crash
-We modeled the missing memory term: `placement_spawn_width(supply, demand) = min(cpu_width,
-mem_budget / per_unit_peak)`, dropping batch-2 from width-7 to width-4, with a discriminating §5
-witness (`witness_floor_width_fits_memory_budget`) that goes red if the memory term is removed.
-**This was a real, correct structural fix** — but it bounds *one run's* fan-out, not the host.
+### 3. srv2 crash diagnosis: hardware ruled out
+Via BMC Redfish (OpenBMC on ASRock ALTRAD8UD): `LastResetTime` stale, `FaultLog` empty, Core/DIMM temps
+60/58 °C, Core power 72 W — not thermal, not a chassis power event. OS rebooted itself without tripping
+any chassis event ⇒ **OS-level memory-exhaustion livelock**. Smoking gun OS-side: wall-to-wall
+`systemd-journald: Under memory pressure` until an abrupt stop with no clean OOM line. Stable ~2
+days/boot until 2026-06-20 ~00:15, then crashing every ~3 h — a **load surge today**. (Mechanism not
+pinned to a specific workload by execution; the uncapped agent containers are a strong candidate.)
 
-### 3. srv2 crash diagnosis: hardware ruled out, OS memory-exhaustion confirmed
-Via BMC Redfish (OpenBMC on ASRock ALTRAD8UD): `LastResetTime` stale, `FaultLog` empty, Core/DIMM
-temps 60/58 °C, Core power 72 W — **not** thermal, not a chassis power event, not a BMC hard reset.
-The OS rebooted itself without tripping any chassis event ⇒ **OS-level memory-exhaustion livelock**.
-The smoking gun was OS-side: wall-to-wall `systemd-journald: Under memory pressure, flushing caches`
-until an abrupt stop with no clean OOM-kill line — so memory-starved it livelocked before it could
-log its own death. `journalctl --list-boots`: stable ~2 days/boot until 2026-06-20 ~00:15, then
-crashing every ~3 h — i.e. a **load surge today** (many concurrent agent sessions + CI floors on one
-host), not a hardware regression.
+### 4. Three hypotheses for the Arc 1 OOM — execution settled it
+- **H1 (per-unit):** "Arc 1's eager materialization balloons per-unit." Proposed by warm-crane,
+  endorsed by eager-boar.
+- **H2 (refutes H1, by diff):** eager-boar reads the Arc 1 diff — +39 lines, a fn-refactor, *no new
+  eager decls* — and argues it can't be GBs of per-unit; reframes as **per-host overcommit** (OOM at
+  ~50 GiB under an ~87 GiB cap ⇒ host RAM exhaustion). **warm-crane wrote this into the first draft of
+  this doc as the root cause.**
+- **H3 (refutes H2, by execution):** the three-run table. Two main-corpus runs pass at width-4 on both
+  hosts in the same window; only Arc 1 dies. Host-overcommit would have killed the main runs too.
+  **Back to H1** — Arc 1's content is the delta; the diff-based refutation of H1 lost to the run.
 
-### 4. The head-fake (and the §5 recovery that found the real cause)
-eager-boar-790 tested Arc1+#5375 and saw it **still OOM at width-4**. The inversion was striking:
-main passed at width-7, but Arc1 OOM'd at width-4 — *fewer* concurrent resolves, yet OOM. The
-natural hypothesis: Arc 1's eager materialization ballooned per-unit memory, so `4 × (big unit) >
-7 × (small unit)`. We (warm-crane) endorsed this and eager-boar agreed to slim Arc 1.
-
-**Then eager-boar checked the actual diff (DESIGN §5 — green/red by execution, not by plausibility)
-and refuted their own hypothesis:**
-- Arc 1's whole diff is +39 net lines in `typescript.dag` — a fn-refactor extracting a shared
-  dispatcher, **no new eager decls**; the heavy whole-corpus self-emit witness was *already dropped*.
-  It adds ≪1 % to the 2968-item shared resolve closure. It **cannot** account for GBs of per-unit.
-- The arithmetic refutes per-unit too: at 12.5 GiB/unit, width-4 ≈ **50 GiB** — well **under** srv2's
-  ~87 GiB cgroup cap. An OOM at ~50 GiB cgroup usage means the kill came from **host physical-RAM
-  exhaustion** (multiple concurrent runs), not the run exceeding its own budget.
-
-That is the pivot. The per-run model was never going to explain a host-level crash.
+The lesson is in the *direction* of each correction: static reasoning (diff size, back-of-envelope
+arithmetic) twice produced a confident wrong answer, and **a discriminating run twice overruled it** —
+including overruling this document. That is DESIGN §5 operating on the postmortem itself.
 
 ---
 
-## What was actually fixed vs. what remains
+## What was fixed vs. what remains
 
 ### Fixed / in motion
-- ✅ **#5375 merged** — memory-aware per-run width (7→4). Bounds the CI floor's *own* per-run
-  footprint. Correct and load-bearing for the per-run scale; **not** the crash fix.
+- ✅ **#5375 merged** — memory-aware per-run width. Correct for the per-run scale; bounds the floor's
+  own fan-out. (Not the Arc 1 fix — Arc 1 OOM'd at the reduced width.)
 - ✅ **WIP-merge breakage** — dangling `bash_lex_rule` resolved; main green.
-- 🔁 **sccache** — server stopped on both hosts. **Still TODO:** purge the on-disk cache
-  (`rm -rf "${SCCACHE_DIR:-$HOME/.cache/sccache}"`) — `--stop-server` kills the process but leaves
-  corrupt objects on disk for the next server to re-serve.
-- ✅ **Reactive host backstop** — operator set `MemoryMax` on `system-actions-runner.slice` (kills
-  one cgroup instead of livelocking the box). Mitigates, does not prevent.
+- 🔁 **sccache** — server stopped both hosts. **TODO:** purge the on-disk cache
+  (`rm -rf "${SCCACHE_DIR:-$HOME/.cache/sccache}"`) — `--stop-server` leaves corrupt objects on disk.
+- ✅ **Reactive host backstop** — operator set `MemoryMax` on `system-actions-runner.slice`.
 
-### Open — the load-bearing fixes (both ours/ctrl, not corpus)
-1. **Per-host admission control (THE crash fix, unmodeled).**
-   `Σ_concurrent_runs(per_run_peak) ≤ host_physical_RAM`. Concretely: bound `CTRL_JOBSERVER_TOKENS`
-   / runner slots so the host *cannot* admit more concurrent runs than fit in physical RAM. Today
-   nothing enforces this; srv2 admitted 7–11 runs and overcommitted.
-2. **Probe-derived per-unit memory (§3 single-authority).**
-   Replace the hand-set `14 GiB/unit` constant in `ci_fleet.dag` with a peak-RSS-probe-derived
-   `WorkDemand.memory = f(corpus)`. A constant silently forks from the corpus it's meant to describe;
-   any growth outruns it (it nearly bit Arc 1 for the wrong reason). eager-boar offered to be the
-   first consumer of the probe.
-3. **srv1 idle (orthogonal 2× capacity).** srv1 sits at ~5 % while srv2 takes all the load. If srv1
-   picked up half the floors, srv2's aggregate would stay under the wall even at today's per-run
-   footprint. Why its runners are idle is not yet diagnosed (registration/labels/host-assignment).
+### Open
+1. **Arc 1 per-unit (THE proven OOM fix).** eager-boar is measuring Arc 1's resolve RSS vs a baseline
+   main test file to pin the mechanism (resolve-time eager rows inflating the `typescript.dag` closure
+   that every batch-2 node loads, vs witness-exec-time), then slimming the actual cost. **Until the
+   RSS delta is measured, the mechanism is not yet pinned** — only the *attribution to Arc 1's content*
+   is proven.
+2. **Probe-derived per-unit (§3 single-authority).** Replace the `14 GiB/unit` constant with
+   `WorkDemand.memory = f(corpus)`. Would have caught Arc 1 automatically; closes the forking constant.
+3. **Per-host admission (latent gap, model it).** `Σ_concurrent_runs(per_run_peak) ≤ host_RAM_budget`
+   as the outer instance of the same inequality, generating the `CTRL_JOBSERVER_TOKENS`/slot cap
+   instead of the hand-set value that drifted between srv1 (65.6G) and srv2 (87.6G). Real, but not this
+   bug — prioritize behind 1–2.
+4. **srv1 idle (orthogonal 2× capacity).** srv1 at ~5 % while srv2 takes the load; runner
+   registration/labels/host-assignment not yet diagnosed.
 
 ---
 
-## Root-cause analysis: why this *felt* like treading water
+## Why it *felt* like treading water
 
-The "error after error" experience was structurally honest feedback, not bad luck:
+The "error after error" was honest feedback, not bad luck:
+1. **Several independent flakes shared one symptom** — fixing main's red doesn't stop sccache; fixing
+   sccache doesn't stop the crash. Each fix looked ineffective because another contributor still fired.
+2. **Confident static reasoning was wrong twice.** Diff-size and back-of-envelope arithmetic each
+   produced a plausible root cause (per-host overcommit) that a discriminating run refuted. **The cost
+   of the loop was paid entirely in reasoning we trusted before we ran the experiment.** The escape was
+   not more analysis — it was the three-run table.
+3. **An operational livelock on top of the technical one.** #5375 itself couldn't land cleanly: the
+   auto-committer kept merging main into its branch (resetting earned approvals) and the crash loop
+   kept cancelling its CI. A PR that fixes a crash contributor was blocked by the instability it fixes.
 
-1. **Four independent flakes shared one symptom** ("CI fails"), so each fix appeared not to work —
-   another contributor was still firing. (Fixing main's red doesn't stop sccache; fixing sccache
-   doesn't stop the crash.)
-2. **We fixed the wrong scale twice.** The memory-blind *width* was a real bug, so fixing it felt
-   like progress — but the crash lived at the *host* scale, which #5375 doesn't touch. Then the
-   *per-unit* head-fake re-aimed at the corpus, still the wrong scale. Only checking the artifact
-   (the diff + the arithmetic) broke the loop. **This is the §6 trap: a local-subsystem patch when
-   the root is one layer up (or, here, one scale up).**
-3. **An operational livelock on top of the technical one.** #5375 itself couldn't land: the
-   auto-committer kept merging main into its branch (resetting earned approvals to 0), and the srv2
-   crash loop kept cancelling its CI. A PR that *fixes a crash contributor* was blocked by the exact
-   instability it fixes. Broken only by the operator merging on strength.
-
-The meta-lesson, in DESIGN terms: **we kept modeling the per-run inequality (§2 horizontal at one
-scale) and never lifted it to the host scale.** The same concept — "demand must fit supply" — applies
-at run, host, and fleet; modeling it at only the innermost scale guarantees the outer scale fails
-silently. The fix is not more patches; it's **one admission model expressed at every scale from one
-authority** (the §2 master move), with the per-unit term **grounded by probe** rather than guessed.
+The meta-lesson, in DESIGN terms: **prefer the discriminating experiment over the plausible model, and
+do it early** (§5). Hold the variables fixed, change one thing, watch the flip — it is cheaper than the
+rounds of confident static reasoning it replaces. And when a postmortem asserts a cause, that assertion
+needs a witness too; this one's first draft did not have one, and was wrong.
 
 ---
 
 ## Concrete next actions
 
-- [ ] **Model per-host admission** as the outer instance of the same inequality, derived from the
-      same fleet authority as `placement_spawn_width`. (warm-crane — Task #2/#4.)
-- [ ] **Cap `CTRL_JOBSERVER_TOKENS` / runner slots** on both hosts so admitted concurrency × per-run
-      peak ≤ physical RAM. Generate the cap from the model, don't hand-set it (closes the drift that
-      let srv2's slice run looser than srv1's).
+- [ ] **eager-boar:** measure Arc 1 resolve RSS vs baseline → pin mechanism → slim → re-test at width-4.
 - [ ] **Probe-derive `WorkDemand.memory`** (peak-RSS per resolve) → retire the 14 GiB constant.
 - [ ] **Purge sccache on-disk cache** on both hosts.
-- [ ] **Diagnose srv1 idle runners** (2× capacity, orthogonal but high-value).
-- [ ] **Watch main's own post-#5375 floor (`637e4a9b2c`)** at width-4: if it also OOMs with no Arc 1
-      present, that is the definitive witness that the failing axis is host-concurrency, not corpus.
+- [ ] **Model per-host admission** (latent gap) and generate the slot cap from it (closes srv1/srv2
+      drift). Prioritize behind the per-unit fixes.
+- [ ] **Diagnose srv1 idle runners** (2× capacity).
+- [ ] **Pin the srv2 host-reboot mechanism by execution** before attributing it to any workload
+      (candidate: uncapped agent containers, not the floor).
 
 ---
 
 ## Appendix — evidence pointers
 
+- Decisive runs: `637e4a9b2c`, `27859412294` (PASS, main, width-4, both hosts); `27859296640`
+  (Killed, Arc 1, width-4, srv2-15).
 - BMC: `https://192.168.1.184` (srv2) / `.183` (srv1), OpenBMC on ASRock ALTRAD8UD; chassis id
   `ALTRAD8UD_1L2T`. Use `curl --netrc-file` (0600), never `-u` on argv. **BMC credentials never go in
   any repo.**
-- Per-run model: `dsl/product/compute_fabric.dag` (`placement_spawn_width`,
-  `placement_memory_width_bound`), `dsl/gunbc/ci_fleet.dag` (the `14 GiB/unit` constant +
-  `ci_fleet_floor_spawn_fits_memory_budget` oracle), `src/v2/workflow/ci_floor_plan.dag`.
-- §5 witnesses: `src/v2/test/claim/ci_floor_plan_witness_test.dag`
-  (`witness_floor_width_fits_memory_budget`, `witness_floor_width_memory_bounded`).
-- The §5 recovery that found the root cause: eager-boar-790 refuting its own per-unit hypothesis by
-  reading the Arc 1 diff and the cgroup-usage-vs-cap arithmetic.
+- Model: `dsl/product/compute_fabric.dag` (`placement_spawn_width`, `placement_memory_width_bound`),
+  `dsl/gunbc/ci_fleet.dag` (the `14 GiB/unit` constant + `ci_fleet_floor_spawn_fits_memory_budget`),
+  `src/v2/workflow/ci_floor_plan.dag`.
+- §5 witnesses: `src/v2/test/claim/ci_floor_plan_witness_test.dag`.
+- The §5 recovery that found ground truth: eager-boar-790 letting the three-run execution table overrule
+  two rounds of static reasoning (the diff and the arithmetic), including the per-host-overcommit cause
+  this doc first asserted.
