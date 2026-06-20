@@ -728,49 +728,37 @@ pub fn render_rust_alias_rhs_type(
                 } else {
                     name.clone()
                 };
-                if !is_container_type(name.clone())
-                    && rust_fn_sig_peel_closed_alias(scope.type_env.clone(), n.clone())
+                let args = Rc::new({
+                    let mut __result = Vec::new();
+                    for arg in n.children.clone().iter().cloned() {
+                        __result.push(render_rust_alias_rhs_type(
+                            arg.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            scope.clone(),
+                            imports.clone(),
+                            registry.clone(),
+                            module_name.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            module_index.clone(),
+                            variant_to_enum.clone(),
+                        ));
+                    }
+                    __result
+                })
+                .join(&", ".to_string());
+                let applied_ty = v1_rt::concat(
+                    v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
+                    ">".to_string(),
+                );
+                if (v1_rt::set_contains(&shared_types, name.clone())
+                    && !rust_type_is_rc_wrapped(applied_ty.clone()))
                 {
-                    if (v1_rt::set_contains(&shared_types, name.clone())
-                        && !rust_type_is_rc_wrapped(base.clone()))
-                    {
-                        wrap_shared_type(RenderTarget::Rust, base.clone())
-                    } else {
-                        base.clone()
-                    }
+                    wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
                 } else {
-                    let args = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in n.children.clone().iter().cloned() {
-                            __result.push(render_rust_alias_rhs_type(
-                                arg.clone(),
-                                generic_param_names.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                                scope.clone(),
-                                imports.clone(),
-                                registry.clone(),
-                                module_name.clone(),
-                                export_sets.clone(),
-                                typed_modules.clone(),
-                                module_index.clone(),
-                                variant_to_enum.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .join(&", ".to_string());
-                    let applied_ty = v1_rt::concat(
-                        v1_rt::concat(v1_rt::concat(base, "<".to_string()), args),
-                        ">".to_string(),
-                    );
-                    if (v1_rt::set_contains(&shared_types, name.clone())
-                        && !rust_type_is_rc_wrapped(applied_ty.clone()))
-                    {
-                        wrap_shared_type(RenderTarget::Rust, applied_ty.clone())
-                    } else {
-                        applied_ty.clone()
-                    }
+                    applied_ty.clone()
                 }
             }
         } else {
