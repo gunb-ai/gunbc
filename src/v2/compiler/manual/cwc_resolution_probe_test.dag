@@ -83,6 +83,17 @@ data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int
 // DeclarationRef as ident (parse stamps ^ReviewEvent); quoted string literal is forward work.
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
+// TWO-CONTRACT discriminating source (zl54 verification): two coproducts each with its OWN
+// contract + OWN naming. ReviewEvent{ScreamingSnakeCase} (4 arms) + Status{SnakeCase} (5 arms);
+// VariantNaming is 3 arms. With TWO contract rows tepe_singleton_contract_row_optional returns
+// Absent, so per-enum resolution must actually work for each disj to find its own row.
+data cwc_src_two_contract: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ntype Status = Open | Closed | Merged | Draft | Locked\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: SnakeCase } }\n"
+
+// Status-ONLY control (zl54): isolates whether the 2nd contract decl + SnakeCase normalize
+// are well-formed on their own. If this builds a correct 1-row SnakeCase index but the combined
+// two-contract module collapses to <2 rows, the defect is in the model, not the test source.
+data cwc_src_status_only: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype Status = Open | Closed | Merged | Draft | Locked\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: SnakeCase } }\n"
+
 // Present-but-broken wire contract: CoproductWireContract row missing coproduct field.
 data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming = ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
@@ -1009,6 +1020,245 @@ fn cwc_sg2_sum_serialized_text() -> String {
 
 test fn cwc_sum_leading_tokens_regression_byte_unchanged() -> Bool {
   cwc_sg2_sum_serialized_text() == cwc_expected_sum_regression_text
+}
+
+// ── TWO-CONTRACT discriminating witness (zl54 §5 gate) ───────────────────────────────────
+// Resolve-only root (ResolvedTree = Node). Contract-row resolution is structural (data-decl
+// fields, disj anchors, content_hash) — it needs NO inferred types, so we skip the heavy infer
+// pass (which OOMs the two-enum module under the container cap).
+fn cwc_resolved_root_of(src: String) -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: cwc_norm_of(src: src),
+    f: fn(tree) {
+      resolve(tree: tree, lm: lm)
+    }
+  )
+}
+
+// Selects a Disj anywhere in the tree by exact arm count (4=ReviewEvent, 5=Status, 3=VariantNaming).
+fn cwc_optional_disj_with_arms(n: Node, arms: Int) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            if count(node.children) == arms {
+              optional_present(value: node)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+// Resolves the contract row for `disj` against an already-built `rows` index and returns its
+// naming_tag. With TWO contract rows tepe_singleton_contract_row_optional returns Absent — so a
+// Present tag means tepe_enum_sym_for_disj + tepe_lookup_contract_row really matched THIS disj's
+// enum to ITS OWN row (not the singleton guess).
+fn cwc_row_tag_for_disj(
+  rows: List<CoproductWireContractIndexRow>,
+  root: Node,
+  disj: Node
+) -> Optional<Symbol> {
+  match tepe_contract_row_for_disj_anchor(rows: rows, root: root, disj_anchor: disj) {
+    Present { value: row } =>
+      match row {
+        CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: tag, decl: _ } =>
+          optional_present(value: tag)
+      }
+    Absent => optional_absent()
+  }
+}
+
+// THE GATE: each enum resolves to ITS OWN contract's naming. Infers ONCE; builds the index ONCE.
+// RED if resolution is a singleton guess (both Absent — 2 rows defeat the fallback) or a
+// wrong-row match (rt == st, e.g. both grabbed head).
+test fn cwc_two_contract_per_enum_resolution_holds() -> Bool {
+  match cwc_resolved_root_of(src: cwc_src_two_contract) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root,
+        field_coproduct: ^coproduct,
+        field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } =>
+          match cwc_optional_disj_with_arms(n: root, arms: 4) {
+            Present { value: review_disj } =>
+              match cwc_optional_disj_with_arms(n: root, arms: 5) {
+                Present { value: status_disj } =>
+                  match cwc_row_tag_for_disj(rows: rows, root: root, disj: review_disj) {
+                    Present { value: rt } =>
+                      match cwc_row_tag_for_disj(rows: rows, root: root, disj: status_disj) {
+                        Present { value: st } =>
+                          rt == ^ScreamingSnakeCase && st == ^SnakeCase && rt != st
+                        Absent => false
+                      }
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ── Decomposed diagnostics (zl54): pin down WHERE the two-contract gate fails ─────────────
+test fn cwc_tc_resolves() -> Bool {
+  match cwc_resolved_root_of(src: cwc_src_two_contract) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_tc_review_disj_found() -> Bool {
+  match cwc_resolved_root_of(src: cwc_src_two_contract) {
+    Accepted { value: root, diagnostics: _ } =>
+      match cwc_optional_disj_with_arms(n: root, arms: 4) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_tc_status_disj_found() -> Bool {
+  match cwc_resolved_root_of(src: cwc_src_two_contract) {
+    Accepted { value: root, diagnostics: _ } =>
+      match cwc_optional_disj_with_arms(n: root, arms: 5) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_tc_index_has_two_rows() -> Bool {
+  match cwc_resolved_root_of(src: cwc_src_two_contract) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root,
+        field_coproduct: ^coproduct,
+        field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } => count(rows) == 2
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cwc_tc_tag_for_arms(arms: Int) -> Optional<Symbol> {
+  match cwc_resolved_root_of(src: cwc_src_two_contract) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root,
+        field_coproduct: ^coproduct,
+        field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } =>
+          match cwc_optional_disj_with_arms(n: root, arms: arms) {
+            Present { value: disj } => cwc_row_tag_for_disj(rows: rows, root: root, disj: disj)
+            Absent => optional_absent()
+          }
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+test fn cwc_tc_review_row_present() -> Bool {
+  match cwc_tc_tag_for_arms(arms: 4) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn cwc_tc_status_row_present() -> Bool {
+  match cwc_tc_tag_for_arms(arms: 5) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn cwc_tc_review_tag_is_screaming() -> Bool {
+  match cwc_tc_tag_for_arms(arms: 4) {
+    Present { value: t } => t == ^ScreamingSnakeCase
+    Absent => false
+  }
+}
+
+test fn cwc_tc_status_tag_is_snake() -> Bool {
+  match cwc_tc_tag_for_arms(arms: 5) {
+    Present { value: t } => t == ^SnakeCase
+    Absent => false
+  }
+}
+
+// Status-only controls + combined row count.
+fn cwc_index_rows_of(src: String) -> Optional<List<CoproductWireContractIndexRow>> {
+  match cwc_resolved_root_of(src: src) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root,
+        field_coproduct: ^coproduct,
+        field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } => optional_present(value: rows)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+test fn cwc_status_only_index_one_row() -> Bool {
+  match cwc_index_rows_of(src: cwc_src_status_only) {
+    Present { value: rows } => count(rows) == 1
+    Absent => false
+  }
+}
+
+test fn cwc_status_only_tag_snake() -> Bool {
+  match cwc_resolved_root_of(src: cwc_src_status_only) {
+    Accepted { value: root, diagnostics: _ } =>
+      match cwc_index_rows_of(src: cwc_src_status_only) {
+        Present { value: rows } =>
+          match cwc_optional_disj_with_arms(n: root, arms: 5) {
+            Present { value: disj } =>
+              match cwc_row_tag_for_disj(rows: rows, root: root, disj: disj) {
+                Present { value: t } => t == ^SnakeCase
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_tc_index_count_is_one() -> Bool {
+  match cwc_index_rows_of(src: cwc_src_two_contract) {
+    Present { value: rows } => count(rows) == 1
+    Absent => false
+  }
 }
 
 test fn cwc_translate_serde_boundary_holds() -> Bool {
