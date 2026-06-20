@@ -324,22 +324,31 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
   }
 }
 
-fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
-  match fold_list(xs: type_decl.children, empty: optional_absent(), cons: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: sym } =>
-            if sym == ^dag_surface_type_decl {
-              acc
-            } else {
-              optional_present(value: sym)
+fn tepe_type_decl_named_sym_from_edges(edges: List<Edge>) -> Optional<Symbol> {
+  match list_at_optional(xs: edges, index: 0) {
+    Absent => optional_absent()
+    Present { value: edge } =>
+      match edge {
+        Edge { label: Named { name: sym }, target: _ } =>
+          if sym == ^dag_surface_type_decl {
+            match list_tail(xs: edges) {
+              TailAbsent => optional_absent()
+              TailFound { tail: tail } => tepe_type_decl_named_sym_from_edges(edges: tail)
             }
-          Positional => acc
-        }
-    }
-  }) {
+          } else {
+            optional_present(value: sym)
+          }
+        Edge { label: Positional, target: _ } =>
+          match list_tail(xs: edges) {
+            TailAbsent => optional_absent()
+            TailFound { tail: tail } => tepe_type_decl_named_sym_from_edges(edges: tail)
+          }
+      }
+  }
+}
+
+fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
+  match tepe_type_decl_named_sym_from_edges(edges: type_decl.children) {
     Present { value: sym } => optional_present(value: sym)
     Absent =>
       match tepe_production_captured_optional(node: type_decl) {
@@ -1072,29 +1081,48 @@ fn tepe_disj_form_from_catalog_row(
   )
 }
 
-fn tepe_disj_form_from_catalog(catalog: Node, naming_tag: Symbol) -> Outcome<TargetSumTypeShape> {
-  fold_list(
-    xs: catalog.children,
-    empty: outcome_rejected(
-      tepe_coproduct_wire_contract_malformed_diagnostic(node: catalog)
-    ),
-    cons: fn(acc, e) {
-      match acc {
-        Accepted { value: _, diagnostics: _ } => acc
-        Rejected { diagnostics: _ } =>
-          match e.label {
-            Named { name: n } =>
-              if n == ^target_type_expr_projection_enrichment_catalog_naming_tag
-                || n == ^target_type_expr_projection_enrichment_catalog_disj_form
-              {
-                acc
-              } else {
-                tepe_disj_form_from_catalog_row(row: e.target, naming_tag: naming_tag)
-              }
-            Positional => tepe_disj_form_from_catalog_row(row: e.target, naming_tag: naming_tag)
+fn tepe_disj_form_from_catalog_edges(
+  edges: List<Edge>,
+  catalog: Node,
+  naming_tag: Symbol
+) -> Outcome<TargetSumTypeShape> {
+  match list_at_optional(xs: edges, index: 0) {
+    Absent =>
+      outcome_rejected(
+        tepe_coproduct_wire_contract_malformed_diagnostic(node: catalog)
+      )
+    Present { value: edge } =>
+      match edge {
+        Edge { label: Named { name: n }, target: row } =>
+          if n == ^target_type_expr_projection_enrichment_catalog_naming_tag
+            || n == ^target_type_expr_projection_enrichment_catalog_disj_form
+          {
+            match list_tail(xs: edges) {
+              TailAbsent =>
+                outcome_rejected(
+                  tepe_coproduct_wire_contract_malformed_diagnostic(node: catalog)
+                )
+              TailFound { tail: tail } =>
+                tepe_disj_form_from_catalog_edges(
+                  edges: tail,
+                  catalog: catalog,
+                  naming_tag: naming_tag
+                )
+            }
+          } else {
+            tepe_disj_form_from_catalog_row(row: row, naming_tag: naming_tag)
           }
+        Edge { label: Positional, target: row } =>
+          tepe_disj_form_from_catalog_row(row: row, naming_tag: naming_tag)
       }
-    }
+  }
+}
+
+fn tepe_disj_form_from_catalog(catalog: Node, naming_tag: Symbol) -> Outcome<TargetSumTypeShape> {
+  tepe_disj_form_from_catalog_edges(
+    edges: catalog.children,
+    catalog: catalog,
+    naming_tag: naming_tag
   )
 }
 
@@ -1267,15 +1295,34 @@ fn tepe_bundle_child_lookup_step(
   }
 }
 
+fn tepe_bundle_child_lookup_edges(
+  edges: List<Edge>,
+  edge_name: Symbol,
+  acc: TepeBundleChildLookup
+) -> TepeBundleChildLookup {
+  match list_at_optional(xs: edges, index: 0) {
+    Absent => acc
+    Present { value: edge } =>
+      match list_tail(xs: edges) {
+        TailAbsent =>
+          tepe_bundle_child_lookup_step(acc: acc, e: edge, edge_name: edge_name)
+        TailFound { tail: tail } =>
+          tepe_bundle_child_lookup_edges(
+            edges: tail,
+            edge_name: edge_name,
+            acc: tepe_bundle_child_lookup_step(acc: acc, e: edge, edge_name: edge_name)
+          )
+      }
+  }
+}
+
 fn tepe_target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
-      match fold(
-        target.bundle.children,
-        init: TepeBundleChildMissing,
-        cons: fn(acc, e) {
-          tepe_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
-        }
+      match tepe_bundle_child_lookup_edges(
+        edges: target.bundle.children,
+        edge_name: edge_name,
+        acc: TepeBundleChildMissing
       ) {
         TepeBundleChildFound { value: child } =>
           Accepted { value: Present { value: child }, diagnostics: None }
