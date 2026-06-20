@@ -5,8 +5,6 @@
 
 module v2.std.measure
 
-import v2.std.integer { Int }
-
 // --- Quantity / Scale: phantom tags (subset mirrored for v2 SPICE consumers) ---
 
 type Quantity =

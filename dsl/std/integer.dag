@@ -39,8 +39,9 @@
 
 module std.integer
 
-import v2.std.integer { UInt, UIntPlatform }
+import v2.std.nat { UInt }
 import std.algebra { AbelianGroup, GroupCompletion }
+import v2.std.machine { UIntPlatform }
 import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 
@@ -110,7 +111,7 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 // Fixed-width `UInt8`..`UInt128` refine this carrier via Compose (see above).
 type Int = AbelianGroup<GroupCompletion<Nat>>
 
-// UInt / UIntPlatform: authority at v2.std.integer (byte-sync de-fork slice 1a).
+// UInt: authority at v2.std.nat (byte-sync de-fork slice 1a).
 
 // IntPlatform / UIntPlatform — pointer-width-sized integer substrate concepts.
 //
