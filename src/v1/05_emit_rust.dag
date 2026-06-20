@@ -2404,7 +2404,12 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
 
 fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
   let type_summaries = emit_info.type_summaries
-  let deduped_names = unique_strings(items: filtered_names |> filter(n => local_names |> all(ln => ln != n)))
+  // Container kinds (List/Set/Map/Witness) have source `type List = FreeMonoid`
+  // decls (so the registry reports them as importable), but the emitter renders
+  // them INLINE as their host carrier (Vec/...) and never emits a Rust `type`
+  // for them. A `use crate::std_types::List` is therefore unresolved (E0432).
+  // Drop them from the use-set; container references render structurally.
+  let deduped_names = unique_strings(items: filtered_names |> filter(n => local_names |> all(ln => ln != n)) |> filter(n => is_container_type(name: n) == false))
   if deduped_names |> count == 0 {
     ""
   } else {
