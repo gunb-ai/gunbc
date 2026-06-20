@@ -1,14 +1,16 @@
-// By-execution witnesses for std/types.dag Arch + Platform nickname collapse (§3).
+// By-execution dissolution witness for Architecture → extdeps/toolchain (§3 / §5).
 //
-// Discriminating: GOARCH wire decode still round-trips via extdeps.container.oci.types
-// ImageConfigArchitecture; Armv7 stays unrepresentable on egress (fail-closed label).
+// Proves (a) the three fork type names are gone from their former homes, (b) the single
+// Architecture authority lives in extdeps/toolchain/types.dag, and (c) GOARCH decode/label
+// fail-closed on unknown wire + unrepresentable ISA (Armv7 egress).
 //
 // Run via:
 //   gunbc run --source-root dsl --entry dsl/test/claim/types_arch_collapse_witness_test.dag \
-//     --function types_arch_collapse_witnesses --claim-run
+//     --function architecture_dissolution_witnesses --claim-run
 
 module test.claim.types_arch_collapse
 
+import extdeps.filesystem.filesystem_io
 import extdeps.container.oci.types {
   Aarch64,
   Armv7,
@@ -20,6 +22,34 @@ import extdeps.container.oci.types {
   parse_image_config_goarch,
 }
 
+// Local mirror of v1_rt::FilesystemReadResult for filesystem_read bridge reads.
+type FilesystemReadResult { content: String }
+
+data std_types_path: String = "dsl/std/types.dag"
+data cpu_types_path: String = "dsl/extdeps/cpu/types.dag"
+data oci_types_path: String = "dsl/extdeps/container/oci/types.dag"
+data toolchain_types_path: String = "dsl/extdeps/toolchain/types.dag"
+
+fn witness_fork_target_architecture_gone() -> Bool {
+  let result = filesystem_read(path: std_types_path)
+  !string_contains(s: result.content, pattern: "type TargetArchitecture")
+}
+
+fn witness_fork_cpu_architecture_gone() -> Bool {
+  let result = filesystem_read(path: cpu_types_path)
+  !string_contains(s: result.content, pattern: "type CpuArchitecture")
+}
+
+fn witness_fork_image_config_architecture_gone() -> Bool {
+  let result = filesystem_read(path: oci_types_path)
+  !string_contains(s: result.content, pattern: "type ImageConfigArchitecture")
+}
+
+fn witness_single_architecture_authority_present() -> Bool {
+  let result = filesystem_read(path: toolchain_types_path)
+  string_contains(s: result.content, pattern: "type Architecture =")
+}
+
 fn witness_goarch_parses_arm64_wire() -> Bool {
   match parse_image_config_goarch("arm64") {
     ImageConfigGoarchKnown { value: Aarch64 } => true
@@ -27,6 +57,7 @@ fn witness_goarch_parses_arm64_wire() -> Bool {
   }
 }
 
+// G1 negative (bundled): unknown GOARCH wire must not silently widen to a known Architecture.
 fn witness_goarch_rejects_unknown_wire() -> Bool {
   match parse_image_config_goarch("plan9") {
     ImageConfigGoarchUnknown { wire: _ } => true
@@ -41,6 +72,7 @@ fn witness_goarch_label_roundtrips_known() -> Bool {
   }
 }
 
+// G1 negative (bundled): unhandled ISA (Armv7) must fail-closed on egress, not fabricate a wire.
 fn witness_goarch_label_unrepresentable_armv7() -> Bool {
   match image_config_goarch_label(Armv7) {
     ImageConfigGoarchUnrepresentable => true
@@ -48,9 +80,18 @@ fn witness_goarch_label_unrepresentable_armv7() -> Bool {
   }
 }
 
-test fn types_arch_collapse_witnesses() -> Bool {
-  witness_goarch_parses_arm64_wire()
+test fn architecture_dissolution_witnesses() -> Bool {
+  witness_fork_target_architecture_gone()
+    && witness_fork_cpu_architecture_gone()
+    && witness_fork_image_config_architecture_gone()
+    && witness_single_architecture_authority_present()
+    && witness_goarch_parses_arm64_wire()
     && witness_goarch_rejects_unknown_wire()
     && witness_goarch_label_roundtrips_known()
     && witness_goarch_label_unrepresentable_armv7()
+}
+
+// Back-compat alias for any enrolled corpus rows still naming the pre-dissolution witness.
+test fn types_arch_collapse_witnesses() -> Bool {
+  architecture_dissolution_witnesses()
 }

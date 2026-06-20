@@ -32,7 +32,7 @@ import gunbc.ci_spec {
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
   SourceRootIngestGate
 }
-import v2.std.algebra { list_snoc_item }
+import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
@@ -215,7 +215,15 @@ fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   }
 }
 
-// claim_executor spawn-width companion (feature:scheduler-width-budget scaffold).
+// Floor breadth = the count of independent floor units (one per spec gate; the corpus
+// node rides the same later layer), DERIVED from the single-authority spec — never a
+// tuned constant. Add a gate to gunbc_ci_spec → breadth re-derives here automatically.
+fn gunbc_ci_floor_breadth() -> Int {
+  length(xs: gunbc_ci_spec.gates)
+}
+
+// claim_executor spawn-width companion: min(floor breadth, fleet hardware threads).
+// The relationship is the model; nothing here is hand-tuned per host or per gate.
 fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
-  ci_fleet_floor_spawn_width()
+  ci_fleet_floor_spawn_width(corpus_shard_count: gunbc_ci_floor_breadth())
 }

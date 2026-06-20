@@ -372,27 +372,7 @@ type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
-// Canonical target vocabulary (aligned with core/ir::platform).
-// TargetArchitecture is byte-identical to extdeps.cpu.types.CpuArchitecture — the std-layer
-// projection before extdeps import is available on every consumer path. OCI GOARCH wire
-// superset (X86, Arm, Mips, …) lives in extdeps.container.oci.types.ImageConfigArchitecture.
-type TargetArchitecture = X86_64 | Aarch64 | Armv7 | Riscv64 | Wasm32
-type Vendor = UnknownVendor | Pc | Apple | W64
-type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
-type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf
-type ExecutionEnv = Native | Wsl | Container | Ci | Emulator
-
-type TargetTriple {
-  arch: TargetArchitecture
-  vendor: Vendor
-  os: Os
-  env: AbiEnv?
-}
-
-type RuntimePlatform {
-  host: TargetTriple
-  env: ExecutionEnv
-}
+// GNU/LLVM triple + Architecture axis: extdeps/toolchain/types.dag (§3 single authority).
 
 // Simple enums are finite sets. Pattern matching must be exhaustive
 // (cover the full |).
@@ -567,7 +547,7 @@ type Document {
   trailing_newline: Bool
 }
 
-type TextFile {
+type DocumentFile {
   path: String
   document: Document
 }
@@ -617,18 +597,6 @@ type DagDiff {
   removed: List<String>
   changed: List<String>
 }
-
-// --- Codegen (simple products) --------------------------------
-
-type CodegenTarget {
-  name: String
-  path: FilePath
-  backend: CodegenBackend?
-  target: TargetTriple?
-  runtime_env: ExecutionEnv?
-}
-
-type CodegenBackend = Rust | Go | C | Mips
 
 type PragmaDirective {
   key: String
