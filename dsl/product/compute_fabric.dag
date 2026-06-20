@@ -106,9 +106,24 @@ type InstructionSet = Node
 
 // --- §1.7 supporting enums + measure carriers --------------------------------
 
-type NetworkLocality = Loopback | Lan | Internet | WslNat | WslBridged
+type NetworkLocality =
+    Loopback
+  | Lan
+  | Internet
+  | WslNat
+  | WslBridged
+  // Container bridge CIDR (e.g. docker0 172.17.0.0/16, secondary stack 172.18.0.0/16).
+  | DockerBridge
+  // Operator tailnet overlay (e.g. Tailscale MagicDNS / 100.x addresses).
+  | TailscaleOverlay
 type NetworkAddressability = Unicast | Multicast | Broadcast
-type NetworkEgressClass = None | CratesIo | InternalMirror | Unrestricted
+type NetworkEgressClass =
+    None
+  | CratesIo
+  | InternalMirror
+  | Unrestricted
+  // BMC / management-LAN reachability class for placement probes (out-of-band Redfish).
+  | BmcManagementLan
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 type PersistenceKind = Ephemeral | Persistent | CachedMirror
 type MemoryKind = Dram | Hbm | UnifiedShared

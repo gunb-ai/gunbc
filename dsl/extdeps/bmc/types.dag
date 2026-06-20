@@ -1,0 +1,103 @@
+// extdeps/bmc/types.dag — DMTF Redfish BMC telemetry resource shapes.
+//
+// Anchor: DMTF Redfish Schema — ComputerSystem, Power, Thermal resources
+//   https://www.dmtf.org/standards/redfish
+//
+// These are the cited interface shapes for what a BMC firmware stack returns over
+// Redfish REST. Transport (curl argv) lives in extdeps/diagnostic/redfish.dag;
+// parsing raw JSON into these records is a separate realization handler (§3 shape /
+// transport / policy). This module owns ONLY the structural facts Redfish names.
+
+module extdeps.bmc.types
+
+import std.measure { Watt, ByteSize, HardwareThreadCount, byte_size, watt }
+import std.types { NonEmptyStr, Int, List }
+
+// ComputerSystem.PowerState — host power state as reported by the BMC (not host OS).
+type RedfishPowerState = On | Off | PoweringOn | PoweringOff
+
+// ProcessorSummary on ComputerSystem — the BMC's view of installed processors.
+// DMTF fields are NOT conflated: Count = installed processors (sockets); CoreCount =
+// total cores across them; LogicalProcessorCount = hardware threads when reported.
+type RedfishProcessorSummary {
+  model: NonEmptyStr
+  processor_count: Int
+  core_count: HardwareThreadCount
+  logical_processor_count: HardwareThreadCount?
+}
+
+// MemorySummary on ComputerSystem — total installed RAM as the BMC inventories it.
+type RedfishMemorySummary {
+  total_memory_bytes: ByteSize
+}
+
+// ComputerSystem resource — system inventory read from /redfish/v1/Systems/{id}.
+type RedfishSystemInventory {
+  model: NonEmptyStr
+  manufacturer: NonEmptyStr?
+  serial_number: NonEmptyStr?
+  processor: RedfishProcessorSummary
+  memory: RedfishMemorySummary
+  power_state: RedfishPowerState
+}
+
+// PowerControl on Chassis Power — the Energy axis in hardware_selection's
+// Cost = Time|Space|Energy pattern maps `power: Watt` (rate of energy transfer).
+// Redfish names these fields *Watts*; they ground on std.measure `Watt` (Power
+// dimension), not a separate Energy carrier (joule is not minted in measure.dag yet).
+type RedfishPowerControl {
+  member_id: NonEmptyStr
+  name: NonEmptyStr?
+  power_consumed_watts: Watt?
+  power_limit_watts: Watt?
+}
+
+// Chassis Power resource — one or more PowerControl members (PSU rails, total, …).
+type RedfishPowerSubsystem {
+  controls: List<RedfishPowerControl>
+}
+
+// Temperature member on Chassis Thermal.
+type RedfishTemperatureReading {
+  member_id: NonEmptyStr
+  name: NonEmptyStr?
+  reading_celsius: Int?
+}
+
+// Chassis Thermal resource.
+type RedfishThermalSubsystem {
+  temperatures: List<RedfishTemperatureReading>
+}
+
+// OpenBMC on ALTRAD8UD-1L2T (Redfish 1.15): Chassis Power/Thermal collections are EMPTY;
+// per-sensor docs live under /redfish/v1/Chassis/{chassis_id}/Sensors/{name} with
+// {Reading, ReadingUnits}. Verified live on srv2 2026-06-20 (operator probe).
+//
+// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
+// Coproduct over sensor families — illegal states (Power+Celsius, FanTach+Watts) unrepresentable.
+type RedfishSensorReading =
+    PowerSensor { name: NonEmptyStr, watts: Watt? }
+  | TemperatureSensor { name: NonEmptyStr, celsius: Int? }
+  | FanTachSensor { name: NonEmptyStr, rpm: Int? }
+
+type RedfishChassisSensorCollection {
+  chassis_id: NonEmptyStr
+  sensors: List<RedfishSensorReading>
+}
+
+// Aggregate telemetry bundle for one BMC poll — the shape ctrl/gunbc grounding consumes.
+type BmcTelemetrySnapshot {
+  system: RedfishSystemInventory
+  power: RedfishPowerSubsystem?
+  thermal: RedfishThermalSubsystem?
+  sensors: RedfishChassisSensorCollection?
+}
+
+// Observed host facts projected from a BMC telemetry snapshot — replaces hand-typed
+// CPU model / core-count / RAM / wall-power rows for operator fleet hosts (srv1/srv2).
+type BmcGroundedHostObservations {
+  processor_model: NonEmptyStr
+  processor_core_count: HardwareThreadCount
+  total_memory_bytes: ByteSize
+  power_consumed_watts: Watt?
+}
