@@ -858,11 +858,40 @@ pub fn precompute_whole_tree_published_mock_keys(
     if dsl_roots.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let index = build_module_index(&dsl_roots);
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
-    if all_sources.is_empty() {
+    // Index all witness layer roots so dsl modules that import v2.std.* (byte-sync
+    // de-fork) resolve transitively; entry points remain dsl-only.
+    let index = build_module_index(source_roots);
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut entry_sources = Vec::new();
+    for dsl_root in &dsl_roots {
+        let root_path = Path::new(dsl_root.as_str());
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_paths = Vec::new();
+        collect_dag_files(root_path, &mut dag_paths);
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path).map_err(|e| {
+                format!(
+                    "precompute_whole_tree_published_mock_keys: failed to read {:?}: {e}",
+                    path
+                )
+            })?;
+            let rel_path = path.to_string_lossy().to_string();
+            let source = Rc::new(v1_compiler_compile::SourceFile {
+                path: rel_path,
+                content,
+            });
+            if let Some(mod_path) = extract_module_path(&source.content) {
+                seen.insert(mod_path, source.clone());
+            }
+            entry_sources.push(source);
+        }
+    }
+    if entry_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let all_sources = resolve_transitively(entry_sources, &index, seen);
     let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
