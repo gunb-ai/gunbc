@@ -1088,14 +1088,15 @@ fn bash_exit_code_1_quoted_wrong_translation_rules_node() -> Node {
   )
 }
 
+// Lex rules project from the construct's FIXED-spelling spans (§3 single authority —
+// LexicalPhrase, lexing.dag), exactly as the bound-token sibling bash_env_prefixed_cargo_lex
+// does. Only the `exit ` keyword is fixed; the exit code is an emit-time BOUND token
+// (^bash_token_exit_code via binding_spellings, see the *_concrete_tokens), so it is NOT a
+// literal span and contributes no lex rule — matching the original single-rule behavior.
 fn bash_exit_code_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_kw_exit, text: "exit ")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: phrase([
+    span(text: "exit ", class: ^bash_token_kw_exit)
+  ]))
 }
 
 fn bash_exit_code_1_target_model() -> TargetModel {
