@@ -43,11 +43,23 @@ import v2.extdeps.languages.rust_wire_serde {
   rust_wire_serde_screaming_snake_target,
   rust_wire_serde_snake_case_target
 }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model {
+  TargetModel,
+  type_expression_projection_from_target,
+  type_expr_projection_row_closedness_from_target
+}
 import v2.std.algebra { is_empty }
-import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.collection {
+  Absent,
+  Optional,
+  Present,
+  list_at_optional,
+  optional_absent,
+  optional_present
+}
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
+import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
 import v2.std.node_query { find_named_child }
 import v2.std.text { String }
 
@@ -346,6 +358,161 @@ fn cwc_serialize_review_disj_accepts(target: TargetModel) -> Bool {
   match cwc_serialized_sum_text(src: cwc_src_cwc_module, target: target) {
     "" => false
     _ => true
+  }
+}
+
+test fn cwc_review_disj_closedness_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_wire_serde_screaming_snake_target
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match type_expr_projection_row_closedness_from_target(
+                target: rust_wire_serde_screaming_snake_target,
+                projection: base,
+                connective: Disj
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cwc_node_connective_tag(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: Atom { identity: _ } } => ^Atom
+    TypeNode { connective: Conj } => ^Conj
+    TypeNode { connective: Disj } => ^Disj
+    TypeNode { connective: Arrow } => ^Arrow
+    TypeNode { connective: Cardinality } => ^Cardinality
+    TypeNode { connective: Instantiation } => ^Instantiation
+    ComputationNode { behavior: _ } => ^ComputationNode
+  }
+}
+
+test fn cwc_review_disj_first_variant_is_conj_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match list_at_optional(xs: disj.children, index: 0) {
+            Present { value: edge } => cwc_node_connective_tag(n: edge.target) == ^Conj
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cwc_disj_all_variant_targets_are_atoms(n: Node) -> Bool {
+  fold(
+    n.children,
+    init: true,
+    f: fn(acc, e) {
+      if acc {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: _ } } => true
+          _ => false
+        }
+      } else {
+        false
+      }
+    }
+  )
+}
+
+test fn cwc_review_disj_variant_targets_atom_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } => cwc_disj_all_variant_targets_are_atoms(n: disj)
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_translate_review_disj_sg2_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_sg2_type_expr_target_model()
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: rust_sg2_type_expr_target_model(),
+                projection: base
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_translate_review_disj_base_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_wire_serde_screaming_snake_target
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: rust_wire_serde_screaming_snake_target,
+                projection: base
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_translate_base_projection_disj_accepts_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_from_target(
+            target: rust_wire_serde_screaming_snake_target
+          ) {
+            Accepted { value: base, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: rust_wire_serde_screaming_snake_target,
+                projection: base
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 
