@@ -1,5 +1,5 @@
-// FINISH-LINE-B Arc 1 — serialize-source witnesses (isolated entry: co-resident module
-// bodies in the main cutover file blow witness-eval RSS for serialize).
+// FINISH-LINE-B Arc 1 — serialize-source witnesses (isolated entry: fn/test-fn name collision
+// in the same module blows resolve RSS; helper bodies use *_body suffix).
 module v2.test.manual.typescript_eager_materialize_serialize
 
 import v2.extdeps.languages.typescript {
