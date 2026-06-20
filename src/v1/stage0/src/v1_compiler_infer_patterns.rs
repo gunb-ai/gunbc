@@ -34,11 +34,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn is_witness_type_name(name: Rc<FreeMonoid<Nat>>) -> bool {
-    ((crate::v2_std_text::host_string_text_to_rust_host(name.clone())
-        == crate::v2_std_text::host_string_text_to_rust_host("Witness".to_string()))
-        || (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host("witness".to_string())))
+pub fn is_witness_type_name(name: String) -> bool {
+    ((name.clone().as_str() == "Witness".to_string().as_str())
+        || (name.clone().as_str() == "witness".to_string().as_str()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -313,8 +311,8 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 
 pub fn variant_not_found_result(
     scrut: Rc<Node>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
+    module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     node_lookup_failed(Rc::new(vec![make_error_node(
@@ -329,8 +327,8 @@ pub fn variant_not_found_result(
 
 pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
-    variant_name: Rc<FreeMonoid<Nat>>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    variant_name: String,
+    module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
@@ -358,53 +356,34 @@ pub fn lookup_variant_in_type(
             } else {
                 {
                     let optional_cardinality_subject = (scrut_opt.clone()
-                        && (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                            source_indices.clone(),
-                            scrut_node.clone(),
-                        )) != crate::v2_std_text::host_string_text_to_rust_host(
-                            "Optional".to_string(),
-                        )));
+                        && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
+                            != "Optional".to_string().as_str()));
                     let witness_subject = (is_witness_type_name(authored_name_at(
                         source_indices.clone(),
                         scrut_node.clone(),
                     )) && ((scrut_node.children.clone().len() as i64) == 1));
                     if (optional_cardinality_subject.clone()
-                        && (crate::v2_std_text::host_string_text_to_rust_host(
-                            variant_name.clone(),
-                        ) == crate::v2_std_text::host_string_text_to_rust_host(
-                            "Present".to_string(),
-                        )))
+                        && (variant_name.clone().as_str() == "Present".to_string().as_str()))
                     {
                         node_lookup_resolved(synthesize_optional_present_variant(
                             scrut_node.clone(),
                         ))
                     } else {
                         if (optional_cardinality_subject.clone()
-                            && (crate::v2_std_text::host_string_text_to_rust_host(
-                                variant_name.clone(),
-                            ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                "Absent".to_string(),
-                            )))
+                            && (variant_name.clone().as_str() == "Absent".to_string().as_str()))
                         {
                             node_lookup_resolved(none_type())
                         } else {
                             if (witness_subject.clone()
-                                && (crate::v2_std_text::host_string_text_to_rust_host(
-                                    variant_name.clone(),
-                                ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                    "Holds".to_string(),
-                                )))
+                                && (variant_name.clone().as_str() == "Holds".to_string().as_str()))
                             {
                                 node_lookup_resolved(synthesize_witness_holds_variant(
                                     scrut_node.clone(),
                                 ))
                             } else {
                                 if (witness_subject.clone()
-                                    && (crate::v2_std_text::host_string_text_to_rust_host(
-                                        variant_name.clone(),
-                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                        "Violates".to_string(),
-                                    )))
+                                    && (variant_name.clone().as_str()
+                                        == "Violates".to_string().as_str()))
                                 {
                                     node_lookup_resolved(synthesize_witness_violates_variant(
                                         scrut_node.clone(),
@@ -415,25 +394,50 @@ pub fn lookup_variant_in_type(
                                             source_indices.clone(),
                                             scrut_node.clone(),
                                         );
-                                        let optional_coproduct_subject = ((crate::v2_std_text::host_string_text_to_rust_host(scrut_name.clone()) == crate::v2_std_text::host_string_text_to_rust_host("Optional".to_string())) && ((crate::v2_std_text::host_string_text_to_rust_host(variant_name.clone()) == crate::v2_std_text::host_string_text_to_rust_host("Present".to_string())) || (crate::v2_std_text::host_string_text_to_rust_host(variant_name.clone()) == crate::v2_std_text::host_string_text_to_rust_host("Absent".to_string()))));
+                                        let optional_coproduct_subject =
+                                            ((scrut_name.clone().as_str()
+                                                == "Optional".to_string().as_str())
+                                                && ((variant_name.clone().as_str()
+                                                    == "Present".to_string().as_str())
+                                                    || (variant_name.clone().as_str()
+                                                        == "Absent".to_string().as_str())));
                                         let direct_match = find_child_named(
                                             scrut_node.clone(),
                                             variant_name.clone(),
                                             source_indices.clone(),
                                         );
-                                        let record_destructure = (((field_binding_count > 0) && (scrut_node.connective.clone() == Connective::Conj)) && (crate::v2_std_text::host_string_text_to_rust_host(scrut_name.clone()) == crate::v2_std_text::host_string_text_to_rust_host(variant_name.clone())));
+                                        let record_destructure = (((field_binding_count > 0)
+                                            && (scrut_node.connective.clone()
+                                                == Connective::Conj))
+                                            && (scrut_name.clone().as_str()
+                                                == variant_name.clone().as_str()));
                                         let fallback = if record_destructure {
                                             node_lookup_resolved(scrut_node.clone())
                                         } else {
-                                            if (optional_coproduct_subject.clone() && (crate::v2_std_text::host_string_text_to_rust_host(variant_name.clone()) == crate::v2_std_text::host_string_text_to_rust_host("Present".to_string()))) {
-                                            node_lookup_resolved(synthesize_optional_present_variant(scrut_node.clone()))
-                                        } else {
-                                            if (optional_coproduct_subject.clone() && (crate::v2_std_text::host_string_text_to_rust_host(variant_name.clone()) == crate::v2_std_text::host_string_text_to_rust_host("Absent".to_string()))) {
-                                                node_lookup_resolved(none_type())
+                                            if (optional_coproduct_subject.clone()
+                                                && (variant_name.clone().as_str()
+                                                    == "Present".to_string().as_str()))
+                                            {
+                                                node_lookup_resolved(
+                                                    synthesize_optional_present_variant(
+                                                        scrut_node.clone(),
+                                                    ),
+                                                )
                                             } else {
-                                                variant_not_found_result(scrut_node.clone(), variant_name.clone(), module_name, source_indices.clone())
+                                                if (optional_coproduct_subject.clone()
+                                                    && (variant_name.clone().as_str()
+                                                        == "Absent".to_string().as_str()))
+                                                {
+                                                    node_lookup_resolved(none_type())
+                                                } else {
+                                                    variant_not_found_result(
+                                                        scrut_node.clone(),
+                                                        variant_name.clone(),
+                                                        module_name,
+                                                        source_indices.clone(),
+                                                    )
+                                                }
                                             }
-                                        }
                                         };
                                         match direct_match {
                                             Some(v) => node_lookup_resolved(v.clone()),
@@ -452,8 +456,8 @@ pub fn lookup_variant_in_type(
 
 pub fn lookup_field_in_variant(
     variant: Rc<PatternSubject>,
-    field_name: Rc<FreeMonoid<Nat>>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    field_name: String,
+    module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
@@ -496,7 +500,7 @@ pub fn check_match_exhaustiveness(
     arms: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
     span: Rc<SourceSpan>,
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let scrut_is_optional =
@@ -562,7 +566,7 @@ pub fn check_match_exhaustiveness(
                 } else {
                     {
                         let covered_set = arms.clone().iter().cloned().fold(
-                            v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+                            v1_rt::rc_empty_map::<String, bool>(),
                             |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(
                                 arm.clone(),
                             ))

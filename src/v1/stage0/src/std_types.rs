@@ -22,21 +22,21 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("String"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Int"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Bool"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Float"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Secret"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Json"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Unit"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Bytes"), true);
+            __m.insert("String".to_string(), true);
+            __m.insert("Int".to_string(), true);
+            __m.insert("Bool".to_string(), true);
+            __m.insert("Float".to_string(), true);
+            __m.insert("Secret".to_string(), true);
+            __m.insert("Json".to_string(), true);
+            __m.insert("Unit".to_string(), true);
+            __m.insert("Bytes".to_string(), true);
             Rc::new(__m)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn is_kernel_type(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_kernel_type(name: String) -> bool {
     match v1_rt::map_get(&kernel_type_set(), name) {
         Some(_) => true,
         None => false,
@@ -47,31 +47,29 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, i64>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("List"), 1);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Set"), 1);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Map"), 2);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Witness"), 1);
+            __m.insert("List".to_string(), 1);
+            __m.insert("Set".to_string(), 1);
+            __m.insert("Map".to_string(), 2);
+            __m.insert("Witness".to_string(), 1);
             Rc::new(__m)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
 }
 
-pub fn is_container_type(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_container_type(name: String) -> bool {
     match container_expected_arity(name) {
         Some(_) => true,
         None => false,
     }
 }
 
-pub fn container_expected_arity(name: Rc<FreeMonoid<Nat>>) -> Option<i64> {
+pub fn container_expected_arity(name: String) -> Option<i64> {
     v1_rt::map_get(&container_type_arity(), name)
 }
 
-pub fn container_param_names_for(kind_name: Rc<FreeMonoid<Nat>>) -> Rc<Vec<String>> {
-    if (crate::v2_std_text::host_string_text_to_rust_host(kind_name.clone())
-        == crate::v2_std_text::host_string_text_to_rust_host("Witness".to_string()))
-    {
+pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
+    if (kind_name.clone().as_str() == "Witness".to_string().as_str()) {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
@@ -81,7 +79,7 @@ pub fn container_param_names_for(kind_name: Rc<FreeMonoid<Nat>>) -> Rc<Vec<Strin
     }
 }
 
-pub fn container_param_name(kind_name: Rc<FreeMonoid<Nat>>, index: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     {
         let names = container_param_names_for(kind_name);
         match Rc::new({
@@ -125,14 +123,14 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("List"), true);
+            __m.insert("List".to_string(), true);
             Rc::new(__m)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn is_ordered_element_collection(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_ordered_element_collection(name: String) -> bool {
     v1_rt::map_contains_key(&ordered_element_collections(), name)
 }
 
@@ -140,18 +138,18 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("List"), "FreeMonoid".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("list"), "FreeMonoid".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Set"), "BooleanAlgebra".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("set"), "BooleanAlgebra".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Map"), "PartialFunction".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("map"), "PartialFunction".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("FreeMonoid"), "FreeMonoid".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("free_monoid"), "FreeMonoid".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("BooleanAlgebra"), "BooleanAlgebra".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("boolean_algebra"), "BooleanAlgebra".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("PartialFunction"), "PartialFunction".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("partial_function"), "PartialFunction".to_string());
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
+            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
+            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
@@ -162,23 +160,23 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("List"), "FreeMonoid".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("list"), "FreeMonoid".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Set"), "BooleanAlgebra".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("set"), "BooleanAlgebra".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("Map"), "PartialFunction".to_string());
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("map"), "PartialFunction".to_string());
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn container_template_algebra(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn container_template_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_algebra_rows(), name)
 }
 
-pub fn container_template_alias_algebra(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name)
 }
 
@@ -209,27 +207,27 @@ pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
-pub type CommitSha = Rc<FreeMonoid<Nat>>;
+pub type CommitSha = String;
 
-pub type Sha256 = Rc<FreeMonoid<Nat>>;
+pub type Sha256 = String;
 
 pub type RetryCount = i64;
 
 pub type HttpStatus = i64;
 
-pub type Email = Rc<FreeMonoid<Nat>>;
+pub type Email = String;
 
 pub type Port = i64;
 
-pub type GistId = Rc<FreeMonoid<Nat>>;
+pub type GistId = String;
 
-pub type Secret = Rc<FreeMonoid<Nat>>;
+pub type Secret = String;
 
 pub type SecretValue = String;
 
-pub type Url = Rc<FreeMonoid<Nat>>;
+pub type Url = String;
 
-pub type SemVer = Rc<FreeMonoid<Nat>>;
+pub type SemVer = String;
 
 pub type NonEmptyStr = String;
 
@@ -260,7 +258,7 @@ pub struct SourceSpan {
     pub end: i64,
 }
 
-pub type Timestamp = Rc<FreeMonoid<Nat>>;
+pub type Timestamp = String;
 
 pub type EpochMs = i64;
 
@@ -337,7 +335,7 @@ pub type TextFilePath = String;
 
 pub type BinaryFilePath = String;
 
-pub type MimeType = Rc<FreeMonoid<Nat>>;
+pub type MimeType = String;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -357,8 +355,8 @@ pub enum HttpMethod {
 #[serde(tag = "_variant")]
 pub enum AuthScheme {
     Bearer,
-    Header { name: Rc<FreeMonoid<Nat>> },
-    Basic { username: Rc<FreeMonoid<Nat>> },
+    Header { name: String },
+    Basic { username: String },
     ApiKey,
 }
 
@@ -373,8 +371,8 @@ pub struct AccessToken {
 pub struct Credential {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub header_name: Rc<FreeMonoid<Nat>>,
-    pub source_id: Rc<FreeMonoid<Nat>>,
+    pub header_name: Option<String>,
+    pub source_id: String,
     pub required_scopes: Rc<Vec<String>>,
     pub expires_in: Option<i64>,
 }
@@ -388,30 +386,30 @@ pub type ToolHandle = String;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportRequest {
     pub method: HttpMethod,
-    pub url: Rc<FreeMonoid<Nat>>,
+    pub url: String,
     pub headers: serde_json::Value,
-    pub body: Rc<FreeMonoid<Nat>>,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportResponse {
     pub status: i64,
     pub headers: serde_json::Value,
-    pub body: Rc<FreeMonoid<Nat>>,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FileResponse {
-    pub path: Rc<FreeMonoid<Nat>>,
+    pub path: String,
     pub success: bool,
-    pub content: Rc<FreeMonoid<Nat>>,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShellResponse {
     pub exit_code: i64,
-    pub stdout: Rc<FreeMonoid<Nat>>,
-    pub stderr: Rc<FreeMonoid<Nat>>,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -423,10 +421,10 @@ pub struct RestResponse {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestResult {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub ok: bool,
-    pub stdout: Rc<FreeMonoid<Nat>>,
-    pub stderr: Rc<FreeMonoid<Nat>>,
+    pub stdout: String,
+    pub stderr: String,
     pub duration_ms: Milliseconds,
 }
 
@@ -439,53 +437,53 @@ pub struct Summary {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StageResult {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub success: bool,
-    pub stdout: Rc<FreeMonoid<Nat>>,
-    pub stderr: Rc<FreeMonoid<Nat>>,
+    pub stdout: String,
+    pub stderr: String,
     pub skipped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentLine {
-    pub text: Rc<FreeMonoid<Nat>>,
+    pub text: String,
     pub is_comment: bool,
     pub is_blank: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentSection {
-    pub title: Rc<FreeMonoid<Nat>>,
+    pub title: String,
     pub has_title: bool,
     pub lines: Rc<Vec<Rc<DocumentLine>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Document {
-    pub header: Rc<FreeMonoid<Nat>>,
+    pub header: String,
     pub has_header: bool,
-    pub comment_prefix: Rc<FreeMonoid<Nat>>,
+    pub comment_prefix: String,
     pub sections: Rc<Vec<Rc<DocumentSection>>>,
     pub trailing_newline: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentFile {
-    pub path: Rc<FreeMonoid<Nat>>,
+pub struct TextFile {
+    pub path: String,
     pub document: Rc<Document>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTextFile {
-    pub path: Rc<FreeMonoid<Nat>>,
-    pub content: Rc<FreeMonoid<Nat>>,
+    pub path: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolEntry {
-    pub name: Rc<FreeMonoid<Nat>>,
-    pub command: Rc<FreeMonoid<Nat>>,
-    pub description: Rc<FreeMonoid<Nat>>,
+    pub name: String,
+    pub command: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -502,17 +500,17 @@ pub struct DagTopology {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopologyNode {
-    pub id: Rc<FreeMonoid<Nat>>,
-    pub label: Rc<FreeMonoid<Nat>>,
+    pub id: String,
+    pub label: String,
     pub kind: TopologyNodeKind,
-    pub parent: Rc<FreeMonoid<Nat>>,
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopologyEdge {
-    pub from: Rc<FreeMonoid<Nat>>,
-    pub to: Rc<FreeMonoid<Nat>>,
-    pub port: Rc<FreeMonoid<Nat>>,
+    pub from: String,
+    pub to: String,
+    pub port: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -524,9 +522,9 @@ pub struct DagDiff {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PragmaDirective {
-    pub key: Rc<FreeMonoid<Nat>>,
-    pub value: Rc<FreeMonoid<Nat>>,
-    pub scope: Rc<FreeMonoid<Nat>>,
+    pub key: String,
+    pub value: String,
+    pub scope: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -534,25 +532,3 @@ pub struct DocSource {
     pub path: FilePath,
     pub kind: DocSourceKind,
 }
-
-pub struct True;
-pub struct False;
-pub struct Pure;
-pub struct Transport;
-pub struct SubDag;
-pub struct Env;
-pub struct Template;
-pub struct Generated;
-pub struct Static;
-pub struct Xs;
-pub struct S;
-pub struct M;
-pub struct L;
-pub struct Xl;
-pub struct GET;
-pub struct POST;
-pub struct PUT;
-pub struct PATCH;
-pub struct DELETE;
-pub struct HEAD;
-pub struct OPTIONS;

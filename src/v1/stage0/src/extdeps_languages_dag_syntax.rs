@@ -108,14 +108,14 @@ pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
                 let mut __m = HashMap::new();
-                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), Rc::new(LiteralValue::LitBool {
+                __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
         value: true,
     }));
-                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), Rc::new(LiteralValue::LitBool {
+                __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
         value: false,
     }));
-                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("none"), Rc::new(LiteralValue::LitNull));
-                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), Rc::new(LiteralValue::LitNull));
+                __m.insert("none".to_string(), Rc::new(LiteralValue::LitNull));
+                __m.insert("null".to_string(), Rc::new(LiteralValue::LitNull));
                 Rc::new(__m)
             };
         }
@@ -126,41 +126,41 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("module"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("import"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("type"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("fn"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("func"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("resource"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("service"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("data"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("interface"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("pipeline"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("profile"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("pattern"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("let"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("return"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("match"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("if"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("then"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("else"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("for"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("in"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("where"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("with"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("none"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("acquire"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("release"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("capability"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("operation"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("input"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("output"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("idempotent"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("readonly"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("hermetic"), true);
+            __m.insert("module".to_string(), true);
+            __m.insert("import".to_string(), true);
+            __m.insert("type".to_string(), true);
+            __m.insert("fn".to_string(), true);
+            __m.insert("func".to_string(), true);
+            __m.insert("resource".to_string(), true);
+            __m.insert("service".to_string(), true);
+            __m.insert("data".to_string(), true);
+            __m.insert("interface".to_string(), true);
+            __m.insert("pipeline".to_string(), true);
+            __m.insert("profile".to_string(), true);
+            __m.insert("pattern".to_string(), true);
+            __m.insert("let".to_string(), true);
+            __m.insert("return".to_string(), true);
+            __m.insert("match".to_string(), true);
+            __m.insert("if".to_string(), true);
+            __m.insert("then".to_string(), true);
+            __m.insert("else".to_string(), true);
+            __m.insert("for".to_string(), true);
+            __m.insert("in".to_string(), true);
+            __m.insert("where".to_string(), true);
+            __m.insert("with".to_string(), true);
+            __m.insert("true".to_string(), true);
+            __m.insert("false".to_string(), true);
+            __m.insert("none".to_string(), true);
+            __m.insert("null".to_string(), true);
+            __m.insert("acquire".to_string(), true);
+            __m.insert("release".to_string(), true);
+            __m.insert("capability".to_string(), true);
+            __m.insert("operation".to_string(), true);
+            __m.insert("input".to_string(), true);
+            __m.insert("output".to_string(), true);
+            __m.insert("idempotent".to_string(), true);
+            __m.insert("readonly".to_string(), true);
+            __m.insert("hermetic".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -171,12 +171,12 @@ pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("none"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("null"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("acquire"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("release"), true);
+            __m.insert("true".to_string(), true);
+            __m.insert("false".to_string(), true);
+            __m.insert("none".to_string(), true);
+            __m.insert("null".to_string(), true);
+            __m.insert("acquire".to_string(), true);
+            __m.insert("release".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -292,20 +292,20 @@ pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("||"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("&&"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("=="), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("!="), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("<"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host(">"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("<="), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host(">="), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("+"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("-"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("*"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("/"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("|>"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("."), true);
+            __m.insert("||".to_string(), true);
+            __m.insert("&&".to_string(), true);
+            __m.insert("==".to_string(), true);
+            __m.insert("!=".to_string(), true);
+            __m.insert("<".to_string(), true);
+            __m.insert(">".to_string(), true);
+            __m.insert("<=".to_string(), true);
+            __m.insert(">=".to_string(), true);
+            __m.insert("+".to_string(), true);
+            __m.insert("-".to_string(), true);
+            __m.insert("*".to_string(), true);
+            __m.insert("/".to_string(), true);
+            __m.insert("|>".to_string(), true);
+            __m.insert(".".to_string(), true);
             Rc::new(__m)
         };
     }

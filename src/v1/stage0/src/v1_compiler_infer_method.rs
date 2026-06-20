@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn type_variable_node(id: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
@@ -52,7 +52,7 @@ pub fn map_of_type_variables() -> Rc<Node> {
     .clone()
 }
 
-pub fn list_of_type_variable(id: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn list_of_type_variable(id: String) -> Rc<Node> {
     make_container_type("List".to_string(), type_variable_node(id))
         .ty
         .clone()
@@ -68,12 +68,8 @@ pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
         .clone()
 }
 
-pub fn seed_node_map(key: Rc<FreeMonoid<Nat>>, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Node>>(),
-        key,
-        value,
-    )
+pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
+    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, Rc<Node>>(), key, value)
 }
 
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
@@ -198,6 +194,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "shell_materialize_argv_for_operation".to_string(),
+            list_of_element(string_type()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_dead_param_count_for_path".to_string(),
             int_type(),
         );
@@ -253,6 +254,36 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "layer_import_facts".to_string(),
+            list_of_type_variable("layer_import_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "import_resolution_facts".to_string(),
+            list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fact_cardinality_cross_tree_coexistence_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fact_cardinality_cross_tree_diverged_fork_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fact_cardinality_cross_tree_is_coexistence".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "fact_cardinality_cross_tree_is_diverged_fork".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "languages_consumer_census_data_decl_count".to_string(),
             int_type(),
         );
@@ -285,11 +316,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     }
 }
 
-pub fn infer_builtin_call_type(name: Rc<FreeMonoid<Nat>>) -> Option<Rc<Node>> {
+pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&builtin_function_registry(), name)
 }
 
-pub fn resolve_builtin_call_type(name: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name) {
         Some(v) => v.clone(),
         None => unit_type(),

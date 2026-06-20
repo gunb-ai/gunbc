@@ -113,10 +113,10 @@ pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
                 let mut __m = HashMap::new();
-                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), Rc::new(LiteralValue::LitBool {
+                __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
         value: true,
     }));
-                __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), Rc::new(LiteralValue::LitBool {
+                __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
         value: false,
     }));
                 Rc::new(__m)
@@ -129,43 +129,43 @@ pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("fn"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("struct"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("enum"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("type"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("trait"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("impl"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("const"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("static"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("mod"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("use"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("let"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("mut"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("return"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("match"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("if"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("else"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("for"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("in"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("while"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("loop"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("break"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("continue"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("pub"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("self"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("super"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("crate"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("as"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("where"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("ref"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("move"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("async"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("await"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("dyn"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("unsafe"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("extern"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("true"), true);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("false"), true);
+            __m.insert("fn".to_string(), true);
+            __m.insert("struct".to_string(), true);
+            __m.insert("enum".to_string(), true);
+            __m.insert("type".to_string(), true);
+            __m.insert("trait".to_string(), true);
+            __m.insert("impl".to_string(), true);
+            __m.insert("const".to_string(), true);
+            __m.insert("static".to_string(), true);
+            __m.insert("mod".to_string(), true);
+            __m.insert("use".to_string(), true);
+            __m.insert("let".to_string(), true);
+            __m.insert("mut".to_string(), true);
+            __m.insert("return".to_string(), true);
+            __m.insert("match".to_string(), true);
+            __m.insert("if".to_string(), true);
+            __m.insert("else".to_string(), true);
+            __m.insert("for".to_string(), true);
+            __m.insert("in".to_string(), true);
+            __m.insert("while".to_string(), true);
+            __m.insert("loop".to_string(), true);
+            __m.insert("break".to_string(), true);
+            __m.insert("continue".to_string(), true);
+            __m.insert("pub".to_string(), true);
+            __m.insert("self".to_string(), true);
+            __m.insert("super".to_string(), true);
+            __m.insert("crate".to_string(), true);
+            __m.insert("as".to_string(), true);
+            __m.insert("where".to_string(), true);
+            __m.insert("ref".to_string(), true);
+            __m.insert("move".to_string(), true);
+            __m.insert("async".to_string(), true);
+            __m.insert("await".to_string(), true);
+            __m.insert("dyn".to_string(), true);
+            __m.insert("unsafe".to_string(), true);
+            __m.insert("extern".to_string(), true);
+            __m.insert("true".to_string(), true);
+            __m.insert("false".to_string(), true);
             Rc::new(__m)
         };
     }

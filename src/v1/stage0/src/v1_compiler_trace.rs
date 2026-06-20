@@ -23,23 +23,23 @@ pub struct SpanMapping {
 #[serde(tag = "_variant")]
 pub enum TraceEvent {
     TraceEnter {
-        node_id: Rc<FreeMonoid<Nat>>,
+        node_id: String,
         span: Rc<SourceSpan>,
         inputs: Rc<HashMap<String, String>>,
     },
     TraceExit {
-        node_id: Rc<FreeMonoid<Nat>>,
+        node_id: String,
         span: Rc<SourceSpan>,
-        output: Rc<FreeMonoid<Nat>>,
+        output: String,
     },
     TraceError {
-        node_id: Rc<FreeMonoid<Nat>>,
+        node_id: String,
         span: Rc<SourceSpan>,
-        message: Rc<FreeMonoid<Nat>>,
+        message: String,
     },
 }
 impl TraceEvent {
-    pub fn node_id(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn node_id(&self) -> String {
         match self {
             TraceEvent::TraceEnter { node_id: __val, .. } => __val.clone(),
             TraceEvent::TraceExit { node_id: __val, .. } => __val.clone(),
@@ -57,7 +57,7 @@ impl TraceEvent {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
-    pub func_name: Rc<FreeMonoid<Nat>>,
+    pub func_name: String,
     pub span: Rc<SourceSpan>,
     pub bindings: Rc<HashMap<String, String>>,
 }
@@ -122,7 +122,7 @@ pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn event_node_id(event: Rc<TraceEvent>) -> Rc<FreeMonoid<Nat>> {
+pub fn event_node_id(event: Rc<TraceEvent>) -> String {
     match (*event).clone() {
         TraceEvent::TraceEnter { node_id: id, .. } => id.clone(),
         TraceEvent::TraceExit { node_id: id, .. } => id.clone(),
@@ -133,7 +133,7 @@ pub fn event_node_id(event: Rc<TraceEvent>) -> Rc<FreeMonoid<Nat>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TraceFilter {
-    FilterByFunc { func_name: Rc<FreeMonoid<Nat>> },
+    FilterByFunc { func_name: String },
     FilterBySpan { start: i64, end: i64 },
     FilterErrors,
 }
@@ -152,9 +152,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
         } => Rc::new({
             let mut __result = Vec::new();
             for e in trace.events.clone().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(event_node_id(e.clone()))
-                    == crate::v2_std_text::host_string_text_to_rust_host(name.clone()))
-                {
+                if (event_node_id(e.clone()).as_str() == name.clone().as_str()) {
                     __result.push(e);
                 }
             }
@@ -186,25 +184,20 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
     }
 }
 
-pub fn format_span(sp: Rc<SourceSpan>) -> Rc<FreeMonoid<Nat>> {
+pub fn format_span(sp: Rc<SourceSpan>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(
-                    "[".to_string(),
-                    crate::v2_std_text::host_string_text_from_rust_host(
-                        (sp.start.clone()).to_string(),
-                    ),
-                ),
+                v1_rt::concat("[".to_string(), (sp.start.clone()).to_string()),
                 "..".to_string(),
             ),
-            crate::v2_std_text::host_string_text_from_rust_host((sp.end.clone()).to_string()),
+            (sp.end.clone()).to_string(),
         ),
         ")".to_string(),
     )
 }
 
-pub fn format_trace_event(event: Rc<TraceEvent>) -> Rc<FreeMonoid<Nat>> {
+pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
     match (*event).clone() {
         TraceEvent::TraceEnter {
             node_id: id,
@@ -268,14 +261,14 @@ pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
-    pub func_name: Rc<FreeMonoid<Nat>>,
+    pub func_name: String,
     pub inputs: Rc<HashMap<String, String>>,
-    pub expected_output: Rc<FreeMonoid<Nat>>,
+    pub expected_output: Option<String>,
     pub trace: Option<Rc<Trace>>,
 }
 
 pub fn capture_repro(
-    func_name: Rc<FreeMonoid<Nat>>,
+    func_name: String,
     inputs: Rc<HashMap<String, String>>,
     trace: Rc<Trace>,
 ) -> Rc<ReproCase> {
@@ -289,7 +282,7 @@ pub fn capture_repro(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
-    pub generated_file: Rc<FreeMonoid<Nat>>,
+    pub generated_file: String,
     pub mappings: Rc<Vec<Rc<SpanMapping>>>,
 }
 

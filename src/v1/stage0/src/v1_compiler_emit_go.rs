@@ -103,11 +103,11 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn go_emit_module_root() -> Rc<FreeMonoid<Nat>> {
+pub fn go_emit_module_root() -> String {
     "generated".to_string()
 }
 
-pub fn go_v2rt_import_path() -> Rc<FreeMonoid<Nat>> {
+pub fn go_v2rt_import_path() -> String {
     v1_rt::concat(go_emit_module_root(), "/v2rt".to_string())
 }
 
@@ -135,14 +135,13 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
-                                if (crate::v2_std_text::host_string_text_to_rust_host(
-                                    p.module_name.clone(),
-                                ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                    authored_name_at(
+                                if (p.module_name.clone().as_str()
+                                    == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
                                         tm.module.clone(),
-                                    ),
-                                )) {
+                                    )
+                                    .as_str())
+                                {
                                     __result.push(p);
                                 }
                             }
@@ -155,9 +154,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (crate::v2_std_text::host_string_text_to_rust_host(f.path.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
+                if (f.path.clone().as_str() != "".to_string().as_str()) {
                     __result.push(f);
                 }
             }
@@ -183,7 +180,7 @@ pub fn emit_go_v2rt_module() -> Rc<TextFile> {
     })
 }
 
-pub fn emit_go_mod(module_name: Rc<FreeMonoid<Nat>>) -> Rc<TextFile> {
+pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
     {
         let manifest_path = match scaffold_for_target(RenderTarget::Go).manifest_file.clone() {
             Some(path) => path.clone(),
@@ -217,7 +214,7 @@ pub fn go_mock_expr_uses_fmt(
     }
 }
 
-pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> Rc<FreeMonoid<Nat>> {
+pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String {
     {
         let needs_fmt = {
             let mut __found = false;
@@ -249,7 +246,7 @@ pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> Rc<Free
     }
 }
 
-pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> Rc<FreeMonoid<Nat>> {
+pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({
             let mut __result = Vec::new();
@@ -299,7 +296,7 @@ pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> Rc<FreeMonoi
 }
 
 pub fn emit_go_test_file(
-    module_name: Rc<FreeMonoid<Nat>>,
+    module_name: String,
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
@@ -362,7 +359,7 @@ pub fn emit_go_test_file(
     }
 }
 
-pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
     {
         let test_name = test_function_name(projection.clone(), RenderTarget::Go);
         let struct_name = sanitize_service_name(projection.service_name.clone());
@@ -444,7 +441,7 @@ pub fn emit_go_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             emit_ident(
@@ -487,14 +484,11 @@ pub fn emit_go_module(
             module_imports(m.clone()),
             si.clone(),
         );
-        let imports_section =
-            if (crate::v2_std_text::host_string_text_to_rust_host(imports_str.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-            {
-                "".to_string()
-            } else {
-                v1_rt::concat("\n\n".to_string(), imports_str.clone())
-            };
+        let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
+            "".to_string()
+        } else {
+            v1_rt::concat("\n\n".to_string(), imports_str.clone())
+        };
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
@@ -555,7 +549,7 @@ pub fn emit_go_module(
     }
 }
 
-pub fn go_package_name(module_name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn go_package_name(module_name: String) -> String {
     {
         let parts = Rc::new(
             module_name
@@ -590,7 +584,7 @@ pub fn emit_go_imports(
     items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let has_services = {
             let mut __found = false;
@@ -700,7 +694,7 @@ pub fn emit_go_typed_item(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let env = scope.type_env.clone();
         let item_text = authored_name(env.clone(), item.clone());
@@ -780,7 +774,7 @@ pub fn emit_go_typed_item(
     }
 }
 
-pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
@@ -793,10 +787,10 @@ pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<
 }
 
 pub fn emit_go_struct_from_children(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     if ((children.clone().len() as i64) == 0) {
         v1_rt::concat(
             v1_rt::concat(
@@ -866,7 +860,7 @@ pub fn emit_go_struct_from_children(
     }
 }
 
-pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
         let ty = emit_node_type(
@@ -892,10 +886,10 @@ pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> Rc<
 }
 
 pub fn emit_go_sum_from_children(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let has_data = {
             let mut __found = false;
@@ -1013,11 +1007,7 @@ pub fn emit_go_sum_from_children(
     }
 }
 
-pub fn emit_go_variant_struct(
-    parent_name: Rc<FreeMonoid<Nat>>,
-    child: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let struct_name = v1_rt::concat(
             parent_name.clone(),
@@ -1120,10 +1110,10 @@ pub fn emit_go_variant_struct(
 }
 
 pub fn emit_go_type_alias(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     base: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1144,13 +1134,13 @@ pub fn emit_go_type_alias(
 }
 
 pub fn emit_go_fn_def(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let params_str = emit_params_shared(params.clone(), RenderTarget::Go, si.clone());
@@ -1249,14 +1239,14 @@ pub fn emit_go_fn_def(
 }
 
 pub fn emit_go_func_def(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
@@ -1333,7 +1323,7 @@ pub fn emit_go_func_params(
     uses: Rc<Vec<Rc<Node>>>,
     service_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
@@ -1387,7 +1377,7 @@ pub fn emit_go_typed_expr(
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_typed_expr(
         texpr,
         RenderTarget::Go,
@@ -1407,10 +1397,10 @@ pub fn emit_go_typed_expr(
 
 pub fn emit_go_transport_body(
     transport: Rc<Node>,
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_transport_dispatch(
         transport,
         op_name,
@@ -1428,7 +1418,7 @@ pub fn emit_go_service_def(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_service_def(
         item,
         RenderTarget::Go,
@@ -1449,11 +1439,11 @@ pub fn emit_go_service_def(
 }
 
 pub fn emit_go_service_struct(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children, source_indices);
         let decls = service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
@@ -1518,11 +1508,11 @@ pub fn emit_go_service_struct(
 }
 
 pub fn emit_go_rest_call(
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     transport: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let prefix = make_indent(depth);
         let url_line = v1_rt::concat(
@@ -1591,9 +1581,7 @@ pub fn emit_go_rest_call(
             v1_rt::concat(
                 v1_rt::concat(
                     Rc::new(vec![url_line, body_line, req_line]),
-                    if (crate::v2_std_text::host_string_text_to_rust_host(auth_line.clone())
-                        == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                    {
+                    if (auth_line.clone().as_str() == "".to_string().as_str()) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![auth_line.clone()])
@@ -1608,11 +1596,11 @@ pub fn emit_go_rest_call(
 }
 
 pub fn emit_go_shell_call(
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     transport: Rc<Node>,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let prefix = make_indent(depth);
         let cmd_line = v1_rt::concat(
@@ -1666,7 +1654,7 @@ pub fn emit_go_shell_call(
     }
 }
 
-pub fn emit_go_file_call(op_name: Rc<FreeMonoid<Nat>>, depth: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_file_call(op_name: String, depth: i64) -> String {
     {
         let prefix = make_indent(depth);
         v1_rt::concat(
@@ -1689,7 +1677,7 @@ pub fn emit_go_file_call(op_name: Rc<FreeMonoid<Nat>>, depth: i64) -> Rc<FreeMon
     }
 }
 
-pub fn emit_go_local_call(op_name: Rc<FreeMonoid<Nat>>, depth: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
     {
         let prefix = make_indent(depth);
         v1_rt::concat(
@@ -1708,7 +1696,7 @@ pub fn emit_go_local_call(op_name: Rc<FreeMonoid<Nat>>, depth: i64) -> Rc<FreeMo
     }
 }
 
-pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let cap_children = Rc::new({
@@ -1751,11 +1739,7 @@ pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> Rc<FreeMonoid<N
     }
 }
 
-pub fn emit_go_capability_method(
-    cap_node: Rc<Node>,
-    depth: i64,
-    env: Rc<TypeEnv>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -1806,13 +1790,13 @@ pub fn emit_go_capability_method(
 }
 
 pub fn emit_go_data_def(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let ty_str = emit_node_type(
             type_node,
@@ -1836,7 +1820,7 @@ pub fn emit_go_data_def(
     }
 }
 
-pub fn go_export_ident(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn go_export_ident(name: String) -> String {
     match (*language_spec(RenderTarget::Go).visibility.clone()).clone() {
         VisibilitySpec::CaseVisibility {
             export_case: ec, ..
@@ -1845,9 +1829,7 @@ pub fn go_export_ident(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
             if {
                 let mut __found = false;
                 for r in go_reserved().iter().cloned() {
-                    if (crate::v2_std_text::host_string_text_to_rust_host(r.clone())
-                        == crate::v2_std_text::host_string_text_to_rust_host(result.clone()))
-                    {
+                    if (r.clone().as_str() == result.clone().as_str()) {
                         __found = true;
                         break;
                     }

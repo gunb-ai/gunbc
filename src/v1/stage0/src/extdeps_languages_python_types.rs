@@ -51,202 +51,202 @@ pub enum PythonTypeKind {
     AnnotatedType,
 }
 
-pub fn dataclass_decorator() -> Rc<FreeMonoid<Nat>> {
+pub fn dataclass_decorator() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "@dataclass".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dataclass_import() -> Rc<FreeMonoid<Nat>> {
+pub fn dataclass_import() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "from dataclasses import dataclass, field".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn field_default_template() -> Rc<FreeMonoid<Nat>> {
+pub fn field_default_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "field(default={value})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn field_default_factory_template() -> Rc<FreeMonoid<Nat>> {
+pub fn field_default_factory_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "field(default_factory={factory})".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn python_enum_import() -> Rc<FreeMonoid<Nat>> {
+pub fn python_enum_import() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "from enum import Enum, auto".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn enum_class_template() -> Rc<FreeMonoid<Nat>> {
+pub fn enum_class_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "class {name}(Enum):\n{variants}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn enum_auto_value() -> Rc<FreeMonoid<Nat>> {
+pub fn enum_auto_value() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "auto()".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn union_syntax() -> Rc<FreeMonoid<Nat>> {
+pub fn union_syntax() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{a} | {b}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn optional_syntax() -> Rc<FreeMonoid<Nat>> {
+pub fn optional_syntax() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{type} | None".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn typing_optional() -> Rc<FreeMonoid<Nat>> {
+pub fn typing_optional() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Optional[{type}]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn python_optional_template() -> Rc<FreeMonoid<Nat>> {
+pub fn python_optional_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Optional[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn typing_union() -> Rc<FreeMonoid<Nat>> {
+pub fn typing_union() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "Union[{types}]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn python_typing_import() -> Rc<FreeMonoid<Nat>> {
+pub fn python_typing_import() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "from typing import Optional, Union".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn type_alias_template() -> Rc<FreeMonoid<Nat>> {
+pub fn type_alias_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{name} = {type}".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn generic_param_template() -> Rc<FreeMonoid<Nat>> {
+pub fn generic_param_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "[{params}]".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn typing_generic_import() -> Rc<FreeMonoid<Nat>> {
+pub fn typing_generic_import() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "from typing import Generic, TypeVar".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn none_literal() -> Rc<FreeMonoid<Nat>> {
+pub fn none_literal() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn none_check_template() -> Rc<FreeMonoid<Nat>> {
+pub fn none_check_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{expr} is None".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn none_not_check_template() -> Rc<FreeMonoid<Nat>> {
+pub fn none_not_check_template() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "{expr} is not None".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn pass_statement() -> Rc<FreeMonoid<Nat>> {
+pub fn pass_statement() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "pass".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn type_checker() -> Rc<FreeMonoid<Nat>> {
+pub fn type_checker() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "mypy".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn type_checker_strict() -> Rc<FreeMonoid<Nat>> {
+pub fn type_checker_strict() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
             "mypy --strict".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn python_cast_syntax() -> Rc<CastSyntax> {
@@ -258,6 +258,3 @@ pub fn python_cast_syntax() -> Rc<CastSyntax> {
     }
     CACHED.with(|c: &Rc<CastSyntax>| c.clone())
 }
-
-pub struct DynamicType;
-pub struct AnnotatedType;

@@ -29,6 +29,3 @@ pub enum DivError {
     DivideByZero,
     Overflow,
 }
-
-pub struct DivideByZero;
-pub struct Overflow;

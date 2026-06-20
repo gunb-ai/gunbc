@@ -22,7 +22,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn is_keyword_text(text: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_keyword_text(text: String) -> bool {
     match v1_rt::lookup(&dag_keyword_set(), text) {
         v1_rt::Witness::Holds { value: _, .. } => true,
         v1_rt::Witness::Violates { diagnostic: _, .. } => false,
@@ -33,18 +33,18 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, TokenShape>> = {
             let mut __m = HashMap::new();
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("("), TokenShape::ShLParen);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host(")"), TokenShape::ShRParen);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("["), TokenShape::ShLBracket);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("]"), TokenShape::ShRBracket);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host(":"), TokenShape::ShColon);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host(","), TokenShape::ShComma);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("."), TokenShape::ShDot);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("+"), TokenShape::ShPlus);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("*"), TokenShape::ShStar);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("%"), TokenShape::ShPercent);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("/"), TokenShape::ShSlash);
-            __m.insert(crate::v2_std_text::host_string_text_from_rust_host("^"), TokenShape::ShCaret);
+            __m.insert("(".to_string(), TokenShape::ShLParen);
+            __m.insert(")".to_string(), TokenShape::ShRParen);
+            __m.insert("[".to_string(), TokenShape::ShLBracket);
+            __m.insert("]".to_string(), TokenShape::ShRBracket);
+            __m.insert(":".to_string(), TokenShape::ShColon);
+            __m.insert(",".to_string(), TokenShape::ShComma);
+            __m.insert(".".to_string(), TokenShape::ShDot);
+            __m.insert("+".to_string(), TokenShape::ShPlus);
+            __m.insert("*".to_string(), TokenShape::ShStar);
+            __m.insert("%".to_string(), TokenShape::ShPercent);
+            __m.insert("/".to_string(), TokenShape::ShSlash);
+            __m.insert("^".to_string(), TokenShape::ShCaret);
             Rc::new(__m)
         };
     }
@@ -73,12 +73,12 @@ pub struct ScanResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
-    pub file: Rc<FreeMonoid<Nat>>,
-    pub text: Rc<FreeMonoid<Nat>>,
+    pub file: String,
+    pub text: String,
     pub source_chars: Rc<Vec<i64>>,
 }
 
-pub fn make_token(text: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
+pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
     Rc::new(Token {
         text: text,
         span: span,
@@ -86,7 +86,7 @@ pub fn make_token(text: Rc<FreeMonoid<Nat>>, span: Rc<SourceSpan>, shape: TokenS
     })
 }
 
-pub fn source_char(source: Rc<SourceRef>, pos: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
     v1_rt::from_code_point(source.source_chars.clone()[(pos) as usize].clone())
 }
 
@@ -101,7 +101,7 @@ pub fn source_len(source: Rc<SourceRef>) -> i64 {
     (source.source_chars.clone().len() as i64)
 }
 
-pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> Rc<FreeMonoid<Nat>> {
+pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
     v1_rt::chars_to_string(&source.source_chars.clone(), start, end)
 }
 
@@ -164,7 +164,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize(source: Rc<FreeMonoid<Nat>>, file: Rc<FreeMonoid<Nat>>) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -509,9 +509,9 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
 pub fn emit(
     pos: Rc<TokPos>,
     shape: TokenShape,
-    text: Rc<FreeMonoid<Nat>>,
+    text: String,
     len: i64,
-    file: Rc<FreeMonoid<Nat>>,
+    file: String,
 ) -> Rc<ScanResult> {
     {
         let token = make_token(
@@ -593,21 +593,12 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringScanResult {
-    ClosedString {
-        content: Rc<FreeMonoid<Nat>>,
-        end_pos: i64,
-    },
-    InterpolationStart {
-        content: Rc<FreeMonoid<Nat>>,
-        end_pos: i64,
-    },
-    UnterminatedString {
-        content: Rc<FreeMonoid<Nat>>,
-        end_pos: i64,
-    },
+    ClosedString { content: String, end_pos: i64 },
+    InterpolationStart { content: String, end_pos: i64 },
+    UnterminatedString { content: String, end_pos: i64 },
 }
 impl StringScanResult {
-    pub fn content(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn content(&self) -> String {
         match self {
             StringScanResult::ClosedString { content: __val, .. } => __val.clone(),
             StringScanResult::InterpolationStart { content: __val, .. } => __val.clone(),
@@ -744,17 +735,13 @@ pub fn scan_string_body(
             });
         } else {
             let ch = source_char(source.clone(), pos.clone());
-            if (crate::v2_std_text::host_string_text_to_rust_host(ch.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("\"".to_string()))
-            {
+            if (ch.clone().as_str() == "\"".to_string().as_str()) {
                 break Rc::new(StringScanResult::ClosedString {
                     content: acc.join(&"".to_string()),
                     end_pos: pos.clone(),
                 });
             } else {
-                if (crate::v2_std_text::host_string_text_to_rust_host(ch.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host("\\".to_string()))
-                {
+                if (ch.clone().as_str() == "\\".to_string().as_str()) {
                     if ((pos.clone() + 1) < source_len(source.clone())) {
                         let escaped = source_char(source.clone(), (pos.clone() + 1));
                         {
@@ -775,9 +762,7 @@ pub fn scan_string_body(
                         });
                     }
                 } else {
-                    if (crate::v2_std_text::host_string_text_to_rust_host(ch.clone())
-                        == crate::v2_std_text::host_string_text_to_rust_host("{".to_string()))
-                    {
+                    if (ch.clone().as_str() == "{".to_string().as_str()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
                                 content: acc.join(&"".to_string()),
@@ -819,59 +804,36 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
-pub fn process_escapes(raw: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn process_escapes(raw: String) -> String {
     process_escapes_loop(raw, 0, Rc::new(vec![]))
 }
 
-pub fn process_escapes_loop(
-    mut source: Rc<FreeMonoid<Nat>>,
-    mut pos: i64,
-    mut acc: Rc<Vec<String>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
     loop {
         if (pos.clone() >= v1_rt::string_length(&source)) {
             break acc.join(&"".to_string());
         } else {
             let ch = v1_rt::char_at(&source, pos.clone());
-            if ((crate::v2_std_text::host_string_text_to_rust_host(ch.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("\\".to_string()))
+            if ((ch.clone().as_str() == "\\".to_string().as_str())
                 && ((pos.clone() + 1) < v1_rt::string_length(&source)))
             {
                 let next = v1_rt::char_at(&source, (pos.clone() + 1));
-                let resolved = if (crate::v2_std_text::host_string_text_to_rust_host(next.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host("\"".to_string()))
-                {
+                let resolved = if (next.clone().as_str() == "\"".to_string().as_str()) {
                     "\"".to_string()
                 } else {
-                    if (crate::v2_std_text::host_string_text_to_rust_host(next.clone())
-                        == crate::v2_std_text::host_string_text_to_rust_host("\\".to_string()))
-                    {
+                    if (next.clone().as_str() == "\\".to_string().as_str()) {
                         "\\".to_string()
                     } else {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(next.clone())
-                            == crate::v2_std_text::host_string_text_to_rust_host("n".to_string()))
-                        {
+                        if (next.clone().as_str() == "n".to_string().as_str()) {
                             "\n".to_string()
                         } else {
-                            if (crate::v2_std_text::host_string_text_to_rust_host(next.clone())
-                                == crate::v2_std_text::host_string_text_to_rust_host(
-                                    "t".to_string(),
-                                ))
-                            {
+                            if (next.clone().as_str() == "t".to_string().as_str()) {
                                 "\t".to_string()
                             } else {
-                                if (crate::v2_std_text::host_string_text_to_rust_host(next.clone())
-                                    == crate::v2_std_text::host_string_text_to_rust_host(
-                                        "{".to_string(),
-                                    ))
-                                {
+                                if (next.clone().as_str() == "{".to_string().as_str()) {
                                     "{".to_string()
                                 } else {
-                                    if (crate::v2_std_text::host_string_text_to_rust_host(
-                                        next.clone(),
-                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                        "}".to_string(),
-                                    )) {
+                                    if (next.clone().as_str() == "}".to_string().as_str()) {
                                         "}".to_string()
                                     } else {
                                         v1_rt::concat("\\".to_string(), next.clone())

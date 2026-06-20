@@ -59,7 +59,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn type_variable_node(id: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
@@ -132,16 +132,14 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-            source_indices.clone(),
-            n.clone(),
-        )) == crate::v2_std_text::host_string_text_to_rust_host("Set".to_string())))
+        && (authored_name_at(source_indices.clone(), n.clone()).as_str()
+            == "Set".to_string().as_str()))
 }
 
 pub fn canonical_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let nm = authored_name_at(source_indices, n);
         match container_template_algebra(nm.clone()) {
@@ -151,7 +149,7 @@ pub fn canonical_template_name(
     }
 }
 
-pub fn is_declared_container_alias_spelling(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_declared_container_alias_spelling(name: String) -> bool {
     match container_template_algebra(name) {
         Some(_) => true,
         None => false,
@@ -161,10 +159,8 @@ pub fn is_declared_container_alias_spelling(name: Rc<FreeMonoid<Nat>>) -> bool {
 pub fn structural_carrier_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
-    if (crate::v2_std_text::host_string_text_to_rust_host(n.name.clone())
-        != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-    {
+) -> String {
+    if (n.name.clone().as_str() != "".to_string().as_str()) {
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
@@ -372,7 +368,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
     }
 }
 
-pub fn kernel_container_profile_miss_diagnostic(kind_name: Rc<FreeMonoid<Nat>>) -> Rc<ErrorNode> {
+pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Rc<ErrorNode> {
     {
         let msg = v1_rt::concat("missing kernel container profile: ".to_string(), kind_name);
         make_error_node(
@@ -385,7 +381,7 @@ pub fn kernel_container_profile_miss_diagnostic(kind_name: Rc<FreeMonoid<Nat>>) 
     }
 }
 
-pub fn missing_kernel_container_profile_type(kind_name: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
     {
         let msg = v1_rt::concat("missing kernel container profile: ".to_string(), kind_name);
         Rc::new(Node {
@@ -423,10 +419,7 @@ pub struct KernelTypeBuild {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn make_container_type(
-    kind_name: Rc<FreeMonoid<Nat>>,
-    element: Rc<Node>,
-) -> Rc<KernelTypeBuild> {
+pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
     match container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
@@ -649,7 +642,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     })
 }
 
-pub fn algebra_value_field(name: Rc<FreeMonoid<Nat>>, type_node: Rc<Node>) -> Rc<Node> {
+pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
         span: kernel_span(name.clone()),
@@ -673,7 +666,7 @@ pub fn algebra_value_field(name: Rc<FreeMonoid<Nat>>, type_node: Rc<Node>) -> Rc
 }
 
 pub fn algebra_method_field(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     param_types: Rc<Vec<Rc<Node>>>,
     return_type: Rc<Node>,
 ) -> Rc<Node> {
@@ -716,7 +709,7 @@ pub fn algebra_method_field(
 }
 
 pub fn enrich_base_with_fields(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     base: Rc<Node>,
     fields: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
@@ -742,18 +735,18 @@ pub fn enrich_base_with_fields(
     })
 }
 
-pub fn placeholder_type_node(name: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn placeholder_type_node(name: String) -> Rc<Node> {
     nominal_type_ref(name)
 }
 
-pub fn nominal_type_ref(name: Rc<FreeMonoid<Nat>>) -> Rc<Node> {
+pub fn nominal_type_ref(name: String) -> Rc<Node> {
     leaf_node_with_span(name.clone(), kernel_span(name.clone()))
 }
 
 pub fn algebra_child_or_placeholder(
     base: Rc<Node>,
     child_index: i64,
-    placeholder: Rc<FreeMonoid<Nat>>,
+    placeholder: String,
 ) -> Rc<Node> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -970,7 +963,7 @@ pub fn instantiate_algebra_field(
 }
 
 pub fn enrich_kernel_type(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     base: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
@@ -1103,10 +1096,8 @@ pub fn unify_template(
                 }
                 ContainerSource::Named { name: n, .. } => n.clone(),
             };
-            if (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                source_indices.clone(),
-                concrete.clone(),
-            )) != crate::v2_std_text::host_string_text_to_rust_host(expected_name))
+            if (authored_name_at(source_indices.clone(), concrete.clone()).as_str()
+                != expected_name.as_str())
             {
                 subst.clone()
             } else {
@@ -1657,7 +1648,7 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
 pub fn node_type_shape(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let __is_leaf = (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
@@ -1670,11 +1661,8 @@ pub fn node_type_shape(
                         (((((rt.connective.clone() == Connective::NoConnective)
                             && ((rt.children.clone().len() as i64) == 0))
                             && (rt.ident_span.clone() != None))
-                            && (crate::v2_std_text::host_string_text_to_rust_host(
-                                authored_name_at(source_indices.clone(), rt.clone()),
-                            ) != crate::v2_std_text::host_string_text_to_rust_host(
-                                "None".to_string(),
-                            )))
+                            && (authored_name_at(source_indices.clone(), rt.clone()).as_str()
+                                != "None".to_string().as_str()))
                             && (is_kernel_type(authored_name_at(
                                 source_indices.clone(),
                                 rt.clone(),
@@ -1820,11 +1808,11 @@ pub fn node_type_compatible(
                         let right_is_container =
                             node_is_element_collection(right.clone(), source_indices.clone());
                         if (left_is_container && right_is_container) {
-                            if (crate::v2_std_text::host_string_text_to_rust_host(
-                                canonical_template_name(left.clone(), source_indices.clone()),
-                            ) != crate::v2_std_text::host_string_text_to_rust_host(
-                                canonical_template_name(right.clone(), source_indices.clone()),
-                            )) {
+                            if (canonical_template_name(left.clone(), source_indices.clone())
+                                .as_str()
+                                != canonical_template_name(right.clone(), source_indices.clone())
+                                    .as_str())
+                            {
                                 break false;
                             } else {
                                 match left.children.clone().first().cloned() {
@@ -1859,16 +1847,20 @@ pub fn node_type_compatible(
                                 }
                             }
                         } else {
-                            if (((((crate::v2_std_text::host_string_text_to_rust_host(
-                                canonical_template_name(left.clone(), source_indices.clone()),
-                            ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                canonical_template_name(right.clone(), source_indices.clone()),
-                            )) && (crate::v2_std_text::host_string_text_to_rust_host(
-                                authored_name_at(source_indices.clone(), left.clone()),
+                            if (((((canonical_template_name(
+                                left.clone(),
+                                source_indices.clone(),
                             )
-                                != crate::v2_std_text::host_string_text_to_rust_host(
-                                    authored_name_at(source_indices.clone(), right.clone()),
-                                )))
+                            .as_str()
+                                == canonical_template_name(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                )
+                                .as_str())
+                                && (authored_name_at(source_indices.clone(), left.clone())
+                                    .as_str()
+                                    != authored_name_at(source_indices.clone(), right.clone())
+                                        .as_str()))
                                 && ((left.children.clone().len() as i64) == 1))
                                 && ((right.children.clone().len() as i64) == 1))
                                 && (is_declared_container_alias_spelling(authored_name_at(
@@ -1929,15 +1921,16 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break (crate::v2_std_text::host_string_text_to_rust_host(
-                                            authored_name_at(source_indices.clone(), left.clone()),
+                                        break (authored_name_at(
+                                            source_indices.clone(),
+                                            left.clone(),
                                         )
-                                            == crate::v2_std_text::host_string_text_to_rust_host(
-                                                authored_name_at(
-                                                    source_indices.clone(),
-                                                    right.clone(),
-                                                ),
-                                            ));
+                                        .as_str()
+                                            == authored_name_at(
+                                                source_indices.clone(),
+                                                right.clone(),
+                                            )
+                                            .as_str());
                                     }
                                 }
                             }
@@ -1981,11 +1974,8 @@ pub fn prefer_specific_type(
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
         let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let same_kind = if (left_is_container.clone() && right_is_container) {
-            (crate::v2_std_text::host_string_text_to_rust_host(left_norm_name)
-                == crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                    source_indices.clone(),
-                    right.clone(),
-                )))
+            (left_norm_name.as_str()
+                == authored_name_at(source_indices.clone(), right.clone()).as_str())
         } else {
             if (left_is_optional.clone() && right_is_optional) {
                 true
@@ -2086,13 +2076,10 @@ pub fn node_type_equals_core(
         let left_name = authored_name_at(source_indices.clone(), left.clone());
         let right_name = authored_name_at(source_indices.clone(), right.clone());
         if (left_leaf.clone() && right_leaf.clone()) {
-            (crate::v2_std_text::host_string_text_to_rust_host(left_name)
-                == crate::v2_std_text::host_string_text_to_rust_host(right_name))
+            (left_name.as_str() == right_name.as_str())
         } else {
             if (left_struct.clone() && right_struct.clone()) {
-                if (crate::v2_std_text::host_string_text_to_rust_host(left_name)
-                    != crate::v2_std_text::host_string_text_to_rust_host(right_name))
-                {
+                if (left_name.as_str() != right_name.as_str()) {
                     false
                 } else {
                     if ((left.connective.clone() == Connective::Conj)
@@ -2143,12 +2130,10 @@ pub fn node_type_equals_core(
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    (crate::v2_std_text::host_string_text_to_rust_host(left_name)
-                        == crate::v2_std_text::host_string_text_to_rust_host(right_name))
+                    (left_name.as_str() == right_name.as_str())
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        (crate::v2_std_text::host_string_text_to_rust_host(left_name)
-                            == crate::v2_std_text::host_string_text_to_rust_host(right_name))
+                        (left_name.as_str() == right_name.as_str())
                     } else {
                         {
                             let left_is_container =
@@ -2156,11 +2141,7 @@ pub fn node_type_equals_core(
                             let right_is_container =
                                 node_is_element_collection(right.clone(), source_indices.clone());
                             if (left_is_container && right_is_container) {
-                                if (crate::v2_std_text::host_string_text_to_rust_host(left_name)
-                                    != crate::v2_std_text::host_string_text_to_rust_host(
-                                        right_name,
-                                    ))
-                                {
+                                if (left_name.as_str() != right_name.as_str()) {
                                     false
                                 } else {
                                     match left.children.clone().first().cloned() {
@@ -2357,12 +2338,8 @@ pub fn node_type_deps(
                     (((((rt.connective.clone() == Connective::NoConnective)
                         && ((rt.children.clone().len() as i64) == 0))
                         && (rt.ident_span.clone() != None))
-                        && (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                            source_indices.clone(),
-                            rt.clone(),
-                        )) != crate::v2_std_text::host_string_text_to_rust_host(
-                            "None".to_string(),
-                        )))
+                        && (authored_name_at(source_indices.clone(), rt.clone()).as_str()
+                            != "None".to_string().as_str()))
                         && (is_kernel_type(authored_name_at(source_indices.clone(), rt.clone()))
                             == false))
                 }
@@ -2434,10 +2411,7 @@ pub fn node_type_deps(
                         }
                     } else {
                         if ((is_kernel_type(n_name.clone())
-                            || (crate::v2_std_text::host_string_text_to_rust_host(n_name.clone())
-                                == crate::v2_std_text::host_string_text_to_rust_host(
-                                    "None".to_string(),
-                                )))
+                            || (n_name.clone().as_str() == "None".to_string().as_str()))
                             || (n.ident_span.clone() == None))
                         {
                             Rc::new(vec![])
@@ -2498,8 +2472,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
         if is_optional {
             with_required_cardinality(n.clone())
         } else {
-            if ((crate::v2_std_text::host_string_text_to_rust_host(n.name.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("Optional".to_string()))
+            if ((n.name.clone().as_str() == "Optional".to_string().as_str())
                 && ((n.children.clone().len() as i64) == 1))
             {
                 match n.children.clone().first().cloned() {
@@ -2513,7 +2486,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> Rc<FreeMonoid<Nat>> {
+pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
     match kind {
         AlgebraFieldKind::AlgAdd => "add".to_string(),
         AlgebraFieldKind::AlgMul => "mul".to_string(),
@@ -2710,12 +2683,8 @@ pub fn for_each_element_type_node(
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
-                    && (crate::v2_std_text::host_string_text_to_rust_host(authored_name_at(
-                        source_indices,
-                        normed.clone(),
-                    )) == crate::v2_std_text::host_string_text_to_rust_host(
-                        "String".to_string(),
-                    )))
+                    && (authored_name_at(source_indices, normed.clone()).as_str()
+                        == "String".to_string().as_str()))
                 {
                     string_type()
                 } else {
@@ -2726,7 +2695,7 @@ pub fn for_each_element_type_node(
     }
 }
 
-pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key) {
         Some(_) => true,
         None => false,

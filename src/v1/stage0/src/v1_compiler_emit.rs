@@ -159,7 +159,7 @@ pub enum BackendCapability {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BackendInfo {
-    pub target_name: Rc<FreeMonoid<Nat>>,
+    pub target_name: String,
     pub capabilities: Rc<Vec<BackendCapability>>,
 }
 
@@ -192,11 +192,7 @@ pub fn derive_module_imports(
                             ImportTrigger::TypeUsageTrigger { type_name: t, .. } => {
                                 let mut __found = false;
                                 for n in type_names.clone().iter().cloned() {
-                                    if (crate::v2_std_text::host_string_text_to_rust_host(
-                                        n.clone(),
-                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                        t.clone(),
-                                    )) {
+                                    if (n.clone().as_str() == t.clone().as_str()) {
                                         __found = true;
                                         break;
                                     }
@@ -208,11 +204,7 @@ pub fn derive_module_imports(
                             ImportTrigger::ContainerUsageTrigger { container: c, .. } => {
                                 let mut __found = false;
                                 for n in type_names.clone().iter().cloned() {
-                                    if (crate::v2_std_text::host_string_text_to_rust_host(
-                                        n.clone(),
-                                    ) == crate::v2_std_text::host_string_text_to_rust_host(
-                                        c.clone(),
-                                    )) {
+                                    if (n.clone().as_str() == c.clone().as_str()) {
                                         __found = true;
                                         break;
                                     }
@@ -236,9 +228,7 @@ pub fn derive_module_imports(
             .iter()
             .cloned()
             {
-                if (crate::v2_std_text::host_string_text_to_rust_host(path.clone())
-                    != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                {
+                if (path.clone().as_str() != "".to_string().as_str()) {
                     __result.push(path);
                 }
             }
@@ -291,15 +281,15 @@ pub fn collect_type_names_from_node(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterpPart {
-    pub format_segment: Rc<FreeMonoid<Nat>>,
-    pub arg_expr: Rc<FreeMonoid<Nat>>,
+    pub format_segment: String,
+    pub arg_expr: String,
 }
 
 pub fn emit_simple_expr(
     expr: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), target.clone()),
@@ -453,7 +443,7 @@ pub fn emit_simple_string_interp(
     parts: Rc<Vec<Rc<StringPart>>>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         let interp = spec.string_interp.clone();
@@ -522,9 +512,7 @@ pub fn emit_simple_string_interp(
                     .iter()
                     .cloned()
                     {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(a.clone())
-                            != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                        {
+                        if (a.clone().as_str() != "".to_string().as_str()) {
                             __result.push(a);
                         }
                     }
@@ -582,20 +570,19 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<Rc<InductiveField>>>>(
-            ),
-            source_indices: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<NewlineIndex>>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: empty_intern_table(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
-            signatures: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<ResolvedFuncSig>>(),
+            signatures: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
         }),
-        locals: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<TypeBinding>>(),
-        match_bound_names: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
-        service_registry: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<Rc<OpEntry>>>>(),
-        item_registry: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<ItemInfo>>(),
-        lambda_param_provenance: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<SubValueRelation>>(),
+        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
     })
 }
 
@@ -603,15 +590,15 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
-        locals: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<TypeBinding>>(),
-        match_bound_names: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
             typed_module.module.clone(),
         ),
-        service_registry: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Vec<Rc<OpEntry>>>>(),
+        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: typed_module.item_registry.clone(),
-        lambda_param_provenance: v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<SubValueRelation>>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
     })
 }
 
@@ -643,21 +630,21 @@ pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope
 
 pub fn lookup_item(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
 ) -> Option<Rc<ItemInfo>> {
     v1_rt::map_get(&registry, name)
 }
 
 pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
     v1_rt::map_get(&scope.func_env.clone().signatures.clone(), name)
 }
 
 pub fn typed_named_arg_matches(
     arg: Rc<Node>,
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -665,15 +652,14 @@ pub fn typed_named_arg_matches(
         if (n.clone() == None) {
             false
         } else {
-            (crate::v2_std_text::host_string_text_to_rust_host(n.clone().unwrap())
-                == crate::v2_std_text::host_string_text_to_rust_host(name))
+            (n.clone().unwrap().as_str() == name.as_str())
         }
     }
 }
 
 pub fn order_typed_call_args(
     args: Rc<Vec<Rc<Node>>>,
-    func: Rc<FreeMonoid<Nat>>,
+    func: String,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
@@ -695,7 +681,7 @@ pub fn order_typed_call_args(
                 None => args.clone(),
                 Some(sig) => {
                     let arg_map = args.clone().iter().cloned().fold(
-                        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<Node>>(),
+                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
                         |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                             let n = arg_name_at(
                                 arg.clone(),
@@ -709,7 +695,7 @@ pub fn order_typed_call_args(
                         },
                     );
                     let param_name_set = sig.params.clone().iter().cloned().fold(
-                        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, bool>(),
+                        v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
                             v1_rt::rc_map_insert(
                                 acc,
@@ -826,7 +812,7 @@ pub fn has_nested_records_node(
 pub fn emit_data_value_json(
     value: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
@@ -838,9 +824,7 @@ pub fn emit_data_value_json(
                     v1_rt::concat("\"".to_string(), escape_json_string(s.clone())),
                     "\"".to_string(),
                 ),
-                LiteralValue::LitInt { value: i, .. } => {
-                    crate::v2_std_text::host_string_text_from_rust_host((i.clone()).to_string())
-                }
+                LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
                 LiteralValue::LitFloat { value: f, .. } => f.clone(),
                 LiteralValue::LitBool { value: b, .. } => {
                     if b.clone() {
@@ -913,7 +897,7 @@ pub fn emit_data_value_json(
     })
 }
 
-pub fn to_camel(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn to_camel(name: String) -> String {
     {
         let parts = Rc::new(
             name.clone()
@@ -974,7 +958,7 @@ pub fn to_camel(name: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn apply_naming_case(name: Rc<FreeMonoid<Nat>>, case_style: NamingCase) -> Rc<FreeMonoid<Nat>> {
+pub fn apply_naming_case(name: String, case_style: NamingCase) -> String {
     match case_style {
         NamingCase::PascalCase => {
             let parts = Rc::new(
@@ -997,10 +981,7 @@ pub fn apply_naming_case(name: Rc<FreeMonoid<Nat>>, case_style: NamingCase) -> R
     }
 }
 
-pub fn test_file_path(
-    module_name: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
     {
         let conventions = test_conventions_for_target(target.clone());
         let file_dir = match conventions.file_dir.clone() {
@@ -1025,7 +1006,7 @@ pub fn test_file_path(
     }
 }
 
-pub fn reserved_prefix(target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn reserved_prefix(target: RenderTarget) -> String {
     match (*language_spec(target)
         .reserved_words
         .clone()
@@ -1038,7 +1019,7 @@ pub fn reserved_prefix(target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn reserved_suffix(target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn reserved_suffix(target: RenderTarget) -> String {
     match (*language_spec(target)
         .reserved_words
         .clone()
@@ -1051,7 +1032,7 @@ pub fn reserved_suffix(target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn escape_rust_interp_text(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn escape_rust_interp_text(s: String) -> String {
     {
         let escaped = Rc::new(
             escape_string_literal_body(s)
@@ -1070,7 +1051,7 @@ pub fn escape_rust_interp_text(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     }
 }
 
-pub fn escape_go_interp_text(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn escape_go_interp_text(s: String) -> String {
     Rc::new(
         escape_string_literal_body(s)
             .split(&"%".to_string())
@@ -1080,7 +1061,7 @@ pub fn escape_go_interp_text(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
     .join(&"%%".to_string())
 }
 
-pub fn escape_python_interp_text(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> {
+pub fn escape_python_interp_text(s: String) -> String {
     {
         let escaped = Rc::new(
             escape_string_literal_body(s)
@@ -1099,27 +1080,21 @@ pub fn escape_python_interp_text(s: Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> 
     }
 }
 
-pub fn apply_escape_pairs(
-    s: Rc<FreeMonoid<Nat>>,
-    pairs: Rc<Vec<Rc<EscapePair>>>,
-) -> Rc<FreeMonoid<Nat>> {
-    pairs.iter().cloned().fold(
-        s.clone(),
-        |acc: Rc<FreeMonoid<Nat>>, pair: Rc<EscapePair>| {
+pub fn apply_escape_pairs(s: String, pairs: Rc<Vec<Rc<EscapePair>>>) -> String {
+    pairs
+        .iter()
+        .cloned()
+        .fold(s.clone(), |acc: String, pair: Rc<EscapePair>| {
             Rc::new(
                 acc.split(&pair.from.clone())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             )
             .join(&pair.to.clone())
-        },
-    )
+        })
 }
 
-pub fn emit_string_literal(
-    s: Rc<FreeMonoid<Nat>>,
-    suffix: Rc<FreeMonoid<Nat>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_string_literal(s: String, suffix: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat("\"".to_string(), escape_string_literal_body(s)),
@@ -1136,15 +1111,13 @@ pub fn is_null_coalesce(op: BinOp) -> bool {
     }
 }
 
-pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> Rc<FreeMonoid<Nat>> {
+pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> String {
     match (*value).clone() {
         LiteralValue::LitStr { value: s, .. } => emit_string_literal(s.clone(), "".to_string()),
         LiteralValue::LitSymbol { value: s, .. } => {
             emit_string_literal(s.clone(), ".to_string()".to_string())
         }
-        LiteralValue::LitInt { value: i, .. } => {
-            crate::v2_std_text::host_string_text_from_rust_host((i.clone()).to_string())
-        }
+        LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
         LiteralValue::LitFloat { value: f, .. } => f.clone(),
         LiteralValue::LitBool { value: b, .. } => {
             if b.clone() {
@@ -1157,11 +1130,11 @@ pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> Rc<FreeMonoid<Nat>> 
     }
 }
 
-pub fn emit_keyword(key: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_keyword(key: String, target: RenderTarget) -> String {
     target_keyword(target, key)
 }
 
-pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
     match (*value).clone() {
         LiteralValue::LitStr { value: s, .. } => {
             let suffix = match literal_suffix(target.clone(), "String".to_string()) {
@@ -1173,9 +1146,7 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> Rc<FreeMon
             };
             emit_string_literal(s.clone(), suffix)
         }
-        LiteralValue::LitInt { value: i, .. } => {
-            crate::v2_std_text::host_string_text_from_rust_host((i.clone()).to_string())
-        }
+        LiteralValue::LitInt { value: i, .. } => (i.clone()).to_string(),
         LiteralValue::LitFloat { value: f, .. } => f.clone(),
         LiteralValue::LitBool { value: b, .. } => {
             if b.clone() {
@@ -1205,7 +1176,7 @@ pub fn emit_bin_op_symbol(
     op: BinOp,
     target: RenderTarget,
     algebra_field: Option<AlgebraFieldKind>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match binop_symbol(target.clone(), op, algebra_field) {
         Some(sym) => sym.clone(),
         None => emit_error_expr(
@@ -1215,14 +1186,8 @@ pub fn emit_bin_op_symbol(
     }
 }
 
-pub fn emit_container(
-    kind: Rc<FreeMonoid<Nat>>,
-    inner: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
-    if (crate::v2_std_text::host_string_text_to_rust_host(kind.clone())
-        == crate::v2_std_text::host_string_text_to_rust_host("optional".to_string()))
-    {
+pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
+    if (kind.clone().as_str() == "optional".to_string().as_str()) {
         apply_type_template1(target_optional_template(target.clone()), inner)
     } else {
         match coerce_container_template(target.clone(), kind.clone()) {
@@ -1241,11 +1206,7 @@ pub fn emit_container(
     }
 }
 
-pub fn emit_map_type(
-    key_type: Rc<FreeMonoid<Nat>>,
-    val_type: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
     match coerce_container_template(target, "map".to_string()) {
         Some(template) => apply_type_template2(template.clone(), key_type, val_type),
         None => v1_rt::concat(
@@ -1265,7 +1226,7 @@ pub fn emit_node_type(
     n: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     render_node_type(n, target, v1_rt::rc_empty_set::<String>(), source_indices)
 }
 
@@ -1309,7 +1270,7 @@ pub fn render_named_type_base(
     n: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let tn = authored_name_at(source_indices.clone(), n.clone());
         let base = coerce_primitive_type(target.clone(), tn);
@@ -1353,7 +1314,7 @@ pub fn render_node_type(
     target: RenderTarget,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tn = authored_name_at(source_indices.clone(), n.clone());
         let n_is_error = if (n.inferred.clone() != None) {
@@ -1372,12 +1333,8 @@ pub fn render_node_type(
             {
                 let is_named_type_var = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::TypeVariable { id: var_id, .. }) => {
-                        ((crate::v2_std_text::host_string_text_to_rust_host(tn.clone())
-                            != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                            && (crate::v2_std_text::host_string_text_to_rust_host(tn.clone())
-                                == crate::v2_std_text::host_string_text_to_rust_host(
-                                    var_id.clone(),
-                                )))
+                        ((tn.clone().as_str() != "".to_string().as_str())
+                            && (tn.clone().as_str() == var_id.clone().as_str()))
                     }
                     _ => false,
                 };
@@ -1431,9 +1388,7 @@ pub fn render_node_type(
                         ret_str.clone(),
                     ),
                     None => {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(ret_str.clone())
-                            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                        {
+                        if (ret_str.clone().as_str() == "".to_string().as_str()) {
                             {
                                 let void_template = v1_rt::replace(
                                     repr.template.clone(),
@@ -1575,12 +1530,8 @@ pub fn render_node_type(
                         };
                         if has_template {
                             {
-                                let base = if (crate::v2_std_text::host_string_text_to_rust_host(
-                                    snake.clone(),
-                                )
-                                    == crate::v2_std_text::host_string_text_to_rust_host(
-                                        "map".to_string(),
-                                    )) {
+                                let base = if (snake.clone().as_str() == "map".to_string().as_str())
+                                {
                                     emit_map_type("_".to_string(), "_".to_string(), target.clone())
                                 } else {
                                     emit_container(snake.clone(), "_".to_string(), target.clone())
@@ -1625,8 +1576,7 @@ pub fn render_node_type(
         if ((n.children.clone().len() as i64) == 0) {
             {
                 let bare_is_map = (is_container_type(tn.clone())
-                    && (crate::v2_std_text::host_string_text_to_rust_host(to_snake(tn.clone()))
-                        == crate::v2_std_text::host_string_text_to_rust_host("map".to_string())));
+                    && (to_snake(tn.clone()).as_str() == "map".to_string().as_str()));
                 let bare_is_collection =
                     (is_declared_container_alias_spelling(tn.clone()) && !bare_is_map.clone());
                 let has_container_template = match container_template_algebra(to_snake(tn.clone()))
@@ -1682,11 +1632,7 @@ pub fn render_node_type(
                                     )
                                 }
                             } else {
-                                if (crate::v2_std_text::host_string_text_to_rust_host(tn.clone())
-                                    == crate::v2_std_text::host_string_text_to_rust_host(
-                                        tuple_type_name(),
-                                    ))
-                                {
+                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
                                     coerce_primitive_type(target.clone(), tn.clone())
@@ -1780,9 +1726,7 @@ pub fn render_node_type(
             }
             __result
         });
-        if (crate::v2_std_text::host_string_text_to_rust_host(tn.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host(tuple_type_name()))
-        {
+        if (tn.clone().as_str() == tuple_type_name().as_str()) {
             {
                 let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
                 return multi_tuple_str;
@@ -1806,7 +1750,7 @@ pub fn render_node_type(
     })
 }
 
-pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
         let ts = spec.tuple_syntax.clone();
@@ -2100,27 +2044,16 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
 
 pub fn emit_unified_transport_dispatch(
     transport: Rc<Node>,
-    op_name: Rc<FreeMonoid<Nat>>,
+    op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
     target: RenderTarget,
-    render_rest: impl Fn(
-            Rc<FreeMonoid<Nat>>,
-            Rc<Node>,
-            i64,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-        ) -> Rc<FreeMonoid<Nat>>
+    render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone,
+    render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_shell: impl Fn(
-            Rc<FreeMonoid<Nat>>,
-            Rc<Node>,
-            i64,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-        ) -> Rc<FreeMonoid<Nat>>
-        + Clone,
-    render_file: impl Fn(Rc<FreeMonoid<Nat>>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    render_local: impl Fn(Rc<FreeMonoid<Nat>>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    render_file: impl Fn(String, i64) -> String + Clone,
+    render_local: impl Fn(String, i64) -> String + Clone,
+) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
         render_rest(op_name, transport.clone(), depth, source_indices.clone())
     } else {
@@ -2141,34 +2074,25 @@ pub fn emit_unified_transport_dispatch(
 }
 
 pub fn emit_unified_operation_method(
-    service_name: Rc<FreeMonoid<Nat>>,
+    service_name: String,
     fallback_transport: Rc<Node>,
     op_node: Rc<Node>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-    render_transport_body: impl Fn(
-            Rc<Node>,
-            Rc<FreeMonoid<Nat>>,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-            i64,
-        ) -> Rc<FreeMonoid<Nat>>
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
         + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         let si = env.source_indices.clone();
         let op_text = authored_name(env.clone(), op_node.clone());
         let params_str = emit_params_shared(op_node.params.clone(), target.clone(), si.clone());
         let sp = service_self_param(spec.clone());
-        let all_params = if (crate::v2_std_text::host_string_text_to_rust_host(sp.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-        {
+        let all_params = if (sp.clone().as_str() == "".to_string().as_str()) {
             params_str.clone()
         } else {
-            if (crate::v2_std_text::host_string_text_to_rust_host(params_str.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-            {
+            if (params_str.clone().as_str() == "".to_string().as_str()) {
                 sp.clone()
             } else {
                 v1_rt::concat(
@@ -2250,21 +2174,11 @@ pub fn emit_unified_service_def(
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-    render_service_fields: impl Fn(
-            Rc<FreeMonoid<Nat>>,
-            Rc<Node>,
-            Rc<Vec<Rc<Node>>>,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-        ) -> Rc<FreeMonoid<Nat>>
+    render_service_fields: impl Fn(String, Rc<Node>, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String
         + Clone,
-    render_transport_body: impl Fn(
-            Rc<Node>,
-            Rc<FreeMonoid<Nat>>,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-            i64,
-        ) -> Rc<FreeMonoid<Nat>>
+    render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String
         + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
@@ -2374,7 +2288,7 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
 #[serde(tag = "_variant")]
 pub enum FuncBodyShape {
     FuncBodyLet {
-        name: Rc<FreeMonoid<Nat>>,
+        name: String,
         value: Rc<Node>,
         rest: Option<Rc<Node>>,
     },
@@ -2412,7 +2326,7 @@ pub fn classify_func_body(
 #[serde(tag = "_variant")]
 pub enum TcoExprShape {
     TcoCall {
-        func: Rc<FreeMonoid<Nat>>,
+        func: String,
         args: Rc<Vec<Rc<Node>>>,
     },
     TcoIf {
@@ -2425,7 +2339,7 @@ pub enum TcoExprShape {
         arms: Rc<Vec<Rc<Node>>>,
     },
     TcoLet {
-        name: Rc<FreeMonoid<Nat>>,
+        name: String,
         value: Rc<Node>,
         body: Option<Rc<Node>>,
     },
@@ -2499,7 +2413,7 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn is_tco_eligible(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2521,7 +2435,7 @@ pub fn is_tco_eligible(
 }
 
 pub fn is_self_recursive(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     body: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2535,12 +2449,12 @@ pub fn is_self_recursive(
 pub fn tco_reassign_core(
     ordered_args: Rc<Vec<String>>,
     param_names: Rc<Vec<String>>,
-    temp_var_prefix: Rc<FreeMonoid<Nat>>,
-    temp_decl_prefix: Rc<FreeMonoid<Nat>>,
-    temp_assign_op: Rc<FreeMonoid<Nat>>,
-    stmt_terminator: Rc<FreeMonoid<Nat>>,
-    continue_str: Rc<FreeMonoid<Nat>>,
-    line_prefix: Rc<FreeMonoid<Nat>>,
+    temp_var_prefix: String,
+    temp_decl_prefix: String,
+    temp_assign_op: String,
+    stmt_terminator: String,
+    continue_str: String,
+    line_prefix: String,
 ) -> Rc<Vec<String>> {
     {
         let temp_lets = Rc::new({
@@ -2564,9 +2478,7 @@ pub fn tco_reassign_core(
                                     v1_rt::concat(line_prefix.clone(), temp_decl_prefix.clone()),
                                     temp_var_prefix.clone(),
                                 ),
-                                crate::v2_std_text::host_string_text_from_rust_host(
-                                    (pair.0.clone()).to_string(),
-                                ),
+                                (pair.0.clone()).to_string(),
                             ),
                             temp_assign_op.clone(),
                         ),
@@ -2599,9 +2511,7 @@ pub fn tco_reassign_core(
                             ),
                             temp_var_prefix.clone(),
                         ),
-                        crate::v2_std_text::host_string_text_from_rust_host(
-                            (pair.0.clone()).to_string(),
-                        ),
+                        (pair.0.clone()).to_string(),
                     ),
                     stmt_terminator.clone(),
                 ));
@@ -2617,24 +2527,20 @@ pub fn tco_reassign_core(
 
 pub fn emit_shared_tco_expr(
     mut frame: Rc<TcoFrame>,
-    mut fn_name: Rc<FreeMonoid<Nat>>,
-    mut emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> Rc<FreeMonoid<Nat>> + Clone,
-    mut emit_non_self_call: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
-    mut emit_if: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
-    mut emit_match: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
-    mut emit_let: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
-    mut emit_block: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
-    mut emit_default_return: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    mut fn_name: String,
+    mut emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String + Clone,
+    mut emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_if: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_let: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_block: impl Fn(Rc<TcoFrame>) -> String + Clone,
+    mut emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone,
+) -> String {
     loop {
         let si = frame.scope.clone().type_env.clone().source_indices.clone();
         match (*frame.expr.clone().expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (crate::v2_std_text::host_string_text_to_rust_host(expr_call_func_at(
-                    frame.expr.clone(),
-                    si,
-                )) == crate::v2_std_text::host_string_text_to_rust_host(fn_name))
-                {
+                if (expr_call_func_at(frame.expr.clone(), si).as_str() == fn_name.as_str()) {
                     break emit_self_call_reassign(Rc::new(TcoReassignInput {
                         args: frame.expr.clone().children.clone(),
                         scope: frame.scope.clone(),
@@ -2675,11 +2581,7 @@ pub fn emit_shared_tco_expr(
     }
 }
 
-pub fn shared_tco_body(
-    inner: Rc<FreeMonoid<Nat>>,
-    depth: i64,
-    spec: Rc<LanguageSpec>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn shared_tco_body(inner: String, depth: i64, spec: Rc<LanguageSpec>) -> String {
     {
         let syntax = spec.block_syntax.clone();
         let tco = spec.tco.clone();
@@ -2712,8 +2614,8 @@ pub fn shared_tco_body(
 pub fn shared_tco_default_return(
     frame: Rc<TcoFrame>,
     spec: Rc<LanguageSpec>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+) -> String {
     {
         let val_str = recurse_expr(frame.expr.clone(), frame.scope.clone(), frame.depth.clone());
         v1_rt::concat(
@@ -2727,9 +2629,8 @@ pub fn shared_tco_non_self_call(
     frame: Rc<TcoFrame>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_call: impl Fn(Rc<FreeMonoid<Nat>>, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>>
-        + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone,
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let f = expr_call_func_at(
@@ -2756,13 +2657,13 @@ pub fn shared_tco_non_self_call(
 
 pub fn shared_tco_if(
     frame: Rc<TcoFrame>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+) -> String {
     {
         let syntax = spec.block_syntax.clone();
         match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -2884,12 +2785,12 @@ pub fn shared_tco_if(
 
 pub fn shared_tco_let(
     frame: Rc<TcoFrame>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = let_binding_name_at(
@@ -2920,13 +2821,13 @@ pub fn shared_tco_let(
 
 pub fn shared_tco_block(
     frame: Rc<TcoFrame>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     spec: Rc<LanguageSpec>,
     emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprBlock => {
             let ss = frame.expr.clone().children.clone();
@@ -2966,7 +2867,7 @@ pub fn shared_tco_reassign(
     ordered_args: Rc<Vec<String>>,
     param_names: Rc<Vec<String>>,
     spec: Rc<LanguageSpec>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let all_lines = tco_reassign_core(
             ordered_args,
@@ -2986,14 +2887,14 @@ pub fn unified_tco_recurse(
     expr: Rc<Node>,
     scope: Rc<InferScope>,
     depth: i64,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    render_match: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     emit_unified_tco_expr(
         Rc::new(TcoFrame {
             expr: expr,
@@ -3012,14 +2913,14 @@ pub fn unified_tco_recurse(
 
 pub fn emit_unified_tco_expr(
     frame: Rc<TcoFrame>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    render_match: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         emit_shared_tco_expr(
@@ -3130,16 +3031,16 @@ pub fn emit_unified_tco_expr(
 
 pub fn emit_unified_tco_body(
     texpr: Rc<Node>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    render_match: impl Fn(Rc<TcoFrame>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
+    render_match: impl Fn(Rc<TcoFrame>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         let inner = emit_unified_tco_expr(
@@ -3167,7 +3068,7 @@ pub fn emit_unified_init_block_stmts(
     depth: i64,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     {
         let prepend = if language_spec(target.clone())
@@ -3195,16 +3096,16 @@ pub fn emit_unified_init_block_stmts(
 }
 
 pub fn emit_tco_match_go(
-    scrutinee_str: Rc<FreeMonoid<Nat>>,
+    scrutinee_str: String,
     arms: Rc<Vec<Rc<Node>>>,
     depth: i64,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let bs = language_spec(RenderTarget::Go).block_syntax.clone();
@@ -3299,13 +3200,13 @@ pub fn emit_tco_match_go(
 
 pub fn emit_unified_tco_match(
     frame: Rc<TcoFrame>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
             let s = match_scrutinee(frame.expr.clone());
@@ -3351,9 +3252,7 @@ pub fn emit_unified_tco_match(
                     });
                     let arms_str = arm_strs.join(&"\n".to_string());
                     let bs = language_spec(target.clone()).block_syntax.clone();
-                    if (crate::v2_std_text::host_string_text_to_rust_host(bs.block_close.clone())
-                        == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                    {
+                    if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(bs.match_keyword.clone(), scrut_str),
@@ -3388,15 +3287,15 @@ pub fn emit_unified_tco_match(
 
 pub fn emit_unified_tco_match_arm(
     arm: Rc<Node>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let bs = language_spec(target.clone()).block_syntax.clone();
         let case_depth = if bs.significant_whitespace.clone() {
@@ -3467,14 +3366,14 @@ pub fn emit_unified_tco_match_arm(
 
 pub fn emit_tco_unified(
     texpr: Rc<Node>,
-    fn_name: Rc<FreeMonoid<Nat>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+) -> String {
     emit_unified_tco_body(
         texpr,
         fn_name.clone(),
@@ -3535,7 +3434,7 @@ pub fn emit_unified_typed_func_body(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let es = language_spec(target.clone()).expression_semantics.clone();
         let bs = language_spec(target.clone()).block_syntax.clone();
@@ -3689,16 +3588,14 @@ pub fn emit_unified_typed_func_body(
 
 pub fn is_tco_candidate(
     texpr: Rc<Node>,
-    func_name: Rc<FreeMonoid<Nat>>,
+    func_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                (crate::v2_std_text::host_string_text_to_rust_host(expr_call_func_at(
-                    texpr.clone(),
-                    source_indices.clone(),
-                )) == crate::v2_std_text::host_string_text_to_rust_host(func_name.clone()))
+                (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str()
+                    == func_name.clone().as_str())
             }
             ExprData::ExprReturn => is_tco_candidate(
                 return_value(texpr.clone()),
@@ -3763,8 +3660,8 @@ pub fn is_tco_candidate(
 }
 
 pub fn suffix_escape_collides_with_reserved_chain(
-    mut name: Rc<FreeMonoid<Nat>>,
-    mut suffix: Rc<FreeMonoid<Nat>>,
+    mut name: String,
+    mut suffix: String,
     mut keywords: Rc<Vec<String>>,
 ) -> bool {
     loop {
@@ -3773,11 +3670,13 @@ pub fn suffix_escape_collides_with_reserved_chain(
         if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
             break false;
         } else {
-            if (crate::v2_std_text::host_string_text_to_rust_host(v1_rt::substring(
+            if (v1_rt::substring(
                 &name,
                 (name_len.clone() - suffix_len.clone()),
                 name_len.clone(),
-            )) != crate::v2_std_text::host_string_text_to_rust_host(suffix.clone()))
+            )
+            .as_str()
+                != suffix.clone().as_str())
             {
                 break false;
             } else {
@@ -3785,9 +3684,7 @@ pub fn suffix_escape_collides_with_reserved_chain(
                 if {
                     let mut __found = false;
                     for r in keywords.clone().iter().cloned() {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(r.clone())
-                            == crate::v2_std_text::host_string_text_to_rust_host(base.clone()))
-                        {
+                        if (r.clone().as_str() == base.clone().as_str()) {
                             __found = true;
                             break;
                         }
@@ -3808,17 +3705,15 @@ pub fn suffix_escape_collides_with_reserved_chain(
 }
 
 pub fn emit_suffix_escape_ident(
-    converted: Rc<FreeMonoid<Nat>>,
-    suffix: Rc<FreeMonoid<Nat>>,
+    converted: String,
+    suffix: String,
     keywords: Rc<Vec<String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let is_reserved = {
             let mut __found = false;
             for r in keywords.clone().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(r.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(converted.clone()))
-                {
+                if (r.clone().as_str() == converted.clone().as_str()) {
                     __found = true;
                     break;
                 }
@@ -3839,7 +3734,7 @@ pub fn emit_suffix_escape_ident(
     }
 }
 
-pub fn emit_ident(name: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_ident(name: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
         let converted = match spec.naming_case.clone() {
@@ -3851,9 +3746,7 @@ pub fn emit_ident(name: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMon
         let is_reserved = {
             let mut __found = false;
             for r in spec.reserved_words.clone().keywords.clone().iter().cloned() {
-                if (crate::v2_std_text::host_string_text_to_rust_host(r.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host(converted.clone()))
-                {
+                if (r.clone().as_str() == converted.clone().as_str()) {
                     __found = true;
                     break;
                 }
@@ -3885,7 +3778,7 @@ pub fn emit_ident(name: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMon
     }
 }
 
-pub fn emit_export_ident(name: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target.clone());
         match (*spec.visibility.clone()).clone() {
@@ -3896,9 +3789,7 @@ pub fn emit_export_ident(name: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<
                 let is_reserved = {
                     let mut __found = false;
                     for r in spec.reserved_words.clone().keywords.clone().iter().cloned() {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(r.clone())
-                            == crate::v2_std_text::host_string_text_to_rust_host(result.clone()))
-                        {
+                        if (r.clone().as_str() == result.clone().as_str()) {
                             __found = true;
                             break;
                         }
@@ -3938,9 +3829,9 @@ pub fn emit_export_ident(name: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<
 }
 
 pub fn apply_bridge_method_overrides(
-    name: Rc<FreeMonoid<Nat>>,
+    name: String,
     overrides: Rc<HashMap<String, String>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match v1_rt::lookup(&overrides, name.clone()) {
         v1_rt::Witness::Holds {
             value: replacement, ..
@@ -3949,11 +3840,7 @@ pub fn apply_bridge_method_overrides(
     }
 }
 
-pub fn emit_let_binding(
-    name: Rc<FreeMonoid<Nat>>,
-    value: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target.clone());
         apply_type_template2(
@@ -3965,11 +3852,11 @@ pub fn emit_let_binding(
 }
 
 pub fn emit_let_binding_annotated(
-    name: Rc<FreeMonoid<Nat>>,
-    type_str: Rc<FreeMonoid<Nat>>,
-    value: Rc<FreeMonoid<Nat>>,
+    name: String,
+    type_str: String,
+    value: String,
     target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         apply_type_template3(
@@ -3981,15 +3868,11 @@ pub fn emit_let_binding_annotated(
     }
 }
 
-pub fn emit_return(value: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_return(value: String, target: RenderTarget) -> String {
     v1_rt::concat("return ".to_string(), value)
 }
 
-pub fn emit_unary_op(
-    op: UnaryOpKind,
-    operand_str: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> String {
     match op {
         UnaryOpKind::Not => v1_rt::concat(emit_keyword("not".to_string(), target), operand_str),
         UnaryOpKind::Neg => v1_rt::concat("-".to_string(), operand_str),
@@ -4003,18 +3886,14 @@ pub fn go_lambda_emits_statement_body(body: Rc<Node>) -> bool {
     }
 }
 
-pub fn emit_lambda(
-    params_str: Rc<FreeMonoid<Nat>>,
-    body_str: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
         apply_type_template2(spec.lambda_template.clone(), params_str, body_str)
     }
 }
 
-pub fn emit_error_expr(message: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_error_expr(message: String, target: RenderTarget) -> String {
     {
         let msg = emit_string_literal(message, "".to_string());
         let spec = language_spec(target);
@@ -4022,10 +3901,7 @@ pub fn emit_error_expr(message: Rc<FreeMonoid<Nat>>, target: RenderTarget) -> Rc
     }
 }
 
-pub fn emit_lambda_params(
-    param_names: Rc<Vec<String>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = language_spec(target.clone());
         let param_strs = Rc::new({
@@ -4042,10 +3918,7 @@ pub fn emit_lambda_params(
     }
 }
 
-pub fn emit_list_lit_expr(
-    element_strs: Rc<Vec<String>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_list_lit_expr(element_strs: Rc<Vec<String>>, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
         if ((element_strs.clone().len() as i64) == 0) {
@@ -4059,11 +3932,7 @@ pub fn emit_list_lit_expr(
     }
 }
 
-pub fn emit_null_coalesce(
-    l_str: Rc<FreeMonoid<Nat>>,
-    r_str: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
         apply_type_template2(spec.null_coalesce_template.clone(), l_str, r_str)
@@ -4074,18 +3943,14 @@ pub fn emit_expr_var_shared(
     expr: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let n = expr_var_name_at(expr, source_indices);
-        if (crate::v2_std_text::host_string_text_to_rust_host(n.clone())
-            == crate::v2_std_text::host_string_text_to_rust_host("none".to_string()))
-        {
+        if (n.clone().as_str() == "none".to_string().as_str()) {
             emit_keyword("null".to_string(), target)
         } else {
-            if ((crate::v2_std_text::host_string_text_to_rust_host(n.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("true".to_string()))
-                || (crate::v2_std_text::host_string_text_to_rust_host(n.clone())
-                    == crate::v2_std_text::host_string_text_to_rust_host("false".to_string())))
+            if ((n.clone().as_str() == "true".to_string().as_str())
+                || (n.clone().as_str() == "false".to_string().as_str()))
             {
                 emit_keyword(n.clone(), target)
             } else {
@@ -4098,9 +3963,9 @@ pub fn emit_expr_var_shared(
 pub fn emit_expr_field_access_shared(
     expr: Rc<Node>,
     target: RenderTarget,
-    emit_field: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
+    emit_field: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     if is_typed_service_call_receiver(expr.clone(), source_indices.clone()) {
         match extract_typed_service_name(expr.clone(), source_indices.clone()) {
             Some(svc_name) => service_var_name(svc_name.clone()),
@@ -4137,9 +4002,9 @@ pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let expr_str = recurse(expr.clone());
         let ty_str = emit_node_type(cast_target_node, target.clone(), source_indices.clone());
@@ -4149,10 +4014,8 @@ pub fn emit_typed_cast_shared(
             }
             _ => "".to_string(),
         };
-        if ((crate::v2_std_text::host_string_text_to_rust_host(src_ty.clone())
-            != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-            && (crate::v2_std_text::host_string_text_to_rust_host(src_ty.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host(ty_str.clone())))
+        if ((src_ty.clone().as_str() != "".to_string().as_str())
+            && (src_ty.clone().as_str() == ty_str.clone().as_str()))
         {
             expr_str
         } else {
@@ -4175,15 +4038,15 @@ pub fn emit_typed_cast_shared(
 }
 
 pub fn emit_typed_for_each_shared(
-    variable: Rc<FreeMonoid<Nat>>,
+    variable: String,
     collection: Rc<Node>,
     body: Rc<Node>,
     target: RenderTarget,
     depth: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     scope: Rc<InferScope>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let coll_str = recurse(collection.clone(), scope.clone(), depth.clone());
         let elem_type =
@@ -4254,9 +4117,9 @@ pub fn emit_typed_index_shared(
     base: Rc<Node>,
     index: Rc<Node>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         let base_str = recurse(base.clone());
@@ -4291,9 +4154,9 @@ pub fn emit_typed_slice_shared(
     start: Rc<Node>,
     end: Rc<Node>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let spec = language_spec(target.clone());
         let base_str = recurse(base.clone());
@@ -4321,24 +4184,24 @@ pub fn emit_shared_expr(
     texpr: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    wrap_result: impl Fn(Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> + Clone,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_var: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_field_access: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_call: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_method_call: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_match: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_if: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_let: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_record_lit: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_string_interp: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_block: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_cast: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_for_each: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_index: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_slice: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    emit_bin_op: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    wrap_result: impl Fn(String) -> String + Clone,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    emit_var: impl Fn(Rc<Node>) -> String + Clone,
+    emit_field_access: impl Fn(Rc<Node>) -> String + Clone,
+    emit_call: impl Fn(Rc<Node>) -> String + Clone,
+    emit_method_call: impl Fn(Rc<Node>) -> String + Clone,
+    emit_match: impl Fn(Rc<Node>) -> String + Clone,
+    emit_if: impl Fn(Rc<Node>) -> String + Clone,
+    emit_let: impl Fn(Rc<Node>) -> String + Clone,
+    emit_record_lit: impl Fn(Rc<Node>) -> String + Clone,
+    emit_string_interp: impl Fn(Rc<Node>) -> String + Clone,
+    emit_block: impl Fn(Rc<Node>) -> String + Clone,
+    emit_cast: impl Fn(Rc<Node>) -> String + Clone,
+    emit_for_each: impl Fn(Rc<Node>) -> String + Clone,
+    emit_index: impl Fn(Rc<Node>) -> String + Clone,
+    emit_slice: impl Fn(Rc<Node>) -> String + Clone,
+    emit_bin_op: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => {
             wrap_result(emit_literal(v.clone(), target.clone()))
@@ -4414,9 +4277,9 @@ pub fn emit_default_bin_op(
     texpr: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-    wrap_result: impl Fn(Rc<FreeMonoid<Nat>>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+    wrap_result: impl Fn(String) -> String + Clone,
+) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprBinOp {
             op,
@@ -4464,7 +4327,7 @@ pub fn emit_block_stmts_shared(
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
-    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
+    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
@@ -4508,7 +4371,7 @@ pub fn emit_init_block_stmts_shared(
     mut scope: Rc<InferScope>,
     mut depth: i64,
     mut prepend_indent: bool,
-    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
+    mut emit_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
@@ -4559,14 +4422,14 @@ pub fn emit_init_block_stmts_shared(
 }
 
 pub fn emit_typed_let_shared(
-    name: Rc<FreeMonoid<Nat>>,
-    value_str: Rc<FreeMonoid<Nat>>,
+    name: String,
+    value_str: String,
     body: Option<Rc<Node>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> String + Clone,
     scope: Rc<InferScope>,
     value_node: Rc<Node>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let let_line = emit_let_binding(name.clone(), value_str, target);
         match body {
@@ -4588,15 +4451,15 @@ pub fn emit_typed_let_shared(
 }
 
 pub fn emit_typed_if_shared(
-    cond_str: Rc<FreeMonoid<Nat>>,
+    cond_str: String,
     then_branch: Rc<Node>,
     else_branch: Option<Rc<Node>>,
     if_result_type: Option<Rc<Node>>,
     depth: i64,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
+) -> String {
     {
         let spec = language_spec(target.clone());
         let es = spec.expression_semantics.clone();
@@ -4726,7 +4589,7 @@ pub fn emit_param_shared(
     param: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let ty = emit_node_type(
             param_node_type_expr(param.clone()),
@@ -4754,7 +4617,7 @@ pub fn emit_params_shared(
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
@@ -4781,7 +4644,7 @@ pub fn emit_inferred_shared(
     inferred: Rc<Node>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     if language_spec(target.clone())
         .expression_semantics
         .clone()
@@ -4817,7 +4680,7 @@ pub fn emit_typed_block_join(
     scope: Rc<InferScope>,
     depth: i64,
     emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let state = emit_block_stmts(stmts, scope, depth);
         state.text.clone().join(&"\n".to_string())
@@ -4836,11 +4699,11 @@ pub fn method_template_emit_for_target(
 }
 
 pub fn emit_algebra_method_template(
-    method_name: Rc<FreeMonoid<Nat>>,
-    recv_str: Rc<FreeMonoid<Nat>>,
-    first_arg_str: Rc<FreeMonoid<Nat>>,
+    method_name: String,
+    recv_str: String,
+    first_arg_str: String,
     target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+) -> Option<String> {
     match method_template_emit_for_target(target) {
         Some(templates) => match v1_rt::map_get(&templates, method_name) {
             Some(tmpl) => {
@@ -4860,8 +4723,8 @@ pub fn emit_algebra_method_template(
 pub fn emit_typed_first_arg_shared(
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     match args.first().cloned() {
         Some(a) => recurse(arg_value(a.clone())),
         None => emit_error_expr("missing method argument".to_string(), target),
@@ -4871,8 +4734,8 @@ pub fn emit_typed_first_arg_shared(
 pub fn emit_typed_string_interp_unified(
     parts: Rc<Vec<Rc<StringPart>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let spec = language_spec(target);
         let interp = spec.string_interp.clone();
@@ -4937,9 +4800,7 @@ pub fn emit_typed_string_interp_unified(
                     .iter()
                     .cloned()
                     {
-                        if (crate::v2_std_text::host_string_text_to_rust_host(a.clone())
-                            != crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-                        {
+                        if (a.clone().as_str() != "".to_string().as_str()) {
                             __result.push(a);
                         }
                     }
@@ -4985,12 +4846,12 @@ pub fn emit_typed_string_interp_unified(
 }
 
 pub fn emit_typed_record_lit_unified(
-    type_name: Rc<FreeMonoid<Nat>>,
+    type_name: Option<String>,
     fields: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let rls = language_spec(target.clone()).record_lit.clone();
         match type_name {
@@ -5074,7 +4935,7 @@ pub fn emit_typed_record_lit_unified(
     }
 }
 
-pub fn is_go_v2rt_free_function(name: Rc<FreeMonoid<Nat>>) -> bool {
+pub fn is_go_v2rt_free_function(name: String) -> bool {
     match name.as_str() {
         "concat" => true,
         "to_string" => true,
@@ -5083,10 +4944,7 @@ pub fn is_go_v2rt_free_function(name: Rc<FreeMonoid<Nat>>) -> bool {
     }
 }
 
-pub fn emit_go_v2rt_free_call(
-    func: Rc<FreeMonoid<Nat>>,
-    arg_strs: Rc<Vec<String>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_go_v2rt_free_call(func: String, arg_strs: Rc<Vec<String>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -5106,13 +4964,13 @@ pub fn emit_go_v2rt_free_call(
 }
 
 pub fn emit_typed_call_unified(
-    func: Rc<FreeMonoid<Nat>>,
+    func: String,
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let spec = language_spec(target.clone());
         let ordered_args = order_typed_call_args(args, func.clone(), scope);
@@ -5197,10 +5055,7 @@ pub fn emit_typed_call_unified(
     }
 }
 
-pub fn bridge_method_name_unified(
-    method_name: Rc<FreeMonoid<Nat>>,
-    target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
         let overridden =
@@ -5210,13 +5065,13 @@ pub fn bridge_method_name_unified(
 }
 
 pub fn emit_algebra_method_call_unified(
-    method_name: Rc<FreeMonoid<Nat>>,
+    method_name: String,
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    first_arg_str: Rc<FreeMonoid<Nat>>,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    first_arg_str: String,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let spec = language_spec(target.clone());
         let recv_str = recurse(receiver);
@@ -5257,11 +5112,11 @@ pub fn emit_algebra_method_call_unified(
 
 pub fn emit_plain_method_call_unified(
     receiver: Rc<Node>,
-    method: Rc<FreeMonoid<Nat>>,
+    method: String,
     args: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let recv_str = recurse(receiver);
         let arg_strs = Rc::new({
@@ -5290,15 +5145,15 @@ pub fn emit_plain_method_call_unified(
 
 pub fn emit_typed_method_call_unified(
     receiver: Rc<Node>,
-    method: Rc<FreeMonoid<Nat>>,
+    method: String,
     args: Rc<Vec<Rc<Node>>>,
     method_semantics: Option<Rc<MethodSemantics>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let spec = language_spec(target.clone());
         let source_indices = scope.type_env.clone().source_indices.clone();
@@ -5406,7 +5261,7 @@ pub fn emit_unified_pattern(
     pattern: Rc<MatchPattern>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match (*pattern).clone() {
         MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), target),
         MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), target),
@@ -5422,10 +5277,7 @@ pub fn emit_unified_pattern(
     }
 }
 
-pub fn go_variant_case_type(
-    name: Rc<FreeMonoid<Nat>>,
-    parent_enum: Rc<FreeMonoid<Nat>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn go_variant_case_type(name: String, parent_enum: Option<String>) -> String {
     match parent_enum {
         Some(parent) => v1_rt::concat(parent.clone(), name),
         None => name,
@@ -5433,12 +5285,12 @@ pub fn go_variant_case_type(
 }
 
 pub fn emit_unified_variant_pattern(
-    name: Rc<FreeMonoid<Nat>>,
-    parent_enum: Rc<FreeMonoid<Nat>>,
+    name: String,
+    parent_enum: Option<String>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let es = language_spec(target.clone()).expression_semantics.clone();
         match es.variant_pattern.clone() {
@@ -5497,10 +5349,7 @@ pub fn emit_unified_variant_pattern(
     }
 }
 
-pub fn emit_match_arm_body_stmt(
-    target: RenderTarget,
-    body_str: Rc<FreeMonoid<Nat>>,
-) -> Rc<FreeMonoid<Nat>> {
+pub fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
     match language_spec(target)
         .expression_semantics
         .clone()
@@ -5517,10 +5366,10 @@ pub fn emit_match_arm_line(
     target: RenderTarget,
     case_depth: i64,
     body_depth: i64,
-    body_str: Rc<FreeMonoid<Nat>>,
-    guard_str: Rc<FreeMonoid<Nat>>,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    body_str: String,
+    guard_str: String,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+) -> String {
     {
         let spec = language_spec(target);
         let bs = spec.block_syntax.clone();
@@ -5549,8 +5398,8 @@ pub fn emit_match_arm_line(
 pub fn emit_arm_guard(
     arm: Rc<Node>,
     target: RenderTarget,
-    render_guard_expr: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    render_guard_expr: impl Fn(Rc<Node>) -> String + Clone,
+) -> String {
     {
         let es = language_spec(target.clone()).expression_semantics.clone();
         match arm_guard(arm) {
@@ -5570,7 +5419,7 @@ pub fn emit_go_match_arm_bindings(
     arm: Rc<Node>,
     indent_level: i64,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match (*arm_pattern(arm)).clone() {
         MatchPattern::VariantPattern {
             field_bindings: fbs,
@@ -5615,13 +5464,13 @@ pub fn emit_go_match_arm_bindings(
 }
 
 pub fn emit_typed_match_go(
-    scrutinee_str: Rc<FreeMonoid<Nat>>,
+    scrutinee_str: String,
     arms: Rc<Vec<Rc<Node>>>,
     depth: i64,
-    recurse: impl Fn(Rc<Node>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let bs = language_spec(RenderTarget::Go).block_syntax.clone();
         let case_depth = (depth.clone() + 1);
@@ -5678,14 +5527,14 @@ pub fn emit_typed_match_go(
 }
 
 pub fn emit_typed_match_unified(
-    scrutinee_str: Rc<FreeMonoid<Nat>>,
+    scrutinee_str: String,
     arms: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
     depth: i64,
-    recurse: impl Fn(Rc<Node>, i64) -> Rc<FreeMonoid<Nat>> + Clone,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>, i64) -> String + Clone,
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     match target.clone() {
         RenderTarget::Go => emit_typed_match_go(
             scrutinee_str,
@@ -5728,9 +5577,7 @@ pub fn emit_typed_match_unified(
                 __result
             });
             let arms_str = arm_strs.join(&"\n".to_string());
-            if (crate::v2_std_text::host_string_text_to_rust_host(bs.block_close.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host("".to_string()))
-            {
+            if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(bs.match_keyword.clone(), scrutinee_str),
@@ -5761,11 +5608,11 @@ pub fn emit_typed_match_unified(
 }
 
 pub fn emit_field_access_unified(
-    base_str: Rc<FreeMonoid<Nat>>,
-    field: Rc<FreeMonoid<Nat>>,
+    base_str: String,
+    field: String,
     summary: Option<Rc<FieldSummary>>,
     target: RenderTarget,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let ts = language_spec(target.clone()).tuple_syntax.clone();
         match summary {
@@ -5794,8 +5641,8 @@ pub fn emit_unified_typed_expr(
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
-    render_pattern: impl Fn(Rc<MatchPattern>) -> Rc<FreeMonoid<Nat>> + Clone,
-) -> Rc<FreeMonoid<Nat>> {
+    render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let si = scope.type_env.clone().source_indices.clone();
         let spec = language_spec(target.clone());
@@ -6170,18 +6017,13 @@ pub fn emit_unified_typed_expr(
 
 pub fn is_tco_identity_passthrough(
     arg_val: Rc<Node>,
-    param_name: Rc<FreeMonoid<Nat>>,
+    param_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg_val.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: _, ..
-        } => {
-            (crate::v2_std_text::host_string_text_to_rust_host(expr_var_name_at(
-                arg_val.clone(),
-                si,
-            )) == crate::v2_std_text::host_string_text_to_rust_host(param_name))
-        }
+        } => (expr_var_name_at(arg_val.clone(), si).as_str() == param_name.as_str()),
         _ => false,
     }
 }
@@ -6190,9 +6032,9 @@ pub fn emit_typed_tco_reassign_shared(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
     target: RenderTarget,
-    recurse: impl Fn(Rc<Node>) -> Rc<FreeMonoid<Nat>> + Clone,
+    recurse: impl Fn(Rc<Node>) -> String + Clone,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FreeMonoid<Nat>> {
+) -> String {
     {
         let arg_values = Rc::new({
             let mut __result = Vec::new();
@@ -6260,25 +6102,6 @@ pub fn emit_typed_tco_reassign_shared(
     }
 }
 
-pub fn seed_bindings(
-    key: Rc<FreeMonoid<Nat>>,
-    value: Rc<FreeMonoid<Nat>>,
-) -> Rc<HashMap<String, String>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<Rc<FreeMonoid<Nat>>, Rc<FreeMonoid<Nat>>>(),
-        key,
-        value,
-    )
+pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
+    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, String>(), key, value)
 }
-
-pub struct CapServiceEmit;
-pub struct CapAsyncTransport;
-pub struct CapTestGeneration;
-pub struct CapDryRunMode;
-pub struct CapRcOwnership;
-pub struct ExprCatLeaf;
-pub struct ExprCatCompound;
-pub struct ExprCatControlFlow;
-pub struct ExprCatBinding;
-pub struct ExprCatService;
-pub struct ExprCatNone;

@@ -3,12 +3,7 @@
 
 use self::CargoDepSource::*;
 use self::CargoTarget::*;
-use self::RustEdition::*;
 use self::TestHarness::*;
-pub use crate::extdeps_cargo_version::{
-    CargoPackageVersion, CargoToolVersionFloor, CargoVersionRequirement,
-};
-pub use crate::std_types::FilePathParts;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -18,68 +13,29 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum RustEdition {
-    Edition2015,
-    Edition2018,
-    Edition2021,
-    Edition2024,
-}
-
-pub fn rust_edition_str(edition: RustEdition) -> Rc<FreeMonoid<Nat>> {
-    match edition {
-        RustEdition::Edition2015 => "2015".to_string(),
-        RustEdition::Edition2018 => "2018".to_string(),
-        RustEdition::Edition2021 => "2021".to_string(),
-        RustEdition::Edition2024 => "2024".to_string(),
-    }
-}
-
-pub fn default_rust_edition() -> RustEdition {
-    thread_local! {
-        static CACHED: RustEdition = {
-            RustEdition::Edition2021
-        };
-    }
-    CACHED.with(|c: &RustEdition| c.clone())
-}
-
-pub fn min_cargo_version() -> SemVerConstraint {
-    thread_local! {
-        static CACHED: SemVerConstraint = {
-            serde_json::from_value(serde_json::json!(">= 1.56"))
-                .expect("valid data definition")
-        };
-    }
-    CACHED.with(|c: &SemVerConstraint| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoPackage {
-    pub name: Rc<FreeMonoid<Nat>>,
-    pub version: Box<CargoPackageVersion>,
-    pub edition: RustEdition,
-    pub path: Rc<FreeMonoid<Nat>>,
+    pub name: String,
+    pub version: String,
+    pub edition: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CargoDepSource {
     RegistryDep {
-        version: Box<CargoVersionRequirement>,
+        version: String,
         features: Rc<Vec<String>>,
     },
     LocalPathDep {
-        path: Rc<FreeMonoid<Nat>>,
+        path: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoDependency {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub source: Rc<CargoDepSource>,
 }
 
@@ -87,13 +43,13 @@ pub struct CargoDependency {
 #[serde(tag = "_variant")]
 pub enum CargoTarget {
     Lib,
-    Bin { name: Rc<FreeMonoid<Nat>> },
-    CargoTest { name: Rc<FreeMonoid<Nat>> },
-    Example { name: Rc<FreeMonoid<Nat>> },
-    Bench { name: Rc<FreeMonoid<Nat>> },
+    Bin { name: String },
+    CargoTest { name: String },
+    Example { name: String },
+    Bench { name: String },
 }
 impl CargoTarget {
-    pub fn name(&self) -> Rc<FreeMonoid<Nat>> {
+    pub fn name(&self) -> String {
         match self {
             CargoTarget::Lib => panic!("no name on unit variant"),
             CargoTarget::Bin { name: __val, .. } => __val.clone(),
@@ -104,67 +60,7 @@ impl CargoTarget {
     }
 }
 
-pub fn cargo_target_source_path(
-    target: Rc<CargoTarget>,
-    package_name: Rc<FreeMonoid<Nat>>,
-) -> Rc<FilePathParts> {
-    match (*target).clone() {
-        CargoTarget::Lib => Rc::new(FilePathParts {
-            segments: Rc::new(vec!["src".to_string(), "lib.rs".to_string()]),
-        }),
-        CargoTarget::Bin { name: name, .. } => {
-            if (crate::v2_std_text::host_string_text_to_rust_host(name.clone())
-                == crate::v2_std_text::host_string_text_to_rust_host(package_name))
-            {
-                Rc::new(FilePathParts {
-                    segments: Rc::new(vec!["src".to_string(), "main.rs".to_string()]),
-                })
-            } else {
-                Rc::new(FilePathParts {
-                    segments: Rc::new(vec![
-                        "src".to_string(),
-                        "bin".to_string(),
-                        v1_rt::concat(name.clone(), ".rs".to_string()),
-                    ]),
-                })
-            }
-        }
-        CargoTarget::CargoTest { name: name, .. } => Rc::new(FilePathParts {
-            segments: Rc::new(vec![
-                "tests".to_string(),
-                v1_rt::concat(name.clone(), ".rs".to_string()),
-            ]),
-        }),
-        CargoTarget::Example { name: name, .. } => Rc::new(FilePathParts {
-            segments: Rc::new(vec![
-                "examples".to_string(),
-                v1_rt::concat(name.clone(), ".rs".to_string()),
-            ]),
-        }),
-        CargoTarget::Bench { name: name, .. } => Rc::new(FilePathParts {
-            segments: Rc::new(vec![
-                "benches".to_string(),
-                v1_rt::concat(name.clone(), ".rs".to_string()),
-            ]),
-        }),
-    }
-}
-
-pub fn rust_module_candidate_paths(stem: Rc<FreeMonoid<Nat>>) -> Rc<Vec<Rc<FilePathParts>>> {
-    Rc::new(vec![
-        Rc::new(FilePathParts {
-            segments: Rc::new(vec![
-                "src".to_string(),
-                v1_rt::concat(stem.clone(), ".rs".to_string()),
-            ]),
-        }),
-        Rc::new(FilePathParts {
-            segments: Rc::new(vec!["src".to_string(), stem.clone(), "mod.rs".to_string()]),
-        }),
-    ])
-}
-
-pub type CargoProfile = Rc<FreeMonoid<Nat>>;
+pub type CargoProfile = String;
 
 pub fn canonical_profiles() -> Rc<Vec<String>> {
     thread_local! {
@@ -177,7 +73,7 @@ pub fn canonical_profiles() -> Rc<Vec<String>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoFeature {
-    pub name: Rc<FreeMonoid<Nat>>,
+    pub name: String,
     pub dependencies: Rc<Vec<String>>,
 }
 
@@ -190,18 +86,20 @@ pub enum TestHarness {
     NoHarness,
 }
 
-pub fn default_profile() -> Rc<FreeMonoid<Nat>> {
+pub fn default_edition() -> String {
     thread_local! {
-        static CACHED: Rc<FreeMonoid<Nat>> = {
+        static CACHED: String = {
+            "2021".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn default_profile() -> String {
+    thread_local! {
+        static CACHED: String = {
             "dev".to_string()
         };
     }
-    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
-
-pub struct Edition2015;
-pub struct Edition2018;
-pub struct Edition2021;
-pub struct Edition2024;
-pub struct Harness;
-pub struct NoHarness;
