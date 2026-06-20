@@ -13,11 +13,13 @@ module v2.test.claim.ci_floor_plan_witness
 import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
 }
+import gunbc.ci_fleet { gunbc_ci_floor_compute_request }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_runnable,
   gunbc_ci_floor_breadth, gunbc_ci_floor_spawn_width,
-  gunbc_ci_floor_spawn_fits_memory_budget
+  gunbc_ci_floor_spawn_fits_memory_budget,
 }
+import product.compute_fabric { ComputeRequest }
 import std.measure { hardware_thread_count_value }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
 import v2.std.algebra { length, list_snoc_item }
@@ -103,33 +105,34 @@ fn witness_corpus_skip_node_frontier_enabled() -> Bool {
   }
 }
 
-// Connected relationship: spawn_width is DERIVED (min of breadth, hardware threads, and the
-// memory budget / per-shard peak), never a tuned constant. It is positive and never exceeds
-// the work breadth — fanning out more workers than shards would be wasted concurrency.
+// Connected relationship: spawn_width is DERIVED from ComputeRequest + BMC-grounded
+// grantable (never a tuned constant). It is positive and never exceeds work breadth.
 fn witness_spawn_width_bounded_by_breadth() -> Bool {
   let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width())
   (width >= 1) && (width <= gunbc_ci_floor_breadth())
 }
 
-// Discriminating: the floor is NOT serial. A revert to a constant shard_count (=1) or a
-// supply that collapsed to one thread makes breadth/width 1 → this goes RED.
-fn witness_floor_not_serial() -> Bool {
-  (gunbc_ci_floor_breadth() > 1) &&
-    (hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 1)
+// Meantime stopgap: grantable reserve caps fan-out to 1 on the real fleet — serial
+// corpus discovery prevents claim_executor from reaching ~93 GiB anon-rss. A memory-
+// blind width (= breadth=7) would flip this RED.
+fn witness_floor_spawn_width_grantable_capped() -> Bool {
+  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) == 1
 }
 
-// Connected memory relationship (the §5 OOM oracle): the scheduled width's concurrent memory
-// peak fits the fleet memory budget. DISCRIMINATING against the memory-blind regression — if
-// placement_spawn_width dropped its memory term, width would jump to min(breadth, threads)=7
-// and 7×(per-shard peak) would blow the budget, flipping this RED. This is the witness that
-// would have caught the deterministic floor-OOM (exit 137) at model time, not on the fleet.
+// CI is a pure fabric consumer — it emits ComputeRequest, not bytes or width.
+fn witness_floor_emits_compute_request() -> Bool {
+  match gunbc_ci_floor_compute_request() {
+    ComputeRequest { class: _ } => true
+  }
+}
+
+// Connected memory relationship (the §5 OOM oracle): the scheduled width's concurrent
+// class-memory peak fits grantable. DISCRIMINATING against the memory-blind regression.
 fn witness_floor_width_fits_memory_budget() -> Bool {
   gunbc_ci_floor_spawn_fits_memory_budget()
 }
 
-// Discriminating: the memory term is ACTIVE — on the real fleet the per-shard peak caps the
-// width strictly below the CPU/breadth bound (mem budget admits fewer than `breadth` units).
-// A memory-blind width would equal breadth, flipping this RED.
+// Discriminating: the grantable reserve term is ACTIVE — width is strictly below breadth.
 fn witness_floor_width_memory_bounded() -> Bool {
   hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) < gunbc_ci_floor_breadth()
 }
@@ -144,7 +147,8 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_corpus_has_no_explicit_entries() &&
     witness_corpus_skip_node_frontier_enabled() &&
     witness_spawn_width_bounded_by_breadth() &&
-    witness_floor_not_serial() &&
+    witness_floor_spawn_width_grantable_capped() &&
+    witness_floor_emits_compute_request() &&
     witness_floor_width_fits_memory_budget() &&
     witness_floor_width_memory_bounded()
 }

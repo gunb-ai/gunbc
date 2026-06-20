@@ -66,6 +66,7 @@ import extdeps.cpu {
 }
 import extdeps.cpu.types {
   CpuDeploymentFacts,
+  CpuFacts,
   CpuModelCatalogRow,
   CpuSocket,
   SocketPackage,
@@ -78,6 +79,7 @@ import extdeps.toolchain.types {
   Riscv64,
   Wasm32,
 }
+import extdeps.bmc.types { BmcGroundedHostObservations }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.realization_width { bounded_host_spawn_width, int_min }
@@ -370,6 +372,20 @@ fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: 
     hardware_threads: cpu_facts_threads(cpu),
     clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
     ram_bytes: ram_bytes_total,
+  }
+}
+
+// BMC-grounded placement row — step 3 of the allocator plan (retire stub threads/RAM).
+fn placement_supply_row_from_bmc(
+  identity: HostIdentity,
+  obs: BmcGroundedHostObservations,
+  cpu: CpuFacts,
+) -> PlacementSupplyRow {
+  PlacementSupplyRow {
+    identity: identity,
+    hardware_threads: obs.processor_core_count,
+    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
+    ram_bytes: obs.total_memory_bytes,
   }
 }
 

@@ -9,6 +9,17 @@ module gunbc.ci_fleet
 import extdeps.cpu.ampere { altra_q6430_catalog }
 import extdeps.github.actions { RunnerSpec }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import extdeps.bmc.types {
+  BmcGroundedHostObservations,
+  BmcTelemetrySnapshot,
+  RedfishChassisSensorCollection,
+  RedfishSensorReading,
+  RedfishSystemInventory,
+  On,
+}
+import extdeps.bmc.redfish { redfish_system_inventory }
+import extdeps.bmc { bmc_ground_snapshot }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 import product.compute_fabric {
   ComputeOffer,
   ComputeSupplyFacts,
@@ -22,17 +33,23 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
-  WorkDemand,
-  ResourceEnvelope,
-  MemoryRequirement,
-  IsolationRequirement,
-  IndependentShards,
-  offer_placement_supply_row,
-  placement_spawn_width,
-  placement_floor_memory_budget_bytes,
+  ComputeRequest,
+  placement_spawn_width_for_request,
+  placement_grantable_memory_bytes,
+  placement_supply_row_from_bmc,
+  allocation_class_memory_cost,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
-import std.measure { byte_size, byte_size_count, hertz, hardware_thread_count, hardware_thread_count_value, HardwareThreadCount }
+import std.measure {
+  byte_size,
+  gibibyte,
+  gibibyte_to_byte_size,
+  hertz,
+  hardware_thread_count,
+  hardware_thread_count_value,
+  HardwareThreadCount,
+  watt,
+}
 import std.os.types {
   OperatingSystemSurface,
   Linux,
@@ -43,9 +60,49 @@ import product.placement_supply { HostIdentity, PlacementSupplyRow }
 
 data gunbc_ci_host_identity: HostIdentity = "gunbc-ci-fleet"
 
+// BMC-grounded srv2 inventory (live Redfish probe 2026-06-20, operator warm-crane-135).
+// Replaces hand-typed RAM/thread stubs — allocator plan step 3.
+data gunbc_ci_bmc_redfish_system: RedfishSystemInventory = redfish_system_inventory(
+  model: "ALTRAD8UD-1L2T",
+  manufacturer: Present { value: "ASRockRack" },
+  processor_model: "Ampere(R) Altra(R) Processor",
+  processor_count: 1,
+  processor_core_count: hardware_thread_count(128),
+  total_memory_gib: gibibyte(128),
+  power_state: On,
+  logical_processor_count: Present { value: hardware_thread_count(128) },
+)
+
+data gunbc_ci_bmc_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
+  chassis_id: asrock_altrad8ud_redfish_chassis_id,
+  sensors: [
+    PowerSensor {
+      name: "power_PWR_Core_VRD",
+      watts: Present { value: watt(count: 95) },
+    },
+    PowerSensor {
+      name: "power_PWR_SOC_VRD",
+      watts: Present { value: watt(count: 17) },
+    },
+  ],
+}
+
+data gunbc_ci_bmc_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: gunbc_ci_bmc_redfish_system,
+  power: none,
+  thermal: none,
+  sensors: Present { value: gunbc_ci_bmc_sensor_power },
+}
+
+fn gunbc_ci_bmc_grounded() -> BmcGroundedHostObservations {
+  bmc_ground_snapshot(snapshot: gunbc_ci_bmc_telemetry)
+}
+
 data gunbc_ci_cpu: CpuFacts = CpuFacts {
   catalog: altra_q6430_catalog,
-  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+  deployment: CpuDeploymentFacts {
+    sustained_per_thread_hz: hertz(3000000000),
+  },
 }
 
 data gunbc_ci_linux_surface: OperatingSystemSurface = OperatingSystemSurface {
@@ -60,12 +117,13 @@ data gunbc_ci_host: ComputeHost = ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
-  // 125 GiB measured on the real fleet host (Ampere Altra Max M128, 1 NUMA node). The prior
-  // 256 GiB was a stub; the memory-aware spawn-width bound (placement_spawn_width) needs a
-  // real RAM figure or it cannot back fan-out off before the cgroup OOM. CPU thread count
-  // (catalog) is still the 64-thread stub — corrected with the ctrl fleet grounding; the
-  // memory bound dominates the floor width regardless, so it is not load-bearing here.
-  memory: [MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
+  memory: [
+    MemoryDevice {
+      capacity: gibibyte_to_byte_size(g: gibibyte(128)),
+      memory_kind: Dram,
+      bandwidth: none,
+    },
+  ],
   storage: [],
   network_interfaces: [],
 }
@@ -99,65 +157,62 @@ fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
 
-// Corpus parallel breadth is the CALLER's fact: the floor plan derives it from the
-// single-authority spec (gates + corpus cardinality), so it is NOT a tuned constant.
-// This keeps the §3 split honest — demand = the work (floor plan), supply = the fleet.
-fn gunbc_ci_floor_corpus_work_demand(corpus_shard_count: Int) -> WorkDemand {
-  WorkDemand {
-    resources: ResourceEnvelope {
-      cpu: none,
-      gpu: none,
-      // Per-shard peak resolve memory. Grounded in the deterministic floor-OOM evidence
-      // (eager-boar-790, 3 runs of a grown corpus at width=7): srv2's ~87.6 GiB cgroup cap
-      // passes 7 concurrent ~2900-item resolves only by a thin margin (~12.5 GiB/unit), and
-      // srv1's ~65.6 GiB cap OOM-kills (exit 137). 14 GiB/unit carries headroom for corpus
-      // growth; the memory-aware width then floors batch-2 below the OOM ceiling on both
-      // hosts. Grounds-tighter when a peak-RSS probe per resolve lands.
-      memory: Present { value: MemoryRequirement { min_bytes: byte_size(15032385536) } },
-      storage: none,
-      network: none,
-    },
-    os: none,
-    isolation: IsolationRequirement { boundary: PerJobFilesystem },
-    toolchains: [],
-    parallelism: IndependentShards { shard_count: corpus_shard_count },
-    data_locality: [],
-    effects: [],
-  }
+// CI floor is a pure fabric consumer (allocator plan step 2): it names a fixed
+// allocation class; the fabric derives memory/width — no hand-tuned 14 GiB constant.
+fn gunbc_ci_floor_compute_request() -> ComputeRequest {
+  ComputeRequest { class: XLarge }
+}
+
+// Meantime reserve until step 4 routes agent sessions through admit: headroom for
+// non-CI consumers on a shared host (2026-06-20 census — 20 agent containers under
+// load; ~48 GiB observed concurrent footprint on srv2).
+fn ci_fleet_host_consumer_reserve_bytes() -> ByteSize {
+  byte_size(51539607552)
 }
 
 fn gunbc_ci_floor_placement_supply() -> PlacementSupplyRow? {
-  offer_placement_supply_row(offer: gunbc_ci_fleet_offer)
+  Present {
+    value: placement_supply_row_from_bmc(
+      identity: gunbc_ci_host_identity,
+      obs: gunbc_ci_bmc_grounded(),
+      cpu: gunbc_ci_cpu,
+    ),
+  }
 }
 
-// Host spawn-width = min(corpus breadth, hardware threads, memory_budget / per-shard peak).
-// No hand-tuned width: add a gate to the spec → breadth re-derives; change the host → supply
-// re-derives; raise the per-shard memory → the memory bound re-derives; spawn_width follows
-// from all three via placement_spawn_width with zero edits here. The memory term is what
-// keeps batch-2 from OOM-killing as the corpus grows (the CPU-only bound was memory-blind).
+// Host spawn-width = fabric projection from ComputeRequest + BMC-grounded supply.
+// No hand-tuned width: add a gate → breadth re-derives; BMC grounds RAM/threads;
+// the reserve + allocation class back fan-out off before host OOM.
 fn ci_fleet_floor_spawn_width(corpus_shard_count: Int) -> HardwareThreadCount {
   match gunbc_ci_floor_placement_supply() {
     Absent => hardware_thread_count(1)
     Present { value: row } =>
-      placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count))
+      placement_spawn_width_for_request(
+        supply: row,
+        request: gunbc_ci_floor_compute_request(),
+        shard_count: corpus_shard_count,
+        reserve_bytes: ci_fleet_host_consumer_reserve_bytes(),
+      )
   }
 }
 
-// §5 OOM oracle: the chosen floor width times the per-shard peak memory must fit the
-// conservative memory budget — i.e. batch-2's concurrent memory peak stays under the cgroup
-// MemoryMax. Discriminating: a memory-blind width (= min(breadth, threads), ignoring the
-// memory term) would exceed the budget and flip this false. Absent supply / Absent memory
-// demand are vacuously safe (no concurrent memory pressure to bound).
+// §5 OOM oracle: the chosen floor width times the class memory envelope must fit
+// grantable (BMC RAM budget minus non-CI reserve). Discriminating against the
+// memory-blind / hand-constant regressions that let claim_executor reach ~93 GiB.
 fn ci_fleet_floor_spawn_fits_memory_budget(corpus_shard_count: Int) -> Bool {
   match gunbc_ci_floor_placement_supply() {
     Absent => true
-    Present { value: row } =>
-      match gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count).resources.memory {
-        Absent => true
-        Present { value: req } => {
-          let width = hardware_thread_count_value(t: ci_fleet_floor_spawn_width(corpus_shard_count: corpus_shard_count))
-          width * byte_size_count(req.min_bytes) <= placement_floor_memory_budget_bytes(supply: row)
-        }
-      }
+    Present { value: row } => {
+      let request = gunbc_ci_floor_compute_request()
+      let width = hardware_thread_count_value(
+        t: ci_fleet_floor_spawn_width(corpus_shard_count: corpus_shard_count),
+      )
+      let per_unit = allocation_class_memory_cost(class: request.class)
+      let grantable = placement_grantable_memory_bytes(
+        supply: row,
+        reserve_bytes: ci_fleet_host_consumer_reserve_bytes(),
+      )
+      width * per_unit <= grantable
+    }
   }
 }
