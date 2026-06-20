@@ -1474,7 +1474,21 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
       match field_type_lookup {
         Present { value: field_type } =>
-          let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
+          // The field TYPE was found via `resolved_base` (the alias-chain-
+          // expanded structural record, G3). Derive the FieldSummary from the
+          // SAME expansion so the two stay consistent: `field_summary_for_type`
+          // peels with `resolve_scrutinee_type_node` alone, which does not
+          // chase the structural-name hop a cross-module / multi-hop alias
+          // needs (e.g. `Gibibyte` -> `Measure<Memory, Gibi, Nat>` -> the
+          // `Measure { count }` struct). Try the authored type first (keeps the
+          // optional `.value` fast-path unchanged) and fall back to the
+          // expanded record only when the authored type yields no summary --
+          // otherwise emission fails closed to `compile_error!("field access
+          // missing reconcile summary ...")`.
+          let field_summary = match field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name) {
+            Present { value: s } => Present { value: s }
+            Absent => field_summary_for_type(base_type: resolved_base, env: scope.type_env, field: field_name)
+          }
           let fa_texpr = make_named_expr_node(
             name: field_name,
             expr_data: ExprFieldAccess { summary: field_summary },
