@@ -1,0 +1,108 @@
+// Gap-4 decl discriminator runner — NOT a discovery witness (_test.dag sibling only).
+// Invoke: gunbc run --wet --source-root dsl --source-root src/v2 \
+//   --entry src/v2/test/fixture/gap4_parse_probe_runner.dag --function <name> --claim-run
+
+module v2.test.fixture.gap4_parse_probe_runner
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type FilesystemReadResult { content: String }
+
+fn rejects_parse_g0_tokens_remain(src: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => d.head.reason == ^parse_g0_tokens_remain
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn parses(src: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn parse_reason(src: String) -> String {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: d } => concat(left: "tokenize:", right: d.head.reason)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => "accepted"
+        Rejected { diagnostics: d } => d.head.reason
+      }
+  }
+}
+
+fn read_fixture(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+// Decl 41 vs 42: prefix of 02_parse.dag through each candidate fn.
+func probe_decl41_prefix_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(src: read_fixture(path: "src/v2/test/fixture/gap4_decl41_prefix.dag"))
+}
+
+func probe_decl42_prefix_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(src: read_fixture(path: "src/v2/test/fixture/gap4_decl42_prefix.dag"))
+}
+
+func probe_decl41_prefix_parses() -> Bool {
+  parses(src: read_fixture(path: "src/v2/test/fixture/gap4_decl41_prefix.dag"))
+}
+
+func probe_decl42_prefix_parses() -> Bool {
+  parses(src: read_fixture(path: "src/v2/test/fixture/gap4_decl42_prefix.dag"))
+}
+
+func probe_set_symbol_insert_min_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(src: read_fixture(path: "src/v2/test/fixture/gap4_set_symbol_insert_min.dag"))
+}
+
+func probe_set_symbol_insert_min_parses() -> Bool {
+  parses(src: read_fixture(path: "src/v2/test/fixture/gap4_set_symbol_insert_min.dag"))
+}
+
+// Suspect (c): || operator in lambda body
+func probe_or_in_lambda_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module gap4.c\nimport v2.std.collection { Set }\nimport v2.std.node { Symbol }\nfn f(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {\n  Set { member: fn(sym) { sym == item || s.member(sym) } }\n}\n"
+  )
+}
+
+// Suspect (c) stripped: no ||
+func probe_eq_only_lambda_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module gap4.c2\nimport v2.std.collection { Set }\nimport v2.std.node { Symbol }\nfn f(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {\n  Set { member: fn(sym) { sym == item } }\n}\n"
+  )
+}
+
+// Suspect (a): let record literal + match tail (from parse_nonterminal_memoized shape)
+func probe_let_record_then_match_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module gap4.a\nimport v2.std.node { Symbol }\nimport v2.std.logic { Bool }\n\ntype K { position: Int, production: Symbol }\n\ntype R = Accepted { x: Int } | Rejected { y: Int }\n\nfn f() -> Int {\n  let key = K { position: 0, production: ^p }\n  match key {\n    K { position: _, production: _ } => 0\n  }\n}\n"
+  )
+}
+
+// Suspect (b): chained lets then tail record expr
+func probe_chained_lets_tail_record_tokens_remain() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module gap4.b\n\ntype Prov { x: Int }\ntype Stamp { node: Int, prov: Prov }\n\ntype Acc = Accepted { remaining: Int, captured: Int, diagnostics: Int, prov: Prov }\n\nfn f(prov: Prov) -> Acc {\n  let merged_prov = Prov { x: prov.x }\n  let stamped = Stamp { node: 1, prov: merged_prov }\n  Accepted { remaining: 0, captured: stamped.node, diagnostics: 0, prov: stamped.prov }\n}\n"
+  )
+}
