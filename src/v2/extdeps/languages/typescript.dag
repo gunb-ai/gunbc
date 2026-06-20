@@ -554,6 +554,37 @@ fn ts_mvp1_emitted_add_fn_with_body_node() -> Node {
   }
 }
 
+// FINISH-LINE-B Arc 2 — syntax-shaped Conj emitted for mvp1 fn-add (pr3/wave2a pattern, DESIGN-1):
+// one positional slot per bound terminal in token order, INCLUDING the `return x + y` body bindings
+// (slots 3/4 = dag_binding_param_{x,y}). The slot atoms key on the production's terminal bindings, so
+// formal_production_rhs_matches_emitted_conj_step accepts (atom_id == binding) and
+// derive_grammar_relation_row_node materializes the row — superseding the hand-authored Arrow scaffold
+// (ts_mvp1_emitted_add_fn_node, which intentionally Violates derive and stays as the negative control).
+fn ts_mvp1_typed_fn_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_fn_add) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_y) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^dag_binding_param_x) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^dag_binding_param_y) }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+// Conj-emitted grammar-relation row twin of ts_mvp1_grammar_relation_row (same production + token
+// spine; emitted Arrow → Conj). Built so the eager-derive witness and the total emit node-path
+// content_hash-agree (proven in typescript_derive_grammar_relation_row_round_trip).
+fn ts_mvp1_grammar_relation_row_conj() -> TsGrammarRelationRow {
+  TsGrammarRelationRow {
+    production: ts_formal_production_mvp1_fn_add(),
+    emitted: ts_mvp1_typed_fn_emitted(),
+    tokens: ts_mvp1_canonical_add_fn_tokens()
+  }
+}
+
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^ts_token_ident },
@@ -1191,21 +1222,16 @@ fn ts_pr3_identity_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-// FINISH-LINE-B Arc 1 — emitted exemplar side-table keyed by production lhs (decision-2).
-// Arrow mvp1 fn-add Violates derive (PR-1.5b Conj-only) — keeps marked scaffold fallback below.
+// FINISH-LINE-B Arc 2 — emitted exemplar side-table keyed by production lhs (decision-2).
+// All three exemplars now carry a syntax-shaped Conj emitted, so every row eager-materializes via
+// derive_grammar_relation_row_node (mvp1 fn-add cut over from the Arrow scaffold in Arc 2).
 fn ts_exemplar_emitted_for_lhs(lhs: Symbol) -> Witness<Node> {
   if lhs == ^ts_production_wave2a_type_alias_decl {
     Holds { value: ts_wave2a_task_type_alias_emitted() }
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
     Holds { value: ts_pr3_identity_typed_fn_emitted() }
   } else if lhs == ^ts_production_mvp1_fn_add {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: ^grammar_relation_emitted_not_conj,
-        at: node_locus(node: ts_mvp1_emitted_add_fn_node()),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    }
+    Holds { value: ts_mvp1_typed_fn_emitted() }
   } else {
     Violates {
       diagnostic: Diagnostic {
@@ -1222,6 +1248,8 @@ fn ts_exemplared_formal_productions_for_lhs(lhs: Symbol) -> List<FormalProductio
     ts_wave2a_task_formal_productions()
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
     ts_pr3_identity_formal_productions()
+  } else if lhs == ^ts_production_mvp1_fn_add {
+    [ts_formal_production_mvp1_fn_add()]
   } else {
     []
   }
@@ -1248,10 +1276,13 @@ fn ts_eager_grammar_relation_row_witness(lhs: Symbol) -> Witness<Node> {
   }
 }
 
-// 🟡 scaffold — FINISH-LINE-B Arc 1: mvp1 fn-add Arrow emitted; derive Violates. Sole row —
-// dedup-cutover forbids additive eager twin (ForwardRowMany on ingest). Arc 2 cutover.
-fn ts_mvp1_fn_add_scaffold_relation_row_node() -> Node {
-  ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+// FINISH-LINE-B Arc 2 — eager-materialized mvp1 fn-add row (total emit node-path). The Conj-emitted
+// row twin (ts_mvp1_grammar_relation_row_conj) content_hash-agrees with the eager-derive witness
+// ts_eager_grammar_relation_row_witness(lhs: ^ts_production_mvp1_fn_add) — see the round-trip gate.
+// Sole row per lhs+token-spine: dedup-cutover replaces the Arrow fixture twin (ForwardRowMany on
+// ingest forbids an additive eager twin).
+fn ts_mvp1_fn_add_relation_row_node() -> Node {
+  ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row_conj())
 }
 
 fn ts_pr3_identity_relation_row_witness() -> Witness<Node> {
@@ -1303,7 +1334,7 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
               children: [
                 ts_named_edge(
                   name: ^ts_relation_rule_mvp1_fn_add,
-                  target: ts_mvp1_fn_add_scaffold_relation_row_node()
+                  target: ts_mvp1_fn_add_relation_row_node()
                 ),
                 ts_named_edge(
                   name: ^ts_relation_rule_type_alias_task,
@@ -1405,14 +1436,14 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
   )
 }
 
-// MVP-1 add-fn target model: mvp1 scaffold row (Arrow — Arc 1 eager derive Violates).
+// MVP-1 add-fn target model: eager-materialized mvp1 fn-add row (Arc 2 Conj cutover) + bodied row.
 fn ts_mvp1_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       ts_named_edge(
         name: ^ts_relation_rule_mvp1_fn_add,
-        target: ts_mvp1_fn_add_scaffold_relation_row_node()
+        target: ts_mvp1_fn_add_relation_row_node()
       ),
       ts_named_edge(
         name: ^ts_relation_rule_mvp1_fn_add_with_body,
@@ -1435,7 +1466,7 @@ fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
           children: [
             ts_named_edge(
               name: ^ts_relation_rule_mvp1_fn_add,
-              target: ts_mvp1_fn_add_scaffold_relation_row_node()
+              target: ts_mvp1_fn_add_relation_row_node()
             ),
             ts_named_edge(
               name: ^ts_relation_rule_type_alias_task,
