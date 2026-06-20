@@ -79,13 +79,116 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
   }
 }
 
+// Parse result for major.minor.patch wire labels (git version release core).
+type GitReleaseVersionParseResult
+  = ParsedGitReleaseVersion { version: GitReleaseVersion }
+  | MalformedGitReleaseVersion { label: String, reason: String }
+
+type GitReleaseNatSegmentParse
+  = ParsedGitReleaseNatSegment { value: NonNegativeInt }
+  | MalformedGitReleaseNatSegment { reason: String }
+
+fn parse_git_release_nat_segment(seg: String, field: String) -> GitReleaseNatSegmentParse {
+  match parse_int(s: seg) {
+    Absent =>
+      MalformedGitReleaseNatSegment {
+        reason: concat("invalid ", concat(field, " segment"))
+      }
+    Present { value: n } =>
+      if n < 0 {
+        MalformedGitReleaseNatSegment {
+          reason: concat("negative ", concat(field, " segment"))
+        }
+      } else {
+        ParsedGitReleaseNatSegment { value: n }
+      }
+  }
+}
+
+fn parse_git_release_triple_segments(
+  major_seg: String,
+  minor_seg: String,
+  patch_seg: String,
+  label: String
+) -> GitReleaseVersionParseResult {
+  match parse_git_release_nat_segment(seg: major_seg, field: "major") {
+    MalformedGitReleaseNatSegment { reason: r } =>
+      MalformedGitReleaseVersion { label: label, reason: r }
+    ParsedGitReleaseNatSegment { value: major } =>
+      match parse_git_release_nat_segment(seg: minor_seg, field: "minor") {
+        MalformedGitReleaseNatSegment { reason: r } =>
+          MalformedGitReleaseVersion { label: label, reason: r }
+        ParsedGitReleaseNatSegment { value: minor } =>
+          match parse_git_release_nat_segment(seg: patch_seg, field: "patch") {
+            MalformedGitReleaseNatSegment { reason: r } =>
+              MalformedGitReleaseVersion { label: label, reason: r }
+            ParsedGitReleaseNatSegment { value: patch } =>
+              ParsedGitReleaseVersion {
+                version: GitReleaseVersion {
+                  major: major,
+                  minor: minor,
+                  patch: patch
+                }
+              }
+          }
+      }
+  }
+}
+
+fn parse_git_release_triple_parts(parts: List<String>, label: String) -> GitReleaseVersionParseResult {
+  match parts.first() {
+    Absent =>
+      MalformedGitReleaseVersion { label: label, reason: "empty major.minor.patch triple" }
+    Present { value: major_seg } =>
+      match parts.skip(n: 1).first() {
+        Absent =>
+          MalformedGitReleaseVersion { label: label, reason: "missing minor segment" }
+        Present { value: minor_seg } =>
+          match parts.skip(n: 2).first() {
+            Absent =>
+              MalformedGitReleaseVersion { label: label, reason: "missing patch segment" }
+            Present { value: patch_seg } =>
+              parse_git_release_triple_segments(
+                major_seg: major_seg,
+                minor_seg: minor_seg,
+                patch_seg: patch_seg,
+                label: label
+              )
+          }
+      }
+  }
+}
+
+// Ingress: parse opaque VersionIdentity labels shaped as major.minor.patch.
+fn parse_git_release_version(label: VersionIdentity) -> GitReleaseVersionParseResult {
+  let parts = label |> split(delimiter: ".")
+  if parts.length() != 3 {
+    MalformedGitReleaseVersion {
+      label: label,
+      reason: "expected major.minor.patch triple"
+    }
+  } else {
+    parse_git_release_triple_parts(parts: parts, label: label)
+  }
+}
+
 // VersionIdentity ingress for extdeps.version.VersionScheme.
-// Equality case is correct; full ordering requires parse ingress.
-// Scaffold: dissolve-on: parse_git_release_version lands — replace body with:
-//   (a, b) => git_release_version_compare(
-//     a: parse_git_release_version(a), b: parse_git_release_version(b))
+// Structural compare when both labels parse; lexicographic fallback otherwise.
 fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal } else { Greater }
+  if a == b { Equal }
+  else {
+    match parse_git_release_version(label: a) {
+      ParsedGitReleaseVersion { version: av } =>
+        match parse_git_release_version(label: b) {
+          ParsedGitReleaseVersion { version: bv } =>
+            git_release_version_compare(a: av, b: bv)
+          MalformedGitReleaseVersion { label: _, reason: _ } =>
+            if a < b { Less } else { Greater }
+        }
+      MalformedGitReleaseVersion { label: _, reason: _ } =>
+        if a < b { Less } else { Greater }
+    }
+  }
 }
 
 data git_release_version_scheme: VersionScheme = {
