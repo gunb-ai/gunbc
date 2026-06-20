@@ -583,31 +583,31 @@ type AllocationClass =
 
 // §2 fact-bundle: one row per class (threads, memory, label) — not three parallel matches.
 type AllocationClassSpec {
-  threads: Int
+  threads: HardwareThreadCount
   memory_bytes: ByteSize
   label: NonEmptyStr
 }
 
 data allocation_class_small: AllocationClassSpec = AllocationClassSpec {
-  threads: 2,
+  threads: hardware_thread_count(count: 2),
   memory_bytes: byte_size(2147483648),
   label: "Small",
 }
 
 data allocation_class_medium: AllocationClassSpec = AllocationClassSpec {
-  threads: 4,
+  threads: hardware_thread_count(count: 4),
   memory_bytes: byte_size(4294967296),
   label: "Medium",
 }
 
 data allocation_class_large: AllocationClassSpec = AllocationClassSpec {
-  threads: 8,
+  threads: hardware_thread_count(count: 8),
   memory_bytes: byte_size(8589934592),
   label: "Large",
 }
 
 data allocation_class_xlarge: AllocationClassSpec = AllocationClassSpec {
-  threads: 16,
+  threads: hardware_thread_count(count: 16),
   memory_bytes: byte_size(17179869184),
   label: "XLarge",
 }
@@ -647,7 +647,7 @@ type ComputeRequest {
   class: AllocationClass
 }
 
-fn allocation_class_threads(class: AllocationClass) -> Int {
+fn allocation_class_threads(class: AllocationClass) -> HardwareThreadCount {
   allocation_class_spec(class: class).threads
 }
 
@@ -667,7 +667,7 @@ fn allocation_class_resource_envelope(class: AllocationClass) -> ResourceEnvelop
   ResourceEnvelope {
     cpu: Present {
       value: CpuRequirement {
-        min_threads: hardware_thread_count(count: allocation_class_threads(class: class)),
+        min_threads: allocation_class_threads(class: class),
         architecture: none,
       },
     },
