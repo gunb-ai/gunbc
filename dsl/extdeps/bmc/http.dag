@@ -18,6 +18,16 @@ module extdeps.bmc.http
 
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
 service redfish.Http {
   // Authenticated read of the system resource (power state, manufacturer, etc.) — the
   // minimal "first contact" that proves the BMC is reachable AND the credentials work.

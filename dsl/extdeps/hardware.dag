@@ -10,6 +10,16 @@
 
 module extdeps.hardware
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Electronic_hardware"
+  }
+}
+
 // Phantom domain marker (no inhabitants of its own — same deferral shape as
 // std.ReferenceModel<T> / the Measure phantom scales). It exists only to specialize
 // `Vendor<Domain>`; a richer hardware taxonomy decomposes here when a consumer needs

@@ -10,6 +10,16 @@ import extdeps.runtime.abi.sysv_amd64 { sysv_amd64_linux_syscall_convention }
 import std.os.invocation { SyscallEntry, SyscallAbi }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl"
+  }
+}
+
 data sys_read: SyscallEntry   = SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
 data sys_write: SyscallEntry  = SyscallEntry { number: 1,  name: "write",  arg_count: 3 }
 data sys_mmap: SyscallEntry   = SyscallEntry { number: 9,  name: "mmap",   arg_count: 6 }
