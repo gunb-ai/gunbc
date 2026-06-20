@@ -815,7 +815,11 @@ fn live_violation_module_paths() -> Vec<String> {
 
 /// Host-backed live clean-tree verdict (single authority for CI + lens).
 pub fn external_authority_live_clean_tree_holds() -> bool {
-    live_violation_module_paths().is_empty()
+    let violations = live_violation_module_paths();
+    if !violations.is_empty() {
+        panic!("extdeps external authority live violations: {violations:?}");
+    }
+    true
 }
 
 pub fn external_authority_live_roster_module_count() -> i64 {
@@ -1068,43 +1072,6 @@ service github.Gist {
     fn external_authority_live_clean_tree_holds_via_host() {
         assert!(external_authority_live_clean_tree_holds());
         assert!(external_authority_live_roster_module_count() > 150);
-    }
-
-    #[test]
-    fn external_authority_live_violations_diagnostic() {
-        let backfill = backfill_pending_module_paths();
-        let exempt = ["extdeps.uri", "extdeps.external_authority"];
-        let exclusions = [
-            "extdeps.fixture.external_authority_bogus_scheme",
-            "extdeps.fixture.external_authority_missing",
-            "extdeps.fixture.external_authority_clean_https_no_anchor",
-            "extdeps.fixture.external_authority_file_anchor",
-            "extdeps.fixture.external_authority_clean_https",
-        ];
-        let mut violations = Vec::new();
-        for path in derived_extdeps_module_paths() {
-            if exclusions.iter().any(|p| *p == path.as_str()) {
-                continue;
-            }
-            if exempt.iter().any(|p| *p == path.as_str()) || backfill.contains(&path) {
-                continue;
-            }
-            match project_external_authority_anchor(&path) {
-                ExternalAuthorityAnchorProjection::Absent => {
-                    violations.push(format!("missing:{path}"))
-                }
-                ExternalAuthorityAnchorProjection::Present {
-                    scheme_identity, ..
-                } if scheme_identity != "Http" && scheme_identity != "Https" => {
-                    violations.push(format!("non_external:{path}:{scheme_identity}"))
-                }
-                _ => {}
-            }
-        }
-        assert!(
-            violations.is_empty(),
-            "live-policy violations: {violations:?}"
-        );
     }
 
     #[test]
