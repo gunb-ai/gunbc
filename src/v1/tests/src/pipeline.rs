@@ -1322,6 +1322,126 @@ fn bare_import_wildcard_survives_pipeline() {
 }
 
 #[test]
+fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
+    use std::rc::Rc;
+    use v1_compiler::v1_std_core::{
+        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
+        CompilerDiagnostic,
+    };
+
+    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
+        variant: "Empty".to_string(),
+        type_name: "FreeMonoid<T>".to_string(),
+        span: no_span(),
+    });
+    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
+    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck));
+
+    let parse = Rc::new(CompilerDiagnostic::ParseError {
+        message: "expected module".to_string(),
+        span: no_span(),
+    });
+    assert!(is_discovery_corpus_blocking_diagnostic(parse));
+}
+
+#[test]
+fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
+    use std::rc::Rc;
+    use v1_compiler::v1_std_core::{
+        is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
+        is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
+    };
+
+    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
+        variant: "Empty".to_string(),
+        type_name: "FreeMonoid<T>".to_string(),
+        span: no_span(),
+    });
+    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
+    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
+        typecheck.clone()
+    ));
+    // Discovery gate demotes; strict gate (= interpreter blocking) does not.
+    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
+    assert!(is_interpreter_blocking_diagnostic(typecheck));
+}
+
+#[test]
+#[ignore = "receipt: parse-resilience unmasks ~779 typecheck diags demoted by discovery advisory gate"]
+fn parse_resilience_unmasked_typecheck_debt_receipt() {
+    use std::collections::BTreeSet;
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, discover_floor_corpus_rows,
+        resolve_entry_with_index_for_discovery_corpus,
+    };
+    use v1_compiler::v1_std_core::{
+        is_discovery_corpus_advisory_typecheck_diagnostic, is_interpreter_blocking_diagnostic,
+    };
+
+    let ws = workspace_root();
+    std::env::set_current_dir(&ws).expect("chdir to workspace root");
+    let roots = vec![
+        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let scan_dirs = vec![
+        "dsl/test/claim".to_string(),
+        "src/v2/compiler/manual".to_string(),
+    ];
+    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
+    let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
+    let index = build_multi_entry_index(&roots);
+
+    let mut advisory = 0usize;
+    let mut blocking_non_advisory = 0usize;
+    let mut resolve_failures = 0usize;
+    for entry in &unique_entries {
+        match resolve_entry_with_index_for_discovery_corpus(&index, entry) {
+            Ok(_) => {}
+            Err(_) => resolve_failures += 1,
+        }
+    }
+
+    // One representative whole-tree compile surfaces the demoted debt magnitude
+    // without re-resolving every roster entry (overlapping closures).
+    let sample = ws
+        .join("src/v2/workflow/ci_floor_plan.dag")
+        .to_string_lossy()
+        .into_owned();
+    let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &sample)
+        .expect("load ci_floor_plan closure");
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    for d in resolved.diagnostics.iter() {
+        if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+            continue;
+        }
+        if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
+            advisory += 1;
+        } else {
+            blocking_non_advisory += 1;
+        }
+    }
+
+    eprintln!(
+        "parse-resilience debt receipt: unique_entries={} resolve_failures_with_advisory={} \
+         ci_floor_plan_advisory_typecheck={} ci_floor_plan_blocking_non_advisory={}",
+        unique_entries.len(),
+        resolve_failures,
+        advisory,
+        blocking_non_advisory
+    );
+    assert_eq!(
+        resolve_failures, 0,
+        "discovery resolve must not fail on advisory-demoted typecheck debt"
+    );
+    assert!(
+        unique_entries.len() >= 200,
+        "expected substantial discovery corpus breadth, got {}",
+        unique_entries.len()
+    );
+}
+
+#[test]
 fn compile_sources_filters_none_parse_diagnostics() {
     let files = &[
         ("good.dag", "module good\n"),
@@ -1332,6 +1452,66 @@ fn compile_sources_filters_none_parse_diagnostics() {
     assert!(
         !msgs.is_empty(),
         "bad.dag (no module) should produce at least 1 diagnostic"
+    );
+    let content = find_file(&result, "src/good.rs");
+    assert!(
+        !content.is_empty(),
+        "good.dag should still compile when bad.dag fails parse (parse-resilient front_end_sources)"
+    );
+}
+
+#[test]
+fn resolve_entry_parse_cache_skips_closure_parse_errors() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "gunbc_parse_resilience_{}_{}",
+        std::process::id(),
+        stamp
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let root = dir.to_string_lossy().into_owned();
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    std::fs::write(
+        dir.join("broken.dag"),
+        "module broken\nfn x( -> Int { 1 }\n",
+    )
+    .expect("write broken.dag");
+    std::fs::write(dir.join("good.dag"), "module good\nfn ok() -> Int { 0 }\n")
+        .expect("write good.dag");
+    let good_path = dir.join("good.dag").to_string_lossy().into_owned();
+    let index = build_multi_entry_index(std::slice::from_ref(&root));
+    let good_resolve = resolve_entry_with_index(&index, &good_path);
+    cleanup();
+    good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
+
+    std::fs::create_dir_all(&dir).expect("recreate temp dir");
+    std::fs::write(
+        dir.join("broken.dag"),
+        "module broken\nfn x( -> Int { 1 }\n",
+    )
+    .expect("rewrite broken.dag");
+    std::fs::write(
+        dir.join("main.dag"),
+        "module main\nimport broken {}\nfn run() -> Int { 0 }\n",
+    )
+    .expect("write main.dag");
+    let main_path = dir.join("main.dag").to_string_lossy().into_owned();
+    let index = build_multi_entry_index(&[root]);
+    let err = resolve_entry_with_index(&index, &main_path)
+        .expect_err("main should fail when imported dep does not parse");
+    cleanup();
+    assert!(
+        !err.contains("fn x("),
+        "resolve must not short-circuit on dep parse error; got: {err}"
     );
 }
 
