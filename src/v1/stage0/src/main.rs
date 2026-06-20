@@ -171,6 +171,12 @@ fn index_source_root(
             .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
         if let Some(module_path) = extract_module_path(&content) {
             if pool_fill_only {
+                if let Some(existing) = within_root.get(&module_path) {
+                    panic!(
+                        "duplicate module path '{}' within source root: declared in both {:?} and {:?}",
+                        module_path, existing, path
+                    );
+                }
                 if index.contains_key(&module_path) {
                     continue;
                 }

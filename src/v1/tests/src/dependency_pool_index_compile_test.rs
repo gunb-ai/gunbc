@@ -3,10 +3,27 @@
 use crate::helpers::workspace_root;
 use std::fs;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn gunbc_bin() -> Option<std::path::PathBuf> {
     let gunbc = workspace_root().join("target/release/gunbc");
     gunbc.is_file().then_some(gunbc)
+}
+
+fn temp_dir(label: &str) -> std::path::PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("gunbc-{label}-{stamp}"));
+    fs::create_dir_all(&path).expect("create temp dir");
+    path
+}
+
+fn rm_rf(path: &std::path::Path) {
+    if path.is_dir() {
+        fs::remove_dir_all(path).expect("remove temp dir");
+    }
 }
 
 fn compile_with_roots(
@@ -38,8 +55,7 @@ fn primary_precedence_within_root_duplicate_module_path_panics() {
         return;
     };
     let ws = workspace_root();
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let root = tmp.path();
+    let root = temp_dir("within-root-dup");
     fs::write(
         root.join("a.dag"),
         "module duplicate.within.root\nfn a() -> Int { 1 }\n",
@@ -50,8 +66,8 @@ fn primary_precedence_within_root_duplicate_module_path_panics() {
         "module duplicate.within.root\nfn b() -> Int { 2 }\n",
     )
     .expect("write b.dag");
-    let out = tempfile::tempdir().expect("out dir");
-    let output = compile_with_roots(&gunbc, &ws, &[root], "primary-precedence", out.path());
+    let out = temp_dir("within-root-dup-out");
+    let output = compile_with_roots(&gunbc, &ws, &[&root], "primary-precedence", &out);
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -62,9 +78,58 @@ fn primary_precedence_within_root_duplicate_module_path_panics() {
         "expected within-root duplicate to fail closed; got success"
     );
     assert!(
-        combined.contains("duplicate module path") && combined.contains("within source root"),
-        "expected within-root duplicate panic message; got:\n{combined}"
+        combined.contains("duplicate module path"),
+        "expected duplicate module path panic; got:\n{combined}"
     );
+    rm_rf(&root);
+    rm_rf(&out);
+}
+
+#[test]
+fn primary_precedence_pool_root_within_root_duplicate_module_path_panics() {
+    let Some(gunbc) = gunbc_bin() else {
+        eprintln!("skipping: release gunbc binary not found");
+        return;
+    };
+    let ws = workspace_root();
+    let primary = temp_dir("pool-dup-primary");
+    fs::write(
+        primary.join("primary.dag"),
+        "module primary.only\nfn ok() -> Int { 1 }\n",
+    )
+    .expect("write primary.dag");
+    let pool = temp_dir("pool-dup-pool");
+    fs::write(
+        pool.join("a.dag"),
+        "module duplicate.pool.root\nfn a() -> Int { 1 }\n",
+    )
+    .expect("write pool a.dag");
+    fs::write(
+        pool.join("b.dag"),
+        "module duplicate.pool.root\nfn b() -> Int { 2 }\n",
+    )
+    .expect("write pool b.dag");
+    let out = temp_dir("pool-dup-out");
+    let output = compile_with_roots(
+        &gunbc,
+        &ws,
+        &[&primary, &pool],
+        "primary-precedence",
+        &out,
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success());
+    assert!(
+        combined.contains("duplicate module path") && combined.contains("within source root"),
+        "expected pool-root within-root duplicate panic; got:\n{combined}"
+    );
+    rm_rf(&primary);
+    rm_rf(&pool);
+    rm_rf(&out);
 }
 
 #[test]
@@ -74,13 +139,13 @@ fn strict_dependency_pool_index_panics_on_cross_root_extdeps_shell_collision() {
         return;
     };
     let ws = workspace_root();
-    let out = tempfile::tempdir().expect("out dir");
+    let out = temp_dir("strict-cross-root-out");
     let output = compile_with_roots(
         &gunbc,
         &ws,
         &[&ws.join("dsl"), &ws.join("src/v2")],
         "strict",
-        out.path(),
+        &out,
     );
     let combined = format!(
         "{}{}",
@@ -95,6 +160,7 @@ fn strict_dependency_pool_index_panics_on_cross_root_extdeps_shell_collision() {
         combined.contains("extdeps.shell"),
         "expected extdeps.shell collision diagnostic; got:\n{combined}"
     );
+    rm_rf(&out);
 }
 
 #[test]
@@ -104,8 +170,7 @@ fn primary_precedence_keeps_dsl_extdeps_shell_for_dsl_only_services() {
         return;
     };
     let ws = workspace_root();
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let entry_root = tmp.path();
+    let entry_root = temp_dir("dsl-shell-primary-entry");
     fs::write(
         entry_root.join("probe.dag"),
         "module test.probe.dsl_shell_env_primary\n\
@@ -115,13 +180,13 @@ fn primary_precedence_keeps_dsl_extdeps_shell_for_dsl_only_services() {
          }\n",
     )
     .expect("write probe.dag");
-    let out = tempfile::tempdir().expect("out dir");
+    let out = temp_dir("dsl-shell-primary-out");
     let output = compile_with_roots(
         &gunbc,
         &ws,
-        &[entry_root, &ws.join("dsl"), &ws.join("src/v2")],
+        &[&entry_root, &ws.join("dsl"), &ws.join("src/v2")],
         "primary-precedence",
-        out.path(),
+        &out,
     );
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -131,4 +196,6 @@ fn primary_precedence_keeps_dsl_extdeps_shell_for_dsl_only_services() {
             output.status.code()
         );
     }
+    rm_rf(&entry_root);
+    rm_rf(&out);
 }
