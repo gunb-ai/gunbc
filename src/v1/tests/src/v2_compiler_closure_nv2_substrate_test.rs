@@ -38,7 +38,8 @@ fn cargo_binary() -> String {
 }
 
 const COMPILER_ENTRY: &str = "src/v2/compiler/00_compile.dag";
-const NV2_GATE_ENTRY: &str = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag";
+const NV2_GATE_ENTRY: &str =
+    "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag";
 const EMIT_SOURCE_FN: &str = "compiler_closure_v2_emit_source_for_cargo_check";
 const ACCEPT_FN: &str = "compiler_closure_v2_emit_from_scoped_ingest_accepts";
 
@@ -658,15 +659,14 @@ fn probe_gap4_scoped_ingest_first_reject() {
     panic!("{report}");
 }
 
-const GAP4_PARSE_PROBE_ENTRY: &str = "src/v2/test/fixture/gap4_parse_syntax_probes.dag";
+const GAP4_PARSE_PROBE_ENTRY: &str = "src/v2/test/claim/languages/dag_comma_optional_list_test.dag";
 
 fn gap4_parse_probe_context() -> v1_interpreter::InterpContext {
     let ws = workspace_root();
     let entry = ws.join(GAP4_PARSE_PROBE_ENTRY);
     let roots = witness_layer_root_paths(&ws);
-    let (graph, source_indices) =
-        resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))
-            .unwrap_or_else(|e| panic!("resolve {GAP4_PARSE_PROBE_ENTRY}: {e}"));
+    let (graph, source_indices) = resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))
+        .unwrap_or_else(|e| panic!("resolve {GAP4_PARSE_PROBE_ENTRY}: {e}"));
     make_eval_context(&graph, source_indices, ExecutionMode::Wet)
 }
 
@@ -758,11 +758,18 @@ fn gap4_02_parse_prefix_probe() {
         .expect("GAP4_PREFIX usize");
     let ctx = gap4_parse_probe_context();
     let (header, chunks) = gap4_split_02_parse_chunks();
-    assert!(n <= chunks.len(), "GAP4_PREFIX {n} > chunk count {}", chunks.len());
+    assert!(
+        n <= chunks.len(),
+        "GAP4_PREFIX {n} > chunk count {}",
+        chunks.len()
+    );
     let src = format!("{header}{}", chunks[..n].join(""));
     let ok = gap4_parses_source(&ctx, &src);
     let first = chunks[n - 1].lines().next().unwrap_or("");
-    eprintln!("gap4 prefix probe: chunks={n}/{} last={first} parses={ok}", chunks.len());
+    eprintln!(
+        "gap4 prefix probe: chunks={n}/{} last={first} parses={ok}",
+        chunks.len()
+    );
     if std::env::var("GAP4_PREFIX_EXPECT").ok().as_deref() == Some("fail") {
         assert!(!ok, "expected prefix {n} to fail parse");
     }
