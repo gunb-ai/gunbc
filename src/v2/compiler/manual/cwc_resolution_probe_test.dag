@@ -37,7 +37,8 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_lookup_contract_row,
   tepe_contract_row_for_disj_anchor,
   tepe_enum_sym_for_disj,
-  tepe_disj_for_enum_sym_optional
+  tepe_disj_for_enum_sym_optional,
+  tepe_type_decl_name_optional
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -252,8 +253,87 @@ fn cwc_optional_review_event_disj(n: Node) -> Optional<Node> {
   cwc_optional_disj_for_enum_sym(root: n, enum_sym: ^ReviewEvent)
 }
 
+fn cwc_tree_has_type_decl_named(root: Node, enum_sym: Symbol) -> Bool {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_type_decl_name_optional(type_decl: node) {
+          Present { value: name } => name == enum_sym
+          Absent => false
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        if acc {
+          true
+        } else {
+          child_acc
+        }
+      }
+    }
+  )
+}
+
+fn cwc_optional_disj_by_arm_count(root: Node, arm_count: Int) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            if cwc_disj_arm_count(n: node) == arm_count {
+              optional_present(value: node)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
 fn cwc_optional_disj_for_enum_sym(root: Node, enum_sym: Symbol) -> Optional<Node> {
   tepe_disj_for_enum_sym_optional(root: root, enum_sym: enum_sym)
+}
+
+fn cwc_optional_disj_with_first_arm(root: Node, first_arm: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            match cwc_disj_first_variant_target_optional(n: node) {
+              Present { value: target } =>
+                match tepe_atom_sym_optional(node: target) {
+                  Present { value: sym } =>
+                    if sym == first_arm {
+                      optional_present(value: node)
+                    } else {
+                      optional_absent()
+                    }
+                  Absent => optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
 }
 
 fn cwc_translate_project_disj_accepts(src: String, target: TargetModel) -> Bool {
@@ -1053,6 +1133,14 @@ test fn cwc_diag_review_disj_present_holds() -> Bool {
         Present { value: _ } => true
         Absent => false
       }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_diag_type_decl_name_on_norm_holds() -> Bool {
+  match cwc_norm_of(src: cwc_src_cwc_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      cwc_tree_has_type_decl_named(root: root, enum_sym: ^ReviewEvent)
     Rejected { diagnostics: _ } => false
   }
 }

@@ -304,35 +304,62 @@ fn tepe_data_decl_type_and_expr_optional(decl: Node) -> Optional<TepeDataDeclPar
   }
 }
 
+fn tepe_type_decl_name_from_decl_expr_optional(expr: Node) -> Optional<Symbol> {
+  match tepe_sequence_right_optional(seq: expr) {
+    Present { value: after_kw_type } =>
+      match tepe_sequence_left_optional(seq: after_kw_type) {
+        Present { value: ident_node } => tepe_atom_sym_optional(node: ident_node)
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn tepe_type_decl_name_optional(type_decl: Node) -> Optional<Symbol> {
-  match fold(type_decl.children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: sym } =>
-            if sym == ^dag_surface_type_decl {
-              acc
-            } else {
-              optional_present(value: sym)
-            }
-          Positional => acc
+  match parse_production_emitted_identity_optional(node: type_decl) {
+    Present { value: surface } =>
+      if surface == ^dag_surface_type_decl {
+        match parse_production_captured_child_optional(node: type_decl) {
+          Present { value: expr } => tepe_type_decl_name_from_decl_expr_optional(expr: expr)
+          Absent => optional_absent()
         }
-    }
-  }) {
-    Present { value: sym } => optional_present(value: sym)
+      } else {
+        optional_absent()
+      }
     Absent =>
-      match tepe_production_captured_optional(node: type_decl) {
-        Present { value: s1 } =>
-          match tepe_sequence_right_optional(seq: s1) {
-            Present { value: s2 } =>
-              match tepe_sequence_left_optional(seq: s2) {
-                Present { value: name_node } => tepe_atom_sym_optional(node: name_node)
+      match tepe_type_decl_name_from_decl_expr_optional(expr: type_decl) {
+        Present { value: sym } => optional_present(value: sym)
+        Absent =>
+          match fold(type_decl.children, init: optional_absent(), f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match e.label {
+                  Named { name: sym } =>
+                    if sym == ^dag_surface_type_decl {
+                      acc
+                    } else {
+                      optional_present(value: sym)
+                    }
+                  Positional => acc
+                }
+            }
+          }) {
+            Present { value: sym } => optional_present(value: sym)
+            Absent =>
+              match tepe_production_captured_optional(node: type_decl) {
+                Present { value: s1 } =>
+                  match tepe_sequence_right_optional(seq: s1) {
+                    Present { value: s2 } =>
+                      match tepe_sequence_left_optional(seq: s2) {
+                        Present { value: name_node } => tepe_atom_sym_optional(node: name_node)
+                        Absent => optional_absent()
+                      }
+                    Absent => optional_absent()
+                  }
                 Absent => optional_absent()
               }
-            Absent => optional_absent()
           }
-        Absent => optional_absent()
       }
   }
 }
@@ -574,10 +601,29 @@ fn tepe_contract_row_for_disj_anchor(
   root: Node,
   disj_anchor: Node
 ) -> Optional<CoproductWireContractIndexRow> {
-  match tepe_enum_sym_for_disj(root: root, disj_anchor: disj_anchor) {
-    Present { value: enum_sym } => tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym)
-    Absent => optional_absent()
-  }
+  let anchor_hash = content_hash(n: disj_anchor)
+  fold(
+    rows,
+    init: optional_absent(),
+    f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match row {
+            CoproductWireContractIndexRow { coproduct_sym: enum_sym, naming_tag: _, decl: _ } =>
+              match tepe_disj_for_enum_sym_optional(root: root, enum_sym: enum_sym) {
+                Present { value: disj } =>
+                  if content_hash(n: disj) == anchor_hash {
+                    optional_present(value: row)
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+    }
+  )
 }
 
 fn tepe_apply_enriched_disj_form(
