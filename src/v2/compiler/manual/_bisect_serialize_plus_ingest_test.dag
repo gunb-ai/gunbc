@@ -1,0 +1,15 @@
+module v2.test.manual._bisect_serialize_plus_ingest
+
+import v2.compiler.ingest { grammar_relation_row_forward_selection }
+import v2.extdeps.languages.typescript {
+  ts_wave2a_task_serialize_source_witness
+}
+import v2.std.logic { Bool }
+import v2.std.witness { Holds, Violates }
+
+test fn bisect_serialize_plus_ingest_holds() -> Bool {
+  match ts_wave2a_task_serialize_source_witness() {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
