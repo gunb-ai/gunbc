@@ -1051,6 +1051,18 @@ fn tepe_disj_form_from_catalog_row(
   )
 }
 
+fn tepe_disj_form_from_catalog_row_decode(row: Node) -> Outcome<TargetSumTypeShape> {
+  bind_outcome(
+    o: find_named_child(
+      root: row,
+      name: ^target_type_expr_projection_enrichment_catalog_disj_form
+    ),
+    f: fn(form_child) {
+      decode_sum_type_shape_bundle(bundle: form_child)
+    }
+  )
+}
+
 fn tepe_disj_form_from_catalog(catalog: Node, naming_tag: Symbol) -> Outcome<TargetSumTypeShape> {
   match fold(
     catalog.children,
@@ -1076,7 +1088,33 @@ fn tepe_disj_form_from_catalog(catalog: Node, naming_tag: Symbol) -> Outcome<Tar
     }
   ) {
     Accepted { value: form, diagnostics: d } => Accepted { value: form, diagnostics: d }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: _ } =>
+      match fold(
+        catalog.children,
+        init: outcome_rejected(
+          tepe_coproduct_wire_contract_malformed_diagnostic(node: catalog)
+        ),
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: n } =>
+                  if n == ^target_type_expr_projection_enrichment_catalog_naming_tag
+                    || n == ^target_type_expr_projection_enrichment_catalog_disj_form
+                  {
+                    acc
+                  } else {
+                    tepe_disj_form_from_catalog_row_decode(row: e.target)
+                  }
+                Positional => tepe_disj_form_from_catalog_row_decode(row: e.target)
+              }
+          }
+        }
+      ) {
+        Accepted { value: form, diagnostics: d } => Accepted { value: form, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
   }
 }
 

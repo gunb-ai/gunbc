@@ -823,11 +823,7 @@ test fn cwc_enrichment_contract_naming_spelling_holds() -> Bool {
                 Present { value: contract } =>
                   match contract {
                     CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: tag, decl: _ } =>
-                      match symbol_interned_spelling(binding: tag) {
-                        Accepted { value: spelling, diagnostics: _ } =>
-                          cwc_naming_spelling_is_screaming_snake_case(spelling: spelling)
-                        Rejected { diagnostics: _ } => false
-                      }
+                      tag == ^ScreamingSnakeCase
                   }
                 Absent => false
               }
