@@ -1,0 +1,92 @@
+// src/v2/std/reducible_test.dag
+// Scope: by-execution witnesses for v2.std.reducible (classify_leaf, verdict_eq,
+// reduce_verdicts_located Unknown latch). Perturb-RED arm discriminates wrong expectation.
+
+module v2.test.std.reducible
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.reducible {
+  Irreducible,
+  Reduced,
+  Unknown,
+  ReduceVerdict,
+  classify_leaf,
+  reduce_verdicts_located,
+  verdict_eq,
+}
+import v2.std.text { String }
+
+fn classify_leaf_empty_is_unknown() -> Bool {
+  verdict_eq(
+    a: classify_leaf(witness: ""),
+    b: Unknown { missing: "witness" }
+  )
+}
+
+fn classify_leaf_named_is_irreducible() -> Bool {
+  verdict_eq(
+    a: classify_leaf(witness: "grounded-atom"),
+    b: Irreducible { witness: "grounded-atom" }
+  )
+}
+
+fn verdict_eq_discriminates_variants() -> Bool {
+  verdict_eq(a: Reduced { last_parts: 1 }, b: Reduced { last_parts: 1 })
+    && !verdict_eq(a: Reduced { last_parts: 1 }, b: Reduced { last_parts: 2 })
+    && verdict_eq(
+      a: Irreducible { witness: "w" },
+      b: Irreducible { witness: "w" }
+    )
+    && !verdict_eq(
+      a: Irreducible { witness: "w" },
+      b: Irreducible { witness: "x" }
+    )
+    && verdict_eq(
+      a: Unknown { missing: "axis" },
+      b: Unknown { missing: "axis" }
+    )
+}
+
+fn mixed_verdicts_unknown_absorbs_leftmost() -> List<ReduceVerdict> {
+  [
+    Reduced { last_parts: 1 },
+    Unknown { missing: "latch-axis" },
+    Reduced { last_parts: 9 },
+  ]
+}
+
+fn reduce_verdicts_located_unknown_latch_holds() -> Bool {
+  verdict_eq(
+    a: reduce_verdicts_located(
+      verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
+      empty_missing: "verdict-list:empty"
+    ),
+    b: Unknown { missing: "latch-axis" }
+  )
+}
+
+// Perturb-RED: wrong decisive variant must not pass (flip latch-axis -> Reduced).
+data witness_reduce_verdicts_located_RED: Bool = verdict_eq(
+  a: reduce_verdicts_located(
+    verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
+    empty_missing: "verdict-list:empty"
+  ),
+  b: Reduced { last_parts: 9 }
+)
+
+test fn reducible_classify_leaf_holds() -> Bool {
+  classify_leaf_empty_is_unknown() && classify_leaf_named_is_irreducible()
+}
+
+test fn reducible_verdict_eq_holds() -> Bool {
+  verdict_eq_discriminates_variants()
+}
+
+test fn reducible_reduce_verdicts_located_holds() -> Bool {
+  reduce_verdicts_located_unknown_latch_holds()
+}
+
+test fn reducible_reduce_verdicts_located_RED() -> Bool {
+  witness_reduce_verdicts_located_RED == false
+}
