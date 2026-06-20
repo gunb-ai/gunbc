@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_dag_files_panics_on_duplicate_module_names() {
+    fn scan_dag_files_last_wins_on_duplicate_module_names_without_panic() {
         let dir = temp_dir("duplicate-modules");
         let a = dir.join("a.dag");
         let b = dir.join("nested").join("b.dag");
@@ -389,23 +389,39 @@ mod tests {
         std::fs::write(&a, "module duplicate.test\n").expect("write first module");
         std::fs::write(&b, "module duplicate.test\n").expect("write second module");
 
-        let result = std::panic::catch_unwind(|| {
-            let mut index = HashMap::new();
-            scan_dag_files(&dir, &mut index);
-        });
+        let mut index = HashMap::new();
+        scan_dag_files(&dir, &mut index);
 
-        let panic_payload = result.expect_err("expected duplicate module panic");
-        let message = if let Some(message) = panic_payload.downcast_ref::<String>() {
-            message.clone()
-        } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
-            message.to_string()
-        } else {
-            String::new()
-        };
-
+        assert_eq!(
+            index.len(),
+            1,
+            "duplicate module paths within a root collapse via last-wins insert"
+        );
         assert!(
-            message.contains("duplicate module declaration for duplicate.test"),
-            "panic should identify duplicate module names, got: {message}"
+            index.contains_key("duplicate.test"),
+            "one duplicate.test binding remains"
+        );
+    }
+
+    #[test]
+    fn build_module_index_co_root_last_wins_on_duplicate_module_names() {
+        let dir_a = temp_dir("overlay-root-a");
+        let dir_b = temp_dir("overlay-root-b");
+        std::fs::write(dir_a.join("a.dag"), "module duplicate.test\n").expect("write first");
+        std::fs::write(dir_b.join("b.dag"), "module duplicate.test\n").expect("write second");
+
+        let index_ab = build_module_index_for_roots(&[dir_a.clone(), dir_b.clone()]);
+        assert_eq!(
+            index_ab.get("duplicate.test"),
+            Some(&dir_b.join("b.dag")),
+            "later root wins on duplicate module paths"
+        );
+
+        let index_ba = build_module_index_for_roots(&[dir_b, dir_a]);
+        assert_eq!(
+            index_ba.get("duplicate.test"),
+            Some(&dir_a.join("a.dag")),
+            "root order reverses the winning file"
         );
     }
 

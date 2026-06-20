@@ -7866,7 +7866,8 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
     let dsl_root = ws.join("dsl");
     let v2_root = ws.join("src/v2");
-    let overlay_roots = vec![v2_root.clone(), dsl_root.clone()];
+    // witness_layer_roots authority: ["dsl", "src/v2"] — later root (v2) wins on duplicates.
+    let overlay_roots = vec![dsl_root.clone(), v2_root.clone()];
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
     let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
