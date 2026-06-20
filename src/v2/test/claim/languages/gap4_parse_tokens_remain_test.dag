@@ -49,14 +49,12 @@ test fn gap4_minimal_green_match_arm_tail_parses_holds() -> Bool {
   )
 }
 
-// DISCRIMINATING CONTROL — malformed let rejects but NOT tokens_remain.
-test fn gap4_malformed_let_missing_eq_rejects_not_tokens_remain_holds() -> Bool {
-  match parses(src: "module m.t\nfn f() -> Int {\n  let key ParsePositionKey { position: 0 }\n  0\n}\n") {
+// DISCRIMINATING CONTROL — clearly invalid char must Reject tokenize, not parse_g0_tokens_remain.
+test fn gap4_unrecognized_char_rejects_not_tokens_remain_holds() -> Bool {
+  match parses(src: "module m.t\nfn f() -> Int { `x }\n") {
     true => false
     false =>
-      match rejects_parse_g0_tokens_remain(
-        src: "module m.t\nfn f() -> Int {\n  let key ParsePositionKey { position: 0 }\n  0\n}\n"
-      ) {
+      match rejects_parse_g0_tokens_remain(src: "module m.t\nfn f() -> Int { `x }\n") {
         true => false
         false => true
       }
