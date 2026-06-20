@@ -257,24 +257,6 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
         && (v1_rt::substring(&type_name, 0, 3).as_str() == "Rc<".to_string().as_str()))
 }
 
-pub fn rust_is_brand_preserved_substrate_text_string(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    let name = authored_name_at(env.source_indices.clone(), n.clone());
-    if name.as_str() != "String" || (n.children.len() as i64) == 0 {
-        false
-    } else {
-        match n.children.first() {
-            Some(elem) => {
-                let ename = authored_name_at(env.source_indices.clone(), elem.clone());
-                ename.as_str() == "Char" || ename.as_str() == "Nat"
-            }
-            None => false,
-        }
-    }
-}
-
 pub fn render_rust_text_carrier(shared_types: Rc<std::collections::BTreeSet<String>>) -> String {
     render_rust_shared_type_if_needed(
         "FreeMonoid".to_string(),

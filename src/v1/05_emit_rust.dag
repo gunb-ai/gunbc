@@ -339,9 +339,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
         render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
-        if rust_is_brand_preserved_substrate_text_string(n: n, env: env) {
-          render_rust_text_carrier(shared_types: shared_types)
-        } else if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+        if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
           render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
         } else {
         let base = rust_named_type_base(name: name)
