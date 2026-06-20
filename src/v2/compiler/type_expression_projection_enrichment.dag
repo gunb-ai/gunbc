@@ -41,6 +41,7 @@ import v2.std.node {
   content_hash,
   fold_node
 }
+import std.serialization { ScreamingSnakeCase, SnakeCase }
 import v2.std.node_query { find_named_child }
 
 fn tepe_coproduct_wire_contract_malformed_diagnostic(node: Node) -> Diagnostic {
@@ -654,6 +655,18 @@ fn tepe_variant_naming_tag_from_encoding(encoding: Node, decl: Node) -> Outcome<
   }
 }
 
+fn tepe_normalize_naming_tag_for_catalog(sym: Symbol) -> Symbol {
+  match symbol_interned_spelling(binding: sym) {
+    Accepted { value: spelling, diagnostics: _ } =>
+      match tepe_naming_spelling_basename(spelling: spelling) {
+        "ScreamingSnakeCase" => ^ScreamingSnakeCase
+        "SnakeCase" => ^SnakeCase
+        _ => sym
+      }
+    Rejected { diagnostics: _ } => sym
+  }
+}
+
 fn tepe_coproduct_sym_from_decl(
   decl: Node,
   field_coproduct: Symbol,
@@ -690,7 +703,9 @@ fn tepe_coproduct_sym_from_decl(
                               outcome_accepted(
                                 CoproductWireContractIndexRow {
                                   coproduct_sym: coproduct_sym,
-                                  naming_tag: naming_tag,
+                                  naming_tag: tepe_normalize_naming_tag_for_catalog(
+                                    sym: naming_tag
+                                  ),
                                   decl: decl
                                 }
                               )
@@ -975,6 +990,20 @@ fn tepe_quoted_spelling_matches(spelling: String, ident: String) -> Bool {
   spelling == concat("\"", concat(ident, "\""))
 }
 
+fn tepe_naming_spellings_equivalent(left_spelling: String, right_spelling: String) -> Bool {
+  let left_base = tepe_naming_spelling_basename(spelling: left_spelling)
+  let right_base = tepe_naming_spelling_basename(spelling: right_spelling)
+  if left_base == right_base {
+    true
+  } else if left_spelling == right_spelling {
+    true
+  } else if tepe_quoted_spelling_matches(spelling: left_spelling, ident: right_spelling) {
+    true
+  } else {
+    tepe_quoted_spelling_matches(spelling: right_spelling, ident: left_spelling)
+  }
+}
+
 fn tepe_naming_tags_equivalent(left: Symbol, right: Symbol) -> Bool {
   if left == right {
     true
@@ -983,11 +1012,10 @@ fn tepe_naming_tags_equivalent(left: Symbol, right: Symbol) -> Bool {
       Accepted { value: left_spelling, diagnostics: _ } =>
         match symbol_interned_spelling(binding: right) {
           Accepted { value: right_spelling, diagnostics: _ } =>
-            tepe_naming_spelling_basename(spelling: left_spelling)
-              == tepe_naming_spelling_basename(spelling: right_spelling)
-              || left_spelling == right_spelling
-              || tepe_quoted_spelling_matches(spelling: left_spelling, ident: right_spelling)
-              || tepe_quoted_spelling_matches(spelling: right_spelling, ident: left_spelling)
+            tepe_naming_spellings_equivalent(
+              left_spelling: left_spelling,
+              right_spelling: right_spelling
+            )
           Rejected { diagnostics: _ } => false
         }
       Rejected { diagnostics: _ } => false
