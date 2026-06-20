@@ -135,11 +135,12 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
-                                if (p.module_name.clone()
+                                if (p.module_name.clone().as_str()
                                     == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
                                         tm.module.clone(),
-                                    ))
+                                    )
+                                    .as_str())
                                 {
                                     __result.push(p);
                                 }
@@ -153,7 +154,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (f.path.clone() != "".to_string()) {
+                if (f.path.clone().as_str() != "".to_string().as_str()) {
                     __result.push(f);
                 }
             }
@@ -483,7 +484,7 @@ pub fn emit_go_module(
             module_imports(m.clone()),
             si.clone(),
         );
-        let imports_section = if (imports_str.clone() == "".to_string()) {
+        let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
         } else {
             v1_rt::concat("\n\n".to_string(), imports_str.clone())
@@ -1580,7 +1581,7 @@ pub fn emit_go_rest_call(
             v1_rt::concat(
                 v1_rt::concat(
                     Rc::new(vec![url_line, body_line, req_line]),
-                    if (auth_line.clone() == "".to_string()) {
+                    if (auth_line.clone().as_str() == "".to_string().as_str()) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![auth_line.clone()])
@@ -1828,7 +1829,7 @@ pub fn go_export_ident(name: String) -> String {
             if {
                 let mut __found = false;
                 for r in go_reserved().iter().cloned() {
-                    if (r.clone() == result.clone()) {
+                    if (r.clone().as_str() == result.clone().as_str()) {
                         __found = true;
                         break;
                     }

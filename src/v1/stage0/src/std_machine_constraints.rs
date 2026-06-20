@@ -11,10 +11,4 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MachineWidth<bits>(pub std::marker::PhantomData<bits>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PointerWidth(pub std::marker::PhantomData<()>);
-
-pub type Compose<Algebra, MachineConstraint> = Phantom;
+pub type PointerWidth = PointerWidth;

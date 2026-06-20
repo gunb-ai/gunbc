@@ -139,7 +139,7 @@ pub fn func_reaches_self(
                     for e in Rc::new({
                         let mut __result = Vec::new();
                         for e in call_edges.clone().iter().cloned() {
-                            if (e.caller.clone() == current.clone()) {
+                            if (e.caller.clone().as_str() == current.clone().as_str()) {
                                 __result.push(e);
                             }
                         }
@@ -155,7 +155,7 @@ pub fn func_reaches_self(
                 {
                     let mut __found = false;
                     for c in callees.iter().cloned() {
-                        if if (c.clone() == root.clone()) {
+                        if if (c.clone().as_str() == root.clone().as_str()) {
                             true
                         } else {
                             func_reaches_self(
@@ -296,7 +296,7 @@ pub fn topo_resolve_loop(
                             for e in Rc::new({
                                 let mut __result = Vec::new();
                                 for e in call_edges.clone().iter().cloned() {
-                                    if (e.caller.clone() == fn_name.clone()) {
+                                    if (e.caller.clone().as_str() == fn_name.clone().as_str()) {
                                         __result.push(e);
                                     }
                                 }
