@@ -2,8 +2,6 @@
 module v2.test.manual.pbp_body_producer_wrong_type_repro
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 type Refined<T> {
   base: T
@@ -15,7 +13,11 @@ fn take_acct(acct: AccountId) -> String {
   ""
 }
 
-fn pbp_wrong() -> Bool {
-  let uid = Refined { base: "" }
-  take_acct(acct: uid) == ""
+fn caller(uid: UserId) -> String {
+  let x = uid
+  take_acct(acct: x)
+}
+
+fn pbp_wrong() -> String {
+  caller(uid: Refined { base: "" })
 }
