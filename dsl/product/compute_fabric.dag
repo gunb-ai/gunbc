@@ -581,39 +581,60 @@ type AllocationClass =
   | Large    // 8 hardware threads · 8 GiB
   | XLarge   // 16 hardware threads · 16 GiB
 
+// §2 fact-bundle: one row per class (threads, memory, label) — not three parallel matches.
+type AllocationClassSpec {
+  threads: Int
+  memory_bytes: ByteSize
+  label: NonEmptyStr
+}
+
+data allocation_class_small: AllocationClassSpec = AllocationClassSpec {
+  threads: 2,
+  memory_bytes: byte_size(2147483648),
+  label: "Small",
+}
+
+data allocation_class_medium: AllocationClassSpec = AllocationClassSpec {
+  threads: 4,
+  memory_bytes: byte_size(4294967296),
+  label: "Medium",
+}
+
+data allocation_class_large: AllocationClassSpec = AllocationClassSpec {
+  threads: 8,
+  memory_bytes: byte_size(8589934592),
+  label: "Large",
+}
+
+data allocation_class_xlarge: AllocationClassSpec = AllocationClassSpec {
+  threads: 16,
+  memory_bytes: byte_size(17179869184),
+  label: "XLarge",
+}
+
+fn allocation_class_spec(class: AllocationClass) -> AllocationClassSpec {
+  match class {
+    Small => allocation_class_small
+    Medium => allocation_class_medium
+    Large => allocation_class_large
+    XLarge => allocation_class_xlarge
+  }
+}
+
 type ComputeRequest {
   class: AllocationClass
 }
 
 fn allocation_class_threads(class: AllocationClass) -> Int {
-  match class {
-    Small => 2
-    Medium => 4
-    Large => 8
-    XLarge => 16
-  }
+  allocation_class_spec(class: class).threads
 }
 
 fn allocation_class_memory_bytes(class: AllocationClass) -> ByteSize {
-  match class {
-  // 2^31 · 2^0 = 2 GiB
-    Small => byte_size(2147483648)
-  // 2^32 = 4 GiB
-    Medium => byte_size(4294967296)
-  // 2^33 = 8 GiB
-    Large => byte_size(8589934592)
-  // 2^34 = 16 GiB
-    XLarge => byte_size(17179869184)
-  }
+  allocation_class_spec(class: class).memory_bytes
 }
 
 fn allocation_class_label(class: AllocationClass) -> NonEmptyStr {
-  match class {
-    Small => "Small"
-    Medium => "Medium"
-    Large => "Large"
-    XLarge => "XLarge"
-  }
+  allocation_class_spec(class: class).label
 }
 
 fn allocation_class_memory_cost(class: AllocationClass) -> Int {
