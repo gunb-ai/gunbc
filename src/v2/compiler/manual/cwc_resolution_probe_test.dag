@@ -84,7 +84,7 @@ data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored
 data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming = ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
 data cwc_expected_sum_regression_text: String = "X | Y"
-data cwc_serde_rename_all_screaming_pattern: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"
+data cwc_expected_serde_sum_text: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]\nApprove | RequestChanges | Comment | Pending"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -848,9 +848,7 @@ test fn cwc_translate_serde_rename_all_holds() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_wire_serde_screaming_snake_target
   )
-  string_contains(s: text, pattern: cwc_serde_rename_all_screaming_pattern)
-    && string_contains(s: text, pattern: "Approve")
-    && string_contains(s: text, pattern: "RequestChanges")
+  text == cwc_expected_serde_sum_text
 }
 
 test fn cwc_translate_serde_wrong_naming_red() -> Bool {
@@ -858,7 +856,7 @@ test fn cwc_translate_serde_wrong_naming_red() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_wire_serde_snake_case_target
   )
-  !string_contains(s: text, pattern: cwc_serde_rename_all_screaming_pattern)
+  text != cwc_expected_serde_sum_text
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
@@ -866,7 +864,7 @@ fn cwc_translate_serde_fail_open_control() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_sg2_type_expr_target_model()
   )
-  !string_contains(s: text, pattern: cwc_serde_rename_all_screaming_pattern)
+  text != cwc_expected_serde_sum_text
 }
 
 test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
