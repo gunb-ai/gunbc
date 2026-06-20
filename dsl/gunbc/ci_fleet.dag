@@ -24,10 +24,12 @@ import product.compute_fabric {
   Dram,
   WorkDemand,
   ResourceEnvelope,
+  MemoryRequirement,
   IsolationRequirement,
   IndependentShards,
   offer_placement_supply_row,
   placement_spawn_width,
+  placement_floor_memory_budget_bytes,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import std.measure { byte_size, hertz, hardware_thread_count, HardwareThreadCount }
@@ -58,7 +60,12 @@ data gunbc_ci_host: ComputeHost = ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
-  memory: [MemoryDevice { capacity: byte_size(274877906944), memory_kind: Dram, bandwidth: none }],
+  // 125 GiB measured on the real fleet host (Ampere Altra Max M128, 1 NUMA node). The prior
+  // 256 GiB was a stub; the memory-aware spawn-width bound (placement_spawn_width) needs a
+  // real RAM figure or it cannot back fan-out off before the cgroup OOM. CPU thread count
+  // (catalog) is still the 64-thread stub — corrected with the ctrl fleet grounding; the
+  // memory bound dominates the floor width regardless, so it is not load-bearing here.
+  memory: [MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],
 }
@@ -100,7 +107,13 @@ fn gunbc_ci_floor_corpus_work_demand(corpus_shard_count: Int) -> WorkDemand {
     resources: ResourceEnvelope {
       cpu: none,
       gpu: none,
-      memory: none,
+      // Per-shard peak resolve memory. Grounded in the deterministic floor-OOM evidence
+      // (eager-boar-790, 3 runs of a grown corpus at width=7): srv2's ~87.6 GiB cgroup cap
+      // passes 7 concurrent ~2900-item resolves only by a thin margin (~12.5 GiB/unit), and
+      // srv1's ~65.6 GiB cap OOM-kills (exit 137). 14 GiB/unit carries headroom for corpus
+      // growth; the memory-aware width then floors batch-2 below the OOM ceiling on both
+      // hosts. Grounds-tighter when a peak-RSS probe per resolve lands.
+      memory: Present { value: MemoryRequirement { min_bytes: byte_size(15032385536) } },
       storage: none,
       network: none,
     },
