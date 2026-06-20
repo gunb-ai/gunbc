@@ -2360,7 +2360,7 @@ fn dag_grammar_arg_expr() -> GrammarExpr {
 
 fn dag_grammar_field_init_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    left: dag_grammar_terminal(token_class: ^dag_token_ident),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
       right: dag_grammar_nonterminal(production: ^dag_production_expr)
