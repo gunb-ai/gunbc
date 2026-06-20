@@ -39,9 +39,7 @@
 
 module std.integer
 
-import v2.std.nat { UInt }
 import std.algebra { AbelianGroup, GroupCompletion }
-import v2.std.machine { UIntPlatform }
 import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 
@@ -110,8 +108,7 @@ type UInt128 = Compose<UInt, MachineWidth<128>>
 //
 // Fixed-width `UInt8`..`UInt128` refine this carrier via Compose (see above).
 type Int = AbelianGroup<GroupCompletion<Nat>>
-
-// UInt: authority at v2.std.nat (byte-sync de-fork slice 1a).
+type UInt = Nat
 
 // IntPlatform / UIntPlatform — pointer-width-sized integer substrate concepts.
 //
@@ -142,6 +139,7 @@ type Int = AbelianGroup<GroupCompletion<Nat>>
 // Decomposition (DESIGN.md §2): N/A — type aliases over existing `Compose<...>` carrier;
 // no new sum types or coproducts introduced here.
 type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 // Nat-alignment refinements (S9 Slice 2 / Slice 2.5 / Phase-4).
 //

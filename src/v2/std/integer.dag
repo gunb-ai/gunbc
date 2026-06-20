@@ -36,9 +36,10 @@ import v2.std.machine {
   Word64,
   Word128
 }
-import v2.std.nat { Nat, UInt }
+import v2.std.nat { Nat }
 type GroupCompletion<M>
 type Int = GroupCompletion<Nat>
+type UInt = Nat
 type Compose<carrier, dimension>
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
@@ -66,6 +67,7 @@ type UInt64 = Compose<UInt, MachineWidth<Word64>>
 type UInt128 = Compose<UInt, MachineWidth<Word128>>
 
 type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerBoundSign

@@ -9,7 +9,6 @@ module v2.std.machine
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.nat { UInt }
 type Bit = Bool
 type Byte {
   bits: List<Bit>
@@ -35,6 +34,3 @@ type Word128 {
 }
 type MachineWidth<bits>
 type PointerWidth
-type Compose<carrier, dimension>
-// Pointer-width unsigned integer — authority for byte-sync de-fork slice 1a.
-type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>

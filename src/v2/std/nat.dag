@@ -17,8 +17,6 @@ import v2.std.algebra {
 }
 import v2.std.node { Symbol }
 import v2.std.collection { List }
-// Unsigned integer carrier — authority for byte-sync de-fork slice 1a (`UInt IS Nat`).
-type UInt = Nat
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Nat
   = Zero
