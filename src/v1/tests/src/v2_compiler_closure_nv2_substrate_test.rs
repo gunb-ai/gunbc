@@ -423,9 +423,11 @@ fn emit_representative_slice_manifest() {
 }
 
 #[test]
-#[ignore = "gap4 single-module v2-interpreter discriminator (smallest slice: 03_normalize)"]
+#[ignore = "gap4 single-module v2-interpreter discriminator (GAP4_SINGLE env, default 03_normalize)"]
 fn gap4_single_module_discriminator() {
-    const SINGLE: &str = "src/v2/compiler/03_normalize.dag";
+    let single = std::env::var("GAP4_SINGLE")
+        .unwrap_or_else(|_| "src/v2/compiler/03_normalize.dag".to_string());
+    let single = single.as_str();
     let ws = workspace_root();
     let v2_root = ws.join("src/v2").to_string_lossy().to_string();
     let entry = ws.join(COMPILER_ENTRY);
@@ -454,8 +456,8 @@ fn gap4_single_module_discriminator() {
             rec.file_path = (*path).to_string();
             rec
         })
-        .find(|r| normalize_path(&r.file_path) == SINGLE)
-        .unwrap_or_else(|| panic!("single-module path not in slice: {SINGLE}"));
+        .find(|r| normalize_path(&r.file_path) == single)
+        .unwrap_or_else(|| panic!("single-module path not in slice: {single}"));
 
     let entry_source = fs::read_to_string(ws.join(COMPILER_ENTRY)).expect("read entry");
     let admission =
@@ -477,7 +479,7 @@ fn gap4_single_module_discriminator() {
     let parses = run_claim(&ctx, "compiler_closure_scoped_ingest_parses_holds");
     let probe_ok = run_claim(&ctx, "gap4_probe_all_ingest_reads_accept_holds");
     eprintln!(
-        "gap4 single-module discriminator ({SINGLE}): parses={parses:?} probe_all_accept={probe_ok:?}"
+        "gap4 single-module discriminator ({single}): parses={parses:?} probe_all_accept={probe_ok:?}"
     );
     let path = v1_interpreter::run_in_context(&ctx, "gap4_probe_first_ingest_reject", true)
         .unwrap_or_else(|e| panic!("gap4_probe_first_ingest_reject: {e:?}"));
