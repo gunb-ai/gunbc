@@ -36,7 +36,9 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_disj_form_from_catalog,
   tepe_lookup_contract_row,
   tepe_contract_row_for_disj_anchor,
-  tepe_enum_sym_for_disj
+  tepe_enum_sym_for_disj,
+  tepe_coproduct_sym_from_decl,
+  tepe_rows_contain_coproduct
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -1200,6 +1202,79 @@ test fn zl54_collect_decl_count_one() -> Bool {
   match zl54_resolved_root(src: cwc_src_two_contract_module) {
     Accepted { value: root, diagnostics: _ } =>
       count(tepe_collect_data_decl_nodes(root: root)) == 1
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// What is the single surviving row? Does it match ReviewEvent / Status by spelling?
+test fn zl54_row_matches_review() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(root: root, field_coproduct: ^coproduct, field_encoding: ^encoding, type_coproduct_wire_contract: ^CoproductWireContract) {
+        Accepted { value: rows, diagnostics: _ } => tepe_rows_contain_coproduct(rows: rows, sym: ^ReviewEvent)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_row_matches_status() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(root: root, field_coproduct: ^coproduct, field_encoding: ^encoding, type_coproduct_wire_contract: ^CoproductWireContract) {
+        Accepted { value: rows, diagnostics: _ } => tepe_rows_contain_coproduct(rows: rows, sym: ^Status)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Per-decl: do decls[0] and decls[1] extract DISTINCT coproduct_syms?
+fn zl54_decl_csym(root: Node, idx: Int) -> Optional<Symbol> {
+  match list_at_optional(xs: tepe_collect_data_decl_nodes(root: root), index: idx) {
+    Present { value: decl } =>
+      match tepe_coproduct_sym_from_decl(decl: decl, field_coproduct: ^coproduct, field_encoding: ^encoding, type_coproduct_wire_contract: ^CoproductWireContract) {
+        Accepted { value: row, diagnostics: _ } =>
+          match row { CoproductWireContractIndexRow { coproduct_sym: cs, naming_tag: _, decl: _ } => optional_present(value: cs) }
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+test fn zl54_decl0_is_review() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match zl54_decl_csym(root: root, idx: 0) {
+        Present { value: cs } => cs == ^ReviewEvent
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_decl1_is_status() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match zl54_decl_csym(root: root, idx: 1) {
+        Present { value: cs } => cs == ^Status
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_decl0_decl1_csym_equal() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match zl54_decl_csym(root: root, idx: 0) {
+        Present { value: c0 } =>
+          match zl54_decl_csym(root: root, idx: 1) {
+            Present { value: c1 } => c0 == c1
+            Absent => false
+          }
+        Absent => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
