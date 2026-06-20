@@ -33,7 +33,7 @@ fn clean_tree_compile_program() -> ShellProgram {
       command(words: [
         gunbc, lit(text: "compile"),
         lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
-        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2")] },
+        lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2/std")] },
         lit(text: "--output-dir"), out,
         lit(text: "--target"), lit(text: "rust")
       ]),
@@ -79,7 +79,7 @@ fn compile_clean_perturb_program() -> ShellProgram {
             gunbc, lit(text: "compile"),
             lit(text: "--source-root"), tmp,
             lit(text: "--source-root"), Concat { parts: [root, lit(text: "/dsl")] },
-            lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2")] },
+            lit(text: "--source-root"), Concat { parts: [root, lit(text: "/src/v2/std")] },
             lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
             lit(text: "--target"), lit(text: "rust")
           ]),

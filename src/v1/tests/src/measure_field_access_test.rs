@@ -226,7 +226,7 @@ fn measure_dag_rust_emit_terminates() {
     let ws = crate::helpers::workspace_root();
     let roots: Vec<String> = vec![
         ws.join("dsl").to_string_lossy().to_string(),
-        ws.join("src/v2").to_string_lossy().to_string(),
+        ws.join("src/v2/std").to_string_lossy().to_string(),
     ];
     let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
     let entry = entry.to_string_lossy().to_string();
@@ -255,7 +255,7 @@ fn measure_dag_v2_loads_without_field_errors() {
     let ws = crate::helpers::workspace_root();
     let roots: Vec<String> = vec![
         ws.join("dsl").to_string_lossy().to_string(),
-        ws.join("src/v2").to_string_lossy().to_string(),
+        ws.join("src/v2/std").to_string_lossy().to_string(),
     ];
     let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
     let entry = entry.to_string_lossy().to_string();
