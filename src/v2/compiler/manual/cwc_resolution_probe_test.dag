@@ -14,10 +14,31 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
+import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.translate {
+  translate_type_expression_project,
+  target_serialize_source_from_model,
+  target_serialize_source_from_model_with_projection
+}
+import v2.compiler.type_expression_projection_enrichment {
+  type_expression_projection_for_translate
+}
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
+import v2.extdeps.languages.rust {
+  rust_sg2_sum_xy_emitted,
+  rust_sg2_type_expr_target_model
+}
+import v2.extdeps.languages.rust_wire_serde {
+  rust_wire_serde_screaming_snake_target,
+  rust_wire_serde_snake_case_target
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
+import v2.std.text { String }
 
 // Multi-variant coproduct sources exercised by the n-ary Disj fold witnesses below.
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
@@ -30,7 +51,13 @@ data cwc_src_type_scalar: String = "module probe\ntype T = Int\n"
 // Malformed n-ary coproduct: record variant without a top-level atom identity (≥2 arms).
 data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int } | B | C\n"
 
-data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
+// DeclarationRef as ident (parse stamps ^ReviewEvent); quoted string literal is forward work.
+data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
+
+// Present-but-broken wire contract: CoproductWireContract row missing coproduct field.
+data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming = ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
+
+data cwc_expected_sum_regression_text: String = "X | Y"
 
 fn cwc_norm_of(src: String) -> Outcome<Node> {
   let lm = dag_language_model_wave1()
@@ -170,4 +197,161 @@ test fn cwc_nary_coproduct_normalize_boundary_holds() -> Bool {
     && cwc_non_coproduct_rhs_passes_through()
     && cwc_malformed_nary_coproduct_normalize_rejects()
     && !cwc_malformed_nary_coproduct_fail_open_control()
+}
+
+fn cwc_inferred_of(src: String) -> Outcome<InferredTree> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: cwc_norm_of(src: src),
+    f: fn(tree) {
+      bind_outcome(
+        o: resolve(tree: tree, lm: lm),
+        f: fn(resolved) {
+          infer(tree: resolved)
+        }
+      )
+    }
+  )
+}
+
+fn cwc_optional_review_event_disj(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            if cwc_disj_arm_count(n: node) == 4 {
+              optional_present(value: node)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn cwc_serialized_sum_text(src: String, target: TargetModel) -> String {
+  match cwc_inferred_of(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_for_translate(
+            tree: tree,
+            target: target,
+            node: disj
+          ) {
+            Accepted { value: projection, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: emitted, diagnostics: _ } =>
+                  match target_serialize_source_from_model_with_projection(
+                    target: target,
+                    emitted: emitted,
+                    projection: projection
+                  ) {
+                    Accepted { value: source, diagnostics: _ } => source.carried
+                    Rejected { diagnostics: _ } => ""
+                  }
+                Rejected { diagnostics: _ } => ""
+              }
+            Rejected { diagnostics: _ } => ""
+          }
+        Absent => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn cwc_translate_project_disj_accepts(src: String, target: TargetModel) -> Bool {
+  match cwc_inferred_of(src: src) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match type_expression_projection_for_translate(
+            tree: tree,
+            target: target,
+            node: disj
+          ) {
+            Accepted { value: projection, diagnostics: _ } =>
+              match translate_type_expression_project(
+                node: disj,
+                target: target,
+                projection: projection
+              ) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_translate_serde_rename_all_holds() -> Bool {
+  let text = cwc_serialized_sum_text(
+    src: cwc_src_cwc_module,
+    target: rust_wire_serde_screaming_snake_target
+  )
+  string_contains(s: text, pattern: rust_serde_rename_all_screaming_snake_case)
+    && string_contains(s: text, pattern: "Approve")
+    && string_contains(s: text, pattern: "RequestChanges")
+}
+
+test fn cwc_translate_serde_wrong_naming_red() -> Bool {
+  let text = cwc_serialized_sum_text(
+    src: cwc_src_cwc_module,
+    target: rust_wire_serde_snake_case_target
+  )
+  !string_contains(s: text, pattern: rust_serde_rename_all_screaming_snake_case)
+}
+
+fn cwc_translate_serde_fail_open_control() -> Bool {
+  let text = cwc_serialized_sum_text(
+    src: cwc_src_cwc_module,
+    target: rust_sg2_type_expr_target_model()
+  )
+  !string_contains(s: text, pattern: rust_serde_rename_all_screaming_snake_case)
+}
+
+test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
+  !cwc_translate_project_disj_accepts(
+    src: cwc_src_malformed_wire_contract,
+    target: rust_wire_serde_screaming_snake_target
+  )
+}
+
+fn cwc_sg2_sum_serialized_text() -> String {
+  match target_serialize_source_from_model(
+    target: rust_sg2_type_expr_target_model(),
+    emitted: rust_sg2_sum_xy_emitted()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn cwc_sum_leading_tokens_regression_byte_unchanged() -> Bool {
+  cwc_sg2_sum_serialized_text() == cwc_expected_sum_regression_text
+}
+
+test fn cwc_translate_serde_boundary_holds() -> Bool {
+  cwc_translate_serde_rename_all_holds()
+    && cwc_translate_serde_wrong_naming_red()
+    && !cwc_translate_serde_fail_open_control()
+    && cwc_translate_malformed_wire_contract_rejects()
+    && cwc_sum_leading_tokens_regression_byte_unchanged()
 }

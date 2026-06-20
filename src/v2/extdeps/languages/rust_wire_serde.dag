@@ -23,7 +23,8 @@ import v2.extdeps.languages.rust {
   rust_concrete_token_node,
   rust_inhabitant_atom,
   rust_named_edge,
-  rust_reference_layer_tokens
+  rust_reference_layer_tokens,
+  rust_type_expression_projection_bundle_node
 }
 import v2.std.algebra { Empty, fold_list, list_append }
 import v2.std.collection { List, Map, empty_map }
@@ -39,8 +40,10 @@ import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
+  TargetSumTypeShape,
   concrete_syntax_token_class,
-  target_reference_layer_tokens_node
+  target_reference_layer_tokens_node,
+  target_type_expr_sum_shape_node
 }
 import v2.std.grammar {
   GrammarExpr,
@@ -299,8 +302,156 @@ fn rust_ws_serialize_source_node(naming: VariantNaming) -> Node {
   }
 }
 
+fn rust_ws_disj_serde_attr_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToken> {
+  [FixedToken { token_class: rust_wire_serde_attr_token_class(naming: naming) }]
+}
+
+fn rust_ws_disj_form_with_serde_prefix(naming: VariantNaming) -> TargetSumTypeShape {
+  TargetSumTypeShape {
+    surface: ^rust_surface_type_sum,
+    variant_separator: ^rust_token_pipe,
+    leading_fixed_tokens: rust_ws_disj_serde_attr_tokens(naming: naming)
+  }
+}
+
+fn rust_ws_enrichment_naming_tag_node(naming: VariantNaming) -> Node {
+  match naming {
+    ScreamingSnakeCase =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^ScreamingSnakeCase } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    SnakeCase =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^SnakeCase } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    AsAuthored =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^AsAuthored } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    StripPrefixAndSnakeCase { prefix: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^StripPrefixAndSnakeCase } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    StripSuffixAndSnakeCase { suffix: _ } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^StripSuffixAndSnakeCase } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    StripPrefixSuffixAndSnakeCase { prefix: _, suffix: _ } =>
+      Node {
+        kind: TypeNode {
+          connective: Atom { identity: ^StripPrefixSuffixAndSnakeCase }
+        },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn rust_ws_enrichment_catalog_row(naming: VariantNaming) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_catalog_naming_tag,
+        target: rust_ws_enrichment_naming_tag_node(naming: naming)
+      ),
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_catalog_disj_form,
+        target: target_type_expr_sum_shape_node(
+          form: rust_ws_disj_form_with_serde_prefix(naming: naming)
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_ws_enrichment_disj_form_catalog() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^rust_ws_enrichment_row_screaming,
+        target: rust_ws_enrichment_catalog_row(naming: ScreamingSnakeCase)
+      ),
+      rust_named_edge(
+        name: ^rust_ws_enrichment_row_snake,
+        target: rust_ws_enrichment_catalog_row(naming: SnakeCase)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_wire_serde_projection_enrichment_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_protocol,
+        target: Node {
+          kind: TypeNode {
+            connective: Atom {
+              identity: ^target_type_expr_projection_enrichment_protocol_coproduct_wire_contract
+            }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_field_coproduct,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^coproduct } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_field_encoding,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^encoding } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_type_coproduct_wire_contract,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^CoproductWireContract } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      ),
+      rust_named_edge(
+        name: ^target_type_expr_projection_enrichment_disj_form_catalog,
+        target: rust_ws_enrichment_disj_form_catalog()
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
 fn rust_ws_target_model_core_edges(naming: VariantNaming) -> List<Edge> {
   [
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection,
+      target: rust_type_expression_projection_bundle_node()
+    ),
+    rust_named_edge(
+      name: ^target_model_edge_type_expression_projection_enrichment,
+      target: rust_wire_serde_projection_enrichment_node()
+    ),
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_ws_translation_rules_node(naming: naming)

@@ -1,0 +1,723 @@
+// Target-agnostic type-expression projection enrichment (C.i coproduct wire-contract).
+// Reads enrichment DATA from target bundle edge; no target-name branches.
+
+module v2.compiler.type_expression_projection_enrichment
+
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.dag { parse_production_captured_child_optional }
+import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, list_append, list_snoc_item, list_tail }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetTypeExpressionProjection,
+  TargetSumTypeShape,
+  decode_sum_type_shape_bundle,
+  symbol_interned_spelling,
+  type_expression_projection_from_target
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Disj,
+  Edge,
+  Node,
+  NodeFold,
+  Symbol,
+  TypeNode,
+  content_hash,
+  fold_node
+}
+import v2.std.node_query { find_named_child }
+
+fn tepe_coproduct_wire_contract_malformed_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_coproduct_wire_contract_malformed,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+type CoproductWireContractIndexRow {
+  coproduct_sym: Symbol
+  naming_tag: Symbol
+  decl: Node
+}
+
+fn tepe_node_has_surface(root: Node, surface: Symbol) -> Bool {
+  match find_named_child(root: root, name: surface) {
+    Accepted { value: child, diagnostics: _ } =>
+      match child.kind {
+        TypeNode { connective: Atom { identity: id } } => id == surface
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tepe_atom_identity_optional(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
+    _ => optional_absent()
+  }
+}
+
+fn tepe_named_field_target(root: Node, field: Symbol) -> Optional<Node> {
+  match find_named_child(root: root, name: field) {
+    Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn tepe_disj_in_subtree(node: Node) -> Optional<Node> {
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Disj } => optional_present(value: n0)
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_type_decl_enum_sym(type_decl: Node) -> Optional<Symbol> {
+  if !tepe_node_has_surface(root: type_decl, surface: ^dag_surface_type_decl) {
+    optional_absent()
+  } else {
+    match fold(type_decl.children, init: optional_absent(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Named { name: sym } =>
+              if sym == ^dag_surface_type_decl {
+                acc
+              } else {
+                optional_present(value: sym)
+              }
+            Positional => acc
+          }
+      }
+    }) {
+      Present { value: sym } => optional_present(value: sym)
+      Absent => optional_absent()
+    }
+  }
+}
+
+fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
+  let anchor_hash = content_hash(n: disj_anchor)
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        if tepe_node_has_surface(root: node, surface: ^dag_surface_type_decl) {
+          match tepe_type_decl_enum_sym(type_decl: node) {
+            Present { value: enum_sym } =>
+              match tepe_disj_in_subtree(node: node) {
+                Present { value: disj } =>
+                  if content_hash(n: disj) == anchor_hash {
+                    optional_present(value: enum_sym)
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            Absent => optional_absent()
+          }
+        } else {
+          optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_declaration_ref_value_atom_optional(node: Node) -> Optional<Node> {
+  match tepe_atom_identity_optional(node: node) {
+    Present { value: _ } => optional_present(value: node)
+    Absent =>
+      match parse_production_captured_child_optional(node: node) {
+        Present { value: captured } =>
+          tepe_declaration_ref_value_atom_optional(node: captured)
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn tepe_declaration_ref_sym_from_value(node: Node, decl: Node) -> Outcome<Symbol> {
+  match tepe_declaration_ref_value_atom_optional(node: node) {
+    Present { value: atom_node } =>
+      match tepe_atom_identity_optional(node: atom_node) {
+        Present { value: sym } =>
+          if sym == ^dag_token_string_literal {
+            outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+          } else {
+            outcome_accepted(sym)
+          }
+        Absent =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      }
+    Absent =>
+      outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+  }
+}
+
+fn tepe_declaration_ref_spelling_matches_enum(
+  coproduct_sym: Symbol,
+  enum_sym: Symbol
+) -> Bool {
+  if coproduct_sym == enum_sym {
+    true
+  } else {
+    match symbol_interned_spelling(binding: coproduct_sym) {
+      Accepted { value: coproduct_spelling, diagnostics: _ } =>
+        match symbol_interned_spelling(binding: enum_sym) {
+          Accepted { value: enum_spelling, diagnostics: _ } =>
+            coproduct_spelling == concat("\"", concat(enum_spelling, "\""))
+          Rejected { diagnostics: _ } => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
+fn tepe_variant_naming_tag_from_encoding(encoding: Node, decl: Node) -> Outcome<Symbol> {
+  match tepe_named_field_target(root: encoding, field: ^naming) {
+    Present { value: naming_node } =>
+      match tepe_atom_identity_optional(node: naming_node) {
+        Present { value: sym } => outcome_accepted(sym)
+        Absent =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      }
+    Absent =>
+      match tepe_disj_in_subtree(node: encoding) {
+        Present { value: variant } =>
+          match variant.kind {
+            TypeNode { connective: Atom { identity: sym } } => outcome_accepted(sym)
+            _ =>
+              outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+          }
+        Absent =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      }
+  }
+}
+
+fn tepe_coproduct_sym_from_decl(
+  decl: Node,
+  field_coproduct: Symbol,
+  field_encoding: Symbol,
+  type_coproduct_wire_contract: Symbol
+) -> Outcome<CoproductWireContractIndexRow> {
+  if !tepe_node_has_surface(root: decl, surface: ^dag_surface_data_decl) {
+    outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+  } else {
+    bind_outcome(
+      o: find_named_child(root: decl, name: ^dag_surface_data_decl_type),
+      f: fn(type_child) {
+        match tepe_atom_identity_optional(node: type_child) {
+          Present { value: type_sym } =>
+            if type_sym == type_coproduct_wire_contract {
+              bind_outcome(
+                o: find_named_child(root: decl, name: ^dag_surface_data_decl_expr),
+                f: fn(expr) {
+                  match tepe_named_field_target(root: expr, field: field_coproduct) {
+                    Present { value: coproduct_node } =>
+                      bind_outcome(
+                        o: tepe_declaration_ref_sym_from_value(
+                          node: coproduct_node,
+                          decl: decl
+                        ),
+                        f: fn(coproduct_sym) {
+                          match tepe_named_field_target(root: expr, field: field_encoding) {
+                            Present { value: encoding } =>
+                              bind_outcome(
+                                o: tepe_variant_naming_tag_from_encoding(
+                                  encoding: encoding,
+                                  decl: decl
+                                ),
+                                f: fn(naming_tag) {
+                                  outcome_accepted(
+                                    CoproductWireContractIndexRow {
+                                      coproduct_sym: coproduct_sym,
+                                      naming_tag: naming_tag,
+                                      decl: decl
+                                    }
+                                  )
+                                }
+                              )
+                            Absent =>
+                              outcome_rejected(
+                                tepe_coproduct_wire_contract_malformed_diagnostic(
+                                  node: decl
+                                )
+                              )
+                          }
+                        }
+                      )
+                    Absent =>
+                      outcome_rejected(
+                        tepe_coproduct_wire_contract_malformed_diagnostic(node: decl)
+                      )
+                  }
+                }
+              )
+            } else {
+              outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+            }
+          Absent =>
+            outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+        }
+      }
+    )
+  }
+}
+
+fn tepe_rows_contain_coproduct(rows: List<CoproductWireContractIndexRow>, sym: Symbol) -> Bool {
+  match list_at_optional(xs: rows, index: 0) {
+    Absent => false
+    Present { value: head } =>
+      match head {
+        CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _ } =>
+          if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: sym) {
+            true
+          } else {
+            match list_tail(xs: rows) {
+              TailAbsent => false
+              TailFound { tail: tail } => tepe_rows_contain_coproduct(rows: tail, sym: sym)
+            }
+          }
+      }
+  }
+}
+
+fn tepe_append_contract_row(
+  rows: List<CoproductWireContractIndexRow>,
+  row: CoproductWireContractIndexRow
+) -> Outcome<List<CoproductWireContractIndexRow>> {
+  match row {
+    CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: decl } =>
+      if tepe_rows_contain_coproduct(rows: rows, sym: csym) {
+        outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      } else {
+        outcome_accepted(list_snoc_item(xs: rows, item: row))
+      }
+  }
+}
+
+type CoproductWireContractIndexAcc
+  = CoproductWireContractIndexOk { rows: List<CoproductWireContractIndexRow> }
+  | CoproductWireContractIndexErr { diagnostics: NonEmptyDiagnostics }
+
+fn tepe_fold_decl_into_index(
+  acc: CoproductWireContractIndexAcc,
+  decl: Node,
+  field_coproduct: Symbol,
+  field_encoding: Symbol,
+  type_coproduct_wire_contract: Symbol
+) -> CoproductWireContractIndexAcc {
+  match acc {
+    CoproductWireContractIndexErr { diagnostics: d } =>
+      CoproductWireContractIndexErr { diagnostics: d }
+    CoproductWireContractIndexOk { rows: rows } =>
+      if tepe_node_has_surface(root: decl, surface: ^dag_surface_data_decl) {
+        match tepe_coproduct_sym_from_decl(
+          decl: decl,
+          field_coproduct: field_coproduct,
+          field_encoding: field_encoding,
+          type_coproduct_wire_contract: type_coproduct_wire_contract
+        ) {
+          Accepted { value: row, diagnostics: _ } =>
+            match tepe_append_contract_row(rows: rows, row: row) {
+              Accepted { value: next_rows, diagnostics: _ } =>
+                CoproductWireContractIndexOk { rows: next_rows }
+              Rejected { diagnostics: r } =>
+                CoproductWireContractIndexErr { diagnostics: r }
+            }
+          Rejected { diagnostics: r } =>
+            CoproductWireContractIndexErr { diagnostics: r }
+        }
+      } else {
+        CoproductWireContractIndexOk { rows: rows }
+      }
+  }
+}
+
+fn tepe_build_coproduct_wire_contract_index(
+  root: Node,
+  field_coproduct: Symbol,
+  field_encoding: Symbol,
+  type_coproduct_wire_contract: Symbol
+) -> Outcome<List<CoproductWireContractIndexRow>> {
+  match fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        tepe_fold_decl_into_index(
+          acc: CoproductWireContractIndexOk { rows: Empty },
+          decl: n0,
+          field_coproduct: field_coproduct,
+          field_encoding: field_encoding,
+          type_coproduct_wire_contract: type_coproduct_wire_contract
+        )
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          CoproductWireContractIndexErr { diagnostics: d } =>
+            CoproductWireContractIndexErr { diagnostics: d }
+          _ => child_acc
+        }
+      }
+    }
+  ) {
+    CoproductWireContractIndexOk { rows: rows } => outcome_accepted(rows)
+    CoproductWireContractIndexErr { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn tepe_lookup_contract_row(
+  rows: List<CoproductWireContractIndexRow>,
+  enum_sym: Symbol
+) -> Optional<CoproductWireContractIndexRow> {
+  match list_at_optional(xs: rows, index: 0) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match head {
+        CoproductWireContractIndexRow { coproduct_sym: csym, naming_tag: _, decl: _ } =>
+          if tepe_declaration_ref_spelling_matches_enum(coproduct_sym: csym, enum_sym: enum_sym) {
+            optional_present(value: head)
+          } else {
+            match list_tail(xs: rows) {
+              TailAbsent => optional_absent()
+              TailFound { tail: tail } =>
+                tepe_lookup_contract_row(rows: tail, enum_sym: enum_sym)
+            }
+          }
+      }
+  }
+}
+
+fn tepe_disj_form_from_catalog_row(
+  row: Node,
+  naming_tag: Symbol
+) -> Outcome<TargetSumTypeShape> {
+  bind_outcome(
+    o: find_named_child(root: row, name: ^target_type_expr_projection_enrichment_catalog_naming_tag),
+    f: fn(tag_child) {
+      bind_outcome(
+        o: find_named_child(root: row, name: ^target_type_expr_projection_enrichment_catalog_disj_form),
+        f: fn(form_child) {
+          match tag_child.kind {
+            TypeNode { connective: Atom { identity: tag } } =>
+              if tag == naming_tag {
+                decode_sum_type_shape_bundle(bundle: form_child)
+              } else {
+                outcome_rejected(
+                  tepe_coproduct_wire_contract_malformed_diagnostic(node: row)
+                )
+              }
+            _ =>
+              outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: row))
+          }
+        }
+      )
+    }
+  )
+}
+
+fn tepe_disj_form_from_catalog(catalog: Node, naming_tag: Symbol) -> Outcome<TargetSumTypeShape> {
+  match fold(
+    catalog.children,
+    init: outcome_rejected(
+      tepe_coproduct_wire_contract_malformed_diagnostic(node: catalog)
+    ),
+    f: fn(acc, e) {
+      match acc {
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
+          match e.label {
+            Named { name: n } =>
+              if n == ^target_type_expr_projection_enrichment_catalog_naming_tag
+                || n == ^target_type_expr_projection_enrichment_catalog_disj_form
+              {
+                acc
+              } else {
+                tepe_disj_form_from_catalog_row(row: e.target, naming_tag: naming_tag)
+              }
+            Positional => tepe_disj_form_from_catalog_row(row: e.target, naming_tag: naming_tag)
+          }
+      }
+    }
+  ) {
+    Accepted { value: form, diagnostics: d } => Accepted { value: form, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn tepe_enrichment_protocol(enrichment: Node) -> Outcome<Symbol> {
+  bind_outcome(
+    o: find_named_child(root: enrichment, name: ^target_type_expr_projection_enrichment_protocol),
+    f: fn(child) {
+      match child.kind {
+        TypeNode { connective: Atom { identity: sym } } => outcome_accepted(sym)
+        _ =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: enrichment))
+      }
+    }
+  )
+}
+
+fn tepe_apply_coproduct_wire_contract_enrichment(
+  base: TargetTypeExpressionProjection,
+  enrichment: Node,
+  tree: InferredTree,
+  node: Node
+) -> Outcome<TargetTypeExpressionProjection> {
+  match node.kind {
+    TypeNode { connective: Disj } =>
+      bind_outcome(
+        o: tepe_enrichment_protocol(enrichment: enrichment),
+        f: fn(protocol) {
+          if protocol == ^target_type_expr_projection_enrichment_protocol_coproduct_wire_contract {
+            bind_outcome(
+              o: find_named_child(
+                root: enrichment,
+                name: ^target_type_expr_projection_enrichment_field_coproduct
+              ),
+              f: fn(field_coproduct_child) {
+                bind_outcome(
+                  o: find_named_child(
+                    root: enrichment,
+                    name: ^target_type_expr_projection_enrichment_field_encoding
+                  ),
+                  f: fn(field_encoding_child) {
+                    bind_outcome(
+                      o: find_named_child(
+                        root: enrichment,
+                        name: ^target_type_expr_projection_enrichment_type_coproduct_wire_contract
+                      ),
+                      f: fn(type_child) {
+                        bind_outcome(
+                          o: find_named_child(
+                            root: enrichment,
+                            name: ^target_type_expr_projection_enrichment_disj_form_catalog
+                          ),
+                          f: fn(catalog) {
+                            match field_coproduct_child.kind {
+                              TypeNode { connective: Atom { identity: field_coproduct } } =>
+                                match field_encoding_child.kind {
+                                  TypeNode { connective: Atom { identity: field_encoding } } =>
+                                    match type_child.kind {
+                                      TypeNode {
+                                        connective: Atom { identity: type_coproduct_wire_contract }
+                                      } =>
+                                        bind_outcome(
+                                          o: tepe_build_coproduct_wire_contract_index(
+                                            root: tree.root,
+                                            field_coproduct: field_coproduct,
+                                            field_encoding: field_encoding,
+                                            type_coproduct_wire_contract: type_coproduct_wire_contract
+                                          ),
+                                          f: fn(rows) {
+                                            match tepe_enum_sym_for_disj(
+                                              root: tree.root,
+                                              disj_anchor: node
+                                            ) {
+                                              Present { value: enum_sym } =>
+                                                match tepe_lookup_contract_row(
+                                                  rows: rows,
+                                                  enum_sym: enum_sym
+                                                ) {
+                                                  Present { value: contract } =>
+                                                    match contract {
+                                                      CoproductWireContractIndexRow {
+                                                        coproduct_sym: _,
+                                                        naming_tag: naming_tag,
+                                                        decl: _
+                                                      } =>
+                                                        bind_outcome(
+                                                          o: tepe_disj_form_from_catalog(
+                                                            catalog: catalog,
+                                                            naming_tag: naming_tag
+                                                          ),
+                                                          f: fn(disj_form) {
+                                                            outcome_accepted(
+                                                              TargetTypeExpressionProjection {
+                                                                atom_form: base.atom_form,
+                                                                conj_form: base.conj_form,
+                                                                disj_form: disj_form,
+                                                                arrow_form: base.arrow_form,
+                                                                cardinality_form: base.cardinality_form,
+                                                                instantiation_form: base.instantiation_form
+                                                              }
+                                                            )
+                                                          }
+                                                        )
+                                                    }
+                                                  Absent => outcome_accepted(base)
+                                                }
+                                              Absent => outcome_accepted(base)
+                                            }
+                                          }
+                                        )
+                                      _ =>
+                                        outcome_rejected(
+                                          tepe_coproduct_wire_contract_malformed_diagnostic(
+                                            node: enrichment
+                                          )
+                                        )
+                                    }
+                                  _ =>
+                                    outcome_rejected(
+                                      tepe_coproduct_wire_contract_malformed_diagnostic(
+                                        node: enrichment
+                                      )
+                                    )
+                                }
+                              _ =>
+                                outcome_rejected(
+                                  tepe_coproduct_wire_contract_malformed_diagnostic(
+                                    node: enrichment
+                                  )
+                                )
+                            }
+                          }
+                        )
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          } else {
+            outcome_accepted(base)
+          }
+        }
+      )
+    _ => outcome_accepted(base)
+  }
+}
+
+fn tepe_apply_type_expression_projection_enrichment(
+  base: TargetTypeExpressionProjection,
+  enrichment: Node,
+  tree: InferredTree,
+  node: Node
+) -> Outcome<TargetTypeExpressionProjection> {
+  tepe_apply_coproduct_wire_contract_enrichment(
+    base: base,
+    enrichment: enrichment,
+    tree: tree,
+    node: node
+  )
+}
+
+type TepeBundleChildLookup
+  = TepeBundleChildMissing
+  | TepeBundleChildFound { value: Node }
+  | TepeBundleChildDuplicate
+  | TepeBundleChildInvalidEdge
+
+fn tepe_bundle_child_lookup_step(
+  acc: TepeBundleChildLookup,
+  e: Edge,
+  edge_name: Symbol
+) -> TepeBundleChildLookup {
+  match acc {
+    TepeBundleChildDuplicate => TepeBundleChildDuplicate
+    TepeBundleChildInvalidEdge => TepeBundleChildInvalidEdge
+    TepeBundleChildFound { value: _ } => TepeBundleChildDuplicate
+    TepeBundleChildMissing =>
+      match e.label {
+        Named { name: n } =>
+          if n == edge_name {
+            TepeBundleChildFound { value: e.target }
+          } else {
+            TepeBundleChildMissing
+          }
+        Positional => TepeBundleChildInvalidEdge
+      }
+  }
+}
+
+fn tepe_target_bundle_optional_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node?> {
+  match target.bundle.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        target.bundle.children,
+        init: TepeBundleChildMissing,
+        f: fn(acc, e) {
+          tepe_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
+        }
+      ) {
+        TepeBundleChildFound { value: child } =>
+          Accepted { value: Present { value: child }, diagnostics: None }
+        TepeBundleChildMissing => Accepted { value: Absent, diagnostics: None }
+        TepeBundleChildDuplicate =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: target.bundle))
+        TepeBundleChildInvalidEdge =>
+          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: target.bundle))
+      }
+    _ => outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: target.bundle))
+  }
+}
+
+fn type_expression_projection_for_translate(
+  tree: InferredTree,
+  target: TargetModel,
+  node: Node
+) -> Outcome<TargetTypeExpressionProjection> {
+  bind_outcome(
+    o: type_expression_projection_from_target(target: target),
+    f: fn(base) {
+      match tepe_target_bundle_optional_child(
+        target: target,
+        edge_name: ^target_model_edge_type_expression_projection_enrichment
+      ) {
+        Accepted { value: optional_enrichment, diagnostics: d } =>
+          match optional_enrichment {
+            Present { value: enrichment } =>
+              bind_outcome(
+                o: tepe_apply_type_expression_projection_enrichment(
+                  base: base,
+                  enrichment: enrichment,
+                  tree: tree,
+                  node: node
+                ),
+                f: fn(projection) {
+                  Accepted { value: projection, diagnostics: d }
+                }
+              )
+            Absent => Accepted { value: base, diagnostics: d }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}

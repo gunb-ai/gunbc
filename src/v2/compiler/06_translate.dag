@@ -36,6 +36,9 @@ import v2.compiler.infer {
   algebra_ref_is_grounded,
   canonical_grounding_for_node
 }
+import v2.compiler.type_expression_projection_enrichment {
+  type_expression_projection_for_translate
+}
 import v2.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -1127,10 +1130,11 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
 // Shape-A MVP-1 grammar-inverse serialize via token_sequence_to_source for all five
 // Shape-A targets (rust/python/go/cpp/typescript TestClaims). TargetModel.authority_source_text
 // must not substitute for validated emitted Node serialization.
-fn target_serialize_source_from_model_bounded(
+fn target_serialize_source_from_model_bounded_with_projection(
   remaining: Int,
   target: TargetModel,
-  emitted: Node
+  emitted: Node,
+  projection: TargetTypeExpressionProjection
 ) -> Outcome<String> {
   if remaining <= 0 {
     outcome_rejected(
@@ -1141,16 +1145,11 @@ fn target_serialize_source_from_model_bounded(
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
       TypeExprKindAuthority { value: _ } =>
-        bind_outcome(
-          o: type_expression_projection_from_target(target: target),
-          f: fn(projection) {
-            serialize_type_expr_emitted_bounded(
-              remaining: remaining - 1,
-              target: target,
-              projection: projection,
-              emitted: emitted
-            )
-          }
+        serialize_type_expr_emitted_bounded(
+          remaining: remaining - 1,
+          target: target,
+          projection: projection,
+          emitted: emitted
         )
       TypeExprKindNotEmitted =>
         bind_outcome(
@@ -1166,6 +1165,23 @@ fn target_serialize_source_from_model_bounded(
     }
   }
 }
+fn target_serialize_source_from_model_bounded(
+  remaining: Int,
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<String> {
+  bind_outcome(
+    o: type_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      target_serialize_source_from_model_bounded_with_projection(
+        remaining: remaining,
+        target: target,
+        emitted: emitted,
+        projection: projection
+      )
+    }
+  )
+}
 fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
@@ -1175,6 +1191,28 @@ fn target_serialize_source_from_model(
     f: fn(measure) {
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
+        f: fn(text) {
+          outcome_accepted(lossless_source(text: text))
+        }
+      )
+    }
+  )
+}
+fn target_serialize_source_from_model_with_projection(
+  target: TargetModel,
+  emitted: Node,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: translate_serialize_measure(target: target, emitted: emitted),
+    f: fn(measure) {
+      bind_outcome(
+        o: target_serialize_source_from_model_bounded_with_projection(
+          remaining: measure,
+          target: target,
+          emitted: emitted,
+          projection: projection
+        ),
         f: fn(text) {
           outcome_accepted(lossless_source(text: text))
         }
@@ -2364,13 +2402,30 @@ fn serialize_type_expr_sum_bounded(
   bind_outcome(
     o: target_type_expr_emitted_labeled_slot_nodes(node: node),
     f: fn(variants) {
-      serialize_type_expr_separated_bounded(
-        remaining: remaining - 1,
-        target: target,
-        projection: projection,
-        separator: form.variant_separator,
-        items: variants,
-        anchor: node
+      bind_outcome(
+        o: serialize_type_expr_separated_bounded(
+          remaining: remaining - 1,
+          target: target,
+          projection: projection,
+          separator: form.variant_separator,
+          items: variants,
+          anchor: node
+        ),
+        f: fn(variants_source) {
+          if is_empty(xs: form.leading_fixed_tokens) {
+            outcome_accepted(variants_source)
+          } else {
+            bind_outcome(
+              o: serialize_concrete_syntax_tokens_to_source_string(
+                target: target,
+                tokens: form.leading_fixed_tokens
+              ),
+              f: fn(prefix_source) {
+                outcome_accepted(concat(prefix_source, variants_source))
+              }
+            )
+          }
+        }
       )
     }
   )
@@ -3686,7 +3741,7 @@ fn translate_node_with_projection(
   target: TargetModel
 ) -> Outcome<Node> {
   bind_outcome(
-    o: type_expression_projection_from_target(target: target),
+    o: type_expression_projection_for_translate(tree: tree, target: target, node: node),
     f: fn(projection) {
       match node.kind {
         TypeNode { connective: _ } =>
@@ -3930,6 +3985,7 @@ type TranslateDiagnosticReason
   | TargetAtomRealizationLookupMiss
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
+  | CoproductWireContractMalformed
 
 // 🟡 gated — feature:coproduct-variant-enumeration — bind gunbc#4759 — dissolve-on-arrival: derive
 // TranslateDiagnosticReason variant list from coproduct-arm compile-time lens; delete this mirror.
@@ -3952,7 +4008,8 @@ fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
     TypeExprKindAuthorityInvalid,
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
-    TargetTypeExprEmittedShapeMalformed
+    TargetTypeExprEmittedShapeMalformed,
+    CoproductWireContractMalformed
   ]
 }
 
@@ -3975,6 +4032,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
     TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
     TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
     TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
+    CoproductWireContractMalformed => ^translate_coproduct_wire_contract_malformed
   }
 }
 

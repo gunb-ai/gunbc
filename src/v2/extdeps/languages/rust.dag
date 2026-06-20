@@ -3211,7 +3211,8 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
     },
     disj_form: TargetSumTypeShape {
       surface: ^rust_surface_type_sum,
-      variant_separator: ^rust_token_pipe
+      variant_separator: ^rust_token_pipe,
+      leading_fixed_tokens: Empty
     },
     arrow_form: TargetFunctionTypeShape {
       surface: ^rust_surface_type_arrow,

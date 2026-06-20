@@ -1591,7 +1591,8 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
     },
     disj_form: TargetSumTypeShape {
       surface: ^ts_surface_type_sum,
-      variant_separator: ^ts_token_pipe
+      variant_separator: ^ts_token_pipe,
+      leading_fixed_tokens: Empty
     },
     arrow_form: TargetFunctionTypeShape {
       surface: ^ts_surface_type_arrow,
