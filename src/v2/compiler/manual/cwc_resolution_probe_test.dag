@@ -68,7 +68,6 @@ import v2.std.collection {
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
 import v2.std.node_query { find_named_child }
-import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
 import v2.std.text { String }
 
 // Multi-variant coproduct sources exercised by the n-ary Disj fold witnesses below.
