@@ -24,9 +24,10 @@ use crate::v1_rt;
 use crate::v1_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
-    field_init_node_value, has_child_named, intern, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    NewlineIndex, Node,
+    field_init_node_value, has_child_named, intern,
+    is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, CompilerDiagnostic, ErrorNode,
+    ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -34,6 +35,43 @@ use crate::resolved_graph_cache::{
     lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
     write as cross_process_write, CacheLookupResult,
 };
+
+/// Which typecheck diagnostics block entry resolve. Strict is the default for
+/// gunbc run/compile and all non-discovery consumers; DiscoveryCorpusAdvisory
+/// is the SCAFFOLD carve-out (00_core.dag) for floor discovery scan-coverage only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolveTypecheckGate {
+    Strict,
+    DiscoveryCorpusAdvisory,
+}
+
+fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
+    match gate {
+        ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
+    }
+}
+
+fn log_discovery_advisory_typecheck(
+    d: &Rc<ErrorNode>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    gate: ResolveTypecheckGate,
+) {
+    if gate != ResolveTypecheckGate::DiscoveryCorpusAdvisory {
+        return;
+    }
+    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone())
+        && is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+    {
+        let span = diagnostic_to_span(d.diagnostic.clone());
+        let loc = format_error_loc(&span.file, span.start, source_indices);
+        eprintln!(
+            "advisory(typecheck): {}: error: {}",
+            loc,
+            diagnostic_to_message(d.diagnostic.clone())
+        );
+    }
+}
 
 /// Module that owns `UnifiedTestClaim` and its registration arms.
 pub const UNIFIED_CLAIM_VERIFICATION_MODULE: &str = "v2.std.verification";
@@ -441,7 +479,27 @@ pub fn resolve_entry_with_index(
     ),
     String,
 > {
-    resolve_entry_with_parse_cache(index, entry_file)
+    resolve_entry_with_parse_cache(index, entry_file, ResolveTypecheckGate::Strict)
+}
+
+/// Discovery-corpus resolve: threads the SCAFFOLD typecheck advisory gate (floor
+/// scan-coverage only). All other entry points use [`resolve_entry_with_index`]
+/// (Strict).
+pub fn resolve_entry_with_index_for_discovery_corpus(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    resolve_entry_with_parse_cache(
+        index,
+        entry_file,
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
+    )
 }
 
 fn resolve_entry_graph_with_index(
@@ -455,7 +513,7 @@ fn resolve_entry_graph_with_index(
     String,
 > {
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
-    resolved_graph_from_sources(sources)
+    resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
 /// Resolve one entry's closure using a lazily-populated parse cache from
@@ -474,6 +532,7 @@ fn resolve_entry_graph_with_index(
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
+    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -573,15 +632,18 @@ fn resolve_entry_with_parse_cache(
         &index.typed_module_cache,
     );
 
+    for d in typed.diagnostics.iter() {
+        log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
+    }
     let has_type_errors = typed
         .diagnostics
         .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
     if has_type_errors {
         let msgs: Vec<String> = typed
             .diagnostics
             .iter()
-            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
         return Err(msgs.join("\n"));
@@ -732,6 +794,7 @@ fn format_error_nodes(
 /// compile.
 fn resolved_graph_from_sources(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -739,12 +802,17 @@ fn resolved_graph_from_sources(
     ),
     String,
 > {
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = match typecheck_gate {
+        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
+        }
+    };
 
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -753,7 +821,8 @@ fn resolved_graph_from_sources(
             .collect();
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
-            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+            if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
+                log_discovery_advisory_typecheck(d, &si, typecheck_gate);
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -864,7 +933,8 @@ pub fn precompute_whole_tree_published_mock_keys(
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
+    let (graph, source_indices) =
+        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
         &graph,
         source_indices,
@@ -1753,7 +1823,8 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_values().collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
+        let (graph, source_indices) =
+            resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -3132,8 +3203,9 @@ fn run_discovery_rows(
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
-            let (graph, source_indices) = resolve_entry_with_index(index, &row.entry)
-                .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
+            let (graph, source_indices) =
+                resolve_entry_with_index_for_discovery_corpus(index, &row.entry)
+                    .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
             let resolve_nanos = resolve_started.elapsed().as_nanos();
             summary.total_resolve_nanos += resolve_nanos;
             summary.entry_resolve_receipts.push(EntryResolveReceipt {

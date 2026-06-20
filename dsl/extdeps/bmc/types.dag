@@ -4,9 +4,9 @@
 //   https://www.dmtf.org/standards/redfish
 //
 // These are the cited interface shapes for what a BMC firmware stack returns over
-// Redfish REST. Transport (curl argv) lives in extdeps/diagnostic/redfish.dag;
-// parsing raw JSON into these records is a separate realization handler (§3 shape /
-// transport / policy). This module owns ONLY the structural facts Redfish names.
+// Redfish REST. Transport (curl argv) lives in extdeps/bmc/http.dag; parsing raw
+// JSON into these records is a separate realization handler (§3 shape / transport /
+// policy). This module owns ONLY the structural facts Redfish names.
 
 module extdeps.bmc.types
 
@@ -27,6 +27,7 @@ type RedfishPowerState = On | Off | PoweringOn | PoweringOff
 // ProcessorSummary on ComputerSystem — the BMC's view of installed processors.
 // DMTF fields are NOT conflated: Count = installed processors (sockets); CoreCount =
 // total cores across them; LogicalProcessorCount = hardware threads when reported.
+// processor_count is a DMTF cardinal (socket count), not a unit-bearing scalar.
 type RedfishProcessorSummary {
   model: NonEmptyStr
   processor_count: Int
