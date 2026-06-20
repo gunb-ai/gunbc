@@ -22,9 +22,9 @@ module std.realization_width
 
 import std.types { Int, List }
 import std.nat { Nat }
+import v2.std.measure { Measure }
 import std.measure {
   HardwareThreadCount,
-  Measure,
   Time,
   Nano,
   hardware_thread_count,

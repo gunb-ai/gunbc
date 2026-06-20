@@ -30,7 +30,7 @@
 
 module examples.cost_estimate
 
-import std.float { Float }
+import v2.std.float { Float }
 import std.logic { Bool }
 import std.currency { CurrencyCode, Eur, Usd, currency_minor_unit_exponent }
 

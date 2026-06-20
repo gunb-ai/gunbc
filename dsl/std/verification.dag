@@ -22,7 +22,8 @@
 module std.verification
 
 import std.nat { Nat }
-import std.measure { Measure, Time, Nano, measure_count }
+import v2.std.measure { Measure }
+import std.measure { Time, Nano, measure_count }
 
 // --- Timing authority: the NANOSECOND scale CHOICE -------------------------
 //

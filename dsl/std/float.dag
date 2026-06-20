@@ -40,5 +40,4 @@ type Real64 = Compose<Real, MachineWidth<64>>
 type Float32 = Real32
 type Float64 = Real64
 
-// Default alias
-type Float = Float64
+// Float default alias: authority at v2.std.float (byte-sync de-fork slice 1a).
