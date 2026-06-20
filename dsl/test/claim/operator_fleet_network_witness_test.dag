@@ -4,12 +4,12 @@
 module test.claim.operator_fleet_network
 
 import std.logic { Bool }
+import std.types { list_length }
 import product.network_topology {
   ContainerRunner,
   HostLan,
   BmcManagement,
-  network_reachability_allowed,
-  network_endpoint_count,
+  network_reachability,
 }
 import gunbc.operator_fleet_network {
   operator_fleet_network,
@@ -18,15 +18,15 @@ import gunbc.operator_fleet_network {
 }
 
 test fn operator_fleet_network_container_to_bmc_allowed() -> Bool {
-  network_reachability_allowed(from: ContainerRunner, to: BmcManagement)
+  network_reachability(from: ContainerRunner, to: BmcManagement)
 }
 
 test fn operator_fleet_network_container_to_host_lan_denied() -> Bool {
-  network_reachability_allowed(from: ContainerRunner, to: HostLan) == false
+  network_reachability(from: ContainerRunner, to: HostLan) == false
 }
 
 test fn operator_fleet_network_topology_endpoint_count_holds() -> Bool {
-  network_endpoint_count(endpoints: operator_fleet_network.endpoints) == 7
+  list_length(items: operator_fleet_network.endpoints) == 7
 }
 
 test fn operator_fleet_network_srv1_addresses_holds() -> Bool {
