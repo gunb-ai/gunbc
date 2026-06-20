@@ -7978,7 +7978,11 @@ pub fn emit_fn_def(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     if let Some(seam_fn) = rust_host_string_seam_fn_emit(name.clone()) {
-        return seam_fn;
+        if rust_emit_faithful_text_carrier(scope.type_env.source_indices.clone()) {
+            return seam_fn;
+        } else {
+            return "".to_string();
+        }
     }
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -12109,10 +12113,13 @@ pub fn emit_discriminant_call_lowering(
                                                 v1_rt::concat("        ".to_string(), pat.clone()),
                                                 " => ".to_string(),
                                             ),
-                                            emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
-                                                v1_rt::concat("\"".to_string(), child_text.clone()),
-                                                "\"".to_string(),
-                                            )),
+                                            emit_rust_host_to_dag_string_via_seam(
+                                                v1_rt::concat(
+                                                    v1_rt::concat("\"".to_string(), child_text.clone()),
+                                                    "\"".to_string(),
+                                                ),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
                                         ),
                                         ",".to_string(),
                                     )
@@ -12143,16 +12150,22 @@ pub fn emit_discriminant_call_lowering(
                         )
                     }
                 } else {
-                    emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
-                        v1_rt::concat("\"".to_string(), ty_name.clone()),
-                        "\"".to_string(),
-                    ))
+                    emit_rust_host_to_dag_string_via_seam(
+                        v1_rt::concat(
+                            v1_rt::concat("\"".to_string(), ty_name.clone()),
+                            "\"".to_string(),
+                        ),
+                        scope.type_env.clone().source_indices.clone(),
+                    )
                 }
             }
-            None => emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
-                v1_rt::concat("\"".to_string(), ty_name.clone()),
-                "\"".to_string(),
-            )),
+            None => emit_rust_host_to_dag_string_via_seam(
+                v1_rt::concat(
+                    v1_rt::concat("\"".to_string(), ty_name.clone()),
+                    "\"".to_string(),
+                ),
+                scope.type_env.clone().source_indices.clone(),
+            ),
         }
     }
 }
@@ -12384,21 +12397,24 @@ pub fn emit_typed_call(
                 let to_string_args =
                     order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let ts_result = match to_string_args.first().cloned() {
-                    Some(value_arg) => emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
+                    Some(value_arg) => emit_rust_host_to_dag_string_via_seam(
                         v1_rt::concat(
-                            "(".to_string(),
-                            emit_typed_expr(
-                                arg_value(value_arg.clone()),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                                1024,
+                            v1_rt::concat(
+                                "(".to_string(),
+                                emit_typed_expr(
+                                    arg_value(value_arg.clone()),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                    1024,
+                                ),
                             ),
+                            ").to_string()".to_string(),
                         ),
-                        ").to_string()".to_string(),
-                    )),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
                     None => "compile_error!(\"to_string call missing value argument\")".to_string(),
                 };
                 return ts_result;
@@ -16356,7 +16372,10 @@ pub fn emit_typed_bin_op(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             "Some(".to_string(),
-                                            emit_rust_dag_string_to_host_via_seam(l_str.clone()),
+                                            emit_rust_dag_string_to_host_via_seam(
+                                                l_str.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
                                         ),
                                         ")".to_string(),
                                     )
@@ -16367,7 +16386,10 @@ pub fn emit_typed_bin_op(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             "Some(".to_string(),
-                                            emit_rust_dag_string_to_host_via_seam(r_str.clone()),
+                                            emit_rust_dag_string_to_host_via_seam(
+                                                r_str.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
                                         ),
                                         ")".to_string(),
                                     )
@@ -16399,6 +16421,7 @@ pub fn emit_typed_bin_op(
                                                     "(".to_string(),
                                                     emit_rust_dag_string_to_host_via_seam(
                                                         l_str.clone(),
+                                                        scope.type_env.clone().source_indices.clone(),
                                                     ),
                                                 ),
                                                 " ".to_string(),
@@ -16407,7 +16430,10 @@ pub fn emit_typed_bin_op(
                                         ),
                                         " ".to_string(),
                                     ),
-                                    emit_rust_dag_string_to_host_via_seam(r_str.clone()),
+                                    emit_rust_dag_string_to_host_via_seam(
+                                        r_str.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ),
                                 ),
                                 ")".to_string(),
                             )
@@ -16546,23 +16572,29 @@ pub fn emit_typed_string_interp(
             __result
         });
         if ((args.clone().len() as i64) == 0) {
-            emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
-                v1_rt::concat("\"".to_string(), fmt_str),
-                "\"".to_string(),
-            ))
+            emit_rust_host_to_dag_string_via_seam(
+                v1_rt::concat(
+                    v1_rt::concat("\"".to_string(), fmt_str),
+                    "\"".to_string(),
+                ),
+                scope.type_env.clone().source_indices.clone(),
+            )
         } else {
             {
                 let args_str = args.clone().join(&", ".to_string());
-                emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
+                emit_rust_host_to_dag_string_via_seam(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("format!(\"".to_string(), fmt_str),
-                            "\", ".to_string(),
+                            v1_rt::concat(
+                                v1_rt::concat("format!(\"".to_string(), fmt_str),
+                                "\", ".to_string(),
+                            ),
+                            args_str,
                         ),
-                        args_str,
+                        ")".to_string(),
                     ),
-                    ")".to_string(),
-                ))
+                    scope.type_env.clone().source_indices.clone(),
+                )
             }
         }
     }
@@ -18173,7 +18205,7 @@ let raw = match ch.inferred.clone().as_deref().cloned() {
     None => v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n".to_string()),
 }
                                         } else {
-                                            emit_json_value_extract(field_name.clone(), from_path.clone(), authored_name_at(source_indices.clone(), tn.clone()))
+                                            emit_json_value_extract(field_name.clone(), from_path.clone(), authored_name_at(source_indices.clone(), tn.clone()), source_indices.clone())
                                         },
     _ => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"unresolved type for mock field: ".to_string()), ch_name.clone()), "\");".to_string()),
 };
@@ -18587,11 +18619,14 @@ pub fn emit_rest_query_line(
                                 ),
                                 "\", &".to_string(),
                             ),
-                            emit_rust_dag_string_to_host_via_seam(emit_simple_expr(
-                                field_init_node_value(fi.clone()),
-                                RenderTarget::Rust,
+                            emit_rust_dag_string_to_host_via_seam(
+                                emit_simple_expr(
+                                    field_init_node_value(fi.clone()),
+                                    RenderTarget::Rust,
+                                    source_indices.clone(),
+                                ),
                                 source_indices.clone(),
-                            )),
+                            ),
                         ),
                         ")".to_string(),
                     ));
@@ -19020,6 +19055,7 @@ pub fn emit_json_value_extract(
     var_name: String,
     from_path: String,
     dag_type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let escaped_path = Rc::new({
@@ -19045,8 +19081,16 @@ pub fn emit_json_value_extract(
         let accessor = if is_dag_string {
             v1_rt::concat(
                 v1_rt::concat(
-                    ".and_then(|v| v.as_str()).map(|s| crate::v2_std_text::host_string_text_from_rust_host(s.to_string())).ok_or(\"missing field: "
-                        .to_string(),
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            ".and_then(|v| v.as_str()).map(|s| ".to_string(),
+                            emit_rust_host_to_dag_string_via_seam(
+                                "s.to_string()".to_string(),
+                                source_indices.clone(),
+                            ),
+                        ),
+                        ").ok_or(\"missing field: ".to_string(),
+                    ),
                     from_path.clone(),
                 ),
                 "\")?".to_string(),
@@ -19173,7 +19217,7 @@ match ch.inferred.clone().as_deref().cloned() {
     None => v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n".to_string()),
 }
                     } else {
-                        emit_json_value_extract(field_name.clone(), from_path.clone(), authored_name_at(source_indices.clone(), tn.clone()))
+                        emit_json_value_extract(field_name.clone(), from_path.clone(), authored_name_at(source_indices.clone(), tn.clone()), source_indices.clone())
                     },
     _ => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"unresolved type for output field: ".to_string()), ch_name.clone()), "\");".to_string()),
 }
@@ -19431,7 +19475,16 @@ pub fn emit_exit_code_handling(
                 let default_arm = if has_nonzero {
                     "".to_string()
                 } else {
-                    "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(crate::v2_std_text::host_string_text_from_rust_host(stderr)) },".to_string()
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string(),
+                            emit_rust_host_to_dag_string_via_seam(
+                                "stderr".to_string(),
+                                source_indices.clone(),
+                            ),
+                        ),
+                        ") },".to_string(),
+                    )
                 };
                 v1_rt::concat(
                     v1_rt::concat(
@@ -19477,7 +19530,22 @@ pub fn emit_exit_arm(
                 " },".to_string(),
             )
         } else {
-            v1_rt::concat(v1_rt::concat("    ".to_string(), pattern), " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(crate::v2_std_text::host_string_text_from_rust_host(stderr)) },".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("    ".to_string(), pattern),
+                            " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(".to_string(),
+                        ),
+                        emit_rust_host_to_dag_string_via_seam(
+                            "stderr".to_string(),
+                            source_indices.clone(),
+                        ),
+                    ),
+                    ") },".to_string(),
+                ),
+                "".to_string(),
+            )
         }
     }
 }
@@ -19766,12 +19834,15 @@ pub fn emit_shell_argv_element(
                     None => false,
                 });
             if is_opt.clone() {
-                emit_rust_dag_string_to_host_via_seam(v1_rt::concat(
-                    var_name.clone(),
-                    ".as_deref().unwrap_or(\"\")".to_string(),
-                ))
+                emit_rust_dag_string_to_host_via_seam(
+                    v1_rt::concat(
+                        var_name.clone(),
+                        ".as_deref().unwrap_or(\"\")".to_string(),
+                    ),
+                    source_indices.clone(),
+                )
             } else {
-                emit_rust_dag_string_to_host_via_seam(var_name.clone())
+                emit_rust_dag_string_to_host_via_seam(var_name.clone(), source_indices.clone())
             }
         }
         _ => emit_simple_expr(arg.clone(), RenderTarget::Rust, source_indices.clone()),
@@ -20455,6 +20526,11 @@ pub fn emit_data_def_body(
                                                                 ),
                                                                 "\"".to_string(),
                                                             ),
+                                                            scope
+                                                                .type_env
+                                                                .clone()
+                                                                .source_indices
+                                                                .clone(),
                                                         ),
                                                     ),
                                                     v1_rt::concat(
