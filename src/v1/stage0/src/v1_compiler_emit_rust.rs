@@ -4592,10 +4592,15 @@ pub fn type_item_has_rust_nominal_shell_authority(
                     true
                 } else {
                     if ((item.params.clone().len() as i64) > 0) {
-                        {
+                        if is_parametric_opaque_type_decl_item(
+                            item.clone(),
+                            source_indices.clone(),
+                        ) {
+                            true
+                        } else {
                             let rhs = resolved_type(item.clone());
-                            if (is_type_alias_return_node(rhs.clone(), source_indices.clone())
-                                && ((rhs.children.clone().len() as i64) > 0))
+                            if is_type_alias_return_node(rhs.clone(), source_indices.clone())
+                                && ((rhs.children.clone().len() as i64) > 0)
                             {
                                 alias_rhs_nominal_shell_has_rust_authority(
                                     rhs.clone(),
@@ -4608,6 +4613,23 @@ pub fn type_item_has_rust_nominal_shell_authority(
                                     source_indices.clone(),
                                     module_index,
                                 )
+                            } else if is_type_alias_return_node(rhs.clone(), source_indices.clone())
+                            {
+                                let rhs_name =
+                                    authored_name_at(source_indices.clone(), rhs.clone());
+                                (rhs_name.as_str() != item_text.as_str())
+                                    && rhs_name.as_str() != ""
+                                    && alias_rhs_nominal_shell_has_rust_authority(
+                                        rhs.clone(),
+                                        module_name,
+                                        imports,
+                                        scope,
+                                        registry,
+                                        export_sets,
+                                        typed_modules,
+                                        source_indices.clone(),
+                                        module_index,
+                                    )
                             } else {
                                 false
                             }
@@ -4854,6 +4876,49 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
     })
 }
 
+pub fn is_parametric_opaque_type_decl_item(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((item.params.clone().len() as i64) > 0)
+        && item.body.is_none()
+        && item.transport.is_none()
+        && (item.children.clone().len() as i64) == 0
+        && !is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone())
+}
+
+pub fn emit_parametric_phantom_opaque_struct(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let item_text = authored_name_at(source_indices.clone(), item.clone());
+    let type_params = emit_type_params(item.params.clone(), source_indices.clone());
+    let generic_names = item_generic_param_names(item.clone(), source_indices.clone());
+    let marker_ty = match generic_names.first().cloned() {
+        Some(g) => v1_rt::concat(
+            v1_rt::concat("std::marker::PhantomData<".to_string(), g),
+            ">".to_string(),
+        ),
+        None => "std::marker::PhantomData<()>".to_string(),
+    };
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n".to_string(),
+                        rust_visibility_prefix(),
+                    ),
+                    rust_items().struct_keyword.clone(),
+                ),
+                v1_rt::concat(v1_rt::concat(" ".to_string(), item_text), type_params),
+            ),
+            v1_rt::concat(v1_rt::concat("(pub ".to_string(), marker_ty), ");".to_string()),
+        ),
+        "".to_string(),
+    )
+}
+
 pub fn is_emittable_parametric_type_alias_item(
     item: Rc<Node>,
     item_text: String,
@@ -4881,19 +4946,37 @@ pub fn is_emittable_parametric_type_alias_item(
                 } else {
                     {
                         let rhs_name = authored_name_at(source_indices.clone(), rhs.clone());
-                        (((rhs_name.as_str() != item_text.as_str())
-                            && ((rhs.children.clone().len() as i64) > 0))
-                            && alias_rhs_nominal_shell_has_rust_authority(
-                                rhs.clone(),
-                                module_name,
-                                imports,
-                                scope,
-                                registry,
-                                export_sets,
-                                typed_modules,
-                                source_indices.clone(),
-                                module_index,
-                            ))
+                        if rhs_name.as_str() != item_text.as_str() {
+                            if (rhs.children.clone().len() as i64) > 0 {
+                                alias_rhs_nominal_shell_has_rust_authority(
+                                    rhs.clone(),
+                                    module_name,
+                                    imports,
+                                    scope,
+                                    registry,
+                                    export_sets,
+                                    typed_modules,
+                                    source_indices.clone(),
+                                    module_index,
+                                )
+                            } else if rhs_name.as_str() != "" {
+                                alias_rhs_nominal_shell_has_rust_authority(
+                                    rhs.clone(),
+                                    module_name,
+                                    imports,
+                                    scope,
+                                    registry,
+                                    export_sets,
+                                    typed_modules,
+                                    source_indices.clone(),
+                                    module_index,
+                                )
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
                     }
                 }
             }
