@@ -15,6 +15,16 @@ module extdeps.runtime.abi.aapcs64
 import std.abi { ArchitecturalRegister, CallingConvention }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst"
+  }
+}
+
 // 🟢 terminal — cited AArch64 GPR names are irreducible spec atoms (AAPCS64 / kernel entry).
 type Aarch64Gpr = X0 | X1 | X2 | X3 | X4 | X5 | X8
 

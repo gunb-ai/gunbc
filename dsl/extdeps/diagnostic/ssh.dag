@@ -7,6 +7,16 @@ module extdeps.diagnostic.ssh
 
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc4253"
+  }
+}
+
 // 🟡 dissolved — feature:diagnostic-ssh-mock-response — scaffold:hand-authored mock_response —
 // dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
 // (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
