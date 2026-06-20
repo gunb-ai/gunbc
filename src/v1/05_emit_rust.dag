@@ -367,9 +367,6 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else if n.connective == NoConnective && n.children |> count == 0 && set_contains(shared_types, name) {
-    let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
-    render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
   } else {
     render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
   }

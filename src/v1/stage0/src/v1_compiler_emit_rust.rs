@@ -587,16 +587,6 @@ pub fn render_rust_fn_sig_type(
         render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
     } else if ((generic_param_names.clone().len() as i64) > 0) {
         render_rust_decl_type(n, generic_param_names.clone(), shared_types, source_indices)
-    } else if ((n.connective.clone() == Connective::NoConnective)
-        && ((n.children.clone().len() as i64) == 0)
-        && v1_rt::set_contains(&shared_types, name.clone()))
-    {
-        let rendered = rust_render_type_leaf_name(
-            name.clone(),
-            v1_rt::rc_empty_map::<String, String>(),
-            env.clone(),
-        );
-        render_rust_shared_type_if_needed(name.clone(), rendered, shared_types.clone())
     } else {
         render_rust_fn_sig_type_applied_binding(n, shared_types, source_indices, env)
     }
