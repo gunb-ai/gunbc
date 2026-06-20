@@ -1,0 +1,60 @@
+// Ephemeral gap-4 locate probes for 02_parse.dag syntax shapes.
+module gap4.fixture.parse_syntax_probes
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn parses(src: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn coproduct_multiline_variant_parse_holds() -> Bool {
+  parses(src: "module m.t\ntype X\n  = Foo {\n      a: Int\n      b: Int\n    }\n  | Bar { c: Int }\n")
+}
+
+test fn witness_generic_return_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f() -> Witness<Int> { Holds { value: 0 } }\n")
+}
+
+test fn generic_fn_decl_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn id<X>(x: X) -> X { x }\n")
+}
+
+test fn lambda_underscore_param_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f() -> Int { fold_list(xs: Empty, empty: 0, cons: fn(acc, _) { acc }) }\n")
+}
+
+test fn data_caret_symbol_parse_holds() -> Bool {
+  parses(src: "module m.t\ndata k: Symbol = ^foo\n")
+}
+
+test fn map_type_field_parse_holds() -> Bool {
+  parses(src: "module m.t\ntype T { entries: Map<Int, Int> }\n")
+}
+
+test fn match_enum_variant_no_braces_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f(stamp: Int) -> Int {\n  match stamp {\n    Foo => 1\n    Bar { binding: b } => b\n  }\n}\n")
+}
+
+test fn list_literal_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f() -> Int { length(xs: [1, 2]) }\n")
+}
+
+test fn named_arg_call_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f(x: Int) -> Int { g(name: ^foo, target: x) }\n")
+}
+
+test fn nested_if_blocks_parse_holds() -> Bool {
+  parses(src: "module m.t\nfn f() -> Bool {\n  if true {\n    if false { false } else { true }\n  } else {\n    false\n  }\n}\n")
+}
