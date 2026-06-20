@@ -1322,6 +1322,84 @@ fn bare_import_wildcard_survives_pipeline() {
 }
 
 #[test]
+fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
+    use std::rc::Rc;
+    use v1_compiler::v1_std_core::{
+        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic,
+        no_span, CompilerDiagnostic,
+    };
+
+    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
+        variant: "Empty".to_string(),
+        type_name: "FreeMonoid<T>".to_string(),
+        span: no_span(),
+    });
+    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
+    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck));
+
+    let parse = Rc::new(CompilerDiagnostic::ParseError {
+        message: "expected module".to_string(),
+        span: no_span(),
+    });
+    assert!(is_discovery_corpus_blocking_diagnostic(parse));
+}
+
+#[test]
+#[ignore = "receipt: parse-resilience unmasks ~779 typecheck diags demoted by discovery advisory gate"]
+fn parse_resilience_unmasked_typecheck_debt_receipt() {
+    use std::collections::BTreeSet;
+    use v1_compiler::cli_run::{discover_floor_corpus_rows, load_sources_for_entry};
+    use v1_compiler::v1_compiler_compile::compile_to_resolved;
+    use v1_compiler::v1_std_core::{
+        is_discovery_corpus_advisory_typecheck_diagnostic, is_interpreter_blocking_diagnostic,
+    };
+
+    let ws = workspace_root();
+    std::env::set_current_dir(&ws).expect("chdir to workspace root");
+    let roots = vec![
+        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let scan_dirs = vec![
+        "dsl/test/claim".to_string(),
+        "src/v2/compiler/manual".to_string(),
+    ];
+    let rows = discover_floor_corpus_rows(&roots, &scan_dirs).expect("discover roster");
+    let unique_entries: BTreeSet<String> = rows.into_iter().map(|r| r.entry).collect();
+
+    let mut advisory = 0usize;
+    let mut blocking_non_advisory = 0usize;
+    for entry in unique_entries {
+        let sources = match load_sources_for_entry(&roots, &entry) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let resolved = compile_to_resolved(Rc::new(sources));
+        for d in resolved.diagnostics.iter() {
+            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                continue;
+            }
+            if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
+                advisory += 1;
+            } else {
+                blocking_non_advisory += 1;
+            }
+        }
+    }
+    eprintln!(
+        "parse-resilience debt receipt: advisory_typecheck={advisory} blocking_non_advisory={blocking_non_advisory}"
+    );
+    assert!(
+        advisory >= 700,
+        "expected ~779 advisory-eligible typecheck diags after parse-resilience, got {advisory}"
+    );
+    assert!(
+        blocking_non_advisory <= 50,
+        "expected ~10 residual real blocking diags, got {blocking_non_advisory}"
+    );
+}
+
+#[test]
 fn compile_sources_filters_none_parse_diagnostics() {
     let files = &[
         ("good.dag", "module good\n"),
