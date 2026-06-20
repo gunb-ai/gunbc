@@ -53,8 +53,13 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.lexing {
+  LexRule,
+  LexRuleSet,
   LexRules,
   LexicalPhrase,
+  LiteralPattern,
+  ModeledLexRules,
+  TokenRule,
   phrase,
   phrase_to_lex_rules,
   phrase_to_source_text,
@@ -1078,6 +1083,13 @@ data bash_exit_code_1_quoted_wrong_emitted: Node = bash_conj_emitted_from_tokens
 )
 
 data bash_exit_code_1_quoted_wrong_source_text: String = "exit '1'"
+
+fn bash_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
 
 fn bash_exit_code_1_quoted_wrong_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
