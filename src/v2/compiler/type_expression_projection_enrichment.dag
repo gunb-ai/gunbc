@@ -199,44 +199,45 @@ fn tepe_comma_spine_field_inits(node: Node) -> List<Node> {
 
 fn tepe_record_top_level_field_inits(root: Node) -> List<Node> {
   let spine = tepe_comma_spine_field_inits(node: root)
-  match spine {
-    Cons { head: _, tail: _ } => spine
-    Empty =>
-      match parse_production_captured_child_optional(node: root) {
-        Present { value: captured } => tepe_record_top_level_field_inits(node: captured)
-        Absent =>
-          match tepe_sequence_left_optional(seq: root) {
-            Present { value: left } =>
-              match tepe_record_top_level_field_inits(node: left) {
-                Cons { head: _, tail: _ } as found => found
-                Empty =>
-                  match tepe_sequence_right_optional(seq: root) {
-                    Present { value: right } => tepe_record_top_level_field_inits(node: right)
-                    Absent => Empty
-                  }
-              }
-            Absent =>
+  if !is_empty(xs: spine) {
+    spine
+  } else {
+    match parse_production_captured_child_optional(node: root) {
+      Present { value: captured } => tepe_record_top_level_field_inits(node: captured)
+      Absent =>
+        match tepe_sequence_left_optional(seq: root) {
+          Present { value: left } =>
+            let left_spine = tepe_record_top_level_field_inits(node: left)
+            if !is_empty(xs: left_spine) {
+              left_spine
+            } else {
               match tepe_sequence_right_optional(seq: root) {
                 Present { value: right } => tepe_record_top_level_field_inits(node: right)
-                Absent =>
-                  match root.kind {
-                    TypeNode { connective: Conj } =>
-                      fold(
-                        root.children,
-                        init: Empty,
-                        f: fn(acc, e) {
-                          match acc {
-                            Cons { head: _, tail: _ } => acc
-                            Empty =>
-                              tepe_record_top_level_field_inits(node: e.target)
-                          }
-                        }
-                      )
-                    _ => Empty
-                  }
+                Absent => Empty
               }
-          }
-      }
+            }
+          Absent =>
+            match tepe_sequence_right_optional(seq: root) {
+              Present { value: right } => tepe_record_top_level_field_inits(node: right)
+              Absent =>
+                match root.kind {
+                  TypeNode { connective: Conj } =>
+                    fold(
+                      root.children,
+                      init: Empty,
+                      f: fn(acc, e) {
+                        if !is_empty(xs: acc) {
+                          acc
+                        } else {
+                          tepe_record_top_level_field_inits(node: e.target)
+                        }
+                      }
+                    )
+                  _ => Empty
+                }
+            }
+        }
+    }
   }
 }
 
