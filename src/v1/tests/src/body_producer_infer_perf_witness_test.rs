@@ -56,14 +56,18 @@ fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
 }
 
 #[test]
-fn debug_wrong_type_entry_only() {
+fn debug_wrong_type_entry_path_sensitivity() {
     let ws = workspace_root();
     let content = std::fs::read_to_string(ws.join(WRONG_TYPE_ENTRY)).expect("read");
-    let sources = vec![Rc::new(SourceFile {
-        path: WRONG_TYPE_ENTRY.to_string(),
-        content,
-    })];
-    let resolved = compile_to_resolved(Rc::new(sources));
-    let errs = non_complexity_errors(&resolved);
-    eprintln!("entry_only errs={errs:?} graph={}", resolved.graph.is_some());
+    let roots = [ws.join("src/v2"), ws.join("dsl")];
+    for entry in [WRONG_TYPE_ENTRY, "pd3adv.dag"] {
+        let resolved = compile_to_resolved(Rc::new(
+            resolve_imports_transitively_with_source_roots(entry, &content, &roots),
+        ));
+        eprintln!(
+            "{entry} errs={:?} graph={}",
+            non_complexity_errors(&resolved),
+            resolved.graph.is_some()
+        );
+    }
 }

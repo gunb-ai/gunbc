@@ -15,7 +15,7 @@ fn take_acct(acct: AccountId) -> String {
 
 fn caller(uid: UserId) -> String {
   let x = uid
-  take_acct(acct: x)
+  take_acct(x)
 }
 
 fn pbp_wrong() -> String {
