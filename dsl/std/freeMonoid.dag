@@ -1,0 +1,24 @@
+// std/freeMonoid.dag — cross-tree re-export of FreeMonoid coproduct + free fns (§3).
+//
+// Single dsl-tree entry for dsl.std → v2.std.algebra cross-tree imports.
+// Executable authority: std.algebra (coproduct + list_head/skip/length/…).
+
+module std.freeMonoid
+
+import std.algebra {
+  Cons,
+  Empty,
+  FreeMonoid,
+  HeadAbsent,
+  HeadFound,
+  ListHeadResult,
+  fold_list,
+  fold_list_right,
+  freemonoid_empty,
+  is_empty,
+  length,
+  list_append,
+  list_head,
+  list_head_eq,
+  skip,
+}

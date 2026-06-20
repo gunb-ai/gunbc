@@ -366,53 +366,76 @@ type BooleanAlgebra<T> {
 // Sequence/collection structures
 // =========================================================================
 
-// FreeMonoid<T>: the free monoid over element type T.
-// Concretely: finite sequences (lists/strings) under concatenation.
-// The "free" means: no additional relations beyond the monoid laws.
-// Every element of FreeMonoid<T> is a unique finite sequence of T values.
-//
-// Layering (single semantic authority): the `type FreeMonoid` / `type PartialFunction`
-// records — and the "Declared surface" bullets for each — are the abstract algebra.
-// `free_monoid_scalar_templates`, `free_monoid_collection_templates`, and
-// `partial_function_templates` below only project that algebra onto kernel types for
-// compiler enrichment (receiver/param templates); they do not define a second method shape.
-//
-// Declared surface (receiver-shaped fields — matches the record below):
-//   Monoid: concat(self, other), empty, append(element)
-//   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
-//     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
-//     in std/primitives.dag, not a partial algebra field.
-//   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
-//   fold: monoid-shaped on T — init: T plus step fn(T, T) -> T -> T
-//   (Those two stay on T because executable authority here cannot yet name
-//     per-method result/accumulator type parameters — same emitter gap as lattice lifting above.)
-//   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
-type FreeMonoid<T> {
-  // Monoid operations
-  concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
-  empty: FreeMonoid<T>
-  append: fn(T) -> FreeMonoid<T>
-  // Positional access — partial direct indexing is intentionally absent.
-  slice: fn(Int, Int) -> FreeMonoid<T>
-  length: fn() -> Int
-  is_empty: fn() -> Bool
-  count: fn() -> Int
-  first: fn() -> T?
-  last: fn() -> T?
-  // Iteration-shaped operations (map is endomorphic on T; fold is monoid-shaped on T)
-  map: fn(fn(T) -> T) -> FreeMonoid<T>
-  filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
-  fold: fn(T, fn(T, T) -> T) -> T
-  flat_map: fn(fn(T) -> FreeMonoid<T>) -> FreeMonoid<T>
-  any: fn(fn(T) -> Bool) -> Bool
-  all: fn(fn(T) -> Bool) -> Bool
-  // Structural transformations
-  enumerate: fn() -> FreeMonoid<Tuple<Int, T>>
-  reverse: fn() -> FreeMonoid<T>
-  skip: fn(Int) -> FreeMonoid<T>
-  take: fn(Int) -> FreeMonoid<T>
-  sort_by: fn(fn(T, T) -> Int) -> FreeMonoid<T>
-  contains: fn(T) -> Bool
+// FreeMonoid<T>: the free monoid over element type T (v2.std.algebra coproduct authority).
+// Executable surface is free fns (list_head, skip, length, list_append, …); enrichment
+// templates below project method-shaped emit metadata only — not a second algebra record.
+type FreeMonoid<T>
+  = Empty
+  | Cons { head: T, tail: FreeMonoid<T> }
+
+fn freemonoid_empty<T>() -> FreeMonoid<T> {
+  Empty
+}
+
+type ListHeadResult<T>
+  = HeadFound { value: T }
+  | HeadAbsent
+
+fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
+  match xs {
+    Empty => HeadAbsent
+    Cons { head: h, tail: _ } => HeadFound { value: h }
+  }
+}
+
+fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+  }
+}
+
+fn length<T>(xs: FreeMonoid<T>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
+}
+
+fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  if n <= 0 {
+    xs
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
+    }
+  }
+}
+
+fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
+  fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+  }
+}
+
+fn list_head_eq<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> Bool {
+  match (list_head(xs: left), list_head(xs: right)) {
+    (HeadAbsent, HeadAbsent) => true
+    (HeadFound { value: a }, HeadFound { value: b }) => a == b
+    _ => false
+  }
 }
 
 // PartialFunction<K, V>: finite partial function (Map algebra).
@@ -475,10 +498,9 @@ type Ordering = Less | Equal | Greater
 //   not(a)     = complement(a)
 //   xor(a, b)  = meet(join(a, b), complement(meet(a, b)))
 //
-// From FreeMonoid:
-//   length and count are declared methods (Int); is_empty() -> Bool;
-//   contains is a declared predicate.
-//   The record's fold is monoid-shaped on T, not a generic catamorphism init: U.
+// From FreeMonoid (free fns on the coproduct carrier):
+//   length(xs), is_empty(xs), list_head(xs) -> ListHeadResult<T>, skip(xs, n),
+//   list_append(left, right); enrichment templates below are emit metadata only.
 
 // =========================================================================
 // Compiler bridge: algebraic enrichment profiles
