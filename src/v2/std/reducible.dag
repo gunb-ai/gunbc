@@ -21,9 +21,9 @@
 
 module v2.std.reducible
 
-import v2.std.algebra { Equal, Magma, Ordering, Semigroup, fold_list, int_compare }
+import v2.std.algebra { Equal, Magma, Semigroup, fold_list }
 import v2.std.collection { List }
-import v2.std.integer { Int }
+import v2.std.integer { Int, int_compare }
 import v2.std.logic { Bool }
 import v2.std.text { String, string_is_empty }
 
