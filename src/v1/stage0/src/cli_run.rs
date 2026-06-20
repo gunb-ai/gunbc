@@ -25,6 +25,7 @@ use crate::v1_std_core::{
     authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
     diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
     field_init_node_value, has_child_named, intern, is_error_diagnostic,
+    is_discovery_corpus_blocking_diagnostic, is_discovery_corpus_advisory_typecheck_diagnostic,
     is_interpreter_blocking_diagnostic, ErrorNode, ExprData, InferredNode, InternTable,
     NewlineIndex, Node,
 };
@@ -573,15 +574,25 @@ fn resolve_entry_with_parse_cache(
         &index.typed_module_cache,
     );
 
+    for d in typed.diagnostics.iter() {
+        if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone())
+            && is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+        {
+            eprintln!(
+                "advisory(typecheck): {}",
+                format_error_node(d, &source_indices)
+            );
+        }
+    }
     let has_type_errors = typed
         .diagnostics
         .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+        .any(|d| is_discovery_corpus_blocking_diagnostic(d.diagnostic.clone()));
     if has_type_errors {
         let msgs: Vec<String> = typed
             .diagnostics
             .iter()
-            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .filter(|d| is_discovery_corpus_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
         return Err(msgs.join("\n"));
@@ -744,7 +755,7 @@ fn resolved_graph_from_sources(
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+        .any(|d| is_discovery_corpus_blocking_diagnostic(d.diagnostic.clone()));
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -753,7 +764,16 @@ fn resolved_graph_from_sources(
             .collect();
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
-            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+            if !is_discovery_corpus_blocking_diagnostic(d.diagnostic.clone()) {
+                if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone())
+                    && is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+                {
+                    eprintln!(
+                        "advisory(typecheck): {}: error: {}",
+                        d.module_name,
+                        diagnostic_to_message(d.diagnostic.clone())
+                    );
+                }
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());

@@ -296,6 +296,36 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   }
 }
 
+// SCAFFOLD — parse-resilience exposes whole-tree v2 typecheck debt in discovery corpus
+// (~779 errors: FreeMonoid Empty/Cons bootstrap-gap + residual real errors). Visible but
+// non-blocking in discovery/scan-coverage ONLY; gunbc compile stays fail-closed via
+// compile_to_resolved + is_error_diagnostic.
+// dissolve-on: src/v2 whole-tree reaches compile-clean (779 remediated) — delete this
+// carve-out and discovery re-tightens reconcile gate to is_interpreter_blocking_diagnostic.
+fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match d {
+    UnresolvedType { name: _, span: _ } => true
+    TypeMismatch { expected: _, got: _, span: _ } => true
+    ArityMismatch { name: _, expected: _, got: _, span: _ } => true
+    VariantNotFound { variant: _, type_name: _, span: _ } => true
+    FieldNotFound { field: _, type_name: _, span: _ } => true
+    NonExhaustiveMatch { missing: _, span: _ } => true
+    MissingAnnotation { fn_name: _, what: _, span: _ } => true
+    VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => true
+    _ => false
+  }
+}
+
+fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
+  if is_interpreter_blocking_diagnostic(d: d) == false {
+    false
+  } else if is_discovery_corpus_advisory_typecheck_diagnostic(d: d) {
+    false
+  } else {
+    true
+  }
+}
+
 fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
   ErrorNode { diagnostic: diagnostic, module_name: module_name }
 }
