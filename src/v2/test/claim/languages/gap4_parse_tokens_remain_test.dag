@@ -8,10 +8,13 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
 
+data gap4_cached_lm: LanguageModel = dag_language_model_wave1()
+
 fn parses(src: String) -> Bool {
-  let lm = dag_language_model_wave1()
+  let lm = gap4_cached_lm
   match tokenize(text: src, file: ^probe, rules: lm.lex) {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
