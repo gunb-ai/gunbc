@@ -128,9 +128,9 @@ fn gunbc_ci_floor_corpus_work_demand(corpus_shard_count: Int) -> WorkDemand {
       cpu: none,
       gpu: none,
       // Per-shard peak resolve memory (#5375). SCAFFOLD — stale 14 GiB estimate until
-      // measured; see host_memory_scaffold_ci_per_shard_peak. Pig witnesses (~31 GiB)
-      // are contained by operator runner-slice MemoryMax — NOT width=1. eager-boar-790
-      // slims pig content; docs/runbooks/ci-runner-cgroup-memory-cap.md.
+      // measured; see host_memory_scaffold_ci_per_shard_peak. Heavy witnesses (~31 GiB)
+      // are bounded by the memory-aware spawn width — NOT width=1. eager-boar-790
+      // slims heavy-witness content.
       memory: Present {
         value: MemoryRequirement { min_bytes: host_memory_scaffold_ci_per_shard_peak },
       },

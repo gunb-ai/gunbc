@@ -519,11 +519,10 @@ fn work_demand_shard_count(demand: WorkDemand) -> Int {
   }
 }
 
-// Conservative memory budget for concurrent fan-out on a host. A floor batch is killed by
-// its runner-slice cgroup MemoryMax (NOT total RAM), which on the tightest fleet host caps
-// near half of RAM. Until ctrl/BMC grounds the exact per-host MemoryMax bytes, approximate
-// the budget as 0.50×RAM so a single fleet-wide spawn width stays safe on the TIGHTEST host
-// (the floor lands on either host). Grounds-later: replace 0.50×RAM with measured MemoryMax.
+// Conservative memory budget for concurrent fan-out on a host: approximate as 0.50×RAM so a
+// single fleet-wide spawn width stays safe on the TIGHTEST host (the floor lands on either
+// host). This is the #5375 spawn-width budget — distinct from the allocator's grantable
+// (physical RAM − reserve). Grounds-later: replace 0.50×RAM with a BMC-measured per-host budget.
 fn placement_floor_memory_budget_bytes(supply: PlacementSupplyRow) -> Int {
   byte_size_count(supply.ram_bytes) / 2
 }
@@ -549,7 +548,7 @@ fn placement_memory_width_bound(supply: PlacementSupplyRow, demand: WorkDemand) 
 // Width projection: min(shard_count, hardware_threads, memory_budget / per_unit_peak) —
 // single authority, MEMORY-AWARE. The CPU bound (bounded_host_spawn_width) alone is
 // memory-blind: N concurrent resolves each peak at the demand's per-unit memory, and N×peak
-// must stay under the floor's cgroup MemoryMax or the batch is OOM-killed (exit 137). The
+// must stay under the host memory budget or the batch exhausts the host's RAM. The
 // memory term backs fan-out off BEFORE the kill — §1's safety axis made structural, and the
 // connected model §6 ('fix related systems together') requires: CPU and memory are ONE width
 // relationship, not a CPU bound patched after an OOM. Eligibility is NOT rejected when demand
@@ -571,9 +570,11 @@ fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> Hard
 // --- §1.1b allocation classes + admit (compute-fabric allocator DESTINATION) --
 //
 // Fixed-size allocation classes + admit() model the Σ(live) + request ≤ grantable
-// invariant (§5). DESTINATION for allocator plan step 4 (dashboard/docker routing) —
-// NOT wired into CI spawn_width today (#5375 memory-aware width stays authoritative;
-// host containment = cgroup MemoryMax on system-actions-runner.slice).
+// invariant (§5): consistent, safe, OS-agnostic container-level allocation — grant
+// each container a fixed memory class; refuse when the host's granted sum would
+// exceed physical RAM − reserve. DESTINATION for allocator plan step 4 (dashboard/
+// docker routing) — NOT wired into CI spawn_width today (#5375 memory-aware width
+// stays authoritative). Enforcing a grant inside a container is out of scope.
 
 type AllocationClass =
     Small    // 2 hardware threads · 2 GiB
@@ -612,27 +613,17 @@ data allocation_class_xlarge: AllocationClassSpec = AllocationClassSpec {
   label: "XLarge",
 }
 
-// --- host memory ledger scaffold (stopgap until admit() generates caps) ---------
+// --- host memory ledger scaffold (stopgap until admit() grants from BMC-grounded RAM) ---
 //
-// Placeholder bytes for operator/dashboard containment. Each row names its dissolution
-// trigger; final values are generated-from-the-ledger (measured peaks + BMC grantable).
-// bind: docs/runbooks/ci-runner-cgroup-memory-cap.md (scaffold register table)
-
-// 🟡 scaffold — host-runner-slice-cap · bind: runbook ledger row "CI runner slice"
-// dissolve-on: max(measured normal-CI floor peak_vmhwm_kib from claim_executor
-// [measurement] @ width=4, memory.peak runner slice) + pig-tail margin
-data host_memory_scaffold_runner_slice_cap: ByteSize = byte_size(68719476736)
+// Placeholder bytes; each row names its dissolution trigger (final values are
+// generated-from-the-ledger: measured peaks + BMC-grounded physical RAM).
 
 // 🟡 scaffold — ci-per-shard-peak (#5375 width input; §3 fork) · consumer: ci_fleet.demand
 // dissolve-on: measured per-witness resolve peak distribution (claim_batch [interp-stats] VmHWM)
 data host_memory_scaffold_ci_per_shard_peak: ByteSize = byte_size(15032385536)
 
-// 🟡 scaffold — session-container-cap (live dashboard default) · bind: runbook Part B
-// dissolve-on: operator-signed cap from measured per-session peak-RSS distribution
-data host_memory_scaffold_session_container_cap: ByteSize = byte_size(33578549248)
-
-// 🟡 scaffold — session-spawn-reservation (kernel census) · consumer: admit() reserve_bytes
-// dissolve-on: generated-from-the-ledger admit() reservation per AllocationClass
+// 🟡 scaffold — host system reserve (kernel/system headroom) · consumer: admit() reserve_bytes
+// dissolve-on: operator-grounded reserve (BMC total_memory_bytes − measured system floor)
 data host_memory_scaffold_session_spawn_reservation: ByteSize = byte_size(268435456)
 
 fn allocation_class_spec(class: AllocationClass) -> AllocationClassSpec {
@@ -683,12 +674,22 @@ fn allocation_class_resource_envelope(class: AllocationClass) -> ResourceEnvelop
   }
 }
 
-// Grantable bytes = conservative floor budget minus an explicit reserve for
-// consumers not yet routed through admit (meantime until allocator step 4).
+// Grantable bytes = host physical RAM minus an explicit reserve (kernel/system
+// headroom). OS-agnostic: the safe-allocation invariant is Σ(grants) ≤ physical
+// RAM − reserve. How a grant is *enforced* inside a container (if at all) is the
+// container's concern, not the allocator's. `reserve_bytes` is the tunable headroom
+// (a scaffold until BMC-grounded).
+// Host physical RAM as a signed Int — the Nat byte count widened at the typed return
+// boundary (same Nat→Int route the /2 budget helper uses) so the reserve subtraction
+// below is well-typed.
+fn placement_host_total_memory_bytes(supply: PlacementSupplyRow) -> Int {
+  byte_size_count(supply.ram_bytes)
+}
+
 fn placement_grantable_memory_bytes(supply: PlacementSupplyRow, reserve_bytes: ByteSize) -> Int {
-  let budget = placement_floor_memory_budget_bytes(supply: supply)
+  let total = placement_host_total_memory_bytes(supply: supply)
   let reserve = byte_size_count(reserve_bytes)
-  if budget <= reserve { 1 } else { budget - reserve }
+  if total <= reserve { 1 } else { total - reserve }
 }
 
 // --- §1.2 demand -------------------------------------------------------------
@@ -1497,7 +1498,8 @@ fn witness_admit_grants_on_empty_host() -> Bool {
   }
 }
 
-// Discriminating: grantable = 8 GiB; one live Large (8 GiB) fills it — a second Large is refused.
+// Discriminating: grantable = 16 GiB RAM − reserve (≈15.75 GiB); one live Large (8 GiB)
+// leaves < 8 GiB free, so a second Large (→ 16 GiB > grantable) is refused.
 fn witness_admit_refuses_when_host_full() -> Bool {
   match admit(
     host: example_admit_host_supply,

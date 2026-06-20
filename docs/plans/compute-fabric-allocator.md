@@ -7,6 +7,14 @@
 (`docs/postmortems/2026-06-20-ci-flakiness-fleet-overcommit.md`) bottomed out at one missing
 invariant. This plan is the durable fix.
 
+> **Operator decision (2026-06-20):** this allocator is **OS/domain-agnostic** — it models
+> consistent, safe *allocation* (fixed classes + the `Σ(grants) ≤ physical-RAM − reserve`
+> invariant), not OS-specific *enforcement*. cgroup MemoryMax / slice containment and
+> in-container thrash-prevention are out of scope (premature): a granted receipt is a
+> reservation against physical RAM, and what a container does within its grant is its own
+> concern. Enforcement, if ever needed, is a peripheral per-OS realization (§3), not part
+> of this model.
+
 ---
 
 ## 1. The problem, measured
@@ -63,7 +71,7 @@ step would spread them; srv1 idle while srv2 carries everything *is* the missing
             srv1 (grounded via BMC)                  srv2 (grounded via BMC)
             grantable = total_memory_bytes           grantable = total_memory_bytes
                         − reserves                               − reserves
-            cgroup slices = granted receipts         cgroup slices = granted receipts
+            granted = Σ receipts ≤ grantable        granted = Σ receipts ≤ grantable
 ```
 
 Reuses what already exists in `dsl/product/compute_fabric.dag`: `WorkDemand` / `ResourceEnvelope`
