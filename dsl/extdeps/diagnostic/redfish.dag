@@ -46,4 +46,29 @@ service redfish.Http {
       nonzero => String "redfish system GET failed"
     }
   }
+
+  // Authenticated single-sensor read — the live Energy/thermal axis (a sensor's Reading,
+  // e.g. power_PWR_Core_VRD in Watts → Cost.Energy; temperature_TEMP_DIMM_A1 in Celsius).
+  // Secret-safe by construction: the (possibly rotated) BMC credential rides a 0600
+  // `--netrc-file` materialized from the credential store, NEVER the curl argv — this is
+  // the resolution the GetSystem note above demands for a rotated Secret (no password in
+  // process args). `-k` accepts the BMC self-signed cert. Read-only / safe. The chassis id
+  // and sensor name are per-board (Redfish 1.15 Sensors collection), supplied by the caller.
+  operation GetSensorReading {
+    input {
+      bmc_host: NonEmptyStr,
+      netrc_path: NonEmptyStr,
+      chassis_id: NonEmptyStr,
+      sensor: NonEmptyStr
+    }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_path}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors/{sensor}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish sensor read failed"
+    }
+  }
 }
