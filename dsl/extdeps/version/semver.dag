@@ -60,10 +60,10 @@ fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Orderi
 }
 
 fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
-  if a.length() == 0 && b.length() == 0 { Equal }
+  if a.count() == 0 && b.count() == 0 { Equal }
   // semver.org §11.4.4: when all preceding identifiers are equal, the longer set wins.
-  else if a.length() == 0 { Less }
-  else if b.length() == 0 { Greater }
+  else if a.count() == 0 { Less }
+  else if b.count() == 0 { Greater }
   else {
     match semver_compare_identifier(a: a.first(), b: b.first()) {
       Equal =>
@@ -77,9 +77,9 @@ fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifie
 }
 
 fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> Ordering {
-  if a.length() == 0 && b.length() == 0 { Equal }
-  else if a.length() == 0 { Greater }
-  else if b.length() == 0 { Less }
+  if a.count() == 0 && b.count() == 0 { Equal }
+  else if a.count() == 0 { Greater }
+  else if b.count() == 0 { Less }
   else { semver_compare_identifiers(a: a, b: b) }
 }
 
@@ -114,12 +114,12 @@ fn semver_version_label(v: SemVerVersion) -> String {
     to_string(v.major),
     concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
   )
-  let with_pre = if v.pre_release.length() == 0 {
+  let with_pre = if v.pre_release.count() == 0 {
     core
   } else {
     concat(core, concat("-", semver_identifiers_label(ids: v.pre_release)))
   }
-  if v.build.length() == 0 {
+  if v.build.count() == 0 {
     with_pre
   } else {
     concat(with_pre, concat("+", semver_identifiers_label(ids: v.build)))
