@@ -97,11 +97,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         resolved.source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
-    // Warm language-model data once (gap4_cached_lm) before per-file parse calls.
-    if let Err(e) = v1_interpreter::run_in_context(&ctx, PARSE_FN, true) {
-        eprintln!("v2_whole_tree_parse_scan: harness warm-up failed: {e}");
-        return Err(ExitCode::from(2));
-    }
 
     let mut ok = 0usize;
     for rec in &records {
