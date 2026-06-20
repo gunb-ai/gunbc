@@ -1089,13 +1089,7 @@ fn bash_exit_code_1_quoted_wrong_translation_rules_node() -> Node {
 }
 
 fn bash_exit_code_lex() -> LexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
-      rules: [
-        bash_lex_rule(token_class: ^bash_token_kw_exit, text: "exit ")
-      ]
-    }
-  }
+  phrase_to_lex_rules(p: phrase([span(text: "exit ", class: ^bash_token_kw_exit)]))
 }
 
 fn bash_exit_code_1_target_model() -> TargetModel {
