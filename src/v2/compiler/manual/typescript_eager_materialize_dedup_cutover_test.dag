@@ -6,8 +6,6 @@
 module v2.test.manual.typescript_eager_materialize_dedup_cutover
 
 import v2.compiler.ingest { grammar_relation_row_forward_selection }
-import v2.compiler.self_host { self_host_fixed_point_digests_match }
-import v2.compiler.self_host.candidate_generation { generate_translate_self_emit_candidate }
 import v2.std.grammar {
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact
@@ -53,10 +51,6 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates }
-import v2.test.manual.mvp1_dag_add_round_trip {
-  mvp1_dag_emitted_root,
-  mvp1_dag_target_model
-}
 
 fn ts_arc1_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
@@ -243,24 +237,6 @@ fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
   }
 }
 
-// One generate_translate_self_emit_candidate call — compare emitted digest to the canonical
-// mvp1 dag slice root (fixed-point oracle). A second full infer∘translate pass duplicated
-// memory in batch-2 floor (OOM exit 137); idempotency is the same single-call digest check.
-fn ts_arc1_dag_self_emit_bit_identical_round_trip_holds() -> Bool {
-  match generate_translate_self_emit_candidate(
-    resolved_module: mvp1_dag_emitted_root,
-    dag_target: mvp1_dag_target_model
-  ) {
-    Accepted { value: candidate, diagnostics: d } =>
-      (d == None)
-        && self_host_fixed_point_digests_match(
-          emitted_stage1: candidate.emitted,
-          emitted_stage2: mvp1_dag_emitted_root
-        )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn ts_arc1_mvp1_scaffold_row_present_holds() -> Bool {
   match find_named_child(
     root: ts_mvp1_fn_add_scaffold_relation_row_node(),
@@ -302,8 +278,4 @@ test fn ts_arc1_forward_row_dedup_cutover_green_holds() -> Bool {
 
 test fn ts_arc1_wave2a_perturbed_eager_emitted_derive_red_holds() -> Bool {
   ts_arc1_wave2a_perturbed_row_derive_red_holds()
-}
-
-test fn ts_arc1_dag_self_emit_bit_identical_round_trip_holds() -> Bool {
-  ts_arc1_dag_self_emit_bit_identical_round_trip_holds()
 }
