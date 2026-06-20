@@ -11,7 +11,7 @@ import v2.std.algebra {
   FreeMonoid,
   HeadAbsent,
   HeadFound,
-  first,
+  list_head,
   skip,
 }
 
@@ -23,35 +23,35 @@ fn sample_list() -> FreeMonoid<Int> {
 }
 
 fn witness_first_empty_is_absent() -> Bool {
-  match first(xs: Empty) {
+  match list_head(xs: Empty) {
     HeadAbsent => true
     HeadFound { value: _ } => false
   }
 }
 
 fn witness_first_returns_head() -> Bool {
-  match first(xs: sample_list()) {
+  match list_head(xs: sample_list()) {
     HeadFound { value: v } => v == 1
     HeadAbsent => false
   }
 }
 
 fn witness_skip_then_first() -> Bool {
-  match first(xs: skip(xs: sample_list(), n: 1)) {
+  match list_head(xs: skip(xs: sample_list(), n: 1)) {
     HeadFound { value: v } => v == 2
     HeadAbsent => false
   }
 }
 
 fn witness_skip_past_length_is_empty() -> Bool {
-  match first(xs: skip(xs: sample_list(), n: 4)) {
+  match list_head(xs: skip(xs: sample_list(), n: 4)) {
     HeadAbsent => true
     HeadFound { value: _ } => false
   }
 }
 
 fn witness_skip_non_positive_is_identity() -> Bool {
-  match first(xs: skip(xs: sample_list(), n: 0)) {
+  match list_head(xs: skip(xs: sample_list(), n: 0)) {
     HeadFound { value: v } => v == 1
     HeadAbsent => false
   }

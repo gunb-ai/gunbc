@@ -121,7 +121,7 @@ type ListHeadResult<T>
   = HeadFound { value: T }
   | HeadAbsent
 
-fn first<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
+fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
   match xs {
     Empty => HeadAbsent
     Cons { head: h, tail: _ } => HeadFound { value: h }
