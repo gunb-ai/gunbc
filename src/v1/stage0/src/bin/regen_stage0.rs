@@ -104,6 +104,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",
+    "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
     "wire_value_serialize.rs",
