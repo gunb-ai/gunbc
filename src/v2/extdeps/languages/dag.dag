@@ -2406,19 +2406,12 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_match_arm_stmt_body_expr() -> GrammarExpr {
-  dag_grammar_nonterminal(production: ^dag_production_match_arm_stmt_body)
-}
-
 fn dag_grammar_match_arm_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_pattern),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_expr),
-        right: dag_grammar_match_arm_stmt_body_expr()
-      )
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
     )
   )
 }
