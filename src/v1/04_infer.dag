@@ -2841,52 +2841,31 @@ fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<
   }
 }
 
-// The expected COPRODUCT arm whose name matches a constructed variant, if any — disambiguates
-// a constructed name that also names a top-level collection (e.g. `GrammarExpr.Optional` the
-// variant vs the collection `Optional<T>`), using the import-scoped `expected` type.
-fn record_lit_expected_coproduct_arm(type_name: String, expected: Node?, scope: InferScope) -> Node? {
-  match expected {
-    Present { value: exp } =>
-      let exp_resolved = resolved_type(n: exp)
-      if (exp_resolved.connective == Disj) {
-        exp_resolved.children |> filter(arm => authored_name_at(source_indices: scope.type_env.source_indices, node: arm) == type_name) |> first
-      } else { none }
-    Absent => none
-  }
-}
-
-// Strict record construction (§5 fail-closed): the source-level field-name set of the
-// CONCRETE record a construction targets, or `none` whenever resolution is not confident —
-// so the undefined-field check below stays silent rather than false-positive. The field set
-// REUSES the already-computed `struct_fields` (§2 DRY): that set is import-scoped (derived
-// from the `expected` type), so it resolves the construction's actual target rather than an
-// unscoped global `lookup_type_by_name` guess. Two adjustments: (1) GENERIC/parametric
-// types are SKIPPED — the resolved type env rewrites a single-field wrapper field to its
-// innermost name under newtype flattening (`type Monoid<T> { semigroup: Semigroup<T>; ... }`
-// resolves to fields `[op, identity]`: semigroup→Semigroup→magma→Magma→op), so the resolved
-// set is not source-faithful and a check against it false-positives across the algebra tower;
-// until generic field-name resolution is source-faithful (dissolution trigger) the check
-// covers non-generic records only, which is where every real bug it found lives. (2) a variant
-// constructed against an expected coproduct also admits that arm's fields, since `struct_fields`
-// yields the collection's arms, not the variant's fields, for that case.
-fn record_lit_construction_field_names(type_name: String, expected: Node?, struct_fields: List<Node>, scope: InferScope) -> List<String>? {
+// Strict record construction (§5 fail-closed): the SOURCE field-name set of the concrete
+// record a construction targets, or `none` whenever we cannot enumerate it with confidence —
+// so the undefined-field check stays silent rather than false-positive. We fire ONLY when the
+// constructed name resolves to a plain, fully-grounded record: non-generic (`params == 0`) and
+// a direct product (`connective == Conj`) with declared fields. Everything else returns `none`:
+//   - generics (`Monoid<T>`, `Vendor<Domain>`): newtype flattening rewrites a single-field
+//     wrapper to its innermost name (`Monoid` resolves to `[op, identity]`, not `[semigroup,
+//     identity]`), so the resolved set is not source-faithful;
+//   - concrete aliases of single-field generics (`Watt = Measure<Power, One, Nat>`): the wrapper
+//     dissolves to its `<M>` carrier, so the resolved node is not a record at all;
+//   - a name resolving to a coproduct/enum — including the losing side of a §3 name collision
+//     (the `Vendor` enum shadowing the `Vendor<Domain>` record): no product fields to check.
+// This keeps full teeth on plain records, where every real bug it finds lives (`BoolWitness
+// { holds }`, `NodeLocus { node }`, `PortLocus { port }`). Dissolution trigger: when field-name
+// resolution is source-faithful under flattening, widen the gate to generics and aliases.
+fn record_lit_construction_field_names(type_name: String, scope: InferScope) -> List<String>? {
   let si = scope.type_env.source_indices
-  let toplevel = lookup_type_by_name(env: scope.type_env, name: type_name)
-  let toplevel_generic = match toplevel {
-    Present { value: decl } => decl.params |> count > 0
-    Absent => false
-  }
-  if toplevel_generic {
-    none
-  } else {
-    let arm_fields = match record_lit_expected_coproduct_arm(type_name: type_name, expected: expected, scope: scope) {
-      Present { value: arm } => arm.children
-      Absent => []
-    }
-    let combined = concat(struct_fields, arm_fields)
-    if combined |> count > 0 {
-      Present { value: combined |> map(f => authored_name_at(source_indices: si, node: f)) }
-    } else { none }
+  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Present { value: decl } =>
+      if (decl.params |> count == 0) && (decl.connective == Conj) && (decl.children |> count > 0) {
+        Present { value: decl.children |> map(f => authored_name_at(source_indices: si, node: f)) }
+      } else {
+        none
+      }
+    Absent => none
   }
 }
 
@@ -2945,7 +2924,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       }
   }
   let construction_field_names = match type_name {
-    Present { value: tn } => record_lit_construction_field_names(type_name: tn, expected: expected, struct_fields: struct_fields, scope: scope)
+    Present { value: tn } => record_lit_construction_field_names(type_name: tn, scope: scope)
     Absent => none
   }
   let tn_str = match type_name {
