@@ -66,3 +66,15 @@ test fn method_call_parse_holds() -> Bool {
 test fn parse_expr_result_coproduct_parse_holds() -> Bool {
   parses(src: "module m.t\ntype R\n  = Ok {\n      remaining: List<Int>\n      captured: Int\n      diagnostics: List<Int>\n      prov: Int\n    }\n  | Err { diagnostics: List<Int> }\n")
 }
+
+test fn parse_thunk_fn_type_field_holds() -> Bool {
+  parses(src: "module m.t\ntype ParseExprResult\n  = Accepted { remaining: List<Int> }\n  | Rejected { diagnostics: List<Int> }\n\ntype ParseThunk {\n  apply: fn(List<Int>, List<Int>, Int, Int, Int) -> ParseExprResult\n}\n")
+}
+
+test fn parse_thunk_apply_underscore_params_holds() -> Bool {
+  parses(src: "module m.t\ntype ParseExprResult = Accepted { x: Int } | Rejected { y: Int }\ntype ParseThunk { apply: fn(List<Int>, List<Int>, Int, Int, Int) -> ParseExprResult }\nfn f() -> Int {\n  let t = ParseThunk { apply: fn(tok_in, _all, _root, _table, prov) { Accepted { x: 1 } } }\n  0\n}\n")
+}
+
+test fn fold_grammar_expr_parse_thunk_spine_holds() -> Bool {
+  parses(src: "module m.t\ntype R = A { x: Int } | B { y: Int }\ntype ParseThunk { apply: fn(List<Int>, List<Int>, Int, Int, Int) -> R }\nfn parse_expr() -> R {\n  let thunk = fold_list(xs: Empty, empty: ParseThunk { apply: fn(a, b, c, d, e) { A { x: 0 } } }, cons: fn(acc, _) { acc })\n  thunk.apply([], [], 0, 0, 0)\n}\n")
+}

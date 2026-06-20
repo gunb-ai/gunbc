@@ -657,3 +657,94 @@ fn probe_gap4_scoped_ingest_first_reject() {
     }
     panic!("{report}");
 }
+
+const GAP4_PARSE_PROBE_ENTRY: &str = "src/v2/test/fixture/gap4_parse_syntax_probes.dag";
+
+fn gap4_parse_probe_context() -> v1_interpreter::InterpContext {
+    let ws = workspace_root();
+    let entry = ws.join(GAP4_PARSE_PROBE_ENTRY);
+    let roots = witness_layer_root_paths(&ws);
+    let (graph, source_indices) =
+        resolve_entry_graph(&roots, entry.to_str().expect("entry utf8"))
+            .unwrap_or_else(|e| panic!("resolve {GAP4_PARSE_PROBE_ENTRY}: {e}"));
+    make_eval_context(&graph, source_indices, ExecutionMode::Wet)
+}
+
+fn gap4_parses_source(ctx: &v1_interpreter::InterpContext, source: &str) -> bool {
+    let args = [(Some("src".to_string()), Value::Str(source.to_string()))];
+    match v1_interpreter::run_in_context_with_args(ctx, "parses", &args, false) {
+        Ok(Value::Bool(b)) => b,
+        other => panic!("parses returned unexpected value: {other:?}"),
+    }
+}
+
+fn gap4_split_02_parse_chunks() -> (String, Vec<String>) {
+    let text = fs::read_to_string(workspace_root().join("src/v2/compiler/02_parse.dag"))
+        .expect("read 02_parse.dag");
+    let lines: Vec<&str> = text.lines().collect();
+    let header_end = lines
+        .iter()
+        .position(|line| {
+            line.starts_with("type ") || line.starts_with("data ") || line.starts_with("fn ")
+        })
+        .unwrap_or(lines.len());
+    let header = format!("{}\n\n", lines[..header_end].join("\n"));
+    let body_lines = &lines[header_end..];
+    let mut chunks: Vec<String> = Vec::new();
+    let mut cur: Vec<&str> = Vec::new();
+    for line in body_lines {
+        if (line.starts_with("type ") || line.starts_with("data ") || line.starts_with("fn "))
+            && !cur.is_empty()
+        {
+            chunks.push(format!("{}\n", cur.join("\n")));
+            cur.clear();
+        }
+        cur.push(line);
+    }
+    if !cur.is_empty() {
+        chunks.push(format!("{}\n", cur.join("\n")));
+    }
+    (header, chunks)
+}
+
+#[test]
+#[ignore = "gap4 fast chunk bisect on 02_parse via parses() (one resolve, ~seconds per step)"]
+fn gap4_02_parse_chunk_bisect_fast() {
+    let ctx = gap4_parse_probe_context();
+    let (header, chunks) = gap4_split_02_parse_chunks();
+    eprintln!(
+        "gap4 fast bisect: header + {} declaration chunk(s)",
+        chunks.len()
+    );
+
+    let full = format!("{header}{}", chunks.join(""));
+    let full_ok = gap4_parses_source(&ctx, &full);
+    eprintln!("gap4 fast bisect: full 02_parse parses={full_ok}");
+    assert!(!full_ok, "expected full 02_parse to fail parse (gap-4)");
+
+    let mut lo = 1usize;
+    let mut hi = chunks.len();
+    let mut failing_idx = None;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        let src = format!("{header}{}", chunks[..mid].join(""));
+        let ok = gap4_parses_source(&ctx, &src);
+        eprintln!("gap4 fast bisect: chunks {mid}/{} => {}", chunks.len(), ok);
+        if ok {
+            lo = mid + 1;
+        } else {
+            failing_idx = Some(mid - 1);
+            hi = mid - 1;
+        }
+    }
+
+    let idx = failing_idx.expect("expected a failing chunk");
+    let preview: String = chunks[idx].chars().take(240).collect();
+    let report = format!(
+        "gap4 fast bisect: first failing chunk {}/{} (0-based idx {idx}):\n{preview}\n",
+        idx + 1,
+        chunks.len()
+    );
+    eprintln!("{report}");
+    panic!("{report}");
+}
