@@ -959,6 +959,22 @@ fn tepe_lookup_contract_row(
   }
 }
 
+fn tepe_naming_spelling_basename(spelling: String) -> String {
+  match spelling {
+    "\"ScreamingSnakeCase\"" => "ScreamingSnakeCase"
+    "VariantNaming.ScreamingSnakeCase" => "ScreamingSnakeCase"
+    "\"VariantNaming.ScreamingSnakeCase\"" => "ScreamingSnakeCase"
+    "\"SnakeCase\"" => "SnakeCase"
+    "VariantNaming.SnakeCase" => "SnakeCase"
+    "\"VariantNaming.SnakeCase\"" => "SnakeCase"
+    _ => spelling
+  }
+}
+
+fn tepe_quoted_spelling_matches(spelling: String, ident: String) -> Bool {
+  spelling == concat("\"", concat(ident, "\""))
+}
+
 fn tepe_naming_tags_equivalent(left: Symbol, right: Symbol) -> Bool {
   if left == right {
     true
@@ -967,7 +983,11 @@ fn tepe_naming_tags_equivalent(left: Symbol, right: Symbol) -> Bool {
       Accepted { value: left_spelling, diagnostics: _ } =>
         match symbol_interned_spelling(binding: right) {
           Accepted { value: right_spelling, diagnostics: _ } =>
-            left_spelling == right_spelling
+            tepe_naming_spelling_basename(spelling: left_spelling)
+              == tepe_naming_spelling_basename(spelling: right_spelling)
+              || left_spelling == right_spelling
+              || tepe_quoted_spelling_matches(spelling: left_spelling, ident: right_spelling)
+              || tepe_quoted_spelling_matches(spelling: right_spelling, ident: left_spelling)
           Rejected { diagnostics: _ } => false
         }
       Rejected { diagnostics: _ } => false

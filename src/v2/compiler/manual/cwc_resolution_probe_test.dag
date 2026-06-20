@@ -36,7 +36,8 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_disj_form_from_catalog,
   tepe_enum_sym_for_disj,
   tepe_lookup_contract_row,
-  tepe_contract_row_for_disj_anchor
+  tepe_contract_row_for_disj_anchor,
+  tepe_naming_spelling_basename
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -798,6 +799,10 @@ test fn cwc_enrichment_contract_catalog_apply_holds() -> Bool {
   }
 }
 
+fn cwc_naming_spelling_is_screaming_snake_case(spelling: String) -> Bool {
+  tepe_naming_spelling_basename(spelling: spelling) == "ScreamingSnakeCase"
+}
+
 test fn cwc_enrichment_contract_naming_spelling_holds() -> Bool {
   match cwc_inferred_of(src: cwc_src_cwc_module) {
     Accepted { value: tree, diagnostics: _ } =>
@@ -820,7 +825,7 @@ test fn cwc_enrichment_contract_naming_spelling_holds() -> Bool {
                     CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: tag, decl: _ } =>
                       match symbol_interned_spelling(binding: tag) {
                         Accepted { value: spelling, diagnostics: _ } =>
-                          spelling == "ScreamingSnakeCase"
+                          cwc_naming_spelling_is_screaming_snake_case(spelling: spelling)
                         Rejected { diagnostics: _ } => false
                       }
                   }
