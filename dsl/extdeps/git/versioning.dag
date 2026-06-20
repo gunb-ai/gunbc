@@ -13,8 +13,9 @@ module extdeps.git.versioning
 
 import std.types { Url }
 import std.integer { NonNegativeInt }
-import std.algebra { Ordering, Equal, Greater }
+import std.algebra { Ordering, Equal, Less, Greater }
 import std.nat { nat_compare }
+import std.list { List }
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 
 // Git release triple since the Git 2.0 numbering policy.
