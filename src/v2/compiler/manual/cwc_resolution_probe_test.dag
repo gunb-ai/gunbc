@@ -33,7 +33,10 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_build_coproduct_wire_contract_index,
   tepe_target_bundle_optional_child,
   tepe_atom_sym_optional,
-  tepe_disj_form_from_catalog
+  tepe_disj_form_from_catalog,
+  tepe_enum_sym_for_disj,
+  tepe_lookup_contract_row,
+  tepe_contract_row_for_disj_anchor
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -721,6 +724,90 @@ test fn cwc_data_decl_coproduct_row_present_holds() -> Bool {
         field_encoding: ^encoding,
         type_coproduct_wire_contract: ^CoproductWireContract
       )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_base_projection_from_target_holds() -> Bool {
+  match type_expression_projection_from_target(
+    target: rust_wire_serde_screaming_snake_target
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_enrichment_contract_naming_tag_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match tepe_build_coproduct_wire_contract_index(
+            root: tree.root,
+            field_coproduct: ^coproduct,
+            field_encoding: ^encoding,
+            type_coproduct_wire_contract: ^CoproductWireContract
+          ) {
+            Accepted { value: rows, diagnostics: _ } =>
+              match tepe_contract_row_for_disj_anchor(
+                rows: rows,
+                root: tree.root,
+                disj_anchor: disj
+              ) {
+                Present { value: contract } =>
+                  match contract {
+                    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: tag, decl: _ } =>
+                      tag == ^ScreamingSnakeCase
+                  }
+                Absent => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_enrichment_enum_sym_lookup_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match tepe_enum_sym_for_disj(root: tree.root, disj_anchor: disj) {
+            Present { value: sym } => sym == ^ReviewEvent
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_enrichment_contract_row_lookup_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_cwc_module) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match tepe_build_coproduct_wire_contract_index(
+            root: tree.root,
+            field_coproduct: ^coproduct,
+            field_encoding: ^encoding,
+            type_coproduct_wire_contract: ^CoproductWireContract
+          ) {
+            Accepted { value: rows, diagnostics: _ } =>
+              match tepe_contract_row_for_disj_anchor(
+                rows: rows,
+                root: tree.root,
+                disj_anchor: disj
+              ) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }

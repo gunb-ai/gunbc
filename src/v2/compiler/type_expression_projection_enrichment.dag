@@ -959,6 +959,22 @@ fn tepe_lookup_contract_row(
   }
 }
 
+fn tepe_naming_tags_equivalent(left: Symbol, right: Symbol) -> Bool {
+  if left == right {
+    true
+  } else {
+    match symbol_interned_spelling(binding: left) {
+      Accepted { value: left_spelling, diagnostics: _ } =>
+        match symbol_interned_spelling(binding: right) {
+          Accepted { value: right_spelling, diagnostics: _ } =>
+            left_spelling == right_spelling
+          Rejected { diagnostics: _ } => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
 fn tepe_disj_form_from_catalog_row(
   row: Node,
   naming_tag: Symbol
@@ -971,7 +987,7 @@ fn tepe_disj_form_from_catalog_row(
         f: fn(form_child) {
           match tag_child.kind {
             TypeNode { connective: Atom { identity: tag } } =>
-              if tag == naming_tag {
+              if tepe_naming_tags_equivalent(left: tag, right: naming_tag) {
                 decode_sum_type_shape_bundle(bundle: form_child)
               } else {
                 outcome_rejected(
