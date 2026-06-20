@@ -17,9 +17,13 @@ import std.types { NonEmptyStr, Int, List }
 type RedfishPowerState = On | Off | PoweringOn | PoweringOff
 
 // ProcessorSummary on ComputerSystem — the BMC's view of installed processors.
+// DMTF fields are NOT conflated: Count = installed processors (sockets); CoreCount =
+// total cores across them; LogicalProcessorCount = hardware threads when reported.
 type RedfishProcessorSummary {
   model: NonEmptyStr
+  processor_count: Int
   core_count: Int
+  logical_processor_count: Int?
 }
 
 // MemorySummary on ComputerSystem — total installed RAM as the BMC inventories it.

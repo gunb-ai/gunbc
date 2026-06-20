@@ -27,13 +27,15 @@ import extdeps.bmc.redfish {
 import extdeps.bmc { bmc_ground_snapshot }
 
 // Fixture shaped like OpenBMC Redfish on srv-class Ampere hosts: 8×16 GiB DIMMs (128 GiB),
-// 64-core Altra Q64-30 class processor string, ~180 W wall draw on the total PowerControl.
+// single-socket Altra Q64-30 (ProcessorSummary.Count=1, CoreCount=64), ~180 W wall draw.
 data example_srv_redfish_system: RedfishSystemInventory = redfish_system_inventory(
   model: "ALTRAD8UD-1L2T",
   processor_model: "Ampere(R) Altra(R) Processor",
+  processor_count: 1,
   processor_core_count: 64,
   total_memory_gib: 128,
-  power_state: On
+  power_state: On,
+  logical_processor_count: Present { value: 64 }
 )
 
 data example_srv_redfish_power: RedfishPowerSubsystem = RedfishPowerSubsystem {
@@ -57,10 +59,36 @@ test fn bmc_redfish_grounding_holds() -> Bool {
   let obs = bmc_ground_snapshot(snapshot: example_srv_telemetry)
   // 128 GiB = 128 * 1073741824 bytes — matches 8× HMA82GR7AFR4N-VK sticks on srv1/srv2.
   bmc_ground_host_observations(snapshot: example_srv_telemetry).processor_core_count == 64
+    && example_srv_redfish_system.processor.processor_count == 1
     && obs.processor_model == "Ampere(R) Altra(R) Processor"
     && byte_size_count(obs.total_memory_bytes) == 128 * 1073741824
     && match obs.power_consumed_watts {
       Present { value: w } => watt_count(w) == 178
       Absent => false
     }
+}
+
+// Power subsystem present but every PowerControl omits PowerConsumedWatts → Absent, not 0 W.
+data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
+  controls: [
+    RedfishPowerControl {
+      member_id: "0",
+      name: Present { value: "total_power" },
+      power_consumed_watts: none,
+      power_limit_watts: none,
+    },
+  ],
+}
+
+data example_srv_telemetry_power_unread: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: example_srv_redfish_system,
+  power: Present { value: example_srv_power_unread },
+  thermal: none,
+}
+
+test fn bmc_redfish_grounding_power_unread_is_absent() -> Bool {
+  match bmc_ground_host_observations(snapshot: example_srv_telemetry_power_unread).power_consumed_watts {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

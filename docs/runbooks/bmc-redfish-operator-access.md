@@ -61,7 +61,7 @@ curl -sk -u 'root:0penBmc' "https://${BMC_HOST}/redfish/v1/Chassis/Self/Thermal"
   | jq '.Temperatures[] | {Name, ReadingCelsius}'
 ```
 
-**Grounding mapping:** `ProcessorSummary.Model` + `ProcessorSummary.Count` → CPU observations; `MemorySummary.TotalSystemMemoryGiB` → total RAM (`ByteSize`); `PowerControl.PowerConsumedWatts` → Energy axis (`Watt` / `HardwareAxes.power` in `product.hardware_selection`).
+**Grounding mapping:** `ProcessorSummary.Model` + `ProcessorSummary.CoreCount` → CPU core observations (`Count` is socket count, not cores); `MemorySummary.TotalSystemMemoryGiB` → total RAM (`ByteSize`); `PowerControl.PowerConsumedWatts` → Energy axis (`Watt` / `HardwareAxes.power` in `product.hardware_selection`) when reported, otherwise absent.
 
 ## 4. gunbc read-only poll (modeled transport)
 

@@ -29,35 +29,57 @@ fn redfish_memory_summary_from_gib(total_gib: Int) -> RedfishMemorySummary {
   RedfishMemorySummary { total_memory_bytes: redfish_gib_to_bytes(gib: total_gib) }
 }
 
-fn redfish_processor_summary(model: NonEmptyStr, core_count: Int) -> RedfishProcessorSummary {
-  RedfishProcessorSummary { model: model, core_count: core_count }
+fn redfish_processor_summary(
+  model: NonEmptyStr,
+  processor_count: Int,
+  core_count: Int,
+  logical_processor_count: Int?
+) -> RedfishProcessorSummary {
+  RedfishProcessorSummary {
+    model: model,
+    processor_count: processor_count,
+    core_count: core_count,
+    logical_processor_count: logical_processor_count,
+  }
 }
 
 fn redfish_system_inventory(
   model: NonEmptyStr,
   processor_model: NonEmptyStr,
+  processor_count: Int,
   processor_core_count: Int,
   total_memory_gib: Int,
-  power_state: RedfishPowerState
+  power_state: RedfishPowerState,
+  logical_processor_count: Int?
 ) -> RedfishSystemInventory {
   RedfishSystemInventory {
     model: model,
     serial_number: none,
-    processor: redfish_processor_summary(model: processor_model, core_count: processor_core_count),
+    processor: redfish_processor_summary(
+      model: processor_model,
+      processor_count: processor_count,
+      core_count: processor_core_count,
+      logical_processor_count: logical_processor_count
+    ),
     memory: redfish_memory_summary_from_gib(total_gib: total_memory_gib),
     power_state: power_state,
   }
 }
 
-// Sum PowerControl.PowerConsumedWatts across members (OpenBMC often reports one "total").
-fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt {
+// Sum PowerControl.PowerConsumedWatts across members. Absent when no control reports a
+// reading (host off / sensors unavailable) — fail-closed, not a fabricated 0 W.
+fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt? {
   fold(
     controls,
-    init: watt(0),
+    init: Absent,
     f: (acc, ctrl) =>
       match ctrl.power_consumed_watts {
         Absent => acc
-        Present { value: w } => watt(count: watt_count(acc) + watt_count(w))
+        Present { value: w } =>
+          match acc {
+            Absent => Present { value: w }
+            Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+          }
       }
   )
 }
@@ -79,7 +101,7 @@ fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerCo
 fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
   let consumed = match snapshot.power {
     Absent => none
-    Present { value: p } => Present { value: redfish_power_consumed_total_watts(controls: p.controls) }
+    Present { value: p } => redfish_power_consumed_total_watts(controls: p.controls)
   }
   BmcGroundedHostObservations {
     processor_model: snapshot.system.processor.model,

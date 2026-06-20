@@ -24,25 +24,32 @@ func bmc_read_telemetry() -> ProcessExit
   uses net: Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
-  let bmc = host.value as NonEmptyStr
-  let user = openbmc_factory_login.username
-  let pass = openbmc_factory_login.published_password
+  match host.value {
+    Absent => return exit_failure(reason: "BMC_HOST is not set")
+    Present { value: v } =>
+      if v == "" {
+        return exit_failure(reason: "BMC_HOST is empty")
+      } else {
+        let bmc = v as NonEmptyStr
+        let user = openbmc_factory_login.username
+        let pass = openbmc_factory_login.published_password
 
-  system_resp = redfish.Http.GetSystem(bmc_host: bmc, username: user, password: pass)
-  if system_resp.success == false {
-    return exit_failure(reason: system_resp.body)
+        system_resp = redfish.Http.GetSystem(bmc_host: bmc, username: user, password: pass)
+        if system_resp.success == false {
+          return exit_failure(reason: system_resp.body)
+        }
+
+        power_resp = redfish.Http.GetPower(bmc_host: bmc, username: user, password: pass)
+        if power_resp.success == false {
+          return exit_failure(reason: power_resp.body)
+        }
+
+        thermal_resp = redfish.Http.GetThermal(bmc_host: bmc, username: user, password: pass)
+        if thermal_resp.success == false {
+          return exit_failure(reason: thermal_resp.body)
+        }
+
+        return ExitSuccess
+      }
   }
-
-  power_resp = redfish.Http.GetPower(bmc_host: bmc, username: user, password: pass)
-  if power_resp.success == false {
-    return exit_failure(reason: power_resp.body)
-  }
-
-  thermal_resp = redfish.Http.GetThermal(bmc_host: bmc, username: user, password: pass)
-  if thermal_resp.success == false {
-    return exit_failure(reason: thermal_resp.body)
-  }
-
-  // All three reads succeeded; bodies are on the transport stdout (not yet folded).
-  return ExitSuccess
 }
