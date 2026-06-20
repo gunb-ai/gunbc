@@ -80,7 +80,7 @@ import extdeps.toolchain.types {
 }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
-import std.realization_width { bounded_host_spawn_width }
+import std.realization_width { bounded_host_spawn_width, int_min }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -503,14 +503,53 @@ fn work_demand_shard_count(demand: WorkDemand) -> Int {
   }
 }
 
-// Width projection: min(shard_count, PlacementSupplyRow.hardware_threads) — single authority.
-// Eligibility is NOT rejected when demand exceeds supply — the peripheral host fold caps
-// fan-out; satisfies records DemandParallelism as proven when IndependentShards is present.
+// Conservative memory budget for concurrent fan-out on a host. A floor batch is killed by
+// its runner-slice cgroup MemoryMax (NOT total RAM), which on the tightest fleet host caps
+// near half of RAM. Until ctrl/BMC grounds the exact per-host MemoryMax bytes, approximate
+// the budget as 0.50×RAM so a single fleet-wide spawn width stays safe on the TIGHTEST host
+// (the floor lands on either host). Grounds-later: replace 0.50×RAM with measured MemoryMax.
+fn placement_floor_memory_budget_bytes(supply: PlacementSupplyRow) -> Int {
+  byte_size_count(supply.ram_bytes) / 2
+}
+
+// Memory width BOUND: how many concurrent units fit under the memory budget, each peaking at
+// the demand's per-unit memory requirement. `none` = no memory bound (Absent demand, or a
+// degenerate non-positive per-unit guarded against divide-by-zero). A budget under one unit
+// still admits 1 (fail-closed forward progress, never 0 width). Returned as `Int?` so the
+// "no bound" case never has to unify with the Int division result.
+fn placement_memory_width_bound(supply: PlacementSupplyRow, demand: WorkDemand) -> Int? {
+  match demand.resources.memory {
+    Absent => none
+    Present { value: req } => {
+      let per_unit = byte_size_count(req.min_bytes)
+      if per_unit <= 0 { none } else {
+        let fits = placement_floor_memory_budget_bytes(supply: supply) / per_unit
+        Present { value: if fits < 1 { 1 } else { fits } }
+      }
+    }
+  }
+}
+
+// Width projection: min(shard_count, hardware_threads, memory_budget / per_unit_peak) —
+// single authority, MEMORY-AWARE. The CPU bound (bounded_host_spawn_width) alone is
+// memory-blind: N concurrent resolves each peak at the demand's per-unit memory, and N×peak
+// must stay under the floor's cgroup MemoryMax or the batch is OOM-killed (exit 137). The
+// memory term backs fan-out off BEFORE the kill — §1's safety axis made structural, and the
+// connected model §6 ('fix related systems together') requires: CPU and memory are ONE width
+// relationship, not a CPU bound patched after an OOM. Eligibility is NOT rejected when demand
+// exceeds supply — the peripheral host fold caps fan-out; satisfies records DemandParallelism
+// as proven when IndependentShards is present.
 fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> HardwareThreadCount {
-  bounded_host_spawn_width(
-    shard_count: work_demand_shard_count(demand: demand),
-    hardware_threads: supply.hardware_threads
+  let cpu_width = hardware_thread_count_value(
+    t: bounded_host_spawn_width(
+      shard_count: work_demand_shard_count(demand: demand),
+      hardware_threads: supply.hardware_threads
+    )
   )
+  match placement_memory_width_bound(supply: supply, demand: demand) {
+    Absent => hardware_thread_count(count: cpu_width)
+    Present { value: mem_width } => hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
+  }
 }
 
 // --- §1.2 demand -------------------------------------------------------------
