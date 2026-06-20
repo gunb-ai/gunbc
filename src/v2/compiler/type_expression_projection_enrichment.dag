@@ -412,10 +412,7 @@ fn tepe_field_init_parts_optional(node: Node) -> Optional<TepeFieldInitParts> {
 }
 
 fn tepe_find_field_init_value_optional(root: Node, field: Symbol) -> Optional<Node> {
-  match tepe_find_field_init_value_by_name_only(root: root, field: field) {
-    Present { value: child } => optional_present(value: child)
-    Absent => tepe_field_init_value_structural_fallback(root: root, field: field)
-  }
+  tepe_find_field_init_value_by_name_only(root: root, field: field)
 }
 
 fn tepe_unwrap_to_conj_optional(node: Node) -> Optional<Node> {
@@ -558,50 +555,23 @@ fn tepe_apply_contract_row_enrichment(
   }
 }
 
-fn tepe_declaration_ref_value_atom_optional(node: Node) -> Optional<Node> {
-  fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match tepe_atom_identity_optional(node: n0) {
-          Present { value: sym } =>
-            if sym == ^dag_token_ident
-              || sym == ^dag_token_string_literal
-              || sym == ^dag_token_colon
-              || sym == ^dag_token_eq
-              || sym == ^dag_token_comma
-              || sym == ^dag_token_lbrace
-              || sym == ^dag_token_rbrace
-            {
-              optional_absent()
-            } else {
-              optional_present(value: n0)
-            }
-          Absent => optional_absent()
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
-        }
-      }
-    }
-  )
+fn tepe_declaration_ref_sym_is_punctuation(sym: Symbol) -> Bool {
+  sym == ^dag_token_ident
+    || sym == ^dag_token_string_literal
+    || sym == ^dag_token_colon
+    || sym == ^dag_token_eq
+    || sym == ^dag_token_comma
+    || sym == ^dag_token_lbrace
+    || sym == ^dag_token_rbrace
 }
 
 fn tepe_declaration_ref_sym_from_value(node: Node, decl: Node) -> Outcome<Symbol> {
-  match tepe_declaration_ref_value_atom_optional(node: node) {
-    Present { value: atom_node } =>
-      match tepe_atom_identity_optional(node: atom_node) {
-        Present { value: sym } =>
-          if sym == ^dag_token_string_literal {
-            outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
-          } else {
-            outcome_accepted(sym)
-          }
-        Absent =>
-          outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+  match tepe_atom_sym_optional(node: node) {
+    Present { value: sym } =>
+      if sym == ^dag_token_string_literal || tepe_declaration_ref_sym_is_punctuation(sym: sym) {
+        outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
+      } else {
+        outcome_accepted(sym)
       }
     Absent =>
       outcome_rejected(tepe_coproduct_wire_contract_malformed_diagnostic(node: decl))
