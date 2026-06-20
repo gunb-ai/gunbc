@@ -25,7 +25,6 @@ import std.measure {
   watt,
   watt_count,
   byte_size_count,
-  hardware_thread_count,
 }
 import std.types { Int, List, NonEmptyStr }
 
