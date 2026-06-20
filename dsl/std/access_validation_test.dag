@@ -10,8 +10,10 @@
 //    To inhabit AccessPolicy<S,A,O> (which is fn(request)->decision) the policy must be CURRIED in
 //    (a closure). That's a real strain: the abstraction's `decide` assumes the policy is already
 //    bound. Recorded; the currying is mechanical, not a break.
-//  * (Next: Zanzibar fuses action+grouping into `relation`; AWS IAM decides on request CONTEXT
-//    beyond S/A/O — the triple cannot express ABAC conditions without a context dimension.)
+//  * Zanzibar fuses action + subject-grouping into one `relation` (maps; the two coincide).
+//  * AWS IAM (ABAC) does NOT need a context dimension — its conditions decompose into attribute-
+//    carrying S/A/O + grounded coordinates (aws:SourceIp → NetworkLocality, s3:prefix → action
+//    parameter). Proven with no opaque `C` in test.claim.access_iam_validation.
 
 module std.test.access_validation
 

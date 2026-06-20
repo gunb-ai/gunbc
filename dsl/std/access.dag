@@ -8,14 +8,22 @@
 // extdeps system into this shape; if a system can't be expressed, this abstraction is wrong.
 //
 // Derivation receipt (what they share, and where the shape STRAINS):
-//   * Subject / Action / Object triple — fits POSIX (DAC), RBAC, Zanzibar (ReBAC), GitHub.
+//   * An attribute-carrying Subject / Action / Object triple — fits POSIX (DAC), RBAC, Zanzibar
+//     (ReBAC), GitHub, AND AWS IAM (ABAC) once S/A/O carry their attributes (see RESOLVED below).
+//     The generic params are meant to be instantiated with RICH types (a subject with its claims,
+//     an action with its parameters), not bare ids.
 //   * Decision = Permit | Deny, combined Deny-wins (AWS IAM explicit-deny-overrides; the
 //     conservative / fail-closed meet — DESIGN §5).
 //   * Subject indirection (roles / usersets / owner-classes / group membership) is each system's
 //     `decide` internals, not part of the shared shape.
-//   * STRAIN (a real "what breaks"): AWS IAM Conditions decide on request CONTEXT (source IP, time,
-//     MFA) beyond S/A/O — the triple alone cannot express ABAC. Context is a needed extension, held
-//     out of the core until a second consumer needs it (recorded in the validation findings).
+//   * RESOLVED (was "ABAC needs a context dimension"): AWS IAM Conditions do NOT need a new opaque
+//     dimension — they DECOMPOSE. Most condition keys are attribute-carrying S/A/O (s3:prefix → an
+//     ACTION parameter; principal/resource tags → subject/object attributes); the environmental
+//     remainder grounds in frameworks we already have (aws:SourceIp internal-CIDR → the request's
+//     NetworkLocality; aws:CurrentTime → Timestamp). So `decide` reads grounded S/A/O fields, never
+//     an opaque context map — the generics suffice and this core is UNCHANGED. Validated by
+//     test.claim.access_iam_validation (an aws:SourceIp + s3:prefix + MFA statement decided entirely
+//     from grounded fields, with no context type). "Context" as a `C` dimension was itself a nickname.
 //   * STRAIN: Zanzibar fuses action + subject-grouping into one `relation` — it maps, but the
 //     action and the grouping key are the same string.
 
