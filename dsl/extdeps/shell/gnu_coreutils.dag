@@ -28,6 +28,7 @@
 module extdeps.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath }
+import extdeps.version { VersionConstraint }
 
 // ── Documented dependencies ─────────────────────────────────────────
 
@@ -53,6 +54,6 @@ data rm_force_recursive_flags: NonEmptyStr = "-rf"
 
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
-// The minimum coreutils we rely on for the flag semantics above. GNU
-// coreutils 8.0 (2009) is well past every modern distro's base.
-data min_coreutils_version: NonEmptyStr = "8.0"
+// Minimum coreutils constraint for the flag semantics above. GNU coreutils
+// 8.0 (2009) is well past every modern distro's base.
+data min_coreutils_version: VersionConstraint = ">= 8.0"
