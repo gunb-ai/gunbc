@@ -1,0 +1,21 @@
+// Ephemeral gap-4 locate — multiline fn param list (no inter-line comma).
+module gap4.fixture.multiline_fn_params_probe
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+test fn multiline_fn_params_parse_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  let src = "module m.t\nfn f(\n  a: Int\n  b: Int\n) -> Int { 0 }\n"
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
