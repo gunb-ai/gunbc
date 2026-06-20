@@ -128,7 +128,8 @@ type Scale =
   | Tera       // 10^12
   | Peta       // 10^15
   | Exa        // 10^18
-  // IEC 60027-2 binary memory prefixes (powers of 2). DMTF Redfish TotalSystemMemoryGiB
+  // IEC 80000-13 binary memory prefixes (powers of 2; supersedes IEC 60027-2). DMTF Redfish
+  // TotalSystemMemoryGiB
   // names gibibytes (GiB = 2^30 bytes), not SI gigabytes. Q-Unit-5 minted-with-consumer:
   // extdeps.bmc Redfish memory grounding witness.
   | Kibi       // 2^10 bytes per unit
