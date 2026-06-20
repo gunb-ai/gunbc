@@ -1150,6 +1150,12 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
   )
 }
 
+fn successful_parse_modules(parse_results: List<ParseResult>) -> List<Node> {
+  parse_results
+    |> filter(p => p.error == Absent)
+    |> map(p => p.module.value)
+}
+
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
@@ -1168,19 +1174,38 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let parse_results = parsed.parse_results
   let newline_indices = parsed.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
-  let has_parse_errors = parse_results |> any(p => p.error != Absent)
-  if has_parse_errors {
-    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: parsed.intern_table }
-  } else {
-    let modules = parse_results |> map(p => p.module.value)
-    let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
-    let graph = resolve_modules(modules: modules, source_indices: source_indices)
-    FrontendResult {
-      graph: Present { value: graph },
-      diagnostics: concat(parse_diagnostics, graph.diagnostics),
-      newline_indices: newline_indices,
-      intern_table: parsed.intern_table
+  let modules = successful_parse_modules(parse_results: parse_results)
+  match sources |> count > 0 {
+    false => {
+      let source_indices = empty_map()
+      let graph = resolve_modules(modules: [], source_indices: source_indices)
+      FrontendResult {
+        graph: Present { value: graph },
+        diagnostics: [],
+        newline_indices: [],
+        intern_table: parsed.intern_table
+      }
     }
+    true =>
+      match modules |> count > 0 {
+        true => {
+          let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+          let graph = resolve_modules(modules: modules, source_indices: source_indices)
+          FrontendResult {
+            graph: Present { value: graph },
+            diagnostics: concat(parse_diagnostics, graph.diagnostics),
+            newline_indices: newline_indices,
+            intern_table: parsed.intern_table
+          }
+        }
+        false =>
+          FrontendResult {
+            graph: none,
+            diagnostics: parse_diagnostics,
+            newline_indices: newline_indices,
+            intern_table: parsed.intern_table
+          }
+      }
   }
 }
 
