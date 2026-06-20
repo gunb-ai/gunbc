@@ -69,7 +69,7 @@ import v2.std.provenance {
 }
 import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
 import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
-import v2.std.text { string_head }
+import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing { Lexeme, Token, TokenStream, symbol_intern_lexeme }
 import v2.std.grammar {
@@ -608,12 +608,12 @@ fn parse_next_brace_depth(tok: Token, depth: Int) -> Int {
 
 fn parse_scan_fat_arrow_after_lbrace(tokens: List<Token>, depth: Int) -> Bool {
   if depth <= 0 {
-    match list_at_optional(xs: tokens, index: 0) {
+    match parse_token_first(tokens: tokens) {
       Absent => false
       Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
     }
   } else {
-    match list_at_optional(xs: tokens, index: 0) {
+    match parse_token_first(tokens: tokens) {
       Absent => false
       Present { value: tok } =>
         match list_tail(xs: tokens) {
@@ -647,13 +647,13 @@ fn parse_tokens_drop(tokens: List<Token>, count: Int) -> List<Token> {
 
 
 fn parse_looks_like_match_arm_start(tokens: List<Token>) -> Bool {
-  match list_at_optional(xs: tokens, index: 0) {
+  match parse_token_first(tokens: tokens) {
     Absent => false
     Present { value: tok0 } =>
       match string_head(s: tok0.lexeme) {
         CharFound { value: c } =>
           if parse_char_is_arm_pattern_lead(c: c) {
-            match list_at_optional(xs: tokens, index: 1) {
+            match parse_token_second(tokens: tokens) {
               Present { value: tok1 } =>
                 if parse_token_lexeme_is(tok: tok1, lit: "=>") {
                   true
@@ -1176,6 +1176,19 @@ fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyn
 // only pins T = Token for the bootstrap compiler's monomorphic field-access inference.
 fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
   list_at_optional(xs: tokens, index: 0)
+}
+
+
+fn parse_token_second(tokens: List<Token>) -> Optional<Token> {
+  match list_tail(xs: tokens) {
+    TailFound { tail: rest } => parse_token_first(tokens: rest)
+    TailAbsent => Absent
+  }
+}
+
+
+fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
+  parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
 
