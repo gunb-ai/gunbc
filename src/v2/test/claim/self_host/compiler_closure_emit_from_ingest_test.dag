@@ -127,7 +127,9 @@ fn gap4_ingest_probe_step(
   lm: LanguageModel
 ) -> Gap4IngestProbeState {
   match state {
-    Gap4IngestProbeFound { path: _, reason: _, stage: _, at: _ } => state
+    Gap4IngestProbeFound {
+      path: _, reason: _, stage: _, at: _, remain_class: _, remain_lexeme: _, remain_start: _, remain_end: _
+    } => state
     Gap4IngestProbePending =>
       match tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
         Rejected { diagnostics: d } =>
@@ -136,16 +138,21 @@ fn gap4_ingest_probe_step(
             reason: d.head.reason,
             stage: ^tokenize,
             at: d.head.at,
+            remain_class: Absent,
+            remain_lexeme: Absent,
+            remain_start: Absent,
+            remain_end: Absent,
           }
         Accepted { value: ts, diagnostics: _ } =>
           match parse_module(tokens: ts, grammar: lm.grammar) {
             Rejected { diagnostics: d } =>
-              Gap4IngestProbeFound {
+              gap4_probe_found_from_parse_reject(
                 path: read.artifact.file_path,
                 reason: d.head.reason,
-                stage: ^parse,
                 at: d.head.at,
-              }
+                ts: ts,
+                grammar: lm.grammar
+              )
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize(parse_tree: artifact.tree) {
                 Rejected { diagnostics: d } =>
@@ -154,6 +161,10 @@ fn gap4_ingest_probe_step(
                     reason: d.head.reason,
                     stage: ^normalize,
                     at: d.head.at,
+                    remain_class: Absent,
+                    remain_lexeme: Absent,
+                    remain_start: Absent,
+                    remain_end: Absent,
                   }
                 Accepted { value: _, diagnostics: _ } => Gap4IngestProbePending
               }
@@ -206,7 +217,9 @@ test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
 test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
   match gap4_probe_first_ingest_reject() {
     Gap4IngestProbePending => true
-    Gap4IngestProbeFound { path: _, reason: _, stage: _, at: _ } => false
+    Gap4IngestProbeFound {
+      path: _, reason: _, stage: _, at: _, remain_class: _, remain_lexeme: _, remain_start: _, remain_end: _
+    } => false
   }
 }
 
