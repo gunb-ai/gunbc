@@ -1,7 +1,9 @@
 // tools/dsl_compile_clean_transport.dag — shell transport for whole-tree dsl/ compile-clean.
 //
 // Host runs `gunbc compile` over the live dsl/ tree (GREEN) with witness_layer_roots as the
-// dependency pool (§3 single authority: dsl first, src/v2 second). gunbc indexes every .dag
+// dependency pool (§3 single authority: dsl first, src/v2 second) and
+// `--dependency-pool-index primary-precedence` (primary root authoritative; pool fills absent
+// paths only — NOT global last-wins). gunbc indexes every .dag under all --source-root flags
 // under all --source-root flags into the module pool, but only compiles entry modules from
 // the FIRST root (load_sources / Compile in cli_run.rs); later roots are import pools only —
 // adding src/v2 does NOT cold-compile the whole v2 tree, only modules pulled by dsl imports.
@@ -69,6 +71,10 @@ data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn 
 
 // Planted dsl module that imports v2.* — must compile when pools include src/v2.
 data cross_tree_green_module_source: String = "module test.perturb_compile_clean_cross_tree_green\nimport v2.std.logic { Bool }\nfn probe() -> Bool { True }"
+
+// Discriminating primary-precedence receipt: shell.Env exists only in dsl extdeps.shell (~101 lines);
+// v2 overlay (~34 lines) has shell.Exec only — last-wins would misresolve and fail typecheck.
+data dsl_shell_primary_module_source: String = "module test.perturb_compile_clean_dsl_shell_primary\nimport extdeps.shell\nfn probe() -> String? {\n  shell.Env.Get(name: \"PATH\")\n}"
 
 // RED receipt: plant the fresh-name unimported bad module; resolve against witness_layer_roots
 // as dependency pools — no cp -r + cold whole-tree rebuild. Compile MUST fail (if it succeeds
@@ -147,5 +153,41 @@ fn compile_cross_tree_green_program() -> ShellProgram {
 
 fn run_cross_tree_import_green_receipt() -> Bool {
   let result = shell.Exec.Run(script: serialize_bash(p: compile_cross_tree_green_program()))
+  result.success
+}
+
+// GREEN receipt: primary root entry calls shell.Env (dsl-only service); pools supply v2 paths
+// absent from dsl — extdeps.shell must stay on the dsl row, not the v2 overlay.
+fn compile_dsl_shell_primary_precedence_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  let out = var_ref(name: "OUT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_dsl_shell_primary.dag")] },
+        delimiter: "DSL_SHELL_PRIMARY",
+        body: dsl_shell_primary_module_source
+      },
+      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      command(words: concat(
+        [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+          lit(text: "--output-dir"), out,
+          lit(text: "--target"), lit(text: "rust")
+        ]))
+      )),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+    ])
+  }
+}
+
+fn run_dsl_shell_primary_precedence_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: compile_dsl_shell_primary_precedence_program()))
   result.success
 }
