@@ -7287,6 +7287,7 @@ type TargetGenericApply {
 
 // SG-2 — sum / disj coproduct type.
 // leading_fixed_tokens: optional fixed decorations emitted before variant arms (any target).
+// Encode/decode asymmetry: serialize omits the named edge when Empty; decode maps Absent → Empty.
 type TargetSumTypeShape {
   surface: Symbol
   variant_separator: Symbol
