@@ -1453,15 +1453,14 @@ fn compile_sources_filters_none_parse_diagnostics() {
         !msgs.is_empty(),
         "bad.dag (no module) should produce at least 1 diagnostic"
     );
-    let content = find_file(&result, "src/good.rs");
     assert!(
-        !content.is_empty(),
-        "good.dag should still compile when bad.dag fails parse (parse-resilient front_end_sources)"
+        !has_file(&result, "src/good.rs"),
+        "fail-closed front_end_sources must not emit good.dag when bad.dag fails parse"
     );
 }
 
 #[test]
-fn resolve_entry_parse_cache_skips_closure_parse_errors() {
+fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 
@@ -1470,7 +1469,7 @@ fn resolve_entry_parse_cache_skips_closure_parse_errors() {
         .expect("clock")
         .as_nanos();
     let dir = std::env::temp_dir().join(format!(
-        "gunbc_parse_resilience_{}_{}",
+        "gunbc_parse_fail_closed_{}_{}",
         std::process::id(),
         stamp
     ));
