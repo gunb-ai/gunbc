@@ -563,13 +563,13 @@ pub fn gist_create_files_keyed_by_filename_placeholder_for_qualified_name(
     gist_create_files_keyed_by_filename_placeholder(module_path)
 }
 
-// ── extdeps stable-authority anchor projection (dissolve-on #5126) ───────────
-// Structural read of `data extdeps_stable_authority_anchor` record values — same
+// ── extdeps external-authority anchor projection (dissolve-on #5126) ─────────
+// Structural read of `data extdeps_external_authority_anchor` record values — same
 // cohort as embedded_policy_literal_count_for_data_node; scheme is constructor
 // identity (e.g. `Https`), never a URL prefix string.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum StableAuthorityAnchorProjection {
+enum ExternalAuthorityAnchorProjection {
     Absent,
     Present {
         scheme_identity: String,
@@ -583,7 +583,9 @@ fn uri_record_from_anchor_body(
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match variant {
-        "StableAuthority" | "ExternalUri" => record_field_value(body, "uri", source_indices),
+        "ExternalAuthority" | "StableAuthority" | "ExternalUri" => {
+            record_field_value(body, "uri", source_indices)
+        }
         _ => None,
     }
 }
@@ -595,21 +597,21 @@ fn scheme_identity_from_value_node(
     crate::v1_std_core::authored_name_at(source_indices.clone(), node.clone())
 }
 
-fn read_stable_authority_anchor_from_items(
+fn read_external_authority_anchor_from_items(
     items: &Rc<Vec<Rc<Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> StableAuthorityAnchorProjection {
+) -> ExternalAuthorityAnchorProjection {
     for item in items.iter() {
-        if !is_data_def_item(item.clone()) || item.name != "extdeps_stable_authority_anchor" {
+        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
             continue;
         }
         let Some(body) = item.body.as_ref() else {
-            return StableAuthorityAnchorProjection::Absent;
+            return ExternalAuthorityAnchorProjection::Absent;
         };
         let variant = crate::v1_std_core::authored_name_at(source_indices.clone(), body.clone());
         let Some(uri_node) = uri_record_from_anchor_body(body, variant.as_str(), source_indices)
         else {
-            return StableAuthorityAnchorProjection::Absent;
+            return ExternalAuthorityAnchorProjection::Absent;
         };
         let scheme = record_field_value(&uri_node, "scheme", source_indices)
             .map(|n| scheme_identity_from_value_node(&n, source_indices))
@@ -618,62 +620,62 @@ fn read_stable_authority_anchor_from_items(
             .and_then(|n| literal_string_value(&n))
             .unwrap_or_default();
         if scheme.is_empty() {
-            return StableAuthorityAnchorProjection::Absent;
+            return ExternalAuthorityAnchorProjection::Absent;
         }
-        return StableAuthorityAnchorProjection::Present {
+        return ExternalAuthorityAnchorProjection::Present {
             scheme_identity: scheme,
             locator,
         };
     }
-    StableAuthorityAnchorProjection::Absent
+    ExternalAuthorityAnchorProjection::Absent
 }
 
-fn project_stable_authority_anchor(module_path: &str) -> StableAuthorityAnchorProjection {
+fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnchorProjection {
     let path = source_path_for_module_path(module_path);
     let (items, source_indices) = parse_module_items(&path);
-    read_stable_authority_anchor_from_items(&items, &source_indices)
+    read_external_authority_anchor_from_items(&items, &source_indices)
 }
 
-pub fn stable_authority_anchor_kind_for_module_path(module_path: String) -> String {
-    match project_stable_authority_anchor(&module_path) {
-        StableAuthorityAnchorProjection::Absent => "absent".to_string(),
-        StableAuthorityAnchorProjection::Present { .. } => "present".to_string(),
+pub fn external_authority_anchor_kind_for_module_path(module_path: String) -> String {
+    match project_external_authority_anchor(&module_path) {
+        ExternalAuthorityAnchorProjection::Absent => "absent".to_string(),
+        ExternalAuthorityAnchorProjection::Present { .. } => "present".to_string(),
     }
 }
 
-pub fn stable_authority_scheme_identity_for_module_path(module_path: String) -> String {
-    match project_stable_authority_anchor(&module_path) {
-        StableAuthorityAnchorProjection::Present {
+pub fn external_authority_scheme_identity_for_module_path(module_path: String) -> String {
+    match project_external_authority_anchor(&module_path) {
+        ExternalAuthorityAnchorProjection::Present {
             scheme_identity, ..
         } => scheme_identity,
         _ => String::new(),
     }
 }
 
-pub fn stable_authority_anchor_kind_for_qualified_name(
+pub fn external_authority_anchor_kind_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> String {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
-    stable_authority_anchor_kind_for_module_path(module_path)
+    external_authority_anchor_kind_for_module_path(module_path)
 }
 
-pub fn stable_authority_scheme_identity_for_qualified_name(
+pub fn external_authority_scheme_identity_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> String {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
-    stable_authority_scheme_identity_for_module_path(module_path)
+    external_authority_scheme_identity_for_module_path(module_path)
 }
 
-pub fn stable_authority_locator_for_module_path(module_path: String) -> String {
-    match project_stable_authority_anchor(&module_path) {
-        StableAuthorityAnchorProjection::Present { locator, .. } => locator,
-        StableAuthorityAnchorProjection::Absent => String::new(),
+pub fn external_authority_locator_for_module_path(module_path: String) -> String {
+    match project_external_authority_anchor(&module_path) {
+        ExternalAuthorityAnchorProjection::Present { locator, .. } => locator,
+        ExternalAuthorityAnchorProjection::Absent => String::new(),
     }
 }
 
-pub fn stable_authority_locator_for_qualified_name(qn: &crate::v1_interpreter::Value) -> String {
+pub fn external_authority_locator_for_qualified_name(qn: &crate::v1_interpreter::Value) -> String {
     let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
-    stable_authority_locator_for_module_path(module_path)
+    external_authority_locator_for_module_path(module_path)
 }
 
 /// Sorted `extdeps.*` module paths from the derived module index (live roster authority).
@@ -731,7 +733,7 @@ fn backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
     static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
     PATHS.get_or_init(|| {
         let ws = crate::module_path_index::workspace_root();
-        let path = ws.join("dsl/extdeps/stable_authority_backfill_pending.txt");
+        let path = ws.join("dsl/extdeps/external_authority_backfill_pending.txt");
         let content = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
         content
@@ -932,19 +934,19 @@ service github.Gist {
     }
 
     #[test]
-    fn stable_authority_self_anchor_projects_file_with_fragment() {
+    fn external_authority_self_anchor_projects_file_with_fragment() {
         assert_eq!(
-            stable_authority_anchor_kind_for_module_path("extdeps.stable_authority".to_string()),
+            external_authority_anchor_kind_for_module_path("extdeps.external_authority".to_string()),
             "present"
         );
         assert_eq!(
-            stable_authority_scheme_identity_for_module_path(
-                "extdeps.stable_authority".to_string()
+            external_authority_scheme_identity_for_module_path(
+                "extdeps.external_authority".to_string()
             ),
             "File"
         );
-        match project_stable_authority_anchor("extdeps.stable_authority") {
-            StableAuthorityAnchorProjection::Present { locator, .. } => {
+        match project_external_authority_anchor("extdeps.external_authority") {
+            ExternalAuthorityAnchorProjection::Present { locator, .. } => {
                 assert_eq!(locator, "DESIGN.md#3-single-authority");
             }
             other => panic!("expected present file anchor, got {other:?}"),
@@ -952,15 +954,15 @@ service github.Gist {
     }
 
     #[test]
-    fn stable_authority_bogus_scheme_fixture_projects_present_gopher() {
+    fn external_authority_bogus_scheme_fixture_projects_present_gopher() {
         let path = crate::module_path_index::source_path_for_module_path(
-            "extdeps.fixture.stable_authority_bogus_scheme".to_string(),
+            "extdeps.fixture.external_authority_bogus_scheme".to_string(),
         );
         let (items, source_indices) = parse_module_items(&path);
-        let proj = read_stable_authority_anchor_from_items(&items, &source_indices);
+        let proj = read_external_authority_anchor_from_items(&items, &source_indices);
         assert_eq!(
             proj,
-            StableAuthorityAnchorProjection::Present {
+            ExternalAuthorityAnchorProjection::Present {
                 scheme_identity: "Gopher".to_string(),
                 locator: "example.invalid/spec".to_string(),
             }
@@ -975,28 +977,28 @@ service github.Gist {
             "expected live extdeps roster, got {}",
             paths.len()
         );
-        assert!(paths.iter().any(|p| p == "extdeps.stable_authority"));
+        assert!(paths.iter().any(|p| p == "extdeps.external_authority"));
         assert!(paths.iter().any(|p| p == "extdeps.uri"));
         assert!(paths.iter().any(|p| p == "extdeps.git"));
     }
 
     #[test]
-    fn stable_authority_clean_https_fixture_projects_https_locator() {
+    fn external_authority_clean_https_fixture_projects_https_locator() {
         assert_eq!(
-            stable_authority_anchor_kind_for_module_path(
-                "extdeps.fixture.stable_authority_clean_https".to_string()
+            external_authority_anchor_kind_for_module_path(
+                "extdeps.fixture.external_authority_clean_https".to_string()
             ),
             "present"
         );
         assert_eq!(
-            stable_authority_scheme_identity_for_module_path(
-                "extdeps.fixture.stable_authority_clean_https".to_string()
+            external_authority_scheme_identity_for_module_path(
+                "extdeps.fixture.external_authority_clean_https".to_string()
             ),
             "Https"
         );
         assert_eq!(
-            stable_authority_locator_for_module_path(
-                "extdeps.fixture.stable_authority_clean_https".to_string()
+            external_authority_locator_for_module_path(
+                "extdeps.fixture.external_authority_clean_https".to_string()
             ),
             "yaml.org/spec/1.2.2/"
         );
