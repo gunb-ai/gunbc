@@ -51,6 +51,39 @@ fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
     let errs = non_complexity_errors(&resolved);
     assert!(
         !errs.is_empty() || resolved.graph.is_none(),
-        "wrong-type repro must fail inference/resolve (fail-closed), got clean graph"
+        "wrong-type repro must fail inference/resolve (fail-closed), got clean graph; errs={errs:?}"
     );
+}
+
+#[test]
+fn debug_pd3_brand_twin_with_v2_roots() {
+    let source = r#"
+module pd3adv.twin_let
+
+type Refined<T> {
+  base: T
+}
+type UserId = Refined<String>
+type AccountId = Refined<String>
+
+fn take_account(id: AccountId) -> String {
+  ""
+}
+
+fn caller(uid: UserId) -> String {
+  let x = uid
+  take_account(x)
+}
+"#;
+    let ws = workspace_root();
+    let resolved = compile_to_resolved(Rc::new(
+        resolve_imports_transitively_with_source_roots(
+            "pd3adv.dag",
+            source,
+            &[ws.join("src/v2"), ws.join("dsl")],
+        ),
+    ));
+    let errs = non_complexity_errors(&resolved);
+    eprintln!("pd3 v2 roots graph={} errs={errs:?}", resolved.graph.is_some());
+    assert!(!errs.is_empty() || !resolved.graph.is_some());
 }
