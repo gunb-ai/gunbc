@@ -122,8 +122,6 @@ type NetworkEgressClass =
   | CratesIo
   | InternalMirror
   | Unrestricted
-  // BMC / management-LAN reachability class for placement probes (out-of-band Redfish).
-  | BmcManagementLan
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 type PersistenceKind = Ephemeral | Persistent | CachedMirror
 type MemoryKind = Dram | Hbm | UnifiedShared
