@@ -217,21 +217,6 @@ fn rust_emit_faithful_text_carrier(source_indices: Map<String, NewlineIndex>) ->
   !rust_corpus_includes_v1_compiler(source_indices: source_indices)
 }
 
-// Peel brand-preserved `type String = FreeMonoid<Char>` shells (inference keeps Char child).
-fn rust_is_brand_preserved_substrate_text_string(n: Node, env: TypeEnv) -> Bool {
-  let name = authored_name_at(source_indices: env.source_indices, node: n)
-  if name != "String" || n.children |> count == 0 {
-    false
-  } else {
-    match n.children |> first {
-      Present { value: elem } =>
-        let ename = authored_name_at(source_indices: env.source_indices, node: elem)
-        ename == "Char" || ename == "Nat"
-      Absent => false
-    }
-  }
-}
-
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Nat>", shared_types: shared_types)
 }
@@ -348,9 +333,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
         render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
-        if rust_emit_faithful_text_carrier(source_indices: source_indices) && rust_is_brand_preserved_substrate_text_string(n: n, env: env) {
-          render_rust_text_carrier(shared_types: shared_types)
-        } else if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+        if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
           render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
         } else {
         let base = rust_named_type_base(name: name, source_indices: source_indices)
@@ -389,9 +372,7 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if rust_emit_faithful_text_carrier(source_indices: source_indices) && rust_is_brand_preserved_substrate_text_string(n: n, env: env) {
-    render_rust_text_carrier(shared_types: shared_types)
-  } else if n.connective == NoConnective && n.children |> count == 0 && name == "String" && rust_emit_faithful_text_carrier(source_indices: source_indices) {
+  if n.connective == NoConnective && n.children |> count == 0 && name == "String" && rust_emit_faithful_text_carrier(source_indices: source_indices) {
     render_rust_text_carrier(shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
     render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
