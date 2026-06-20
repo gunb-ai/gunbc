@@ -298,10 +298,12 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 
 // SCAFFOLD — parse-resilience exposes whole-tree v2 typecheck debt in discovery corpus
 // (~779 errors: FreeMonoid Empty/Cons bootstrap-gap + residual real errors). Visible but
-// non-blocking in discovery/scan-coverage ONLY; gunbc compile stays fail-closed via
-// compile_to_resolved + is_error_diagnostic.
+// non-blocking ONLY when a discovery caller threads ResolveTypecheckGate::
+// DiscoveryCorpusAdvisory (cli_run floor discovery paths). gunbc compile/run and
+// compile_to_resolved stay fail-closed via is_interpreter_blocking_diagnostic /
+// is_error_diagnostic — this predicate is never consulted on those paths.
 // dissolve-on: src/v2 whole-tree reaches compile-clean (779 remediated) — delete this
-// carve-out and discovery re-tightens reconcile gate to is_interpreter_blocking_diagnostic.
+// carve-out and discovery re-tightens to is_interpreter_blocking_diagnostic.
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnresolvedType { name: _, span: _ } => true

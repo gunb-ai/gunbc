@@ -2282,7 +2282,16 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
         let modules = successful_parse_modules(parse_results.clone());
-        if ((modules.len() as i64) > 0) {
+        if sources.is_empty() {
+            let source_indices = v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>();
+            let graph = resolve_modules(Rc::new(vec![]), source_indices.clone());
+            Rc::new(FrontendResult {
+                graph: Some(graph.clone()),
+                diagnostics: Rc::new(vec![]),
+                newline_indices: Rc::new(vec![]),
+                intern_table: parsed.intern_table.clone(),
+            })
+        } else if (modules.len() as i64) > 0 {
             let source_indices = newline_indices.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {

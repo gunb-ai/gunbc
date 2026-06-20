@@ -1345,11 +1345,33 @@ fn discovery_corpus_advisory_demotes_typecheck_not_parse_or_resolve() {
 }
 
 #[test]
+fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
+    use std::rc::Rc;
+    use v1_compiler::v1_std_core::{
+        is_discovery_corpus_advisory_typecheck_diagnostic,
+        is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic,
+        no_span, CompilerDiagnostic,
+    };
+
+    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
+        variant: "Empty".to_string(),
+        type_name: "FreeMonoid<T>".to_string(),
+        span: no_span(),
+    });
+    assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
+    assert!(is_discovery_corpus_advisory_typecheck_diagnostic(typecheck.clone()));
+    // Discovery gate demotes; strict gate (= interpreter blocking) does not.
+    assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
+    assert!(is_interpreter_blocking_diagnostic(typecheck));
+}
+
+#[test]
 #[ignore = "receipt: parse-resilience unmasks ~779 typecheck diags demoted by discovery advisory gate"]
 fn parse_resilience_unmasked_typecheck_debt_receipt() {
     use std::collections::BTreeSet;
     use v1_compiler::cli_run::{
-        build_multi_entry_index, discover_floor_corpus_rows, resolve_entry_with_index,
+        build_multi_entry_index, discover_floor_corpus_rows,
+        resolve_entry_with_index_for_discovery_corpus,
     };
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_interpreter_blocking_diagnostic,
@@ -1373,7 +1395,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
     let mut blocking_non_advisory = 0usize;
     let mut resolve_failures = 0usize;
     for entry in &unique_entries {
-        match resolve_entry_with_index(&index, entry) {
+        match resolve_entry_with_index_for_discovery_corpus(&index, entry) {
             Ok(_) => {}
             Err(_) => resolve_failures += 1,
         }
