@@ -1,6 +1,7 @@
 extdeps.apt
 extdeps.audit.cloudevents
 extdeps.bmc
+extdeps.bmc.http
 extdeps.bmc.openbmc
 extdeps.bmc.redfish
 extdeps.bmc.types
