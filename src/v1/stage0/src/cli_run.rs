@@ -553,7 +553,6 @@ fn resolve_entry_with_parse_cache(
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
-    let mut parse_diags: Vec<Rc<ErrorNode>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
     for source in &sources {
@@ -588,8 +587,13 @@ fn resolve_entry_with_parse_cache(
 
         si_map.insert(nl_index.file.clone(), nl_index.clone());
         if let Some(err) = &parse_result.error {
-            parse_diags.push(err.clone());
-            continue;
+            let span = diagnostic_to_span(err.diagnostic.clone());
+            let loc = format_error_loc(&span.file, span.start, &si_map);
+            return Err(format!(
+                "{}: error: {}",
+                loc,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
         }
         if let Some(module) = &parse_result.module {
             modules.push(module.clone());
@@ -597,9 +601,6 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    if modules.is_empty() && !sources.is_empty() {
-        return Err(format_error_nodes(&Rc::new(parse_diags), &source_indices));
-    }
     // Snapshot the accumulated intern table after all files in this closure
     // have been parsed; pass it to reconcile for type-name lookup.
     let global_table = index.intern_table.borrow().clone();
