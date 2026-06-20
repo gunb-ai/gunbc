@@ -19,7 +19,8 @@ module test.claim.extdeps_anemia_grounding_witness
 import extdeps.git { GitAuthor }
 import extdeps.github.pulls { PullRequest, PullRequestRef, PullReview, ReviewComment, Commented, Open }
 import extdeps.github.github { GitHubUser, User }
-import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, Aarch64, LandGridArray }
+import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, LandGridArray }
+import extdeps.toolchain.types { Aarch64 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.vendor.ampere { ampere }
 import gunbc.digest_render { digest_subject }

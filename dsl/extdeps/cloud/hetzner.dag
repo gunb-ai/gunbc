@@ -10,7 +10,7 @@
 
 module extdeps.cloud.hetzner
 
-import extdeps.cpu.types { CpuArchitecture }
+import extdeps.toolchain.types { Architecture }
 import std.currency { CurrencyCode, Eur }
 import std.measure {
   MoneyAmountMicro,
@@ -33,7 +33,7 @@ type HetznerCloudServerCatalogRow {
   monthly_cap: MoneyAmountMicro
   currency: CurrencyCode
   pricing_citation: NonEmptyStr
-  cpu_architecture: CpuArchitecture
+  cpu_architecture: Architecture
 }
 
 // CAX41 — 16 Ampere® vCPU, 32 GiB RAM, 320 GB SSD (hetzner.com/cloud cost-optimized).

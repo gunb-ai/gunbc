@@ -1,6 +1,6 @@
 // extdeps/runtime/architecture/aarch64_linux.dag — aarch64 Linux architecture profile (cited facts).
 //
-// Scope: Slice-1 inhabitant #2 of std.architecture_profile.ArchitectureProfile — TargetArchitecture::Aarch64
+// Scope: Slice-1 inhabitant #2 of extdeps.toolchain.architecture_profile.ArchitectureProfile — Architecture::Aarch64
 // with cited machine facts, aapcs64 syscall convention, and downward stack.
 //
 // Anchor: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst (§5.4.2 stack; §4.1 alignment)
@@ -20,8 +20,9 @@ import extdeps.runtime.abi.aapcs64 {
   aapcs64_linux_syscall_convention,
 }
 import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
+import extdeps.toolchain.types { Aarch64 }
 import std.abi { ArchitecturalRegister, StackLayout }
-import std.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
+import extdeps.toolchain.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
 import std.os.invocation { SyscallAbiSurface }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
