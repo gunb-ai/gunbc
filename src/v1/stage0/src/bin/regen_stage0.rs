@@ -225,6 +225,9 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
         patch_bootstrap_dag_collect(&fresh_dir.join("src"))
     })?;
+    time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
+        patch_languages_consumer_census_mod(&fresh_dir.join("src"))
+    })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
     })?;
@@ -748,6 +751,39 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     // `v1_compiler_dag_collect_support.rs` is hand-maintained bootstrap seed
     // (recursive fingerprint ahead of compile.dag); copy_hand_maintained_support
     // already placed the committed module — do not overwrite with codegen.
+    Ok(())
+}
+
+/// Declare the hand-maintained `languages_consumer_census` module in the
+/// generated `lib.rs`.
+///
+/// `languages_consumer_census.rs` is a hand-maintained v1 seed module (the v2
+/// authority is the lens `src/v2/lens/languages_consumer_census.dag`); it is
+/// copied into the fresh crate by `copy_hand_maintained_support` and consumed by
+/// `v1_interpreter.rs`. Unlike its sibling lens/projection modules, it is
+/// uniquely absent from the emitter's `all_module_files`, so
+/// `emit_lib_rs_from_files` (src/v1/05_emit_rust.dag) does not write a
+/// `pub mod languages_consumer_census;` for it and the fresh crate fails to
+/// resolve `crate::languages_consumer_census::*`. Inject the declaration here,
+/// mirroring `patch_bootstrap_dag_collect`.
+///
+/// DISSOLUTION: remove this patch once 05_emit_rust.dag's `all_module_files`
+/// (or its `hand_maintained_mods` emission path) includes
+/// `languages_consumer_census`, so the emitter declares it directly (single
+/// authority — the §3 parallel-ledger note on `HAND_MAINTAINED_STAGE0_FILES`).
+fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
+    let lib_path = src_dir.join("lib.rs");
+    let mut lib_text =
+        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    if !lib_text.contains("pub mod languages_consumer_census;") {
+        // Insert after import_resolution_project so `cargo fmt` module order
+        // matches the committed lib.rs (emitter emits mods in sorted order).
+        lib_text = lib_text.replace(
+            "pub mod import_resolution_project;\n",
+            "pub mod import_resolution_project;\npub mod languages_consumer_census;\n",
+        );
+    }
+    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
 }
 

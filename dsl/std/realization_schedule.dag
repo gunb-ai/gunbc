@@ -7,7 +7,7 @@
 
 module std.realization_schedule
 
-import std.types { ContentHash, Bool, String, List, Int, string_list_eq }
+import std.types { ContentHash, Bool, String, List, Int }
 import std.nat { Nat }
 import std.measure {
   Measure, Time, ByteSize, Watt,
@@ -194,6 +194,18 @@ fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: Reali
 
 fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -> Bool {
   (a.entry == b.entry) && (a.function == b.function)
+}
+
+fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else if left.first() != right.first() {
+    false
+  } else {
+    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
 }
 
 fn schedule_witness_entry_list_eq(left: List<ScheduleWitnessEntry>, right: List<ScheduleWitnessEntry>) -> Bool {

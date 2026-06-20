@@ -177,27 +177,6 @@ fn canonical_container_names() -> List<String> {
   ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
-// Element-wise structural equality of two string lists. Generic-free
-// bootstrap helper -- the concrete String specialization (no element-Eq
-// inhabitance / phantom generics), so the v1 seed renders it directly.
-// Relocated here from std.realization_schedule (DESIGN.md §3: a plain
-// List<String> equality does not belong in a MEASURED/peripheral
-// realization module); std.realization_schedule and std.effects now both
-// consume it from std.types. Uses `.count()` (the templated list-length,
-// renders to `.len() as i64`) -- NOT `.length()`, which the v1 emitter has
-// no runtime bridge for.
-fn string_list_eq(left: List<String>, right: List<String>) -> Bool {
-  if left.count() != right.count() {
-    false
-  } else if left.count() == 0 {
-    true
-  } else if left.first() != right.first() {
-    false
-  } else {
-    string_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
-  }
-}
-
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
 // Target: Bool = BooleanAlgebra over {True, False}.
 // Note: std.logic.Classical and std.bit.Bit carry the same structural
