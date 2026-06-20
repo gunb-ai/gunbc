@@ -1191,21 +1191,145 @@ fn ts_pr3_identity_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-// FINISH-LINE-B Arc 1 — emitted exemplar side-table keyed by production lhs (decision-2).
-// Arrow mvp1 fn-add Violates derive (PR-1.5b Conj-only) — keeps marked scaffold fallback below.
+// FINISH-LINE-B Arc 2 — mvp1 fn-add syntax-shaped Conj emitted + crafted productions (mirror pr3).
+fn ts_mvp1_type_number_emitted() -> Node {
+  ts_inhabitant_atom(id: ^ts_token_ty_number)
+}
+
+fn ts_mvp1_typed_param_emitted(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: binding) },
+      Edge { label: Positional, target: ts_mvp1_type_number_emitted() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ts_mvp1_typed_param_x_emitted() -> Node {
+  ts_mvp1_typed_param_emitted(binding: ^ts_binding_param_x)
+}
+
+fn ts_mvp1_typed_param_y_emitted() -> Node {
+  ts_mvp1_typed_param_emitted(binding: ^ts_binding_param_y)
+}
+
+fn ts_mvp1_typed_params_single_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_mvp1_typed_param_x_emitted() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ts_mvp1_typed_params_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_mvp1_typed_params_single_emitted() },
+      Edge { label: Positional, target: ts_mvp1_typed_param_y_emitted() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ts_mvp1_add_body_expr_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^dag_binding_param_x) },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^dag_binding_param_y) }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ts_mvp1_fn_add_syntax_emitted() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_fn_add) },
+      Edge { label: Positional, target: ts_mvp1_typed_params_emitted() },
+      Edge { label: Positional, target: ts_mvp1_type_number_emitted() },
+      Edge { label: Positional, target: ts_mvp1_add_body_expr_emitted() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn ts_mvp1_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^ts_production_wave2a_type_annotation,
+      rhs: [grammar_formal_terminal(identity: ^ts_token_ty_number)]
+    ),
+    grammar_formal_production(
+      lhs: ^ts_production_mvp1_typed_param,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_param_x),
+        grammar_formal_terminal(identity: ^ts_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_wave2a_type_annotation)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^ts_production_mvp1_typed_param,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_param_y),
+        grammar_formal_terminal(identity: ^ts_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_wave2a_type_annotation)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^ts_production_mvp1_typed_params,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^ts_production_mvp1_typed_param)]
+    ),
+    grammar_formal_production(
+      lhs: ^ts_production_mvp1_typed_params,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_mvp1_typed_params),
+        grammar_formal_terminal(identity: ^ts_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_mvp1_typed_param)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^ts_production_mvp1_add_body_expr,
+      rhs: [
+        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^dag_binding_param_x),
+        grammar_formal_terminal(identity: ^ts_token_plus),
+        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^dag_binding_param_y)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^ts_production_mvp1_fn_add,
+      rhs: [
+        grammar_formal_terminal(identity: ^ts_token_kw_function),
+        grammar_formal_terminal_bound(identity: ^ts_token_ident, binding: ^ts_binding_fn_add),
+        grammar_formal_terminal(identity: ^ts_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_mvp1_typed_params),
+        grammar_formal_terminal(identity: ^ts_token_rparen),
+        grammar_formal_terminal(identity: ^ts_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_wave2a_type_annotation),
+        grammar_formal_terminal(identity: ^ts_token_lbrace),
+        grammar_formal_terminal(identity: ^ts_token_kw_return),
+        grammar_formal_nonterminal_occurrence(identity: ^ts_production_mvp1_add_body_expr),
+        grammar_formal_terminal(identity: ^ts_token_semicolon),
+        grammar_formal_terminal(identity: ^ts_token_rbrace)
+      ]
+    )
+  ]
+}
+
+// FINISH-LINE-B Arc 1/2 — emitted exemplar side-table keyed by production lhs (decision-2).
 fn ts_exemplar_emitted_for_lhs(lhs: Symbol) -> Witness<Node> {
   if lhs == ^ts_production_wave2a_type_alias_decl {
     Holds { value: ts_wave2a_task_type_alias_emitted() }
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
     Holds { value: ts_pr3_identity_typed_fn_emitted() }
   } else if lhs == ^ts_production_mvp1_fn_add {
-    Violates {
-      diagnostic: Diagnostic {
-        reason: ^grammar_relation_emitted_not_conj,
-        at: node_locus(node: ts_mvp1_emitted_add_fn_node()),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }
-    }
+    Holds { value: ts_mvp1_fn_add_syntax_emitted() }
   } else {
     Violates {
       diagnostic: Diagnostic {
@@ -1222,6 +1346,8 @@ fn ts_exemplared_formal_productions_for_lhs(lhs: Symbol) -> List<FormalProductio
     ts_wave2a_task_formal_productions()
   } else if lhs == ^ts_production_pr3_typed_fn_decl {
     ts_pr3_identity_formal_productions()
+  } else if lhs == ^ts_production_mvp1_fn_add {
+    ts_mvp1_formal_productions()
   } else {
     []
   }
@@ -1248,10 +1374,8 @@ fn ts_eager_grammar_relation_row_witness(lhs: Symbol) -> Witness<Node> {
   }
 }
 
-// 🟡 scaffold — FINISH-LINE-B Arc 1: mvp1 fn-add Arrow emitted; derive Violates. Sole row —
-// dedup-cutover forbids additive eager twin (ForwardRowMany on ingest). Arc 2 cutover.
-fn ts_mvp1_fn_add_scaffold_relation_row_node() -> Node {
-  ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+fn ts_mvp1_fn_add_relation_row_witness() -> Witness<Node> {
+  ts_eager_grammar_relation_row_witness(lhs: ^ts_production_mvp1_fn_add)
 }
 
 fn ts_pr3_identity_relation_row_witness() -> Witness<Node> {
@@ -1297,25 +1421,29 @@ fn ts_pr3_translation_rules_witness() -> Witness<Node> {
     Holds { value: task_row } =>
       match ts_pr3_identity_relation_row_witness() {
         Holds { value: pr3_row } =>
-          Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                ts_named_edge(
-                  name: ^ts_relation_rule_mvp1_fn_add,
-                  target: ts_mvp1_fn_add_scaffold_relation_row_node()
-                ),
-                ts_named_edge(
-                  name: ^ts_relation_rule_type_alias_task,
-                  target: task_row
-                ),
-                ts_named_edge(
-                  name: ^ts_relation_rule_pr3_identity,
-                  target: pr3_row
-                )
-              ],
-              occurrence_id: SyntheticOccurrence
+          match ts_mvp1_fn_add_relation_row_witness() {
+            Holds { value: mvp1_row } =>
+              Holds {
+                value: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    ts_named_edge(
+                      name: ^ts_relation_rule_mvp1_fn_add,
+                      target: mvp1_row
+                    ),
+                    ts_named_edge(
+                      name: ^ts_relation_rule_type_alias_task,
+                      target: task_row
+                    ),
+                    ts_named_edge(
+                      name: ^ts_relation_rule_pr3_identity,
+                      target: pr3_row
+                    )
+                  ],
+                  occurrence_id: SyntheticOccurrence
 }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
@@ -1405,45 +1533,85 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
   )
 }
 
-// MVP-1 add-fn target model: mvp1 scaffold row (Arrow — Arc 1 eager derive Violates).
-fn ts_mvp1_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ts_named_edge(
-        name: ^ts_relation_rule_mvp1_fn_add,
-        target: ts_mvp1_fn_add_scaffold_relation_row_node()
-      ),
-      ts_named_edge(
-        name: ^ts_relation_rule_mvp1_fn_add_with_body,
-        target: grammar_relation_row_attach_bodied_scaffold(
-          row: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row_with_body()),
-          scaffold: ts_mvp1_bodied_arrow_statement_scaffold()
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
+// MVP-1 add-fn target model: eager-materialized mvp1 fn-add row (Arc 2 cutover).
+fn ts_mvp1_fn_add_serialize_source_children() -> List<Edge> {
+  [
+    ts_named_edge(
+      name: ^serialize_source_field_source_text,
+      target: ts_inhabitant_atom(id: ^ts_mvp1_source_literal)
+    ),
+    ts_named_edge(
+      name: ^serialize_source_field_source_grammar,
+      target: ts_inhabitant_atom(id: ^ts_production_mvp1_fn_add)
+    )
+  ]
 }
+
+fn ts_mvp1_fn_add_serialize_source_witness() -> Witness<Node> {
+  match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: row } =>
+      match ts_grammar_relation_row_token_edges_witness(row: row) {
+        Holds { value: token_edges } =>
+          Holds {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: list_append(
+                left: ts_mvp1_fn_add_serialize_source_children(),
+                right: token_edges
+              ),
+              occurrence_id: SyntheticOccurrence
+}
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn ts_mvp1_translation_rules_node() -> Node {
+  match ts_mvp1_fn_add_relation_row_witness() {
+    Holds { value: mvp1_row } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ts_named_edge(
+            name: ^ts_relation_rule_mvp1_fn_add,
+            target: mvp1_row
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Violates { diagnostic: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
 }
 
 fn ts_mvp1_translation_rules_witness() -> Witness<Node> {
   match ts_wave2a_task_type_alias_relation_row_witness() {
     Holds { value: task_row } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            ts_named_edge(
-              name: ^ts_relation_rule_mvp1_fn_add,
-              target: ts_mvp1_fn_add_scaffold_relation_row_node()
-            ),
-            ts_named_edge(
-              name: ^ts_relation_rule_type_alias_task,
-              target: task_row
-            )
-          ],
-          occurrence_id: SyntheticOccurrence
+      match ts_mvp1_fn_add_relation_row_witness() {
+        Holds { value: mvp1_row } =>
+          Holds {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                ts_named_edge(
+                  name: ^ts_relation_rule_mvp1_fn_add,
+                  target: mvp1_row
+                ),
+                ts_named_edge(
+                  name: ^ts_relation_rule_type_alias_task,
+                  target: task_row
+                )
+              ],
+              occurrence_id: SyntheticOccurrence
 }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
