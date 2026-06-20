@@ -8,7 +8,7 @@
 //         removed (#5084); ParseTable Realization carrier inhabitation: node://adhoc-942b5811-772.
 
 
-module v2.compiler.parse
+module v2.test.fixture.gap4_decl42_prefix
 
 
 import v2.std.diagnostic {
