@@ -540,6 +540,9 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    // Typed-module cache is keyed by module name only; cross-tree imports (dsl →
+    // v2.std.*) make the correct typed result entry-specific. Clear per resolve.
+    index.typed_module_cache.borrow_mut().clear();
     let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
@@ -927,11 +930,40 @@ pub fn precompute_whole_tree_published_mock_keys(
     if dsl_roots.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let index = build_module_index(&dsl_roots);
-    let all_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = index.values().cloned().collect();
-    if all_sources.is_empty() {
+    // Index all witness layer roots so dsl modules that import v2.std.* (byte-sync
+    // de-fork) resolve transitively; entry points remain dsl-only.
+    let index = build_module_index(source_roots);
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut entry_sources = Vec::new();
+    for dsl_root in &dsl_roots {
+        let root_path = Path::new(dsl_root.as_str());
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut dag_paths = Vec::new();
+        collect_dag_files(root_path, &mut dag_paths);
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path).map_err(|e| {
+                format!(
+                    "precompute_whole_tree_published_mock_keys: failed to read {:?}: {e}",
+                    path
+                )
+            })?;
+            let rel_path = path.to_string_lossy().to_string();
+            let source = Rc::new(v1_compiler_compile::SourceFile {
+                path: rel_path,
+                content,
+            });
+            if let Some(mod_path) = extract_module_path(&source.content) {
+                seen.insert(mod_path, source.clone());
+            }
+            entry_sources.push(source);
+        }
+    }
+    if entry_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
+    let all_sources = resolve_transitively(entry_sources, &index, seen);
     let (graph, source_indices) =
         resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
     let ctx = v1_interpreter::InterpContext::with_runtime_options(
@@ -3555,6 +3587,27 @@ mod manifest_emit_tests {
             dag_embedded_dag_source_escape("match x { A => 1 }"),
             "match x \\{ A => 1 \\}"
         );
+    }
+
+    #[test]
+    fn discovery_index_survives_cross_tree_dsl_then_v2_resolve() {
+        use super::{build_multi_entry_index, resolve_entry_with_index, workspace_root};
+        let ws = workspace_root();
+        let roots = vec![
+            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let dsl_entry = ws
+            .join("dsl/test/claim/measure_magnitude_carrier_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        resolve_entry_with_index(&index, &dsl_entry).expect("dsl cross-tree witness");
+        let v2_entry = ws
+            .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        resolve_entry_with_index(&index, &v2_entry).expect("v2 witness after dsl cross-tree");
     }
 }
 

@@ -7,8 +7,8 @@
 // magnitude axis was generalized off the hardwired `Nat`.
 module test.claim.measure_magnitude_carrier
 
+import v2.std.measure { Measure }
 import std.measure {
-  Measure,
   ByteSize,
   byte_size,
   byte_size_count,

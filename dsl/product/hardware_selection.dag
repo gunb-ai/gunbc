@@ -32,8 +32,8 @@ module product.hardware_selection
 
 import std.types { Int, NonEmptyStr, Bool, List }
 import std.nat { Nat }
+import v2.std.measure { Measure }
 import std.measure {
-  Measure,
   Power,
   Milli,
   measure_count,

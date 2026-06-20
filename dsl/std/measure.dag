@@ -52,6 +52,7 @@
 
 module std.measure
 
+import v2.std.measure { Measure }
 import std.nat { Nat }
 import std.types { Int }
 
@@ -267,9 +268,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
 // Supplementary enrolled map witness: `timeseries_signed_magnitude_resistor_map_holds`
 // (signed int_mul R·i). NOT class-4: `measure_signed_magnitude_roundtrip_holds` is
 // projection roundtrip only (stores -5, reads back — not discriminating arithmetic).
-type Measure<Q, S, M> {
-  count: M
-}
+// Measure carrier: authority at v2.std.measure (byte-sync de-fork slice 1a).
 
 // Generic magnitude projection: read any `Measure` alias's `count` at its declared
 // magnitude `<M>`. The per-alias `*_count` fns below (byte_size_count, watt_count, …) are
