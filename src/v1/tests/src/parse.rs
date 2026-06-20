@@ -985,3 +985,43 @@ fn keyword_as_field_name_forbidden() {
         );
     }
 }
+
+#[test]
+fn v2_tree_parse_clean_scan() {
+    use std::collections::HashMap;
+    use std::path::Path;
+    use std::rc::Rc;
+    fn collect_dag(dir: &Path, out: &mut Vec<(String, String)>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok()).collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_dag(&path, out);
+            } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                let content = std::fs::read_to_string(&path).unwrap();
+                let rel = path.to_string_lossy().to_string();
+                out.push((rel, content));
+            }
+        }
+    }
+    let ws = crate::helpers::workspace_root();
+    let v2 = ws.join("src/v2");
+    let mut files = Vec::new();
+    collect_dag(&v2, &mut files);
+    let mut errors = Vec::new();
+    for (path, content) in &files {
+        let tokens = v1_compiler::v1_compiler_tokenize::tokenize(content.clone(), path.clone());
+        let mut idx = HashMap::new();
+        idx.insert(path.clone(), v1_compiler::v1_std_core::build_newline_index(path.clone(), content.clone()));
+        let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(idx));
+        if let Some(err) = &result.error {
+            let msg = v1_compiler::v1_std_core::diagnostic_to_message(err.diagnostic.clone());
+            errors.push(format!("{}: {}", path, msg));
+        }
+    }
+    if !errors.is_empty() {
+        panic!("{} parse errors in {} files:\n{}", errors.len(), files.len(), errors.join("\n"));
+    }
+    eprintln!("OK: {} src/v2 .dag files parse clean", files.len());
+}
