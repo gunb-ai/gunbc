@@ -4587,7 +4587,7 @@ pub fn type_item_has_rust_nominal_shell_authority(
         } else {
             if is_type_decl_item(item.clone(), source_indices.clone()) {
                 if (((item.params.clone().len() as i64) == 0)
-                    && rust_nominal_identity_carrier_type_eligible(item_text))
+                    && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
                 {
                     true
                 } else {
@@ -6334,6 +6334,14 @@ pub fn emit_typed_item(
                                     ";".to_string(),
                                 )
                             }
+                        } else if is_parametric_opaque_type_decl_item(
+                            item.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            emit_parametric_phantom_opaque_struct(
+                                item.clone(),
+                                env.source_indices.clone(),
+                            )
                         } else {
                             "".to_string()
                         }
