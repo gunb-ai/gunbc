@@ -11526,13 +11526,24 @@ pub fn emit_rust_expr_record_lit(
                 scope.clone(),
                 depth,
                 shared_types.clone(),
-                emit_info,
+                emit_info.clone(),
             );
+            let si = scope.type_env.clone().source_indices.clone();
+            let variant_name = match tn.clone() {
+                Some(n) => n.clone(),
+                None => "".to_string(),
+            };
             let rc_name = match parent_enum.clone() {
                 Some(en) => en.clone(),
-                None => match tn.clone() {
-                    Some(n) => n.clone(),
-                    None => "".to_string(),
+                None => match contextual_variant_parent(
+                    variant_name.clone(),
+                    parent_enum.clone(),
+                    resolved_type(expr.clone()),
+                    emit_info.clone(),
+                    si.clone(),
+                ) {
+                    Some(p) => p,
+                    None => variant_name.clone(),
                 },
             };
             if ((rc_name.clone().as_str() != "".to_string().as_str())

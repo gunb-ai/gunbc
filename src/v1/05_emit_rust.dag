@@ -4704,9 +4704,15 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
       let tn = record_lit_type_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
       let fs = expr.children
       let raw = emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: resolved_type(n: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      let si = scope.type_env.source_indices
+      let variant_name = match tn { Present { value: n } => n  Absent => "" }
       let rc_name = match parent_enum {
         Present { value: en } => en
-        Absent => match tn { Present { value: n } => n  Absent => "" }
+        Absent =>
+          match contextual_variant_parent(variant_name: variant_name, parent_enum: parent_enum, resolved_type: resolved_type(n: expr), emit_info: emit_info, source_indices: si) {
+            Present { value: p } => p
+            Absent => variant_name
+          }
       }
       if rc_name != "" && set_contains(shared_types, rc_name) {
         concat("Rc::new(", raw, ")")
