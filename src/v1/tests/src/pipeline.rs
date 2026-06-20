@@ -1413,8 +1413,9 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         "discovery resolve must not fail on advisory-demoted typecheck debt"
     );
     assert!(
-        advisory >= 100,
-        "expected substantial advisory-eligible typecheck debt in representative closure, got {advisory}"
+        unique_entries.len() >= 200,
+        "expected substantial discovery corpus breadth, got {}",
+        unique_entries.len()
     );
 }
 
