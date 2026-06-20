@@ -2841,6 +2841,59 @@ fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<
   }
 }
 
+// Strict record construction (§5 fail-closed): the SOURCE field-name set of the concrete
+// record a construction targets, or `none` whenever we cannot enumerate it with confidence —
+// so the undefined-field check stays silent rather than false-positive. We fire ONLY when the
+// constructed name resolves to a plain, fully-grounded record: non-generic (`params == 0`) and
+// a direct product (`connective == Conj`) with declared fields. Everything else returns `none`:
+//   - generics (`Monoid<T>`, `Vendor<Domain>`): newtype flattening rewrites a single-field
+//     wrapper to its innermost name (`Monoid` resolves to `[op, identity]`, not `[semigroup,
+//     identity]`), so the resolved set is not source-faithful;
+//   - concrete aliases of single-field generics (`Watt = Measure<Power, One, Nat>`): the wrapper
+//     dissolves to its `<M>` carrier, so the resolved node is not a record at all;
+//   - a name resolving to a coproduct/enum — including the losing side of a §3 name collision
+//     (the `Vendor` enum shadowing the `Vendor<Domain>` record): no product fields to check.
+// This keeps full teeth on plain records, where every real bug it finds lives (`BoolWitness
+// { holds }`, `NodeLocus { node }`, `PortLocus { port }`). Dissolution trigger: when field-name
+// resolution is source-faithful under flattening, widen the gate to generics and aliases.
+fn record_lit_construction_field_names(type_name: String, scope: InferScope) -> List<String>? {
+  let si = scope.type_env.source_indices
+  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Present { value: decl } =>
+      if (decl.params |> count == 0) && (decl.connective == Conj) && (decl.children |> count > 0) {
+        Present { value: decl.children |> map(f => authored_name_at(source_indices: si, node: f)) }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+// Strict record construction: a constructed NAME can legitimately arm two distinct coproducts
+// with different field sets (e.g. `TextNode` is `Fragment.TextNode { content }` in one and
+// `MarkupNode.TextNode { text }` in another). The import-scoped `struct_fields`/`arm_fields`
+// only see the arm reachable from `expected`; this secondary scan, run ONLY on a would-be
+// error, asks whether `field` is valid on a same-named arm of ANY coproduct in the env — so
+// `TextNode { text }` stays silent when *some* `TextNode` arm has `text`, while a field present
+// on NO same-named arm keeps its loud error (§5). Record-name collisions are NOT handled here:
+// duplicate record names across layers are a §3 violation that must be de-conflicted at the
+// source (cf. the `TextFile` → `DocumentFile` split), not papered over by a suppressor.
+fn field_in_any_variant_named(type_name: String, field: String, scope: InferScope) -> Bool {
+  let si = scope.type_env.source_indices
+  scope.type_env.bindings |> map_values |> any(binding =>
+    let node = binding.resolved
+    if (node.connective == Disj) {
+      node.children |> any(arm =>
+        if authored_name_at(source_indices: si, node: arm) == type_name {
+          let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name)
+          let fields = if (ea.connective == Conj) { ea.children } else { arm.children }
+          fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
+        } else { false }
+      )
+    } else { false }
+  )
+}
+
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
@@ -2870,8 +2923,29 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           }
       }
   }
+  let construction_field_names = match type_name {
+    Present { value: tn } => record_lit_construction_field_names(type_name: tn, scope: scope)
+    Absent => none
+  }
+  let tn_str = match type_name {
+    Present { value: tn } => tn
+    Absent => ""
+  }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
+    // Strict record construction (§5 fail-closed): a field that matches no field of a
+    // confidently-RESOLVED type is a loud, located error, not silently ignored. `none`
+    // (unresolved / generic / anonymous record) keeps the path silent — closes the
+    // fail-open `infer_record_lit` hole without false-positives.
+    let unknown_field_diags = match construction_field_names {
+      Present { value: names } =>
+        if (names |> any(n => n == fi_name)) || field_in_any_variant_named(type_name: tn_str, field: fi_name, scope: scope) {
+          []
+        } else {
+          [make_error_node(diagnostic: FieldNotFound { field: fi_name, type_name: tn_str, span: fi.span }, module_name: scope.module_name)]
+        }
+      Absent => []
+    }
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
         let ft = match sf.inferred {
@@ -2908,7 +2982,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     FieldInferResult {
       typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(ar_diags, field_type_diags)
+      diagnostics: concat(concat(ar_diags, field_type_diags), unknown_field_diags)
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
