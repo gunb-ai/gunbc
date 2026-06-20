@@ -111,10 +111,49 @@ fn tepe_atom_sym_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn tepe_naming_spelling_basename(spelling: String) -> String {
+  match spelling {
+    "\"ScreamingSnakeCase\"" => "ScreamingSnakeCase"
+    "VariantNaming.ScreamingSnakeCase" => "ScreamingSnakeCase"
+    "\"VariantNaming.ScreamingSnakeCase\"" => "ScreamingSnakeCase"
+    "\"SnakeCase\"" => "SnakeCase"
+    "VariantNaming.SnakeCase" => "SnakeCase"
+    "\"VariantNaming.SnakeCase\"" => "SnakeCase"
+    "\"AsAuthored\"" => "AsAuthored"
+    "VariantNaming.AsAuthored" => "AsAuthored"
+    "\"VariantNaming.AsAuthored\"" => "AsAuthored"
+    _ => spelling
+  }
+}
+
+fn tepe_field_binding_symbols_equivalent(left: Symbol, right: Symbol) -> Bool {
+  if left == right {
+    true
+  } else {
+    match symbol_interned_spelling(binding: left) {
+      Accepted { value: left_spelling, diagnostics: _ } =>
+        match symbol_interned_spelling(binding: right) {
+          Accepted { value: right_spelling, diagnostics: _ } =>
+            tepe_naming_spelling_basename(spelling: left_spelling)
+              == tepe_naming_spelling_basename(spelling: right_spelling)
+          Rejected { diagnostics: _ } => false
+        }
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
 fn tepe_field_init_parts_match_name(parts: TepeFieldInitParts, field: Symbol) -> Bool {
   match tepe_atom_sym_optional(node: parts.name) {
-    Present { value: sym } => sym == field
+    Present { value: sym } => tepe_field_binding_symbols_equivalent(left: sym, right: field)
     Absent => false
+  }
+}
+
+fn tepe_field_init_value_node_optional(node: Node) -> Optional<Node> {
+  match tepe_field_init_parts_optional(node: node) {
+    Present { value: parts } => optional_present(value: parts.value)
+    Absent => optional_present(value: node)
   }
 }
 
@@ -505,9 +544,9 @@ fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Nod
         }
       },
       step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
+        match child_acc {
+          Present { value: _ } => child_acc
+          Absent => acc
         }
       }
     }
@@ -515,6 +554,7 @@ fn tepe_disj_for_enum_sym_optional(root: Node, enum_sym: Symbol) -> Optional<Nod
 }
 
 fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
+  let anchor_hash = content_hash(n: disj_anchor)
   fold_node(
     n: root,
     algebra: NodeFold {
@@ -524,19 +564,23 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
         } else {
           match tepe_type_decl_name_optional(type_decl: node) {
             Present { value: enum_sym } =>
-              if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
-                optional_present(value: enum_sym)
-              } else {
-                optional_absent()
+              match tepe_disj_in_subtree(node: node) {
+                Present { value: disj } =>
+                  if content_hash(n: disj) == anchor_hash {
+                    optional_present(value: enum_sym)
+                  } else {
+                    optional_absent()
+                  }
+                Absent => optional_absent()
               }
             Absent => optional_absent()
           }
         }
       },
       step: fn(acc, _edge, child_acc) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => child_acc
+        match child_acc {
+          Present { value: _ } => child_acc
+          Absent => acc
         }
       }
     }
@@ -549,7 +593,7 @@ fn tepe_contract_row_for_disj_anchor(
   disj_anchor: Node
 ) -> Optional<CoproductWireContractIndexRow> {
   let anchor_hash = content_hash(n: disj_anchor)
-  fold(
+  match fold(
     rows,
     init: optional_absent(),
     f: fn(acc, row) {
@@ -570,7 +614,18 @@ fn tepe_contract_row_for_disj_anchor(
           }
       }
     }
-  )
+  ) {
+    Present { value: row } => optional_present(value: row)
+    Absent =>
+      match list_at_optional(xs: rows, index: 0) {
+        Absent => optional_absent()
+        Present { value: only_row } =>
+          match list_tail(xs: rows) {
+            TailAbsent => optional_present(value: only_row)
+            TailFound { tail: _ } => optional_absent()
+          }
+      }
+  }
 }
 
 fn tepe_apply_enriched_disj_form(

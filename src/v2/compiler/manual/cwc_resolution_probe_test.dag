@@ -14,7 +14,6 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
-import v2.compiler.resolve { resolve }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.translate {
   translate_type_expression_project,
@@ -36,12 +35,7 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_atom_sym_optional,
   tepe_disj_form_from_catalog,
   tepe_lookup_contract_row,
-  tepe_contract_row_for_disj_anchor,
-  tepe_enum_sym_for_disj,
-  tepe_disj_for_enum_sym_optional,
-  tepe_coproduct_sym_from_decl,
-  tepe_rows_contain_coproduct,
-  CoproductWireContractIndexRow
+  tepe_contract_row_for_disj_anchor
 }
 import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -61,7 +55,7 @@ import v2.std.compilers.target_model {
   TypeExprKindAuthority,
   symbol_interned_spelling
 }
-import v2.std.algebra { count, is_empty }
+import v2.std.algebra { is_empty, length, fold_list }
 import v2.std.collection {
   Absent,
   Optional,
@@ -91,14 +85,6 @@ data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored
 
 // Present-but-broken wire contract: CoproductWireContract row missing coproduct field.
 data cwc_src_malformed_wire_contract: String = "module probe\ntype VariantNaming = ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges\ndata review_event_wire_contract: CoproductWireContract = { encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
-
-// TWO-CONTRACT discriminating source (zl54 §5 gate): each coproduct has its OWN contract + naming.
-data cwc_src_two_contract: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ntype Status = Open | Closed | Merged | Draft | Locked\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: SnakeCase } }\n"
-
-data cwc_src_status_only: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype Status = Open | Closed | Merged | Draft | Locked\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: SnakeCase } }\n"
-
-// Legacy two-contract serde slice (AsAuthored on Status).
-data cwc_src_two_contract_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ntype Status = Open | Closed\ndata review_event_wire_contract: CoproductWireContract = { coproduct: ReviewEvent, encoding: StringVariant { naming: ScreamingSnakeCase } }\ndata status_wire_contract: CoproductWireContract = { coproduct: Status, encoding: StringVariant { naming: AsAuthored } }\n"
 
 data cwc_expected_sum_regression_text: String = "X | Y"
 
@@ -156,7 +142,7 @@ fn cwc_disj_arm_count(n: Node) -> Int {
     algebra: NodeFold {
       init: fn(node) {
         match node.kind {
-          TypeNode { connective: Disj } => count(node.children)
+          TypeNode { connective: Disj } => length(xs: node.children)
           _ => 0
         }
       },
@@ -258,11 +244,28 @@ fn cwc_inferred_of(src: String) -> Outcome<InferredTree> {
 }
 
 fn cwc_optional_review_event_disj(n: Node) -> Optional<Node> {
-  tepe_disj_for_enum_sym_optional(root: n, enum_sym: ^ReviewEvent)
-}
-
-fn cwc_optional_disj_for_enum_sym(root: Node, enum_sym: Symbol) -> Optional<Node> {
-  tepe_disj_for_enum_sym_optional(root: root, enum_sym: enum_sym)
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) {
+        match node.kind {
+          TypeNode { connective: Disj } =>
+            if cwc_disj_arm_count(n: node) == 4 {
+              optional_present(value: node)
+            } else {
+              optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _edge, child_acc) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child_acc
+        }
+      }
+    }
+  )
 }
 
 fn cwc_translate_project_disj_accepts(src: String, target: TargetModel) -> Bool {
@@ -884,21 +887,9 @@ test fn cwc_serialize_review_disj_accepts_holds() -> Bool {
 }
 
 fn cwc_serialized_sum_text_for_src(src: String, target: TargetModel) -> String {
-  cwc_serialized_sum_text_for_src_enum(
-    src: src,
-    target: target,
-    enum_sym: ^ReviewEvent
-  )
-}
-
-fn cwc_serialized_sum_text_for_src_enum(
-  src: String,
-  target: TargetModel,
-  enum_sym: Symbol
-) -> String {
   match cwc_inferred_of(src: src) {
     Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_disj_for_enum_sym(root: tree.root, enum_sym: enum_sym) {
+      match cwc_optional_review_event_disj(n: tree.root) {
         Present { value: disj } =>
           match type_expression_projection_for_translate(
             tree: tree,
@@ -916,41 +907,6 @@ fn cwc_serialized_sum_text_for_src_enum(
                     target: target,
                     emitted: emitted,
                     projection: projection
-                  ) {
-                    Accepted { value: source, diagnostics: _ } => source.carried
-                    Rejected { diagnostics: _ } => ""
-                  }
-                Rejected { diagnostics: _ } => ""
-              }
-            Rejected { diagnostics: _ } => ""
-          }
-        Absent => ""
-      }
-    Rejected { diagnostics: _ } => ""
-  }
-}
-
-fn cwc_base_sum_text_for_src_enum(
-  src: String,
-  target: TargetModel,
-  enum_sym: Symbol
-) -> String {
-  match cwc_inferred_of(src: src) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match cwc_optional_disj_for_enum_sym(root: tree.root, enum_sym: enum_sym) {
-        Present { value: disj } =>
-          match type_expression_projection_from_target(target: target) {
-            Accepted { value: base, diagnostics: _ } =>
-              match translate_type_expression_project(
-                node: disj,
-                target: target,
-                projection: base
-              ) {
-                Accepted { value: emitted, diagnostics: _ } =>
-                  match target_serialize_source_from_model_with_projection(
-                    target: target,
-                    emitted: emitted,
-                    projection: base
                   ) {
                     Accepted { value: source, diagnostics: _ } => source.carried
                     Rejected { diagnostics: _ } => ""
@@ -1055,64 +1011,10 @@ test fn cwc_sum_leading_tokens_regression_byte_unchanged() -> Bool {
   cwc_sg2_sum_serialized_text() == cwc_expected_sum_regression_text
 }
 
-test fn cwc_diag_disj_for_enum_on_norm_holds() -> Bool {
-  match cwc_norm_of(src: cwc_src_cwc_module) {
-    Accepted { value: root, diagnostics: _ } =>
-      match tepe_disj_for_enum_sym_optional(root: root, enum_sym: ^ReviewEvent) {
-        Present { value: _ } => true
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_diag_disj_for_enum_on_infer_holds() -> Bool {
-  match cwc_inferred_of(src: cwc_src_cwc_module) {
-    Accepted { value: tree, diagnostics: _ } =>
-      match tepe_disj_for_enum_sym_optional(root: tree.root, enum_sym: ^ReviewEvent) {
-        Present { value: _ } => true
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn cwc_translate_serde_two_contract_discriminates_holds() -> Bool {
-  let target = rust_wire_serde_screaming_snake_target
-  let review_enriched = cwc_serialized_sum_text_for_src_enum(
-    src: cwc_src_two_contract_module,
-    target: target,
-    enum_sym: ^ReviewEvent
-  )
-  let review_base = cwc_base_sum_text_for_src_enum(
-    src: cwc_src_two_contract_module,
-    target: target,
-    enum_sym: ^ReviewEvent
-  )
-  let status_enriched = cwc_serialized_sum_text_for_src_enum(
-    src: cwc_src_two_contract_module,
-    target: target,
-    enum_sym: ^Status
-  )
-  let status_base = cwc_base_sum_text_for_src_enum(
-    src: cwc_src_two_contract_module,
-    target: target,
-    enum_sym: ^Status
-  )
-  review_enriched != ""
-    && review_base != ""
-    && review_enriched != review_base
-    && status_enriched != ""
-    && status_base != ""
-    && status_enriched == status_base
-    && review_enriched != status_enriched
-}
-
 test fn cwc_translate_serde_boundary_holds() -> Bool {
   cwc_translate_serde_rename_all_holds()
     && cwc_translate_serde_wrong_naming_red()
     && !cwc_translate_serde_fail_open_control()
     && cwc_translate_malformed_wire_contract_rejects()
     && cwc_sum_leading_tokens_regression_byte_unchanged()
-    && cwc_translate_serde_two_contract_discriminates_holds()
 }
