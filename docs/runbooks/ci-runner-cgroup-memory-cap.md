@@ -5,43 +5,77 @@ headroom ≤ physical RAM. A heavy consumer must be **cgroup-OOM'd (exit 137, lo
 allowed to trigger **GLOBAL host OOM** (kernel-proven: `claim_executor` 93.5 GiB anon-rss,
 2026-06-20).
 
-**Two halves (both required):**
+**Two halves (both required for full fail-closed):**
 
-1. **CI runner slice** — caps `claim_executor` / GitHub Actions (proven crash path).
-2. **Agent session containers** — dashboard spawn currently admits 20×31.3 GiB caps on 256 MiB
-   reservation; 2–3 hot sessions alone can exceed 128 GiB even with a capped runner.
+1. **CI runner slice** — caps `claim_executor` / GitHub Actions (**proven crash path**; operator
+   applied **64 GiB** — keep it).
+2. **Agent session containers** — dashboard spawn admits 20×31.3 GiB caps on 256 MiB reservation;
+   2–3 hot sessions can exceed 128 GiB even with a capped runner. **Shape** is known; **numbers**
+   need measurement + operator sign-off before apply (high blast radius).
 
 **Not the fix:** `spawn_width=1` (serializes ~500 witnesses, perf regression). #5375 keeps
 memory-aware **width=4**; containment is cgroup caps.
 
 ---
 
-## Ledger (128 GiB physical, BMC-grounded 2026-06-20)
+## Scaffold register (in-repo authority)
 
-Caps must **not** sum to 100% of physical — kernel page-cache, dockerd, the dashboard node
-process, and cgroup accounting slop need unbudgeted headroom.
+Persisted in `dsl/product/compute_fabric.dag` — each row is a placeholder until
+**generated-from-the-ledger**:
 
-| Budget line | GiB | Enforced how |
-|---|---:|---|
-| Physical RAM | 128 | BMC `total_memory_bytes` |
-| **Unbudgeted headroom** (page-cache, dockerd, dashboard, slop) | **10** | *not capped — leave free* |
-| OS + kernel + journald (operational reserve) | 8 | implicit |
-| **Budgeted consumer caps** | **110** | cgroup `MemoryMax` |
-| → CI runner (`system-actions-runner.slice`) | **56** | systemd slice drop-in + live `set-property` |
-| → Agent sessions (aggregate budget) | **38** | dashboard spawn: per-container cap × concurrency gate |
-| → sccache + shared build temp | 8 | ops hygiene / `SCCACHE_DIR` on capped fs |
-| **Σ (headroom + OS + caps)** | **128** | fail-closed invariant |
+| Scaffold row | Current value | Dissolve when |
+|---|---|---|
+| `host_memory_scaffold_runner_slice_cap` | **64 GiB** (operator live) | `max(measured normal-CI floor VmHWM @ width=4, memory.peak runner slice)` + pig-tail margin → ledger cap |
+| `host_memory_scaffold_ci_per_shard_peak` | **14 GiB** (stale §3 fork) | measured per-witness resolve peak distribution (`claim_batch` `[interp-stats]` VmHWM) |
+| `host_memory_scaffold_session_container_cap` | **31.3 GiB** (live dashboard) | operator-signed cap from measured per-session peak-RSS distribution |
+| `host_memory_scaffold_session_spawn_reservation` | **256 MiB** (kernel census) | generated-from-the-ledger `admit()` reservation per `AllocationClass` |
 
-**Why runner 56 GiB (not 64):** normal floor width **4** × **14 GiB** modeled ≈ **56 GiB** —
-fits exactly; pig runs **4** × **~31 GiB** ≈ **124 GiB** → cgroup OOM under 56 GiB (exit 137).
-
-**Why sessions 38 GiB aggregate:** kernel fact — 20 containers each `memory.max=33578549248`
-(~31.3 GiB), admitted on 256 MiB reservation. **2–3 hot sessions = 62–94 GiB** without the
-runner. Budget 38 GiB ⇒ e.g. **max 3 concurrent** sessions at **12 GiB** each (= 36 GiB).
+`gunbc_ci_floor_corpus_work_demand` reads `host_memory_scaffold_ci_per_shard_peak` — do **not**
+size the runner cap from `4 × 14 GiB`; we have **no measured normal-CI peak** yet.
 
 ---
 
-## Part A — CI runner cap (apply first: proven crash)
+## Ledger (128 GiB physical, BMC-grounded 2026-06-20)
+
+Caps must **not** sum to 100% of physical — page-cache, dockerd, dashboard, and cgroup slop
+need unbudgeted headroom.
+
+| Budget line | GiB | Enforced how | Status |
+|---|---:|---|---|
+| Physical RAM | 128 | BMC `total_memory_bytes` | grounded |
+| **Unbudgeted headroom** | **12** | *leave free* | required |
+| OS + kernel reserve | 8 | implicit | — |
+| **Budgeted consumer caps** | **116** | cgroup `MemoryMax` | — |
+| → CI runner (`system-actions-runner.slice`) | **64** | systemd slice (operator applied) | **APPLY / KEEP** |
+| → Agent sessions (aggregate budget) | **36** | dashboard spawn (illustrative) | **MEASURE → operator policy** |
+| → sccache + shared build temp | 8 | ops hygiene | — |
+| **Σ** | **128** | fail-closed invariant | — |
+
+**Why runner stays 64 GiB:** conservative placeholder already live on the operator host. Dropping
+to 56 GiB assumed `4 × 14 GiB` normal peak — **14 GiB is the stale scaffold constant**, not a
+measurement. Until normal-CI VmHWM is recorded, 64 GiB is the safe cap (pig runs OOM inside the
+slice; normal runs must not false-RED).
+
+**Session aggregate 36 GiB** is headroom math only (`128 − 12 − 8 − 64 − 8`). Per-container cap
+and concurrency are **not** ready-to-route — see Part B.
+
+---
+
+## Measured facts (populate before resizing caps)
+
+| Signal | Source | Status |
+|---|---|---|
+| Pig / crash peak | kernel OOM: `claim_executor` **93.5 GiB** anon-rss (srv2, 2026-06-20 02:55) | **grounded** |
+| Normal CI floor peak RSS | `claim_batch` / `claim_executor` end-of-run `[interp-stats]` **VmHWM** @ width=4, or `memory.peak` on `system-actions-runner.slice` during a green floor | **pending measurement** |
+| Session peak-RSS distribution | RC-5 / capacity census: most sessions **< 1 GiB** (LLM idle); few spike to **~31 GiB** on cargo/ctrl-build | **shape known, distribution TBD** |
+| Per-session container cap (live) | `memory.max=33578549248` (~31.3 GiB), 20 admitted | **grounded** |
+| Spawn reservation (live) | 256 MiB kernel admission | **grounded** (`host_memory_scaffold_session_spawn_reservation`) |
+
+Record normal-CI VmHWM in this table when captured; runner cap dissolves off that row.
+
+---
+
+## Part A — CI runner cap (operator: applied, keep 64 GiB)
 
 ### Inspect
 
@@ -56,8 +90,8 @@ sudo mkdir -p /etc/systemd/system/system-actions-runner.slice.d
 sudo tee /etc/systemd/system/system-actions-runner.slice.d/50-memory-cap.conf <<'EOF'
 [Slice]
 # Fail-closed: CI runner cannot GLOBAL-OOM the host. Pig runs exit 137 inside the slice.
-MemoryMax=56G
-MemoryHigh=52G
+MemoryMax=64G
+MemoryHigh=60G
 EOF
 sudo systemctl daemon-reload
 ```
@@ -65,16 +99,16 @@ sudo systemctl daemon-reload
 ### Live apply (running slice — `daemon-reload` alone is NOT enough)
 
 ```bash
-sudo systemctl set-property system-actions-runner.slice MemoryMax=56G MemoryHigh=52G
+sudo systemctl set-property system-actions-runner.slice MemoryMax=64G MemoryHigh=60G
 ```
 
 ### Verify
 
 ```bash
 systemctl show system-actions-runner.slice -p MemoryMax -p MemoryHigh -p MemoryCurrent
-# Expect MemoryMax=60129542144 (56 GiB), MemoryHigh=55834574848 (52 GiB)
+# Expect MemoryMax=68719476736 (64 GiB), MemoryHigh=64424509440 (60 GiB)
 
-systemd-cgtop -m   # during a CI run
+systemd-cgtop -m   # during a CI run — capture memory.peak for scaffold dissolution
 ```
 
 ### Rollback
@@ -87,49 +121,31 @@ sudo systemctl daemon-reload
 
 ---
 
-## Part B — Agent session cap (dashboard / ctrl spawn — other half)
+## Part B — Agent session cap (RECOMMENDATION — do not route to operator yet)
 
-**Problem:** dashboard `docker run` spawn sets per-container `memory.max ≈ 31.3 GiB`
-(`33578549248` bytes) with only 256 MiB kernel reservation. Sum of caps is unbounded; 2–3 hot
-sessions + runner exceeds 128 GiB → GLOBAL OOM **without** any CI floor running.
+**Problem:** sum of session container caps is unbounded (20 × 31.3 GiB). 2–3 build-heavy
+sessions + runner can GLOBAL-OOM the host.
 
-### Operator / ctrl changes (route to dashboard spawn config)
+**Correct shape (for step-4 / operator policy later):**
 
-| Knob | Current | Target | Rationale |
-|---|---|---|---|
-| Per-session container `MemoryMax` | ~31.3 GiB | **12 GiB** (`12884901888`) | single session cannot hoard a third of the host |
-| Max concurrent agent sessions **per host** | ~20 admitted | **3** | 3 × 12 GiB = 36 GiB ≤ 38 GiB session budget |
-| Spawn admission gate | none (always `docker run`) | **refuse** when `live_sessions × cap > 38 GiB` | fail-closed: queue or redirect to srv1 |
+- per-container `MemoryMax` cap
+- max concurrent sessions per host
+- spawn admission: **refuse / queue / redirect srv1** when aggregate would exceed session budget
 
-### Example `docker run` flags (dashboard spawn handler)
+**Illustrative numbers (NOT ready-to-apply):** e.g. 12 GiB/container × 3 concurrent = 36 GiB
+fits the ledger headroom math — but this **cuts ~20 → 3 sessions/host** and may OOM
+cargo/ctrl-build sessions. RC-5: most sessions use **< 1 GiB**; only a few spike to **31 GiB**.
+A uniform tight cap punishes idle sessions to contain build-heavy outliers.
 
-```bash
-# Replace existing ~31G cap with 12G hard / 10G soft:
-docker run ... \
-  --memory=12g \
-  --memory-swap=12g \
-  --memory-reservation=512m \
-  ...
-```
+**Before operator routing:**
 
-### Verify on host
+1. Measure per-session peak-RSS distribution over time (dashboard / cgroup metrics).
+2. Present cap + concurrency as a **recommendation with capacity trade-off** for operator
+   sign-off (affects every running agent).
+3. Dissolve `host_memory_scaffold_session_container_cap` from that data.
 
-```bash
-# Per-container cap (inside a running session container):
-cat /sys/fs/cgroup/memory.max
-# Expect: 12884901888
-
-# Count hot sessions and aggregate caps:
-docker ps --format '{{.Names}}' | wc -l
-# dashboard should refuse spawn when count >= 3 on this host (policy)
-```
-
-### Fail-closed behavior
-
-- Session spawn when host at capacity → **refused** (operator sees queue/backpressure), not
-  admitted-and-OOM-later.
-- Single pig session > 12 GiB → **container OOM**, not host GLOBAL OOM.
-- CI pig inside runner → **slice OOM exit 137**, CI RED.
+Runner cap already kills the **proven repeated crasher**; session-spike GLOBAL OOM is a rarer
+residual sealed with data + policy, not a rushed blast-radius change.
 
 ---
 
@@ -138,7 +154,7 @@ docker ps --format '{{.Names}}' | wc -l
 | Layer | Role |
 |---|---|
 | `#5375` `placement_spawn_width` | memory-aware **width=4** inside runner (throughput) |
-| **This ledger** | host **containment** — cgroup caps on runner + sessions |
+| **This ledger + scaffold register** | host **containment** placeholders + dissolution triggers |
 | `AllocationClass` + `admit()` | **step-4 destination** — full Σ-live accounting via dashboard |
 
 **Follow-on:** eager-boar-790 slims Arc1 pig witnesses; allocator step 4 routes all spawns
@@ -150,4 +166,4 @@ through `admit()`.
 
 - Kernel: srv2 `journalctl -k -b -1` — GLOBAL OOM 02:55, `claim_executor` 93.5 GiB anon-rss
 - Census: 20 session containers × 31.27 GiB caps, 125 GiB host (`compute-fabric-allocator.md`)
-- Postmortem: `docs/postmortems/2026-06-20-ci-flakiness-fleet-overcommit.md`
+- Plan: `docs/plans/compute-fabric-allocator.md`
