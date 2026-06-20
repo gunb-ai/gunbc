@@ -779,6 +779,9 @@ pub fn is_machinery_exempt_for_qualified_name(qn: &crate::v1_interpreter::Value)
 }
 
 pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
+    if module_path.starts_with("extdeps.fixture.") {
+        return true;
+    }
     clean_tree_roster_exclusion_paths().contains(&module_path)
 }
 
@@ -1035,6 +1038,7 @@ service github.Gist {
             "extdeps.fixture.external_authority_missing",
             "extdeps.fixture.external_authority_clean_https_no_anchor",
             "extdeps.fixture.external_authority_file_anchor",
+            "extdeps.fixture.external_authority_clean_https",
         ];
         let mut violations = Vec::new();
         for path in derived_extdeps_module_paths() {
