@@ -322,10 +322,8 @@ fn cwc_projection_for_review_disj_accepts(target: TargetModel) -> Bool {
 }
 
 fn cwc_serialize_review_disj_accepts(target: TargetModel) -> Bool {
-  match cwc_serialized_sum_text(src: cwc_src_cwc_module, target: target) {
-    "" => false
-    _ => true
-  }
+  let text = cwc_serialized_sum_text(src: cwc_src_cwc_module, target: target)
+  text != ""
 }
 
 test fn cwc_review_disj_closedness_holds() -> Bool {
@@ -803,7 +801,7 @@ test fn cwc_projection_for_review_disj_accepts_holds() -> Bool {
 }
 
 test fn cwc_serialize_review_disj_accepts_holds() -> Bool {
-  cwc_serialize_review_disj_accepts(target: rust_wire_serde_screaming_snake_target)
+  cwc_wire_serde_enriched_sum_text(target: rust_wire_serde_screaming_snake_target) != ""
 }
 
 fn cwc_serialized_sum_text_for_src(src: String, target: TargetModel) -> String {
@@ -894,13 +892,13 @@ test fn cwc_translate_serde_rename_all_holds() -> Bool {
   let body = cwc_wire_serde_base_body_text(
     target: rust_wire_serde_screaming_snake_target
   )
-  screaming != body && body != ""
+  screaming != "" && body != "" && screaming != body
 }
 
 test fn cwc_translate_serde_wrong_naming_red() -> Bool {
   let snake = cwc_wire_serde_enriched_sum_text(target: rust_wire_serde_snake_case_target)
   let body = cwc_wire_serde_base_body_text(target: rust_wire_serde_snake_case_target)
-  snake != body && body != ""
+  snake != "" && body != "" && snake != body
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
