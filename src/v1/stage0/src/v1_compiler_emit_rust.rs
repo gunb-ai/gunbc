@@ -4592,10 +4592,8 @@ pub fn type_item_has_rust_nominal_shell_authority(
                     true
                 } else {
                     if ((item.params.clone().len() as i64) > 0) {
-                        if is_parametric_opaque_type_decl_item(
-                            item.clone(),
-                            source_indices.clone(),
-                        ) {
+                        if is_parametric_opaque_type_decl_item(item.clone(), source_indices.clone())
+                        {
                             true
                         } else {
                             let rhs = resolved_type(item.clone());
@@ -4913,7 +4911,10 @@ pub fn emit_parametric_phantom_opaque_struct(
                 ),
                 v1_rt::concat(v1_rt::concat(" ".to_string(), item_text), type_params),
             ),
-            v1_rt::concat(v1_rt::concat("(pub ".to_string(), marker_ty), ");".to_string()),
+            v1_rt::concat(
+                v1_rt::concat("(pub ".to_string(), marker_ty),
+                ");".to_string(),
+            ),
         ),
         "".to_string(),
     )
@@ -12206,7 +12207,10 @@ pub fn emit_discriminant_call_lowering(
                                             ),
                                             emit_rust_host_to_dag_string_via_seam(
                                                 v1_rt::concat(
-                                                    v1_rt::concat("\"".to_string(), child_text.clone()),
+                                                    v1_rt::concat(
+                                                        "\"".to_string(),
+                                                        child_text.clone(),
+                                                    ),
                                                     "\"".to_string(),
                                                 ),
                                                 scope.type_env.clone().source_indices.clone(),
@@ -16512,7 +16516,11 @@ pub fn emit_typed_bin_op(
                                                     "(".to_string(),
                                                     emit_rust_dag_string_to_host_via_seam(
                                                         l_str.clone(),
-                                                        scope.type_env.clone().source_indices.clone(),
+                                                        scope
+                                                            .type_env
+                                                            .clone()
+                                                            .source_indices
+                                                            .clone(),
                                                     ),
                                                 ),
                                                 " ".to_string(),
@@ -16664,10 +16672,7 @@ pub fn emit_typed_string_interp(
         });
         if ((args.clone().len() as i64) == 0) {
             emit_rust_host_to_dag_string_via_seam(
-                v1_rt::concat(
-                    v1_rt::concat("\"".to_string(), fmt_str),
-                    "\"".to_string(),
-                ),
+                v1_rt::concat(v1_rt::concat("\"".to_string(), fmt_str), "\"".to_string()),
                 scope.type_env.clone().source_indices.clone(),
             )
         } else {
@@ -19926,10 +19931,7 @@ pub fn emit_shell_argv_element(
                 });
             if is_opt.clone() {
                 emit_rust_dag_string_to_host_via_seam(
-                    v1_rt::concat(
-                        var_name.clone(),
-                        ".as_deref().unwrap_or(\"\")".to_string(),
-                    ),
+                    v1_rt::concat(var_name.clone(), ".as_deref().unwrap_or(\"\")".to_string()),
                     source_indices.clone(),
                 )
             } else {
