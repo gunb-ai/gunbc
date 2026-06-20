@@ -855,12 +855,10 @@ fn cwc_sg2_module_sum_text() -> String {
 }
 
 test fn cwc_translate_serde_rename_all_holds() -> Bool {
-  let screaming = cwc_serialized_sum_text(
+  cwc_serialized_sum_text(
     src: cwc_src_cwc_module,
     target: rust_wire_serde_screaming_snake_target
-  )
-  let sg2 = cwc_sg2_module_sum_text()
-  screaming != "" && sg2 != "" && screaming != sg2
+  ) == cwc_expected_serde_sum_text
 }
 
 test fn cwc_translate_serde_wrong_naming_red() -> Bool {
@@ -868,8 +866,7 @@ test fn cwc_translate_serde_wrong_naming_red() -> Bool {
     src: cwc_src_cwc_module,
     target: rust_wire_serde_snake_case_target
   )
-  let sg2 = cwc_sg2_module_sum_text()
-  snake != "" && sg2 != "" && snake != sg2
+  snake != cwc_sg2_module_sum_text() && snake != ""
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {

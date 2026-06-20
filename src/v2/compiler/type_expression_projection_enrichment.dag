@@ -447,36 +447,36 @@ fn tepe_disj_in_subtree(node: Node) -> Optional<Node> {
   )
 }
 
-fn tepe_type_decl_enum_sym(type_decl: Node) -> Optional<Symbol> {
-  if !tepe_node_has_surface(root: type_decl, surface: ^dag_surface_type_decl) {
-    optional_absent()
-  } else {
-    tepe_type_decl_name_optional(type_decl: type_decl)
-  }
-}
-
-fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
+fn tepe_subtree_contains_disj_anchor(root: Node, disj_anchor: Node) -> Bool {
   let anchor_hash = content_hash(n: disj_anchor)
   fold_node(
     n: root,
     algebra: NodeFold {
-      init: fn(node) {
-        if tepe_node_has_surface(root: node, surface: ^dag_surface_type_decl) {
-          match tepe_type_decl_enum_sym(type_decl: node) {
-            Present { value: enum_sym } =>
-              match tepe_disj_in_subtree(node: node) {
-                Present { value: disj } =>
-                  if content_hash(n: disj) == anchor_hash {
-                    optional_present(value: enum_sym)
-                  } else {
-                    optional_absent()
-                  }
-                Absent => optional_absent()
-              }
-            Absent => optional_absent()
-          }
+      init: fn(n0) { content_hash(n: n0) == anchor_hash },
+      step: fn(acc, _edge, child_acc) {
+        if acc {
+          true
         } else {
-          optional_absent()
+          child_acc
+        }
+      }
+    }
+  )
+}
+
+fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        match tepe_type_decl_name_optional(type_decl: node) {
+          Present { value: enum_sym } =>
+            if tepe_subtree_contains_disj_anchor(root: node, disj_anchor: disj_anchor) {
+              optional_present(value: enum_sym)
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
         }
       },
       step: fn(acc, _edge, child_acc) {
