@@ -890,6 +890,16 @@ fn cwc_wire_serde_enriched_sum_text(target: TargetModel) -> String {
   cwc_serialized_sum_text(src: cwc_src_cwc_module, target: target)
 }
 
+test fn cwc_enriched_ne_base_body_holds() -> Bool {
+  let screaming = cwc_wire_serde_enriched_sum_text(
+    target: rust_wire_serde_screaming_snake_target
+  )
+  let body = cwc_wire_serde_base_body_text(
+    target: rust_wire_serde_screaming_snake_target
+  )
+  screaming != body && body != ""
+}
+
 test fn cwc_translate_serde_rename_all_holds() -> Bool {
   let screaming = cwc_wire_serde_enriched_sum_text(
     target: rust_wire_serde_screaming_snake_target
@@ -907,8 +917,10 @@ test fn cwc_translate_serde_wrong_naming_red() -> Bool {
 }
 
 fn cwc_translate_serde_fail_open_control() -> Bool {
-  cwc_sg2_module_sum_text()
-    == cwc_wire_serde_enriched_sum_text(target: rust_wire_serde_screaming_snake_target)
+  let screaming = cwc_wire_serde_enriched_sum_text(
+    target: rust_wire_serde_screaming_snake_target
+  )
+  cwc_sg2_module_sum_text() == screaming
 }
 
 test fn cwc_translate_malformed_wire_contract_rejects() -> Bool {
