@@ -288,6 +288,21 @@ fn rust_seed_host_numeric_alias(name: String, source_indices: Map<String, Newlin
   }
 }
 
+// SEED carrier (container analogue of String->host / Nat->i64): in the v1-seed
+// branch the List nominal renders as the HOST CONTAINER the v1_rt Vec ops already
+// use, so the nominal resolves (E0425/E0432) in the type-rendering paths that
+// preserve nominals (render_rust_applied_type fn-sigs, render_rust_alias_rhs_type).
+// Carrier-specific (List only) and GUARDED — does NOT touch the general
+// preserve-nominal alias-RHS policy for non-container nominals (FreeMonoid/Box) or
+// the v2-TARGET faithful FreeMonoid representation. List ops stay Vec-based.
+fn rust_seed_host_container_base(name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  if name == "List" && rust_corpus_includes_v1_compiler(source_indices: source_indices) {
+    Present { value: "Vec" }
+  } else {
+    none
+  }
+}
+
 fn rust_named_type_base(name: String, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
@@ -352,7 +367,10 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let base_name = authored_name_at(source_indices: source_indices, node: n)
-  let base = rust_named_type_base(name: base_name, source_indices: source_indices)
+  let base = match rust_seed_host_container_base(name: base_name, source_indices: source_indices) {
+    Present { value: host } => host
+    Absent => rust_named_type_base(name: base_name, source_indices: source_indices)
+  }
   if n.children |> count == 0 {
     base
   } else {
@@ -498,10 +516,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let local_mod = module_to_filename(name: module_name)
     let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let base = if def_mod != local_mod {
-      concat("crate::", def_mod, "::", name)
-    } else {
-      name
+    let base = match rust_seed_host_container_base(name: name, source_indices: source_indices) {
+      Present { value: host } => host
+      Absent => if def_mod != local_mod {
+        concat("crate::", def_mod, "::", name)
+      } else {
+        name
+      }
     }
     let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
