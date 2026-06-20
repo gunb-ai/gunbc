@@ -179,6 +179,7 @@ import v2.std.collection {
   optional_absent,
   optional_present
 }
+import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.std.algebra {
   Cons,
   Empty,
@@ -1678,6 +1679,26 @@ type TypeExprTranslateAcc
   | TypeExprTranslatePositional { items: List<Node> }
   | TypeExprTranslateDone { node: Node }
 
+fn type_expr_disj_unwrap_variant_shells(disj: Node) -> Node {
+  Node {
+    kind: disj.kind,
+    children: fold(
+      disj.children,
+      init: Empty,
+      f: fn(acc, e) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge {
+            label: e.label,
+            target: sugar_unwrap_production_shell(node: e.target)
+          }
+        )
+      }
+    ),
+    occurrence_id: disj.occurrence_id
+  }
+}
+
 fn translate_algebra_finalize(
   acc: TypeExprTranslateAcc,
   anchor: Node,
@@ -2034,7 +2055,7 @@ fn translate_type_expression_project(
             Disj =>
               bind_outcome(
                 o: fold_node(
-                  n: node,
+                  n: type_expr_disj_unwrap_variant_shells(disj: node),
                   algebra: translate_algebra(target: target, projection: projection)
                 ),
                 f: fn(acc) {

@@ -33,6 +33,7 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_build_coproduct_wire_contract_index,
   tepe_target_bundle_optional_child
 }
+import v2.std.compilers.sugar { sugar_unwrap_production_shell }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
 import v2.extdeps.languages.rust {
@@ -398,13 +399,61 @@ fn cwc_node_connective_tag(n: Node) -> Symbol {
   }
 }
 
+fn cwc_disj_first_variant_target_optional(n: Node) -> Optional<Node> {
+  fold(
+    n.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => optional_present(value: e.target)
+      }
+    }
+  )
+}
+
+test fn cwc_review_disj_first_variant_unwrapped_conj_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match cwc_disj_first_variant_target_optional(n: disj) {
+            Present { value: target } =>
+              cwc_node_connective_tag(n: sugar_unwrap_production_shell(node: target)) == ^Conj
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_review_disj_first_variant_unwrapped_atom_holds() -> Bool {
+  match cwc_inferred_of(src: cwc_src_type_review) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match cwc_optional_review_event_disj(n: tree.root) {
+        Present { value: disj } =>
+          match cwc_disj_first_variant_target_optional(n: disj) {
+            Present { value: target } =>
+              match sugar_unwrap_production_shell(node: target).kind {
+                TypeNode { connective: Atom { identity: _ } } => true
+                _ => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn cwc_review_disj_first_variant_is_conj_holds() -> Bool {
   match cwc_inferred_of(src: cwc_src_type_review) {
     Accepted { value: tree, diagnostics: _ } =>
       match cwc_optional_review_event_disj(n: tree.root) {
         Present { value: disj } =>
-          match list_at_optional(xs: disj.children, index: 0) {
-            Present { value: edge } => cwc_node_connective_tag(n: edge.target) == ^Conj
+          match cwc_disj_first_variant_target_optional(n: disj) {
+            Present { value: target } => cwc_node_connective_tag(n: target) == ^Conj
             Absent => false
           }
         Absent => false
