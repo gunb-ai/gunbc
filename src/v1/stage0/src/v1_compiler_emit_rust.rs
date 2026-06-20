@@ -511,7 +511,9 @@ pub fn render_rust_decl_type(
                     if ((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) > 0))
                     {
-                        {
+                        if name.clone().as_str() == "String" {
+                            render_rust_text_carrier(shared_types.clone())
+                        } else {
                             let base = rust_named_type_base(name.clone());
                             let args = Rc::new({
                                 let mut __result = Vec::new();
@@ -576,6 +578,11 @@ pub fn render_rust_fn_sig_type(
 ) -> String {
     let name = authored_name_at(source_indices.clone(), n.clone());
     if ((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) > 0)
+        && name.clone().as_str() == "String")
+    {
+        render_rust_text_carrier(shared_types.clone())
+    } else if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0)
         && !is_container_type(name.clone())
         && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
