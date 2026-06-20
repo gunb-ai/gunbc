@@ -32,6 +32,8 @@ mod data_cache_scoping_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
+mod dependency_pool_index_compile_test;
+#[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
 mod effects;
