@@ -92,8 +92,10 @@ fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
 
-// Phase 1: corpus as IndependentShards WorkDemand (degenerate shard_count=1 today).
-fn gunbc_ci_floor_corpus_work_demand() -> WorkDemand {
+// Corpus parallel breadth is the CALLER's fact: the floor plan derives it from the
+// single-authority spec (gates + corpus cardinality), so it is NOT a tuned constant.
+// This keeps the §3 split honest — demand = the work (floor plan), supply = the fleet.
+fn gunbc_ci_floor_corpus_work_demand(corpus_shard_count: Int) -> WorkDemand {
   WorkDemand {
     resources: ResourceEnvelope {
       cpu: none,
@@ -105,7 +107,7 @@ fn gunbc_ci_floor_corpus_work_demand() -> WorkDemand {
     os: none,
     isolation: IsolationRequirement { boundary: PerJobFilesystem },
     toolchains: [],
-    parallelism: IndependentShards { shard_count: 1 },
+    parallelism: IndependentShards { shard_count: corpus_shard_count },
     data_locality: [],
     effects: [],
   }
@@ -115,11 +117,13 @@ fn gunbc_ci_floor_placement_supply() -> PlacementSupplyRow? {
   offer_placement_supply_row(offer: gunbc_ci_fleet_offer)
 }
 
-// Host spawn-width authority for the CI fleet offer + corpus WorkDemand.
-fn ci_fleet_floor_spawn_width() -> HardwareThreadCount {
+// Host spawn-width = min(caller's corpus breadth, this fleet's hardware threads).
+// No hand-tuned width: add a gate to the spec → breadth re-derives; change the host →
+// supply re-derives; spawn_width follows from both with zero edits here.
+fn ci_fleet_floor_spawn_width(corpus_shard_count: Int) -> HardwareThreadCount {
   match gunbc_ci_floor_placement_supply() {
     Absent => hardware_thread_count(1)
     Present { value: row } =>
-      placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand())
+      placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count))
   }
 }

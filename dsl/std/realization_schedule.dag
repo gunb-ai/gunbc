@@ -77,6 +77,7 @@ type Runnable
       source_roots: List<String>
       scan_dirs: List<String>
       explicit_entries: List<ScheduleWitnessEntry>
+      skip_unaffected_node_frontier: Bool
     }
 
 type Schedule = List<List<Runnable>>
@@ -95,7 +96,7 @@ type RealizationPlan<S> {
 fn runnable_step_label(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => "__discovery_corpus__"
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _ } => "__discovery_corpus__"
   }
 }
 
@@ -223,14 +224,15 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
   match left {
     RunnableSingleClaim { entry: le, function: lf } => match right {
       RunnableSingleClaim { entry: re, function: rf } => (le == re) && (lf == rf)
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _ } => false
     }
-    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex } => match right {
+    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, skip_unaffected_node_frontier: lskip } => match right {
       RunnableSingleClaim { entry: _, function: _ } => false
-      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex } =>
+      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, skip_unaffected_node_frontier: rskip } =>
         string_list_eq(left: lsr, right: rsr)
           && string_list_eq(left: lsd, right: rsd)
           && schedule_witness_entry_list_eq(left: lex, right: rex)
+          && (lskip == rskip)
     }
   }
 }

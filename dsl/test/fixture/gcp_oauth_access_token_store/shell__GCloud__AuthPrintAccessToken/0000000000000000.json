@@ -1,0 +1,13 @@
+{
+  "operation": "shell.GCloud.AuthPrintAccessToken",
+  "input_hash": "0000000000000000",
+  "inputs": [],
+  "response": {
+    "__tag": "Record",
+    "__type": "AuthPrintAccessToken",
+    "fields": {
+      "access_token": { "__tag": "Str", "value": "ya29.WITNESS_GCLOUD_CLI_TOKEN" }
+    }
+  },
+  "recorded_at": 1781905567
+}
