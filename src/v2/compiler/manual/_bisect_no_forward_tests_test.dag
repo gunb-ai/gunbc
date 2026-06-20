@@ -1,0 +1,165 @@
+// bisect: full file minus forward-row test bodies
+module v2.test.manual._bisect_no_forward_tests
+
+import v2.compiler.ingest { grammar_relation_row_forward_selection }
+import v2.std.grammar {
+  derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact
+}
+import v2.extdeps.languages.typescript {
+  ts_wave2a_task_formal_productions,
+  ts_eager_grammar_relation_row_witness,
+  ts_exemplar_emitted_for_lhs,
+  ts_inhabitant_atom,
+  ts_mvp1_emitted_add_fn_node,
+  ts_mvp1_fn_add_scaffold_relation_row_node,
+  ts_named_edge,
+  ts_pr3_identity_serialize_source_witness,
+  ts_wave2a_task_serialize_source_witness,
+  ts_wave2a_task_type_alias_emitted,
+  ts_wave2a_task_type_alias_relation_row_witness,
+  ts_wave2a_type_annotation_task_record_emitted
+}
+import v2.std.algebra { Empty, list_append }
+import v2.std.collection { List }
+import v2.std.compilers.target_model {
+  concrete_syntax_token_class,
+  concrete_syntax_token_list_from_node
+}
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  content_hash
+}
+import v2.std.node_query { find_named_child }
+import v2.std.witness { Holds, Violates }
+
+fn ts_arc1_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
+    f: fn(tokens_root) {
+      bind_outcome(
+        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+        f: fn(tokens) {
+          let classes = fold(
+            tokens,
+            init: Empty,
+            f: fn(acc, t) {
+              list_append(
+                left: acc,
+                right: [concrete_syntax_token_class(token: t)]
+              )
+            }
+          )
+          outcome_accepted(value: classes)
+        }
+      )
+    }
+  )
+}
+
+fn ts_arc1_wave2a_eager_row_round_trip_holds() -> Bool {
+  match ts_wave2a_task_type_alias_relation_row_witness() {
+    Holds { value: eager_row } =>
+      match ts_eager_grammar_relation_row_witness(lhs: ^ts_production_wave2a_type_alias_decl) {
+        Holds { value: rederived } =>
+          content_hash(n: eager_row) == content_hash(n: rederived)
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn ts_arc1_wave2a_eager_serialize_source_holds() -> Bool {
+  match ts_wave2a_task_serialize_source_witness() {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn ts_arc1_wave2a_rules_with_duplicate_spine_rows() -> Node {
+  match ts_wave2a_task_type_alias_relation_row_witness() {
+    Holds { value: eager_row } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ts_named_edge(
+            name: ^ts_relation_rule_type_alias_task,
+            target: eager_row
+          ),
+          ts_named_edge(
+            name: ^ts_arc1_forward_row_many_collision_dup,
+            target: eager_row
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Violates { diagnostic: _ } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
+  match formal_production_for_lhs_exact(
+    productions: ts_wave2a_task_formal_productions(),
+    lhs: ^ts_production_wave2a_type_alias_decl,
+    child: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
+        Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
+        Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+      ],
+      occurrence_id: SyntheticOccurrence
+    }
+  ) {
+    Holds { value: production } =>
+      match derive_grammar_relation_row_node(
+        production: production,
+        productions: ts_wave2a_task_formal_productions(),
+        emitted: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
+            Edge { label: Positional, target: ts_wave2a_type_annotation_task_record_emitted() },
+            Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      ) {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+    Violates { diagnostic: _ } => true
+  }
+}
+
+test fn bisect_no_forward_serialize_holds() -> Bool {
+  ts_arc1_wave2a_eager_serialize_source_holds()
+}
+
+test fn bisect_no_forward_roundtrip_holds() -> Bool {
+  ts_arc1_wave2a_eager_row_round_trip_holds()
+}
+
+test fn bisect_no_forward_perturbed_holds() -> Bool {
+  ts_arc1_wave2a_perturbed_row_derive_red_holds()
+}
