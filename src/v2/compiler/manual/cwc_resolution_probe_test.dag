@@ -1109,3 +1109,97 @@ test fn cwc_translate_serde_boundary_holds() -> Bool {
     && cwc_sum_leading_tokens_regression_byte_unchanged()
     && cwc_translate_serde_two_contract_discriminates_holds()
 }
+
+// zl54 decomposition probes on the worker's two-contract source.
+fn zl54_resolved_root(src: String) -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(o: cwc_norm_of(src: src), f: fn(t) { resolve(tree: t, lm: lm) })
+}
+
+test fn zl54_two_contract_index_count_two() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root, field_coproduct: ^coproduct, field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } => count(rows) == 2
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_two_contract_index_count_one() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root, field_coproduct: ^coproduct, field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } => count(rows) == 1
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_review_row_present() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root, field_coproduct: ^coproduct, field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } =>
+          match cwc_optional_disj_for_enum_sym(root: root, enum_sym: ^ReviewEvent) {
+            Present { value: disj } =>
+              match tepe_contract_row_for_disj_anchor(rows: rows, root: root, disj_anchor: disj) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_status_row_present() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      match tepe_build_coproduct_wire_contract_index(
+        root: root, field_coproduct: ^coproduct, field_encoding: ^encoding,
+        type_coproduct_wire_contract: ^CoproductWireContract
+      ) {
+        Accepted { value: rows, diagnostics: _ } =>
+          match cwc_optional_disj_for_enum_sym(root: root, enum_sym: ^Status) {
+            Present { value: disj } =>
+              match tepe_contract_row_for_disj_anchor(rows: rows, root: root, disj_anchor: disj) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_collect_decl_count_two() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      count(tepe_collect_data_decl_nodes(root: root)) == 2
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn zl54_collect_decl_count_one() -> Bool {
+  match zl54_resolved_root(src: cwc_src_two_contract_module) {
+    Accepted { value: root, diagnostics: _ } =>
+      count(tepe_collect_data_decl_nodes(root: root)) == 1
+    Rejected { diagnostics: _ } => false
+  }
+}
