@@ -552,6 +552,152 @@ fn placement_spawn_width(supply: PlacementSupplyRow, demand: WorkDemand) -> Hard
   }
 }
 
+// --- §1.1b allocation classes + admit (compute-fabric allocator plan step 1) --
+//
+// Fixed-size allocation classes replace hand-tuned per-consumer byte constants (§3).
+// admit() is the Σ(live) + request ≤ grantable invariant — fail-closed refuse on
+// overflow (§5). Step 4 routes dashboard/docker through this; step 2 wires CI.
+
+type AllocationClass =
+    Small    // 2 hardware threads · 2 GiB
+  | Medium   // 4 hardware threads · 4 GiB
+  | Large    // 8 hardware threads · 8 GiB
+  | XLarge   // 16 hardware threads · 16 GiB
+
+type ComputeRequest {
+  class: AllocationClass
+}
+
+fn allocation_class_threads(class: AllocationClass) -> Int {
+  match class {
+    Small => 2
+    Medium => 4
+    Large => 8
+    XLarge => 16
+  }
+}
+
+fn allocation_class_memory_bytes(class: AllocationClass) -> ByteSize {
+  match class {
+  // 2^31 · 2^0 = 2 GiB
+    Small => byte_size(2147483648)
+  // 2^32 = 4 GiB
+    Medium => byte_size(4294967296)
+  // 2^33 = 8 GiB
+    Large => byte_size(8589934592)
+  // 2^34 = 16 GiB
+    XLarge => byte_size(17179869184)
+  }
+}
+
+fn allocation_class_label(class: AllocationClass) -> NonEmptyStr {
+  match class {
+    Small => "Small"
+    Medium => "Medium"
+    Large => "Large"
+    XLarge => "XLarge"
+  }
+}
+
+fn allocation_class_memory_cost(class: AllocationClass) -> Int {
+  byte_size_count(allocation_class_memory_bytes(class: class))
+}
+
+fn allocation_class_resource_envelope(class: AllocationClass) -> ResourceEnvelope {
+  ResourceEnvelope {
+    cpu: Present {
+      value: CpuRequirement {
+        min_threads: hardware_thread_count(count: allocation_class_threads(class: class)),
+        architecture: none,
+      },
+    },
+    gpu: none,
+    memory: Present {
+      value: MemoryRequirement {
+        min_bytes: allocation_class_memory_bytes(class: class),
+      },
+    },
+    storage: none,
+    network: none,
+  }
+}
+
+// Grantable bytes = conservative floor budget minus an explicit reserve for
+// consumers not yet routed through admit (meantime until allocator step 4).
+fn placement_grantable_memory_bytes(supply: PlacementSupplyRow, reserve_bytes: ByteSize) -> Int {
+  let budget = placement_floor_memory_budget_bytes(supply: supply)
+  let reserve = byte_size_count(reserve_bytes)
+  if budget <= reserve { 1 } else { budget - reserve }
+}
+
+fn placement_memory_width_bound_with_reserve(
+  supply: PlacementSupplyRow,
+  demand: WorkDemand,
+  reserve_bytes: ByteSize,
+) -> Int? {
+  match demand.resources.memory {
+    Absent => none
+    Present { value: req } => {
+      let per_unit = byte_size_count(req.min_bytes)
+      if per_unit <= 0 { none } else {
+        let grantable = placement_grantable_memory_bytes(
+          supply: supply,
+          reserve_bytes: reserve_bytes,
+        )
+        let fits = grantable / per_unit
+        Present { value: if fits < 1 { 1 } else { fits } }
+      }
+    }
+  }
+}
+
+fn placement_spawn_width_with_reserve(
+  supply: PlacementSupplyRow,
+  demand: WorkDemand,
+  reserve_bytes: ByteSize,
+) -> HardwareThreadCount {
+  let cpu_width = hardware_thread_count_value(
+    t: bounded_host_spawn_width(
+      shard_count: work_demand_shard_count(demand: demand),
+      hardware_threads: supply.hardware_threads,
+    )
+  )
+  match placement_memory_width_bound_with_reserve(
+    supply: supply,
+    demand: demand,
+    reserve_bytes: reserve_bytes,
+  ) {
+    Absent => hardware_thread_count(count: cpu_width)
+    Present { value: mem_width } =>
+      hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
+  }
+}
+
+fn compute_request_work_demand(request: ComputeRequest, shard_count: Int) -> WorkDemand {
+  WorkDemand {
+    resources: allocation_class_resource_envelope(class: request.class),
+    os: none,
+    isolation: IsolationRequirement { boundary: PerJobFilesystem },
+    toolchains: [],
+    parallelism: IndependentShards { shard_count: shard_count },
+    data_locality: [],
+    effects: [],
+  }
+}
+
+fn placement_spawn_width_for_request(
+  supply: PlacementSupplyRow,
+  request: ComputeRequest,
+  shard_count: Int,
+  reserve_bytes: ByteSize,
+) -> HardwareThreadCount {
+  placement_spawn_width_with_reserve(
+    supply: supply,
+    demand: compute_request_work_demand(request: request, shard_count: shard_count),
+    reserve_bytes: reserve_bytes,
+  )
+}
+
 // --- §1.2 demand -------------------------------------------------------------
 
 type ResourceEnvelope {
@@ -659,6 +805,46 @@ type AllocationReceipt {
   provider: ProviderIdentity
   scope: NonEmptyStr
   acquired_at: LogicalTime
+  class: AllocationClass
+}
+
+fn sum_live_allocation_memory(receipts: List<AllocationReceipt>) -> Int {
+  fold(
+    receipts,
+    init: 0,
+    f: fn(acc, receipt) {
+      acc + allocation_class_memory_cost(class: receipt.class)
+    },
+  )
+}
+
+// Bin-pack fixed classes onto grantable — refuse when Σ live + request overflows.
+fn admit(
+  host: PlacementSupplyRow,
+  provider: ProviderIdentity,
+  live_receipts: List<AllocationReceipt>,
+  request: ComputeRequest,
+  reserve_bytes: ByteSize,
+  acquired_at: LogicalTime,
+) -> AllocationReceipt? {
+  let used = sum_live_allocation_memory(receipts: live_receipts)
+  let needed = allocation_class_memory_cost(class: request.class)
+  let grantable = placement_grantable_memory_bytes(
+    supply: host,
+    reserve_bytes: reserve_bytes,
+  )
+  if used + needed <= grantable {
+    Present {
+      value: AllocationReceipt {
+        provider: provider,
+        scope: allocation_class_label(class: request.class),
+        acquired_at: acquired_at,
+        class: request.class,
+      }
+    }
+  } else {
+    none
+  }
 }
 
 type ComputeLease {
@@ -1282,4 +1468,53 @@ fn witness_execution_receipt_digest_differs_by_demand(
   right: WorkDemand,
 ) -> Bool {
   execution_receipt_subject_digest(work_id: work_id, demand: left) != execution_receipt_subject_digest(work_id: work_id, demand: right)
+}
+
+// --- §7b admit witnesses (allocator plan step 1) ------------------------------
+
+data example_admit_provider: ProviderIdentity = "example-admit-host"
+data example_admit_host_identity: HostIdentity = "example-admit-host"
+data example_admit_logical_time: LogicalTime = "example:admit-witness"
+
+data example_admit_host_supply: PlacementSupplyRow = PlacementSupplyRow {
+  identity: example_admit_host_identity,
+  hardware_threads: hardware_thread_count(128),
+  clock_hz: hertz(3000000000),
+  ram_bytes: byte_size(17179869184),
+}
+
+data example_admit_live_large: AllocationReceipt = AllocationReceipt {
+  provider: example_admit_provider,
+  scope: "Large",
+  acquired_at: example_admit_logical_time,
+  class: Large,
+}
+
+fn witness_admit_grants_on_empty_host() -> Bool {
+  match admit(
+    host: example_admit_host_supply,
+    provider: example_admit_provider,
+    live_receipts: [],
+    request: ComputeRequest { class: Medium },
+    reserve_bytes: byte_size(0),
+    acquired_at: example_admit_logical_time,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// Discriminating: grantable = 8 GiB; one live Large (8 GiB) fills it — a second Large is refused.
+fn witness_admit_refuses_when_host_full() -> Bool {
+  match admit(
+    host: example_admit_host_supply,
+    provider: example_admit_provider,
+    live_receipts: [example_admit_live_large],
+    request: ComputeRequest { class: Large },
+    reserve_bytes: byte_size(0),
+    acquired_at: example_admit_logical_time,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

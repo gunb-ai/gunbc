@@ -1,0 +1,15 @@
+// dsl/test/claim/compute_fabric_admit_witness_test.dag
+//
+// By-execution witnesses for the allocation-class admit invariant (allocator plan step 1).
+
+module test.claim.compute_fabric_admit
+
+import product.compute_fabric {
+  witness_admit_grants_on_empty_host,
+  witness_admit_refuses_when_host_full,
+}
+
+test fn compute_fabric_admit_invariant_holds() -> Bool {
+  witness_admit_grants_on_empty_host()
+    && witness_admit_refuses_when_host_full()
+}
