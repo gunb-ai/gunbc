@@ -11,9 +11,7 @@ import v2.std.algebra {
   Greater,
   HeadAbsent,
   HeadFound,
-  IndexedElement,
   Less,
-  enumerate,
   first,
   flat_map,
   fold,
@@ -135,23 +133,6 @@ fn gap_fold_sum_holds() -> Bool {
   fold(xs: [1, 2, 3], init: 0, step: fn(acc, item) { acc + item }) == 6
 }
 
-fn gap_enumerate_holds() -> Bool {
-  match enumerate(xs: gap_sym_ab()) {
-    Cons {
-      head: IndexedElement { index: i0, value: v0 },
-      tail: Cons {
-        head: IndexedElement { index: i1, value: v1 },
-        tail: Empty
-      }
-    } =>
-      i0 == 0
-        && i1 == 1
-        && gap_sym_eq(a: v0, b: gap_sym_a())
-        && gap_sym_eq(a: v1, b: gap_sym_b())
-    _ => false
-  }
-}
-
 test fn freemonoid_gap_map_identity_holds() -> Bool { gap_map_identity_holds() }
 test fn freemonoid_gap_flat_map_singleton_holds() -> Bool { gap_flat_map_singleton_holds() }
 test fn freemonoid_gap_reverse_holds() -> Bool { gap_reverse_holds() }
@@ -162,4 +143,3 @@ test fn freemonoid_gap_sort_by_holds() -> Bool { gap_sort_by_holds() }
 test fn freemonoid_gap_first_last_holds() -> Bool { gap_first_last_holds() }
 test fn freemonoid_gap_first_empty_holds() -> Bool { gap_first_empty_holds() }
 test fn freemonoid_gap_fold_sum_holds() -> Bool { gap_fold_sum_holds() }
-test fn freemonoid_gap_enumerate_holds() -> Bool { gap_enumerate_holds() }

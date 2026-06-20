@@ -731,7 +731,9 @@ type ListHeadResult<T>
   = HeadFound { value: T }
   | HeadAbsent
 
-// v2 pair carrier for enumerate: dsl FreeMonoid.enumerate returns FreeMonoid<Tuple<Int, T>>.
+// v2 pair carrier for enumerate (dsl uses Tuple<Int, T>); enumerate fn deferred —
+// fold_list into FreeMonoid<IndexedElement<T>> trips bootstrap variant-not-found when
+// co-loaded with gap free-fns (ops-module isolation also fails). PR-1b / bootstrap fix.
 type IndexedElement<T> {
   index: Int
   value: T
@@ -812,10 +814,9 @@ fn first<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
 }
 
 fn last<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
-  // Iterative via fold_list_right — direct recursion on FreeMonoid<T> trips the
-  // v2 bootstrap "variant not found in type 'FreeMonoid'" limitation (same
-  // class as qualified_name.dag's FreeMonoid alias interim).
-  fold_list_right(xs: xs, empty: HeadAbsent, snoc: fn(_acc, item) {
+  // Left fold keeps the rightmost element — direct recursion on FreeMonoid<T>
+  // trips the v2 bootstrap "variant not found in type 'FreeMonoid'" limitation.
+  fold_list(xs: xs, empty: HeadAbsent, cons: fn(_acc, item) {
     HeadFound { value: item }
   })
 }
@@ -825,10 +826,7 @@ fn fold<T>(xs: FreeMonoid<T>, init: T, step: fn(T, T) -> T) -> T {
   fold_list(xs: xs, empty: init, cons: fn(acc, item) { step(acc, item) })
 }
 
-type EnumerateState<T> {
-  index: Int
-  result: FreeMonoid<IndexedElement<T>>
-}
+
 // Bag (multiset) equality: order-insensitive; equal lengths AND per-element
 // occurrence counts match. O(n^2) in the length of xs.
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
