@@ -489,6 +489,72 @@ fn tepe_enum_sym_for_disj(root: Node, disj_anchor: Node) -> Optional<Symbol> {
   )
 }
 
+fn tepe_singleton_contract_row_optional(
+  rows: List<CoproductWireContractIndexRow>
+) -> Optional<CoproductWireContractIndexRow> {
+  match list_at_optional(xs: rows, index: 0) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match list_tail(xs: rows) {
+        TailAbsent => optional_present(value: head)
+        TailFound { tail: tail } =>
+          match list_at_optional(xs: tail, index: 0) {
+            Absent => optional_present(value: head)
+            Present { value: _ } => optional_absent()
+          }
+      }
+  }
+}
+
+fn tepe_contract_row_for_disj_anchor(
+  rows: List<CoproductWireContractIndexRow>,
+  root: Node,
+  disj_anchor: Node
+) -> Optional<CoproductWireContractIndexRow> {
+  match tepe_enum_sym_for_disj(root: root, disj_anchor: disj_anchor) {
+    Present { value: enum_sym } =>
+      tepe_lookup_contract_row(rows: rows, enum_sym: enum_sym)
+    Absent => tepe_singleton_contract_row_optional(rows: rows)
+  }
+}
+
+fn tepe_apply_enriched_disj_form(
+  base: TargetTypeExpressionProjection,
+  catalog: Node,
+  naming_tag: Symbol
+) -> Outcome<TargetTypeExpressionProjection> {
+  bind_outcome(
+    o: tepe_disj_form_from_catalog(catalog: catalog, naming_tag: naming_tag),
+    f: fn(disj_form) {
+      outcome_accepted(
+        TargetTypeExpressionProjection {
+          atom_form: base.atom_form,
+          conj_form: base.conj_form,
+          disj_form: disj_form,
+          arrow_form: base.arrow_form,
+          cardinality_form: base.cardinality_form,
+          instantiation_form: base.instantiation_form
+        }
+      )
+    }
+  )
+}
+
+fn tepe_apply_contract_row_enrichment(
+  base: TargetTypeExpressionProjection,
+  catalog: Node,
+  contract: CoproductWireContractIndexRow
+) -> Outcome<TargetTypeExpressionProjection> {
+  match contract {
+    CoproductWireContractIndexRow { coproduct_sym: _, naming_tag: naming_tag, decl: _ } =>
+      tepe_apply_enriched_disj_form(
+        base: base,
+        catalog: catalog,
+        naming_tag: naming_tag
+      )
+  }
+}
+
 fn tepe_declaration_ref_value_atom_optional(node: Node) -> Optional<Node> {
   fold_node(
     n: node,
@@ -1008,43 +1074,17 @@ fn tepe_apply_coproduct_wire_contract_enrichment(
                                             type_coproduct_wire_contract: type_coproduct_wire_contract
                                           ),
                                           f: fn(rows) {
-                                            match tepe_enum_sym_for_disj(
+                                            match tepe_contract_row_for_disj_anchor(
+                                              rows: rows,
                                               root: tree.root,
                                               disj_anchor: node
                                             ) {
-                                              Present { value: enum_sym } =>
-                                                match tepe_lookup_contract_row(
-                                                  rows: rows,
-                                                  enum_sym: enum_sym
-                                                ) {
-                                                  Present { value: contract } =>
-                                                    match contract {
-                                                      CoproductWireContractIndexRow {
-                                                        coproduct_sym: _,
-                                                        naming_tag: naming_tag,
-                                                        decl: _
-                                                      } =>
-                                                        bind_outcome(
-                                                          o: tepe_disj_form_from_catalog(
-                                                            catalog: catalog,
-                                                            naming_tag: naming_tag
-                                                          ),
-                                                          f: fn(disj_form) {
-                                                            outcome_accepted(
-                                                              TargetTypeExpressionProjection {
-                                                                atom_form: base.atom_form,
-                                                                conj_form: base.conj_form,
-                                                                disj_form: disj_form,
-                                                                arrow_form: base.arrow_form,
-                                                                cardinality_form: base.cardinality_form,
-                                                                instantiation_form: base.instantiation_form
-                                                              }
-                                                            )
-                                                          }
-                                                        )
-                                                    }
-                                                  Absent => outcome_accepted(base)
-                                                }
+                                              Present { value: contract } =>
+                                                tepe_apply_contract_row_enrichment(
+                                                  base: base,
+                                                  catalog: catalog,
+                                                  contract: contract
+                                                )
                                               Absent => outcome_accepted(base)
                                             }
                                           }
