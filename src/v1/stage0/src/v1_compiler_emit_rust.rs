@@ -236,24 +236,6 @@ pub fn render_rust_type_without_applied_binding(
                 && ((n.children.clone().len() as i64) == 0))
             {
                 render_rust_text_carrier(shared_types.clone())
-            } else if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) == 0)
-                && v1_rt::set_contains(&shared_types, tn.clone()))
-            {
-                let stub_env = Rc::new(TypeEnv {
-                    bindings: Rc::new(HashMap::new()),
-                    recursive_types: Rc::new(vec![]),
-                    recursive_type_set: Rc::new(HashMap::new()),
-                    inductive_fields: Rc::new(HashMap::new()),
-                    source_indices: source_indices.clone(),
-                    intern_table: empty_intern_table(),
-                });
-                let rendered = rust_render_type_leaf_name(
-                    tn.clone(),
-                    v1_rt::rc_empty_map::<String, String>(),
-                    stub_env,
-                );
-                render_rust_shared_type_if_needed(tn.clone(), rendered, shared_types.clone())
             } else {
                 render_node_type(
                     n.clone(),
