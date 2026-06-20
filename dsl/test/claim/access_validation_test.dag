@@ -1,4 +1,4 @@
-// std/access_validation_test.dag — validate std.access by mapping real extdeps systems into it.
+// test/claim/access_validation_test.dag — validate std.access by mapping real extdeps systems into it.
 // Each system gets a `decide` of type AccessPolicy.decide; executed witnesses confirm the shape
 // actually answers each system's authorization question. Where a system strains the shape, the
 // strain is recorded (the "see if anything breaks" findings).
@@ -15,7 +15,7 @@
 //    carrying S/A/O + grounded coordinates (aws:SourceIp → NetworkLocality, s3:prefix → action
 //    parameter). Proven with no opaque `C` in test.claim.access_iam_validation.
 
-module std.test.access_validation
+module test.claim.access_validation
 
 import std.types { NonEmptyStr, Bool, Int }
 import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }

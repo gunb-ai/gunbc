@@ -4,7 +4,7 @@
 // the vendor IAMs (cloud/gcp/iam, github): every one answers the same question — may this SUBJECT
 // perform this ACTION on this OBJECT? The decision procedure differs per system, so this is the
 // agnostic query/decision shape — DESIGN §4 Realization (one interface, N system handlers) — NOT
-// any single system's mechanism. Validated by std/access_validation_test.dag, which maps each
+// any single system's mechanism. Validated by test/claim/access_validation_test.dag, which maps each
 // extdeps system into this shape; if a system can't be expressed, this abstraction is wrong.
 //
 // Derivation receipt (what they share, and where the shape STRAINS):
@@ -49,7 +49,7 @@ type AccessRequest<S, A, O> {
 }
 
 // A system inhabits the abstraction by providing a `decide`. The data witnesses in
-// std/access_validation_test.dag (posix_access_policy, rbac_access_policy, …) are the validation.
+// test/claim/access_validation_test.dag (posix_access_policy, rbac_access_policy, …) are the validation.
 type AccessPolicy<S, A, O> {
   decide: fn(AccessRequest<S, A, O>) -> AccessDecision
 }
