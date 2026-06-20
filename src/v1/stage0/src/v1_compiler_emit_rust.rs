@@ -484,30 +484,27 @@ pub fn render_rust_decl_type(
                     name.clone()
                 } else if ((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) == 0)
-                    && !has_applied_prop)
+                    && !has_applied_prop
+                    && v1_rt::set_contains(&shared_types, name.clone()))
                 {
-                    if name.clone().as_str() == "String".to_string().as_str() {
-                        render_rust_text_carrier(shared_types.clone())
-                    } else {
-                        let stub_env = Rc::new(TypeEnv {
-                            bindings: Rc::new(HashMap::new()),
-                            recursive_types: Rc::new(vec![]),
-                            recursive_type_set: Rc::new(HashMap::new()),
-                            inductive_fields: Rc::new(HashMap::new()),
-                            source_indices: source_indices.clone(),
-                            intern_table: empty_intern_table(),
-                        });
-                        let rendered = rust_render_type_leaf_name(
-                            name.clone(),
-                            v1_rt::rc_empty_map::<String, String>(),
-                            stub_env,
-                        );
-                        render_rust_shared_type_if_needed(
-                            name.clone(),
-                            rendered,
-                            shared_types.clone(),
-                        )
-                    }
+                    let stub_env = Rc::new(TypeEnv {
+                        bindings: Rc::new(HashMap::new()),
+                        recursive_types: Rc::new(vec![]),
+                        recursive_type_set: Rc::new(HashMap::new()),
+                        inductive_fields: Rc::new(HashMap::new()),
+                        source_indices: source_indices.clone(),
+                        intern_table: empty_intern_table(),
+                    });
+                    let rendered = rust_render_type_leaf_name(
+                        name.clone(),
+                        v1_rt::rc_empty_map::<String, String>(),
+                        stub_env,
+                    );
+                    render_rust_shared_type_if_needed(
+                        name.clone(),
+                        rendered,
+                        shared_types.clone(),
+                    )
                 } else {
                     if ((n.connective.clone() == Connective::NoConnective)
                         && ((n.children.clone().len() as i64) > 0))
