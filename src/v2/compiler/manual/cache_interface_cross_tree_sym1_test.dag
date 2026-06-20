@@ -25,8 +25,20 @@ import v2.std.text { String }
 
 
 // Force both namespaces into one module: dsl CacheLookupResult + v2 Empty/Cons.
+fn sym1_cache_miss() -> CacheLookupResult<String> {
+  Miss
+}
+
+fn sym1_cache_rejected() -> CacheLookupResult<String> {
+  RejectedHit { reason: FreshnessExpired }
+}
+
+fn sym1_v2_list() -> FreeMonoid<String> {
+  Cons { head: ^sym1, tail: Empty }
+}
+
 fn sym1_miss_is_miss() -> Bool {
-  match (Miss: CacheLookupResult<String>) {
+  match sym1_cache_miss() {
     Miss => true
     RejectedHit { reason: _ } => false
     Hit { receipt: _ } => false
@@ -34,7 +46,7 @@ fn sym1_miss_is_miss() -> Bool {
 }
 
 fn sym1_rejected_hit_is_rejected() -> Bool {
-  match (RejectedHit { reason: FreshnessExpired }: CacheLookupResult<String>) {
+  match sym1_cache_rejected() {
     Miss => false
     RejectedHit { reason: FreshnessExpired } => true
     RejectedHit { reason: _ } => false
@@ -43,7 +55,7 @@ fn sym1_rejected_hit_is_rejected() -> Bool {
 }
 
 fn sym1_v2_algebra_nonempty() -> Bool {
-  match (Cons { head: ^sym1, tail: Empty }: FreeMonoid<String>) {
+  match sym1_v2_list() {
     Empty => false
     Cons { head: h, tail: _ } => h == ^sym1
   }
