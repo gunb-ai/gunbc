@@ -30,7 +30,7 @@ data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_
 data closure_witness_module_count: String = "compiler_closure_scoped_ingest_module_count_ok_holds"
 data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
 data closure_gap4_entry: String = "src/v2/test/claim/languages/gap4_parse_tokens_remain_test.dag"
-data closure_gap4_witness: String = "gap4_minimal_red_tokens_remain_holds"
+data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"
 
 fn emit_closure_manifest_stmt() -> ShellStmt {
   command(words: [
