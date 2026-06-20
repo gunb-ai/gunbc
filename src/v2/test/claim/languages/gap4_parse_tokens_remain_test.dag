@@ -1,0 +1,118 @@
+// Gap-4 unit witnesses — parse_g0_tokens_remain on 02_parse.dag deficit.
+// UNIT harness (gap-2 pattern): tokenize + parse_module on literal src strings;
+// no host manifest overlay. Smallest src where parses=false AND reason is
+// parse_g0_tokens_remain = minimal RED fixture.
+
+module v2.test.languages.gap4_parse_tokens_remain
+
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn parses(src: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rejects_parse_g0_tokens_remain(src: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => d.head.reason == ^parse_g0_tokens_remain
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// --- decl 42 whole: set_symbol_insert @L622 ---
+test fn gap4_decl42_set_symbol_insert_whole_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {\n  Set {\n    member: fn(sym) { sym == item || s.member(sym) }\n  }\n}\n"
+  )
+}
+
+test fn gap4_decl42_set_symbol_insert_whole_tokens_remain_holds() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module m.t\nfn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {\n  Set {\n    member: fn(sym) { sym == item || s.member(sym) }\n  }\n}\n"
+  )
+}
+
+// --- decl 41 whole: parse_nonterminal_memoized @L548 (body only, stub deps) ---
+test fn gap4_decl41_parse_nonterminal_memoized_whole_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\ntype ParsePositionKey { position: Int, production: Symbol }\ntype ParseExprResult = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic>, prov: Int } | ParseExprRejected { diagnostics: List<Diagnostic> }\nfn parse_nonterminal_memoized(\n  all_tokens: List<Token>,\n  tokens: List<Token>,\n  root: GrammarRoot,\n  table: ParseTable,\n  prod_name: Symbol,\n  prov: Int\n) -> ParseExprResult {\n  let key = ParsePositionKey {\n    position: 0,\n    production: prod_name\n  }\n  match grammar_lookup_production(root: root, name: prod_name) {\n    Violates { diagnostic: d } =>\n      ParseExprRejected { diagnostics: [d] }\n    Holds { value: production } =>\n      match parse_table_lookup(table: table, key: key) {\n        Holds { value: inner } =>\n          match inner {\n            ParseExprRejected { diagnostics: diags } =>\n              ParseExprRejected { diagnostics: diags }\n            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>\n              let merged_prov = 0\n              let stamped = captured\n              ParseExprAccepted {\n                remaining: remaining,\n                captured: stamped,\n                diagnostics: diags,\n                prov: merged_prov\n              }\n          }\n        Violates { diagnostic: _ } =>\n          ParseExprRejected { diagnostics: [] }\n      }\n  }\n}\n"
+  )
+}
+
+test fn gap4_decl41_parse_nonterminal_memoized_whole_tokens_remain_holds() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module m.t\ntype ParsePositionKey { position: Int, production: Symbol }\ntype ParseExprResult = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic>, prov: Int } | ParseExprRejected { diagnostics: List<Diagnostic> }\nfn parse_nonterminal_memoized(\n  all_tokens: List<Token>,\n  tokens: List<Token>,\n  root: GrammarRoot,\n  table: ParseTable,\n  prod_name: Symbol,\n  prov: Int\n) -> ParseExprResult {\n  let key = ParsePositionKey {\n    position: 0,\n    production: prod_name\n  }\n  match grammar_lookup_production(root: root, name: prod_name) {\n    Violates { diagnostic: d } =>\n      ParseExprRejected { diagnostics: [d] }\n    Holds { value: production } =>\n      match parse_table_lookup(table: table, key: key) {\n        Holds { value: inner } =>\n          match inner {\n            ParseExprRejected { diagnostics: diags } =>\n              ParseExprRejected { diagnostics: diags }\n            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>\n              let merged_prov = 0\n              let stamped = captured\n              ParseExprAccepted {\n                remaining: remaining,\n                captured: stamped,\n                diagnostics: diags,\n                prov: merged_prov\n              }\n          }\n        Violates { diagnostic: _ } =>\n          ParseExprRejected { diagnostics: [] }\n      }\n  }\n}\n"
+  )
+}
+
+// --- suspect (a): let record-literal value then match tail ---
+test fn gap4_suspect_a_let_record_then_match_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn f() -> Int {\n  let key = ParsePositionKey {\n    position: 0,\n    production: ^foo\n  }\n  match lookup() {\n    Holds { value: v } => 0\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
+  )
+}
+
+test fn gap4_suspect_a_let_record_then_match_tokens_remain_holds() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module m.t\nfn f() -> Int {\n  let key = ParsePositionKey {\n    position: 0,\n    production: ^foo\n  }\n  match lookup() {\n    Holds { value: v } => 0\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
+  )
+}
+
+// --- suspect (b): chained sequential lets then tail expr ---
+test fn gap4_suspect_b_chained_lets_tail_expr_parses_holds() -> Bool {
+  parses(
+    src: "module m.t\nfn f() -> Int {\n  let merged_prov = 0\n  let stamped = node\n  ParseExprAccepted {\n    remaining: remaining,\n    captured: stamped,\n    diagnostics: diags,\n    prov: merged_prov\n  }\n}\n"
+  )
+}
+
+test fn gap4_suspect_b_chained_lets_tail_expr_tokens_remain_holds() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module m.t\nfn f() -> Int {\n  let merged_prov = 0\n  let stamped = node\n  ParseExprAccepted {\n    remaining: remaining,\n    captured: stamped,\n    diagnostics: diags,\n    prov: merged_prov\n  }\n}\n"
+  )
+}
+
+// --- suspect (c): || operator (first in file @L624) ---
+test fn gap4_suspect_c_or_operator_parses_holds() -> Bool {
+  parses(src: "module m.t\nfn f() -> Bool { sym == item || s.member(sym) }\n")
+}
+
+test fn gap4_suspect_c_or_operator_tokens_remain_holds() -> Bool {
+  rejects_parse_g0_tokens_remain(src: "module m.t\nfn f() -> Bool { sym == item || s.member(sym) }\n")
+}
+
+// --- minimal RED (filled after bisect) ---
+test fn gap4_minimal_red_tokens_remain_holds() -> Bool {
+  rejects_parse_g0_tokens_remain(
+    src: "module m.t\nfn f() -> Int {\n  let key = ParsePositionKey {\n    position: 0,\n    production: ^foo\n  }\n  match lookup() {\n    Holds { value: v } => 0\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
+  )
+}
+
+// DISCRIMINATING CONTROL — malformed let (missing eq) must Reject but NOT tokens_remain.
+test fn gap4_malformed_let_missing_eq_rejects_not_tokens_remain_holds() -> Bool {
+  match parses(src: "module m.t\nfn f() -> Int {\n  let key ParsePositionKey { position: 0 }\n  0\n}\n") {
+    true => false
+    false =>
+      match rejects_parse_g0_tokens_remain(
+        src: "module m.t\nfn f() -> Int {\n  let key ParsePositionKey { position: 0 }\n  0\n}\n"
+      ) {
+        true => false
+        false => true
+      }
+  }
+}

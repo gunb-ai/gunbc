@@ -1,0 +1,10 @@
+module gap4.probe.set_symbol_insert
+
+import v2.std.collection { Set }
+import v2.std.node { Symbol }
+
+fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
+  Set {
+    member: fn(sym) { sym == item || s.member(sym) }
+  }
+}
