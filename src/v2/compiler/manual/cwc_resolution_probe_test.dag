@@ -30,7 +30,8 @@ import v2.compiler.type_expression_projection_enrichment {
   tepe_data_decl_coproduct_row_present,
   tepe_wire_contract_index_nonempty,
   tepe_collect_data_decl_nodes,
-  tepe_build_coproduct_wire_contract_index
+  tepe_build_coproduct_wire_contract_index,
+  tepe_target_bundle_optional_child
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import extdeps.languages.rust.emit { rust_serde_rename_all_screaming_snake_case }
@@ -47,7 +48,7 @@ import v2.std.algebra { is_empty }
 import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
 import v2.std.logic { Bool }
-import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
+import v2.std.node_query { find_named_child }
 import v2.std.text { String }
 
 // Multi-variant coproduct sources exercised by the n-ary Disj fold witnesses below.
@@ -425,6 +426,41 @@ test fn cwc_data_decl_coproduct_row_present_holds() -> Bool {
         field_encoding: ^encoding,
         type_coproduct_wire_contract: ^CoproductWireContract
       )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_enrichment_bundle_present_holds() -> Bool {
+  match tepe_target_bundle_optional_child(
+    target: rust_wire_serde_screaming_snake_target,
+    edge_name: ^target_model_edge_type_expression_projection_enrichment
+  ) {
+    Accepted { value: optional_enrichment, diagnostics: _ } =>
+      match optional_enrichment {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cwc_enrichment_field_coproduct_lookup_holds() -> Bool {
+  match tepe_target_bundle_optional_child(
+    target: rust_wire_serde_screaming_snake_target,
+    edge_name: ^target_model_edge_type_expression_projection_enrichment
+  ) {
+    Accepted { value: optional_enrichment, diagnostics: _ } =>
+      match optional_enrichment {
+        Present { value: enrichment } =>
+          match find_named_child(
+            root: enrichment,
+            name: ^target_type_expr_projection_enrichment_field_coproduct
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Absent => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }

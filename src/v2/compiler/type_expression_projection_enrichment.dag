@@ -1115,7 +1115,16 @@ fn tepe_bundle_child_lookup_step(
   match acc {
     TepeBundleChildDuplicate => TepeBundleChildDuplicate
     TepeBundleChildInvalidEdge => TepeBundleChildInvalidEdge
-    TepeBundleChildFound { value: _ } => TepeBundleChildDuplicate
+    TepeBundleChildFound { value: _ } =>
+      match e.label {
+        Named { name: n } =>
+          if n == edge_name {
+            TepeBundleChildDuplicate
+          } else {
+            acc
+          }
+        Positional => TepeBundleChildInvalidEdge
+      }
     TepeBundleChildMissing =>
       match e.label {
         Named { name: n } =>
