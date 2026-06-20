@@ -256,6 +256,41 @@ fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
 // Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 
+// IEC 60027-2 binary memory prefixes (powers of 2). Distinct from SI decimal `Scale` —
+// DMTF Redfish `TotalSystemMemoryGiB` names gibibytes (GiB = 2^30 bytes), not SI gigabytes.
+// Q-Unit-5 minted-with-consumer: extdeps.bmc Redfish memory grounding witness.
+type IecBinaryMemoryScale =
+    Kibi   // 2^10 bytes per unit
+  | Mebi   // 2^20
+  | Gibi   // 2^30
+  | Tebi   // 2^40
+
+fn iec_binary_memory_bytes_per_unit(scale: IecBinaryMemoryScale) -> Nat {
+  match scale {
+    Kibi => 1024
+    Mebi => 1048576
+    Gibi => 1073741824
+    Tebi => 1099511627776
+  }
+}
+
+// Memory capacity in gibibytes (IEC GiB). The Redfish field is explicit about binary units.
+type Gibibyte {
+  count: Nat
+}
+
+fn gibibyte(count: Nat) -> Gibibyte {
+  Gibibyte { count: count }
+}
+
+fn gibibyte_count(g: Gibibyte) -> Nat {
+  g.count
+}
+
+fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
+  byte_size(count: gibibyte_count(g) * iec_binary_memory_bytes_per_unit(scale: Gibi))
+}
+
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
 // carrier; Information's FIRST inhabitant — sets precedent: Information = digital
 // bits, atomic unit at scale One).

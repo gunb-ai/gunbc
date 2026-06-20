@@ -9,7 +9,15 @@
 module test.claim.bmc_redfish_grounding
 
 import std.logic { Bool }
-import std.measure { byte_size_count, watt, watt_count, hardware_thread_count, hardware_thread_count_value }
+import std.measure {
+  byte_size_count,
+  watt,
+  watt_count,
+  hardware_thread_count,
+  hardware_thread_count_value,
+  gibibyte,
+  gibibyte_to_byte_size,
+}
 import extdeps.bmc.types {
   BmcTelemetrySnapshot,
   RedfishChassisSensorCollection,
@@ -35,7 +43,7 @@ data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_invent
   processor_model: "Ampere(R) Altra(R) Processor",
   processor_count: 1,
   processor_core_count: hardware_thread_count(128),
-  total_memory_gib: 128,
+  total_memory_gib: gibibyte(128),
   power_state: On,
   logical_processor_count: Present { value: hardware_thread_count(128) }
 )
@@ -74,7 +82,7 @@ test fn bmc_redfish_grounding_holds() -> Bool {
     && example_srv2_redfish_system.processor.processor_count == 1
     && example_srv2_redfish_system.manufacturer == Present { value: "ASRockRack" }
     && obs.processor_model == "Ampere(R) Altra(R) Processor"
-    && byte_size_count(obs.total_memory_bytes) == 128 * 1073741824
+    && byte_size_count(obs.total_memory_bytes) == byte_size_count(gibibyte_to_byte_size(g: gibibyte(128)))
     && match obs.power_consumed_watts {
       Present { value: w } => watt_count(w) == 112
       Absent => false
