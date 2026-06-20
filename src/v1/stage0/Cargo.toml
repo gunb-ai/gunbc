@@ -68,3 +68,8 @@ path = "src/bin/yaml_check.rs"
 [[bin]]
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
+
+# Whole-tree v2 parse regression scanner (host transport; one harness, N files).
+[[bin]]
+name = "v2_whole_tree_parse_scan"
+path = "src/bin/v2_whole_tree_parse_scan.rs"
