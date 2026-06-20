@@ -34,6 +34,7 @@ type RedfishMemorySummary {
 // ComputerSystem resource — system inventory read from /redfish/v1/Systems/{id}.
 type RedfishSystemInventory {
   model: NonEmptyStr
+  manufacturer: NonEmptyStr?
   serial_number: NonEmptyStr?
   processor: RedfishProcessorSummary
   memory: RedfishMemorySummary
@@ -68,11 +69,31 @@ type RedfishThermalSubsystem {
   temperatures: List<RedfishTemperatureReading>
 }
 
+// OpenBMC on ALTRAD8UD-1L2T (Redfish 1.15): Chassis Power/Thermal collections are EMPTY;
+// per-sensor docs live under /redfish/v1/Chassis/{chassis_id}/Sensors/{name} with
+// {Reading, ReadingUnits}. Verified live on srv2 2026-06-20 (operator probe).
+type RedfishSensorUnits = Watts | Celsius | Rpm
+
+type RedfishSensorKind = Power | Temperature | FanTach
+
+type RedfishSensorReading {
+  name: NonEmptyStr
+  kind: RedfishSensorKind
+  reading: Int?
+  units: RedfishSensorUnits?
+}
+
+type RedfishChassisSensorCollection {
+  chassis_id: NonEmptyStr
+  sensors: List<RedfishSensorReading>
+}
+
 // Aggregate telemetry bundle for one BMC poll — the shape ctrl/gunbc grounding consumes.
 type BmcTelemetrySnapshot {
   system: RedfishSystemInventory
   power: RedfishPowerSubsystem?
   thermal: RedfishThermalSubsystem?
+  sensors: RedfishChassisSensorCollection?
 }
 
 // Observed host facts projected from a BMC telemetry snapshot — replaces hand-typed

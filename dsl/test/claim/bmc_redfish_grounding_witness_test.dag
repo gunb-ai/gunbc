@@ -1,13 +1,10 @@
 // test/claim/bmc_redfish_grounding_witness_test.dag — by-execution witness (DESIGN §5)
 // for the BMC → host-facts grounding seam.
 //
-// Exercises the pure projection: structured Redfish telemetry shapes (as returned by
-// OpenBMC on ASRock ALTRAD8UD-class boards) fold into BmcGroundedHostObservations —
-// the record that replaces hand-typed srv1/srv2 CPU model / core-count / RAM / power.
-//
-// Wet transport (redfish.Http.GetSystem/GetPower/GetThermal) is proven separately in
-// diagnostic_redfish_witness.dag and gunbc.tools.bmc_first_contact; JSON parse from
-// curl stdout into these shapes dissolves when v2.extdeps.formats.json crosses dsl/.
+// Fixture grounded on live srv2 Redfish probe 2026-06-20 (operator warm-crane-135):
+//   Systems/system: CoreCount=128, 128GiB, Model=ALTRAD8UD-1L2T, Manufacturer=ASRockRack
+//   Chassis ALTRAD8UD_1L2T: Power/Thermal empty; sensors power_PWR_Core_VRD ~95W,
+//   power_PWR_SOC_VRD ~17W (16.5 rounded).
 
 module test.claim.bmc_redfish_grounding
 
@@ -15,57 +12,71 @@ import std.logic { Bool }
 import std.measure { byte_size_count, watt, watt_count, hardware_thread_count, hardware_thread_count_value }
 import extdeps.bmc.types {
   BmcTelemetrySnapshot,
+  RedfishChassisSensorCollection,
   RedfishPowerControl,
   RedfishPowerSubsystem,
+  RedfishSensorReading,
   RedfishSystemInventory,
   On,
+  Power,
+  Watts,
 }
 import extdeps.bmc.redfish {
   bmc_ground_host_observations,
   redfish_system_inventory,
 }
 import extdeps.bmc { bmc_ground_snapshot }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 
-// Fixture shaped like OpenBMC Redfish on srv-class Ampere hosts: 8×16 GiB DIMMs (128 GiB),
-// single-socket Altra Q64-30 (ProcessorSummary.Count=1, CoreCount=64), ~180 W wall draw.
-data example_srv_redfish_system: RedfishSystemInventory = redfish_system_inventory(
+// Live srv2 system inventory shape.
+data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_inventory(
   model: "ALTRAD8UD-1L2T",
+  manufacturer: Present { value: "ASRockRack" },
   processor_model: "Ampere(R) Altra(R) Processor",
   processor_count: 1,
-  processor_core_count: hardware_thread_count(64),
+  processor_core_count: hardware_thread_count(128),
   total_memory_gib: 128,
   power_state: On,
-  logical_processor_count: Present { value: hardware_thread_count(64) }
+  logical_processor_count: Present { value: hardware_thread_count(128) }
 )
 
-data example_srv_redfish_power: RedfishPowerSubsystem = RedfishPowerSubsystem {
-  controls: [
-    RedfishPowerControl {
-      member_id: "0",
-      name: Present { value: "total_power" },
-      power_consumed_watts: Present { value: watt(178) },
-      power_limit_watts: none,
+// OpenBMC ALTRAD8UD: Chassis Power collection is empty — power from sensor docs.
+data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
+  chassis_id: asrock_altrad8ud_redfish_chassis_id,
+  sensors: [
+    RedfishSensorReading {
+      name: "power_PWR_Core_VRD",
+      kind: Power,
+      reading: Present { value: 95 },
+      units: Present { value: Watts },
+    },
+    RedfishSensorReading {
+      name: "power_PWR_SOC_VRD",
+      kind: Power,
+      reading: Present { value: 17 },
+      units: Present { value: Watts },
     },
   ],
 }
 
-data example_srv_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
-  system: example_srv_redfish_system,
-  power: Present { value: example_srv_redfish_power },
+data example_srv2_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+  system: example_srv2_redfish_system,
+  power: none,
   thermal: none,
+  sensors: Present { value: example_srv2_sensor_power },
 }
 
 test fn bmc_redfish_grounding_holds() -> Bool {
-  let obs = bmc_ground_snapshot(snapshot: example_srv_telemetry)
-  // 128 GiB = 128 * 1073741824 bytes — matches 8× HMA82GR7AFR4N-VK sticks on srv1/srv2.
+  let obs = bmc_ground_snapshot(snapshot: example_srv2_telemetry)
   hardware_thread_count_value(
-    bmc_ground_host_observations(snapshot: example_srv_telemetry).processor_core_count
-  ) == 64
-    && example_srv_redfish_system.processor.processor_count == 1
+    bmc_ground_host_observations(snapshot: example_srv2_telemetry).processor_core_count
+  ) == 128
+    && example_srv2_redfish_system.processor.processor_count == 1
+    && example_srv2_redfish_system.manufacturer == Present { value: "ASRockRack" }
     && obs.processor_model == "Ampere(R) Altra(R) Processor"
     && byte_size_count(obs.total_memory_bytes) == 128 * 1073741824
     && match obs.power_consumed_watts {
-      Present { value: w } => watt_count(w) == 178
+      Present { value: w } => watt_count(w) == 112
       Absent => false
     }
 }
@@ -83,9 +94,10 @@ data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
 }
 
 data example_srv_telemetry_power_unread: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
-  system: example_srv_redfish_system,
+  system: example_srv2_redfish_system,
   power: Present { value: example_srv_power_unread },
   thermal: none,
+  sensors: none,
 }
 
 test fn bmc_redfish_grounding_power_unread_is_absent() -> Bool {

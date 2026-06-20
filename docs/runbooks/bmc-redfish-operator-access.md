@@ -29,50 +29,61 @@ If connection fails:
 
 ## 2. Authenticate (factory vs rotated)
 
-**First contact (factory default):**
+**Fleet BMC addresses (operator LAN 192.168.1.0/24):** srv1 `192.168.1.183`, srv2 `192.168.1.184`.
+
+**First contact (factory default only — already rotated on srv1/srv2):**
 
 ```bash
 curl -sk -u 'root:0penBmc' "https://${BMC_HOST}/redfish/v1/Systems/system"
 ```
 
-**After rotation:** use the credential from ctrl's secret store — never pass rotated passwords on the shell argv in shared logs; prefer `~/.netrc` or the gunbc tool with env-injected secrets.
-
-Auth failure with factory credentials usually means rotation already happened (expected on production hosts).
-
-## 3. Read telemetry resources (inventory + power + thermal)
-
-| Resource | Redfish path | Modeled shape (`dsl/extdeps/bmc/types.dag`) |
-|----------|--------------|-----------------------------------------------|
-| System inventory (CPU model, core count, RAM) | `/redfish/v1/Systems/system` | `RedfishSystemInventory` |
-| Power (wall draw, limits) | `/redfish/v1/Chassis/Self/Power` | `RedfishPowerSubsystem` / `RedfishPowerControl` |
-| Thermal | `/redfish/v1/Chassis/Self/Thermal` | `RedfishThermalSubsystem` |
-| Sensors (breadth) | `/redfish/v1/Chassis/Self/Sensors` | diagnostic layer (`redfish.Http.GetSensors`) |
-
-Example reads:
+**Production (rotated secret):** use a `0600` netrc file — password MUST NOT appear on curl argv:
 
 ```bash
-curl -sk -u 'root:0penBmc' "https://${BMC_HOST}/redfish/v1/Systems/system" \
-  | jq '{Model, PowerState, ProcessorSummary, MemorySummary}'
-
-curl -sk -u 'root:0penBmc' "https://${BMC_HOST}/redfish/v1/Chassis/Self/Power" \
-  | jq '.PowerControl[] | {Name, PowerConsumedWatts, PowerLimitWatts}'
-
-curl -sk -u 'root:0penBmc' "https://${BMC_HOST}/redfish/v1/Chassis/Self/Thermal" \
-  | jq '.Temperatures[] | {Name, ReadingCelsius}'
+# ~/.bmc-netrc (mode 0600): machine 192.168.1.184 login root password <rotated>
+export BMC_NETRC_FILE=~/.bmc-netrc
+curl -sk --netrc-file "$BMC_NETRC_FILE" "https://${BMC_HOST}/redfish/v1/Systems/system"
 ```
 
-**Grounding mapping:** `ProcessorSummary.Model` + `ProcessorSummary.CoreCount` → CPU core observations (`Count` is socket count, not cores); `MemorySummary.TotalSystemMemoryGiB` → total RAM (`ByteSize`); `PowerControl.PowerConsumedWatts` → Energy axis (`Watt` / `HardwareAxes.power` in `product.hardware_selection`) when reported, otherwise absent.
+Auth failure with factory credentials means rotation already happened (expected on production hosts).
+
+## 3. Read telemetry resources (inventory + sensors)
+
+**Live shape on ALTRAD8UD-1L2T (OpenBMC / Redfish 1.15, verified srv2 2026-06-20):**
+
+| Resource | Redfish path | Modeled shape |
+|----------|--------------|---------------|
+| System inventory | `/redfish/v1/Systems/system` | `RedfishSystemInventory` (CoreCount, MemorySummary, Model, Manufacturer) |
+| Chassis sensors (power/temp) | `/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors` | `RedfishChassisSensorCollection` |
+| Chassis Power/Thermal | `/redfish/v1/Chassis/ALTRAD8UD_1L2T/Power` etc. | **EMPTY** on this board — use Sensors |
+
+Chassis member id is `ALTRAD8UD_1L2T` (underscores), cited in `extdeps/boards/asrock_rack.dag`.
+
+Example reads (netrc auth):
+
+```bash
+export BMC_HOST=192.168.1.184
+curl -sk --netrc-file "$BMC_NETRC_FILE" "https://${BMC_HOST}/redfish/v1/Systems/system" \
+  | jq '{Model, Manufacturer, PowerState, ProcessorSummary, MemorySummary}'
+
+curl -sk --netrc-file "$BMC_NETRC_FILE" \
+  "https://${BMC_HOST}/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors" \
+  | jq '.Members[].@odata.id' 
+# Per-sensor: power_PWR_Core_VRD (~95W), power_PWR_SOC_VRD (~16.5W), temperature_TEMP_* …
+```
+
+**Grounding mapping:** `ProcessorSummary.CoreCount` → `HardwareThreadCount`; `MemorySummary.TotalSystemMemoryGiB` → `ByteSize`; power sums `power_PWR_*` sensor readings when Chassis Power is empty.
 
 ## 4. gunbc read-only poll (modeled transport)
 
-From the gunbc repo worktree:
+From the gunbc repo worktree (rotated cred — requires netrc):
 
 ```bash
-BMC_HOST=<srvN-bmc-ip> gunbc run --source-root dsl \
+BMC_HOST=192.168.1.184 BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
   --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
 ```
 
-Exit 0 means all three GETs (System, Power, Thermal) succeeded. First-contact only:
+Exit 0 means Systems/system + Chassis sensors GET succeeded. Factory first-contact only (unrotated):
 
 ```bash
 BMC_HOST=<srvN-bmc-ip> gunbc run --source-root dsl \

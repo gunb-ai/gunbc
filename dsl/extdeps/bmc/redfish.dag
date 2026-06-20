@@ -10,12 +10,16 @@ module extdeps.bmc.redfish
 import extdeps.bmc.types {
   BmcGroundedHostObservations,
   BmcTelemetrySnapshot,
+  RedfishChassisSensorCollection,
   RedfishMemorySummary,
   RedfishPowerControl,
   RedfishPowerSubsystem,
   RedfishProcessorSummary,
+  RedfishSensorKind,
+  RedfishSensorReading,
   RedfishSystemInventory,
   RedfishPowerState,
+  Power,
 }
 import std.measure {
   ByteSize,
@@ -53,6 +57,7 @@ fn redfish_processor_summary(
 
 fn redfish_system_inventory(
   model: NonEmptyStr,
+  manufacturer: NonEmptyStr?,
   processor_model: NonEmptyStr,
   processor_count: Int,
   processor_core_count: HardwareThreadCount,
@@ -62,6 +67,7 @@ fn redfish_system_inventory(
 ) -> RedfishSystemInventory {
   RedfishSystemInventory {
     model: model,
+    manufacturer: manufacturer,
     serial_number: none,
     processor: redfish_processor_summary(
       model: processor_model,
@@ -92,6 +98,47 @@ fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Wa
   )
 }
 
+// Sum power sensor readings (power_PWR_* on OpenBMC ALTRAD8UD). Absent when none report.
+fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Watt? {
+  fold(
+    sensors,
+    init: Absent,
+    f: (acc, sensor) =>
+      match sensor.kind {
+        Power =>
+          match sensor.reading {
+            Absent => acc
+            Present { value: w } =>
+              match acc {
+                Absent => Present { value: watt(count: w) }
+                Present { value: sum } => Present { value: watt(count: watt_count(sum) + w) }
+              }
+          }
+        Temperature => acc
+        FanTach => acc
+      }
+  )
+}
+
+fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
+  match snapshot.power {
+    Present { value: p } =>
+      match redfish_power_consumed_total_watts(controls: p.controls) {
+        Present { value: w } => Present { value: w }
+        Absent =>
+          match snapshot.sensors {
+            Absent => none
+            Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
+          }
+      }
+    Absent =>
+      match snapshot.sensors {
+        Absent => none
+        Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
+      }
+  }
+}
+
 fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerControl? {
   fold(
     power.controls,
@@ -107,15 +154,11 @@ fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerCo
 // Project a telemetry snapshot to the host observations record ctrl consumes instead of
 // hand-typed fleet rows.
 fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
-  let consumed = match snapshot.power {
-    Absent => none
-    Present { value: p } => redfish_power_consumed_total_watts(controls: p.controls)
-  }
   BmcGroundedHostObservations {
     processor_model: snapshot.system.processor.model,
     processor_core_count: snapshot.system.processor.core_count,
     total_memory_bytes: snapshot.system.memory.total_memory_bytes,
-    power_consumed_watts: consumed,
+    power_consumed_watts: bmc_telemetry_power_consumed_watts(snapshot: snapshot),
   }
 }
 

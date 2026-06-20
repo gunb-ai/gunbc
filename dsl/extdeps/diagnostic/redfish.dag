@@ -47,6 +47,36 @@ service redfish.Http {
     }
   }
 
+  // Authenticated read via netrc file — REQUIRED for rotated BMC secrets (password must
+  // not appear on curl argv). netrc_file path comes from BMC_NETRC_FILE (0600 file).
+  operation GetSystemWithNetrc {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/system"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system GET (netrc) failed"
+    }
+  }
+
+  // Chassis sensor collection — OpenBMC ALTRAD8UD exposes power/temp under Sensors/{name}
+  // (Chassis Power/Thermal are empty on Redfish 1.15 for this board).
+  operation GetChassisSensors {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Sensors"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis sensors GET failed"
+    }
+  }
+
   // Chassis Power — PowerControl members (PowerConsumedWatts, PowerLimitWatts).
   // Shape authority: extdeps/bmc/types.dag (RedfishPowerSubsystem).
   operation GetPower {

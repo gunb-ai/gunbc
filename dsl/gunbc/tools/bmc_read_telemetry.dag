@@ -1,21 +1,20 @@
 // gunbc/tools/bmc_read_telemetry.dag — runnable: poll BMC Redfish telemetry (read-only).
 //
-// Reaches the BMC at $BMC_HOST with the OpenBMC factory login (extdeps/bmc/openbmc.dag),
-// then GETs System + Power + Thermal resources. Safe — no state is changed.
+// Reaches the BMC at $BMC_HOST using rotated credentials from $BMC_NETRC_FILE (0600
+// netrc — password MUST NOT ride curl argv). GETs Systems/system + Chassis sensors.
 //
-// Run (management network required; set BMC_HOST to the board's dedicated BMC IP):
-//   BMC_HOST=10.0.0.10 gunbc run --source-root dsl \
+// Run (management network; srv2 BMC example):
+//   BMC_HOST=192.168.1.184 BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
 //     --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
 //
-// stdout is not yet parsed into extdeps/bmc/types shapes — curl bodies are captured for
-// operator inspection until the JSON parse handler lands (§3 peripheral realization).
-// Grounding projections are proven in test.claim.bmc_redfish_grounding.
+// OpenBMC ALTRAD8UD: Chassis Power/Thermal are empty; sensor collection carries power/temp.
+// Factory first-contact (unrotated) remains gunbc.tools.bmc_first_contact.
 
 module gunbc.tools.bmc_read_telemetry
 
 import extdeps.shell
 import extdeps.diagnostic.redfish
-import extdeps.bmc.openbmc { openbmc_factory_login }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 import std.types { NonEmptyStr, String }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -24,32 +23,40 @@ func bmc_read_telemetry() -> ProcessExit
   uses net: Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
+  netrc = shell.Env.Get(name: "BMC_NETRC_FILE")
   match host.value {
     Absent => return exit_failure(reason: "BMC_HOST is not set")
-    Present { value: v } =>
-      if v == "" {
+    Present { value: host_v } =>
+      if host_v == "" {
         return exit_failure(reason: "BMC_HOST is empty")
       } else {
-        let bmc = v as NonEmptyStr
-        let user = openbmc_factory_login.username
-        let pass = openbmc_factory_login.published_password
+        match netrc.value {
+          Absent => return exit_failure(reason: "BMC_NETRC_FILE is not set (rotated BMC cred)")
+          Present { value: netrc_v } =>
+            if netrc_v == "" {
+              return exit_failure(reason: "BMC_NETRC_FILE is empty")
+            } else {
+              let bmc = host_v as NonEmptyStr
+              let netrc_file = netrc_v as NonEmptyStr
+              let chassis = asrock_altrad8ud_redfish_chassis_id
 
-        system_resp = redfish.Http.GetSystem(bmc_host: bmc, username: user, password: pass)
-        if system_resp.success == false {
-          return exit_failure(reason: system_resp.body)
+              system_resp = redfish.Http.GetSystemWithNetrc(bmc_host: bmc, netrc_file: netrc_file)
+              if system_resp.success == false {
+                return exit_failure(reason: system_resp.body)
+              }
+
+              sensors_resp = redfish.Http.GetChassisSensors(
+                bmc_host: bmc,
+                chassis_id: chassis,
+                netrc_file: netrc_file
+              )
+              if sensors_resp.success == false {
+                return exit_failure(reason: sensors_resp.body)
+              }
+
+              return ExitSuccess
+            }
         }
-
-        power_resp = redfish.Http.GetPower(bmc_host: bmc, username: user, password: pass)
-        if power_resp.success == false {
-          return exit_failure(reason: power_resp.body)
-        }
-
-        thermal_resp = redfish.Http.GetThermal(bmc_host: bmc, username: user, password: pass)
-        if thermal_resp.success == false {
-          return exit_failure(reason: thermal_resp.body)
-        }
-
-        return ExitSuccess
       }
   }
 }
