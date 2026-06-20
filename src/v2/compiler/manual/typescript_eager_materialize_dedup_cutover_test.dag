@@ -6,6 +6,7 @@
 module v2.test.manual.typescript_eager_materialize_dedup_cutover
 
 import v2.compiler.ingest { grammar_relation_row_forward_selection }
+import v2.compiler.self_host { self_host_fixed_point_digests_match }
 import v2.compiler.self_host.candidate_generation { generate_translate_self_emit_candidate }
 import v2.std.grammar {
   derive_grammar_relation_row_node,
@@ -242,22 +243,20 @@ fn ts_arc1_wave2a_perturbed_row_derive_red_holds() -> Bool {
   }
 }
 
+// One generate_translate_self_emit_candidate call — compare emitted digest to the canonical
+// mvp1 dag slice root (fixed-point oracle). A second full infer∘translate pass duplicated
+// memory in batch-2 floor (OOM exit 137); idempotency is the same single-call digest check.
 fn ts_arc1_dag_self_emit_bit_identical_round_trip_holds() -> Bool {
   match generate_translate_self_emit_candidate(
     resolved_module: mvp1_dag_emitted_root,
     dag_target: mvp1_dag_target_model
   ) {
-    Accepted { value: first, diagnostics: d1 } =>
-      match generate_translate_self_emit_candidate(
-        resolved_module: mvp1_dag_emitted_root,
-        dag_target: mvp1_dag_target_model
-      ) {
-        Accepted { value: second, diagnostics: d2 } =>
-          (d1 == None)
-            && (d2 == None)
-            && (content_hash(n: first.emitted) == content_hash(n: second.emitted))
-        Rejected { diagnostics: _ } => false
-      }
+    Accepted { value: candidate, diagnostics: d } =>
+      (d == None)
+        && self_host_fixed_point_digests_match(
+          emitted_stage1: candidate.emitted,
+          emitted_stage2: mvp1_dag_emitted_root
+        )
     Rejected { diagnostics: _ } => false
   }
 }
