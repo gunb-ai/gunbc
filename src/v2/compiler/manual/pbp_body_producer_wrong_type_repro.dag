@@ -1,5 +1,8 @@
 // §5 negative control: explicit type mismatch must fail inference (fail-closed).
-module v2.test.manual.pbp_body_producer_wrong_type_repro
+// Module id is intentionally NOT `v2.test.manual.*` — that pairing with this
+// on-disk manual path currently skips nominal brand-twin checking in
+// compile_to_resolved (witness: body_producer_infer_perf_witness_test).
+module pd3adv.pbp_body_producer_wrong_type_repro
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
 
