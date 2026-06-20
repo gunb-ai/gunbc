@@ -1,0 +1,27 @@
+// Scope: DEPRECATED entry — use compiler_closure_emit_from_ingest_gate.dag gap4_probe_* fns.
+//   This module's import closure is too small to overlay host_source_root_ingest; fold_list
+//   sees stub-shaped Record. Probe logic lives on the nv2 gate entry (same manifest overlay).
+// Status: probe-only; dissolve when gap-4 floor witness lands.
+
+module v2.test.fixture.gap4_ingest_reject_probe
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.test.self_host.compiler_closure_emit_from_ingest_gate {
+  Gap4IngestProbeState,
+  gap4_probe_all_ingest_reads_accept,
+  gap4_probe_first_ingest_reject,
+  gap4_probe_found_file_path,
+}
+
+fn probe_first_ingest_reject() -> Gap4IngestProbeState {
+  gap4_probe_first_ingest_reject()
+}
+
+fn probe_all_ingest_reads_accept() -> Bool {
+  gap4_probe_all_ingest_reads_accept()
+}
+
+fn probe_found_file_path() -> String {
+  gap4_probe_found_file_path()
+}
