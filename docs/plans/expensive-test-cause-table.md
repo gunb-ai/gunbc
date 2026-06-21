@@ -283,6 +283,48 @@ diagnostic dump, not a pass/fail test.)*
    mechanism (`docs/plans/nightly-ignored-lane.md`). Residue = interim-(c) seed compiles + the
    two genuine-external wet captures (`anthropic_live_e2e`, `http_pilot…`).
 
+## §2 floor cold-vs-warm cache measurement (for sunny-bee-667 / stern-otter-43)
+
+**Distinct from Pop-A.** This measures the §2 `resolved_graph_cache`
+(`GUNBC_RESOLVED_GRAPH_CACHE_DIR`) on the path it *actually serves* — the **floor discovery
+corpus** (`claim_executor` discovery, `cli_run.rs` ~545, the cache-consulting path). It does
+NOT touch Pop-A (the in-process `compile_multi` harness path is cache-blind — separate finding
+above). Two full floor runs, same box (~2× loaded, `user`≫`wall`), n=1 each: run 1 cold
+(empty `/tmp/rgcache` → populates 172 entries), run 2 warm (same dir → hits).
+
+| metric | COLD (populate) | WARM (hit) | Δ |
+|---|---|---|---|
+| floor wall | 21m26s (1286s) | 17m35s (1055s) | **−231s (−18%)** |
+| discovery resolve (Σ measured-ns, 616 witnesses ×4 shards) | 1,836,658ms | 1,295,137ms | **−541,521ms (−29.5%)** |
+| discovery eval (cache-independent **control**) | 848,542ms | 850,541ms | +1,999ms (**+0.24%, noise**) |
+| floor verdict | 8/8 gates PASS, 616 witnesses | 8/8 gates PASS, 616 witnesses | **identical** |
+| peak RSS | 21.1 GB | 20.8 GB | −1.5% |
+
+**(i) Cold-vs-warm delta.** The warm content-addressed cache eliminates **29.5% of resolve CPU**
+(541s aggregate across 616 witnesses) → **18% of total floor wall** (231s). The wall figure
+carries box-load noise (n=1, ~2× loaded); the **measured-ns resolve delta is the cleaner
+signal** — it is the cache's direct effect on the isolated resolve clock, and the *eval clock
+moves only +0.24%*, the built-in control proving the delta is resolve-specific, not drift.
+
+**(ii) Purity (warm==cold).** Both runs 8/8 gates PASS, both 616/616 witnesses green, eval
+unchanged. Verdict-identical → **no behavior change from the cache**. Byte-identity of a cache
+hit is guaranteed *by construction*: the key IS the content hash of the declared inputs, so a
+hit returns the byte-identical resolved graph — a divergent graph keys differently (a miss),
+never a wrong hit (§3 construction-not-validation; the cache key derived from
+`inputs_considered`, #5425).
+
+**(iii) Resolve as fraction of total floor.** Resolve is **68.4% of discovery compute** cold
+(1,836,658 / 2,685,200ms), 60.4% warm — the single largest floor component, and discovery
+(batch 2) dominates the floor (batches 1/3 are small). So the resolve cache is aimed at the
+right cost: it is **a real cost win, not correctness-only**. Verdict for the §2 lane: warming
+the floor's resolve cache is worth ~18% of CI floor wall with zero verdict risk.
+
+(Build: `claim_executor` built without sccache to dodge the fleet flake —
+`env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=6 ctrl-build -- cargo build -p v1-compiler --release
+--bin claim_executor`. My branch predates #5445, so the corpus is 616 witnesses with no
+realization-vocab leak — the floor is fully green locally, reconfirming the CI red on #5447 is
+purely inherited main content, not my change.)
+
 ## Next / open
 
 - Append Population A's g–z names from fierce-hawk's cap-6s pass (~incoming).
