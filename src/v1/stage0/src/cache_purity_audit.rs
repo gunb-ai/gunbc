@@ -180,10 +180,23 @@ pub struct CorpusAuditReport {
     pub violations: Vec<CachePurityViolation>,
 }
 
+/// A deterministic shard of the corpus: audit entries whose sorted index `idx` satisfies
+/// `idx % count == index`. `count` parallel shards (one CI job each) together cover EVERY entry
+/// exactly once — the mechanism by which full coverage runs off the floor critical path: the
+/// single-threaded full sweep is ~one extra resolve pass of the whole corpus (the floor's heaviest
+/// component), so it is parallelized across `count` shard-jobs, each ≈ the floor's own resolve
+/// time, all hidden under the floor wall. `index` must be `< count`.
+#[derive(Clone, Copy)]
+pub struct Shard {
+    pub index: usize,
+    pub count: usize,
+}
+
 pub fn audit_floor_discovery_corpus(
     roots: &[String],
     scan_dirs: &[String],
     max_entries: Option<usize>,
+    shard: Option<Shard>,
 ) -> Result<CorpusAuditReport, String> {
     if resolved_graph_cache_root_from_env().is_none() {
         return Err(
@@ -192,6 +205,14 @@ pub fn audit_floor_discovery_corpus(
              is a lie)"
                 .to_string(),
         );
+    }
+    if let Some(s) = shard {
+        if s.count == 0 || s.index >= s.count {
+            return Err(format!(
+                "cache purity audit: invalid --shard {}/{} (need 0 <= index < count, count >= 1)",
+                s.index, s.count
+            ));
+        }
     }
     let rows = discover_floor_corpus_rows(roots, scan_dirs)?;
 
@@ -202,9 +223,20 @@ pub fn audit_floor_discovery_corpus(
         seen.insert(row.entry.clone());
     }
     let entries_discovered = seen.len();
-    let entries: Vec<String> = match max_entries {
+    let sorted: Vec<String> = match max_entries {
         Some(n) => seen.into_iter().take(n).collect(),
         None => seen.into_iter().collect(),
+    };
+    // Shard deterministically by sorted position so `count` parallel jobs partition the corpus
+    // exactly (every entry covered once, none twice). No shard ⟹ the whole (bounded) set.
+    let entries: Vec<String> = match shard {
+        Some(s) => sorted
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| i % s.count == s.index)
+            .map(|(_, e)| e)
+            .collect(),
+        None => sorted,
     };
 
     // One whole-tree parse index, reused across every entry's cold+warm resolve (sound: the disk

@@ -30,7 +30,7 @@
 
 use std::process::ExitCode;
 
-use v1_compiler::cache_purity_audit::audit_floor_discovery_corpus;
+use v1_compiler::cache_purity_audit::{audit_floor_discovery_corpus, Shard};
 
 const DEFAULT_SCAN_DIR: &str = "dsl/test/claim";
 
@@ -40,6 +40,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "cache purity audit".to_string();
     let mut max_entries: Option<usize> = None;
+    let mut shard: Option<Shard> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -59,6 +60,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                     Ok(n) => max_entries = Some(n),
                     Err(_) => {
                         eprintln!("cache_purity_audit: --max-entries expects a non-negative integer, got '{raw}'");
+                        return Err(ExitCode::from(2));
+                    }
+                }
+            }
+            "--shard" => {
+                i += 1;
+                let raw = arg_value(&args, i, "--shard")?;
+                match parse_shard(&raw) {
+                    Ok(s) => shard = Some(s),
+                    Err(msg) => {
+                        eprintln!("cache_purity_audit: {msg}");
                         return Err(ExitCode::from(2));
                     }
                 }
@@ -84,7 +96,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     println!("::group::{notice_title}");
-    let report = match audit_floor_discovery_corpus(&source_roots, &scan_dirs, max_entries) {
+    let report = match audit_floor_discovery_corpus(&source_roots, &scan_dirs, max_entries, shard) {
         Ok(r) => r,
         Err(setup_err) => {
             // Fail-closed: a setup error (e.g. the cache dir unset) is NOT a green.
@@ -113,11 +125,19 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     if report.violations.is_empty() {
         println!("cache purity audit: {coverage} — warm==cold (no lossy/stale decode)");
-        if report.entries_audited < report.entries_discovered {
+        if let Some(s) = shard {
+            println!(
+                "note: SHARD {}/{} — this job covers every (idx % {} == {}) entry; the {} shard \
+                 jobs together audit the FULL corpus exactly once (full coverage, parallelized off \
+                 the floor critical path)",
+                s.index, s.count, s.count, s.index, s.count
+            );
+        }
+        if max_entries.is_some() {
             println!(
                 "note: BOUNDED — this is a FAST SMOKE, not the soundness gate (codec fidelity is \
-                 depth-dependent, so a sample is not a guarantee; run without --max-entries for the \
-                 full sound sweep)"
+                 depth-dependent, so a sample is not a guarantee; run without --max-entries — full \
+                 corpus, optionally sharded — for the sound sweep)"
             );
         }
         if report.miss_on_read > 0 {
@@ -145,6 +165,26 @@ fn run() -> Result<ExitCode, ExitCode> {
         println!("::endgroup::");
         Err(ExitCode::from(1))
     }
+}
+
+/// Parse `--shard I/K` into a [`Shard`] (audit entries where sorted-`idx % K == I`). `K` parallel
+/// shard jobs partition the corpus exactly once each → full coverage off the critical path.
+fn parse_shard(raw: &str) -> Result<Shard, String> {
+    let (i_str, k_str) = raw
+        .split_once('/')
+        .ok_or_else(|| format!("--shard expects I/K (e.g. 0/4), got '{raw}'"))?;
+    let index = i_str
+        .parse::<usize>()
+        .map_err(|_| format!("--shard index must be a non-negative integer, got '{i_str}'"))?;
+    let count = k_str
+        .parse::<usize>()
+        .map_err(|_| format!("--shard count must be a non-negative integer, got '{k_str}'"))?;
+    if count == 0 || index >= count {
+        return Err(format!(
+            "--shard {index}/{count} invalid (need 0 <= index < count, count >= 1)"
+        ));
+    }
+    Ok(Shard { index, count })
 }
 
 fn arg_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
