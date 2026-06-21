@@ -484,11 +484,24 @@ struct WalkOutcome {
     batches_run: usize,
 }
 
-/// Run batch by batch (executor ordering); claims within a batch in parallel up to
-/// `spawn_width` concurrent threads (peripheral width realization — `.dag` authority).
-/// The batch boundary is a barrier: batch N+1 starts only after every claim in batch N
-/// has reported. A failed batch halts the walk before its dependents. The batch
-/// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
+/// Run batch by batch (executor ordering). A batch is one scheduler readiness layer:
+/// every node in it is mutually independent, so the whole layer runs concurrently. The
+/// batch boundary is a barrier — batch N+1 starts only after every claim in batch N has
+/// reported, and a failed batch halts the walk before its dependents. Batch MEMBERSHIP
+/// and ORDER are the `.dag` plan's; this only walks them.
+///
+/// Per-node resource demand decides each node's INTERNAL width: a `DiscoveryBatch` shards
+/// up to the budgeted `spawn_width` (the `.dag` width authority), while a `SingleClaim` is
+/// one resolve thread and ignores it (`run_single_claim` takes no width). So `spawn_width`
+/// is handed to every node unchanged — the heavy discovery corpus gets the full memory-
+/// budgeted width regardless of how many cheap gates share its layer. The `.dag` plan
+/// guarantees no two heavy resolves share a readiness layer (resource-dependency edges
+/// serialize them — `gunbc_ci_floor_plan_fits_memory_budget`), so the concurrent memory
+/// peak stays under the fleet budget.
+///
+/// This replaces the prior even split (`width / chunk.len()`), which starved the corpus to
+/// `width = 1` whenever it was chunked with cheap gates that did not consume any of the
+/// width they were handed — the 1000s serial tentpole.
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
@@ -501,42 +514,33 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             batch.len(),
             width
         );
-        for chunk in batch.chunks(width) {
-            // Divide spawn budget across chunk siblings so DiscoveryBatch internal
-            // sharding + batch-level concurrency never exceeds the .dag width authority.
-            let per_runnable_width = (width / chunk.len()).max(1);
-            let handles: Vec<_> = chunk
-                .iter()
-                .map(|runnable| {
-                    let roots = source_roots.to_vec();
-                    let runnable = runnable.clone();
-                    let slot_width = per_runnable_width;
-                    thread::spawn(move || run_one_runnable(roots, runnable, slot_width))
-                })
-                .collect();
-            for handle in handles {
-                match handle.join() {
-                    Ok(result) => {
-                        if result.ok {
-                            println!("PASS [batch {}] {}", bi + 1, result.function);
-                        } else {
-                            println!(
-                                "FAIL [batch {}] {} ({})",
-                                bi + 1,
-                                result.function,
-                                result.detail
-                            );
-                            any_failed = true;
-                        }
-                    }
-                    Err(_) => {
-                        println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+        let handles: Vec<_> = batch
+            .iter()
+            .map(|runnable| {
+                let roots = source_roots.to_vec();
+                let runnable = runnable.clone();
+                thread::spawn(move || run_one_runnable(roots, runnable, width))
+            })
+            .collect();
+        for handle in handles {
+            match handle.join() {
+                Ok(result) => {
+                    if result.ok {
+                        println!("PASS [batch {}] {}", bi + 1, result.function);
+                    } else {
+                        println!(
+                            "FAIL [batch {}] {} ({})",
+                            bi + 1,
+                            result.function,
+                            result.detail
+                        );
                         any_failed = true;
                     }
                 }
-            }
-            if any_failed {
-                break;
+                Err(_) => {
+                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+                    any_failed = true;
+                }
             }
         }
         // Fail closed at the barrier: if a gating batch failed, do not run the

@@ -765,6 +765,13 @@ pub enum InterpError {
     NoSuchVariable { name: String },
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
+    // A `==`/`!=` whose operands straddle the model↔realization boundary — a
+    // native scalar number (`Int`/`Float`) against the coproduct model encoding
+    // of a number (a `Nat` `Zero`/`Succ` Variant). `Value::eq` cannot decide such
+    // a pair and would silently return `false` (its `_ => false` arm) — a §5
+    // fail-open. Raised at the eval seam so the silent wrong answer becomes a
+    // loud, typed one. (DESIGN §5; operator: `==` fail-closed, 2026-06-20.)
+    CrossRepresentationEquality { detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
     Unimplemented { what: String },
@@ -781,6 +788,9 @@ impl fmt::Display for InterpError {
                 write!(f, "no field '{}' on type '{}'", field, type_name)
             }
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
+            InterpError::CrossRepresentationEquality { detail } => {
+                write!(f, "cross-representation equality: {}", detail)
+            }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
             }
@@ -1902,12 +1912,32 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
         }
     }
 
-    // Equality (works on all comparable types)
-    if matches!(op, BinOp::Eq) {
-        return Ok(Value::Bool(left == right));
-    }
-    if matches!(op, BinOp::Ne) {
-        return Ok(Value::Bool(left != right));
+    // Equality (works on all comparable types). `Value::eq` is the single
+    // equality authority (also the `CanonKey` map-key authority, so it stays an
+    // infallible `PartialEq` and its `Hash`-consistent `false` must stand). A
+    // heterogeneous model↔realization pair it cannot decide funnels through its
+    // `_ => false` arm; fabricating that `false` is a §5 fail-open — e.g.
+    // `nat_add(85, 32)` builds `Succ^85(Int(32))` and silently compares unequal
+    // to the native `Int(117)`. Fail closed: when the result is `false` AND a
+    // cross-representation numeric straddle *explains* it, raise a typed error
+    // here at the eval seam rather than returning the silent `false`. The check
+    // only runs on a `false` result and only flags the straddle, so genuine
+    // inequalities (`1 == 2`, `Succ {..} == Zero`) and reconciled forks
+    // (`[1,2,3] == Cons {..}`) pass through untouched. (DESIGN §5; operator:
+    // `==` fail-closed, 2026-06-20.)
+    if matches!(op, BinOp::Eq | BinOp::Ne) {
+        let equal = left == right;
+        if !equal {
+            if let Some(detail) = cross_representation_numeric_straddle(&left, &right) {
+                return Err(InterpError::CrossRepresentationEquality { detail });
+            }
+        }
+        let result = if matches!(op, BinOp::Eq) {
+            equal
+        } else {
+            !equal
+        };
+        return Ok(Value::Bool(result));
     }
 
     // Boolean operators
@@ -1942,6 +1972,121 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 right.type_label()
             ),
         }),
+    }
+}
+
+/// Diagnose a *cross-representation numeric straddle*: a native scalar number
+/// (`Value::Int`/`Value::Float`) compared, at some structural position, against
+/// the coproduct **model** encoding of a number (a `Nat` `Zero`/`Succ` Variant,
+/// the §1/§2/§7 model↔realization fork). The two sides denote one value space in
+/// two encodings, so `Value::eq` cannot decide them and silently returns `false`
+/// through its `_ => false` arm. Returns a description of the first straddle
+/// found so the caller can fail closed (§5) instead of fabricating that `false`;
+/// returns `None` when the inequality is a genuine value difference
+/// (`1 == 2`, `Succ {..} == Zero`).
+///
+/// Single-authority (§3): this NEVER decides equality — `Value::eq` is the one
+/// authority and is left untouched. This is a read-only *diagnosis* of why `eq`
+/// already returned `false`, so it is called only on that `false` and mirrors
+/// `eq`'s structural recursion (matching variant names / record fields / flattened
+/// FreeMonoid elements) — it inspects exactly the positions `eq` compared.
+fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String> {
+    match (a, b) {
+        // The straddle itself: a native scalar number vs a *non-FreeMonoid*
+        // coproduct Variant (a `Nat` `Zero`/`Succ` chain). A list-shaped Variant is
+        // reconciled by `Value::eq`, and an Int-vs-list pair is a genuine
+        // difference, so exclude FreeMonoid variants.
+        (Value::Int(_) | Value::Float(_), v @ Value::Variant { .. })
+        | (v @ Value::Variant { .. }, Value::Int(_) | Value::Float(_))
+            if free_monoid_to_vec(v).is_none() =>
+        {
+            Some(format!(
+                "{} vs {} — a number and its coproduct (Nat Zero/Succ) encoding are \
+                 two representations of one value; Value::eq cannot decide them, so \
+                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
+                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                describe_repr(a),
+                describe_repr(b),
+            ))
+        }
+        // No Variant present ⇒ no numeric straddle. This is the hot path for a
+        // `false` `==` (two Strs, two Ints, …): short-circuit WITHOUT flattening.
+        // A `Str` is a sequence of `Int` codepoints, so two scalars/strings can only
+        // ever compare Int-vs-Int, never number-vs-Variant — flattening every false
+        // string compare (self-compile does millions) would be the dominant cost.
+        (
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Unit
+            | Value::Str(_),
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Unit
+            | Value::Str(_),
+        ) => None,
+        // Same-name coproduct or any record: recurse the matching structure, so a
+        // straddle nested inside (two non-canonical `Succ^k(Int)` chains, or a
+        // number inside a field) is still caught.
+        (
+            Value::Variant {
+                variant_name: an,
+                fields: af,
+                ..
+            },
+            Value::Variant {
+                variant_name: bn,
+                fields: bf,
+                ..
+            },
+        ) if an == bn => fields_numeric_straddle(af, bf),
+        (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
+            fields_numeric_straddle(af, bf)
+        }
+        // Native lists: walk elements in place (no materialization) — a forked
+        // element straddles (`[nat_add(1,1)] == [2]`) even though `Value::eq`
+        // reconciles the container.
+        (Value::List(av), Value::List(bv)) => av
+            .iter()
+            .zip(bv.iter())
+            .filter(|(x, y)| x != y)
+            .find_map(|(x, y)| cross_representation_numeric_straddle(x, y)),
+        // Rare mixed FreeMonoid forms (Cons-chain vs List/Str): flatten only here.
+        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+            (Some(av), Some(bv)) => av
+                .iter()
+                .zip(bv.iter())
+                .filter(|(x, y)| x != y)
+                .find_map(|(x, y)| cross_representation_numeric_straddle(x, y)),
+            _ => None,
+        },
+    }
+}
+
+/// Shared-key field walk for [`cross_representation_numeric_straddle`]: recurse
+/// only the positions `Value::eq` compared (shared keys with unequal values).
+fn fields_numeric_straddle(
+    af: &HashMap<Symbol, Value>,
+    bf: &HashMap<Symbol, Value>,
+) -> Option<String> {
+    af.iter()
+        .filter_map(|(k, av)| bf.get(k).map(|bv| (av, bv)))
+        .filter(|(av, bv)| av != bv)
+        .find_map(|(av, bv)| cross_representation_numeric_straddle(av, bv))
+}
+
+/// One operand's representation, for the cross-representation diagnostic.
+fn describe_repr(v: &Value) -> String {
+    match v {
+        Value::Int(n) => format!("native Int({})", n),
+        Value::Float(f) => format!("native Float({})", f),
+        Value::Variant { variant_name, .. } => {
+            format!("coproduct Variant `{}`", resolve_sym(*variant_name))
+        }
+        other => other.type_label().to_string(),
     }
 }
 

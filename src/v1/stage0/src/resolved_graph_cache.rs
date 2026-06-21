@@ -1,26 +1,23 @@
 // resolved_graph_cache.rs — Content-addressed cross-process resolved-graph cache.
 //
 // Authority row: extdeps/realization/resolved_graph.dag `resolved_graph_cache_facts`.
-// Key = subject_digest over (closure module_name→file content) + resolve-logic
-// version + intern-seed-set version. Widen→MISS, never narrow→stale.
+// Key = subject_digest over (closure module_name→file content) + content(transform):
+// the resolve transform's content, DERIVED by construction from the compiler's actual
+// realized artifact (the running executable's bytes), NOT a hand-authored version
+// string. Widen→MISS, never narrow→stale.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
-
-/// Bump when resolve / normalize / infer / ownership semantics change.
-pub const RESOLVE_LOGIC_VERSION: &str = "v2-resolve-1";
-
-/// Bump when `seed_kernel_intern_names` changes.
-pub const KERNEL_INTERN_SEED_VERSION: &str = "kernel-seed-1";
 
 const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
@@ -91,17 +88,46 @@ pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     acc
 }
 
-/// Subject digest = closure content + resolve-logic version + intern-seed version.
+/// Content hash of the resolve transform itself (`content(T)`), DERIVED by construction
+/// from the compiler's actual realized artifact — the running executable's bytes. This
+/// is the toolchain input the authority row declares (`ToolchainSpec ∈ inputs_considered`;
+/// `invalidation_triggers: [ToolchainChange, ...]`). It replaces the hand-authored
+/// `RESOLVE_LOGIC_VERSION` / `KERNEL_INTERN_SEED_VERSION` strings, which were a §3 nickname
+/// for the transform's content and a §5 fail-open: a human had to remember to bump them,
+/// so the key silently drifted when resolve/normalize/infer/ownership or the kernel intern
+/// seed changed (a stale hit = a silent wrong answer). Coarse — any compiler change
+/// invalidates — but never stale: if the transform changes, the binary changes, the key
+/// changes. Hashed once per process. Fail-closed: if the artifact cannot be read we cannot
+/// guarantee a non-stale key, so we refuse loudly rather than substitute a stand-in that
+/// could serve a stale hit.
+fn transform_content_digest() -> Hash {
+    static DIGEST: OnceLock<Hash> = OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            let exe = std::env::current_exe().unwrap_or_else(|e| {
+                panic!(
+                    "resolve cache: cannot locate compiler executable to content-address \
+                     the transform: {e}"
+                )
+            });
+            let bytes = fs::read(&exe).unwrap_or_else(|e| {
+                panic!(
+                    "resolve cache: cannot read compiler executable {:?} to content-address \
+                     the transform: {}",
+                    exe, e
+                )
+            });
+            v1_rt::bytes_identity_hash(&bytes)
+        })
+        .clone()
+}
+
+/// Subject digest = closure content + content(transform). The transform is keyed BY
+/// CONSTRUCTION (`transform_content_digest`), matching the authority row's
+/// `inputs_considered: [UpsertSubject, ToolchainSpec]`.
 pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
-    let mut digest = closure_content_digest(sources);
-    digest = v1_rt::hash_combine(
-        digest,
-        v1_rt::atom_identity_hash(RESOLVE_LOGIC_VERSION.to_string()),
-    );
-    v1_rt::hash_combine(
-        digest,
-        v1_rt::atom_identity_hash(KERNEL_INTERN_SEED_VERSION.to_string()),
-    )
+    let digest = closure_content_digest(sources);
+    v1_rt::hash_combine(digest, transform_content_digest())
 }
 
 /// Content-hash work subject for one witness: closure cache subject × function name.
@@ -143,7 +169,7 @@ fn artifact_path(cache_root: &Path, subject_digest: &str) -> PathBuf {
 }
 
 fn payload_content_digest(payload_bytes: &[u8]) -> Hash {
-    v1_rt::atom_identity_hash(String::from_utf8_lossy(payload_bytes).into_owned())
+    v1_rt::bytes_identity_hash(payload_bytes)
 }
 
 fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
