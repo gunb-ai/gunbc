@@ -39,14 +39,23 @@ emission — the §5 "construction over validation" move applied to the doc laye
 
 ## 3. The pattern — reuse `ci.yml`, don't reinvent
 
-`ci.yml` is **already** this. `expected_ci_yml()` (`dsl/gunbc/ci_yaml_emit.dag`) emits it from
-`CiFloorSpec`, and `ci_yaml_gate` (`dsl/tools/ci_yaml_gate.dag`) fails the build if `ci.yml !=
+`ci.yml` is **already** this. `expected_ci_yml()` (`dsl/gunbc/ci_yaml_emit.dag`) emits it as
+`serialize_yaml(project_workflow_to_yaml(ci_workflow))` — a **dsl-tree serializer fold**
+(`extdeps.formats.yaml.serialize_yaml`) on the v1 seed, *not* the v2 `06_translate` emitter; the fold is
+itself self-marked **SCAFFOLD / §3-fork-of-v2-yaml** with a dissolution trigger to the eventual v2 yaml
+`TargetModel`. `ci_yaml_gate` (`dsl/tools/ci_yaml_gate.dag`) fails the build if `ci.yml !=
 expected_ci_yml()`, byte-for-byte. The doc project is the **same three pieces** over the markdown medium:
 
 1. **authority model** — the work DAG in `.dag` (what `CiFloorSpec` is for ci.yml);
-2. **`emit(model, Markdown)`** — the row-driven inverse (§6) over a new `Markdown` target, the **same
-   `06_translate` machinery** that already emits Rust / TypeScript / ci.yml, not a bespoke printer;
-3. **drift gate** — `ROADMAP.md == emit(work_model)`, the `ci_yaml_gate` shape.
+2. **`serialize_markdown_source(project_roadmap_to_markdown(model))`** — the faithful ci.yml-analogue: a
+   **dsl serializer fold on the seed**, *not* the v2 `06_translate` target (forcing markdown onto a v2
+   `Node` crossing ci.yml itself does **not** do would make the analogue heavier than its own template).
+   Author it **row-driven** — construct→spelling pairs (`Heading`→N×`#`, task→`- [ ] `/`- [x] `, …) live
+   in **rows** the fold looks up, the §6 grammar-inverse, *not* inline string literals — so it dodges the
+   medium-as-Node leak (`emission-ingestion-inverse.md` §5.1) **even as a scaffold**, and the rows
+   relocate unchanged into the eventual v2 `Markdown` `TargetModel`. Mark it **SCAFFOLD** with that
+   dissolution trigger, exactly as `yaml.dag` marks itself;
+3. **drift gate** — `ROADMAP.md == serialize_markdown_source(…)`, the `ci_yaml_gate` shape.
 
 No new mechanism — a new **target medium** (`Markdown`) + the **work-DAG authority model**. The §6
 emission lane and the idea-machine's medium axis are exactly this; the doc is the next medium after ci.yml.
@@ -114,9 +123,14 @@ non-tautology proof).
    "this line completes iff #N merges" edge. Slice-2 **widens** that same binding from a status surface
    (`RoadmapStatusEntry`) to the full emitted work node (title/deps/pointer); it must build on
    `CompletesIff`, not re-coin a parallel completion edge (§3).
-2. **`Markdown` as an emit target** — rows in `06_translate` / `extdeps/languages/` (the §6 medium axis);
-   `emit(work_model, Markdown)` produces the ROADMAP bytes.
-3. **The drift gate** — `roadmap_gate`: `ROADMAP.md == emit(work_model)`, the `ci_yaml_gate` clone.
+2. **`serialize_markdown_source`** — the row-driven dsl serializer fold on the seed (the ci.yml /
+   `serialize_yaml` pattern, §3), extending `dsl/std/markdown.dag`'s `MarkdownDocument` IR with the
+   task-list / table variants the ROADMAP needs. Marked SCAFFOLD; its dissolution trigger is the eventual
+   v2 `Markdown` `TargetModel` in `06_translate` / `extdeps/languages/` (the §6 medium axis, where one
+   grammar reads both directions). `serialize_markdown_source(project_roadmap_to_markdown(model))`
+   produces the ROADMAP bytes.
+3. **The drift gate** — `roadmap_gate`: `ROADMAP.md == serialize_markdown_source(…)`, the `ci_yaml_gate`
+   clone.
 4. **Status derivation** — wire `[x]` / in-progress from PR-merged / branch-open (closes the
    stale-checkbox class; this is the host-fed status bridge, see §7).
 5. Then the **doc index** (orphan / dangling become emit errors — the reachability wall by construction),
