@@ -372,17 +372,25 @@ fn parse_table_empty() -> ParseTable {
 // the content-addressing property a realize subject requires (proven by execution in
 // parse/parse_table_content_key_test.dag).
 //
-// CONSUMER + DEFERRAL (this is NOT a declared-but-dead key — the exact fork P2 exists to kill):
-//  - PRODUCTION CONSUMER (imminent, next PR): the v2-LOCAL fold-rewire routes parse_table_lookup /
-//    parse_table_insert / parse_nonterminal_memoized_core through this subject, replacing the
-//    positional {position, production} key. That rewire is what actually dissolves the positional-key
-//    fork (P2's real point); it is unblocked — needs NEITHER #5429 NOR the de-fork.
-//  - DEFERRED std-kernel HANDLER binding — named dissolution trigger = the dsl→v2 cross-tree de-fork:
-//    binding this subject to the std `realize` kernel proper (ArtifactIdentity<ParseExprResult> /
-//    realize_route) waits on that import. 02_parse is `module v2.compiler.parse`, the realize kernel
-//    lives in `dsl/std/cache_interface`, and there is NO v2.std.cache_interface yet. Explicitly NOT
-//    gated on #5429 (that gates only the separate resolved_graph handler). Until then the
-//    ArtifactKindId stays the Symbol mirror (parse_table_artifact_kind above).
+// CONSUMER + DEFERRAL (honestly-marked deferred-consumer model — a DEFINED consumer + a NAMED
+// trigger, so NOT a declared-but-dead fork). The SOLE consumer is the DEFERRED std-kernel handler
+// binding; there is deliberately NO premature v2-local rewire, because the v1 host is the real
+// memo authority:
+//  - The v1 host (try_parse_table_memo_dispatch / parse_table_memo_scope_and_key) is the SOLE parse-
+//    memo authority — the .dag table.entries map is VESTIGIAL (parse_table_insert's result is
+//    discarded; the same empty-entries table is threaded). So routing the .dag lookup/insert through
+//    this subject WITHOUT changing the host is cosmetic (feeds the discarded map = §5
+//    spec-without-execution), and changing the host to key by this content hash NOW would (a) trade
+//    the host's collision-FREE structural (grammar, token, position, production) tuple for content-hash
+//    collision risk on a load-bearing memo (§5 fail-open), and (b) re-derive this fold in Rust (more
+//    §3 host duplication) — for ZERO benefit before the de-fork. So we do not do it early.
+//  - DEFERRED std-kernel HANDLER binding — named dissolution trigger = the dsl→v2 cross-tree de-fork
+//    (no v2.std.cache_interface exists today; 02_parse is `module v2.compiler.parse`, the realize
+//    kernel lives in `dsl/std/cache_interface`). When that import lands, the host re-key and the
+//    kernel binding (ArtifactIdentity<ParseExprResult> / realize_route) arrive as ONE step and THIS
+//    subject becomes the realize key — that single step is the consumer. Explicitly NOT gated on
+//    #5429 (that gates only the separate resolved_graph handler). Until then the ArtifactKindId stays
+//    the Symbol mirror (parse_table_artifact_kind above).
 fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   combine_hash(
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
