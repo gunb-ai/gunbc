@@ -1,0 +1,54 @@
+// dsl/test/claim/cache_purity_verdict_test.dag
+//
+// §5 discriminating proof for extdeps.realization.cache_purity — the warm==cold purity
+// verdict (a cache that changes a verdict exposes a PURITY bug; warm!=cold ⟹ Impure, located
+// at the read-but-unkeyed axis).
+//
+// Positive witnesses (true-when-correct, RED if `cache_purity_verdict` inverts the mapping):
+//   - warm==cold ⟹ Pure (a hit serves exactly what cold would — honest cache);
+//   - warm!=cold ⟹ Impure carrying the located violation (the §5 stale hit);
+//   - `cache_purity_is_pure` discriminates the two (the consumer's branch).
+// The executable run-side oracle (cold/warm canonical-byte comparison over the real
+// resolved-graph cache) is the v1 handler, proved by execution in
+// src/v1/tests/src/cache_purity_oracle_test.rs.
+
+module test.claim.cache_purity_verdict
+
+import extdeps.realization.cache_purity {
+  CachePurityViolation,
+  Pure,
+  Impure,
+  cache_purity_verdict,
+}
+import std.types { Bool }
+
+// A sample located violation: same content-key, divergent warm/cold digests, named axis.
+fn sample_violation() -> CachePurityViolation {
+  CachePurityViolation {
+    content_key: "deadbeefdeadbeef",
+    unkeyed_axis: "session_intern_state",
+    warm_digest: "1111111111111111",
+    cold_digest: "2222222222222222",
+  }
+}
+
+// warm==cold ⟹ Pure: the cache is honest, a hit serves what cold would.
+fn witness_pure_on_match() -> Bool {
+  match cache_purity_verdict(warm_equals_cold: true, violation: sample_violation()) {
+    Pure => true
+    _ => false
+  }
+}
+
+// warm!=cold ⟹ Impure carrying the located violation (the §5 stale hit).
+fn witness_impure_on_divergence() -> Bool {
+  match cache_purity_verdict(warm_equals_cold: false, violation: sample_violation()) {
+    Impure { violation: _ } => true
+    _ => false
+  }
+}
+
+test fn cache_purity_verdict_witnesses() -> Bool {
+  witness_pure_on_match()
+    && witness_impure_on_divergence()
+}

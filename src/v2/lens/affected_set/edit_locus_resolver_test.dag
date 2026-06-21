@@ -280,3 +280,16 @@ data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes
 
 // Transport Symbol pin — independent authority for substrate-equivalence field-preservation laws.
 data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resolution_holds
+
+// Unified bool-witness claim for the narrow-resolution witness. Single authority
+// for the claim consumed by v2.test.workflow.unified_test_claim_substrate_equivalence
+// and the v2.workflow.glob_discovery type-head perturb fixture (which expects a
+// discovered bool-witness decl named `unified_claim_edit_locus_narrow`). Was a
+// dangling cross-module import until now — declared nowhere despite both consumers
+// importing it (surfaced by the whole-tree resolve, invisible to the dsl-first gate).
+data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
+    function: edit_locus_narrow_resolution_holds
+  }
+}
