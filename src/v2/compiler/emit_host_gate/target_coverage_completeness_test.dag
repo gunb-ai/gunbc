@@ -26,6 +26,14 @@
 // documented dissolve trigger in lens_discrimination_family_eval_test.dag). The bounded set is
 // the host-present targets (the only ones EmitHostGate can smoke) PLUS representative
 // host-absent targets (cpp/java) so the Present⟺smoked equivalence is pinned on both poles.
+//
+// SECOND RESIDUAL (decouple, honesty note): `emit_host_gate.dag` exposes NO `List<TargetModel>` —
+// its 4 smokes are hand-imported `run_*_smoke()` calls — so `host_smoked` here is a HAND-CLAIM
+// coupled to the actual smoke set by DISCIPLINE, not construction (this witness checks the claim
+// against `runtime_row`, but cannot observe whether the dsl gate truly runs a smoke for the row).
+// The construction fix that eliminates `host_smoked` entirely — have `emit_host_gate` FOLD the
+// runtime_row-Present targets directly so the smoke set IS the authority — is a larger gate
+// refactor, deferred. Until then the discipline coupling is the residual.
 
 module v2.test.emit_host_gate.target_coverage_completeness
 
