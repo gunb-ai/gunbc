@@ -140,7 +140,7 @@ fn is_env_var_name(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-        && s.chars().next().map_or(false, |c| !c.is_ascii_digit())
+        && s.chars().next().is_some_and(|c| !c.is_ascii_digit())
 }
 
 // Walk every string leaf in `node` and validate all `${{ ... }}` expressions.
