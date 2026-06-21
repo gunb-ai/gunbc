@@ -22,7 +22,7 @@ const BISECT_ENTRY: &str = "src/v2/compiler/manual/validate_ingest_staging_stage
 const LEGACY_COLD_PARSE_FLOOR: Duration = Duration::from_secs(63);
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn sources_for_entry(entry: &str) -> Vec<Rc<SourceFile>> {

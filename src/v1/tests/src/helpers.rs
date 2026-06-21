@@ -34,6 +34,25 @@ pub fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v1"), ws.join("dsl")]
 }
 
+/// Source roots for resolving the **v2** (active self-hosted) tree: `[src/v2, dsl]`.
+///
+/// Single Rust-side authority mirroring the canonical CI layer-roots fact
+/// `gunbc.ci_layer_roots` (`witness_layer_roots = [src/v2, dsl]`). Any test resolving a
+/// `src/v2/**` entry MUST use this: a v2 compiler module's import closure reaches `dsl/`
+/// (std + extdeps), so omitting `dsl` silently breaks resolution — exactly the
+/// `extdeps.communication.medium` under-scoping the run-all widening surfaced (14 tests
+/// that hand-defined a local `v2_source_roots() = [src/v2]` and so dropped `dsl`).
+///
+/// §6 dissolution: DERIVE from the `.dag` `gunbc.ci_layer_roots` fact once a Rust-reachable
+/// accessor exists, so this Rust copy cannot drift from the authority. This is an instance
+/// of the two-rosters-drift class (cf. neat-ibex-867's roster-drift de-fork); funnelling the
+/// per-file `v2_source_roots()` copies through this one function removes the §3 fork until
+/// then.
+pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
+    let ws = workspace_root();
+    vec![ws.join("src/v2"), ws.join("dsl")]
+}
+
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
