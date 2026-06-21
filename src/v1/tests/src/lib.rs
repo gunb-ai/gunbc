@@ -28,6 +28,8 @@ mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod cron_tag_test;
 #[cfg(test)]
+mod cross_representation_equality_test;
+#[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod dependency_pool_index_compile_test;
