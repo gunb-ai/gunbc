@@ -189,6 +189,11 @@ fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
     Disj => zero_cost()
     Arrow => unit_cost()
     Cardinality => linear_in_node(n: n)
+    // 🟡 cost-model gap: Instantiation/recursion-depth → ExponentialCost is unmodeled.
+    // Self-calling folds to ~unit_cost (constant), so complexity_lens cannot detect
+    // ClassExponential for naive recursive functions. Blocks naive-recursion→memoize
+    // rewrite detection. dissolve-on: Instantiation base cost models recursion depth
+    // (model-before-implement; new modeling, not a patch in this site).
     Instantiation => unit_cost()
   }
 }
