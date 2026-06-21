@@ -32,8 +32,8 @@ data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageRecei
 data host_source_root_ingest: SourceRootIngest = Empty
 
 // Compile stub — runtime overlay replaces with entry-parsed admission from discover_source_root_ingest.
-// Admission QN authority: 00_compile.dag entry source; pinned by v1-compiler-tests
-//   parse_compiler_entry_admission_imports_compile_module + manifest_entry_admission_qualified_name_is_well_formed.
+// Admission QN authority: 00_compile.dag entry source; runtime pin is discover_source_root_ingest
+//   parse_source_root_entry_admission (emitted as host_compiler_closure_admission in the manifest).
 data host_compiler_closure_admission: Admission = Admission {
   subject: ResolutionSubject {
     name: QnCons {

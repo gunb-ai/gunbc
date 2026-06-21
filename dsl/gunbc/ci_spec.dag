@@ -6,12 +6,15 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
 }
+import tools.build_step { BuildArtifact, verifications_script }
+import extdeps.languages.bash.program { ShellWord, Concat, lit, var_ref }
 
 type Gate
   = RustMonolithGate
   | EmitHostGate
   | LayeringImportsGate
   | ResolvedImportsGate
+  | ExtdepsExternalAuthorityGate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate
@@ -38,6 +41,7 @@ data gunbc_ci_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
   ResolvedImportsGate,
+  ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   CiYamlGate,
   SourceRootIngestGate
@@ -129,13 +133,56 @@ fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
   )
 }
 
-// Release bootstrap build + sccache stats (ci.yml workflow step).
+// The artifacts the release bootstrap build MUST produce — the prebuilt release bins the floor
+// then consumes WITHOUT a rebuild: `claim_executor` (the scheduler/executor the floor runs) and
+// `gunbc` (the compiler the host gates invoke via tools.host_prelude). `cargo build … --bins`
+// (ci_release_build_line) produces both; declaring them here is the single authority the
+// verification generator derives the exists+freshness checks from (DESIGN §3/§5).
+fn ci_release_artifact(name: String) -> BuildArtifact {
+  BuildArtifact {
+    path: Concat { parts: [var_ref(name: "ROOT"), lit(text: concat("/target/release/", name))] },
+    name: name
+  }
+}
+
+data ci_floor_required_artifacts: List<BuildArtifact> = [
+  ci_release_artifact(name: "claim_executor"),
+  ci_release_artifact(name: "gunbc")
+]
+
+// Source packages whose `.rs` files and manifests determine the `claim_executor`/`gunbc` build
+// outputs. `stage0` is the binary package; `stage0_core` and `stage0_emit_core` are the generated
+// crates it depends on. `src/v1/tests/` (v1-compiler-tests) is intentionally excluded — it is a
+// test-only workspace member not in `claim_executor`/`gunbc`'s dep graph; touching a test helper
+// does not trigger a rebuild, so scanning it produces a freshness false-positive against a
+// legitimately-cached binary (DESIGN §5: the check must not fire for a correct no-rebuild).
+fn ci_build_source_roots() -> List<ShellWord> {
+  [
+    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0")] },
+    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0_core")] },
+    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0_emit_core")] }
+  ]
+}
+
+// Derived verification: existence (primary) then source-relative freshness (secondary) for each
+// declared artifact, appended after the build so a non-zero verification exit fails the step.
+fn ci_floor_build_verify_script() -> String {
+  verifications_script(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
+}
+
+// Release bootstrap build + declared-artifact verification + sccache stats (ci.yml workflow
+// step). Success is DERIVED, not exit-code-only: the build can exit 0 with no/stale artifact
+// (sccache false cache-hit) — `ci_floor_build_verify_script` makes that fail closed before the
+// floor runs a phantom binary (DESIGN §5).
 fn ci_release_build_script() -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
       ci_cargo_eagain_retry_script(command: ci_release_build_line()),
-      "sccache --show-stats 2>/dev/null || true"
+      concat(
+        ci_floor_build_verify_script(),
+        "sccache --show-stats 2>/dev/null || true"
+      )
     )
   )
 }

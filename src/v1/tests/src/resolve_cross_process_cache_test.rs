@@ -50,8 +50,8 @@ use v1_compiler::cli_run::{
     resolve_entry_with_index, run_claim, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, lookup, subject_digest_for_closure, write_raw_artifact_for_test,
-    CacheLookupResult, CacheRejectReason,
+    build_valid_artifact_bytes, derive_subject_digest, lookup, subject_digest_for_closure,
+    write_raw_artifact_for_test, CacheLookupResult, CacheRejectReason, KeyInputMaterials,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -430,4 +430,67 @@ fn two_processes_share_cache_without_torn_read() {
     }
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+// === Construction proof (PR #5425): the realized key is DERIVED from the declared axis set ===
+//
+// derive_subject_digest folds a TOTAL materializer over the closed KeyInputAxis set, so the
+// key is provably a function of EXACTLY the declared axes. These falsifiers prove BY EXECUTION
+// (the #5423 lesson — a passing spec ≠ correct behavior) that:
+//   - perturbing the TransformContent axis changes the key (the toolchain IS keyed — if a
+//     future edit dropped it from the fold, this goes RED);
+//   - perturbing the ClosureSubject axis changes the key (the subject IS keyed);
+//   - identical materialized axes give an identical key (determinism — the key is a pure
+//     function of its axes, no hidden ambient input).
+// The toolchain axis is passed in (KeyInputMaterials), not read from current_exe inside the
+// fold, precisely so this sensitivity is testable rather than asserted in a comment.
+
+// Axis materials are 16-char hex Hash digests (the realizer's contract: production passes
+// closure_content_digest / transform_content_digest, both digests).
+const CLOSURE_A: &str = "aaaaaaaaaaaaaaaa";
+const CLOSURE_B: &str = "bbbbbbbbbbbbbbbb";
+const TRANSFORM_1: &str = "1111111111111111";
+const TRANSFORM_2: &str = "2222222222222222";
+
+#[test]
+fn key_changes_when_transform_axis_changes() {
+    let k1 = derive_subject_digest(&KeyInputMaterials::new(
+        CLOSURE_A.to_string(),
+        TRANSFORM_1.to_string(),
+    ));
+    let k2 = derive_subject_digest(&KeyInputMaterials::new(
+        CLOSURE_A.to_string(),
+        TRANSFORM_2.to_string(),
+    ));
+    assert_ne!(
+        k1, k2,
+        "transform (toolchain) axis must be keyed: changing content(transform) must change the key"
+    );
+}
+
+#[test]
+fn key_changes_when_closure_axis_changes() {
+    let k1 = derive_subject_digest(&KeyInputMaterials::new(
+        CLOSURE_A.to_string(),
+        TRANSFORM_1.to_string(),
+    ));
+    let k2 = derive_subject_digest(&KeyInputMaterials::new(
+        CLOSURE_B.to_string(),
+        TRANSFORM_1.to_string(),
+    ));
+    assert_ne!(
+        k1, k2,
+        "closure-subject axis must be keyed: changing the closure content must change the key"
+    );
+}
+
+#[test]
+fn key_is_deterministic_in_its_axes() {
+    let m1 = KeyInputMaterials::new(CLOSURE_A.to_string(), TRANSFORM_1.to_string());
+    let m2 = KeyInputMaterials::new(CLOSURE_A.to_string(), TRANSFORM_1.to_string());
+    assert_eq!(
+        derive_subject_digest(&m1),
+        derive_subject_digest(&m2),
+        "the key is a pure function of its axes: identical axes ⟹ identical key (no hidden input)"
+    );
 }

@@ -5682,24 +5682,18 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table }
 
-  let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
-  // Bootstrap bridge: seed std.types into modules that did not import it
-  // explicitly so declaration-driven lookup can run during the transition.
+  // §3 single-authority: a name resolves through each module's explicit
+  // import graph only. The std.types base-injection bootstrap bridge was
+  // removed — it was a second, implicit authority that let v1/v2 same-named
+  // types (FreeMonoid / Empty / Cons) collide by topological merge order.
+  // Modules that use kernel primitives keep resolving them from the kernel
+  // env; anything beyond the kernel must be imported explicitly.
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
-  let std_types_parent_env = if module_name_str != "std.types" && imports_std_types == false {
-    match map_get(parent_index, "std.types") {
-      Present { value: typed_std } => [typed_std.type_env]
-      Absent => []
-    }
-  } else {
-    []
-  }
-  let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: typed_parent } => [typed_parent.type_env] Absent => [] })
-  let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  // Filter algebra type variable names from std.types imports so they
-  // do not leak as ambient user-facing type bindings.
-  let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
-  let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
+  let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: typed_parent } => [typed_parent.type_env] Absent => [] })
+  // No implicit base bindings: the import fold below starts empty and is
+  // seeded only by the module's explicit imports (std.types type-variable
+  // filtering still applies when std.types is imported explicitly).
+  let import_bindings = fold(module.resolved_imports, init: collect_parent_bindings_filtered(envs: []), f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Present { value: typed_parent } =>
         if imp.module_path == "std.types" {
@@ -5834,21 +5828,11 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
-  let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
-  // Mirror the same bootstrap bridge in the unresolved path.
+  // No implicit std.types base-injection (mirrors build_type_env): §3
+  // single-authority — resolution flows through explicit imports only.
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
-  let std_types_parent_env = if module_name_str != "std.types" && imports_std_types == false {
-    match map_get(parent_index, "std.types") {
-      Present { value: typed_std } => [typed_std.type_env]
-      Absent => []
-    }
-  } else {
-    []
-  }
-  let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: typed_parent } => [typed_parent.type_env] Absent => [] })
-  let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  let std_import_bindings = collect_parent_bindings_filtered(envs: std_types_parent_env)
-  let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
+  let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Present { value: typed_parent } => [typed_parent.type_env] Absent => [] })
+  let import_bindings = fold(module.resolved_imports, init: collect_parent_bindings_filtered(envs: []), f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Present { value: typed_parent } =>
         if imp.module_path == "std.types" {

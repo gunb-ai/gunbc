@@ -2,7 +2,7 @@
 
 Node: `node://adhoc-3efc6449-ec5` · MODEL-FIRST SPIKE (escalate before load-bearing).
 Anchor: DESIGN.md §2 (one concept, every scale — Realization pattern), §3 (single authority,
-interface↔transport split), §5 (fail-closed). ROADMAP "Next — Caching via Realization".
+interface↔transport split), §5 (fail-closed). `ROADMAP.md` §2 *Minimal work — caching by realization*.
 
 ## 1. The fork
 

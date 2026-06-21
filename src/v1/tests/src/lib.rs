@@ -24,11 +24,17 @@ mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
+mod cache_purity_oracle_test;
+#[cfg(test)]
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod cron_tag_test;
 #[cfg(test)]
+mod cross_representation_equality_test;
+#[cfg(test)]
 mod data_cache_scoping_test;
+#[cfg(test)]
+mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
@@ -78,6 +84,8 @@ mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
 mod measure_field_access_test;
 #[cfg(test)]
+mod module_authority_resolution_test;
+#[cfg(test)]
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
@@ -102,9 +110,9 @@ mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
-mod resolve_typed_cache_equivalence_test;
-#[cfg(test)]
 mod source_audit;
+#[cfg(test)]
+mod source_root_ingest_manifest_host_test;
 #[cfg(test)]
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
@@ -113,8 +121,6 @@ mod target_model_runtime_import_repro;
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
-#[cfg(test)]
-mod v2_compiler_closure_nv2_substrate_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
 #[cfg(test)]

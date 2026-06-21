@@ -41,7 +41,7 @@ use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
     run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
 
 /// One runnable plan node, projected from the plan value. A `SingleClaim` is one
 /// `(entry, function)` Bool witness (the demo suite + the floor's per-gate
@@ -455,7 +455,67 @@ fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Resul
     }
 }
 
-/// Evaluate peripheral spawn width from the `.dag` plan entry (host never decides width).
+/// Live host memory budget in bytes — the guaranteed slice this floor process may use before the
+/// OOM-killer fires. This is the §1-C / DESIGN §3 "read, don't commit" half: the cgroup budget is
+/// authored by an EXTERNAL system (the host/scheduler), so the host realizer reads it LIVE here,
+/// while OUR per-shard memory peak is the committed measured fact in `gunbc.ci_floor_measurement`.
+/// Reading it live (not a committed constant) is what sees the per-host cgroup drift and
+/// multi-tenant pressure.
+///
+/// Source order: cgroup v2 unified `memory.max` walked leaf→root and reduced by `min` (the
+/// EFFECTIVE limit is the tightest ancestor cap), then `/proc/meminfo` `MemAvailable`/`MemTotal`
+/// as a fallback for hosts with no cgroup cap. `None` when nothing is readable → the `.dag` fold
+/// falls back to the conservative committed width (fail-closed: never OOM, never fabricated).
+fn read_host_memory_budget_bytes() -> Option<u64> {
+    // cgroup v2 unified hierarchy: `/proc/self/cgroup` is a single `0::/<rel>` line.
+    if let Ok(self_cg) = fs::read_to_string("/proc/self/cgroup") {
+        if let Some(rel) = self_cg
+            .lines()
+            .find_map(|l| l.strip_prefix("0::"))
+            .map(|p| p.trim().trim_start_matches('/').to_string())
+        {
+            let root = Path::new("/sys/fs/cgroup");
+            let mut dir = root.join(&rel);
+            let mut effective: Option<u64> = None;
+            loop {
+                if let Ok(s) = fs::read_to_string(dir.join("memory.max")) {
+                    let s = s.trim();
+                    if s != "max" {
+                        if let Ok(v) = s.parse::<u64>() {
+                            effective = Some(effective.map_or(v, |cur| cur.min(v)));
+                        }
+                    }
+                }
+                if dir == root || !dir.pop() {
+                    break;
+                }
+            }
+            if let Some(v) = effective {
+                return Some(v);
+            }
+        }
+    }
+    // Fallback (no cgroup cap): /proc/meminfo. MemAvailable is volatile/multi-tenant, so it is the
+    // fallback only — a transient dip should not collapse width when a real cgroup cap exists.
+    if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
+        for key in ["MemAvailable", "MemTotal"] {
+            if let Some(kb) = meminfo
+                .lines()
+                .find(|l| l.starts_with(key))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|n| n.parse::<u64>().ok())
+            {
+                return Some(kb.saturating_mul(1024));
+            }
+        }
+    }
+    None
+}
+
+/// Evaluate peripheral spawn width from the `.dag` plan entry (host never decides width — it
+/// READS the live memory budget and threads it into the pure `.dag` fold). §1-C: the width fn
+/// takes a `memory_budget_bytes: Int` arg; we bind it by name to the live host budget. A `0`
+/// budget (unreadable) maps to the fold's conservative committed fallback (fail-closed, no OOM).
 fn eval_spawn_width(
     source_roots: &[String],
     plan_entry: &str,
@@ -467,10 +527,28 @@ fn eval_spawn_width(
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for spawn width {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
-    let width_value = run_value(&plan_ctx, &width_fn).map_err(|msg| {
+    let budget_bytes = read_host_memory_budget_bytes().unwrap_or(0);
+    match budget_bytes {
+        0 => eprintln!(
+            "claim_executor: live memory budget unavailable — width uses the .dag conservative fallback"
+        ),
+        b => eprintln!("claim_executor: live memory budget {b} bytes (cgroup memory.max / meminfo)"),
+    }
+    // i64 is the `.dag` Int carrier; clamp the (always-small) byte count into range defensively.
+    let budget_arg = i64::try_from(budget_bytes).unwrap_or(i64::MAX);
+    let width_value = run_in_context_with_args(
+        &plan_ctx,
+        &width_fn,
+        &[(
+            Some("memory_budget_bytes".to_string()),
+            Value::Int(budget_arg),
+        )],
+        false,
+    )
+    .map_err(|e| {
         format!(
             "spawn width eval failed ({}::{}): {}",
-            plan_entry, width_fn, msg
+            plan_entry, width_fn, e
         )
     })?;
     hardware_thread_count_from_value(&width_value, &plan_ctx)
@@ -484,11 +562,37 @@ struct WalkOutcome {
     batches_run: usize,
 }
 
-/// Run batch by batch (executor ordering); claims within a batch in parallel up to
-/// `spawn_width` concurrent threads (peripheral width realization — `.dag` authority).
-/// The batch boundary is a barrier: batch N+1 starts only after every claim in batch N
-/// has reported. A failed batch halts the walk before its dependents. The batch
-/// MEMBERSHIP and ORDER are the `.dag` plan's — this only walks them.
+/// Run batch by batch (executor ordering). A batch is one scheduler readiness layer:
+/// every node in it is mutually independent, so the whole layer runs concurrently. The
+/// batch boundary is a barrier — batch N+1 starts only after every claim in batch N has
+/// reported, and a failed batch halts the walk before its dependents. Batch MEMBERSHIP
+/// and ORDER are the `.dag` plan's; this only walks them.
+///
+/// Per-node resource demand decides each node's INTERNAL width: a `DiscoveryBatch` shards
+/// up to the budgeted `spawn_width` (the `.dag` width authority), while a `SingleClaim` is
+/// one resolve thread and ignores it (`run_single_claim` takes no width). So `spawn_width`
+/// is handed to every node unchanged — the heavy discovery corpus gets the full memory-
+/// budgeted width regardless of how many cheap gates share its layer. The `.dag` plan
+/// guarantees no two heavy resolves share a readiness layer (resource-dependency edges
+/// serialize them — `gunbc_ci_floor_plan_fits_memory_budget`), so the concurrent memory
+/// peak stays under the fleet budget.
+///
+/// This replaces the prior even split (`width / chunk.len()`), which starved the corpus to
+/// `width = 1` whenever it was chunked with cheap gates that did not consume any of the
+/// width they were handed — the 1000s serial tentpole.
+/// Process high-water-mark RSS in bytes, read from `/proc/self/status` (`VmHWM`;
+/// linux best-effort, `None` elsewhere). `VmHWM` is the PEAK resident set over the
+/// process lifetime — at the floor's parallel batch this is the CONCURRENT peak at
+/// the run's `spawn_width`, the quantity a memory budget must bound. Emitted as a
+/// MEASURED fact so the §1-C memory-aware width derivation keys on it instead of a
+/// hand-grounded literal (realization-measurement-loop.md Phase 0).
+fn peak_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
@@ -501,42 +605,33 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             batch.len(),
             width
         );
-        for chunk in batch.chunks(width) {
-            // Divide spawn budget across chunk siblings so DiscoveryBatch internal
-            // sharding + batch-level concurrency never exceeds the .dag width authority.
-            let per_runnable_width = (width / chunk.len()).max(1);
-            let handles: Vec<_> = chunk
-                .iter()
-                .map(|runnable| {
-                    let roots = source_roots.to_vec();
-                    let runnable = runnable.clone();
-                    let slot_width = per_runnable_width;
-                    thread::spawn(move || run_one_runnable(roots, runnable, slot_width))
-                })
-                .collect();
-            for handle in handles {
-                match handle.join() {
-                    Ok(result) => {
-                        if result.ok {
-                            println!("PASS [batch {}] {}", bi + 1, result.function);
-                        } else {
-                            println!(
-                                "FAIL [batch {}] {} ({})",
-                                bi + 1,
-                                result.function,
-                                result.detail
-                            );
-                            any_failed = true;
-                        }
-                    }
-                    Err(_) => {
-                        println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+        let handles: Vec<_> = batch
+            .iter()
+            .map(|runnable| {
+                let roots = source_roots.to_vec();
+                let runnable = runnable.clone();
+                thread::spawn(move || run_one_runnable(roots, runnable, width))
+            })
+            .collect();
+        for handle in handles {
+            match handle.join() {
+                Ok(result) => {
+                    if result.ok {
+                        println!("PASS [batch {}] {}", bi + 1, result.function);
+                    } else {
+                        println!(
+                            "FAIL [batch {}] {} ({})",
+                            bi + 1,
+                            result.function,
+                            result.detail
+                        );
                         any_failed = true;
                     }
                 }
-            }
-            if any_failed {
-                break;
+                Err(_) => {
+                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
+                    any_failed = true;
+                }
             }
         }
         // Fail closed at the barrier: if a gating batch failed, do not run the
@@ -859,6 +954,20 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // 2. Run batch by batch (executor ordering), claims within a batch in parallel.
     let outcome = run_walk(&source_roots, &batches, spawn_width);
+    // [measurement] memory instrument (Phase-0 keystone): the process high-water RSS
+    // is the CONCURRENT peak across the whole floor run at this spawn_width — the
+    // number a memory budget must bound. Per-shard peak ≈ this ÷ effective
+    // concurrency; a width=1 run measures one shard's peak directly. Emitting it
+    // (paired with spawn_width) is what lets §1-C derive width from a MEASURED peak
+    // rather than the hand-grounded literal #5419 deleted as unwired.
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!(
+            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+        ),
+        None => eprintln!(
+            "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
+        ),
+    }
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {

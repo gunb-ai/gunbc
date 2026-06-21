@@ -1,0 +1,114 @@
+// src/v2/std/reducible.dag
+// Scope: fail-closed three-valued reduction verdict (objective primitive).
+// Anchor: DESIGN.md §5 verdict algebra; §2 horizontal catamorphism over List<ReduceVerdict>.
+// Status: ported from dsl/std/reducible.dag (ctrl plans.reducible / gunb-ai/ctrl #1716).
+// CONSUMES product.compute_fabric.PartitionedReduce by correspondence only
+// (DESIGN.md §3 single authority) — declares NO map/reduce types.
+// Dissolution trigger (DESIGN.md §6): delete correspondence scaffold when this
+// module binds literal PartitionedReduce fields (partitioner/map/reduce/laws) via
+// product import or a std Realization row lands.
+//
+// VERDICT (DESIGN.md §5):
+//   Reduced { last_parts }  — decomposed / progressed (rightmost decisive leaf count)
+//   Irreducible { witness } — grounded atom, decisively not further reducible
+//   Unknown { missing }     — fail-closed; located axis names what is missing
+//
+// ALGEBRA: (ReduceVerdict, reduce_verdict_combine) is a Semigroup with absorbing
+// element Unknown (leftmost located axis preserved). No Monoid identity — empty
+// fold uses a located Unknown sentinel (started-flag / non-empty-only reduce).
+// reduce_verdicts_located folds List<ReduceVerdict> (= FreeMonoid carrier per
+// v2.std.collection) with this op — the horizontal catamorphism for sibling verdicts.
+
+module v2.std.reducible
+
+import v2.std.algebra { Magma, Semigroup, fold_list }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String, string_is_empty }
+
+// 🟢 coproduct dissolution — CP-REDUCIBLE-VERDICT-TERMINAL.
+type ReduceVerdict
+  = Reduced { last_parts: Int }
+  | Irreducible { witness: String }
+  | Unknown { missing: String }
+
+// Semigroup join: Unknown absorbs (leftmost axis wins); decisive siblings take
+// the right-hand verdict (last green child wins). Post-fold, Reduced.last_parts is
+// the rightmost decisive leaf's count — not an aggregate sum across siblings.
+fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
+  match a {
+    Unknown { missing: ma } => Unknown { missing: ma }
+    _ => match b {
+      Unknown { missing: mb } => Unknown { missing: mb }
+      _ => b
+    }
+  }
+}
+
+fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
+  Semigroup { magma: Magma { op: reduce_verdict_combine } }
+}
+
+// dissolve-on: derived structural == on ReduceVerdict (closed coproduct equality)
+// replaces this hand-rolled predicate; interim owner: workflow_recursive witnesses.
+fn verdict_eq(a: ReduceVerdict, b: ReduceVerdict) -> Bool {
+  match a {
+    Reduced { last_parts: pa } => match b {
+      Reduced { last_parts: pb } => pa == pb
+      Irreducible { witness: _ } => false
+      Unknown { missing: _ } => false
+    }
+    Irreducible { witness: wa } => match b {
+      Reduced { last_parts: _ } => false
+      Irreducible { witness: wb } => wa == wb
+      Unknown { missing: _ } => false
+    }
+    Unknown { missing: ma } => match b {
+      Reduced { last_parts: _ } => false
+      Irreducible { witness: _ } => false
+      Unknown { missing: mb } => ma == mb
+    }
+  }
+}
+
+// Non-empty fold without identity: first element replaces the empty sentinel;
+// subsequent steps use reduce_verdict_combine (Unknown latch = left unknown kept).
+type LocatedVerdictFoldAcc {
+  started: Bool
+  verdict: ReduceVerdict
+}
+
+fn fold_located_verdict(acc: LocatedVerdictFoldAcc, next: ReduceVerdict) -> LocatedVerdictFoldAcc {
+  match acc.started {
+    true => match acc.verdict {
+      Unknown { missing: _ } => acc
+      _ =>
+        LocatedVerdictFoldAcc {
+          started: true,
+          verdict: reduce_verdict_combine(a: acc.verdict, b: next)
+        }
+    }
+    false => LocatedVerdictFoldAcc { started: true, verdict: next }
+  }
+}
+
+fn reduce_verdicts_located(verdicts: List<ReduceVerdict>, empty_missing: String) -> ReduceVerdict {
+  let acc = fold_list(
+    xs: verdicts,
+    empty: LocatedVerdictFoldAcc {
+      started: false,
+      verdict: Unknown { missing: empty_missing }
+    },
+    cons: fn(a, v) { fold_located_verdict(acc: a, next: v) }
+  )
+  acc.verdict
+}
+
+// §5 primitive: empty witness -> Unknown; named witness -> grounded atom.
+fn classify_leaf(witness: String) -> ReduceVerdict {
+  match string_is_empty(s: witness) {
+    true => Unknown { missing: "witness" }
+    false => Irreducible { witness: witness }
+  }
+}

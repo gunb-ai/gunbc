@@ -1,0 +1,34 @@
+// tools/extdeps_external_authority_gate.dag — extdeps external-authority anchor gate.
+//
+// Runs uri + live projection + RED perturb witnesses; fail-closed on CI floor
+// (ExtdepsExternalAuthorityGate enrolled in gunbc_ci_spec).
+
+module tools.extdeps_external_authority_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.extdeps_external_authority_transport {
+  run_extdeps_external_authority_uri_witnesses,
+  run_extdeps_external_authority_live_corpus_witness,
+  run_extdeps_external_authority_lens_unit_red
+}
+
+func run_extdeps_external_authority_gate_body() -> ProcessExit {
+  let uri_ok = run_extdeps_external_authority_uri_witnesses()
+  let live_ok = run_extdeps_external_authority_live_corpus_witness()
+  let red_ok = run_extdeps_external_authority_lens_unit_red()
+  return if uri_ok && live_ok && red_ok {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "extdeps external authority gate failed: uri witnesses, live corpus, and/or RED perturb receipts"
+    )
+  }
+}
+
+func main() -> ProcessExit {
+  run_extdeps_external_authority_gate_body()
+}
+
+func run_extdeps_external_authority_ci_gate() -> ProcessExit {
+  run_extdeps_external_authority_gate_body()
+}

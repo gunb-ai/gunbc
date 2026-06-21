@@ -1,0 +1,13 @@
+// RED perturb — file: anchor on a non-machinery module (must be external http(s)).
+
+module extdeps.fixture.external_authority_file_anchor
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, File }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "local/spec.pdf"
+  }
+}

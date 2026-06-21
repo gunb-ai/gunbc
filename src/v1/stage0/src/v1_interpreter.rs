@@ -245,6 +245,24 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     .find(|(k, _)| resolve_sym(**k) == "head")
                     .and_then(|(_, v)| match v {
                         Value::Str(s) => Some(s.clone()),
+                        Value::Variant {
+                            variant_name,
+                            fields: sym_fields,
+                            ..
+                        } => {
+                            let variant = resolve_sym(*variant_name);
+                            if variant == "Symbol" || variant == "Atom" {
+                                sym_fields
+                                    .iter()
+                                    .find(|(k, _)| resolve_sym(**k) == "identity")
+                                    .and_then(|(_, v)| match v {
+                                        Value::Str(s) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                            } else {
+                                None
+                            }
+                        }
                         _ => None,
                     })
                     .unwrap_or_else(|| {
@@ -747,6 +765,13 @@ pub enum InterpError {
     NoSuchVariable { name: String },
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
+    // A `==`/`!=` whose operands straddle the model↔realization boundary — a
+    // native scalar number (`Int`/`Float`) against the coproduct model encoding
+    // of a number (a `Nat` `Zero`/`Succ` Variant). `Value::eq` cannot decide such
+    // a pair and would silently return `false` (its `_ => false` arm) — a §5
+    // fail-open. Raised at the eval seam so the silent wrong answer becomes a
+    // loud, typed one. (DESIGN §5; operator: `==` fail-closed, 2026-06-20.)
+    CrossRepresentationEquality { detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
     Unimplemented { what: String },
@@ -763,6 +788,9 @@ impl fmt::Display for InterpError {
                 write!(f, "no field '{}' on type '{}'", field, type_name)
             }
             InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
+            InterpError::CrossRepresentationEquality { detail } => {
+                write!(f, "cross-representation equality: {}", detail)
+            }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
             }
@@ -1760,6 +1788,16 @@ fn eval_var(
 
     // Variant constructor (unit variant, no fields)
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+        // Numeric-tower grounding (DESIGN §1/§2/§7, model↔realization fork): the
+        // Peano base constructor `Zero` is *realized* as the native `Value::Int(0)`
+        // — the construction-side inverse of the `Int → Zero/Succ` read bridge in
+        // `match_pattern` (keyed the same way, on the variant name). Grounding
+        // construction makes the native form equal the modeled form, so a `Nat`
+        // never materializes as a `Zero`/`Succ` `Variant` and the
+        // cross-representation `==` straddle never arises (its guard is dead code).
+        if name == "Zero" {
+            return Ok(Value::Int(0));
+        }
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
             variant_name: ctx.sym(&name),
@@ -1884,12 +1922,32 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
         }
     }
 
-    // Equality (works on all comparable types)
-    if matches!(op, BinOp::Eq) {
-        return Ok(Value::Bool(left == right));
-    }
-    if matches!(op, BinOp::Ne) {
-        return Ok(Value::Bool(left != right));
+    // Equality (works on all comparable types). `Value::eq` is the single
+    // equality authority (also the `CanonKey` map-key authority, so it stays an
+    // infallible `PartialEq` and its `Hash`-consistent `false` must stand). A
+    // heterogeneous model↔realization pair it cannot decide funnels through its
+    // `_ => false` arm; fabricating that `false` is a §5 fail-open — e.g.
+    // `nat_add(85, 32)` builds `Succ^85(Int(32))` and silently compares unequal
+    // to the native `Int(117)`. Fail closed: when the result is `false` AND a
+    // cross-representation numeric straddle *explains* it, raise a typed error
+    // here at the eval seam rather than returning the silent `false`. The check
+    // only runs on a `false` result and only flags the straddle, so genuine
+    // inequalities (`1 == 2`, `Succ {..} == Zero`) and reconciled forks
+    // (`[1,2,3] == Cons {..}`) pass through untouched. (DESIGN §5; operator:
+    // `==` fail-closed, 2026-06-20.)
+    if matches!(op, BinOp::Eq | BinOp::Ne) {
+        let equal = left == right;
+        if !equal {
+            if let Some(detail) = cross_representation_numeric_straddle(&left, &right) {
+                return Err(InterpError::CrossRepresentationEquality { detail });
+            }
+        }
+        let result = if matches!(op, BinOp::Eq) {
+            equal
+        } else {
+            !equal
+        };
+        return Ok(Value::Bool(result));
     }
 
     // Boolean operators
@@ -1924,6 +1982,121 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
                 right.type_label()
             ),
         }),
+    }
+}
+
+/// Diagnose a *cross-representation numeric straddle*: a native scalar number
+/// (`Value::Int`/`Value::Float`) compared, at some structural position, against
+/// the coproduct **model** encoding of a number (a `Nat` `Zero`/`Succ` Variant,
+/// the §1/§2/§7 model↔realization fork). The two sides denote one value space in
+/// two encodings, so `Value::eq` cannot decide them and silently returns `false`
+/// through its `_ => false` arm. Returns a description of the first straddle
+/// found so the caller can fail closed (§5) instead of fabricating that `false`;
+/// returns `None` when the inequality is a genuine value difference
+/// (`1 == 2`, `Succ {..} == Zero`).
+///
+/// Single-authority (§3): this NEVER decides equality — `Value::eq` is the one
+/// authority and is left untouched. This is a read-only *diagnosis* of why `eq`
+/// already returned `false`, so it is called only on that `false` and mirrors
+/// `eq`'s structural recursion (matching variant names / record fields / flattened
+/// FreeMonoid elements) — it inspects exactly the positions `eq` compared.
+fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String> {
+    match (a, b) {
+        // The straddle itself: a native scalar number vs a *non-FreeMonoid*
+        // coproduct Variant (a `Nat` `Zero`/`Succ` chain). A list-shaped Variant is
+        // reconciled by `Value::eq`, and an Int-vs-list pair is a genuine
+        // difference, so exclude FreeMonoid variants.
+        (Value::Int(_) | Value::Float(_), v @ Value::Variant { .. })
+        | (v @ Value::Variant { .. }, Value::Int(_) | Value::Float(_))
+            if free_monoid_to_vec(v).is_none() =>
+        {
+            Some(format!(
+                "{} vs {} — a number and its coproduct (Nat Zero/Succ) encoding are \
+                 two representations of one value; Value::eq cannot decide them, so \
+                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
+                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                describe_repr(a),
+                describe_repr(b),
+            ))
+        }
+        // No Variant present ⇒ no numeric straddle. This is the hot path for a
+        // `false` `==` (two Strs, two Ints, …): short-circuit WITHOUT flattening.
+        // A `Str` is a sequence of `Int` codepoints, so two scalars/strings can only
+        // ever compare Int-vs-Int, never number-vs-Variant — flattening every false
+        // string compare (self-compile does millions) would be the dominant cost.
+        (
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Unit
+            | Value::Str(_),
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Unit
+            | Value::Str(_),
+        ) => None,
+        // Same-name coproduct or any record: recurse the matching structure, so a
+        // straddle nested inside (two non-canonical `Succ^k(Int)` chains, or a
+        // number inside a field) is still caught.
+        (
+            Value::Variant {
+                variant_name: an,
+                fields: af,
+                ..
+            },
+            Value::Variant {
+                variant_name: bn,
+                fields: bf,
+                ..
+            },
+        ) if an == bn => fields_numeric_straddle(af, bf),
+        (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
+            fields_numeric_straddle(af, bf)
+        }
+        // Native lists: walk elements in place (no materialization) — a forked
+        // element straddles (`[nat_add(1,1)] == [2]`) even though `Value::eq`
+        // reconciles the container.
+        (Value::List(av), Value::List(bv)) => av
+            .iter()
+            .zip(bv.iter())
+            .filter(|(x, y)| x != y)
+            .find_map(|(x, y)| cross_representation_numeric_straddle(x, y)),
+        // Rare mixed FreeMonoid forms (Cons-chain vs List/Str): flatten only here.
+        _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+            (Some(av), Some(bv)) => av
+                .iter()
+                .zip(bv.iter())
+                .filter(|(x, y)| x != y)
+                .find_map(|(x, y)| cross_representation_numeric_straddle(x, y)),
+            _ => None,
+        },
+    }
+}
+
+/// Shared-key field walk for [`cross_representation_numeric_straddle`]: recurse
+/// only the positions `Value::eq` compared (shared keys with unequal values).
+fn fields_numeric_straddle(
+    af: &HashMap<Symbol, Value>,
+    bf: &HashMap<Symbol, Value>,
+) -> Option<String> {
+    af.iter()
+        .filter_map(|(k, av)| bf.get(k).map(|bv| (av, bv)))
+        .filter(|(av, bv)| av != bv)
+        .find_map(|(av, bv)| cross_representation_numeric_straddle(av, bv))
+}
+
+/// One operand's representation, for the cross-representation diagnostic.
+fn describe_repr(v: &Value) -> String {
+    match v {
+        Value::Int(n) => format!("native Int({})", n),
+        Value::Float(f) => format!("native Float({})", f),
+        Value::Variant { variant_name, .. } => {
+            format!("coproduct Variant `{}`", resolve_sym(*variant_name))
+        }
+        other => other.type_label().to_string(),
     }
 }
 
@@ -2970,6 +3143,22 @@ fn eval_record_lit(
     }
 
     if let Some(pe) = parent_enum {
+        // Numeric-tower grounding (DESIGN §1/§2/§7): the Peano successor
+        // `Succ { prev: n }` is realized as `Value::Int(n + 1)` whenever its
+        // predecessor already grounds to a native non-negative Int — the
+        // construction-side inverse of the `Int → Succ { prev: Int(n - 1) }` read
+        // bridge. Field evaluation above is bottom-up, so an inner `Zero`/`Succ`
+        // is already grounded before this outer one builds, and a `Nat` value is
+        // never represented as a coproduct `Variant`. (A non-Int `prev` — never a
+        // well-typed `Nat` — falls through to the `Variant` below, where the
+        // straddle guard remains the fail-closed backstop.)
+        if type_name == "Succ" {
+            if let Some(Value::Int(p)) = fields.get(&ctx.sym("prev")) {
+                if *p >= 0 {
+                    return Ok(Value::Int(p + 1));
+                }
+            }
+        }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(&type_name),
@@ -5784,6 +5973,93 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "extdeps_external_authority_anchor_kind_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_anchor_kind_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_anchor_kind_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_external_authority_scheme_identity_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_scheme_identity_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_scheme_identity_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_external_authority_locator_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg:
+                    "extdeps_external_authority_locator_for_qualified_name requires a QualifiedName"
+                        .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_locator_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_derived_extdeps_modules" => {
+            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
+                    .to_string(),
+            })?;
+            Ok(Some(
+                crate::extdeps_shape_transport_policy_project::derived_extdeps_modules_value(ctx),
+            ))
+        }
+
+        "extdeps_external_authority_is_backfill_pending_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_backfill_pending_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_backfill_pending_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_is_machinery_exempt_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_machinery_exempt_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_machinery_exempt_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_clean_tree_roster_excluded_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_clean_tree_holds(),
+        ))),
+        "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
+        ))),
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),

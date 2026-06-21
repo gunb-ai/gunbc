@@ -4,12 +4,10 @@
 
 module extdeps.realization.parse_table_memo
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
-  ContentAddressedByValue,
-  UpsertSubject,
   ContentAddressLookup,
   OverwriteAllowed,
   MissThenCreate,
@@ -34,8 +32,11 @@ data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "gunbc-parse-table-in-process"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
+    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers. NOTE the
+    // parse table depends on the PARSER (a transform): when this scaffold is wired and its
+    // triggers gain ToolchainChange, content_addressed_inputs auto-adds ToolchainSpec — the
+    // key completes BY CONSTRUCTION, no separate inputs edit (the §0 fork stays dissolved).
+    key_inputs: ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false

@@ -5,7 +5,9 @@ authority** — this doc is a worker-dispatch tracker, not a fact ledger, and ea
 mark on its carrier when it lands (DESIGN §6 "no parallel-ledger docs"). A phase's real state is its
 branch/PR, not this file (mirrors `ROADMAP.md`).
 
-**Owner:** `zesty-deer-479` (CI profiling) coordinates; phases dispatch to children.
+**Owner:** unowned (original coordinator `zesty-deer-479` archived 2026-06-21) — operator-coordinated;
+consolidates the formerly-separate quick-ant-298 dependency-ordered roadmap (single authority, no fork).
+Linked from `ROADMAP.md` §2 *Minimal work — caching by realization*.
 
 ---
 
@@ -33,6 +35,22 @@ The three notes from the operator are **not peers — they are a dependency chai
 against a measured cost*, and `guaranteed` = §5 (measured, not predicted). Cost must become a measured
 fact before anything can plan against it. The independent CI audit reached the same conclusion ("add the
 two-clock timing first"); the dependency structure above is *why*.
+
+### The end-state acceptance gate (what the whole plan builds to)
+
+> For every pure transform `T` (resolve, parse, typecheck, *and* derived analyses like
+> complexity-synthesis / affected-set — see `ROADMAP.md` §3 *Complexity / synthesis lens* and §4 *Testgen*), `realize(T)` returns a result
+> content-addressed by `hash(inputs ⊕ content(T))`, materialized at the **minimal `Placement` spanning
+> T's consumers (its reach)**. A transform that is **non-redundant** (shared across a layer boundary, or
+> recompute-cost > cache-cost) with **no cache supplier at its reach layer** is a located, typed
+> **ERROR** that emits a *request to provision a supplier there*. No silent `Recompute`; no under-keyed
+> hit.
+
+This is §5 (fail-closed) turned on the cost axis: uncached non-redundant work is not "slow", it is an
+*error*. The earliest truthful point to assert it is the **redundancy-only** cut (shared-across-boundary
+— needs reach, not measurement); the cost-based "non-redundant" half waits on measured cost (Phase 0 /
+§4). The phases below are the path to this gate; the dependency-ordered spine that maps work items onto
+it is in **§ Dependency-ordered spine** (before Sequencing).
 
 ### The invariant that governs every phase (DESIGN §3 / §4)
 
@@ -298,6 +316,40 @@ block, no fleet SKU in the generic tier); the `HardwareBudget` the scheduler rea
 declares.
 
 ---
+
+## Dependency-ordered spine (foundation → end state)
+
+The work-item view of the phases above, ordered by dependency toward the acceptance gate (absorbed from
+the former quick-ant-298 roadmap; maps onto the phases, does not replace them).
+
+- **F1** scheduler gives heavy nodes the budgeted width — *#5421 merged* (= Phase 1 width landing).
+- **F2/F3** key-completeness lens (`ToolchainChange ∈ triggers ⟹ input ∈ inputs_considered`) +
+  `resolved_graph` keyed by construction — *#5423, in review* (= the Phase 2 key-derivation axis, spec-level).
+- **P1 — honest keys, verified by execution** *(deps F2,F3)*: realizer-key lens (executed digest ⊇
+  declared `inputs_considered`, RED otherwise — would have caught the `from_utf8_lossy` collision);
+  stable transform-id (reproducible source/commit/tree hash, not binary bytes); census parity for
+  `parse_table_memo`. (= Phase 2 "converge key derivations".)
+- **P2 — one door: caching by inhabitance** *(deps P1)*: `realize(subject)` as the sole API; eliminate
+  raw bypass (`build_multi_entry_index`, hand-rolled `ParseTable` HashMap → inhabited via `realize`,
+  DESIGN §6's own example). (= Phase 2 one-kernel/N-backends.)
+- **P3 — reach → layer + completeness fail-closed** *(deps P2)* — **the core ask / the acceptance gate**:
+  reach analysis lens (consumer set + boundary → minimal sufficient `Placement`); completeness gate
+  (subject realized below reach → ERROR; non-redundant transform with no supplier at reach → ERROR —
+  **land the redundancy-only cut first**, cost half waits on §4); supplier provisioning + typed request.
+- **P4 — economic tier** *(deps Phase 0 measurement)*: per-transform measured cost (`PerformanceReceipt`
+  → cost-aware reach); `Materialization` = `Recompute | Memoize | Share` chosen by measured cost.
+- **P5 — v2 dissolution** *(deps B2)*: `content(T) = content_hash(subgraph)` native; dissolves the
+  binary-hash/version-string approximations and makes P1's spec↔realizer check structural.
+
+**External blockers (track as work-items):** **B1** #5295 generic-instantiation (FreeMonoid<T> cached
+without variants — itself an under-keyed in-proc cache) → gates cross-shard `Share` (Phase 2.2). **B2**
+v2 cross-tree content-hash ("increment 4", the `ContentHash` subject on `RealizedStep`; cf. the
+`execution_receipt_digest` stub at `compute_fabric.dag:588-594`) → gates P5.
+
+**Critical path:** `F2/F3 → P1 → P2 → P3 (redundancy cut) → P3 supplier`. `P1.census`, `P4`, and
+Phase-2 sub-items parallelize off it; cross-shard `Share` and P5 wait on B1/B2. The redundancy-only P3
+cut is the earliest point "uncached non-redundant work is an error" is truthful — it needs reach, not
+the cost model.
 
 ## Sequencing & dispatch
 

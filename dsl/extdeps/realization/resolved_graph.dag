@@ -5,12 +5,10 @@
 
 module extdeps.realization.resolved_graph
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
-  ContentAddressedByValue,
-  UpsertSubject,
   ContentAddressLookup,
   WriteOnce,
   MissThenCreate,
@@ -38,8 +36,15 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "gunbc-resolved-graph-per-host-cache"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
+    // OUR content-addressed cache: the inputs are DERIVED from invalidation_triggers, not
+    // authored. Because invalidation_triggers promises ToolchainChange, the derived input
+    // set is [UpsertSubject, ToolchainSpec] (content_addressed_inputs) — the transform is
+    // keyed BY CONSTRUCTION, and declaring ToolchainChange WITHOUT keying the toolchain (or
+    // vice versa) is UNWRITABLE: there is no inputs field to author out of agreement. This
+    // dissolves the model side of the model↔realizer fork PR #5423 false-greened (a
+    // spec-only lens over a hand-authored list). The realizer (resolved_graph_cache.rs)
+    // folds the same set; the two Rust/.dag impls unify at v2/realize (subgraph-hash).
+    key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
@@ -71,7 +76,7 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
     {
       field: "lookup_semantics"
       evidence: OperatorObserved {
-        note: "subject_digest = closure content + resolve-logic version + intern-seed version"
+        note: "subject_digest content-addresses the closure content AND the resolve transform via the ToolchainSpec input (content(toolchain)) — NOT hand-authored resolve-logic/intern-seed version strings (cache-key-by-construction)"
         observed_at: 0
       }
     },

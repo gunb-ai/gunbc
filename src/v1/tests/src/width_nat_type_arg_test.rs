@@ -79,6 +79,10 @@ fn v1_std_float_dag_resolves_with_literal_machine_width() {
 }
 
 #[test]
+<<<<<<< HEAD
+=======
+#[ignore = "emitter seed on main lacks dag fix until #5325 co-land; E0107 10→0 verified via 2-stage bootstrap"]
+>>>>>>> origin/main
 fn machine_width_phantom_arg_rust_emit_peels_literal_width_to_unit() {
     use v1_compiler::cli_run;
     use v1_compiler::v1_compiler_artifact::RenderTarget;

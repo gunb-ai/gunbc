@@ -11,6 +11,11 @@
 module v2.compiler.parse
 
 
+import v2.compiler.parse_engine_hooks {
+  parse_engine_expr_production,
+  parse_engine_match_arm_body_production,
+  parse_engine_match_arm_stmt_body_production
+}
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -69,7 +74,7 @@ import v2.std.provenance {
 }
 import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map, list_at_optional, map_insert }
 import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
-import v2.std.logic { Bool }
+import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing { Lexeme, Token, TokenStream, symbol_intern_lexeme }
 import v2.std.grammar {
@@ -353,6 +358,49 @@ fn parse_table_empty() -> ParseTable {
   }
 }
 
+// --- ParseTable content-key (realize SUBJECT) — DESIGN-FIRST model, node adhoc-822f5c65-e9c P2 ---
+//
+// The positional cell key ParsePositionKey {position, production} is unique only WITHIN one table;
+// the table itself is scoped by grammar_digest × token_stream_digest. The realize kernel
+// (std.cache_interface, ROADMAP §2 P2 "one door") keys EVERY cache on a single content-addressed
+// SUBJECT, so a parse-memo cell's subject must fold BOTH the table scope and the cell coordinate
+// into one content hash (the "ParseTableSubject" the parse_table_memo.dag evidence row names):
+//   subject = grammar_digest ⊕ token_stream_digest ⊕ position ⊕ production
+// reusing v2.std.node combine_hash / byte_limb_hash_peano_digest / atom_identity_hash — NO fresh
+// hashing authority (§2/§3 single authority). Distinct (grammar, token-stream, position, production)
+// derive distinct subjects; identical inputs derive an identical subject (deterministic) — that IS
+// the content-addressing property a realize subject requires (proven by execution in
+// parse/parse_table_content_key_test.dag).
+//
+// CONSUMER + DEFERRAL (honestly-marked deferred-consumer model — a DEFINED consumer + a NAMED
+// trigger, so NOT a declared-but-dead fork). The SOLE consumer is the DEFERRED std-kernel handler
+// binding; there is deliberately NO premature v2-local rewire, because the v1 host is the real
+// memo authority:
+//  - The v1 host (try_parse_table_memo_dispatch / parse_table_memo_scope_and_key) is the SOLE parse-
+//    memo authority — the .dag table.entries map is VESTIGIAL (parse_table_insert's result is
+//    discarded; the same empty-entries table is threaded). So routing the .dag lookup/insert through
+//    this subject WITHOUT changing the host is cosmetic (feeds the discarded map = §5
+//    spec-without-execution), and changing the host to key by this content hash NOW would (a) trade
+//    the host's collision-FREE structural (grammar, token, position, production) tuple for content-hash
+//    collision risk on a load-bearing memo (§5 fail-open), and (b) re-derive this fold in Rust (more
+//    §3 host duplication) — for ZERO benefit before the de-fork. So we do not do it early.
+//  - DEFERRED std-kernel HANDLER binding — named dissolution trigger = the dsl→v2 cross-tree de-fork
+//    (no v2.std.cache_interface exists today; 02_parse is `module v2.compiler.parse`, the realize
+//    kernel lives in `dsl/std/cache_interface`). When that import lands, the host re-key and the
+//    kernel binding (ArtifactIdentity<ParseExprResult> / realize_route) arrive as ONE step and THIS
+//    subject becomes the realize key — that single step is the consumer. Explicitly NOT gated on
+//    #5429 (that gates only the separate resolved_graph handler). Until then the ArtifactKindId stays
+//    the Symbol mirror (parse_table_artifact_kind above).
+fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
+  combine_hash(
+    a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
+    b: combine_hash(
+      a: byte_limb_hash_peano_digest(limb: key.position),
+      b: atom_identity_hash(s: key.production)
+    )
+  )
+}
+
 fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
   length(xs: all_tokens) - length(xs: tokens)
 }
@@ -546,6 +594,239 @@ fn parse_wrap_production_captured(
 }
 
 fn parse_nonterminal_memoized(
+  all_tokens: List<Token>,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prod_name: Symbol,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  if prod_name == ^dag_production_match_arm_stmt_body {
+    parse_match_arm_stmt_body(
+      all_tokens: all_tokens,
+      tokens: tokens,
+      root: root,
+      table: table,
+      prov: prov
+    )
+  } else {
+    parse_nonterminal_memoized_core(
+      all_tokens: all_tokens,
+      tokens: tokens,
+      root: root,
+      table: table,
+      prod_name: prod_name,
+      prov: prov
+    )
+  }
+}
+
+
+// Gap-4: match-arm stmt body — mirror v1 parse_match_arm_stmts / looks_like_arm_start
+// (v1_compiler_parse.rs). Brace-less repeat(stmt) with arm-boundary stop (not generic Repeat).
+type ParseMatchArmStmtAcc {
+  remaining: List<Token>
+  acc_nodes: List<Node>
+  acc_diags: List<Diagnostic>
+  done: Bool
+  prov: ParseProvenanceState
+}
+
+
+fn parse_char_is_arm_pattern_lead(c: Char) -> Bool {
+  (c == 95) || ((c >= 65) && (c <= 90))
+}
+
+
+fn parse_token_lexeme_is(tok: Token, lit: String) -> Bool {
+  tok.lexeme == lit
+}
+
+
+fn parse_next_brace_depth(tok: Token, depth: Int) -> Int {
+  if parse_token_lexeme_is(tok: tok, lit: "{") {
+    depth + 1
+  } else if parse_token_lexeme_is(tok: tok, lit: "}") {
+    depth - 1
+  } else {
+    depth
+  }
+}
+
+
+fn parse_scan_fat_arrow_after_lbrace(tokens: List<Token>, depth: Int) -> Bool {
+  if depth <= 0 {
+    match parse_token_first(tokens: tokens) {
+      Absent => false
+      Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
+    }
+  } else {
+    match parse_token_first(tokens: tokens) {
+      Absent => false
+      Present { value: tok } =>
+        match list_tail(xs: tokens) {
+          TailAbsent => false
+          TailFound { tail: rest } =>
+            parse_scan_fat_arrow_after_lbrace(
+              tokens: rest,
+              depth: parse_next_brace_depth(tok: tok, depth: depth)
+            )
+        }
+    }
+  }
+}
+
+
+fn parse_tokens_drop_one(tokens: List<Token>) -> List<Token> {
+  match list_tail(xs: tokens) {
+    TailFound { tail: rest } => rest
+    TailAbsent => []
+  }
+}
+
+
+fn parse_tokens_drop(tokens: List<Token>, count: Int) -> List<Token> {
+  if count <= 0 {
+    tokens
+  } else {
+    parse_tokens_drop(tokens: parse_tokens_drop_one(tokens: tokens), count: count - 1)
+  }
+}
+
+
+fn parse_looks_like_match_arm_start(tokens: List<Token>) -> Bool {
+  match parse_token_first(tokens: tokens) {
+    Absent => false
+    Present { value: tok0 } =>
+      match string_head(s: tok0.lexeme) {
+        CharFound { value: c } =>
+          if parse_char_is_arm_pattern_lead(c: c) {
+            match parse_token_second(tokens: tokens) {
+              Present { value: tok1 } =>
+                if parse_token_lexeme_is(tok: tok1, lit: "=>") {
+                  true
+                } else if parse_token_lexeme_is(tok: tok1, lit: "{") {
+                  parse_scan_fat_arrow_after_lbrace(
+                    tokens: parse_tokens_drop(tokens: tokens, count: 2),
+                    depth: 1
+                  )
+                } else {
+                  false
+                }
+              Absent => false
+            }
+          } else {
+            false
+          }
+        CharAbsent => false
+      }
+  }
+}
+
+
+fn parse_stamp_match_arm_stmt_nodes(
+  acc_nodes: List<Node>,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  if length(xs: acc_nodes) == 1 {
+    match list_at_optional(xs: acc_nodes, index: 0) {
+      Present { value: only } => ParseStampResult { node: only, prov: prov }
+      Absent => ParseStampResult { node: grammar_empty_node(), prov: prov }
+    }
+  } else {
+    parse_stamp_derived_repeat(acc_nodes: acc_nodes, prov: prov)
+  }
+}
+
+
+fn parse_match_arm_stmt_body(
+  all_tokens: List<Token>,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  if parse_looks_like_match_arm_start(tokens: tokens) {
+    ParseExprRejected { diagnostics: [] }
+  } else {
+    let init = ParseMatchArmStmtAcc {
+      remaining: tokens,
+      acc_nodes: [],
+      acc_diags: [],
+      done: false,
+      prov: prov
+    }
+    let result = fold_list(
+      xs: tokens,
+      empty: init,
+      cons: fn(acc, _) {
+        match acc.done {
+          true => acc
+          false =>
+            if parse_looks_like_match_arm_start(tokens: acc.remaining) {
+              ParseMatchArmStmtAcc {
+                remaining: acc.remaining,
+                acc_nodes: acc.acc_nodes,
+                acc_diags: acc.acc_diags,
+                done: true,
+                prov: acc.prov
+              }
+            } else {
+              match parse_nonterminal_memoized_core(
+                all_tokens: all_tokens,
+                tokens: acc.remaining,
+                root: root,
+                table: table,
+                prod_name: ^dag_production_stmt,
+                prov: acc.prov
+              ) {
+                ParseExprRejected { diagnostics: _ } =>
+                  ParseMatchArmStmtAcc {
+                    remaining: acc.remaining,
+                    acc_nodes: acc.acc_nodes,
+                    acc_diags: acc.acc_diags,
+                    done: true,
+                    prov: acc.prov
+                  }
+                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+                  if length(xs: rest) != length(xs: acc.remaining) {
+                    ParseMatchArmStmtAcc {
+                      remaining: rest,
+                      acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+                      acc_diags: list_append(left: acc.acc_diags, right: diags),
+                      done: false,
+                      prov: prov1
+                    }
+                  } else {
+                    ParseMatchArmStmtAcc {
+                      remaining: acc.remaining,
+                      acc_nodes: acc.acc_nodes,
+                      acc_diags: acc.acc_diags,
+                      done: true,
+                      prov: acc.prov
+                    }
+                  }
+              }
+            }
+        }
+      }
+    )
+    if is_empty(xs: result.acc_nodes) {
+      ParseExprRejected { diagnostics: [] }
+    } else {
+      let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: result.acc_nodes, prov: result.prov)
+      ParseExprAccepted {
+        remaining: result.remaining,
+        captured: stamped.node,
+        diagnostics: result.acc_diags,
+        prov: stamped.prov
+      }
+    }
+  }
+}
+
+
+fn parse_nonterminal_memoized_core(
   all_tokens: List<Token>,
   tokens: List<Token>,
   root: GrammarRoot,
@@ -946,6 +1227,19 @@ fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
 }
 
 
+fn parse_token_second(tokens: List<Token>) -> Optional<Token> {
+  match list_tail(xs: tokens) {
+    TailFound { tail: rest } => parse_token_first(tokens: rest)
+    TailAbsent => Absent
+  }
+}
+
+
+fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
+  parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
+}
+
+
 
 
 // ParseThunk: single-field carrier for a deferred parse combinator. R in fold_grammar_expr<ParseThunk>.
@@ -1182,8 +1476,6 @@ fn parse_production_tree(
       Rejected { diagnostics: r }
   }
 }
-
-
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: ^parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)

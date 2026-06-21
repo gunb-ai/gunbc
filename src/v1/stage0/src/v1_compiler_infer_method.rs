@@ -122,7 +122,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             unit_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "utf8_decode_bytes".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
@@ -246,6 +245,52 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "extdeps_gist_create_files_keyed_by_filename_for_qualified_name".to_string(),
             bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_anchor_kind_for_qualified_name".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_scheme_identity_for_qualified_name".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_locator_for_qualified_name".to_string(),
+            string_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_derived_extdeps_modules".to_string(),
+            list_of_type_variable("extdeps_derived_extdeps_module_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_is_backfill_pending_for_qualified_name".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_is_machinery_exempt_for_qualified_name".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name"
+                .to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_live_clean_tree_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_live_roster_module_count".to_string(),
+            int_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
