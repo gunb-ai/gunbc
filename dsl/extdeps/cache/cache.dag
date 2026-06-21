@@ -13,7 +13,7 @@ import extdeps.cache.types {
   CatalogBackendCacheKey,
   CatalogProviderKey,
   CatalogCachedArtifactReceipt,
-  agnostic_input_surfaces_from_catalog,
+  catalog_inputs_considered,
   catalog_has_vendor_only_key_inputs,
   catalog_transport_encoding_collapsed_in_std_projection,
   SccacheInternalHash,
@@ -62,10 +62,12 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
       CargoFingerprintEncoding => CasContentEncoding
     }
     vendor_transport_encoding_collapsed: catalog_transport_encoding_collapsed_in_std_projection(encoding: row.transport_encoding)
+    // inputs_considered() resolves the single authority: DERIVED for content-addressed
+    // rows, CITED for external ones (catalog_inputs_considered). The agnostic projection
+    // keeps only the derived "vendor axes omitted" flag — it carries no authorable inputs
+    // list of its own (the §3 fork that PR #5423 false-greened cannot reappear here).
     key_derivation: {
-      classification: row.key_derivation.classification
-      inputs_considered: agnostic_input_surfaces_from_catalog(inputs: row.key_derivation.inputs_considered)
-      vendor_only_key_inputs_omitted: catalog_has_vendor_only_key_inputs(inputs: row.key_derivation.inputs_considered)
+      vendor_only_key_inputs_omitted: catalog_has_vendor_only_key_inputs(inputs: catalog_inputs_considered(kd: row.key_derivation))
       overwritable: row.key_derivation.overwritable
       prefix_fallback_allowed: row.key_derivation.prefix_fallback_allowed
       content_verified_on_read: row.key_derivation.content_verified_on_read

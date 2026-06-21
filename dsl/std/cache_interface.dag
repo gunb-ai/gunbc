@@ -153,11 +153,17 @@ type InvalidationTrigger
   | ToolchainChange
   | DependencyChange
 
+// Agnostic key-derivation projection. The key-input CLASS and the inputs LIST are NOT
+// fields here: they would be a hand-authorable copy of the extdeps authority
+// (CatalogKeyInputs) — the §3 fork PR #5423 false-greened, reintroducible one layer down
+// via an anonymous record literal. The class+inputs live solely in the extdeps sum
+// (ContentAddressed derives them; cited rows carry them); this projection keeps only the
+// downstream facts a planner consumes, plus the explicit "vendor axes were omitted" flag.
 type KeyDerivationFacts {
-  classification: KeyDerivationClass
-  inputs_considered: List<InputSurface>
   // True when cited catalog rows include vendor-only axes (rustc/toolchain) not
-  // representable in InputSurface; agnostic projection omits them from inputs_considered.
+  // representable in InputSurface; the agnostic projection omits them. Derived by the
+  // projection from the extdeps sum's inputs (catalog_has_vendor_only_key_inputs), never
+  // hand-authored as a divergent list.
   vendor_only_key_inputs_omitted: Bool
   overwritable: Bool
   prefix_fallback_allowed: Bool

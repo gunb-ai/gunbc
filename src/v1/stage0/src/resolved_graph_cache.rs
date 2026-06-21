@@ -122,12 +122,90 @@ fn transform_content_digest() -> Hash {
         .clone()
 }
 
-/// Subject digest = closure content + content(transform). The transform is keyed BY
-/// CONSTRUCTION (`transform_content_digest`), matching the authority row's
-/// `inputs_considered: [UpsertSubject, ToolchainSpec]`.
+/// The CLOSED set of input axes the resolved-graph cache key content-addresses — the
+/// realized authority that mirrors the model row's `inputs_considered`
+/// (extdeps/realization/resolved_graph.dag). Construction, not validation
+/// (cache-key-by-construction spine): the key is a fold over ALL variants of this enum
+/// via a TOTAL materializer (`KeyInputMaterials::materialize`), so the realizer cannot
+/// express a key that omits a declared axis or keys an undeclared one —
+/// *declare-without-keying* and *key-without-declaring* are both unwritable here:
+///   - adding a variant forces a `KeyInputMaterials` field + a `materialize` match arm
+///     (exhaustiveness) AND is folded in by `derive_subject_digest` (it iterates `ALL`);
+///   - removing keying for an axis means deleting the variant, which deletes it from the
+///     set — there is no "in the set but skipped by the fold" state to drift into.
+/// This supersedes #5423's spec-only key-completeness lens for the realizer side: the
+/// invariant it validated post-hoc is now structural.
+///
+/// RESIDUAL FORK (named dissolution trigger — DESIGN §6 / §7): this Rust enum and the
+/// `.dag` model row's `inputs_considered` are still two implementations of one rule; the
+/// v1 seed structurally cannot have the realizer DERIVE its axes from the model row at
+/// key-compute time (resolving `resolved_graph.dag` to read its own declaration would
+/// re-enter this very cache → recursion). Full single authority arrives with v2/realize:
+/// the realizer becomes a `.dag` subgraph and `content(T) = content_hash(subgraph)`, so
+/// the axis set and the key are one derived fact (DESIGN open thread: model↔realization
+/// fork; cache-key-by-construction spine "v2 self-host dissolution").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyInputAxis {
+    /// `UpsertSubject` — the resolved import closure's content (module_name → file content).
+    ClosureSubject,
+    /// `ToolchainSpec` — `content(transform)`: the resolve transform's own content.
+    TransformContent,
+}
+
+impl KeyInputAxis {
+    /// Every keyed axis, in fold order. `derive_subject_digest` folds over exactly this —
+    /// the set of keyed axes IS this slice, so it cannot diverge from the materializer.
+    pub const ALL: &'static [KeyInputAxis] =
+        &[KeyInputAxis::ClosureSubject, KeyInputAxis::TransformContent];
+}
+
+/// Materialized content for each `KeyInputAxis`. The materializer is total over the axis
+/// enum (exhaustive `match`), so the per-axis content is supplied BY CONSTRUCTION for
+/// every declared axis. Inputs are passed in (not read ambiently inside the fold) so the
+/// key derivation is a pure function of its axes — which makes axis-sensitivity provable
+/// by execution (a test can vary one axis and observe the key move; see
+/// resolve_cross_process_cache_test.rs).
+#[derive(Debug, Clone)]
+pub struct KeyInputMaterials {
+    closure_subject: Hash,
+    transform_content: Hash,
+}
+
+impl KeyInputMaterials {
+    pub fn new(closure_subject: Hash, transform_content: Hash) -> Self {
+        Self {
+            closure_subject,
+            transform_content,
+        }
+    }
+
+    /// Total over `KeyInputAxis` — adding a variant is a compile error until it has both a
+    /// field above and an arm here, so a declared axis always has materialized content.
+    fn materialize(&self, axis: KeyInputAxis) -> Hash {
+        match axis {
+            KeyInputAxis::ClosureSubject => self.closure_subject.clone(),
+            KeyInputAxis::TransformContent => self.transform_content.clone(),
+        }
+    }
+}
+
+/// Subject digest = fold of the total materializer over the CLOSED axis set
+/// (`KeyInputAxis::ALL`). DERIVED, not hand-authored: the key content-addresses exactly
+/// the declared axes (the resolved-graph realization of `inputs_considered`).
+pub fn derive_subject_digest(materials: &KeyInputMaterials) -> Hash {
+    KeyInputAxis::ALL.iter().fold(
+        v1_rt::atom_identity_hash("resolved-graph-subject-v1".to_string()),
+        |acc, axis| v1_rt::hash_combine(acc, materials.materialize(*axis)),
+    )
+}
+
+/// Production key for a resolved import closure. Materializes each declared axis from the
+/// running compiler (closure content + `content(transform)`) and derives the key by
+/// construction over the closed axis set.
 pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
-    let digest = closure_content_digest(sources);
-    v1_rt::hash_combine(digest, transform_content_digest())
+    let materials =
+        KeyInputMaterials::new(closure_content_digest(sources), transform_content_digest());
+    derive_subject_digest(&materials)
 }
 
 /// Content-hash work subject for one witness: closure cache subject × function name.

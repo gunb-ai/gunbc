@@ -6,13 +6,13 @@ module extdeps.cache.sccache
 
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
+  NativeInternal,
   RustcInvocation,
   ToolchainSpec,
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  NativeInternalHash,
   NativeInternalLookup,
   WriteThenRename,
   MissThenCreate,
@@ -35,8 +35,9 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "sccache-local-disk"
   transport_encoding: SccacheInternalEncoding
   key_derivation: {
-    classification: NativeInternalHash
-    inputs_considered: [RustcInvocation, ToolchainSpec]
+    // EXTERNAL vendor cache: sccache computes its own hash over the rustc invocation +
+    // toolchain — CITED observation, not derived. key_completeness validates the citation.
+    key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: true
