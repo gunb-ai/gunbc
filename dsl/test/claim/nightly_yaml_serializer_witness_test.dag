@@ -11,7 +11,7 @@
 module test.claim.nightly_yaml_serializer_witness
 
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_yaml_emit { expected_nightly_yml, nightly_yml_drifted }
+import gunbc.ci_yaml_emit { expected_nightly_yml }
 import gunbc.nightly_workflow { nightly_workflow }
 import gunbc.ci_spec { gunbc_nightly_run_script }
 
@@ -51,14 +51,18 @@ fn witness_nightly_has_workflow_dispatch() -> Bool {
   string_contains(s: expected_nightly_yml(), pattern: "workflow_dispatch:")
 }
 
-// (3) Floor-enrolled drift gate: committed nightly.yml == generator output (green), AND the
-// check has teeth (a perturbed file drifts). A positive witness (true when correct AND the
-// check discriminates) — RED if the committed file drifts OR the gate is toothless.
-fn witness_nightly_yaml_gate_holds() -> Bool {
+// (3) Floor-enrolled drift check: the committed nightly.yml must equal the generator output —
+// the REAL drift detection, an INDEPENDENT on-disk fact (the checked-in file, which this
+// witness did not construct) vs the live generator. RED if nightly.yml is hand-edited or the
+// generator changes without a regenerate. Honest scope (DESIGN §5): a pure .dag witness can
+// only build a perturbation FROM `expected_nightly_yml()`, and any such perturbation is
+// tautologically drifted (`!(E+suffix == E)` is constant-true) — so it cannot self-prove the
+// comparator has teeth. The comparator's OWN teeth are the wet probe
+// (tools.ci_yaml_gate.nightly_drift_wet_receipt — writes a perturbed file, runs the real gate
+// body, requires it to flag drift) plus the escalation-packet execution proof.
+fn witness_nightly_yaml_committed_matches_generator() -> Bool {
   let committed = Filesystem.Read(path: nightly_yml_committed_path)
-  committed.success &&
-    !nightly_yml_drifted(committed: committed.content) &&
-    nightly_yml_drifted(committed: concat(expected_nightly_yml(), "\n# perturb"))
+  committed.success && (committed.content == expected_nightly_yml())
 }
 
 test fn nightly_yaml_serializer_keystone_holds() -> Bool {
@@ -66,5 +70,5 @@ test fn nightly_yaml_serializer_keystone_holds() -> Bool {
     witness_nightly_schedule_is_cron_sequence() &&
     witness_nightly_run_step_is_feature_run() &&
     witness_nightly_has_workflow_dispatch() &&
-    witness_nightly_yaml_gate_holds()
+    witness_nightly_yaml_committed_matches_generator()
 }
