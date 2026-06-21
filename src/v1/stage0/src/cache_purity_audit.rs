@@ -124,9 +124,20 @@ pub fn audit_entry_warm_equals_cold(
         None => DecodeReach::MissOnRead,
     };
 
+    // The codec is the property under audit, and it is exercised ONLY on a `Decoded` reach. On
+    // `MissOnRead`/`Rejected` the warm read does NOT decode the stored artifact — production
+    // `read_cached_file` returns `Miss` and RECOMPUTES (fail-safe) — so a warm resolve here would
+    // re-run the full (heavy) compute and then compare cold-vs-recompute, which tests resolve
+    // DETERMINISM, not the write→read codec. That is a different property with no codec to falsify,
+    // so we SKIP it: the warm recompute is pure cost (it doubles the per-entry resolve on exactly
+    // the deep tail that cannot decode) and buys no codec coverage. The reach count already records
+    // the (fail-safe) effectiveness hole. So only `Decoded` entries pay for the warm decode+compare.
+    if reach != DecodeReach::Decoded {
+        return Ok(reach);
+    }
+
     // WARM: the now-primed key → DISK HIT → decode (cross_process_lookup short-circuits before any
-    // in-process cache, so this exercises the write→read codec even on the shared index). On a
-    // MissOnRead this recomputes (fail-safe), so warm == cold trivially holds.
+    // in-process cache, so this exercises the write→read codec even on the shared index).
     let (warm_graph, warm_si) = match resolve_entry_with_index(index, entry) {
         Ok(r) => r,
         Err(_) => return Ok(reach),
