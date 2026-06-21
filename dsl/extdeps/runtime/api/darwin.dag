@@ -17,6 +17,16 @@ import std.os.invocation {
 }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/macos-release-notes/macos-15-release-notes"
+  }
+}
+
 data libsystem_read: ApiEntry = ApiEntry { symbol: "read", module: "libSystem" }
 data libsystem_write: ApiEntry = ApiEntry { symbol: "write", module: "libSystem" }
 data libsystem_open: ApiEntry = ApiEntry { symbol: "open", module: "libSystem" }

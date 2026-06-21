@@ -11,6 +11,16 @@ import std.os.types {
   UbuntuDistributionCatalogRow,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "documentation.ubuntu.com/release-notes/24.04/"
+  }
+}
+
 // Anchor: https://documentation.ubuntu.com/release-notes/24.04/
 data noble_numbat_2404_catalog: UbuntuDistributionCatalogRow = UbuntuDistributionCatalogRow {
   distribution: NobleNumbat2404Lts,
