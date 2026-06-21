@@ -87,7 +87,7 @@ fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
 // A verified hit reuses — recompute would be redundant work (§2). RED if the kernel recomputes
 // a good hit (the minimal-work loss).
 fn witness_verified_hit_reuses() -> Bool {
-  let r: CachedArtifactReceipt<ContentHash> = mk_receipt(content: content_v1)
+  let r = mk_receipt(content: content_v1)
   match realize_route(lookup: Hit { receipt: r }) {
     Reuse { receipt: _ } => true
     Recompute { reason: _ } => false
