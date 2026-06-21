@@ -20,6 +20,7 @@
 // a third missing-set implementation beside it.
 
 module v2.lens.mock_totality
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.lens.coverage { Coverage, missing_coverage }
 import v2.std.collection { List }
@@ -82,4 +83,14 @@ fn mock_totality_lens<C>(
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
   }
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "corpus-as-type: the substrate totality-checking a consumer against a published corpus expressed as a closed type",
+    dissolve_on: "an unhandled published corpus member becomes a compile error by construction (today the corpus is declared data, not a type)"
+  },
+  rationale: "A match over a closed coproduct is already totality-checked by the substrate, but a published corpus is declared data the compiler cannot see is unhandled; the lens covers exactly that gap until corpus-as-type."
 }

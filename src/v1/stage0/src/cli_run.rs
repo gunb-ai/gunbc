@@ -2462,6 +2462,14 @@ pub fn discover_floor_corpus_rows(
         std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
+    // Authoring-time construction-justification rule (DESIGN.md §5/§6, ROADMAP §0): every
+    // top-level lens module (`v2.lens.<name>`) must RECORD why its bad-state class is a lens
+    // (validation) rather than construction. The judgment is human residue; its PRESENCE is
+    // structurable, so we capture which lenses carry the `construction_justification` decl during
+    // the same walk (zero extra IO) and fail closed below on any that lack it. This LAYERS ON TOP
+    // of the inert-lens backstop — it does not supersede it (DESIGN.md §6).
+    let mut lens_with_justification: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
         collect_dag_files_tolerant(Path::new(root), &mut dag_files);
@@ -2474,6 +2482,9 @@ pub fn discover_floor_corpus_rows(
             // reached only through a non-witness implementation file). Seeds are rows only.
             let rel = repo_relative_dag_path(&entry);
             if let Some(m) = extract_module_path(&content) {
+                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
+                    lens_with_justification.insert(m.clone());
+                }
                 module_to_path.insert(m, rel.clone());
             }
             path_imports.insert(rel, extract_import_paths(&content));
@@ -2525,7 +2536,57 @@ pub fn discover_floor_corpus_rows(
             inert.join(", ")
         ));
     }
+    // Construction-justification hygiene (DESIGN.md §5/§6, ROADMAP §0): layered ON TOP of the
+    // inert-lens backstop above — every top-level lens module must RECORD its construction
+    // justification (which §5 class + why it is residue, not construction). The judgment's
+    // correctness is unstructurable human residue; the REQUIREMENT to have recorded one is
+    // structurable and fails closed here. (Does NOT supersede the wired-or-deleted check above.)
+    let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
+    if !unjustified.is_empty() {
+        return Err(format!(
+            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
+             not record a `construction_justification` — before adding a lens you must justify why \
+             the bad-state class cannot be made unwritable by construction. Add a `data \
+             construction_justification: ConstructionJustification = …` decl (see \
+             v2.lens.common.construction_justification) classifying it as WallNow / \
+             WallAfterGrounding / RatchetForever with a rationale: {}",
+            unjustified.len(),
+            unjustified.join(", ")
+        ));
+    }
     Ok(rows)
+}
+
+/// `true` iff `content` declares the fixed-name `construction_justification` carrier typed as
+/// `ConstructionJustification` (the authoring-time construction-justification rule, DESIGN.md
+/// §5/§6). A text scan over the file — same style as the floor-discovery hygiene gates — so it
+/// runs during the single corpus walk with no resolve cost. The judgment in the decl is the
+/// unstructurable residue; only its PRESENCE is checked here.
+fn declares_construction_justification(content: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("data construction_justification")
+            && trimmed.contains("ConstructionJustification")
+    })
+}
+
+/// Top-level lens modules (`v2.lens.<name>`) authored under the source roots that do NOT record a
+/// `construction_justification` (DESIGN.md §5/§6). Sorted, deduped. An empty result means every
+/// authored lens carries its authoring-time justification. Reuses `is_top_level_lens_module` (the
+/// same single authority for "what is a lens" the inert-lens backstop uses) so the two checks
+/// cover exactly the same set — this one layers on top, it does not redefine the set.
+fn unjustified_lens_modules(
+    module_to_path: &std::collections::HashMap<String, String>,
+    justified: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    let mut missing: Vec<String> = module_to_path
+        .keys()
+        .filter(|m| is_top_level_lens_module(m) && !justified.contains(*m))
+        .cloned()
+        .collect();
+    missing.sort();
+    missing.dedup();
+    missing
 }
 
 /// Repo-relative, forward-slash form of a walked `.dag` path (strips the absolute workspace
@@ -3531,6 +3592,50 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
+    /// Grounded source-tree provenance: the `SourceRootRef` variant token (`V2Tree` / `DslTree`)
+    /// for the `--source-root` this file was actually read from. Filesystem truth at ingest —
+    /// keep in lockstep with `v2.std.cross_tree.import_model.SourceRootRef`.
+    pub source_root: String,
+}
+
+/// Map a `--source-root` path to its `SourceRootRef` variant token. Fail-closed on an
+/// unrecognized root. Authority: `gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dsl]`
+/// realized as the closed coproduct `SourceRootRef = V2Tree | DslTree`.
+fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
+    match root.trim_end_matches('/') {
+        "src/v2" => Ok("V2Tree".to_string()),
+        "dsl" => Ok("DslTree".to_string()),
+        other => Err(format!(
+            "source_root tagging: unknown --source-root '{other}' \
+             (authority gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dsl] -> \
+             SourceRootRef {{V2Tree, DslTree}})"
+        )),
+    }
+}
+
+/// Attribute a host-read file to the `--source-root` it came from (grounded in the actual
+/// filesystem path, NOT the module's self-declared QN prefix), then map to its
+/// `SourceRootRef` variant. Fail-closed: a path matching zero or 2+ roots is an error.
+fn source_root_ref_token_for_path(
+    file_path: &str,
+    source_roots: &[String],
+) -> Result<String, String> {
+    let matched: Vec<&String> = source_roots
+        .iter()
+        .filter(|r| {
+            let r = r.trim_end_matches('/');
+            file_path == r || file_path.starts_with(&format!("{r}/"))
+        })
+        .collect();
+    match matched.as_slice() {
+        [] => Err(format!(
+            "source_root tagging: file '{file_path}' matches no --source-root {source_roots:?}"
+        )),
+        [one] => source_root_ref_variant_for_root(one),
+        _ => Err(format!(
+            "source_root tagging: file '{file_path}' matches multiple --source-root {matched:?}"
+        )),
+    }
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
@@ -3662,6 +3767,36 @@ mod manifest_emit_tests {
             "match x \\{ A => 1 \\}"
         );
     }
+
+    use super::source_root_ref_token_for_path;
+
+    // Discriminating: grounded source-root tag comes from the FILE'S actual --source-root
+    // (filesystem truth), so a `dsl/`-rooted file tags DslTree even when its module decl
+    // would QN-guess otherwise, and a `src/v2/` file tags V2Tree. Fail-closed on a path
+    // under no root (or 2+).
+    #[test]
+    fn source_root_token_grounds_in_filesystem_location() {
+        let roots = vec!["src/v2".to_string(), "dsl".to_string()];
+        assert_eq!(
+            source_root_ref_token_for_path("src/v2/std/algebra.dag", &roots).unwrap(),
+            "V2Tree"
+        );
+        assert_eq!(
+            source_root_ref_token_for_path("dsl/std/algebra.dag", &roots).unwrap(),
+            "DslTree"
+        );
+        // src/v2 file declaring a non-`v2.`-prefixed module (e.g. extdeps.shell) still tags
+        // V2Tree — the FS truth, not the QN guess (this is exactly the case the QN-prefix
+        // fallback mis-tagged as DslTree).
+        assert_eq!(
+            source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
+            "V2Tree"
+        );
+        // fail-closed: path under no declared root.
+        assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
+        // boundary: a sibling dir sharing a prefix must not match (src/v20 ≠ src/v2).
+        assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
+    }
 }
 
 fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
@@ -3754,10 +3889,12 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
+        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: content,
+            source_root,
         });
     }
 
@@ -3797,10 +3934,12 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
+        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
+            source_root,
         });
     }
 
@@ -3812,9 +3951,10 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
+        rec.source_root,
     ))
 }
 
@@ -4006,6 +4146,102 @@ mod inert_lens_hygiene_tests {
         assert!(
             result.is_ok(),
             "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
+            result.err().unwrap_or_default()
+        );
+    }
+}
+
+#[cfg(test)]
+mod construction_justification_hygiene_tests {
+    use super::{
+        declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
+    };
+    use std::collections::{BTreeSet, HashMap};
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    // The scan predicate is the structurable half of the rule: it sees the recorded decl, not its
+    // (unstructurable) correctness. RED when the carrier is absent — exactly the strip-and-revert
+    // discriminator the brief requires.
+    #[test]
+    fn justification_scan_predicate() {
+        let with = "module v2.lens.demo\n\
+            import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }\n\
+            data construction_justification: ConstructionJustification = ConstructionJustification {\n\
+              class: RatchetForever { undecidable_because: \"x\" },\n\
+              rationale: \"y\"\n\
+            }\n";
+        assert!(declares_construction_justification(with));
+
+        // A bare name without the type annotation is NOT a recorded justification.
+        assert!(!declares_construction_justification(
+            "data construction_justification_note: String = \"todo\"\n"
+        ));
+        // Stripped of the decl entirely → RED.
+        assert!(!declares_construction_justification(
+            "module v2.lens.demo\ndata other: String = \"z\"\n"
+        ));
+    }
+
+    // Discriminating witness for the detector: a top-level lens with NO recorded justification is
+    // RED; recording one clears it. An always-green check would be the coverage-by-illusion
+    // (DESIGN.md §6) this rule layers onto the backstop to prevent.
+    #[test]
+    fn detector_red_on_missing_green_on_recorded() {
+        let mut module_to_path: HashMap<String, String> = HashMap::new();
+        module_to_path.insert(
+            "v2.lens.demo".to_string(),
+            "src/v2/lens/demo.dag".to_string(),
+        );
+        // Support/sub-modules and non-lens modules are NOT subject to the rule (same set as the
+        // inert-lens backstop, via is_top_level_lens_module).
+        module_to_path.insert(
+            "v2.lens.common.construction_justification".to_string(),
+            "src/v2/lens/common/construction_justification.dag".to_string(),
+        );
+        module_to_path.insert("v2.std.text".to_string(), "src/v2/std/text.dag".to_string());
+
+        let none: BTreeSet<String> = BTreeSet::new();
+        assert_eq!(
+            unjustified_lens_modules(&module_to_path, &none),
+            vec!["v2.lens.demo".to_string()],
+            "an unjustified top-level lens must go RED"
+        );
+
+        let mut justified: BTreeSet<String> = BTreeSet::new();
+        justified.insert("v2.lens.demo".to_string());
+        assert!(
+            unjustified_lens_modules(&module_to_path, &justified).is_empty(),
+            "recording a justification must clear the violation"
+        );
+    }
+
+    // Whole-corpus enforcement, green-by-execution: floor discovery over the real roots succeeds,
+    // which (per the check wired into `discover_floor_corpus_rows`) means every authored
+    // `v2.lens.*` module records its construction-justification. Strip one and this goes RED.
+    #[test]
+    fn floor_corpus_every_lens_is_justified() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = vec![
+            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let scan_dirs = vec![
+            "dsl/test/claim".to_string(),
+            "src/v2/compiler/manual".to_string(),
+        ];
+        let result = discover_floor_corpus_rows(&roots, &scan_dirs);
+        assert!(
+            result.is_ok(),
+            "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
             result.err().unwrap_or_default()
         );
     }
