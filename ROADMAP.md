@@ -15,11 +15,13 @@ Stop anchoring on code.
 
 ## 3. Self-hosting v2 (TypeScript)
 
-End goal: v2 compiles its own `src/v2` and emits TypeScript to a bit-identical fixed point; the Rust
-v1 seed shrinks toward zero. Today: **not achieved** — only the comparison machinery is green (on
-fixtures); the whole-compiler fixed point is "Stage C", gated on candidate generation.
+End goal: v2 compiles its own `src/v2` to a bit-identical fixed point; the Rust v1 seed shrinks toward
+zero. Front-end is **done** (whole tree parses/resolves/infers); the active self-host path is **Rust**
+(`--target rust`, cargo-green, regen_stage0) — TypeScript is one of 14 emit targets, not yet the
+self-host runtime (open decision). Open last mile: the emitted whole-tree crate doesn't `cargo build`
+green yet, and the fixed-point gate is still fail-closed (Stage C, gated on candidate generation).
 
-Plan (current state + stages + open questions): [docs/plans/v2-self-hosting.md](docs/plans/v2-self-hosting.md)
+Plan (verified state + the two tracks + open questions): [docs/plans/v2-self-hosting.md](docs/plans/v2-self-hosting.md)
 
 ### De-fork dsl ↔ v2 (collapse the duplication)
 
@@ -47,3 +49,19 @@ Get it working.
 - privacy — done
 - repo model (internal repo) on compute fabric
 - CI on compute fabric
+
+## 6. Complexity / synthesis lens over the whole codebase
+
+End goal: every `fn`/node carries a structural **complexity budget** the lens gates on — not just a
+curated roster. Today coverage is partial:
+
+- Complexity lens (`src/v2/lens/complexity.dag`) is the asymptotic projection of `cost.dag`
+  SymbolicCost; it gates only a **subject roster** (`complexity_gate/subject_complexity_budget_roster.dag`)
+  — COMPREP **wave-1** producers (`add`/`bind`/`branch`/`loop`). Subject reach is tied to COMPREP
+  grammar coverage; more arrives with self-host breadth.
+- Synthesis lens (`src/v2/lens/synthesis.dag`) is compiler-wide but **advisory** (existence
+  lower-bounds don't yield a constructive patch — feasibility limit, not a wiring gap).
+
+Blockers to "whole codebase": (a) a subject-producer for every fn (not name-keyed placeholders);
+(b) the cost-lens loop **zero-absorption** that makes budgets toothless (`symbolic_max` floor fix);
+(c) synthesis stays advisory by nature.
