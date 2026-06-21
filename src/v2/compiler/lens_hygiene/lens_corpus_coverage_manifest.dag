@@ -78,13 +78,14 @@ data lens_coverage_idempotency: LensCorpusCoverageEntry = {
   status: WiredWithCorpusGate
 }
 
-// Provenance (= v2.lens.ownership) — wired: lens_ownership_family_eval_test.dag
-//   (test data gate, anti-vacuous via is_empty guard).
-//   Note: was previously unenrolled (file lacked _test suffix + data not test data);
-//   corrected in the same PR that added this manifest.
+// Provenance (= v2.lens.ownership) — 🟡 DARK: lens_ownership_family_eval.dag has a data
+//   gate (not test data; file lacks _test suffix) so CI floor does not discover it.
+//   dissolve-on: PR #5433 (jolly-ram-141) renames lens_ownership_family_eval.dag →
+//   lens_ownership_family_eval_test.dag and flips data → test data; update to
+//   WiredWithCorpusGate once that lands.
 data lens_coverage_provenance: LensCorpusCoverageEntry = {
   lens_id: Provenance
-  status: WiredWithCorpusGate
+  status: InertScaffolded
 }
 
 // UnusedParameters — 🟡 DARK: no test fn exists for v2.lens.unused_parameters.

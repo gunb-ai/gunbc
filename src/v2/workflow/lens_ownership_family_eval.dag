@@ -86,6 +86,6 @@ fn lens_ownership_family_gate(report: LensOwnershipFamilyEvalReport) -> Bool {
 }
 
 
-test data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
+data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
   report: run_lens_ownership_family_eval()
 )
