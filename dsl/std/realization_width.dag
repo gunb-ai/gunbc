@@ -32,6 +32,7 @@ import std.measure {
   byte_size_count,
   measure_scale_fraction_floor,
   measure_fit_count_floor,
+  measure_saturating_sub,
   hardware_thread_count,
   hardware_thread_count_value,
   time_measure,
@@ -160,11 +161,15 @@ fn memory_aware_spawn_width(
 // sizes against the RESIDUAL budget = 0.8·total − the floor's MEASURED concurrent peak (reserve the
 // FULL floor peak — it really will use that RAM — from the already-safety-fractioned budget). This
 // is the floor-concurrent term made structural: the co-runner can never claim RAM the floor holds.
+// residual = 0.8·total − floor_peak, all in the ByteSize carrier via the lifted measure algebra
+// (no unwrap→raw-arith→rewrap fork): scale-floor for the 0.8 margin, saturating-sub to reserve the
+// full concurrent floor peak. Saturates to a zero-magnitude budget when the floor peak meets/exceeds
+// the safe budget (the consumer reads that as "no room", fail-closed).
 fn co_run_safe_residual_budget(memory_budget: ByteSize, floor_concurrent_peak: ByteSize) -> ByteSize {
-  let safe = byte_size_count_int(b: budget_safety_fraction_apply(budget: memory_budget))
-  let reserved = byte_size_count_int(b: floor_concurrent_peak)
-  let residual = safe - reserved
-  if residual <= 0 { byte_size(0) } else { byte_size(count: residual) }
+  measure_saturating_sub(
+    a: budget_safety_fraction_apply(budget: memory_budget),
+    b: floor_concurrent_peak
+  )
 }
 
 // Width for a fan-out co-running with the floor: min(shard_count, threads, ⌊residual ÷ peak⌋) where
@@ -182,26 +187,27 @@ fn co_run_residual_spawn_width(
   audit_per_shard_peak: ByteSize,
   conservative_fallback_width: Int
 ) -> HardwareThreadCount {
-  let budget_bytes = byte_size_count_int(b: memory_budget)
-  if budget_bytes <= 0 {
+  // Sentinel READ of the budget magnitude (not arithmetic), same as memory_aware_spawn_width: a
+  // zero-magnitude budget means the host could not read a live budget → conservative fallback.
+  let budget_bytes = byte_size_count(b: memory_budget)
+  if budget_bytes == 0 {
     hardware_thread_count(count: conservative_fallback_width)
   } else {
     let cpu_width = hardware_thread_count_value(
       t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
     )
-    let peak = byte_size_count_int(b: audit_per_shard_peak)
-    if peak <= 0 {
+    // "How many audit shards fit in the residual" via the lifted fit-count op. measure_fit_count_floor
+    // returns 0 on a zero divisor (unknown peak) AND on a saturated-to-zero residual — both of which
+    // are the FAIL-CLOSED co-run signal (width 0 = cannot co-run, NOT a silent width-1 OOM), so no
+    // separate peak/residual guards are needed.
+    let mem_fits = measure_fit_count_floor(
+      capacity: co_run_safe_residual_budget(memory_budget: memory_budget, floor_concurrent_peak: floor_concurrent_peak),
+      each: audit_per_shard_peak
+    )
+    if mem_fits < 1 {
       hardware_thread_count(count: 0)
     } else {
-      let residual = byte_size_count_int(
-        b: co_run_safe_residual_budget(memory_budget: memory_budget, floor_concurrent_peak: floor_concurrent_peak)
-      )
-      let mem_fits = residual / peak
-      if mem_fits < 1 {
-        hardware_thread_count(count: 0)
-      } else {
-        hardware_thread_count(count: int_min(a: cpu_width, b: mem_fits))
-      }
+      hardware_thread_count(count: int_min(a: cpu_width, b: mem_fits))
     }
   }
 }
