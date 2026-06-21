@@ -2667,17 +2667,19 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let func_name = expr_call_func_at(node.clone(), ctx.si());
     let arg_nodes = &node.children;
 
-    // Evaluate arguments
+    // Evaluate arguments. Skip synthesized TYPE-argument children: when resolve/
+    // infer monomorphizes a generic call (e.g. `empty_map()` whose result type is
+    // `Map<K, V>`), it attaches the type parameters as extra call children carrying
+    // kernel spans (`<kernel:K>`) and NO value child. A value argument always wraps
+    // its value (`arg_value` reads `children.first()`), so a zero-child arg node is
+    // never a value arg — it is a phantom type arg the untyped interpreter ignores.
+    // Filtering them (rather than erroring in `arg_value`) is strictly more
+    // permissive: a zero-child node could not be evaluated as a value anyway.
     let args: Vec<(Option<String>, Value)> = arg_nodes
         .iter()
+        .filter(|arg_node| !arg_node.children.is_empty())
         .map(|arg_node| {
             let name = arg_name_at(arg_node.clone(), ctx.si());
-            if arg_node.children.is_empty() {
-                eprintln!(
-                    "DBG malformed-arg in call '{}' arg-name={:?} arg.name={:?} arg.expr_data={:?}",
-                    func_name, name, arg_node.name, arg_node.expr_data
-                );
-            }
             let val = eval_expr(&arg_value(arg_node.clone()), env, ctx)?;
             Ok((name, val))
         })
