@@ -17,8 +17,8 @@ authority), not the goal.
 > regen-lockstep gate, see Track A "Purity"). **Terminal goal: shrink the seed to zero** — the ~154k
 > lines of hand-written Rust *compiler logic* go to zero; a minimal pinned, reproducible, v2-emitted
 > bootstrap binary survives (it must still run the first `.dag`). Not a big-bang `rm src/v1` (see Track
-> Z). Rust is furthest along (the seed language); TypeScript is proven only on the `add` slice today and
-> needs target-completeness to join the fixed point.
+> Z). Rust is furthest along (the seed language); TypeScript is proven on 3 exemplar families today (typed
+> fn, identity fn, record type-alias — see Track T) and needs target-completeness to join the fixed point.
 
 ---
 
@@ -92,13 +92,63 @@ including the trust machinery to retire the seed (`SeedHonestyDischarge`, `Diver
 → infer → translate`, capturing the emitted **Node** before `serialize_target` — the input Stage C
 needs. Comparison substrate (emitted Node vs emitted bytes) is operator-pending (merry-crab-687).
 When it lands, the fail-closed runner flips to `Accepted` + real-digest match. Proven **per realization**
-(Rust first; TypeScript once its target rows are complete).
+(Rust first; TypeScript once its target rows are complete — see Track T census).
 
 ### Track T — TypeScript as a first-class realization
-TS is 1 of 14 emit targets, proven only on the `add` slice
-(`cross_language_add_python_to_typescript_test.dag`, Python→core→TS). To join the fixed point it needs
-target-completeness over what the compiler actually uses (records, coproducts, folds, generics) — a gap
-census from `add` → full `src/v2`, then a TS regen + `node`-build green analogous to Track A's cargo path.
+TS is 1 of 14 emit targets. To join the fixed point it needs target-completeness over what the compiler
+actually uses (records, coproducts, folds, generics), then a TS regen + `node`/`tsc`-build green
+analogous to Track A's cargo path. **Gap census below** (`add` → full `src/v2`), grounded against
+`main @ dcac225913`, session deep-moth-602, 2026-06-21.
+
+**What TS emits today — 3 exemplar families (not just `add`):**
+1. `function add(x: number, y: number): number { return x + y; }` — typed binary fn + `+` body. Floor-gated
+   (`compiler/manual/mvp1_typescript_add_translate_test.dag`); also Python→core→TS
+   (`cross_language_add_python_to_typescript_test.dag`).
+2. `function identity(x: number): number { return x; }` — typed fn, return-only body
+   (`mvp1_typescript_pr3_typed_fn_translate.dag`).
+3. `type Task = { id: TaskId, title: string, status: TaskStatus };` — record type-alias
+   (`mvp1_typescript_record_task_translate.dag`).
+   (2)+(3) are exercised via the eager-materialize bit-identical round-trip tests (#5342) that import their
+   emitted roots, not standalone translate-claim `*_test.dag` — coverage is real but indirect.
+
+**Mechanism (why the gap splits two ways).** Emit is row-driven (`emit = serialize_target ∘ translate`,
+one `fold_node`, rows read backward). TS coverage = **(a)** per-TS grammar-relation rows (token spines) +
+**(b)** `ts_target_atom_realization_catalog` (std-type → TS spelling) — both TS-specific; **(c)** the
+shared value-expr projector + `CanonicalOperation` grounding — shared with Rust Route-A. So:
+
+**A. SHARED-pipeline gaps (block Rust Route-A too — co-owned with Track A, NOT TS-only).** TS cannot get
+ahead of these for any construct that routes through them:
+- **`CanonicalOperation` = only `OpAdd`** (`std/compilers/target_model.dag:637`). Every non-`+` operator
+  (`- * / == != < <= && ||` …) has no canonical grounding → *no target* emits them. Highest-leverage shared
+  gap (operators are the most frequent corpus construct).
+- **value-expr positional-structure M0 placeholders** — `RecordConstruct` / `FieldAccess` / `Match` /
+  branch / `Loop` / `BindLet` recurse structurally but their positional wiring is 🟡-stubbed in
+  `target_model.dag` (reported by census agent; the 18 `TargetValueExpressionKind` variants exist at
+  `target_model.dag:579`, but several carry M0 dissolve-on markers).
+- **coproduct-variant enumeration** scaffold + **SG-2 type-expr projection acyclicity** (the `*_bounded`
+  fuel ladder, `06_translate.dag:223`).
+
+**B. TS-SPECIFIC realization gaps (Lane C owns).**
+- **atom-realization catalog: 3 entries today** (`symbol`, `bool`, `string`;
+  `typescript.dag:1692`) vs the full std-type surface the compiler uses — `Int`/`Float`/`Char`,
+  `Node`/`Edge`/`Symbol`, `List`/`Optional`/`Witness`/`Outcome`, and every domain record & coproduct.
+  **This expansion is the bulk of the TS-specific work and can proceed in parallel with Track A now.**
+- **function-signature realization** beyond the mono `number`-typed exemplars.
+- **generics emission `<T>`** — TS native; needs realization rows (no exemplar yet).
+- **coproduct / sum-type emission** — TS discriminated unions (`type T = {kind:"A",…} | {kind:"B",…}`)
+  and `match` → `switch (x.kind)` narrowing. No TS exemplar; depends on shared gap A (coproduct
+  enumeration + `Match` value-expr).
+- **module / `import` emission** — TS `import { … } from "…"`. No exemplar.
+- **SG-RC ownership has no TS analog** — `ReferenceRcNew` / `ReferenceBoxNew` / `SymbolToOwnedString`
+  (Rust `Rc::new`/`Box::new`/`.to_owned()`) are absent from `typescript.dag` (TS is GC'd). The SG-RC
+  use-site layer must realize as **identity / no-op for TS** — a design decision, not just a row.
+- **`let`/`const`, list literals `[…]`, closures `(x) => …`, fold-family** → TS array methods or emitted
+  runtime helpers.
+
+**Ordering.** A (shared) gates B's *deep* constructs in practice: records/coproducts/match can't emit for
+TS until the shared value-expr placeholders + coproduct enumeration land for any target — so Track T's
+deep work trails Track A's value-expr completion. The TS-specific **atom-realization catalog expansion**
+(item B, the bulk) is unblocked and parallelizable today.
 
 ### Track Z — shrink the seed to zero (terminal)
 The clean cutover. **"Shrink to zero" = the ~154k lines of hand-written Rust *compiler logic* go to
@@ -131,8 +181,10 @@ compiler.
    Cross-tree import is wired but fail-closed (`03_name_resolve.dag:644`).
 2. **Whole-tree resolve cost** — the 590s+ combined-tree resolve is the practical wall for a fresh
    whole-tree green receipt; relevant to both the CI gate and Stage C.
-3. **TS-target completeness** — only needed if the end goal is Track-(b) TypeScript runtime; the `add`
-   slice is proven, the compiler uses far more of the language.
+3. **TS-target completeness** — needed for the TypeScript fixed point (END GOAL). 3 exemplar families
+   proven today (typed fn, typed identity fn, record type-alias); the compiler uses far more — see the
+   Track T gap census (shared value-expr/operator gaps gate the deep constructs; the TS atom-realization
+   catalog expansion is unblocked).
 
 ## 3. Open questions (for the operator)
 
