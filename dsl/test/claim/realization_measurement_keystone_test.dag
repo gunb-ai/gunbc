@@ -17,6 +17,7 @@ import std.realization_schedule {
 import std.realization_measurement {
   RealizationMeasureEffect,
   witness_measured_rollup_differs_from_predicted_zero,
+  witness_concurrent_memory_peak_per_share_divides,
 }
 import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }
 import product.compute_fabric {
@@ -73,4 +74,5 @@ test fn realization_measurement_keystone_witnesses() -> Bool {
     && witness_measured_receipt_rollup_uses_lens()
     && witness_measured_rollup_red_on_predicted_zero()
     && witness_v1_handler_id_declared()
+    && witness_concurrent_memory_peak_per_share_divides()
 }
