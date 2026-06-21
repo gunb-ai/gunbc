@@ -28,7 +28,9 @@ fn witness_rustflags_empty_string_quoted() -> Bool {
 fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
   let job = ci_workflow.jobs.first()
   match steps_yaml(steps: job.steps) {
-    YamlSequence { elements: els } => els.length() == 6
+    // 7 steps: Isolate · Checkout · Setup Rust · Pin rustup · Cache Cargo · Cache resolved-graph
+    // (ROADMAP §2 P3 enable) · gunbc ci.
+    YamlSequence { elements: els } => els.length() == 7
     _ => false
   }
 }
