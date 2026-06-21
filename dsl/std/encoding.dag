@@ -21,6 +21,7 @@
 module std.encoding
 
 import std.algebra { BoundedLattice }
+import std.types { Bytes }
 
 type Encoding
   = ASCII                          // 7-bit subset (bottom: most specific)
@@ -140,4 +141,9 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
   join: encoding_lattice_join
   top: Unknown
   bottom: ASCII
+}
+
+// Stub body unreachable: runtime intercepts by name; v1_rt::utf8_decode_bytes provides RFC 3629 fail-closed behavior.
+fn utf8_decode_bytes(payload: Bytes) -> String {
+  ""
 }
