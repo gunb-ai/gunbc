@@ -124,7 +124,7 @@ fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -
       if idempotency_fact_unresolved(fact: fact) {
         Violates { diagnostic: idempotency_witness_diagnostic() }
       } else {
-        Holds { value: fact }
+        Violates { diagnostic: idempotency_witness_diagnostic() }
       }
   }
 }
