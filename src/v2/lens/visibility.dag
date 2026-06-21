@@ -1,0 +1,80 @@
+// src/v2/lens/visibility.dag — visibility-leak lens over the module import graph (Step 3).
+//
+// Flags the §5 leak the publication realization must never commit: a PUBLIC module that imports
+// a module which is not public. That is the import-graph realization of access.dag's leak rule
+// (`effective_public`): a node is publishable only if it is public AND every dependency it
+// exposes is too. This lens enumerates the offending edges as located findings (fail-closed:
+// every leak is an explicit `VisibilityLeak`, an empty list is clean).
+//
+// Status: 🟡 STAGED (pure core). The LIVE corpus witness — "0 leaks in the real tree" — needs live
+// `ModuleVisibilityFact`s built from the resolved program: module identity from `module` decls
+// (QualifiedName), `public` from `access.is_public` over the module's grants, and `imports` from
+// `v2.std.dependency.dependency_lens(root)` filtered to `ModuleDependsOn`. That bridge is a Rust
+// seed / corpus-as-node handle (cf. the extdeps_shape_transport_policy lens, whose `filesystem_read`
+// path was withdrawn for `*_for_qualified_name` seed builtins) — the dissolution trigger for this
+// scaffold. Until it lands, the lens is exercised by synthetic lens-unit witnesses (visibility_test.dag).
+
+module v2.lens.visibility
+
+import v2.std.logic { Bool }
+import v2.std.algebra { length, list_snoc_item }
+import v2.std.qualified_name { QualifiedName, qualified_name_eq }
+
+// A module's visibility + its direct imports — keyed on QualifiedName (the `module` identity),
+// never a filepath. `public` is `access.is_public` over the module's grants (bound at the live edge).
+type ModuleVisibilityFact {
+  module: QualifiedName
+  public: Bool
+  imports: List<QualifiedName>
+}
+
+// A located leak: a public module exposes a non-public dependency.
+type VisibilityLeak {
+  importer: QualifiedName
+  imported: QualifiedName
+}
+
+data no_visibility_leaks: List<VisibilityLeak> = []
+
+// Is `qn` a public module per the fact set? Fail-closed (DESIGN §5): a module ABSENT from the
+// set is treated as NON-public, so an unknown import is a leak, never silently allowed.
+fn module_is_public(facts: List<ModuleVisibilityFact>, qn: QualifiedName) -> Bool {
+  fold(facts, init: false, f: fn(acc, fct) {
+    if acc { true }
+    else {
+      if qualified_name_eq(a: fct.module, b: qn) { fct.public } else { false }
+    }
+  })
+}
+
+// Leaks contributed by one module: only a PUBLIC module can leak, and then every import that is
+// not public is one leak. (Direct imports suffice: a public→public→private chain is caught when
+// the middle module is itself scanned, so transitive closure is unnecessary.)
+fn scan_module_imports(fct: ModuleVisibilityFact, all_facts: List<ModuleVisibilityFact>) -> List<VisibilityLeak> {
+  if fct.public {
+    fold(fct.imports, init: no_visibility_leaks, f: fn(acc, imp) {
+      if module_is_public(facts: all_facts, qn: imp) { acc }
+      else { list_snoc_item(xs: acc, item: VisibilityLeak { importer: fct.module, imported: imp }) }
+    })
+  } else {
+    no_visibility_leaks
+  }
+}
+
+// All leaks across the module set.
+fn scan_visibility_leaks(facts: List<ModuleVisibilityFact>) -> List<VisibilityLeak> {
+  fold(facts, init: no_visibility_leaks, f: fn(acc, fct) {
+    fold(scan_module_imports(fct: fct, all_facts: facts), init: acc, f: fn(a2, leak) {
+      list_snoc_item(xs: a2, item: leak)
+    })
+  })
+}
+
+fn visibility_leak_count(facts: List<ModuleVisibilityFact>) -> Int {
+  length(xs: scan_visibility_leaks(facts: facts))
+}
+
+// Top-level verdict: the module set has no visibility leaks.
+fn visibility_clean(facts: List<ModuleVisibilityFact>) -> Bool {
+  visibility_leak_count(facts: facts) == 0
+}

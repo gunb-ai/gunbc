@@ -1,0 +1,175 @@
+// test/claim/access_validation_test.dag — validate std.access by mapping real extdeps systems into it.
+// Each system gets a `decide` of type AccessPolicy.decide; executed witnesses confirm the shape
+// actually answers each system's authorization question. Where a system strains the shape, the
+// strain is recorded (the "see if anything breaks" findings).
+//
+// FINDINGS so far:
+//  * POSIX (DAC) fits cleanly: the ACL is attached to the OBJECT, so `decide` is a pure fn of the
+//    request — it inhabits AccessPolicy<S,A,O> directly (see posix_access_policy).
+//  * RBAC has a GLOBAL policy, not an object-attached ACL — so `decide` is fn(policy, request).
+//    To inhabit AccessPolicy<S,A,O> (which is fn(request)->decision) the policy must be CURRIED in
+//    (a closure). That's a real strain: the abstraction's `decide` assumes the policy is already
+//    bound. Recorded; the currying is mechanical, not a break.
+//  * Zanzibar fuses action + subject-grouping into one `relation` (maps; the two coincide).
+//  * AWS IAM (ABAC) does NOT need a context dimension — its conditions decompose into attribute-
+//    carrying S/A/O + grounded coordinates (aws:SourceIp → NetworkLocality, s3:prefix → action
+//    parameter). Proven with no opaque `C` in test.claim.access_iam_validation.
+
+module test.claim.access_validation
+
+import std.types { NonEmptyStr, Bool, Int }
+import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }
+import extdeps.access.posix { FilePermissions, PermissionBits }
+import extdeps.access.rbac { RbacPolicy, Permission }
+
+fn decision_is_permit(d: AccessDecision) -> Bool {
+  match d { Permit => true  Deny => false }
+}
+
+fn decision_is_deny(d: AccessDecision) -> Bool {
+  match d { Deny => true  Permit => false }
+}
+
+// ============================ POSIX (DAC) ============================
+
+type PosixSubject {
+  uid: Int
+  gid: Int
+}
+
+type PosixAction
+  = PosixRead
+  | PosixWrite
+  | PosixExecute
+
+fn posix_bit(bits: PermissionBits, action: PosixAction) -> Bool {
+  match action {
+    PosixRead => bits.read
+    PosixWrite => bits.write
+    PosixExecute => bits.execute
+  }
+}
+
+// POSIX class resolution: owner class if uid matches; else group class if gid matches; else other.
+fn posix_class_bits(perms: FilePermissions, subject: PosixSubject) -> PermissionBits {
+  if subject.uid == perms.ownership.uid {
+    perms.mode.owner
+  } else {
+    if subject.gid == perms.ownership.gid {
+      perms.mode.group
+    } else {
+      perms.mode.other
+    }
+  }
+}
+
+fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermissions>) -> AccessDecision {
+  if posix_bit(bits: posix_class_bits(perms: request.object, subject: request.subject), action: request.action) {
+    Permit
+  } else {
+    Deny
+  }
+}
+
+// POSIX inhabits the std abstraction directly (ACL attached to the object).
+data posix_access_policy: AccessPolicy<PosixSubject, PosixAction, FilePermissions> = {
+  decide: posix_decide
+}
+
+// A file owned by uid 1000 / gid 1000: owner rw-, group r--, other ---.
+data sample_file: FilePermissions = {
+  ownership: { uid: 1000, gid: 1000 },
+  mode: {
+    owner: { read: true, write: true, execute: false },
+    group: { read: true, write: false, execute: false },
+    other: { read: false, write: false, execute: false },
+    setuid: false,
+    setgid: false,
+    sticky: false
+  }
+}
+
+test fn posix_owner_can_read() -> Bool {
+  decision_is_permit(d: posix_decide(request: {
+    subject: { uid: 1000, gid: 1000 }, action: PosixRead, object: sample_file
+  }))
+}
+
+test fn posix_owner_cannot_execute() -> Bool {
+  decision_is_deny(d: posix_decide(request: {
+    subject: { uid: 1000, gid: 1000 }, action: PosixExecute, object: sample_file
+  }))
+}
+
+test fn posix_group_can_read() -> Bool {
+  decision_is_permit(d: posix_decide(request: {
+    subject: { uid: 2000, gid: 1000 }, action: PosixRead, object: sample_file
+  }))
+}
+
+test fn posix_other_cannot_read() -> Bool {
+  decision_is_deny(d: posix_decide(request: {
+    subject: { uid: 2000, gid: 2000 }, action: PosixRead, object: sample_file
+  }))
+}
+
+// ============================ RBAC ============================
+
+fn permission_eq(a: Permission, b: Permission) -> Bool {
+  a.operation == b.operation && a.object == b.object
+}
+
+fn user_has_role(policy: RbacPolicy, user: NonEmptyStr, role: NonEmptyStr) -> Bool {
+  fold(policy.user_assignments, init: false, f: fn(acc, ua) {
+    if acc { true } else { ua.user == user && ua.role == role }
+  })
+}
+
+// Core RBAC: a user has a permission if some role they hold has it. (Role hierarchy RH is a
+// transitive fold over role_hierarchy — a marked extension, not exercised here.)
+fn rbac_user_has_permission(policy: RbacPolicy, user: NonEmptyStr, perm: Permission) -> Bool {
+  fold(policy.permission_assignments, init: false, f: fn(acc, pa) {
+    if acc { true }
+    else { user_has_role(policy: policy, user: user, role: pa.role) && permission_eq(a: pa.permission, b: perm) }
+  })
+}
+
+fn rbac_decide(policy: RbacPolicy, request: AccessRequest<NonEmptyStr, NonEmptyStr, NonEmptyStr>) -> AccessDecision {
+  if rbac_user_has_permission(policy: policy, user: request.subject, perm: { operation: request.action, object: request.object }) {
+    Permit
+  } else {
+    Deny
+  }
+}
+
+data sample_rbac: RbacPolicy = {
+  users: ["alice", "bob"],
+  roles: ["editor", "viewer"],
+  user_assignments: [
+    { user: "alice", role: "editor" },
+    { user: "bob", role: "viewer" }
+  ],
+  permission_assignments: [
+    { permission: { operation: "write", object: "doc1" }, role: "editor" },
+    { permission: { operation: "read", object: "doc1" }, role: "viewer" }
+  ],
+  role_hierarchy: []
+}
+
+test fn rbac_editor_can_write() -> Bool {
+  decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
+    subject: "alice", action: "write", object: "doc1"
+  }))
+}
+
+test fn rbac_viewer_cannot_write() -> Bool {
+  decision_is_deny(d: rbac_decide(policy: sample_rbac, request: {
+    subject: "bob", action: "write", object: "doc1"
+  }))
+}
+
+test fn rbac_viewer_can_read() -> Bool {
+  decision_is_permit(d: rbac_decide(policy: sample_rbac, request: {
+    subject: "bob", action: "read", object: "doc1"
+  }))
+}
