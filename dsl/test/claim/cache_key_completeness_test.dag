@@ -1,0 +1,156 @@
+// dsl/test/claim/cache_key_completeness_test.dag
+//
+// §5 discriminating proof for extdeps.cache.key_completeness — the cache-key
+// completeness invariant (ToolchainChange invalidation on a DERIVED key ⟹ a toolchain
+// axis ∈ inputs_considered; cache-key-by-construction spine).
+//
+// Each predicate has a GREEN arm (sound row → complete/Holds) and a RED control (an
+// under-keyed or wrong-verdict row must NOT satisfy it). The live gate runs the lens
+// over the actual extdeps.cache.cache catalog: it is GREEN today because the model fix
+// added ToolchainSpec to resolved_graph_cache, and goes RED if any live row drops its
+// toolchain input while promising ToolchainChange invalidation.
+
+module test.claim.cache_key_completeness
+
+import extdeps.cache.key_completeness {
+  cache_key_derivation_complete,
+  cache_key_completeness_verdict,
+  cache_catalog_key_completeness_holds,
+}
+import extdeps.cache.types { CatalogKeyDerivationFacts, ToolchainSpec }
+import extdeps.cache.cache { cache_catalog }
+import extdeps.realization.resolved_graph { resolved_graph_cache_facts }
+import std.cache_interface {
+  ContentAddressedByValue,
+  HandAuthoredString,
+  ToolchainChange,
+  ManualPurge,
+  UpsertSubject,
+  Org,
+}
+import std.lens_verdict { Holds, Violation }
+
+data witness_module: String = "test.claim.cache_key_completeness"
+
+// A DERIVED key that promises ToolchainChange AND keys the toolchain → complete.
+fn sound_derived_facts() -> CatalogKeyDerivationFacts {
+  CatalogKeyDerivationFacts {
+    classification: ContentAddressedByValue,
+    inputs_considered: [UpsertSubject, ToolchainSpec],
+    overwritable: false,
+    prefix_fallback_allowed: false,
+    content_verified_on_read: true,
+    visibility_scope: Org,
+    invalidation_triggers: [ToolchainChange, ManualPurge],
+  }
+}
+
+// A DERIVED key that promises ToolchainChange but OMITS the toolchain input →
+// under-keyed (this is resolved_graph_cache as it was BEFORE the model fix).
+fn underkeyed_derived_facts() -> CatalogKeyDerivationFacts {
+  CatalogKeyDerivationFacts {
+    classification: ContentAddressedByValue,
+    inputs_considered: [UpsertSubject],
+    overwritable: false,
+    prefix_fallback_allowed: false,
+    content_verified_on_read: true,
+    visibility_scope: Org,
+    invalidation_triggers: [ToolchainChange, ManualPurge],
+  }
+}
+
+// Same omission, but the key is HAND-AUTHORED (not derived from inputs) → exempt: the
+// invariant does not apply (invalidation is the author bumping the key string).
+fn hand_authored_facts() -> CatalogKeyDerivationFacts {
+  CatalogKeyDerivationFacts {
+    classification: HandAuthoredString,
+    inputs_considered: [UpsertSubject],
+    overwritable: false,
+    prefix_fallback_allowed: false,
+    content_verified_on_read: true,
+    visibility_scope: Org,
+    invalidation_triggers: [ToolchainChange, ManualPurge],
+  }
+}
+
+// A DERIVED key that does NOT promise ToolchainChange → invariant vacuously holds even
+// without a toolchain input (it never claimed to invalidate on toolchain).
+fn no_toolchain_promise_facts() -> CatalogKeyDerivationFacts {
+  CatalogKeyDerivationFacts {
+    classification: ContentAddressedByValue,
+    inputs_considered: [UpsertSubject],
+    overwritable: false,
+    prefix_fallback_allowed: false,
+    content_verified_on_read: true,
+    visibility_scope: Org,
+    invalidation_triggers: [ManualPurge],
+  }
+}
+
+// Pair 1 — predicate: sound row is complete; under-keyed row is NOT.
+fn witness_complete_green_on_sound() -> Bool {
+  cache_key_derivation_complete(facts: sound_derived_facts())
+}
+
+fn witness_complete_red_on_underkeyed() -> Bool {
+  !cache_key_derivation_complete(facts: underkeyed_derived_facts())
+}
+
+// Pair 2 — verdict: sound row Holds; under-keyed row is a Violation (not Holds).
+fn witness_verdict_holds_on_sound() -> Bool {
+  match cache_key_completeness_verdict(facts: sound_derived_facts(), module_name: witness_module) {
+    Holds => true
+    _ => false
+  }
+}
+
+fn witness_verdict_violation_on_underkeyed() -> Bool {
+  match cache_key_completeness_verdict(facts: underkeyed_derived_facts(), module_name: witness_module) {
+    Violation { diagnostic: _ } => true
+    _ => false
+  }
+}
+
+// Pair 3 — HandAuthoredString exemption: same omission is complete (exempt), but the
+// derived class with the same omission is NOT (the discriminator is the classification).
+fn witness_hand_authored_exempt() -> Bool {
+  cache_key_derivation_complete(facts: hand_authored_facts())
+}
+
+fn witness_derived_not_exempt() -> Bool {
+  !cache_key_derivation_complete(facts: underkeyed_derived_facts())
+}
+
+// Pair 4 — vacuity: no ToolchainChange promise ⟹ complete even without a toolchain
+// input; the same inputs WITH the promise are under-keyed (discriminates over-firing).
+fn witness_no_promise_complete() -> Bool {
+  cache_key_derivation_complete(facts: no_toolchain_promise_facts())
+}
+
+fn witness_promise_without_input_incomplete() -> Bool {
+  !cache_key_derivation_complete(facts: underkeyed_derived_facts())
+}
+
+// Live gate — the lens over the actual catalog rows. GREEN because the model fix keyed
+// the toolchain on resolved_graph_cache; the per-row check ties the lens to the fixed
+// model row directly (drop ToolchainSpec there → this goes RED).
+fn witness_live_catalog_holds() -> Bool {
+  cache_catalog_key_completeness_holds(catalog: cache_catalog)
+}
+
+fn witness_live_resolved_graph_complete() -> Bool {
+  cache_key_derivation_complete(facts: resolved_graph_cache_facts.key_derivation)
+}
+
+test fn cache_key_completeness_witnesses() -> Bool {
+  witness_complete_green_on_sound()
+    && witness_complete_red_on_underkeyed()
+    && witness_verdict_holds_on_sound()
+    && witness_verdict_violation_on_underkeyed()
+    && witness_hand_authored_exempt()
+    && witness_derived_not_exempt()
+    && witness_no_promise_complete()
+    && witness_promise_without_input_incomplete()
+    && witness_live_catalog_holds()
+    && witness_live_resolved_graph_complete()
+}
