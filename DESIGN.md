@@ -135,7 +135,16 @@ safety axis made concrete. This code is digital: a wrong answer is a **loud erro
 a bridge collapses, it does not warn. Every path succeeds fully or
 fails with a typed, located diagnostic; no fabricated plausible output (a bounded "forever" ≠ an
 "unknown" error). Relax toward application-layer leniency only under protest, and lean to infra so
-others can build on your work. The deepest trap is **specification-without-execution**: a typecheck and
+others can build on your work. Stronger than *catching* a wrong state is making it **unwritable** —
+**correctness by construction, not validation.** A check that re-states a constraint the model already
+carries is a *second representation* of it (§2/§3): so prefer a single authority from which the
+realization is *derived* — the bad state cannot be written — over a check that flags it after the fact,
+which concedes the bad state *is* writable. The tell that a check was validation standing where
+construction was available: it can be satisfied by editing the *declaration* while the realization still
+lies (a key-completeness check went green when the spec was edited while the realizer kept faking the
+cache key). Reserve post-hoc checks for the genuinely **unstructurable** residue (§6 complexity /
+necessity — you cannot structurally forbid an *unnecessary* loop). The deepest trap is
+**specification-without-execution**: a typecheck and
 a `.contains()` grep are *not* consumers — "done" means a real consumer **green by execution** plus a
 discriminating input that goes *red* when the behavior is wrong. (For the LLM agent: fluent,
 type-checking, grep-passing output is precisely the artifact that looks finished without running. Treat
@@ -155,9 +164,14 @@ your own output as unverified until a consumer runs it green.)
   sections; a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step).
   Root-cause to the language layer and fix related systems *together* — a local subsystem patch is the
   forked-logic trap.
-- **Enforce with lenses,** not grep: a lens is a pure reader over the same `Node` tree, storing
-  nothing, so a new analysis costs zero substrate edits. Beware the tier where the machinery exists but
-  nothing gates on it — coverage by illusion.
+- **Enforce with lenses,** not grep — but **construction first** (§5): a lens is *validation* (it
+  concedes the bad state is writable), so make the class unwritable by single authority where you can and
+  reserve the lens for the unstructurable residue. As a residue mechanism it earns its keep: a pure
+  reader over the same `Node` tree, storing nothing, so a new analysis costs zero substrate edits. Beware
+  the tier where the machinery exists but nothing gates on it — coverage by illusion; an inert lens is
+  itself a lie, so an **executable** hygiene check must keep every lens either wired (a discovered
+  fail-closed witness) or deleted — that backstop runs over the corpus and is *not* superseded by the
+  authoring-time construction-justification judgment, which layers on top of it.
 - *e.g.* one catamorphism `fold_node` is reused by all 7 v2 stages; #4699 dissolved `06_translate` 4,912→3,973 lines (`_go` accumulators 35→0); a 6-line `merge_envs` root fix cut reconcile from 81% of the pipeline to 6% (~2× self-compile) — the symptom recurs wherever the root is unfixed (v2 still hand-rolls `ParseTable` because the Realization carrier is staged, not inhabited).
 
 ## 7. Self-hosting (the principles applied to the compiler itself)

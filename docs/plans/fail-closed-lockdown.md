@@ -17,15 +17,12 @@ machine, dogfood daily, sell the pieces — infra/website/billing/backend — on
 The test for "locked": (a) wired into the floor (discovered + run), (b) fail-closed (RED on violation,
 never a warning), (c) green-by-execution with a **discriminating** input that goes RED when wrong.
 
-**But the stronger move is CONSTRUCTION, not validation (the operator principle).** A lens/gate is
-*validation* — it catches a bad thing post-hoc, which concedes the bad thing is *writable*. Root-cause
-instead and make it **unwritable**: single authority, realization **derived from** the model. A lens is
-*last resort*, reserved for the genuinely-unstructurable (complexity / necessity — you cannot
-structurally forbid an *unnecessary* loop). Live proof: #5423's key-completeness *lens* was spec-only —
-the worker satisfied it by editing the declaration while the realizer still faked the key
-(`from_utf8_lossy`), shipping a **false-green** a human caught. The construction fix (derive the realized
-key *from* `inputs_considered`) makes that divergence unwritable, lens unneeded. So §4 below is ordered
-**construction-first**; the lens items are the residue that survives it.
+**The governing principle is CONSTRUCTION, not validation** — now an axiom in
+[DESIGN §5](../../DESIGN.md) (lenses are the residue mechanism, §6): make the bad state *unwritable*
+(single authority / realization derived from model), reserve lenses for the genuinely-unstructurable.
+#5423's spec-only key lens shipping a false-green is the proof. So §4 below is ordered
+**construction-first**; the lens items are the residue that survives it. (Construction does *not* evict
+the executable hygiene backstop — see §4 meta.)
 
 ## 1. What IS enforced fail-closed today (the good baseline)
 
@@ -130,10 +127,16 @@ priority.
 - [ ] **warm==cold purity-oracle witness per cache** — residue check behind the content-key construction (guaranteed once the key is fn-of-inputs, but cheap to witness).
 - [ ] **Promote-or-delete every inert lens** (host_language_transport_script, extdeps_shape_transport_policy, leaf_model_verification, …); de-vacuum thin gates (EmitHostGate beyond 4 fixtures; advisory rosters → change-set); the `discrimination` enforcer is itself roster-only — whole-corpus it.
 
-**Meta — the construction-justification rule (supersedes "every lens has a witness"):** before adding
-any lens, justify why the class can't be made impossible by construction; convert what can (single
-authority / realization-from-model); lens-justify only the unstructurable residue. (The old
-meta-invariant — "every `lens/*.dag` has a discovered witness" — is itself validation; this replaces it.)
+**Meta — two layers, the executable one is load-bearing:**
+
+- **inert-lens hygiene (executable backstop):** every `lens/*.dag` has a discovered fail-closed witness,
+  or is **removed** — an inert lens is a lie. This *runs* over the corpus and is the thing that actually
+  closes the "authored ≠ enforced" loophole.
+- **construction-justification rule (layered ON TOP, authoring-time judgment):** before adding any lens,
+  justify why the class can't be made impossible by construction; convert what can (single authority /
+  realization-from-model); lens-justify only the unstructurable residue. This is a better *principle* but
+  does **not** supersede the executable backstop — a judgment applied at authoring time executes nothing,
+  so it cannot replace a check that runs over the corpus.
 
 ## 5. Dissolution trigger (DESIGN §6)
 

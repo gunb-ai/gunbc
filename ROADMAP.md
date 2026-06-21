@@ -10,51 +10,59 @@ Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits 
 ## 0. Fail-closed lock-down LANE — BLOCKS expansion into products
 
 Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not made **impossible to
-write**. Lock the machine down before selling pieces. → [audit + checklist](docs/plans/fail-closed-lockdown.md)
+write**. The fix is *correctness by construction, not validation* — now an axiom in [DESIGN §5](DESIGN.md)
+(lenses are the residue mechanism, §6); roadmap items reference it, don't restate it.
+→ [audit + checklist](docs/plans/fail-closed-lockdown.md)
 
-**Principle — correctness by CONSTRUCTION, not validation.** A lens is *validation*: it catches a bad
-thing post-hoc, which *concedes the bad thing is writable*. Root-cause instead and make it **unwritable**
-(single authority / realization **derived from** the model). Lenses are **last resort**, reserved for the
-genuinely-unstructurable (complexity/necessity — you can't structurally forbid an *unnecessary* double
-loop). Proof it matters: #5423's key-completeness *lens* was spec-only — the worker satisfied it by
-editing the declaration while the realizer still faked the key (`from_utf8_lossy`) → **false-green** a
-human caught. The construction fix (derive the realized key *from* `inputs_considered`) makes that
-divergence unwritable, no lens needed.
+**This window = a few days of STABILITY — reduce the fail-open surface, not "lock" it.** Honest scope:
+numeric straddle gone, cache trustworthy, inert lenses promoted, rust gate widened. The deepest root —
+the `Value::Null` overload (~131 sites) — stays **OPEN** until its own runway; dead straddle-guards are
+*not* a closed class ([fork plan](docs/plans/model-realization-fork.md) §3).
 
-**Audits — how bad / how deep:**
+**Audits — how deep (done):**
 
 - [x] lens/gate wiring audit — most analytical lenses are inert (authored, no discovered gate)
 - [x] fail-open code audit — cache lossy-digest + under-keyed memos + `unwrap_or_default` infer
-- [x] **model↔realization fork audit — ROOT CONFIRMED** ([plan](docs/plans/model-realization-fork.md)): one seam (coproduct *modeled* vs native `Value` *realized*, ~13 per-site bridges); two sub-roots — numeric tower (grounds cleanly) + `Value::Null` overload (needs *splitting*, the deeper root)
-- [ ] coercion/equality fail-closure audit (`Bool` & `Optional`/`Null`-sentinel straddles after the `==` fix)
-- [ ] inference fail-open audit (return-type / record-field remaining after #5293)
-- [ ] cache-purity audit — enumerate every cache; warm==cold should be **guaranteed by construction**, oracle only as residue
-- [ ] **CI-coverage-completeness audit** — tests/gates that exist but don't run: the rust gate runs only a known-green subset (3 suites of **60** `src/v1/tests` files) → most of v1 rots silently (`ci_spec.dag:160`)
+- [x] **model↔realization fork audit — ROOT CONFIRMED** ([plan](docs/plans/model-realization-fork.md)): one seam (~13 per-site bridges); two sub-roots — numeric tower (grounds cleanly) + `Value::Null` overload (needs *splitting*, the deeper root)
+- [ ] remaining: coercion/equality (`Bool` & `Null`-sentinel straddles) · inference fail-open (return-type after #5293) · cache-purity (every cache) · CI-coverage-completeness (rust gate runs 3 suites of **60** `src/v1/tests`, the rest rot — `ci_spec.dag:160`)
 
-**Fixes (tier 1) — CONSTRUCTION: make the class unwritable.** This is THE work; everything below is residue.
+**In-scope this window (localized, stabilizing):**
 
-- [ ] **dissolve the model↔realization fork — THE root** ([plan](docs/plans/model-realization-fork.md)): realization *derived from* model (single authority): (1) numeric tower `Int=GroupCompletion<Nat>` → the straddle guard becomes dead code; (2) **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — the deeper root
-- [ ] **cache key derived FROM declared `inputs_considered`** (single authority) → you cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Includes: content-key on **raw bytes** (`resolved_graph_cache.rs:146`), content keys for `parse_table_memo`/`pure_call_memo` (not position/address). *(worked first instance: child adhoc-cc232dbc-1be)*
-- [ ] **self-host purity by construction** — emitter emits the whole seed so `patch_*`/`HAND_MAINTAINED_STAGE0_FILES` become unwritable (= §3); `regen_stage0 --verify` is then a residue check
-- [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — one typed carrier (`Terminal{reason} | Scaffold{dissolves_to}`) for lens-lifecycle **and** coproduct dissolve-markers (today freeform `🟡` comments, unreadable by lens); non-optional field ⇒ indeterminate-disposition unwritable. Middle path: construction-capable carrier + a **self-dissolving** lens that ratchets coverage → substrate-mandatory tag (#1) at the limit; redundancy (scaffold + its successor both present) is the one hard gate
-- [ ] widen the rust gate to run (or explicitly retire) the v1 test set — no test exists-but-doesn't-run
+- [ ] **numeric-tower grounding** ([plan](docs/plans/model-realization-fork.md)) — `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code. *Start here* (highest value / lowest risk)
+- [ ] **cache trustworthy** — key derived from declared `inputs_considered` + raw-bytes key (kills the verified flake `resolved_graph_cache.rs:146`); spec'd in **§7** (F2/F3/P1). Ship the **warm==cold oracle now as a detective** — it stops the cache lying *today* while the from-inputs construction is built behind it (detective and constructive coexist in time). *(first instance: child adhoc-cc232dbc-1be)*
+- [ ] **widen/retire the rust gate** — run the v1 test set or explicitly retire it (no test exists-but-doesn't-run)
+- [ ] **promote-or-delete every inert lens** + de-vacuum thin gates (emit_host 4-fixtures, advisory rosters); whole-corpus the `discrimination` enforcer
 
-**Fixes (tier 2) — LENS: only the genuinely-unstructurable residue.** Each must justify why it can't be construction.
+**Fenced OUT of this window (flag-days / the fan-out — after stability):**
 
-- [ ] complexity / cost / necessity (= §6) — legitimate lens use (can't structurally forbid an *unnecessary* loop); fix zero-absorption first, gate the change-set
-- [ ] cache-redundancy completeness (= §7 P3) — reach→supplier; the residue that survives construction
-- [ ] warm==cold purity-oracle witness per cache — residue check behind the content-key construction
-- [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters); the §5-discriminating enforcer (`discrimination`) is itself roster-only — whole-corpus it
+- [ ] **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; needs its own runway (this is what actually *closes* the fail-open class — until then the numeric guards are dead but the class is open)
+- [ ] **self-host purity gate** (§3) — entangled with the Route-A green build (seed hand-maintained via `patch_*`, regen drift, gate closed #5325); self-host last mile, not stability plumbing
+- [ ] **cross-tree import activation** (§3) — load-bearing, escalate before editing
+- [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — a new typed carrier + ratcheting self-dissolving lens; unambiguously a new concept (the fan-out wearing a stability badge). **Parked** until after the window
+- [ ] complexity-budget whole-codebase (§6) · cache-redundancy completeness (§7 P3) — lens residue, after the construction lands
 
-**Meta — lock down the reasoning, not just the code (the §7 recursion):**
+**Meta — lock down the reasoning (the DESIGN §7 recursion):**
 
-- [ ] **construction-justification rule** (supersedes "every lens has a witness"): before adding any lens, justify why the class can't be made impossible by construction; convert what can (single authority / realization-from-model); lens-justify only the unstructurable residue
-- [ ] **confront the skipped modeling decisions** — now that `.dag` is mature *and lens exists* (it didn't when the `🟡` comments were written), each modeling ambiguity we used to skip gets resolved into construction or a justified `Terminal`, not a comment. The `🟡` corpus is the backlog; `Disposition` (above) is instance #1. General template: construction-capable carrier → ratcheting lens → substrate-mandatory at the limit → lens self-dissolves
-- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — model A1–A3 + the §1–§7 chain in `.dag`, enforce the syllogism: every claim a consequence-chain back to an axiom, **no orphan, no cycle** (the §4 acyclicity test turned on this document)
+- [ ] **inert-lens hygiene (executable backstop):** every `lens/*.dag` is wired (a discovered fail-closed witness) or **deleted** — an inert lens is a lie. This *runs* over the corpus
+- [ ] **construction-justification rule (layered ON TOP, authoring-time):** before adding a lens, justify why the class can't be construction; convert what can; lens-justify only the residue. Does **not** supersede the executable backstop above (per [DESIGN §6](DESIGN.md))
+- [ ] **confront the skipped modeling decisions** — the `🟡` comment corpus is the backlog; each resolves to construction or a justified `Terminal` ([Disposition plan](docs/plans/disposition-carrier.md), fan-out)
+- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every design claim a consequence-chain back to an axiom, no orphan, no cycle (the §4 acyclicity test turned on this document)
 
-## 1. Session dashboard on `.dag` (backend only)
+## 1. Testgen as the bug-class oracle (coverage by construction)
 
-- [ ] idea → PR pipeline
+Prevent the **next class** of bug, not the last instance: generate witnesses from the declared structure
+(the construction move applied to tests — one generator over structure beats N hand-witnesses).
+→ [audit + method](docs/plans/testgen-oracle.md). Audit finding: testgen is itself a §0 lock-down
+subject — its generated output is **not floor-discovered** (zero `test fn`, not `*_test.dag`), has **no
+drift gate** (output can fork from generator), and is **mostly hand-anchored** (only AlgebraLaw derives
+structurally).
+
+- [ ] gate the existing generated output — floor-discover `generated/` (or a regen==committed drift gate); closes coverage-by-illusion + drift with no new logic
+- [ ] make CoproductExhaustiveness **structural** — route through `node_query.coproduct_arm_keys` over *every* declared coproduct (not a hand-roster); RED = a removed arm
+- [ ] add a **cross-representation-equality** category — generate the straddle witness per modeled-coproduct × native realization (the `==` fork is the live root; testgen should cover the *class*)
+- [ ] **the oracle method (retro):** for each bug class, record — is there a category? structural? output gated? A "no" on a *structural* class is the work ([map](docs/plans/testgen-oracle.md) §2)
+- [ ] **affected-set = the completeness half** ([same plan](docs/plans/testgen-oracle.md) §3) — model the full repo-process universe (incl. meta) under the lens so nothing is a blind spot; selection-as-CI-gate stays shelved (retired 0-min; v2 corpus is cheap). Shares testgen's reflection blocker (`node_query` now exists). Ties to the §0 rust-gate-coverage hole
+  - [ ] *anemia lens?* (operator-parked open thread, DESIGN §2 leaf-side decomposition) — flag `String` leaves that hide named structure. Almost certainly **advisory** (knowing a leaf *should* decompose needs the richer source — near the synthesis-feasibility limit), not a hard gate. Decide whether to elevate
 
 ## 2. idea → idea compiler (stop anchoring on code)
 
@@ -122,3 +130,11 @@ Gate: uncached non-redundant work is an **ERROR**, not "slow". → [plan](docs/p
 - [ ] P4 economic tier (measured cost → `Materialization` by cost) — needs Phase-0 timing
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 v2 cross-tree content-hash / increment-4 (gates P5)
+
+## 8. Session dashboard on `.dag` (SHELVED)
+
+Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now).
+The anemia-lens angle that lived near here is **not** part of the dashboard; it's tracked as the
+parked leaf-side-decomposition lens under §1.
+
+- [ ] idea → PR pipeline *(deferred)*
