@@ -77,6 +77,7 @@ data realization_vocab_exception_roster: List<String> = [
   "dsl/tools/build_step.dag",
   "dsl/tools/dsl_compile_clean_transport.dag",
   "dsl/tools/emit_host_transport.dag",
+  "dsl/tools/extdeps_external_authority_transport.dag",
   "dsl/tools/host_prelude.dag",
   "dsl/tools/layering_imports_transport.dag",
   "dsl/tools/resolved_imports_transport.dag",
