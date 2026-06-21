@@ -6021,6 +6021,16 @@ fn eval_builtin(
             ))
         }
 
+        "extdeps_external_authority_backfill_entries" => {
+            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_backfill_entries requires an active interpreter context"
+                    .to_string(),
+            })?;
+            Ok(Some(
+                crate::extdeps_shape_transport_policy_project::backfill_pending_entries_value(ctx),
+            ))
+        }
+
         "extdeps_external_authority_is_backfill_pending_for_qualified_name" => {
             let module = positional.first().ok_or_else(|| InterpError::TypeError {
                 msg: "extdeps_external_authority_is_backfill_pending_for_qualified_name requires a QualifiedName"
