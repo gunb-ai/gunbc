@@ -84,7 +84,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     println!("::group::{notice_title}");
-    let report = match audit_floor_discovery_corpus(&source_roots, &scan_dirs) {
+    let report = match audit_floor_discovery_corpus(&source_roots, &scan_dirs, max_entries) {
         Ok(r) => r,
         Err(setup_err) => {
             // Fail-closed: a setup error (e.g. the cache dir unset) is NOT a green.
@@ -99,23 +99,36 @@ fn run() -> Result<ExitCode, ExitCode> {
         println!("::error title={notice_title}::{v}");
     }
 
+    // "No silent caps" (DESIGN §6): always state audited-of-discovered, never imply full coverage.
+    let coverage = format!(
+        "audited {} of {} discovered entries",
+        report.entries_audited, report.entries_discovered
+    );
+
     if report.violations.is_empty() {
-        println!(
-            "cache purity audit: {} entries audited, warm==cold byte-identical (cache is pure)",
-            report.entries_audited
-        );
-        // §5 honest edge — record the coverage boundary every run, not silently.
-        println!(
-            "note: sound over the CI discovery corpus ({} entries), NOT complete over prod-only \
-             realizations absent from it (DESIGN §5 honest edge)",
-            report.entries_audited
-        );
+        println!("cache purity audit: {coverage} — warm==cold (cache codec is lossless)");
+        // §5/§6 honest edge — the codec is uniform across entries, so a bounded sample falsifies a
+        // lossy serializer; what it does NOT cover (a rare type only in an un-audited entry, or a
+        // prod-only realization absent from CI) is the honest residual, recorded not papered.
+        if report.entries_audited < report.entries_discovered {
+            println!(
+                "note: BOUNDED sample — the cache codec is uniform across entries (a sample \
+                 falsifies a lossy serializer); a loss on a rare type only in an un-audited entry \
+                 is the §5 honest residual (run without --max-entries for the full sweep)"
+            );
+        } else {
+            println!(
+                "note: full discovery corpus; still NOT complete over prod-only realizations absent \
+                 from CI (DESIGN §5 honest edge)"
+            );
+        }
         println!("::endgroup::");
         Ok(ExitCode::SUCCESS)
     } else {
         println!(
-            "cache purity audit FAILED: {}/{} entries diverged warm!=cold (the cache codec is \
-             lossy/stale — a warm hit silently serves a different graph than a cold recompute)",
+            "cache purity audit FAILED: {}/{} audited entries diverged warm!=cold ({coverage}) — \
+             the cache codec is lossy/stale (a warm hit serves a different graph than a cold \
+             recompute)",
             report.violations.len(),
             report.entries_audited
         );
