@@ -22,6 +22,13 @@
 //! Host-fed builtins expose the two scalar verdicts to a `.dag` `test fn` witness
 //! (`doc_graph_orphan_count` / `doc_graph_dangling_link_count`), exactly as the
 //! extdeps-external-authority live-corpus gate exposes `external_authority_live_clean_tree_holds`.
+//!
+//! DISSOLUTION TRIGGER (§7, plan Tier-2): the *orphan* half needs filesystem **enumeration** (the
+//! universe minus the reachable set), for which no list-dir host effect exists today — so this Rust
+//! census is the host realization of the one rule. When `.dag` gains list-dir / compile-graph access
+//! (gunbc#5364, the plan Tier-2 note), the dir-walk + BFS fold into a pure `.dag` reader and this
+//! module deletes. The *dangling* half alone is already expressible in pure `.dag` via
+//! `filesystem_read` BFS from roots (the §8 no-host-bridge claim holds only for that half).
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -182,7 +189,10 @@ fn bind_md_refs(content: &str) -> Vec<String> {
 /// Generic seed→transitive-closure reachability over the doc edge graph — the **same BFS shape** as
 /// `cli_run::inert_lens_modules` (DESIGN.md §3 single authority; the doc instance of the one rule,
 /// not a forked concept). `roots` seeds the frontier; `edges` maps each node to its out-neighbors.
-fn reachable_set(roots: &BTreeSet<String>, edges: &HashMap<String, Vec<String>>) -> BTreeSet<String> {
+fn reachable_set(
+    roots: &BTreeSet<String>,
+    edges: &HashMap<String, Vec<String>>,
+) -> BTreeSet<String> {
     let mut reached: BTreeSet<String> = BTreeSet::new();
     let mut queue: VecDeque<String> = VecDeque::new();
     for r in roots {
@@ -336,7 +346,11 @@ mod tests {
     #[test]
     fn reachable_set_transitive_chain() {
         let roots: BTreeSet<String> = ["r.md".to_string()].into_iter().collect();
-        let edges = edges_of(&[("r.md", &["a.md"]), ("a.md", &["b.md"]), ("b.md", &["c.md"])]);
+        let edges = edges_of(&[
+            ("r.md", &["a.md"]),
+            ("a.md", &["b.md"]),
+            ("b.md", &["c.md"]),
+        ]);
         let reached = reachable_set(&roots, &edges);
         for n in ["r.md", "a.md", "b.md", "c.md"] {
             assert!(reached.contains(n), "{n} should be reached");
@@ -348,6 +362,27 @@ mod tests {
         let c = "see [x](docs/plans/x.md) and [y](y.md#anchor) and [ext](https://e.com) and [z](./z.md)";
         let t = markdown_link_targets(c);
         assert_eq!(t, vec!["docs/plans/x.md", "y.md", "./z.md"]);
+    }
+
+    // RED control for the dangling half: a `.md` link to a missing target is dangling; a link to an
+    // existing file (or a non-`.md` target) is not — so the count discriminates.
+    #[test]
+    fn dangling_detection_flags_missing_md_only() {
+        // `markdown_link_targets` + a missing-target predicate is the dangling kernel; here we drive
+        // the predicate directly with a synthetic doc (the live half is covered by the live tests).
+        let doc = "[ok](https://x) [broken](docs/plans/does-not-exist-xyz.md) [code](src/lib.rs)";
+        let targets = markdown_link_targets(doc);
+        let dangling: Vec<&String> = targets
+            .iter()
+            .filter(|t| {
+                t.ends_with(".md") && !workspace_root().join(normalize(Path::new(t))).is_file()
+            })
+            .collect();
+        assert_eq!(
+            dangling.len(),
+            1,
+            "exactly the missing .md link is dangling (not the http or the existing code link): {dangling:?}"
+        );
     }
 
     #[test]

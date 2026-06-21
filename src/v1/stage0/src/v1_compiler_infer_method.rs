@@ -292,6 +292,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
+        // Doc-graph reachability-completeness wall (docs/plans/inert-layer-lens.md §8): the doc
+        // substrate of the #5433 one-rule-N-substrates reachability discipline. Host-fed scalar
+        // verdicts for the floor witness.
+        let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "doc_graph_dangling_link_count".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),

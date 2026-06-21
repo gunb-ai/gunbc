@@ -6061,6 +6061,17 @@ fn eval_builtin(
             crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
         ))),
 
+        // Doc-graph reachability-completeness wall (docs/plans/inert-layer-lens.md §8) — the doc
+        // substrate of the one reachability rule the #5433 inert-lens backstop runs over the lens
+        // substrate. Host-fed live-tree census (no list-dir host effect exists yet — Tier-2 folds
+        // into pure `.dag` on gunbc#5364).
+        "doc_graph_orphan_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_orphan_count(),
+        ))),
+        "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_dangling_link_count(),
+        ))),
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }
