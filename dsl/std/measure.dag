@@ -292,11 +292,18 @@ fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
 //
 // Rounding direction is the §3 ② residue — a §5 "round toward pessimism" choice no
 // type can pick (the spec splits it three ways: demand ceils, capacity floors,
-// fit-count floors). These two ops are the two FLOOR cases the spawn-width consumer
-// (std.realization_width) needs: a fractioned *capacity* (a budget is still a
-// budget) floors, and a *fit-count* ("how many fit") floors. A ceil-rounding
-// *demand* op is deliberately NOT minted — no consumer demands it (DESIGN §6
-// construction-over-ratchets: no carrier ahead of demand).
+// fit-count floors). All three are now minted, each by a demanding consumer (DESIGN §6
+// construction-over-ratchets: a carrier lands exactly when a consumer demands it):
+//   - capacity floor — `measure_scale_fraction_floor` — a fractioned *budget* (still a
+//     budget) floors; consumer std.realization_width.budget_safety_fraction_apply.
+//   - fit-count floor — `measure_fit_count_floor` — "how many whole fit" floors; consumer
+//     std.realization_width.memory_bounded_shard_count.
+//   - demand ceil — `measure_scale_fraction_ceil` — a per-share *demand* ceils; consumer
+//     std.realization_measurement.concurrent_memory_peak_per_share (peak ÷ concurrency →
+//     per-share peak), which feeds the spawn-width derivation. This is the ceil≠floor pair:
+//     the SAME `Measure × num/den → Measure` shape as the capacity floor, OPPOSITE rounding,
+//     because the pessimism direction is opposite — a demand UNDER-estimate ⇒ ⌊budget÷peak⌋
+//     too high ⇒ over-fit ⇒ OOM (§5). No type can pick the direction; the consumer does.
 //
 // `<M>` is fixed at `Nat`, NOT the spec's M-generic `Measure<Q,S,M>` (#5467 derives
 // it from M's Semiring, §4 inhabitance): the bodies do concrete numeric arithmetic
