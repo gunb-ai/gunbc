@@ -91,6 +91,39 @@ yet (the fn-body reflection gap — `enumerate_concepts()` covers type decls, no
 total; the gate's *reach* is subject-bound. Wire whole-corpus fn-body reflection and the gate runs over
 **all** of D. (This is the same reflection dependency the corpus hit-rate gate (§6) carries.)
 
+## 1b. `Unknown` is an anemic atom — dissolve it over time (never a false pass)
+
+Two invariants are fixed up front; the taxonomy is **not** — it grows by dissolution.
+
+- **INVARIANT 1 — never a false pass (already holds).** `cost_lens` emits `Holds` only for a
+  *determined precise class*; `UnknownCost → Violates{diagnostic}` (fail-closed, located). A "pass"
+  always means "determined," never "gave up." This is the §5 win already in the model — do not regress it.
+- **INVARIANT 2 — every `Unknown` is on the dissolution frontier.** `Unknown` is **not** a fixed
+  terminal; it is an **anemic atom**, dissolved over time like any anemic leaf (DESIGN §2 `decompress →
+  map → reduce`; a `String` part-number → grounded fields). The carrier already has the hook:
+  `UnknownCost { diagnostic: Diagnostic }` *carries its reason* — the anemia is that the reason is a
+  free-form symbol, not modeled reason-structure. Each decomposition resolves an `Unknown` to one of:
+  - **construction** — a now-determined precise class (a witness gap / lattice-precision limit closed);
+    net `Unknown`s *shrink*, it becomes new D′;
+  - **a grounded `Terminal`** — genuinely atomic / provably undecidable (Rice), *positively recognized*
+    (we exhibit *why*). The honest ratchet — "less frequent but important enough to comment on" (advisory).
+  - *Soundness:* label `Terminal` only with exhibited evidence; the default for an undecomposed reason
+    stays the fail-closed `Violates`. We never *claim* undecidability without proof (that would be a false
+    terminal — "giving up" masquerading as "provably impossible").
+
+**DFS the concept DAG first — reuse `Disposition`, do not fork.** An `Unknown` is structurally "a
+skipped/unmodeled decision that resolves to construction or a justified `Terminal`" — exactly the
+`Disposition` carrier (ROADMAP §0 / [disposition-carrier.md](disposition-carrier.md)). So Unknown-dissolution
+becomes one *consumer* of the Disposition ratchet, not a parallel "unknown-reason" enum (the §2 test:
+net concepts must not grow by re-invention). This **supersedes** any fixed `Undecidable | Undetermined`
+split — the set of named terminal reasons grows over time (the 🟡-backlog discipline), it is not designed
+up front.
+
+**Gated (operator):** enriching `UnknownCost`'s reason is a coproduct change to `cost.dag` (its header:
+"splitting requires explicit operator ratification — substrate extension = stop signal"), and
+`Disposition` is currently *parked* in §0. So the *vehicle* (un-park / align Disposition) and the
+*cost.dag enrichment* are both operator-ratification points; the two invariants above hold regardless.
+
 ## 2. The model — a rewrite rule is a row (§2 horizontal)
 
 Each rule is a content-addressed row carrying:
