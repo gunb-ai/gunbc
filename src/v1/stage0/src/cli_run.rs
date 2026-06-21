@@ -3592,6 +3592,50 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
+    /// Grounded source-tree provenance: the `SourceRootRef` variant token (`V2Tree` / `DslTree`)
+    /// for the `--source-root` this file was actually read from. Filesystem truth at ingest —
+    /// keep in lockstep with `v2.std.cross_tree.import_model.SourceRootRef`.
+    pub source_root: String,
+}
+
+/// Map a `--source-root` path to its `SourceRootRef` variant token. Fail-closed on an
+/// unrecognized root. Authority: `gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dsl]`
+/// realized as the closed coproduct `SourceRootRef = V2Tree | DslTree`.
+fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
+    match root.trim_end_matches('/') {
+        "src/v2" => Ok("V2Tree".to_string()),
+        "dsl" => Ok("DslTree".to_string()),
+        other => Err(format!(
+            "source_root tagging: unknown --source-root '{other}' \
+             (authority gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dsl] -> \
+             SourceRootRef {{V2Tree, DslTree}})"
+        )),
+    }
+}
+
+/// Attribute a host-read file to the `--source-root` it came from (grounded in the actual
+/// filesystem path, NOT the module's self-declared QN prefix), then map to its
+/// `SourceRootRef` variant. Fail-closed: a path matching zero or 2+ roots is an error.
+fn source_root_ref_token_for_path(
+    file_path: &str,
+    source_roots: &[String],
+) -> Result<String, String> {
+    let matched: Vec<&String> = source_roots
+        .iter()
+        .filter(|r| {
+            let r = r.trim_end_matches('/');
+            file_path == r || file_path.starts_with(&format!("{r}/"))
+        })
+        .collect();
+    match matched.as_slice() {
+        [] => Err(format!(
+            "source_root tagging: file '{file_path}' matches no --source-root {source_roots:?}"
+        )),
+        [one] => source_root_ref_variant_for_root(one),
+        _ => Err(format!(
+            "source_root tagging: file '{file_path}' matches multiple --source-root {matched:?}"
+        )),
+    }
 }
 
 fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
@@ -3723,6 +3767,36 @@ mod manifest_emit_tests {
             "match x \\{ A => 1 \\}"
         );
     }
+
+    use super::source_root_ref_token_for_path;
+
+    // Discriminating: grounded source-root tag comes from the FILE'S actual --source-root
+    // (filesystem truth), so a `dsl/`-rooted file tags DslTree even when its module decl
+    // would QN-guess otherwise, and a `src/v2/` file tags V2Tree. Fail-closed on a path
+    // under no root (or 2+).
+    #[test]
+    fn source_root_token_grounds_in_filesystem_location() {
+        let roots = vec!["src/v2".to_string(), "dsl".to_string()];
+        assert_eq!(
+            source_root_ref_token_for_path("src/v2/std/algebra.dag", &roots).unwrap(),
+            "V2Tree"
+        );
+        assert_eq!(
+            source_root_ref_token_for_path("dsl/std/algebra.dag", &roots).unwrap(),
+            "DslTree"
+        );
+        // src/v2 file declaring a non-`v2.`-prefixed module (e.g. extdeps.shell) still tags
+        // V2Tree — the FS truth, not the QN guess (this is exactly the case the QN-prefix
+        // fallback mis-tagged as DslTree).
+        assert_eq!(
+            source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
+            "V2Tree"
+        );
+        // fail-closed: path under no declared root.
+        assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
+        // boundary: a sibling dir sharing a prefix must not match (src/v20 ≠ src/v2).
+        assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
+    }
 }
 
 fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
@@ -3815,10 +3889,12 @@ pub fn discover_source_root_reads(
                 module_path, prior, rel_forward
             ));
         }
+        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: content,
+            source_root,
         });
     }
 
@@ -3858,10 +3934,12 @@ pub fn discover_source_root_reads_for_entry(
                 rel_forward
             )
         })?;
+        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
         records.push(SourceRootReadRecord {
             file_path: rel_forward,
             module_path,
             source: source.content.clone(),
+            source_root,
         });
     }
 
@@ -3873,9 +3951,10 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit}\n}}",
+        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
         dag_manifest_scalar_escape(&rec.file_path)?,
+        rec.source_root,
     ))
 }
 
