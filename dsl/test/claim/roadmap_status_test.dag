@@ -1,0 +1,186 @@
+// dsl/test/claim/roadmap_status_test.dag
+//
+// §5 discriminating proof for gunbc.roadmap_status — the PR→checkbox status derivation, first slice
+// of inverting the hand-maintained ROADMAP (docs/plans/invert-hand-maintained.md). Proven BY
+// EXECUTION over the derivation folds, not by typecheck or grep.
+//
+// The non-tautology proof is the COMPLETES-IFF boundary (the soundness fix): drift keys on an
+// explicit "done iff #N merged" binding, NOT on any mentioned PR. The decisive witness is
+// `witness_partial_evidence_merged_mention_stays_green` — a HandChecked line that cites a MERGED PR
+// while correctly `[ ]` (the real ROADMAP §0 "rust-gate coverage" / #5456 case) evaluates GREEN. A
+// blanket "mentions a merged PR + `[ ]` ⇒ drift" rule would turn that RED — a fail-closed-but-WRONG
+// gate that false-positives on every partial-evidence line. Flip the boundary and that witness goes
+// red; flip the drift compare and the `*_drifts` witnesses go red.
+//
+// Run: gunbc run --source-root dsl --entry dsl/test/claim/roadmap_status_test.dag \
+//        --function roadmap_status_witnesses --claim-run
+
+module test.claim.roadmap_status
+
+import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
+import extdeps.github.github { GitHubUser, User }
+import gunbc.roadmap_status {
+  CheckboxState, Done, Todo,
+  CompletionBinding, CompletesIff, HandChecked,
+  RoadmapStatusEntry,
+  DriftVerdict, Drifted, Clean, Underivable,
+  pr_merged, merged_pr_numbers, derive_checkbox,
+  status_drift, entry_drifted,
+}
+
+// --- Fixtures: two PRs, one merged one open -----------------------------------
+
+data witness_user: GitHubUser = { login: "gunbai-bot", id: 1, type: User }
+data witness_ref: PullRequestRef = { ref: "feature", sha: "deadbeef", label: "gunb:feature" }
+
+// A merged PR (merged_at populated) and an open one (merged_at: none). String->Timestamp coercion is
+// accepted in record-field position, so these are built as direct literals.
+data pr_5445: PullRequest = {
+  number: 5445,
+  title: "merged witness pr",
+  body: none,
+  state: Open,
+  html_url: "https://github.com/gunb/gunbc/pull/5445",
+  user: witness_user,
+  head: witness_ref,
+  base: witness_ref,
+  created_at: "2026-06-21T00:00:00",
+  updated_at: "2026-06-21T00:00:00",
+  merged_at: "2026-06-20T00:00:00",
+  draft: false,
+}
+data pr_open_9999: PullRequest = {
+  number: 9999,
+  title: "open witness pr",
+  body: none,
+  state: Open,
+  html_url: "https://github.com/gunb/gunbc/pull/9999",
+  user: witness_user,
+  head: witness_ref,
+  base: witness_ref,
+  created_at: "2026-06-21T00:00:00",
+  updated_at: "2026-06-21T00:00:00",
+  merged_at: none,
+  draft: false,
+}
+
+// --- Verdict matchers ---------------------------------------------------------
+
+fn is_drifted(v: DriftVerdict) -> Bool {
+  match v { Drifted => true  Clean => false  Underivable => false }
+}
+fn is_clean(v: DriftVerdict) -> Bool {
+  match v { Clean => true  Drifted => false  Underivable => false }
+}
+fn is_underivable(v: DriftVerdict) -> Bool {
+  match v { Underivable => true  Drifted => false  Clean => false }
+}
+
+fn completes_iff(prs: List<Int>) -> CompletionBinding {
+  CompletesIff { prs: prs }
+}
+
+// === Authority: pr_merged reads merged_at =====================================
+
+fn witness_merged_pr_is_merged() -> Bool {
+  pr_merged(pr: pr_5445)
+}
+fn witness_open_pr_not_merged() -> Bool {
+  !pr_merged(pr: pr_open_9999)
+}
+fn witness_merged_numbers_projection() -> Bool {
+  let nums = merged_pr_numbers(prs: [pr_5445, pr_open_9999])
+  count(nums) == 1 && (nums |> any(n => n == 5445))
+}
+
+// === Derivation: derive_checkbox ==============================================
+
+fn checkbox_is_done(c: CheckboxState) -> Bool {
+  match c { Done => true  Todo => false }
+}
+
+// All bound PRs merged -> Done.
+fn witness_all_merged_derives_done() -> Bool {
+  checkbox_is_done(c: derive_checkbox(prs: [5445], merged: [5445]))
+}
+// A single unmerged bound PR -> Todo (not yet landed).
+fn witness_one_unmerged_derives_todo() -> Bool {
+  !checkbox_is_done(c: derive_checkbox(prs: [5445, 9999], merged: [5445]))
+}
+// An empty binding -> Todo (no merge evidence; fail-closed).
+fn witness_empty_binding_derives_todo() -> Bool {
+  !checkbox_is_done(c: derive_checkbox(prs: [], merged: [5445]))
+}
+
+// === Drift verdict: only an explicit CompletesIff binding can drift ===========
+
+// THE soundness witness (parent-required): a line that CITES a MERGED PR (#5445 is in the live
+// merged set) but is HandChecked — a partial-evidence mention, box correctly `[ ]` — is UNDERIVABLE,
+// never Drifted. This is the real ROADMAP §0 "rust-gate coverage" (#5456) shape. A blanket
+// mention-based rule would flag it RED; keying on the binding keeps it GREEN.
+fn witness_partial_evidence_merged_mention_stays_green() -> Bool {
+  let entry = RoadmapStatusEntry {
+    title: "rust-gate coverage — cites merged #5445 as partial evidence, not done",
+    claimed: Todo,
+    binding: HandChecked,
+  }
+  is_underivable(v: status_drift(entry: entry, merged: [5445]))
+    && !entry_drifted(entry: entry, merged: [5445])
+}
+
+// A HandChecked `[x]` is also out of the gate's reach (operator's call, no binding to check).
+fn witness_handchecked_done_underivable() -> Bool {
+  let entry = RoadmapStatusEntry { title: "audit done, no PR", claimed: Done, binding: HandChecked }
+  is_underivable(v: status_drift(entry: entry, merged: []))
+}
+
+// The genuine stale-checkbox: a line EXPLICITLY bound to complete iff #5445 merges, #5445 merged,
+// box still `[ ]` -> Drifted (the #5445/#5453 realization-vocab-guard case the plan cites).
+fn witness_completesiff_merged_box_todo_drifts() -> Bool {
+  let entry = RoadmapStatusEntry { title: "bound + stale", claimed: Todo, binding: completes_iff(prs: [5445]) }
+  is_drifted(v: status_drift(entry: entry, merged: [5445])) && entry_drifted(entry: entry, merged: [5445])
+}
+// Premature `[x]`: bound to complete iff #9999 merges, #9999 unmerged -> Drifted.
+fn witness_completesiff_unmerged_box_done_drifts() -> Bool {
+  let entry = RoadmapStatusEntry { title: "bound + premature", claimed: Done, binding: completes_iff(prs: [9999]) }
+  is_drifted(v: status_drift(entry: entry, merged: [5445]))
+}
+// Correctly-marked `[x]` on a satisfied binding -> Clean.
+fn witness_completesiff_merged_box_done_clean() -> Bool {
+  let entry = RoadmapStatusEntry { title: "bound + honest done", claimed: Done, binding: completes_iff(prs: [5445]) }
+  is_clean(v: status_drift(entry: entry, merged: [5445])) && !entry_drifted(entry: entry, merged: [5445])
+}
+// Correctly-marked `[ ]` on an unsatisfied binding -> Clean.
+fn witness_completesiff_unmerged_box_todo_clean() -> Bool {
+  let entry = RoadmapStatusEntry { title: "bound + honest todo", claimed: Todo, binding: completes_iff(prs: [9999]) }
+  is_clean(v: status_drift(entry: entry, merged: [5445]))
+}
+// Multi-PR binding, one ref still unmerged, box `[ ]` -> Clean (not all landed).
+fn witness_completesiff_partial_multi_todo_clean() -> Bool {
+  let entry = RoadmapStatusEntry { title: "bound + multi partial", claimed: Todo, binding: completes_iff(prs: [5445, 9999]) }
+  is_clean(v: status_drift(entry: entry, merged: [5445]))
+}
+
+// The host/gate edge: bound to complete iff #5445 merges; the live PR set has #5445 merged; box
+// `[ ]` -> drift.
+fn entry_against_prs_drifts() -> Bool {
+  let entry = RoadmapStatusEntry { title: "live-edge stale", claimed: Todo, binding: completes_iff(prs: [5445]) }
+  entry_drifted(entry: entry, merged: merged_pr_numbers(prs: [pr_5445, pr_open_9999]))
+}
+
+test fn roadmap_status_witnesses() -> Bool {
+  witness_merged_pr_is_merged()
+    && witness_open_pr_not_merged()
+    && witness_merged_numbers_projection()
+    && witness_all_merged_derives_done()
+    && witness_one_unmerged_derives_todo()
+    && witness_empty_binding_derives_todo()
+    && witness_partial_evidence_merged_mention_stays_green()
+    && witness_handchecked_done_underivable()
+    && witness_completesiff_merged_box_todo_drifts()
+    && witness_completesiff_unmerged_box_done_drifts()
+    && witness_completesiff_merged_box_done_clean()
+    && witness_completesiff_unmerged_box_todo_clean()
+    && witness_completesiff_partial_multi_todo_clean()
+    && entry_against_prs_drifts()
+}

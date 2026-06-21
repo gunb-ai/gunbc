@@ -165,6 +165,7 @@ both directions (§2 N+M). → [plan](docs/plans/idea-machine.md)
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 - [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) ([plan](docs/plans/invert-hand-maintained.md))
+  - [ ] **PR→checkbox status** — box derived from an explicit *completes-iff-PR* binding (not mere mention), drift-gated; model + witness landed, host-fed gate next ([plan](docs/plans/invert-hand-maintained.md) §6.4)
 
 ## 7. HTML / React rendering (expansion — the "website" sellable piece)
 
