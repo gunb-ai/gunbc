@@ -347,6 +347,23 @@ fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, 
   if each_count == 0 { each_count } else { capacity.count / each_count }
 }
 
+// `Measure × num/den → Measure`, rounded UP — the §3 ② *demand* case (a per-share demand
+// that must NOT under-estimate: under-estimate ⇒ ⌊budget÷demand⌋ too high ⇒ over-fit ⇒ OOM).
+// The SAME shape as `measure_scale_fraction_floor`, OPPOSITE rounding — that opposition IS the
+// ceil≠floor money-pair the round-trip hid (§5 round-toward-pessimism; no type picks the
+// direction, the consumer does). Ceil via the integer identity `⌈a/den⌉ = (a + den − 1) / den`
+// for `den > 0` (a is `count * num`, evaluated before the divide for ceil-correctness).
+// Fail-closed (§5) is the OPPOSITE direction from the FLOOR ops: a zero denominator yields the
+// UN-divided magnitude `count * num` — the whole demand landing on one share — never a zero,
+// because the pessimistic demand is LARGE, not small (a zero would be the most dangerous
+// under-estimate). OVERFLOW: the `+ (den − 1)` addend stays far below the i64 ceiling for every
+// modeled consumer (per-share peak: 8.4e9 + 3 ≪ 9.2e18); the §6 numeric-tower note above governs.
+fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
+  // den == 0 → the whole (un-divided) demand `count * num`; keeps both arms `Nat`, never divides
+  // by zero, and fails closed PESSIMISTIC (the opposite direction from the capacity/fit floors).
+  Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
+}
+
 // Generic time-measure constructor: a `Time` magnitude at ANY scale `<S>`, magnitude
 // fixed at the concrete `Nat` node. This is the scale-AGNOSTIC surface the realization /
 // measurement framework (std.realization_measurement) builds its roll-up algebra on —
