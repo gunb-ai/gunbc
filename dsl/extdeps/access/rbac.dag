@@ -14,6 +14,17 @@
 module extdeps.access.rbac
 
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// External-authority anchor (promotes the Source citation above to the structured carrier
+// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/projects/role-based-access-control"
+  }
+}
 
 // PRMS ⊆ OPS × OBS — a permission is an operation on an object.
 type Permission {

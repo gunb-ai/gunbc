@@ -1,0 +1,13 @@
+// Fixture: module with formal https anchor (live projection GREEN control).
+
+module extdeps.fixture.external_authority_clean_https
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "yaml.org/spec/1.2.2/"
+  }
+}

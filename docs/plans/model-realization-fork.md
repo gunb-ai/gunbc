@@ -45,10 +45,13 @@ other primitive is per-site.
 
 ## 3. Grounding order (does it dissolve the guards?)
 
-1. **Numeric tower — grounds cleanly; YES, dissolves the guard.** Finish `Int = GroupCompletion<Nat>`
-   bottoming in Peano `Nat`, so the native form *is* the modeled form. Then
-   `cross_representation_numeric_straddle` (and the `eval_binop` guard) become **dead code**. Highest
-   value / lowest risk. Start here.
+1. **Numeric tower — GROUNDED (#5428, 2026-06-21).** Nat construction-side grounded:
+   `Zero → Value::Int(0)`, `Succ{prev:Int(k)} → Value::Int(k+1)` — native form == modeled form.
+   `cross_representation_numeric_straddle` is dead-in-corpus for numerics; `eval_binop`'s
+   `CrossRepresentationEquality` guard is **kept as fail-closed backstop** (not removed — guard removal
+   is bundled with the `Value::Null` split in §3.2, fenced out of this window). The discriminating
+   witness `cross_representation_equality_test` confirms: former fork cases now reconcile to `Bool(true)`;
+   genuine diffs (`1==2`, `Succ{Zero}==Zero → Int(1)==Int(0)`) stay `false`. **Done.**
 2. **`Value::Null` overload — the deeper root; NO, needs SPLITTING not grounding-away.** `Value::Null`
    means *None* / *Absent* (Optional) / *miss* (map lookup) / *Violates* (Witness) **all at once**. So a
    blanket equality guard is wrong — `present == None → false` is *legitimate* at ~131 sites. The fix is

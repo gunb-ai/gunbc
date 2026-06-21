@@ -236,8 +236,12 @@ still a violation) · internal review finds missing tests, external review finds
   `Optional/Witness` over `Value::Null` — the latter resists a blanket guard because `Value::Null` is
   the overloaded `None`/`Absent`/miss sentinel and `present == None` (131 sites) is a *legitimate* `false`,
   so it needs grounding, not an error arm; (b) the root fix (§1/§2/§7) — ground each primitive into its
-  realization (numeric tower first, `Int = GroupCompletion<Nat>` still bottoming in Peano `Nat`), which
-  dissolves the straddle and makes the guard dead code. (operator: `==` fail-closed, 2026-06-20)
+  realization. **Numeric tower: GROUNDED** (#5428, 2026-06-21) — Nat construction-side grounded
+  (`Zero → Int(0)`, `Succ{prev:Int(k)} → Int(k+1)`); native form == modeled form; `eval_binop`
+  `CrossRepresentationEquality` guard is dead-in-corpus for numerics, kept as fail-closed backstop until
+  the `Value::Null` split lands (guard removal bundled with that work, fenced out of this window).
+  **Remaining:** `Value::Null` split — Optional/Witness/miss into own carriers (~131 sites; the deeper
+  root, its own runway). (operator: `==` fail-closed, 2026-06-20)
 - the remaining deleted-`docs/` references in `.dag` comments — provenance / `bind:` pointers into the bankrupted `docs/` tree (e.g. `docs/planning/*`, `design-*.md`) — fold into the dep-graph reform, not a blind repoint. (The named-corpus ledger marks — `Practice N`, and `INVARIANTS` / `THESIS` / `MODELING` / `RELEASE_TODO` / … citations — were swept: dropped, or re-homed to DESIGN.md §-anchors.)
 
 ## Building & checks

@@ -20,9 +20,10 @@ import extdeps.languages.bash.program {
 }
 import tools.build_step { BuildArtifact, emit_verifications }
 
-// Source set the ensure-built bins must be fresh against — conservative `$ROOT/src/**/*.rs`
-// (same oracle as the release bootstrap build, gunbc.ci_spec; the v1-compiler workspace's Rust
-// sources all live under `src/`). Single authority for the host-gate freshness inputs (§3).
+// Source set the ensure-built bins must be fresh against — `$ROOT/src/**/*.rs` plus
+// Cargo.toml/Cargo.lock (same oracle as the release bootstrap build, gunbc.ci_spec; the
+// v1-compiler workspace's Rust sources all live under `src/`). Single authority for the
+// host-gate freshness inputs (§3).
 fn host_build_source_roots() -> List<ShellWord> {
   [Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src")] }]
 }
@@ -80,7 +81,7 @@ fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<She
     emit_verifications(
       produces: [BuildArtifact { path: bin, name: bin_name }],
       roots: host_build_source_roots(),
-      pattern: "*.rs"
+      patterns: ["*.rs", "Cargo.toml", "Cargo.lock"]
     )
   )
 }
