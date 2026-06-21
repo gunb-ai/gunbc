@@ -32,7 +32,8 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, resolve_entry_graph, resolve_entry_with_index,
 };
 use v1_compiler::resolved_graph_cache::{
-    serialize_fixture_payload_for_test, subject_digest_for_closure,
+    build_valid_artifact_bytes, lookup, serialize_fixture_payload_for_test,
+    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult,
 };
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_rt::{self, Hash};
@@ -294,6 +295,122 @@ impl AuditedRealization for KeyedRealization {
         vec![self.input.get()]
     }
 }
+
+// === 5. KEYSTONE: a verdict-INVARIANT lossy decode — verify-on-read GREEN, verdict GREEN, =========
+//        byte-audit RED. The discriminating witness that the byte-audit has teeth the cheaper
+//        checks lack (DESIGN §5: byte-identity by construction is the spec-without-execution claim
+//        the audit falsifies; a verdict-only two-run test cannot see this).
+
+/// Poison ONE file's `NewlineIndex.offsets` — a verdict-IRRELEVANT axis (offsets feed only
+/// diagnostic line/col rendering; the `ResolvedGraph` every verdict consumes is untouched). The
+/// poison is a JSON ARRAY element, not a map key, so it SURVIVES `serde_json::Value`
+/// canonicalization — a genuine semantic byte-diff, not a quotiented-out map-order/intern remap.
+fn poison_one_files_offsets(
+    si: &std::collections::HashMap<String, Rc<NewlineIndex>>,
+) -> std::collections::HashMap<String, Rc<NewlineIndex>> {
+    let mut out: std::collections::HashMap<String, Rc<NewlineIndex>> =
+        std::collections::HashMap::new();
+    // Deterministic: poison the lexicographically-first file so the witness is reproducible.
+    let mut keys: Vec<&String> = si.keys().collect();
+    keys.sort();
+    let poison_key = keys.first().map(|k| (*k).clone());
+    for (k, v) in si {
+        if Some(k) == poison_key.as_ref() {
+            let mut offsets = (*v.offsets).clone();
+            offsets.push(offsets.last().copied().unwrap_or(0) + 999);
+            out.insert(
+                k.clone(),
+                Rc::new(NewlineIndex {
+                    file: v.file.clone(),
+                    offsets: Rc::new(offsets),
+                    char_codes: v.char_codes.clone(),
+                }),
+            );
+        } else {
+            out.insert(k.clone(), v.clone());
+        }
+    }
+    out
+}
+
+#[test]
+fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
+    let dir = temp_dir("keystone");
+    let (roots, entry) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    let _guard = CacheEnvGuard::set(&cache_dir);
+
+    // COLD: clean cache → MISS → compute the genuine graph + CORRECT source indices.
+    let cold_index = build_multi_entry_index(&roots);
+    let (cold_graph, cold_si) =
+        resolve_entry_with_index(&cold_index, &entry).expect("cold resolve");
+    let cold_full = canonical_graph_bytes(&cold_graph, &cold_si);
+
+    let sources = load_sources_for_entry(&roots, &entry).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+
+    // Overwrite the cache artifact with a VALID one carrying poisoned offsets: the content digest
+    // is recomputed over the poisoned payload, so verify-on-read (a storage-integrity check, NOT a
+    // decode-fidelity check) cannot catch it.
+    let poisoned_si = poison_one_files_offsets(&cold_si);
+    let poisoned_artifact = build_valid_artifact_bytes(&subject, &cold_graph, &poisoned_si)
+        .expect("build poisoned artifact");
+    write_raw_artifact_for_test(&cache_dir, &subject, &poisoned_artifact).expect("write poison");
+
+    // === TOOTH 1: verify-on-read is GREEN — it ACCEPTS the byte-intact poisoned artifact. ===
+    match lookup(&cache_dir, &subject) {
+        CacheLookupResult::Hit(_) => {} // storage integrity passes → the lossy decode slips through
+        other => panic!(
+            "verify-on-read must ACCEPT a byte-intact poisoned artifact (it checks storage \
+             integrity, not decode fidelity); got {other:?}"
+        ),
+    }
+
+    // WARM: a fresh index → cache HIT → decodes the poisoned offsets.
+    let warm_index = build_multi_entry_index(&roots);
+    let (warm_graph, warm_si) =
+        resolve_entry_with_index(&warm_index, &entry).expect("warm resolve");
+
+    // === TOOTH 2: a verdict-only check is GREEN — the ResolvedGraph (every downstream verdict's
+    // input: emit/lower/eval read the graph, never the diagnostic offsets) is byte-identical, so
+    // ANY verdict over the warm hit agrees with cold. This is precisely why a two-run verdict
+    // measurement (proud-deer's 8/8 gates, 616/616 witnesses) cannot see this impurity. ===
+    let cold_graph_only = serde_json::to_vec(&cold_graph).expect("ser cold graph");
+    let warm_graph_only = serde_json::to_vec(&warm_graph).expect("ser warm graph");
+    assert_eq!(
+        v1_rt::bytes_identity_hash(&cold_graph_only),
+        v1_rt::bytes_identity_hash(&warm_graph_only),
+        "the verdict-bearing ResolvedGraph must be UNCHANGED — the poison is diagnostic-only"
+    );
+
+    // === TOOTH 3: the byte-audit is RED — canonical FULL-payload bytes diverge warm!=cold. ===
+    let warm_full = canonical_graph_bytes(&warm_graph, &warm_si);
+    let cold_digest = v1_rt::bytes_identity_hash(&cold_full);
+    let warm_digest = v1_rt::bytes_identity_hash(&warm_full);
+    assert_ne!(
+        cold_digest, warm_digest,
+        "the warm-decoded graph must diverge from the cold compute at the BYTE level — the lossy \
+         decode that verify-on-read and verdict-runs both miss"
+    );
+
+    // The audit reports it as a located, typed, LOUD §5 violation (what the floor gate fails on).
+    let violation = CachePurityViolation {
+        content_key: subject.clone(),
+        unkeyed_axis: format!("resolved-graph cache codec (write→read) for entry {entry}"),
+        warm_digest,
+        cold_digest,
+    };
+    let shouted = format!("{violation}");
+    assert!(
+        shouted.contains("CACHE PURITY VIOLATION"),
+        "the audit verdict must be a LOUD located §5 error; got: {shouted}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// === 6. A probe that moves the content-key is a DECLARED axis — skipped, not flagged =============
 
 #[test]
 fn oracle_skips_probes_that_move_the_content_key() {
