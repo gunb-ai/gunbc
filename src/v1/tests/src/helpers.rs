@@ -106,9 +106,7 @@ pub fn assert_parses_strict(relative_path: &str) {
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Build module index using the parser as single authority for module names.
-/// Scans source roots recursively, tokenizes+parses each .dag file to
-/// extract the module declaration. Built once via OnceLock.
+/// Build module index by scanning source roots. Built once via OnceLock.
 fn build_module_index_for_roots(
     roots: &[std::path::PathBuf],
 ) -> HashMap<String, std::path::PathBuf> {
@@ -142,11 +140,24 @@ fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::
     }
 }
 
-/// Extract module declaration using the parser — single authority.
+/// Extract module declaration via a light line scan — no full parse.
+/// The grammar is `module <dotted.name>` and is always the first non-comment
+/// non-blank line when present. Avoids the O(file) tokenize+parse cost paid
+/// once per .dag file at process start by the module-index OnceLock.
 fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
-    let result = parse_source(&content);
-    result.module.as_ref().map(|m| m.name.clone())
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        return trimmed
+            .strip_prefix("module ")
+            .and_then(|rest| rest.split_whitespace().next())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+    }
+    None
 }
 
 static MODULE_INDEX: OnceLock<HashMap<String, std::path::PathBuf>> = OnceLock::new();
