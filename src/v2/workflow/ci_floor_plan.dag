@@ -38,7 +38,7 @@ import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
-import std.measure { HardwareThreadCount, hardware_thread_count }
+import std.measure { HardwareThreadCount, hardware_thread_count, byte_size }
 import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width }
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
@@ -301,18 +301,23 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
 //   width = min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_per_shard_peak⌋)
 // - shard_count   = gunbc_ci_floor_breadth() (spec-derived; corpus-explosion is Phase 1)
 // - hardware_threads = the fleet CPU cap (non-binding today)
-// - memory_budget_bytes = LIVE cgroup budget, read by the host realizer (claim_executor) and
-//   passed as this arg (§3 measured⇒peripheral; an external system authors it → read it live)
-// - per_shard_peak = the MEASURED VmHWM÷width fact (gunbc.ci_floor_measurement), NOT a literal
+// - memory_budget_bytes = LIVE cgroup budget (raw bytes the host realizer read from the OS),
+//   grounded into the std.measure ByteSize carrier at this boundary before the std fold sees it
+//   (§3 measured⇒peripheral; an external system authors it → read it live)
+// - per_shard_peak = the MEASURED VmHWM÷width fact (gunbc.ci_floor_measurement, a ByteSize), NOT
+//   a literal
 // The memory term is non-binding today (admits ≫7) — it is the fail-closed FLOOR that only
-// REDUCES width below the topology cap once the tree outgrows budget/7 (DESIGN §5). A ≤0 budget
-// (host could not read one) yields the conservative committed fallback, never an OOM.
+// REDUCES width below the topology cap once the tree outgrows budget/7 (DESIGN §5). A 0-byte
+// budget (host could not read one) yields the conservative committed fallback, never an OOM.
+// The `memory_budget_bytes: Int` arg is the raw host value at the host seam (claim_executor reads
+// OS bytes, not a ByteSize); it is grounded into ByteSize here so the std authority fold carries
+// the dimension.
 fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   memory_aware_spawn_width(
     shard_count: gunbc_ci_floor_breadth(),
     hardware_threads: gunbc_ci_floor_hardware_threads(),
-    memory_budget_bytes: memory_budget_bytes,
-    per_shard_peak_bytes: gunbc_ci_floor_per_shard_peak_rss_bytes(),
+    memory_budget: byte_size(memory_budget_bytes),
+    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
     conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
   )
 }

@@ -98,34 +98,38 @@ fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCo
 // compile). 0.80 = a 20% margin: it costs nothing while memory is non-binding (width capped by
 // shard_count today) and is precisely the lean (DESIGN §5) that protects the one failure mode
 // §1-C exists to prevent — OOM — in the future stale-low-peak case. Integer ×4/5 (no floats).
-// Stays in the ByteSize domain: scale the underlying Nat count and re-ground via byte_size() —
-// a measure-aware scaling (the dimension stays attached), not raw Int arithmetic on a bare field.
-fn budget_safety_fraction_apply(budget: ByteSize) -> ByteSize {
-  byte_size(count: (byte_size_count(b: budget) * 4) / 5)
+fn budget_safety_fraction_apply(budget_bytes: Int) -> Int {
+  (budget_bytes * 4) / 5
+}
+
+// Nat→Int projection of a ByteSize count. The byte magnitude is a Nat (byte_size_count), but the
+// fold's arithmetic and the host's 0-byte sentinel live in Int (cf. bounded_host_spawn_width's
+// int_min over hardware_thread_count_value). Nat ⊂ Int, so this is the widening at a typed
+// boundary — the public ByteSize fields stay the canonical carrier, the inner plumbing is Int.
+fn byte_size_count_int(b: ByteSize) -> Int {
+  byte_size_count(b: b)
 }
 
 // How many concurrent shards fit under the safety-fractioned budget, each peaking at the
-// MEASURED per-shard RSS. ByteSize ÷ ByteSize is a dimensionless shard count, so the division
-// extracts the grounded Nat counts (the std.measure pattern, cf. placement_supply). Fail-closed
-// forward progress: a zero peak (unknown measurement) or a budget under one shard still admits
-// 1, never 0.
-fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
-  let peak_count = byte_size_count(b: per_shard_peak)
-  if peak_count <= 0 {
+// MEASURED per-shard RSS. Fail-closed forward progress: a non-positive peak (unknown
+// measurement) or a budget under one shard still admits 1, never 0.
+fn memory_bounded_shard_count(memory_budget_bytes: Int, per_shard_peak_bytes: Int) -> Int {
+  if per_shard_peak_bytes <= 0 {
     1
   } else {
-    let safe_budget = byte_size_count(b: budget_safety_fraction_apply(budget: memory_budget))
-    let fits = safe_budget / peak_count
+    let safe_budget = budget_safety_fraction_apply(budget_bytes: memory_budget_bytes)
+    let fits = safe_budget / per_shard_peak_bytes
     if fits < 1 { 1 } else { fits }
   }
 }
 
 // Memory-aware spawn width: min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_peak⌋).
 // Byte quantities are std.measure ByteSize (the canonical Memory carrier), not flat Int — the
-// dimension is attached at the authority layer. A zero budget means the host could NOT read a
-// live budget — fall back to the caller's conservative committed width so a missing measurement
-// never OOMs and is never fabricated here (DESIGN §5; the host supplies the fallback). The
-// heavy-resolve topology serialization stays the independent backstop either way.
+// dimension is attached at the authority-layer API; the counts are projected to Int (the fold's
+// arithmetic domain) at the boundary. A zero budget means the host could NOT read a live budget —
+// fall back to the caller's conservative committed width so a missing measurement never OOMs and
+// is never fabricated here (DESIGN §5; the host supplies the fallback). The heavy-resolve topology
+// serialization stays the independent backstop either way.
 fn memory_aware_spawn_width(
   shard_count: Int,
   hardware_threads: HardwareThreadCount,
@@ -133,15 +137,16 @@ fn memory_aware_spawn_width(
   per_shard_peak: ByteSize,
   conservative_fallback_width: Int
 ) -> HardwareThreadCount {
-  if byte_size_count(b: memory_budget) <= 0 {
+  let budget_bytes = byte_size_count_int(b: memory_budget)
+  if budget_bytes <= 0 {
     hardware_thread_count(count: conservative_fallback_width)
   } else {
     let cpu_width = hardware_thread_count_value(
       t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
     )
     let mem_width = memory_bounded_shard_count(
-      memory_budget: memory_budget,
-      per_shard_peak: per_shard_peak
+      memory_budget_bytes: budget_bytes,
+      per_shard_peak_bytes: byte_size_count_int(b: per_shard_peak)
     )
     hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
   }
@@ -226,16 +231,16 @@ fn witness_measured_cost_affects_shard_balance() -> Bool {
 fn memory_aware_width_value(
   shard_count: Int,
   hardware_threads: HardwareThreadCount,
-  memory_budget_bytes: Int,
-  per_shard_peak_bytes: Int,
+  memory_budget: ByteSize,
+  per_shard_peak: ByteSize,
   conservative_fallback_width: Int
 ) -> Int {
   hardware_thread_count_value(
     t: memory_aware_spawn_width(
       shard_count: shard_count,
       hardware_threads: hardware_threads,
-      memory_budget_bytes: memory_budget_bytes,
-      per_shard_peak_bytes: per_shard_peak_bytes,
+      memory_budget: memory_budget,
+      per_shard_peak: per_shard_peak,
       conservative_fallback_width: conservative_fallback_width
     )
   )
@@ -250,8 +255,8 @@ fn witness_memory_term_non_binding_uses_shard_count(
   memory_aware_width_value(
     shard_count: shard_count,
     hardware_threads: hardware_threads,
-    memory_budget_bytes: 67108864000,
-    per_shard_peak_bytes: 2100028416,
+    memory_budget: byte_size(67108864000),
+    per_shard_peak: byte_size(2100028416),
     conservative_fallback_width: 4
   ) == shard_count
 }
@@ -262,20 +267,20 @@ fn witness_tight_budget_backs_off_below_shard_count() -> Bool {
   memory_aware_width_value(
     shard_count: 7,
     hardware_threads: hardware_thread_count(128),
-    memory_budget_bytes: 6442450944,
-    per_shard_peak_bytes: 2100028416,
+    memory_budget: byte_size(6442450944),
+    per_shard_peak: byte_size(2100028416),
     conservative_fallback_width: 4
   ) == 2
 }
 
-// Fail-closed: an unreadable budget (≤0 sentinel from the host) → the conservative fallback,
+// Fail-closed: an unreadable budget (0-byte sentinel from the host) → the conservative fallback,
 // never an unbounded width and never an OOM. RED if a memory-blind fold ignored the sentinel.
 fn witness_unreadable_budget_falls_back_conservative() -> Bool {
   memory_aware_width_value(
     shard_count: 7,
     hardware_threads: hardware_thread_count(128),
-    memory_budget_bytes: 0,
-    per_shard_peak_bytes: 2100028416,
+    memory_budget: byte_size(0),
+    per_shard_peak: byte_size(2100028416),
     conservative_fallback_width: 4
   ) == 4
 }
@@ -287,8 +292,8 @@ fn witness_safety_fraction_is_load_bearing() -> Bool {
   memory_aware_width_value(
     shard_count: 7,
     hardware_threads: hardware_thread_count(128),
-    memory_budget_bytes: peak * 2,
-    per_shard_peak_bytes: peak,
+    memory_budget: byte_size(peak * 2),
+    per_shard_peak: byte_size(peak),
     conservative_fallback_width: 4
   ) == 1
 }
@@ -298,8 +303,8 @@ fn witness_subunit_budget_admits_one() -> Bool {
   memory_aware_width_value(
     shard_count: 7,
     hardware_threads: hardware_thread_count(128),
-    memory_budget_bytes: 1000000000,
-    per_shard_peak_bytes: 2100028416,
+    memory_budget: byte_size(1000000000),
+    per_shard_peak: byte_size(2100028416),
     conservative_fallback_width: 4
   ) == 1
 }

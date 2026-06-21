@@ -45,9 +45,12 @@ data gunbc_ci_floor_measured_at_spawn_width: Int = 4
 
 // Per-shard peak = measured whole-floor peak ÷ the concurrency it was measured at. The division
 // is kept here (not pre-computed into a literal) so the provenance pair above stays the authority
-// and the derivation is visible.
-fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> Int {
-  byte_size_count(b: gunbc_ci_floor_measured_peak_rss_bytes) / gunbc_ci_floor_measured_at_spawn_width
+// and the derivation is visible. ByteSize in / ByteSize out (the std.measure Memory carrier): the
+// concurrency divisor is dimensionless, so the Nat count is scaled and re-grounded via byte_size().
+fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
+  byte_size(
+    count: byte_size_count(b: gunbc_ci_floor_measured_peak_rss_bytes) / gunbc_ci_floor_measured_at_spawn_width
+  )
 }
 
 // Fail-closed fallback width when the host cannot read a live memory budget: the last
