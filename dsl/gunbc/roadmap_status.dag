@@ -1,0 +1,74 @@
+// gunbc/roadmap_status.dag — ROADMAP checkbox status, PROJECTED from the work-DAG lifecycle.
+//
+// First slice of the "invert hand-maintained artifacts" project (docs/plans/invert-hand-maintained.md):
+// the ROADMAP says its own checkboxes are "authoritative for progress … a task's real state is its
+// branch/PR" — i.e. the checkbox is a HAND-KEPT COPY of the work-DAG lifecycle. That dual representation
+// drifts (a checkbox sat `[ ]` while its PR was merged on main, last week). This module removes the copy:
+// the checkbox glyph is DERIVED from the lifecycle stage, never hand-toggled, so the stale-checkbox class
+// is unwritable for the status dimension (DESIGN.md §5 construction-over-validation, §2/§3 no dual rep).
+//
+// SINGLE AUTHORITY (DESIGN.md §3): the lifecycle stage is `ctrl.code_change_workflow.CodeChangeStage`
+// (open → under-review → merge-ready → merged|closed) — the existing work-DAG authority. This module
+// mints NO parallel status enum (that would be a nickname/fork of CodeChangeStage); it is a pure
+// PROJECTION of that authority onto the ROADMAP's two-glyph checkbox legend. The PR→stage edge is the
+// existing `classify_github_pr_terminal_anchor` (merged_at present → ChangeMerged; closed → ChangeClosed;
+// open → no terminal anchor), so "PR-to-checkbox" is the composition checkbox_mark ∘ that anchor — no new
+// PR-status logic is coined here either.
+//
+// Scope of THIS slice: the pure status→glyph projection + a discriminating witness. The host-fed SOURCE
+// (fetching each work node's live PR, like v2.std.concept_index's host bridge) and the markdown drift
+// gate land in sibling slices (they need the work-DAG STRUCTURE model + the Markdown emit medium; see
+// docs/plans/invert-hand-maintained.md §6 sequencing items 1–3).
+
+module gunbc.roadmap_status
+
+import ctrl.code_change_workflow {
+  CodeChangeStage, CodeChangeActive, CodeChangeTerminal,
+  ChangeMerged, ChangeClosed,
+  classify_github_pr_terminal_anchor,
+}
+import extdeps.github.pulls { PullRequest }
+
+// The two ROADMAP checkbox markers. AUTHORITY: GitHub-Flavored-Markdown task-list syntax — GFM mandates
+// `[x]` for a checked item and `[ ]` for an unchecked one (the ROADMAP legend: `[x]` done · `[ ]` todo).
+// These are deliberately NOT sourced from extdeps.render.glyphs (NodeCompleted/NodePending also render
+// `[x]`/`[ ]` in their ascii tier): that table is the terminal-rendering glyph vocabulary, whose tier
+// choices are stylistic and free to change, whereas these markers are fixed by the markdown spec. The
+// byte coincidence is accidental, so unifying them would be a FALSE reduce (DESIGN.md §6 "reuse on proven
+// coincidence, never bare-alias"). When the Markdown emit medium lands (sibling slice) these bytes move
+// into its language rows; until then their single home is here.
+data roadmap_done_mark: String = "[x]"
+data roadmap_todo_mark: String = "[ ]"
+
+// The checkbox glyph for a lifecycle stage. Only a MERGED change is done (`[x]`); every other stage —
+// open / under-review / merge-ready (active) and closed-unmerged (abandoned/superseded) — is not-yet-done
+// (`[ ]`), matching the ROADMAP's two-glyph legend. The terminal sum is matched exhaustively (no
+// wildcard): adding a terminal stage is then a loud compile error here, forcing a checkbox decision
+// rather than silently mapping to `[ ]` (DESIGN.md §5 fail-closed).
+fn checkbox_mark(stage: CodeChangeStage) -> String {
+  match stage {
+    CodeChangeTerminal { stage: terminal } =>
+      match terminal {
+        ChangeMerged => roadmap_done_mark
+        ChangeClosed => roadmap_todo_mark
+      }
+    CodeChangeActive { stage: _ } => roadmap_todo_mark
+  }
+}
+
+// PR-to-checkbox: the slice's headline composition. A PR with a terminal anchor (merged → ChangeMerged,
+// closed → ChangeClosed) projects through checkbox_mark; an open/unmerged PR has no terminal anchor
+// (Absent) and is therefore not-yet-done (`[ ]`). Grounded entirely in existing authorities — this adds
+// no PR-status logic, only the composition.
+fn checkbox_mark_for_pr(pr: PullRequest) -> String {
+  match classify_github_pr_terminal_anchor(pr: pr) {
+    Present { value: stage } => checkbox_mark(stage: stage)
+    Absent => roadmap_todo_mark
+  }
+}
+
+// One ROADMAP checklist line: "- [x] <title>" / "- [ ] <title>". The title is supplied by the (sibling)
+// work-DAG structure slice; this projects only its status prefix.
+fn roadmap_checkbox_line(title: String, stage: CodeChangeStage) -> String {
+  concat(concat(concat("- ", checkbox_mark(stage: stage)), " "), title)
+}

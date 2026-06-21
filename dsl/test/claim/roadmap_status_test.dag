@@ -1,0 +1,102 @@
+// test/claim/roadmap_status_test.dag — §5 discriminating witnesses for gunbc.roadmap_status.
+//
+// Proves the checkbox glyph is DERIVED from the lifecycle stage / PR, not hand-set. Discrimination
+// (each goes RED on a plausible regression):
+//   - merged → "[x]" but closed/active → "[ ]"  ⇒ kills "always [x]" (the stale-checkbox bug) AND
+//     "always [ ]";
+//   - the PR composition distinguishes merged / closed-unmerged / open  ⇒ kills ignoring merged_at;
+//   - the line projection pins the exact GFM "- [x] <title>" shape.
+
+module test.claim.roadmap_status_test
+
+import gunbc.roadmap_status { checkbox_mark, checkbox_mark_for_pr, roadmap_checkbox_line }
+import ctrl.code_change_workflow {
+  CodeChangeStage, CodeChangeActive, CodeChangeTerminal,
+  ChangeOpen, ChangeUnderReview, ChangeMergeReady, ChangeMerged, ChangeClosed,
+}
+import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open, Closed }
+import extdeps.github.github { GitHubUser, User }
+import std.types { CommitSha, Timestamp, Url }
+
+data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_merged_at: Timestamp = "2026-06-21T01:00:00Z"
+
+fn witness_github_pr(state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
+  PullRequest {
+    number: 1,
+    title: "witness",
+    body: none,
+    state: state,
+    html_url: witness_pr_url,
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef { ref: "feature", sha: witness_head_sha, label: "gunb-ai:feature" },
+    base: PullRequestRef {
+      ref: "main",
+      sha: "def456789012345678901234567890abcdef12",
+      label: "gunb-ai:main",
+    },
+    created_at: "2026-06-21T00:00:00Z",
+    updated_at: "2026-06-21T00:00:00Z",
+    merged_at: merged_at,
+    draft: false,
+  }
+}
+
+fn merged_stage() -> CodeChangeStage { CodeChangeTerminal { stage: ChangeMerged } }
+fn closed_stage() -> CodeChangeStage { CodeChangeTerminal { stage: ChangeClosed } }
+
+// --- stage → glyph -------------------------------------------------------------
+
+fn witness_merged_stage_is_done() -> Bool {
+  checkbox_mark(stage: merged_stage()) == "[x]"
+}
+
+fn witness_closed_stage_is_todo() -> Bool {
+  checkbox_mark(stage: closed_stage()) == "[ ]"
+}
+
+fn witness_active_stages_are_todo() -> Bool {
+  checkbox_mark(stage: CodeChangeActive { stage: ChangeOpen }) == "[ ]"
+    && checkbox_mark(stage: CodeChangeActive { stage: ChangeUnderReview }) == "[ ]"
+    && checkbox_mark(stage: CodeChangeActive { stage: ChangeMergeReady }) == "[ ]"
+}
+
+// --- PR → glyph (the headline composition) -------------------------------------
+
+fn witness_merged_pr_is_done() -> Bool {
+  checkbox_mark_for_pr(pr: witness_github_pr(state: Open, merged_at: Present { value: witness_merged_at })) == "[x]"
+}
+
+fn witness_closed_pr_is_todo() -> Bool {
+  checkbox_mark_for_pr(pr: witness_github_pr(state: Closed, merged_at: none)) == "[ ]"
+}
+
+fn witness_open_pr_is_todo() -> Bool {
+  checkbox_mark_for_pr(pr: witness_github_pr(state: Open, merged_at: none)) == "[ ]"
+}
+
+// --- line projection -----------------------------------------------------------
+
+fn witness_done_line_shape() -> Bool {
+  roadmap_checkbox_line(title: "ship the thing", stage: merged_stage()) == "- [x] ship the thing"
+}
+
+fn witness_todo_line_shape() -> Bool {
+  roadmap_checkbox_line(title: "ship the thing", stage: CodeChangeActive { stage: ChangeOpen }) == "- [ ] ship the thing"
+}
+
+fn all_roadmap_status_witnesses() -> Bool {
+  witness_merged_stage_is_done()
+    && witness_closed_stage_is_todo()
+    && witness_active_stages_are_todo()
+    && witness_merged_pr_is_done()
+    && witness_closed_pr_is_todo()
+    && witness_open_pr_is_todo()
+    && witness_done_line_shape()
+    && witness_todo_line_shape()
+}
+
+test fn roadmap_status_witnesses() -> Bool {
+  all_roadmap_status_witnesses()
+}
