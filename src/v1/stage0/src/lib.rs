@@ -12,10 +12,7 @@
     clippy::all
 )]
 
-<<<<<<< HEAD
 pub mod cache_purity_audit;
-=======
->>>>>>> origin/session/stern-otter-43
 pub mod cache_purity_oracle;
 pub mod cli_run;
 pub mod coproduct_reflection;

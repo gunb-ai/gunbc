@@ -32,12 +32,8 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, resolve_entry_graph, resolve_entry_with_index,
 };
 use v1_compiler::resolved_graph_cache::{
-<<<<<<< HEAD
     build_valid_artifact_bytes, lookup, serialize_fixture_payload_for_test,
     subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult,
-=======
-    serialize_fixture_payload_for_test, subject_digest_for_closure,
->>>>>>> origin/session/stern-otter-43
 };
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_rt::{self, Hash};
@@ -320,7 +316,6 @@ fn oracle_skips_probes_that_move_the_content_key() {
         "a probe that moves the content-key is a DECLARED axis (a miss, not a stale hit) — skip it"
     );
 }
-<<<<<<< HEAD
 
 // === 5. KEYSTONE: a verdict-INVARIANT lossy decode — verify-on-read GREEN, verdict GREEN, =========
 //        byte-audit RED. The discriminating witness that the byte-audit has teeth the cheaper
@@ -441,5 +436,3 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
 
     let _ = fs::remove_dir_all(&dir);
 }
-=======
->>>>>>> origin/session/stern-otter-43
