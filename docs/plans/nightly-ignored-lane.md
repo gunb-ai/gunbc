@@ -1,5 +1,11 @@
 # Nightly expensive-test CI lane (ROADMAP §1)
 
+> **PARKED (operator directive 2026-06-21).** Root-cause comes first: see
+> `docs/plans/expensive-test-cause-table.md`. A lane that merely schedules expense away defers
+> cost (§6 local-patch trap). The cfg_attr mechanism below is the right design for the
+> *irreducible residue* (interim-(c) seed compiles + genuine-external wet captures) and is built
+> only AFTER the (a)/(b) defects drain. Kept here for that eventual residue lane.
+
 *Design-first, decisions locked by §1 owner (quick-ant-298, 2026-06-21). Implementation of
 the load-bearing CI-gen (`nightly.yml` via `gunbc ci`/`ci_spec`) is HELD until #5427 merges;
 the concrete machinery diff is escalated to the owner for review before it lands.*
