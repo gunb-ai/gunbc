@@ -103,7 +103,7 @@ Prevent the next class, not the last instance: generate witnesses from declared 
 - [x] gate the generated output — floor-discover `generated/` (or regen==committed drift gate) (#5434)
 - [x] CoproductExhaustiveness made structural — over every declared coproduct, not a hand-roster (#5441)
 - [x] cross-representation-equality category — straddle witness per coproduct × native realization (#5449)
-- [ ] **the oracle method (retro)** — per bug class: category? structural? output gated? ([map](docs/plans/testgen-oracle.md) §2)
+- [x] **the oracle method (retro)** — bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2)
 - [x] affected-set = the completeness half — model the full repo-process universe (#5430)
   - [ ] *anemia lens?* (parked, DESIGN §2 leaf-side) — likely advisory, not a hard gate; decide whether to elevate
 
