@@ -306,12 +306,21 @@ carries box-load noise (n=1, ~2× loaded); the **measured-ns resolve delta is th
 signal** — it is the cache's direct effect on the isolated resolve clock, and the *eval clock
 moves only +0.24%*, the built-in control proving the delta is resolve-specific, not drift.
 
-**(ii) Purity (warm==cold).** Both runs 8/8 gates PASS, both 616/616 witnesses green, eval
-unchanged. Verdict-identical → **no behavior change from the cache**. Byte-identity of a cache
-hit is guaranteed *by construction*: the key IS the content hash of the declared inputs, so a
-hit returns the byte-identical resolved graph — a divergent graph keys differently (a miss),
-never a wrong hit (§3 construction-not-validation; the cache key derived from
-`inputs_considered`, #5425).
+**(ii) Purity (warm==cold) — VERDICT-level only; byte-fidelity is stern-otter-43's P3, NOT
+proven here.** Both runs 8/8 gates PASS, both 616/616 witnesses green, eval unchanged →
+verdict-identical, **no Bool-observable behavior change from the cache**. This is strong but it
+is **not** byte-identity, and the distinction is load-bearing (stern-otter-43 correction
+2026-06-21): #5425 makes the cache *key* complete (a hit is for the same declared inputs), but
+a hit returns `decode(stored_bytes)`, and the write→read **codec can be lossy** (a field that
+doesn't round-trip, map order, intern-id remapping). Verify-on-read checks stored-bytes digest
+*integrity*, NOT decode-fidelity. So `decode(warm)` could differ from a fresh cold graph while
+every Bool witness still agrees — and a *verdict-invariant* lossy decode is invisible to this
+two-run verdict measurement (warm decodes the same lossy way both times; if the lossy field
+never moves a Bool, 8/8==8/8 regardless). That latent byte-diff would bite later when emit/lower
+consume the cached graph (a richer-than-Bool observable — the CRIT-1 boundary in
+`resolve_cross_process_cache_test.rs`). The **executed byte-level guarantee** (real cold
+recompute vs *decoded* warm, canonical compare, fail-closed) is stern-otter-43's P3 audit; that
+is why cache-enable + the audit ship **bundled**, not why one substitutes for the other.
 
 **(iii) Resolve as fraction of total floor.** Resolve is **68.4% of discovery compute** cold
 (1,836,658 / 2,685,200ms), 60.4% warm — the single largest floor component, and discovery
