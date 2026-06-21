@@ -114,6 +114,17 @@ non-tautology proof).
    "this line completes iff #N merges" edge. Slice-2 **widens** that same binding from a status surface
    (`RoadmapStatusEntry`) to the full emitted work node (title/deps/pointer); it must build on
    `CompletesIff`, not re-coin a parallel completion edge (§3).
+   **Landed (step 1) — `gunbc.roadmap_model`:** a roadmap line is a `RoadmapNode { node, line, carrier }`
+   that *composes* the existing authorities rather than re-coining them: IDENTITY + DEPENDENCY edges ←
+   `ctrl.process_algebra` (`ProcessNodeId` + the `DecomposeProcessNode { parent, children }`
+   decomposition; the indentation edge is that parent/child relation, projected as `RoadmapEdge` +
+   `roadmap_parent` → `RoadmapParent = TopLevel | UnderParent`); STATUS ← the slice-1
+   `RoadmapStatusEntry` (reused whole — title + box + `CompletionBinding`); TITLE + plan-doc `carrier`
+   are the line's presentation surface (host-fed; the work graph carries neither). The `carrier`
+   projection (`carrier_resolves`/`node_carrier_clean`) is the construction wall for a dangling link
+   (a pointer to a non-existent doc is the emit error). *Open for review:* the work graph's own
+   `ProcessCloseState` (open/closed) vs the PR-grounded `CompletionBinding` are two groundings of "done"
+   to reconcile (a node should close iff its completing PR merges) — flagged, not built.
 2. **`Markdown` as an emit target** — rows in `06_translate` / `extdeps/languages/` (the §6 medium axis);
    `emit(work_model, Markdown)` produces the ROADMAP bytes.
 3. **The drift gate** — `roadmap_gate`: `ROADMAP.md == emit(work_model)`, the `ci_yaml_gate` clone.

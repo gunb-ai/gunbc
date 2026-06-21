@@ -22,6 +22,7 @@ import gunbc.roadmap_status {
 import gunbc.roadmap_model {
   PlanDocCarrier, NoCarrier, PlanDoc,
   RoadmapNode, RoadmapEdge,
+  RoadmapParent, TopLevel, UnderParent,
   roadmap_parent, is_top_level,
   carrier_resolves, node_carrier_clean,
   node_status_drift,
@@ -47,8 +48,8 @@ fn verdict_is_underivable(v: DriftVerdict) -> Bool {
 // A child node resolves to its decomposition parent (the indentation edge).
 fn witness_child_has_parent() -> Bool {
   match roadmap_parent(edges: edges(), node: child_node) {
-    Present { value: p } => p == parent_node
-    Absent => false
+    UnderParent { parent: p } => p == parent_node
+    TopLevel => false
   }
 }
 // A node with no edge is top-level.

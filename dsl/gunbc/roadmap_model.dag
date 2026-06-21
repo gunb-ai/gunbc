@@ -59,19 +59,38 @@ type RoadmapEdge {
 
 // === Dependency projection: the indentation edge ============================
 
-// The node a line is indented under, looked up from the decomposition edges. Absent = a top-level
-// section item. Last edge wins on a (malformed) duplicate — the work graph forbids two parents.
-fn roadmap_parent(edges: List<RoadmapEdge>, node: ProcessNodeId) -> ProcessNodeId? {
-  fold(edges, init: Absent, f: fn(acc, e) -> ProcessNodeId? {
-    if e.child == node { Present { value: e.parent } } else { acc }
+// Where a roadmap line sits in the forest. A closed domain sum, NOT `ProcessNodeId?` — the Optional
+// of a branded primitive is a raw-nullable that `match` can't branch (the Value::Null model↔realization
+// fork, DESIGN open thread), so a two-named-variant sum is the §5 "return a closed sum" move.
+type RoadmapParent
+  = TopLevel
+  | UnderParent { parent: ProcessNodeId }
+
+// Typed constructors so the `if`-branches below unify as RoadmapParent (a bare inline arm with a
+// payload is read as a Product in if-branch position; a function call carries its declared type).
+fn under_parent(p: ProcessNodeId) -> RoadmapParent { UnderParent { parent: p } }
+fn top_level() -> RoadmapParent { TopLevel }
+
+// This edge's parent if it points at `node`, else TopLevel.
+fn edge_parent_for(e: RoadmapEdge, node: ProcessNodeId) -> RoadmapParent {
+  if e.child == node { under_parent(p: e.parent) } else { top_level() }
+}
+
+// The node a line is indented under, looked up from the decomposition edges. TopLevel = a section
+// root. First matching edge wins (keep-first fold); the work graph forbids two parents, so a
+// duplicate is malformed anyway.
+fn roadmap_parent(edges: List<RoadmapEdge>, node: ProcessNodeId) -> RoadmapParent {
+  fold(edges, init: TopLevel, f: (acc, e) => match acc {
+    UnderParent { parent: p } => UnderParent { parent: p }
+    TopLevel => edge_parent_for(e: e, node: node)
   })
 }
 
 // True iff the node sits at the top level (no parent edge) — the roots of the roadmap forest.
 fn is_top_level(edges: List<RoadmapEdge>, node: ProcessNodeId) -> Bool {
   match roadmap_parent(edges: edges, node: node) {
-    Absent => true
-    Present { value: _ } => false
+    TopLevel => true
+    UnderParent { parent: _ } => false
   }
 }
 
