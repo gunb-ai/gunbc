@@ -1788,6 +1788,16 @@ fn eval_var(
 
     // Variant constructor (unit variant, no fields)
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+        // Numeric-tower grounding (DESIGN §1/§2/§7, model↔realization fork): the
+        // Peano base constructor `Zero` is *realized* as the native `Value::Int(0)`
+        // — the construction-side inverse of the `Int → Zero/Succ` read bridge in
+        // `match_pattern` (keyed the same way, on the variant name). Grounding
+        // construction makes the native form equal the modeled form, so a `Nat`
+        // never materializes as a `Zero`/`Succ` `Variant` and the
+        // cross-representation `==` straddle never arises (its guard is dead code).
+        if name == "Zero" {
+            return Ok(Value::Int(0));
+        }
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
             variant_name: ctx.sym(&name),
@@ -3133,6 +3143,22 @@ fn eval_record_lit(
     }
 
     if let Some(pe) = parent_enum {
+        // Numeric-tower grounding (DESIGN §1/§2/§7): the Peano successor
+        // `Succ { prev: n }` is realized as `Value::Int(n + 1)` whenever its
+        // predecessor already grounds to a native non-negative Int — the
+        // construction-side inverse of the `Int → Succ { prev: Int(n - 1) }` read
+        // bridge. Field evaluation above is bottom-up, so an inner `Zero`/`Succ`
+        // is already grounded before this outer one builds, and a `Nat` value is
+        // never represented as a coproduct `Variant`. (A non-Int `prev` — never a
+        // well-typed `Nat` — falls through to the `Variant` below, where the
+        // straddle guard remains the fail-closed backstop.)
+        if type_name == "Succ" {
+            if let Some(Value::Int(p)) = fields.get(&ctx.sym("prev")) {
+                if *p >= 0 {
+                    return Ok(Value::Int(p + 1));
+                }
+            }
+        }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(&type_name),
