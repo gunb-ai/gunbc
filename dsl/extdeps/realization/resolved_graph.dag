@@ -5,7 +5,7 @@
 
 module extdeps.realization.resolved_graph
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ToolchainSpec }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
@@ -39,7 +39,13 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   transport_encoding: CasContentEncoding
   key_derivation: {
     classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
+    // ToolchainSpec is keyed BY CONSTRUCTION: the resolved graph depends on the
+    // resolve transform (the compiler/toolchain), and invalidation_triggers promises
+    // ToolchainChange — so the toolchain MUST be a considered input or the derived key
+    // omits it (key-completeness, extdeps.cache.key_completeness; §5 stale-pass trap).
+    // This supersedes the realizer's hand-authored RESOLVE_LOGIC_VERSION /
+    // KERNEL_INTERN_SEED_VERSION stand-ins for content(transform).
+    inputs_considered: [UpsertSubject, ToolchainSpec]
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
@@ -71,7 +77,7 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
     {
       field: "lookup_semantics"
       evidence: OperatorObserved {
-        note: "subject_digest = closure content + resolve-logic version + intern-seed version"
+        note: "subject_digest content-addresses the closure content AND the resolve transform via the ToolchainSpec input (content(toolchain)) — NOT hand-authored resolve-logic/intern-seed version strings (cache-key-by-construction)"
         observed_at: 0
       }
     },
