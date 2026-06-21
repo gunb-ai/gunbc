@@ -1,0 +1,9 @@
+
+running 836 tests
+test b1_hash_primitive_test::atom_identity_hash_is_stable_and_distinct ... ok
+test b1_hash_primitive_test::emitted_runtime_hash_ops_preserves_hash_carrier_boundary ... ok
+test b1_hash_primitive_test::hash_combine_is_sensitive_to_pair_order ... ok
+test b1_hash_primitive_test::hash_combine_rejects_non_carrier_inputs ... ok
+test b1_hash_primitive_test::hash_combine_rejects_pair_framing_ambiguous_raw_strings - should panic ... ok
+test b1_hash_primitive_test::hash_combine_separates_named_and_positional_edge_tags ... ok
+test b1_hash_primitive_test::hash_combine_separates_tag_and_payload_namespaces ... ok
