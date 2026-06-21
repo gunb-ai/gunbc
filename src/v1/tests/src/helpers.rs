@@ -141,9 +141,11 @@ fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::
 }
 
 /// Extract module declaration via a light line scan — no full parse.
-/// The grammar is `module <dotted.name>` and is always the first non-comment
-/// non-blank line when present. Avoids the O(file) tokenize+parse cost paid
-/// once per .dag file at process start by the module-index OnceLock.
+/// Recognizes only the prefix grammar `module <dotted.name>`; the .dag grammar
+/// uses `//` line comments only (no block comments or attributes), so skipping
+/// blank and `//`-prefixed lines faithfully covers the full header convention.
+/// Avoids the O(file) tokenize+parse cost paid once per .dag file at process
+/// start by the module-index OnceLock.
 fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     for line in content.lines() {
