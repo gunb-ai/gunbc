@@ -146,9 +146,13 @@ pub fn audit_floor_discovery_corpus(
         }
     }
 
+    // One whole-tree parse index, reused across every entry's cold+warm resolve (sound: the disk
+    // cache is consulted before any in-process index cache — see audit_entry_warm_equals_cold).
+    let index = build_multi_entry_index(roots);
+
     let mut violations = Vec::new();
     for entry in &entries {
-        if let Err(v) = audit_entry_warm_equals_cold(roots, entry) {
+        if let Err(v) = audit_entry_warm_equals_cold(&index, roots, entry) {
             violations.push(v);
         }
     }
