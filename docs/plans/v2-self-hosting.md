@@ -1,7 +1,7 @@
 # Plan — v2 self-hosting
 
 **Status:** planning tracker · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's
-real state is its branch/PR, not this file. Linked from `ROADMAP.md §3`. Related to but distinct from
+real state is its branch/PR, not this file. Linked from `ROADMAP.md` §5 *Self-host v2 → delete `src/v1`*. Related to but distinct from
 the de-fork audit ([dsl-v2-defork-audit.md](dsl-v2-defork-audit.md)): de-fork collapses duplication;
 self-hosting makes v2 compile itself. De-fork is a *prerequisite* (the compiler closure needs one std
 authority), not the goal.
@@ -10,7 +10,7 @@ authority), not the goal.
 `emitter/seed-green-integration @ 239ff284d5` by session merry-deer-374 (5 evidence-backed verifiers,
 2026-06-21).** Re-check receipts before acting.
 
-> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §3, do not re-litigate).** Three languages:
+> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §5 *Self-host*, do not re-litigate).** Three languages:
 > **`.dag` is the authority/truth; v2 emits BOTH Rust AND TypeScript as first-class realizations** (not
 > one-or-the-other). The fixed point is proven per realization (Rust bytes reproduce; TS bytes
 > reproduce). **Purely self-hosting:** v2 emits its own seed — no stage0 hand-edits (enforced by the

@@ -1,6 +1,6 @@
 # Plan — testgen as the bug-class oracle (coverage by construction)
 
-**Status:** audit + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md §1`.
+**Status:** audit + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle* (and a §0 lock-down subject — its output is not floor-discovered).
 The operator's frame: testgen is the answer to *"how do we prevent the next CLASS of bugs, and how do
 they relate to structure?"* — cover a class by **generating witnesses from the declared structure**, not
 one hand-written witness per bug. That is the construction principle (§0) applied to test coverage:
@@ -85,7 +85,7 @@ universe-complete affected-set both need the substrate to enumerate its own decl
 primitive now exists (`node_query`), so the blocker is partly lifted — the work is routing generators +
 universe-enumeration through it.
 
-## 4. Direction (dependency-ordered → ROADMAP §1)
+## 4. Direction (dependency-ordered → ROADMAP §4 *Testgen as the bug-class oracle*)
 
 1. **Gate the existing generated output** — make `generated/` floor-discovered (single-representation
    `test fn` in `*_test.dag`, or a drift gate regen==committed). Closes face #1+#2 with no new logic.

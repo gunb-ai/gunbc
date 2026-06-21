@@ -1,7 +1,7 @@
 # Plan — idea → idea compiler (the idea-machine)
 
 **Status:** planning tracker · **DESIGN.md + carriers are authority** (§6). A task's real state is its
-branch/PR, not this file. Linked from `ROADMAP.md §2`. No prior plan doc existed — the wave commits +
+branch/PR, not this file. Linked from `ROADMAP.md` §6 *idea → idea compiler*. No prior plan doc existed — the wave commits +
 carriers are the only authority; this collects them.
 
 **Carrier facts verified against the live tree 2026-06-21.** Re-check receipts before acting.
@@ -43,7 +43,7 @@ medium-level `DecodeFidelity` at the decode boundary (today feature-level stays 
 - Partial / fail-open: English **ingest** uses a catch-all `english_token_word` → fail-open on
   out-of-subset prose (also a **§0 lock-down item**); only emit is proven.
 
-## 3. Remaining work (dependency-ordered → ROADMAP §2 substeps)
+## 3. Remaining work (dependency-ordered → ROADMAP §6 *idea → idea compiler* substeps)
 
 1. **English vocabulary closure** → fail-closed English ingest (replace catch-all with closed/typed word
    set). *Intersects the §0 lock-down.*
@@ -63,7 +63,7 @@ medium-level `DecodeFidelity` at the decode boundary (today feature-level stays 
   is the *same* `fold_node` + reverse-parse machinery — self-host's targets are idea-machine media.
 - **Lock-down** ([fail-closed-lockdown.md](fail-closed-lockdown.md)): English ingest fail-open is a
   lock-down item; the idea-machine's "exact-or-fail-closed" (eval `Lossless`) is the §5 posture.
-- **Website product** (ROADMAP §4): react/html as a first-class medium is item 3 above.
+- **Website product** (ROADMAP §7 *HTML / React rendering*): react/html as a first-class medium is item 3 above — §7 depends on this lane.
 
 ## 5. Dissolution trigger (DESIGN §6)
 
