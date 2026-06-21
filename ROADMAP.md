@@ -17,7 +17,8 @@ Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits 
 
 ## 3. Self-host v2 → delete `src/v1`
 
-Anchor (do not flip-flop): `.dag` = truth; emit **Rust + TypeScript**; then delete the seed.
+Anchor (do not flip-flop): `.dag` = truth; **purely self-hosting** (v2 emits its own seed, no stage0
+hand-edits); emit **Rust + TypeScript**; then shrink the seed to zero.
 → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)
 
 - [x] front-end (parse / resolve / infer) over the whole tree
@@ -27,9 +28,12 @@ Anchor (do not flip-flop): `.dag` = truth; emit **Rust + TypeScript**; then dele
     - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
     - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
-  - [ ] regen `stage0` from emitted crate; flip the fixed-point gate (Stage C)
+  - [ ] real fixed point: `content_hash` stage1==stage2 (Stage C; dissolve placeholder hashes, T-15/T-20)
+    - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces **no stage0 hand-edits** (was closed #5325) ← **keystone**
+      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) so the emitter emits the whole seed
   - [ ] TypeScript to first-class (target-completeness beyond the `add` slice)
-  - [ ] delete `src/v1` (terminal — after emitted compiler reproduces + covers every v1 host effect/bin)
+  - [ ] seed-honesty discharge (Diverse Double-Compiling — trust the seed once)
+  - [ ] collapse `src/v1` → pinned reproducible v2-emitted seed; delete the 154k hand-written compiler logic (terminal, not a big-bang `rm`)
 
 ## 4. HTML / React rendering
 
