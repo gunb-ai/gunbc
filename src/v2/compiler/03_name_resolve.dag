@@ -620,22 +620,11 @@ fn resolve_with_admission_policy(
 }
 
 
-// Extract QualifiedNames from raw module root Nodes (SCAFFOLD — dissolves with grounded source_root).
-fn module_root_nodes_to_qns(roots: FreeMonoid<Node>) -> FreeMonoid<QualifiedName> {
-  fold_list(
-    xs: roots,
-    empty: Empty,
-    cons: fn(acc, root) {
-      match qualified_name_from_module_node(root: root) {
-        Accepted { value: qn, diagnostics: _ } => Cons { head: qn, tail: acc }
-        Rejected { diagnostics: _ } => acc
-      }
-    }
-  )
-}
-
-
-// Fail-closed default: FundamentalityUnknown denies all cross-tree imports.
+// Index-less single-tree resolution: no source-root provenance is supplied, so every import
+// is resolved by module_root_find within the given roots. Cross-tree admission requires the
+// grounded index (resolve_with_admission_grounded), so this path is correct for single-tree
+// compiles; a genuinely cross-tree import to a module absent from `roots` fails closed as an
+// unresolved import.
 fn resolve_with_admission(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
@@ -645,7 +634,27 @@ fn resolve_with_admission(
     lm: lm,
     roots: roots,
     admission: admission,
-    order: FundamentalityUnknown,
-    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
+    index: source_root_index_empty(),
+    active_roots: Empty
+  )
+}
+
+
+// Grounded cross-tree resolution: the QualifiedName -> SourceRootRef index and active
+// source-root set are derived from the host-tagged ingest (program_assembly). Cross-tree
+// import edges are admitted on grounded provenance + tree-pair fundamentality (§4/§5).
+fn resolve_with_admission_grounded(
+  lm: LanguageModel,
+  roots: FreeMonoid<Node>,
+  admission: Admission,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>
+) -> Outcome<ResolvedTree> {
+  resolve_with_admission_policy(
+    lm: lm,
+    roots: roots,
+    admission: admission,
+    index: index,
+    active_roots: active_roots
   )
 }
