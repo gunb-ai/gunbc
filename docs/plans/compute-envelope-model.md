@@ -35,9 +35,9 @@ so they cannot be mutually consistent:
 
 | Dimension | Set today by | Blind to |
 | --- | --- | --- |
-| floor **spawn width** | a **pinned constant 4** (`gunbc_ci_floor_spawn_width`, `ci_floor_plan.dag:292`) — the memory-aware derivation was *removed* as unwired (#5419); #5444 (not yet on main) re-adds the memory term | the true core count (envelope says 64c — **a lie**, it's 128c); the ~124 idle cores; the pids cap |
-| **host packing** (PRs/host) | implicit — ~one PR's CI runs at a time across 50 runner units | the idle 120+ cores |
-| per-build **fan-out** | `CARGO_BUILD_JOBS` × codegen-units (debug 256) × LLVM | the pids cap it then bursts |
+| floor **spawn width** (RUN) | a **pinned constant 4** (`gunbc_ci_floor_spawn_width`, `ci_floor_plan.dag:292`) — the memory-aware derivation was *removed* as unwired (#5419); #5444 (not yet on main) re-adds the memory term | the true core count (envelope says 64c — **a lie**, it's 128c); the ~124 idle cores; the free memory |
+| **host packing** (BUILD) | implicit — ~one PR's CI runs at a time across 50 runner units | the idle 120+ cores; the pids it jointly bursts with fan-out |
+| per-build **fan-out** (BUILD) | `CARGO_BUILD_JOBS` × codegen-units (debug 256) × LLVM | the pids cap it bursts (× concurrent builds) |
 | cgroup **pids cap** | `TasksMax=4096` hand-set drop-in (ctrl) | the fan-out that legitimately needs >4096 |
 | **jobserver tokens** | `~120` magic constant (ctrl) | cores, the pids cap |
 | cgroup **`MemoryMax`** | per-host hand edit — **drifted** (srv1 ≠ srv2) [confirm] | the other host |
@@ -57,16 +57,29 @@ and thrashing, because both the width floor and the fan-out ceiling come from th
 | Knob | Derivation from the envelope | Tier (§4) | Owner | Status |
 | --- | --- | --- | --- | --- |
 | measured host facts | **the envelope itself** — cores, mem, pids capacity, *measured* | ctrl realization | ctrl | model is **wrong** (64c/256GB; real 128c/128GB) — **fix first** |
-| spawn width | `min(shard_demand, cores, mem_budget ÷ per-shard-peak, pids_budget ÷ per-shard-pids)` — replace the **pinned 4** with a derivation that lifts **both** the pin **and** the `shard_demand` cap from the envelope (cores ∧ mem ∧ pids), building on #5444's mem term (+#5421's layer-at-once, done) so the corpus actually uses the 128c/115GB-free headroom | public | quick-ant (slice) | §5 below |
-| per-build fan-out | codegen-units / `CARGO_BUILD_JOBS` capped so one build's pids ≤ `pids_cap ÷ peak_concurrent_builds` | public (test profile) | bright-stag (#5456 area) | §3 below |
+| spawn width (**RUN** phase) | `min(shard_demand, cores, mem_budget ÷ per-shard-peak)` — replace the **pinned 4** with a derivation that lifts **both** the pin **and** the `shard_demand` cap from the envelope (cores ∧ mem), building on #5444's mem term (+#5421's layer-at-once, done) so the corpus actually uses the 128c/115GB-free headroom. Discovery shards run witnesses against the **prebuilt** release binary — light on pids, no rustc — so **no pids term**; width-up is pids-safe on its own | public | quick-ant (slice) | §5 below |
+| host packing (**BUILD** phase concurrency) | `concurrent_builds` — how many PRs' builds co-run on a host; the factor that multiplies the build-phase pids fan-out (see invariant) | public/ctrl | quick-ant + ctrl | §5 below |
+| per-build fan-out (**BUILD** phase) | codegen-units / `CARGO_BUILD_JOBS` capped so `concurrent_builds × per_build_pids ≤ pids_cap` | public (test profile) | bright-stag (#5456 area) | §5 below |
 | pids cap (`TasksMax`) | `≥ peak_per_build_pids × safety`, bounded by `kernel_threads_max ÷ runner_count` | ctrl realization | ctrl | tourniquet applied (4096→16384, 2026-06-21); should become **derived** |
 | jobserver tokens | a function of cores (the cooperative compile limit), consistent with the pids cap | ctrl realization | ctrl | derive, don't magic-constant |
 | `MemoryMax` | one value from the envelope, identical across same-spec hosts | ctrl realization | ctrl | de-drift |
 
-**The invariant that forecloses both failures:** width floor and fan-out ceiling are derived from the
-**same** envelope ⇒ `peak_concurrent_pids = spawn_width × per_build_pids ≤ pids_cap` holds *by
-construction* (§5), not by hope. You can't tune width up into a crash, because the same envelope that
-raised width also sized the cap and the fan-out.
+**The invariant that forecloses both failures — but mind the two phases (they don't multiply each
+other):** a PR's CI is a **BUILD** phase (rustc fans out, once) followed by a **RUN** phase (the
+discovery corpus shards run witnesses against the *prebuilt* binary). They touch different resources:
+
+- **RUN phase — spawn width** is cores ∧ mem bound. Discovery shards barely touch pids (no rustc), so
+  width does **not** multiply the build fan-out. **Width-up is pids-safe on its own** — you can raise it
+  toward the envelope without crash risk. (Premise: shards consume the prebuilt binary — exactly what
+  #5450's Pop-B build-once enforces; a shard that still rebuilds is a *defect to fix*, not a reason to
+  pids-bound width.)
+- **BUILD phase — the pids crash** is `concurrent_builds × per_build_pids ≤ pids_cap`. This couples
+  **host-packing** (how many PRs build at once) with **per-build fan-out** (codegen-units) — *not*
+  spawn_width. That is where by-construction crash-prevention lives.
+
+So the same-envelope coupling is **packing × fan-out** (build phase); width-up (run phase) is an
+*independent* cores∧mem lever. You can't tune either into a crash, because each is bounded by the
+envelope on its own axis — but they are **two invariants, not one product.**
 
 ## 4. The PUBLIC / CTRL split (§3 measured-peripheral — the doc's spine)
 
@@ -89,17 +102,25 @@ host-fact grounding + unit generation → ctrl.
 1. **Ground the envelope in measured truth** — kill the 64c/256GB lie (real: 128c/128GB, both hosts).
    *Everything downstream inherits this; you cannot derive width from a lying envelope.* (ctrl + the
    `compute_fabric` host facts.)
-2. **Spawn width up** — derive width from the grounded envelope (cores ∧ mem ∧ pids), raising it toward
-   the host's real capacity instead of the low bound that leaves ~124 cores idle. **Current width is a
-   pinned constant 4** (`ci_floor_plan.dag:292`; the memory-aware model was removed as unwired in #5419)
-   — on 128c that is ~3% of cores from width alone. The lever lifts **both** the pin **and** the
-   `shard_count` cap on the derivation. Builds on **#5444** (memory term, re-adds it; not yet on main) +
-   **#5421/#5375** (per-node demand, even-width removal — *already landed*); this is a **refinement**,
-   not a re-derivation. **Owned by quick-ant** (single fresh slice — see §6; do **not** fork).
-3. **Cap the per-build fan-out** — codegen-units, so one build can't burst the pids cap. Composes into
-   **one** `[profile.test]` block with bright-stag's **#5456** opt-level work (not a fork).
-4. **(2) and (3) derive from the same envelope** ⇒ the coherent operating point. Then generate the ctrl
-   units (`TasksMax`/`MemoryMax`/jobserver) from the envelope too, retiring the hand-set drop-ins.
+2. **Spawn width up (RUN phase)** — derive width from the grounded envelope on **cores ∧ mem** (no pids
+   term — discovery shards run the *prebuilt* binary), raising it toward the host's real capacity instead
+   of the low bound that leaves ~124 cores idle. **Current width is a pinned constant 4**
+   (`ci_floor_plan.dag:292`; the memory-aware model was removed as unwired in #5419) — on 128c that is
+   ~3% of cores from width alone. The lever lifts **both** the pin **and** the `shard_count` cap. **This
+   is pids-safe on its own** (run phase ≠ build phase — see the §3 invariant), so width can go up
+   independently of the crash-side discipline. Builds on **#5444** (memory term, re-adds it; not yet on
+   main) + **#5421** (even-width removal — *landed*); a **refinement**, not a re-derivation. **Owned by
+   quick-ant** (single fresh slice — see §6; do **not** fork). *(Premise: shards consume the prebuilt
+   binary — #5450 Pop-B build-once; a rebuilding shard is a defect to fix, not a reason to pids-bound
+   width.)*
+3. **Cap the per-build fan-out + bound host-packing (BUILD phase)** — codegen-units so
+   `concurrent_builds × per_build_pids ≤ pids_cap`. This is the crash-side discipline: it couples
+   host-packing (#2's BUILD-phase concurrency) with fan-out, **not** spawn_width. Codegen-units composes
+   into **one** `[profile.test]` block with bright-stag's **#5456** opt-level work (not a fork).
+4. **(2) and (3) each derive from the same envelope on their own axis** ⇒ the coherent operating point —
+   *two* invariants (run-phase cores∧mem; build-phase packing×fan-out≤pids), not one product. Then
+   generate the ctrl units (`TasksMax`/`MemoryMax`/jobserver) from the envelope too, retiring the
+   hand-set drop-ins.
 
 The top lever is **(2)**: it converts the idle 120 cores into real utilization — the biggest single
 CI-slow win. (1) is its precondition.
@@ -121,7 +142,9 @@ CI-slow win. (1) is its precondition.
 ## 7. Landed / in-flight context (so this builds on, not re-derives)
 
 - **#5421** (merged) — per-node resource demand + stop the executor's even-width division (CI 24m→~10m).
-- **#5375** (merged) — memory-aware floor scheduling.
+- **#5375 → superseded by #5419** — #5375's memory-aware scheduling was removed as unwired complexity by
+  #5419's pin (#5375 < #5419, so #5419 reverted it); **#5444 re-adds** the memory term. Current state =
+  **pinned 4**, not memory-aware.
 - **#5419** (merged) — pinned floor width (the bound (2) raises).
 - **#5444** (merging) — width value from measured-RAM-budget ÷ measured-per-shard-peak (the **memory
   term** of the envelope derivation).
