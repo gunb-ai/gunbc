@@ -67,8 +67,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
-    let records = discover_source_root_reads(&source_roots, &scan_dir, &exclude_subpaths)
-        .map_err(|e| {
+    let records =
+        discover_source_root_reads(&source_roots, &scan_dir, &exclude_subpaths).map_err(|e| {
             eprintln!("v2_whole_tree_parse_scan: discovery failed: {e}");
             ExitCode::from(1)
         })?;
@@ -100,8 +100,11 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let mut ok = 0usize;
     for rec in &records {
-        if ok > 0 && ok % 25 == 0 {
-            eprintln!("v2_whole_tree_parse_scan: progress {ok}/{} ...", records.len());
+        if ok > 0 && ok.is_multiple_of(25) {
+            eprintln!(
+                "v2_whole_tree_parse_scan: progress {ok}/{} ...",
+                records.len()
+            );
         }
         let args = [(Some("src".to_string()), Value::Str(rec.source.clone()))];
         match v1_interpreter::run_in_context_with_args(&ctx, PARSE_FN, &args, false) {

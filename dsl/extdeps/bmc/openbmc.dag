@@ -19,6 +19,16 @@ import std.bmc { BmcFirmwareFamily, OpenBmc, BmcProtocol, Redfish, Ipmi }
 import std.credentials { FactoryLogin }
 import std.types { List }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/openbmc"
+  }
+}
+
 // The published OpenBMC factory login (see anchor above). Public, world-known value —
 // cited as a source literal precisely because it is NOT a secret; it is rotated on first
 // contact (rotation is a workflow policy, not modeled here).

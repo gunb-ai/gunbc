@@ -18,69 +18,82 @@ import extdeps.languages.bash.program {
   AndThen, OrElse, StderrToNull,
   lit, var_ref, command, assign, test_not_executable
 }
+import tools.build_step { BuildArtifact, emit_verifications }
+
+// Source set the ensure-built bins must be fresh against — `$ROOT/src/**/*.rs` plus
+// Cargo.toml/Cargo.lock (same oracle as the release bootstrap build, gunbc.ci_spec; the
+// v1-compiler workspace's Rust sources all live under `src/`). Single authority for the
+// host-gate freshness inputs (§3).
+fn host_build_source_roots() -> List<ShellWord> {
+  [Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src")] }]
+}
+
+// `ROOT=$(git rev-parse … || pwd)` — shared by every ensure-built prelude.
+fn assign_root_stmt() -> ShellStmt {
+  assign(name: "ROOT", value: CmdSubst { body: AndOr {
+    left: WithRedir {
+      stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
+      redir: StderrToNull
+    },
+    op: OrElse,
+    right: command(words: [lit(text: "pwd")])
+  } })
+}
+
+// `if [ ! -x <bin> ]; then (cd "$ROOT" && cargo build -p v1-compiler --release --bin <bin>) || exit 1; fi`
+fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: String) -> ShellStmt {
+  If {
+    cond: test_not_executable(path: bin_path),
+    then: [
+      AndOr {
+        left: Subshell { body: [
+          AndOr {
+            left: command(words: [lit(text: "cd"), root]),
+            op: AndThen,
+            right: command(words: [
+              lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
+              lit(text: "--release"), lit(text: "--bin"), lit(text: bin_name)
+            ])
+          }
+        ] },
+        op: OrElse,
+        right: Exit { code: 1 }
+      }
+    ]
+  }
+}
+
+// Ensure a release bin is present, then VERIFY it — existence (primary) + source-relative
+// freshness (secondary), derived from the declared artifact via the single build_step
+// generator. Closes the §5 fail-open the old `if ! -x then build` carried: it checked
+// existence only BEFORE building (never after) and never freshness, so a present-but-stale bin
+// (or a build that exited 0 without producing one) ran a phantom binary in the gate. Stale ⇒
+// fail closed, loud — not a silent wrong gate result.
+fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<ShellStmt> {
+  let root = var_ref(name: "ROOT")
+  let bin = var_ref(name: var_name)
+  concat(
+    [
+      assign_root_stmt(),
+      assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
+      build_bin_if_absent_stmt(bin_path: bin, root: root, bin_name: bin_name)
+    ],
+    emit_verifications(
+      produces: [BuildArtifact { path: bin, name: bin_name }],
+      roots: host_build_source_roots(),
+      patterns: ["*.rs", "Cargo.toml", "Cargo.lock"]
+    )
+  )
+}
 
 fn ensure_gunbc_built() -> List<ShellStmt> {
-  let root = var_ref(name: "ROOT")
-  let gunbc = var_ref(name: "GUNBC")
-  [
-    assign(name: "ROOT", value: CmdSubst { body: AndOr {
-      left: WithRedir {
-        stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
-        redir: StderrToNull
-      },
-      op: OrElse,
-      right: command(words: [lit(text: "pwd")])
-    } }),
-    assign(name: "GUNBC", value: Concat { parts: [root, lit(text: "/target/release/gunbc")] }),
-    If {
-      cond: test_not_executable(path: gunbc),
-      then: [
-        AndOr {
-          left: Subshell { body: [
-            AndOr {
-              left: command(words: [lit(text: "cd"), root]),
-              op: AndThen,
-              right: command(words: [
-                lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-                lit(text: "--release"), lit(text: "--bin"), lit(text: "gunbc")
-              ])
-            }
-          ] },
-          op: OrElse,
-          right: Exit { code: 1 }
-        }
-      ]
-    }
-  ]
+  ensure_bin_built_and_verified(var_name: "GUNBC", bin_name: "gunbc")
 }
 
 // Pre-built release bin for Lane 3a ingest (CI builds with --bins; avoid cargo run under
 // batch-2 parallel load — races rust_monolith fmt/clippy/test for the lock).
 fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
-  let root = var_ref(name: "ROOT")
-  let bin = var_ref(name: "DISCOVER_SOURCE_ROOT_INGEST")
-  [
-    assign(name: "DISCOVER_SOURCE_ROOT_INGEST", value: Concat { parts: [root, lit(text: "/target/release/discover_source_root_ingest")] }),
-    If {
-      cond: test_not_executable(path: bin),
-      then: [
-        AndOr {
-          left: Subshell { body: [
-            AndOr {
-              left: command(words: [lit(text: "cd"), root]),
-              op: AndThen,
-              right: command(words: [
-                lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-                lit(text: "--release"), lit(text: "--bin"), lit(text: "discover_source_root_ingest")
-              ])
-            }
-          ] },
-          op: OrElse,
-          right: Exit { code: 1 }
-        }
-      ]
-    }
-  ]
+  ensure_bin_built_and_verified(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
 }
 
 // 🟡 toolchain-provision carve-out — dissolve-on: model ToolchainProvision in std;

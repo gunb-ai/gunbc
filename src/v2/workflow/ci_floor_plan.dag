@@ -29,17 +29,17 @@ module v2.workflow.ci_floor_plan
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate,
   SourceRootIngestGate
 }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
-import gunbc.ci_fleet { ci_fleet_floor_spawn_width, ci_fleet_floor_spawn_fits_memory_budget }
 import std.types { ContentHash }
-import std.measure { HardwareThreadCount }
+import std.measure { HardwareThreadCount, hardware_thread_count }
 import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
   RealizationPlan,
@@ -52,6 +52,7 @@ import std.realization_schedule {
 }
 import v2.workflow.executor {
   ExecutorBatch,
+  ExecutorJob,
   ExecutorRunBlocked,
   ExecutorRunComplete,
   ExecutorRunRunnable,
@@ -80,6 +81,7 @@ fn gate_node(g: Gate) -> Node {
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
     ResolvedImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_resolved_imports } }, children: [] }
+    ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
@@ -94,6 +96,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
     ResolvedImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "resolved_imports_gate_passes" }
+    ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
     SourceRootIngestGate => RunnableSingleClaim {
@@ -138,16 +141,77 @@ fn floor_depends_on_compile(dependent: Node) -> DependencyView {
   }
 }
 
-// Every gate except the compile-clean ROOT depends on it (the root gates nothing
-// before itself). Consume `Gate` structurally at the dependency site — the root
-// arm adds no self-edge, every other gate gets one.
-fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
+// ── heavy whole-tree resolves: at most one per readiness layer ───────────────
+// A floor node is a "heavy resolve" when it resolves the whole co-rooted tree and so peaks at
+// roughly one full corpus shard's memory. At the pinned floor width the corpus already runs
+// `width` such resolves concurrently across its shards (saturating the fleet memory budget on
+// the tightest host — the deterministic exit-137 evidence behind #5375). So a SECOND heavy
+// resolve must NOT co-run in the corpus's readiness layer: removing run_walk's per-runnable
+// width split (the host fix) lets the whole layer run at once, which would otherwise put
+// source-root ingest next to the corpus and OOM. The compile-clean ROOT is a heavy resolve
+// too but is the corpus's predecessor (runs alone in the first layer), so it never co-runs.
+fn gate_is_heavy_resolve(g: Gate) -> Bool {
+  match g {
+    SourceRootIngestGate => true
+    DslCompileCleanGate => true
+    RustMonolithGate => false
+    EmitHostGate => false
+    LayeringImportsGate => false
+    ResolvedImportsGate => false
+    ExtdepsExternalAuthorityGate => false
+    CiYamlGate => false
+  }
+}
+
+fn floor_node_is_heavy_resolve(node: Node, spec: CiSpec) -> Bool {
+  if node == floor_corpus_node {
+    true
+  } else {
+    fold(spec.gates, init: false, f: fn(acc, g) {
+      if node == gate_node(g: g) { gate_is_heavy_resolve(g: g) } else { acc }
+    })
+  }
+}
+
+// Resource-ordering edge: a heavy-resolve gate runs only after the corpus is scheduled, so the
+// scheduler places it in a later readiness layer. ResourceDependsOn (a memory conflict, not a
+// data dependency) — the scheduler's execution classifier orders on it (scheduler.dag).
+fn floor_corpus_serializes(dependent: Node) -> DependencyView {
+  DependencyView {
+    source: floor_corpus_node,
+    dependent: dependent,
+    kind: ResourceDependsOn,
+    usage_site: dependent
+  }
+}
+
+// Every gate except the compile-clean ROOT depends on it (the root gates nothing before
+// itself). Consume `Gate` structurally at the dependency site — the root arm adds no
+// self-edge, every other gate gets one. A non-root heavy resolve additionally gets a
+// ResourceDependsOn edge behind the corpus (when `serialize_heavy`), serializing it into its
+// own later layer. `serialize_heavy: false` is the memory-blind control for the discriminating
+// oracle below.
+fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
   fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
     match g {
       DslCompileCleanGate => acc
-      _ => list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: gate_node(g: g)))
+      _ => {
+        let after_compile = list_snoc_item(
+          xs: acc,
+          item: floor_depends_on_compile(dependent: gate_node(g: g))
+        )
+        if serialize_heavy && gate_is_heavy_resolve(g: g) {
+          list_snoc_item(xs: after_compile, item: floor_corpus_serializes(dependent: gate_node(g: g)))
+        } else {
+          after_compile
+        }
+      }
     }
   })
+}
+
+fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
+  floor_dependencies_with(spec: spec, serialize_heavy: true)
 }
 
 // ── node -> Runnable (the single binding site; unmapped -> fail-closed sentinel) ─
@@ -222,16 +286,54 @@ fn gunbc_ci_floor_breadth() -> Int {
   length(xs: gunbc_ci_spec.gates)
 }
 
-// claim_executor spawn-width companion: min(floor breadth, fleet hardware threads, memory
-// budget / per-shard peak). The relationship is the model; nothing here is hand-tuned per
-// host or per gate — the memory term backs fan-out off before the cgroup OOM-kill.
+// claim_executor spawn-width companion (host never decides width). Pinned constant: the
+// memory-aware placement model was unwired complexity; a flat width is what the fleet
+// effectively ran. Re-derive from real load if it ever earns its keep.
 fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
-  ci_fleet_floor_spawn_width(corpus_shard_count: gunbc_ci_floor_breadth())
+  hardware_thread_count(4)
 }
 
-// §5 OOM oracle at the floor breadth: the scheduled width's concurrent memory peak fits the
-// fleet memory budget. A revert to a memory-blind width (= min(breadth, threads)) flips this
-// false on the real fleet (7×14 GiB > 0.50×125 GiB budget).
-fn gunbc_ci_floor_spawn_fits_memory_budget() -> Bool {
-  ci_fleet_floor_spawn_fits_memory_budget(corpus_shard_count: gunbc_ci_floor_breadth())
+// ── §5 plan oracle: at most one heavy whole-tree resolve per readiness layer ──
+// run_walk now launches a whole readiness layer at once (the host fix removed the per-runnable
+// width split). The fail-closed safety property is then a flat topology fact — no two heavy
+// resolves share a layer — rather than a memory-budget computation (the memory-aware placement
+// model was removed as unwired complexity, #5419). The corpus saturates the fleet at its width;
+// keeping every other heavy resolve in its own later layer is what prevents the co-run OOM.
+fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {
+  fold(batch.jobs, init: 0, f: fn(acc, job) {
+    if floor_node_is_heavy_resolve(node: job.node, spec: spec) { acc + 1 } else { acc }
+  })
+}
+
+fn floor_plan_serializes_heavy_resolves(dependencies: List<DependencyView>) -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: floor_nodes(spec: gunbc_ci_spec),
+    dependencies: dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } =>
+      fold(batches, init: true, f: fn(ok, batch) {
+        ok && (floor_layer_heavy_resolve_count(batch: batch, spec: gunbc_ci_spec) <= 1)
+      })
+    // Fail-closed: a non-complete plan cannot be certified.
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+// The §5 plan oracle on the LIVE floor: every scheduler readiness layer carries at most one
+// heavy whole-tree resolve. The corpus layer carries the corpus alone (cheap gates do not
+// count); source-root ingest is serialized behind it.
+fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
+  floor_plan_serializes_heavy_resolves(dependencies: floor_dependencies(spec: gunbc_ci_spec))
+}
+
+// Discriminating control (NEGATE when bundling — a bare RED control breaks marker discovery,
+// which runs every `test fn` expecting PASS). Drop the serialization edges: source-root ingest
+// re-joins the corpus's layer, giving it two heavy resolves, so the oracle goes RED. Proves the
+// resource edge is load-bearing, not decoration.
+fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
+  floor_plan_serializes_heavy_resolves(
+    dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
+  ) == false
 }

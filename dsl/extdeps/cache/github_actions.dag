@@ -4,11 +4,10 @@
 
 module extdeps.cache.github_actions
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, HandAuthored }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   OpaqueStringEncoding,
-  HandAuthoredString,
   UpsertSubject,
   FilePaths,
   PrefixFallback,
@@ -34,8 +33,10 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "github-actions-cache-api"
   transport_encoding: OpaqueStringEncoding
   key_derivation: {
-    classification: HandAuthoredString
-    inputs_considered: [UpsertSubject, FilePaths]
+    // HAND-AUTHORED key string (GHA cache key): invalidation is the author bumping the key,
+    // so its components are CITED/authored, not derived — exempt from key_completeness. The
+    // §6 genuinely-unstructurable carve-out, made explicit by the HandAuthored variant.
+    key_inputs: HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }
     overwritable: true
     prefix_fallback_allowed: true
     content_verified_on_read: false

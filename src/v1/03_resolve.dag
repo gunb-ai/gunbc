@@ -286,36 +286,21 @@ fn topo_sort_key(name: String) -> String {
 
 fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> TopoResult {
   let module_names = modules |> map(m => authored_name_at(source_indices: source_indices, node: m))
-  let has_std_types = module_names |> any(name => name == "std.types")
   let explicit_edges = modules |> flat_map(m =>
     module_imports(n: m) |> map(imp => DepEdge { from_module: authored_name_at(source_indices: source_indices, node: imp), to_module: authored_name_at(source_indices: source_indices, node: m) })
   )
-  // Bootstrap bridge: if std.types is present, temporarily inject it as a
-  // parent for modules that did not import it explicitly. This is not the
-  // end-state authority model; the bridge deletes when FF-9 is complete.
-  let implicit_std_types_edges = if has_std_types {
-    modules |> flat_map(m =>
-      let m_name = authored_name_at(source_indices: source_indices, node: m)
-      let imports_std_types = module_imports(n: m) |> any(imp => authored_name_at(source_indices: source_indices, node: imp) == "std.types")
-      if m_name != "std.types" && m_name != "std.algebra" && m_name != "std.error_primitives" && imports_std_types == false {
-        [DepEdge { from_module: "std.types", to_module: m_name }]
-      } else {
-        []
-      }
-    )
-  } else {
-    []
-  }
-
-  let adjacency = concat(explicit_edges, implicit_std_types_edges) |> fold(init: empty_map(), f: (acc, edge) =>
+  // §3 single-authority: ordering is import-driven only. The std.types
+  // implicit-parent bootstrap bridge was removed — it coupled every module
+  // (across the v1 and v2 trees) into one global sort, so unrelated import
+  // edges perturbed the order and let same-named v1/v2 types resolve to the
+  // wrong authority by merge order. Kahn now respects explicit edges alone.
+  let adjacency = explicit_edges |> fold(init: empty_map(), f: (acc, edge) =>
     adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
   )
 
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
     let m_name = authored_name_at(source_indices: source_indices, node: m)
-    let imports_std_types = module_imports(n: m) |> any(imp => authored_name_at(source_indices: source_indices, node: imp) == "std.types")
-    let implicit_std_types_in_degree = if has_std_types && m_name != "std.types" && m_name != "std.algebra" && m_name != "std.error_primitives" && imports_std_types == false { 1 } else { 0 }
-    map_insert(acc, m_name, module_imports(n: m) |> count + implicit_std_types_in_degree)
+    map_insert(acc, m_name, module_imports(n: m) |> count)
   )
 
   let initial_queue = module_names

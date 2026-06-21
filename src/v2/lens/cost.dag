@@ -391,7 +391,11 @@ fn compose_child_cost(
 ) -> SymbolicCost {
   match mode {
     SequentialCost => symbolic_sequential(a: acc, b: child)
-    AlternativeCost => symbolic_max(a: acc, b: child)
+    // Per-alternative factor = max(acc, max(branch, one decision step)). symbolic_max
+    // floors ONLY zero: max(acc, max(0,1))=max(acc,1) — a zero-cost branch still costs
+    // one decision; max(acc, max(1,1))=max(acc,1) and max(acc, max(linear,1))=max(acc,linear)
+    // leave unit/linear branches unchanged. symbolic_max itself absorbing zero untouched.
+    AlternativeCost => symbolic_max(a: acc, b: symbolic_max(a: child, b: unit_cost()))
     // Per-iteration factor = max(body, one control step). symbolic_max floors ONLY
     // zero: max(0,1)=1 (empty body -> O(n)); max(1,1)=1 and max(linear,1)=linear leave
     // unit/linear bodies unchanged vs plain symbolic_product. Absorbing zero untouched.

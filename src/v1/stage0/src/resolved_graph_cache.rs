@@ -1,26 +1,23 @@
 // resolved_graph_cache.rs — Content-addressed cross-process resolved-graph cache.
 //
 // Authority row: extdeps/realization/resolved_graph.dag `resolved_graph_cache_facts`.
-// Key = subject_digest over (closure module_name→file content) + resolve-logic
-// version + intern-seed-set version. Widen→MISS, never narrow→stale.
+// Key = subject_digest over (closure module_name→file content) + content(transform):
+// the resolve transform's content, DERIVED by construction from the compiler's actual
+// realized artifact (the running executable's bytes), NOT a hand-authored version
+// string. Widen→MISS, never narrow→stale.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
-
-/// Bump when resolve / normalize / infer / ownership semantics change.
-pub const RESOLVE_LOGIC_VERSION: &str = "v2-resolve-1";
-
-/// Bump when `seed_kernel_intern_names` changes.
-pub const KERNEL_INTERN_SEED_VERSION: &str = "kernel-seed-1";
 
 const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
@@ -91,17 +88,124 @@ pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     acc
 }
 
-/// Subject digest = closure content + resolve-logic version + intern-seed version.
-pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
-    let mut digest = closure_content_digest(sources);
-    digest = v1_rt::hash_combine(
-        digest,
-        v1_rt::atom_identity_hash(RESOLVE_LOGIC_VERSION.to_string()),
-    );
-    v1_rt::hash_combine(
-        digest,
-        v1_rt::atom_identity_hash(KERNEL_INTERN_SEED_VERSION.to_string()),
+/// Content hash of the resolve transform itself (`content(T)`), DERIVED by construction
+/// from the compiler's actual realized artifact — the running executable's bytes. This
+/// is the toolchain input the authority row declares (`ToolchainSpec ∈ inputs_considered`;
+/// `invalidation_triggers: [ToolchainChange, ...]`). It replaces the hand-authored
+/// `RESOLVE_LOGIC_VERSION` / `KERNEL_INTERN_SEED_VERSION` strings, which were a §3 nickname
+/// for the transform's content and a §5 fail-open: a human had to remember to bump them,
+/// so the key silently drifted when resolve/normalize/infer/ownership or the kernel intern
+/// seed changed (a stale hit = a silent wrong answer). Coarse — any compiler change
+/// invalidates — but never stale: if the transform changes, the binary changes, the key
+/// changes. Hashed once per process. Fail-closed: if the artifact cannot be read we cannot
+/// guarantee a non-stale key, so we refuse loudly rather than substitute a stand-in that
+/// could serve a stale hit.
+fn transform_content_digest() -> Hash {
+    static DIGEST: OnceLock<Hash> = OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            let exe = std::env::current_exe().unwrap_or_else(|e| {
+                panic!(
+                    "resolve cache: cannot locate compiler executable to content-address \
+                     the transform: {e}"
+                )
+            });
+            let bytes = fs::read(&exe).unwrap_or_else(|e| {
+                panic!(
+                    "resolve cache: cannot read compiler executable {:?} to content-address \
+                     the transform: {}",
+                    exe, e
+                )
+            });
+            v1_rt::bytes_identity_hash(&bytes)
+        })
+        .clone()
+}
+
+/// The CLOSED set of input axes the resolved-graph cache key content-addresses — the
+/// realized authority that mirrors the model row's `inputs_considered`
+/// (extdeps/realization/resolved_graph.dag). Construction, not validation
+/// (cache-key-by-construction spine): the key is a fold over ALL variants of this enum
+/// via a TOTAL materializer (`KeyInputMaterials::materialize`), so the realizer cannot
+/// express a key that omits a declared axis or keys an undeclared one —
+/// *declare-without-keying* and *key-without-declaring* are both unwritable here:
+///   - adding a variant forces a `KeyInputMaterials` field + a `materialize` match arm
+///     (exhaustiveness) AND is folded in by `derive_subject_digest` (it iterates `ALL`);
+///   - removing keying for an axis means deleting the variant, which deletes it from the
+///     set — there is no "in the set but skipped by the fold" state to drift into.
+/// This supersedes #5423's spec-only key-completeness lens for the realizer side: the
+/// invariant it validated post-hoc is now structural.
+///
+/// RESIDUAL FORK (named dissolution trigger — DESIGN §6 / §7): this Rust enum and the
+/// `.dag` model row's `inputs_considered` are still two implementations of one rule; the
+/// v1 seed structurally cannot have the realizer DERIVE its axes from the model row at
+/// key-compute time (resolving `resolved_graph.dag` to read its own declaration would
+/// re-enter this very cache → recursion). Full single authority arrives with v2/realize:
+/// the realizer becomes a `.dag` subgraph and `content(T) = content_hash(subgraph)`, so
+/// the axis set and the key are one derived fact (DESIGN open thread: model↔realization
+/// fork; cache-key-by-construction spine "v2 self-host dissolution").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyInputAxis {
+    /// `UpsertSubject` — the resolved import closure's content (module_name → file content).
+    ClosureSubject,
+    /// `ToolchainSpec` — `content(transform)`: the resolve transform's own content.
+    TransformContent,
+}
+
+impl KeyInputAxis {
+    /// Every keyed axis, in fold order. `derive_subject_digest` folds over exactly this —
+    /// the set of keyed axes IS this slice, so it cannot diverge from the materializer.
+    pub const ALL: &'static [KeyInputAxis] =
+        &[KeyInputAxis::ClosureSubject, KeyInputAxis::TransformContent];
+}
+
+/// Materialized content for each `KeyInputAxis`. The materializer is total over the axis
+/// enum (exhaustive `match`), so the per-axis content is supplied BY CONSTRUCTION for
+/// every declared axis. Inputs are passed in (not read ambiently inside the fold) so the
+/// key derivation is a pure function of its axes — which makes axis-sensitivity provable
+/// by execution (a test can vary one axis and observe the key move; see
+/// resolve_cross_process_cache_test.rs).
+#[derive(Debug, Clone)]
+pub struct KeyInputMaterials {
+    closure_subject: Hash,
+    transform_content: Hash,
+}
+
+impl KeyInputMaterials {
+    pub fn new(closure_subject: Hash, transform_content: Hash) -> Self {
+        Self {
+            closure_subject,
+            transform_content,
+        }
+    }
+
+    /// Total over `KeyInputAxis` — adding a variant is a compile error until it has both a
+    /// field above and an arm here, so a declared axis always has materialized content.
+    fn materialize(&self, axis: KeyInputAxis) -> Hash {
+        match axis {
+            KeyInputAxis::ClosureSubject => self.closure_subject.clone(),
+            KeyInputAxis::TransformContent => self.transform_content.clone(),
+        }
+    }
+}
+
+/// Subject digest = fold of the total materializer over the CLOSED axis set
+/// (`KeyInputAxis::ALL`). DERIVED, not hand-authored: the key content-addresses exactly
+/// the declared axes (the resolved-graph realization of `inputs_considered`).
+pub fn derive_subject_digest(materials: &KeyInputMaterials) -> Hash {
+    KeyInputAxis::ALL.iter().fold(
+        v1_rt::atom_identity_hash("resolved-graph-subject-v1".to_string()),
+        |acc, axis| v1_rt::hash_combine(acc, materials.materialize(*axis)),
     )
+}
+
+/// Production key for a resolved import closure. Materializes each declared axis from the
+/// running compiler (closure content + `content(transform)`) and derives the key by
+/// construction over the closed axis set.
+pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
+    let materials =
+        KeyInputMaterials::new(closure_content_digest(sources), transform_content_digest());
+    derive_subject_digest(&materials)
 }
 
 /// Content-hash work subject for one witness: closure cache subject × function name.
@@ -143,7 +247,7 @@ fn artifact_path(cache_root: &Path, subject_digest: &str) -> PathBuf {
 }
 
 fn payload_content_digest(payload_bytes: &[u8]) -> Hash {
-    v1_rt::atom_identity_hash(String::from_utf8_lossy(payload_bytes).into_owned())
+    v1_rt::bytes_identity_hash(payload_bytes)
 }
 
 fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {

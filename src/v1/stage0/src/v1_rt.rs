@@ -510,8 +510,17 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
+/// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`
+/// is the `String` projection of this. Use this directly for arbitrary binary content
+/// (e.g. an executable or serialized payload): routing bytes through `String`/
+/// `from_utf8_lossy` first collapses every invalid UTF-8 sequence to U+FFFD, so distinct
+/// byte sequences would hash equal — a §5 silent-collision fail-open for content-addressing.
+pub fn bytes_identity_hash(bytes: &[u8]) -> Hash {
+    format!("{:016x}", fnv1a64(bytes))
+}
+
 pub fn atom_identity_hash(s: String) -> Hash {
-    format!("{:016x}", fnv1a64(s.as_bytes()))
+    bytes_identity_hash(s.as_bytes())
 }
 
 pub fn hash_combine(a: Hash, b: Hash) -> Hash {

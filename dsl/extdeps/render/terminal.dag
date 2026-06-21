@@ -14,6 +14,16 @@ import std.symbols { Tier }
 import std.unicode { string_display_width }
 import std.width { truncate_text }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.unicode.org/reports/tr11/"
+  }
+}
+
 fn span_width(span: Span, tier: Tier) -> Int? {
   let text_w = string_display_width(s: span.text)
   match span.style.symbol {

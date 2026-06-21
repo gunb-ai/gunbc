@@ -10,16 +10,33 @@ use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 const ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_perf_repro.dag";
-const WRONG_TYPE_ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_wrong_type_repro.dag";
+
+// Embedded negative control (no on-disk .dag): if/else branch-type mismatch is
+// rejected by inference with a non-empty error diagnostic.
+const WRONG_TYPE_SRC: &str = r#"module v2.test.manual.pbp_body_producer_wrong_type_repro
+
+import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+fn pbp_wrong(cond: Bool) -> Int {
+  if cond { 1 } else { true }
+}
+"#;
+
+fn source_roots() -> [std::path::PathBuf; 2] {
+    let ws = workspace_root();
+    [ws.join("src/v2"), ws.join("dsl")]
+}
 
 fn sources_for(entry: &str) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let content = std::fs::read_to_string(ws.join(entry)).expect("read entry");
-    resolve_imports_transitively_with_source_roots(
-        entry,
-        &content,
-        &[ws.join("src/v2"), ws.join("dsl")],
-    )
+    resolve_imports_transitively_with_source_roots(entry, &content, &source_roots())
+}
+
+fn sources_for_inline(entry: &str, content: &str) -> Vec<Rc<SourceFile>> {
+    resolve_imports_transitively_with_source_roots(entry, content, &source_roots())
 }
 
 fn non_complexity_errors(
@@ -46,11 +63,15 @@ fn body_producer_infer_perf_witness_resolves_clean() {
 
 #[test]
 fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
-    let sources = sources_for(WRONG_TYPE_ENTRY);
+    let sources = sources_for_inline(
+        "src/v2/compiler/manual/pbp_body_producer_wrong_type_repro.dag",
+        WRONG_TYPE_SRC,
+    );
     let resolved = compile_to_resolved(Rc::new(sources));
     let errs = non_complexity_errors(&resolved);
     assert!(
-        !errs.is_empty() || resolved.graph.is_none(),
-        "wrong-type repro must fail inference/resolve (fail-closed), got clean graph"
+        !errs.is_empty(),
+        "embedded wrong-type repro must produce a real inference/type diagnostic, got errs={errs:?} graph={}",
+        resolved.graph.is_some()
     );
 }
