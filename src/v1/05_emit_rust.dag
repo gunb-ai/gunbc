@@ -4993,12 +4993,6 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
       // resolve exactly as the direct `Measure { .. }` literal already does.
       // For a non-alias literal `resolved_type` is already the concrete record,
       // and the expansion returns it unchanged.
-<<<<<<< HEAD
-      let resolved_rt = resolved_type(n: expr)
-      let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
-      let raw = emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: expanded_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-=======
->>>>>>> origin/main
       let si = scope.type_env.source_indices
       let resolved_rt = resolved_type(n: expr)
       let expanded_rt = expand_type_for_field_access(n: resolved_rt, env: scope.type_env, module_name: scope.module_name)
@@ -6506,18 +6500,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         }
         // Populate the synthetic PhantomData field (E0392) whenever the target
         // struct carries unused generic params -- the construction counterpart
-<<<<<<< HEAD
-        // of the phantom field appended in emit_struct_from_children. Keyed on
-        // the concrete struct decl (`tn` is the peeled struct name after the
-        // alias-peel above), so it fires for `Measure`/its aliases and stays
-        // silent for every fully-used-param struct and for enum variants.
-=======
         // of the phantom field appended in emit_struct_from_children. `tn` here
         // is the CONCRETE struct name (the caller passes the peeled
         // `expanded_rt` name as type_name, not the alias), so this lookup hits
         // the `Measure` decl (connective==Conj) and fires for Measure/its
         // aliases, staying silent for every fully-used-param struct and variant.
->>>>>>> origin/main
         let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: tn) {
           Present { value: struct_decl } =>
             let is_struct = struct_decl.connective == Conj
