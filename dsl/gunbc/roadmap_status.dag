@@ -1,0 +1,95 @@
+// gunbc/roadmap_status.dag — PR→checkbox status, DERIVED not hand-toggled.
+//
+// First slice of "invert hand-maintained artifacts" (docs/plans/invert-hand-maintained.md §6.4):
+// the ROADMAP.md checkbox `[x]`/`[ ]` is a *second representation* of merge-state that the
+// substrate already owns — so it drifts (a `[ ]` line whose PR is merged; the exact stale-checkbox
+// class the plan §1 cites). Invert the STATUS edge: the checkbox is a PROJECTION of merge-state,
+// never a hand-set glyph, so the stale class moves toward unwritable (DESIGN §5 construction over
+// validation; this slice ships the drift DETECTOR — the lens form — and the emit slice later turns
+// it into the wall).
+//
+// §3 single authority: merge-state is NOT re-coined here. `ctrl.code_change_workflow` already
+// derives the terminal merge stage from a PR's `merged_at` (`github_pr_terminal_anchor` →
+// `CodeChangeStage`); this module is the thin `CodeChangeStage → checkbox Bool` projection on top of
+// that one authority. A second merge predicate would be the §3 nicknaming trap.
+//
+// gunbc → ctrl is an established layer edge (gunbc.idea_pr_spine imports ctrl.review_verdict).
+
+module gunbc.roadmap_status
+
+import ctrl.code_change_workflow {
+  CodeChangeStage, CodeChangeTerminal, CodeChangeActive,
+  ChangeMerged, ChangeClosed,
+  classify_github_pr_terminal_anchor,
+}
+import extdeps.github.pulls { PullRequest }
+
+// A code-change reached its DONE coordinate iff it landed in the `ChangeMerged` terminal stage.
+// `ChangeClosed` (closed-unmerged) and any active stage are NOT done. Single authority for
+// "is this roadmap line's work merged" — folds the existing FSM coordinate, mints no new state.
+fn stage_is_merged(stage: CodeChangeStage) -> Bool {
+  match stage {
+    CodeChangeTerminal { stage: terminal } =>
+      match terminal {
+        ChangeMerged => true
+        ChangeClosed => false
+      }
+    CodeChangeActive { stage: _ } => false
+  }
+}
+
+// The derived checkbox: `[x]` (true) iff the cited PR has merged. `Absent` anchor (PR still Open)
+// and a non-merged terminal both project to `[ ]`. This is the *only* place the checkbox truth is
+// computed (§3) — the host bridge and the gate consume it, never re-derive it.
+fn pr_checkbox_checked(pr: PullRequest) -> Bool {
+  match classify_github_pr_terminal_anchor(pr: pr) {
+    Present { value: stage } => stage_is_merged(stage: stage)
+    Absent => false
+  }
+}
+
+// One status-bearing ROADMAP.md line: the PR it cites, and the checkbox glyph as COMMITTED in the
+// markdown today. The committed glyph is the hand-maintained copy we are inverting; the derived
+// truth is `pr_checkbox_checked(pr)`. (Line identity / title / indentation are a LATER slice — this
+// slice is only the status edge.)
+type RoadmapStatusLine {
+  pr: PullRequest
+  committed_checked: Bool
+}
+
+// Stale-checkbox detector: the committed glyph disagrees with the merge-derived truth. Catches BOTH
+// directions — a merged-but-`[ ]` line (the realization-vocab-guard drift the plan §1 cites) AND a
+// `[x]`-but-unmerged premature check. This is the validation form; emission dissolves it into a wall.
+fn status_drifted(line: RoadmapStatusLine) -> Bool {
+  !(line.committed_checked == pr_checkbox_checked(pr: line.pr))
+}
+
+// Any line drifts → the artifact is stale. Total: an empty roadmap never drifts.
+fn any_status_drift(lines: List<RoadmapStatusLine>) -> Bool {
+  fold(lines, init: false, f: fn(acc, line) { acc || status_drifted(line: line) })
+}
+
+// 🟡 gated — feature:roadmap-status-bridge — scaffold: host-fed PR-status source (self-referential
+//   intercept, the v2.std.concept_index.concept_decl_facts_live pattern).
+// SOURCE (host boundary, irreducible today): materializes each status-bearing ROADMAP.md line as
+//   { cited PullRequest, committed checkbox }. It is the SAME host PR-fact boundary
+//   ctrl.code_change_workflow / ctrl.pr_digests source from — the dashboard/GitHub knows PR
+//   merge-state, the .dag owns the projection (docs/plans/invert-hand-maintained.md §7: the status
+//   edge stays a host-fed bridge until self-host). It does NO checkbox shaping; the projection is
+//   `pr_checkbox_checked` above.
+// dissolve-on-arrival: the drift-GATE slice (plan §6.3) wires this to a real git-log/gh source +
+//   ROADMAP.md parse and enrolls `roadmap_status_clean` on the floor; THEN the emit slice (§6.4)
+//   replaces the committed glyph with the projection outright — the stale class becomes unwritable
+//   (the lens→wall arc, generalizing inert-layer-lens.md).
+// forbidden: deriving the checkbox glyph anywhere but `pr_checkbox_checked` (§3 single authority);
+//   reintroducing a second merge predicate beside `stage_is_merged`.
+fn roadmap_status_lines_live() -> List<RoadmapStatusLine> {
+  roadmap_status_lines_live()
+}
+
+// The future drift-gate entry: the committed ROADMAP.md is status-clean iff no cited line's checkbox
+// disagrees with its merge-derived truth. NOT floor-reachable until the bridge above is wired (it
+// would recurse on the un-intercepted source); the witness exercises the pure detector directly.
+fn roadmap_status_clean() -> Bool {
+  !any_status_drift(lines: roadmap_status_lines_live())
+}
