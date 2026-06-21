@@ -156,6 +156,10 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
   match g {
     SourceRootIngestGate => true
     DslCompileCleanGate => true
+    // The cache-purity audit resolves the whole discovery corpus TWICE (cold compute + warm
+    // decode) per entry — a heavy whole-tree resolve, so it must run in its own readiness layer,
+    // never co-running with the corpus or another heavy resolve (the #5375 OOM property).
+    CachePurityAuditGate => true
     RustMonolithGate => false
     EmitHostGate => false
     LayeringImportsGate => false
@@ -193,8 +197,22 @@ fn floor_corpus_serializes(dependent: Node) -> DependencyView {
 // ResourceDependsOn edge behind the corpus (when `serialize_heavy`), serializing it into its
 // own later layer. `serialize_heavy: false` is the memory-blind control for the discriminating
 // oracle below.
+// Chain the SECOND post-corpus heavy resolve (the cache-purity audit) behind the FIRST
+// (source-root ingest): a ResourceDependsOn edge so the scheduler places it in a still-later
+// readiness layer. Without this, both depend only on the corpus and re-join one layer — two heavy
+// resolves co-running, the #5375 OOM. This generalizes the §5 "<=1 heavy resolve per layer"
+// property from one post-corpus heavy gate to two (a memory conflict, not a data dependency).
+fn floor_audit_serializes_behind_ingest() -> DependencyView {
+  DependencyView {
+    source: gate_node(g: SourceRootIngestGate),
+    dependent: gate_node(g: CachePurityAuditGate),
+    kind: ResourceDependsOn,
+    usage_site: gate_node(g: CachePurityAuditGate)
+  }
+}
+
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
-  fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
+  let base = fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
     match g {
       DslCompileCleanGate => acc
       _ => {
@@ -210,6 +228,11 @@ fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<Dependen
       }
     }
   })
+  if serialize_heavy {
+    list_snoc_item(xs: base, item: floor_audit_serializes_behind_ingest())
+  } else {
+    base
+  }
 }
 
 fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
