@@ -1,0 +1,159 @@
+// test/claim/roadmap_status_witness_test.dag — §5 witnesses for gunbc.roadmap_status.
+//
+// Discriminating, RED-on-revert: each branch of the PR/branch -> checkbox derivation is
+// exercised, and the collapse-to-`[ ]` failure mode (the very stale-checkbox bug this slice
+// kills) is caught by a positive assertion that a merged PR does NOT render `[ ]`.
+
+module test.claim.roadmap_status_witness_test
+
+import gunbc.roadmap_status {
+  RoadmapItemStatus, ItemDone, ItemInProgress, ItemTodo,
+  roadmap_status_of_stage, roadmap_status_from_pr,
+  roadmap_checkbox, roadmap_checkbox_from_pr,
+}
+import ctrl.code_change_workflow {
+  CodeChangeStage, CodeChangeActive, CodeChangeTerminal,
+  ChangeOpen, ChangeUnderReview, ChangeMergeReady, ChangeMerged, ChangeClosed,
+}
+import extdeps.github.pulls {
+  PullRequest, PullRequestRef, PullRequestState, Open, Closed,
+}
+import extdeps.github.github { GitHubUser, User }
+import std.types { CommitSha, Timestamp, Url }
+
+data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
+
+fn witness_pr(state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
+  PullRequest {
+    number: 1,
+    title: "witness",
+    body: none,
+    state: state,
+    html_url: witness_pr_url,
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef {
+      ref: "feature",
+      sha: witness_head_sha,
+      label: "gunb-ai:feature",
+    },
+    base: PullRequestRef {
+      ref: "main",
+      sha: "def456789012345678901234567890abcdef12",
+      label: "gunb-ai:main",
+    },
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T00:00:00Z",
+    merged_at: merged_at,
+    draft: false,
+  }
+}
+
+fn status_eq(a: RoadmapItemStatus, b: RoadmapItemStatus) -> Bool {
+  a == b
+}
+
+// --- status derivation: from a lifecycle stage (work-DAG entry) -------------
+
+fn merged_stage_is_done() -> Bool {
+  status_eq(
+    a: roadmap_status_of_stage(stage: Present { value: CodeChangeTerminal { stage: ChangeMerged } }),
+    b: ItemDone,
+  )
+}
+
+fn closed_stage_is_todo() -> Bool {
+  status_eq(
+    a: roadmap_status_of_stage(stage: Present { value: CodeChangeTerminal { stage: ChangeClosed } }),
+    b: ItemTodo,
+  )
+}
+
+fn active_stage_is_in_progress() -> Bool {
+  status_eq(
+    a: roadmap_status_of_stage(stage: Present { value: CodeChangeActive { stage: ChangeUnderReview } }),
+    b: ItemInProgress,
+  )
+}
+
+fn absent_stage_is_todo() -> Bool {
+  status_eq(a: roadmap_status_of_stage(stage: Absent), b: ItemTodo)
+}
+
+// --- status derivation: from a PR (the PR-to-checkbox entry) -----------------
+
+fn merged_pr_is_done() -> Bool {
+  status_eq(
+    a: roadmap_status_from_pr(pr: Present { value: witness_pr(state: Open, merged_at: Present { value: witness_merged_at }) }),
+    b: ItemDone,
+  )
+}
+
+fn open_pr_is_in_progress() -> Bool {
+  status_eq(
+    a: roadmap_status_from_pr(pr: Present { value: witness_pr(state: Open, merged_at: none) }),
+    b: ItemInProgress,
+  )
+}
+
+fn closed_unmerged_pr_is_todo() -> Bool {
+  status_eq(
+    a: roadmap_status_from_pr(pr: Present { value: witness_pr(state: Closed, merged_at: none) }),
+    b: ItemTodo,
+  )
+}
+
+fn no_pr_is_todo() -> Bool {
+  status_eq(a: roadmap_status_from_pr(pr: Absent), b: ItemTodo)
+}
+
+// --- checkbox projection ----------------------------------------------------
+
+fn merged_renders_checked() -> Bool {
+  roadmap_checkbox(status: ItemDone) == "[x]"
+}
+
+fn in_progress_renders_unchecked() -> Bool {
+  roadmap_checkbox(status: ItemInProgress) == "[ ]"
+}
+
+fn todo_renders_unchecked() -> Bool {
+  roadmap_checkbox(status: ItemTodo) == "[ ]"
+}
+
+// DISCRIMINATING: kills the exact bug this slice exists to prevent — a merged line that still
+// shows `[ ]`. Positive (true-when-correct), so it is RED on a revert that collapses the
+// projection to always-`[ ]` or drops the PR -> Done mapping.
+fn merged_pr_is_not_unchecked() -> Bool {
+  !(roadmap_checkbox_from_pr(pr: Present { value: witness_pr(state: Open, merged_at: Present { value: witness_merged_at }) }) == "[ ]")
+}
+
+fn merged_pr_renders_checked_end_to_end() -> Bool {
+  roadmap_checkbox_from_pr(pr: Present { value: witness_pr(state: Open, merged_at: Present { value: witness_merged_at }) }) == "[x]"
+}
+
+fn open_pr_renders_unchecked_end_to_end() -> Bool {
+  roadmap_checkbox_from_pr(pr: Present { value: witness_pr(state: Open, merged_at: none) }) == "[ ]"
+}
+
+fn all_roadmap_status_witnesses() -> Bool {
+  merged_stage_is_done()
+    && closed_stage_is_todo()
+    && active_stage_is_in_progress()
+    && absent_stage_is_todo()
+    && merged_pr_is_done()
+    && open_pr_is_in_progress()
+    && closed_unmerged_pr_is_todo()
+    && no_pr_is_todo()
+    && merged_renders_checked()
+    && in_progress_renders_unchecked()
+    && todo_renders_unchecked()
+    && merged_pr_is_not_unchecked()
+    && merged_pr_renders_checked_end_to_end()
+    && open_pr_renders_unchecked_end_to_end()
+}
+
+test fn roadmap_status_witnesses() -> Bool {
+  all_roadmap_status_witnesses()
+}

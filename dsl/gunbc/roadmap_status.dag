@@ -1,0 +1,91 @@
+// gunbc/roadmap_status.dag — PR/branch → ROADMAP checkbox status (the first slice of
+// "invert hand-maintained artifacts", docs/plans/invert-hand-maintained.md §6 sequencing #4).
+//
+// Why: ROADMAP.md hand-toggles `[x]`/`[ ]` per line, a §2/§3 *dual representation* of state
+// the substrate already owns — so it drifts (a guard sat `[ ]` while merged on main this week).
+// Invert it: a roadmap line's done-ness is *derived* from its work node's lifecycle, never
+// hand-set. This module is that derivation; the markdown emit + drift gate are later slices.
+//
+// Single authority (DESIGN §3 — no re-coining):
+//   - PR state lives in extdeps.github.pulls.PullRequest (`state`, `merged_at`).
+//   - The merged/closed/open lifecycle classification lives in ctrl.code_change_workflow
+//     (`CodeChangeStage` via classify_github_pr_terminal_anchor). We reuse both.
+// The *only* new fact here is roadmap-specific: a line may have NO work node yet (todo), which
+// the lifecycle authority — which always takes an existing PR/node — does not model.
+//
+// Fidelity boundary (DESIGN §5/§7, the plan §5): the lifecycle distinguishes three states
+// (done / in-progress / todo), but the GFM task-list checkbox is *binary* (`[x]`/`[ ]`). The
+// projection collapses in-progress → `[ ]` honestly — that is exactly the ROADMAP legend today
+// (`[x]` done · `[ ]` todo; no in-progress glyph). The richer RoadmapItemStatus stays available
+// for a later status-line render upgrade.
+
+module gunbc.roadmap_status
+
+import ctrl.code_change_workflow {
+  CodeChangeStage, CodeChangeActive, CodeChangeTerminal,
+  ChangeMerged, ChangeClosed,
+  classify_github_pr_terminal_anchor,
+}
+import extdeps.github.pulls { PullRequest }
+
+// 🟢 TERMINAL coproduct — a roadmap line's progress, derived (never hand-toggled).
+// Three states, grounded in the lifecycle authority: a merged work node is Done; an active
+// (open / under-review / merge-ready) node is InProgress; a node that is closed-unmerged or
+// not yet started is Todo.
+type RoadmapItemStatus = ItemDone | ItemInProgress | ItemTodo
+
+// Core derivation over a PRESENT lifecycle stage (total over CodeChangeStage).
+// closed-unmerged (ChangeClosed) reads as Todo: the change was abandoned, the line is not done.
+fn roadmap_status_of_present_stage(stage: CodeChangeStage) -> RoadmapItemStatus {
+  match stage {
+    CodeChangeTerminal { stage: ChangeMerged } => ItemDone
+    CodeChangeTerminal { stage: ChangeClosed } => ItemTodo
+    CodeChangeActive { stage: _ } => ItemInProgress
+  }
+}
+
+// Work-DAG entry point: a roadmap line whose work node MAY be absent (no work started).
+// Absent stage => Todo. This is the reusable shape for the eventual work-DAG authority that
+// can feed a CodeChangeStage directly.
+fn roadmap_status_of_stage(stage: CodeChangeStage?) -> RoadmapItemStatus {
+  match stage {
+    Absent => ItemTodo
+    Present { value: s } => roadmap_status_of_present_stage(stage: s)
+  }
+}
+
+// PR entry point: a roadmap line whose work node MAY have no PR yet.
+//   - no PR (Absent)                 => Todo (no work started)
+//   - PR, terminal anchor present    => Done (merged) / Todo (closed-unmerged)
+//   - PR, terminal anchor Absent     => InProgress (the PR is open / non-terminal — active)
+// NB: classify_github_pr_terminal_anchor is TERMINAL-only and returns Absent for an open PR,
+// so an open PR must NOT be routed through roadmap_status_of_stage (which reads Absent as
+// "no node" => Todo); it is in-progress.
+fn roadmap_status_from_pr(pr: PullRequest?) -> RoadmapItemStatus {
+  match pr {
+    Absent => ItemTodo
+    Present { value: p } =>
+      match classify_github_pr_terminal_anchor(pr: p) {
+        Present { value: s } => roadmap_status_of_present_stage(stage: s)
+        Absent => ItemInProgress
+      }
+  }
+}
+
+// The GFM task-list checkbox projection (the medium-collapse 3 -> 2, §5 fidelity boundary).
+// Done => `[x]`; in-progress / todo => `[ ]` (the ROADMAP legend has no in-progress glyph).
+data checkbox_done: String = "[x]"
+data checkbox_open: String = "[ ]"
+
+fn roadmap_checkbox(status: RoadmapItemStatus) -> String {
+  match status {
+    ItemDone => checkbox_done
+    ItemInProgress => checkbox_open
+    ItemTodo => checkbox_open
+  }
+}
+
+// Convenience: PR (or none) straight to a checkbox — the end-to-end PR-to-checkbox slice.
+fn roadmap_checkbox_from_pr(pr: PullRequest?) -> String {
+  roadmap_checkbox(status: roadmap_status_from_pr(pr: pr))
+}
