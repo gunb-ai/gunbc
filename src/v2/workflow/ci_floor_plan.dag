@@ -314,8 +314,13 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
 // REDUCES width below the topology cap once the tree outgrows budget/7 (DESIGN §5). A 0-byte
 // budget (host could not read one) yields the conservative committed fallback, never an OOM.
 // The `memory_budget_bytes: Int` arg is the raw host value at the host seam (claim_executor reads
-// OS bytes, not a ByteSize); it is grounded into ByteSize here so the std authority fold carries
-// the dimension.
+// OS bytes, not a ByteSize); it is grounded into ByteSize on the very next line so the std
+// authority fold carries the dimension.
+// 🟡 SCAFFOLD — feature:host-seam-bytesize — this is the ONE flat-scalar `*_bytes: Int` field in
+// §1-C: the claim_executor↔.dag seam where a raw OS byte count crosses (the host has no ByteSize
+// value to pass). Tracked, not silent debt. dissolve-on: the host realizer constructs and passes
+// a `ByteSize` directly (run_in_context_with_args binding a built Measure value) so this signature
+// becomes `memory_budget: ByteSize` and the `byte_size(...)` grounding below moves host-side.
 fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   memory_aware_spawn_width(
     shard_count: gunbc_ci_floor_breadth(),
