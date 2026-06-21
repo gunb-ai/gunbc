@@ -21,6 +21,15 @@
 module extdeps.realization.cache_purity
 
 import std.types { NonEmptyStr, ContentHash, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Referential_transparency"
+  }
+}
 
 // The located violation: under a FIXED content-key the realization output diverged, so an input
 // is read-but-unkeyed. A warm hit under `content_key` serves `warm_digest`, but a fresh cold

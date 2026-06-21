@@ -90,7 +90,6 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "chars_to_string", string_type)
   let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
   let m = map_insert(m, "to_string", string_type)
-  let m = map_insert(m, "utf8_decode_bytes", string_type)
   // `discriminant(v)` reifies a coproduct/record value's own constructor name as a Symbol
   // (interned string). One intrinsic dissolves every hand-written `fn ..._discriminant(v) ->
   // Symbol { match v { Ctor{..} => ctor_tag ... } }` bridge that shadows a coproduct's arm-set
