@@ -194,8 +194,18 @@ type TestClaimCoproductVariant
 // both Symbols read off the Node tree (v2.std.node_query.coproduct_arm_keys), NOT a hand-roster of
 // TestClaim variants. Adding an arm to ANY coproduct extends the generated roster by construction;
 // removing one shrinks it (the discriminating RED).
+//
+// GeneratedCrossRepresentationEquality (docs/plans/testgen-oracle.md §4.3): identifies one
+// cross-representation-equality straddle witness by the MODELED coproduct's authored type name and
+// the NATIVE realization it straddles (the symbol naming the runtime Value form). The modeled side
+// is structural (its arms are read off the Node tree); the native-realization side is the curated
+// half — there is no Node-tree reflection for "this coproduct is realized as Value::Bool", so the
+// straddle SET stays a tight roster (Bool over Value::Bool, Optional/Witness over Value::Null) per
+// the operator/planning steer: ONLY the straddles that remain UNSTRUCTURED. The numeric tower is
+// GROUNDED (#5428) and deliberately excluded; the Value::Null sentinel is fenced to its own runway.
 type GeneratedAnchorKey
   = GeneratedCoproductExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
+  | GeneratedCrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
 
 
 // RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.

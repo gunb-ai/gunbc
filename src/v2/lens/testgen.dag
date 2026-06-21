@@ -1,6 +1,10 @@
 // src/v2/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Status: Manual-anchor + LBE + witness-validity + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v2.std.effects / v2.std.verification); new TestgenConcept arms = operator STOP.
+// Status: Manual-anchor + LBE + witness-validity + idempotent-operation + coproduct-exhaustiveness + cross-representation-equality testgen (subjects: v2.std.effects / v2.std.verification); new TestgenConcept arms = operator STOP.
+// docs/plans/testgen-oracle.md §4.3 — the CrossRepresentationEquality arm was added under the §4.3
+// dispatch (operator/planning steer), SCOPE TIGHT: only the straddles that remain UNSTRUCTURED
+// (Bool over Value::Bool; Optional/Witness over Value::Null, fenced to its own runway). The numeric
+// tower is GROUNDED (#5428) and excluded.
 
 module v2.lens.testgen
 
@@ -107,6 +111,7 @@ import v2.std.verification {
   ManualLbeDisjDagSurface,
   ManualLbeTransformDagSurface,
   GeneratedAnchorKey,
+  GeneratedCrossRepresentationEquality,
   ManualRefinementNonEmptyListBase,
   ManualNatAddAssociativity,
   ManualNatAddLeftIdentity,
@@ -239,6 +244,12 @@ type TestgenConcept
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
+  // docs/plans/testgen-oracle.md §4.3 — cross-representation-equality straddle: the MODELED
+  // coproduct (`modeled_coproduct`, structural — a real declared Disj) and the NATIVE Value form it
+  // straddles (`native_realization`, the curated half). The witness is the EqualsClaim that the
+  // modeled form reconciles with its native realization (the grounding TARGET); it is emitted, not
+  // executed — grounding each straddle is its own runway (the §5 wall-after-grounding class).
+  | CrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -332,10 +343,28 @@ fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbo
   )
 }
 
+// docs/plans/testgen-oracle.md §4.3: one id per (modeled coproduct × native realization) straddle.
+// DERIVED from the two symbols (single authority — no literal table), so distinct straddle subjects
+// get distinct GeneratorIds and the provenance round-trips (anchor → id == provenance.generator_id).
+fn generator_id_for_cross_representation_straddle(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> GeneratorId {
+  concat(
+    "gen_id_cross_representation_equality::",
+    concat(modeled_coproduct, concat("::", native_realization))
+  )
+}
+
 fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
   match key {
     GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant } =>
       generator_id_for_coproduct_arm(coproduct_type: coproduct_type, omitted_variant: omitted_variant)
+    GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization } =>
+      generator_id_for_cross_representation_straddle(
+        modeled_coproduct: modeled_coproduct,
+        native_realization: native_realization
+      )
   }
 }
 
@@ -1548,6 +1577,12 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
           d: testgen_non_algebra_law_scheduled_slot_diagnostic()
         )
       }
+    CrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
     LensApplicability { subject: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
@@ -1629,12 +1664,14 @@ fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symb
 fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: GeneratedAnchorKey) -> Symbol {
   match anchor {
     GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant: _ } => coproduct_type
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
 fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> Symbol {
   match anchor {
     GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant } => omitted_variant
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
@@ -1771,6 +1808,134 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   )
 }
 
+// === Cross-representation-equality straddle (docs/plans/testgen-oracle.md §4.3) ===========
+// A modeled coproduct (e.g. Bool = True | False) is *realized* as a native runtime Value (e.g.
+// Value::Bool). When a modeled constructor builds a `Variant` while the native form is a scalar
+// `Value`, comparing the two straddles the model↔realization boundary — the §5 fail-open root the
+// numeric tower already GROUNDED (#5428). This category COVERS the *class*: for each straddle that
+// remains UNSTRUCTURED it emits the EqualsClaim that the modeled form reconciles with its native
+// realization (the grounding target). SCOPE TIGHT (operator/planning steer): ONLY Bool over
+// Value::Bool and the Value::Null sentinel (Optional/Witness), the latter fenced to its own runway —
+// `Value::Null` is the overloaded None/Absent/miss sentinel, so `present == None` is a *legitimate*
+// false and grounding it (not a blanket error arm) is separate, deeper work.
+//
+// The MODELED side is structural — `modeled_coproduct` is a real declared Disj whose arms are read
+// off the Node tree (the floor recomputes coproduct_arm_keys to exclude a vacuous pass). The
+// NATIVE-realization side is the curated half: there is no Node-tree reflection for "this coproduct
+// is realized as Value::Bool", so the straddle SET stays a tight roster, not an enumeration.
+data cross_repr_native_value_bool: Symbol = ^native_value_bool
+data cross_repr_native_value_null: Symbol = ^native_value_null
+
+fn cross_representation_equality_anchor(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> GeneratedAnchorKey {
+  GeneratedCrossRepresentationEquality {
+    modeled_coproduct: modeled_coproduct,
+    native_realization: native_realization
+  }
+}
+
+fn cross_representation_anchor_modeled_coproduct(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization: _ } => modeled_coproduct
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
+  }
+}
+
+fn cross_representation_anchor_native_realization(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization } => native_realization
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
+  }
+}
+
+// A leaf TypeNode tagged by a representation's authored symbol (the modeled type name on the lhs,
+// the native Value form on the rhs). The straddle witness compares these two representation nodes.
+fn cross_representation_representation_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn cross_representation_equality_label(anchor: GeneratedAnchorKey) -> String {
+  concat(
+    "generated/cross-representation-equality: modeled ",
+    concat(
+      cross_representation_anchor_modeled_coproduct(anchor: anchor),
+      concat(
+        " reconciles with native ",
+        cross_representation_anchor_native_realization(anchor: anchor)
+      )
+    )
+  )
+}
+
+// The straddle witness: an EqualsClaim that the modeled form (lhs, tagged by the coproduct type)
+// reduces to its native realization (rhs). Emitted, NOT executed in the floor — grounding each
+// straddle so the equality actually holds is its own runway; this category covers the *class* by
+// generating the witness from the model.
+fn testgen_emit_cross_representation_equality_claim(
+  anchor: GeneratedAnchorKey
+) -> Outcome<TestClaim> {
+  Accepted {
+    value: EqualsClaim {
+      label: cross_representation_equality_label(anchor: anchor),
+      anchor: generated_claim_anchor(anchor: anchor),
+      lhs: cross_representation_representation_node(
+        identity: cross_representation_anchor_modeled_coproduct(anchor: anchor)
+      ),
+      rhs: cross_representation_representation_node(
+        identity: cross_representation_anchor_native_realization(anchor: anchor)
+      ),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+    },
+    diagnostics: None,
+  }
+}
+
+// One generator for a single (modeled coproduct × native realization) straddle. Provenance id is
+// DERIVED from the same anchor, so generator_carries_provenance round-trips.
+fn cross_representation_equality_generator(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> Generator<TestgenConcept> {
+  let anchor = cross_representation_equality_anchor(
+    modeled_coproduct: modeled_coproduct,
+    native_realization: native_realization
+  )
+  Generator {
+    kind: TestClaimEqualsClaimVariant,
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    anchor: generated_claim_anchor(anchor: anchor),
+    slot: CrossRepresentationEquality {
+      modeled_coproduct: modeled_coproduct,
+      native_realization: native_realization,
+    },
+    provenance: generator_provenance(id: generator_id_for_generated_anchor(key: anchor)),
+    profile_metadata: default_generator_profile(),
+  }
+}
+
+// CURATED roster: the straddles that remain UNSTRUCTURED. Bool over Value::Bool, and the Value::Null
+// sentinel (Optional/Witness) fenced to its own runway. The numeric tower is GROUNDED (#5428) and
+// deliberately ABSENT. Each modeled coproduct is a real declared Disj (the floor recomputes its arm
+// keys to exclude a vacuous symbol — the structural tie).
+fn testgen_scheduled_cross_representation_equality_generators() -> List<Generator<TestgenConcept>> {
+  [
+    cross_representation_equality_generator(
+      modeled_coproduct: ^Bool,
+      native_realization: cross_repr_native_value_bool
+    ),
+    cross_representation_equality_generator(
+      modeled_coproduct: ^Optional,
+      native_realization: cross_repr_native_value_null
+    ),
+  ]
+}
+
 // F.2-P1 provenance integrity: a generator's identity must be the one DERIVED from its
 // own canonical anchor (single-authority — no row carries a foreign/colliding id), and it
 // must carry profile metadata. Checking against the anchor projection is the meaningful
@@ -1799,12 +1964,13 @@ fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>
 }
 
 // F.2-P1 close criterion: every scheduled generator carries consistent provenance +
-// profile metadata. Covers ALL four scheduled producers — the two direct-List schedulers
-// (LBE + coproduct-exhaustiveness) and the two Outcome-returning schedulers
-// (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
+// profile metadata. Covers ALL five scheduled producers — the three direct-List schedulers
+// (LBE + coproduct-exhaustiveness + cross-representation-equality) and the two Outcome-returning
+// schedulers (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
 fn scheduled_generators_carry_provenance() -> Bool {
   all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
     && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_cross_representation_equality_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
 }
@@ -1814,7 +1980,10 @@ fn scheduled_generators_carry_provenance() -> Bool {
 fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
   list_append(
     left: testgen_scheduled_language_behavior_generators(),
-    right: testgen_scheduled_coproduct_exhaustiveness_generators()
+    right: list_append(
+      left: testgen_scheduled_coproduct_exhaustiveness_generators(),
+      right: testgen_scheduled_cross_representation_equality_generators()
+    )
   )
 }
 
@@ -2066,6 +2235,11 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: v } } =>
       Accepted {
         value: DiagnosticExhaustiveness { coproduct_type: ct, omitted_variant: v },
+        diagnostics: None,
+      }
+    GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
+      Accepted {
+        value: CrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>

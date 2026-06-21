@@ -979,6 +979,7 @@ fn dag_pipeline_smoke() {
     );
 }
 
+<<<<<<< HEAD
 #[test]
 #[ignore = "failing (DEAD — draining-worklist, NOT a permanent ignore): reads removed fixture \
 `fixtures/v2-mvp1`, absent from the tree AND every git ref, so this test can never pass as written. \
@@ -1027,6 +1028,8 @@ fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
     // `mvp1_rust_emit_add_fn_accepts_holds` (always-on roster witness).
 }
 
+=======
+>>>>>>> origin/main
 /// Regression for recursive by-value DAG serialization: shared subgraphs must
 /// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
 #[test]
