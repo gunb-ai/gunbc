@@ -7,7 +7,7 @@ branch/PR, not this file (mirrors `ROADMAP.md`).
 
 **Owner:** unowned (original coordinator `zesty-deer-479` archived 2026-06-21) — operator-coordinated;
 consolidates the formerly-separate quick-ant-298 dependency-ordered roadmap (single authority, no fork).
-Linked from `ROADMAP.md §7`.
+Linked from `ROADMAP.md` §2 *Minimal work — caching by realization*.
 
 ---
 
@@ -39,7 +39,7 @@ two-clock timing first"); the dependency structure above is *why*.
 ### The end-state acceptance gate (what the whole plan builds to)
 
 > For every pure transform `T` (resolve, parse, typecheck, *and* derived analyses like
-> complexity-synthesis / affected-set — see `ROADMAP.md §6`), `realize(T)` returns a result
+> complexity-synthesis / affected-set — see `ROADMAP.md` §3 *Complexity / synthesis lens* and §4 *Testgen*), `realize(T)` returns a result
 > content-addressed by `hash(inputs ⊕ content(T))`, materialized at the **minimal `Placement` spanning
 > T's consumers (its reach)**. A transform that is **non-redundant** (shared across a layer boundary, or
 > recompute-cost > cache-cost) with **no cache supplier at its reach layer** is a located, typed

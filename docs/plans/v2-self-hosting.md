@@ -10,7 +10,7 @@ authority), not the goal.
 `emitter/seed-green-integration @ 239ff284d5` by session merry-deer-374 (5 evidence-backed verifiers,
 2026-06-21).** Re-check receipts before acting.
 
-> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §3, do not re-litigate).** Three languages:
+> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §5 *Self-host*, do not re-litigate).** Three languages:
 > **`.dag` is the authority/truth; v2 emits BOTH Rust AND TypeScript as first-class realizations** (not
 > one-or-the-other). The fixed point is proven per realization (Rust bytes reproduce; TS bytes
 > reproduce). **Purely self-hosting:** v2 emits its own seed — no stage0 hand-edits (enforced by the
