@@ -24,7 +24,6 @@ import std.cache_interface {
   CacheEvidence,
   OpaqueStringEncoding,
   CasContentEncoding,
-  InputSurface,
   UpsertSubject,
   FilePaths,
   OpaqueStringKey,
@@ -149,21 +148,6 @@ type CatalogCachedArtifactReceipt<T> {
   backend_key: CatalogBackendCacheKey
   producer: ProducerReceipt<T>
   content_digest: ContentHash
-}
-
-// Project catalog input surfaces onto std InputSurface (drop vendor-only axes).
-// Lives here (not cache.dag) to avoid imported InputSurface/CatalogInputSurface variant collision.
-fn std_input_surface_from_catalog(input: CatalogInputSurface) -> List<InputSurface> {
-  match input {
-    UpsertSubject => [UpsertSubject]
-    FilePaths => [FilePaths]
-    RustcInvocation => []
-    ToolchainSpec => []
-  }
-}
-
-fn agnostic_input_surfaces_from_catalog(inputs: List<CatalogInputSurface>) -> List<InputSurface> {
-  inputs |> flat_map(std_input_surface_from_catalog)
 }
 
 fn catalog_has_vendor_only_key_inputs(inputs: List<CatalogInputSurface>) -> Bool {

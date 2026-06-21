@@ -155,10 +155,8 @@ pub enum KeyInputAxis {
 impl KeyInputAxis {
     /// Every keyed axis, in fold order. `derive_subject_digest` folds over exactly this —
     /// the set of keyed axes IS this slice, so it cannot diverge from the materializer.
-    pub const ALL: &'static [KeyInputAxis] = &[
-        KeyInputAxis::ClosureSubject,
-        KeyInputAxis::TransformContent,
-    ];
+    pub const ALL: &'static [KeyInputAxis] =
+        &[KeyInputAxis::ClosureSubject, KeyInputAxis::TransformContent];
 }
 
 /// Materialized content for each `KeyInputAxis`. The materializer is total over the axis

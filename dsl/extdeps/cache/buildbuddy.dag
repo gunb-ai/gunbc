@@ -30,8 +30,9 @@ data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "buildbuddy-remote-cas"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
+    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers (no
+    // ToolchainChange ⟹ just the upsert subject content). Nothing to author.
+    key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
