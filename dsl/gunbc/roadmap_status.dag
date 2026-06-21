@@ -1,0 +1,95 @@
+// gunbc/roadmap_status.dag — PR-to-checkbox status derivation for the ROADMAP.
+//
+// The first slice of "invert hand-maintained artifacts" (docs/plans/invert-hand-maintained.md
+// §6 step 4): the ROADMAP's checkbox status is a hand-toggled SECOND representation of a fact
+// that already lives upstream — whether the PR a line cites is merged. That copy DRIFTS (the
+// realization-vocab guard sat `[ ]` while done on main, #5445/#5453). Invert it: the merge
+// state is the AUTHORITY, the checkbox is DERIVED, and the disagreement is a drift the gate can
+// catch (the construction upgrade of the reachability lens — DESIGN §5/§6/§7).
+//
+// Single authority (DESIGN §3): merged-ness is grounded in the GitHub `PullRequest` source fact
+// (`extdeps.github.pulls`), NOT re-coined here — GitHub sets `merged_at` iff the PR merged. The
+// LIVE PR set is host-fed (the status edge stays a host bridge until self-host, per the plan
+// §7), and this module owns only the pure derivation + drift check that the host edge, the gate,
+// and the eventual emitter all consume.
+//
+// Fidelity boundary (DESIGN §5, plan §5): ONLY a line that CITES a PR can have its checkbox
+// derived from PR state. A line with no PR ref (an audit done without a PR, or a not-yet-started
+// todo) is out of scope — it is honestly not a `RoadmapStatusEntry`, not silently forced to a
+// status.
+
+module gunbc.roadmap_status
+
+import extdeps.github.pulls { PullRequest }
+
+// The committed checkbox a ROADMAP line asserts. The legend is `[x]` done · `[ ]` todo — markdown
+// carries no third state, so this is a two-variant closed sum.
+type CheckboxState = Done | Todo
+
+// A ROADMAP line that CITES PR(s): the title it shows, the checkbox it asserts, and the PR
+// numbers it references (`(#5428)`, `(#5445/#5453)`). The committed side of the dual
+// representation we are dissolving.
+type RoadmapStatusEntry {
+  title: String
+  claimed: CheckboxState
+  pr_refs: List<Int>
+}
+
+// === Authority: merged-ness, grounded in the PullRequest source fact ========
+
+// Merged iff GitHub populated `merged_at` (its own merge semantics). The §3 single authority for
+// "merged" — every consumer routes through here, none reads `merged_at` itself.
+fn pr_merged(pr: PullRequest) -> Bool {
+  match pr.merged_at {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The host-fed bridge's projection: the numbers of the merged PRs in the live set. The host
+// supplies the `PullRequest` list (live PR/branch state); this folds it to the merge facts the
+// derivation needs — derived from `pr_merged`, never a parallel hand-kept list.
+fn merged_pr_numbers(prs: List<PullRequest>) -> List<Int> {
+  prs |> filter(pr => pr_merged(pr: pr)) |> map(pr => pr.number)
+}
+
+// === Derivation: the checkbox a PR-citing line SHOULD show ==================
+
+// True iff the line cites at least one PR and EVERY cited PR is merged. A line is `[x]` only when
+// all the work it points at has actually landed; a single unmerged ref keeps it `[ ]`.
+fn refs_all_merged(refs: List<Int>, merged: List<Int>) -> Bool {
+  count(refs) > 0 && all(refs, r => merged |> any(m => m == r))
+}
+
+// The derived checkbox: Done iff all cited PRs merged, else Todo. This is the value a generated
+// ROADMAP would EMIT in place of the hand-toggled box (plan §6 step 4) — so the stale-checkbox
+// class becomes unwritable once emission lands; until then the gate compares it to the committed
+// box and reports drift.
+fn derive_checkbox(refs: List<Int>, merged: List<Int>) -> CheckboxState {
+  if refs_all_merged(refs: refs, merged: merged) {
+    Done
+  } else {
+    Todo
+  }
+}
+
+fn checkbox_eq(a: CheckboxState, b: CheckboxState) -> Bool {
+  match a {
+    Done => match b { Done => true  Todo => false }
+    Todo => match b { Done => false  Todo => true }
+  }
+}
+
+// === Drift: committed checkbox disagrees with the derived one ===============
+
+// The drift predicate: the committed box does not match what the PR state implies. RED here is
+// exactly the stale-checkbox defect the plan cites — `[x]` on an unmerged PR, or `[ ]` on a
+// merged one.
+fn status_drifted(entry: RoadmapStatusEntry, merged: List<Int>) -> Bool {
+  !checkbox_eq(a: entry.claimed, b: derive_checkbox(refs: entry.pr_refs, merged: merged))
+}
+
+// Convenience for the host/gate edge: drift a single entry against the live PR set.
+fn entry_drifts_against_prs(entry: RoadmapStatusEntry, prs: List<PullRequest>) -> Bool {
+  status_drifted(entry: entry, merged: merged_pr_numbers(prs: prs))
+}
