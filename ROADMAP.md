@@ -81,37 +81,26 @@ here is the §0 in-scope "cache trustworthy" item. → [plan](docs/plans/realiza
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 v2 cross-tree content-hash / increment-4 (gates P5)
 
-## 3. Algorithmic-cost reduction — rewrite suboptimal patterns by construction
+## 3. Complexity budget gate (stability — validation; the rewrite *construction* design is deferred to §5)
 
-The real goal (*not* per-fn budgets): catch the common cases a normal developer hits
-(`O(n²)→O(n)`, `O(2ⁿ)→O(n)`, `O(n)→O(log n)`) and **rewrite** them to the cheaper equivalent —
-construction, not a warning (the §2 redundancy move on the *cost* axis). **Bulletproof where it fires**
-(absolute soundness, fail-closed), **honestly finite** (a published catalog; silence ≠ optimal), never
-an optimality oracle. → [plan](docs/plans/algebraic-rewrite-optimization.md)
+**Operator decision (2026-06-21): budget-gate validation is fine for the stability window; the
+algorithmic-cost *rewrite* design comes after stability, homed with self-hosting (§5).** A budget gate is
+*validation* (§5 — it concedes the suboptimal state is writable, flags after the fact) — accepted here as
+the in-window tool; the construction replacement (rewrite to the cheaper equivalent) is **expansion**, not
+stabilization, so it does not belong in this window (same fencing as Disposition / `Value::Null`-split in
+§0). Detection itself is **total by construction** (cost.dag U2 — every program has an asymptotic class
+via the kernel-level fold), so the gate's reach is a *subject-production* limit (fn-body reflection), not
+a detection one.
 
-**Detection vs enforcement** (grounded in cost.dag U2, [plan §1a](docs/plans/algebraic-rewrite-optimization.md)):
-detection is **total by construction** — every program has an asymptotic class via the kernel-level cost
-fold (arbitrary fns *are* detectable; boundary is *precision* — `Unknown` — not coverage). Enforced
-rewrites are a strict subset: **E ⊆ D′(precisely-detected) ⊆ D(all)**, structurally guaranteed by the
-class-drop witness. Today's small gate roster is a *subject-production* limit (fn-body reflection), not a
-detection limit.
+- [x] complexity lens projection is total over the kernel (cost.dag U2); the *gate* runs a curated subject roster (COMPREP wave-1: add / bind / branch / loop)
+- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless (**#5437**)
+  - [ ] a subject-producer for every fn (not name-keyed placeholders) (#5437 helper; the *whole-corpus* gate needs fn-body reflection)
+    - [ ] complexity budget gates the whole codebase (gated on fn-body reflection)
+- [ ] synthesis stays advisory (feasibility limit, not a wiring gap; by Rice optimality is a *ratchet*, not a wall — DESIGN §5)
 
-**Foundation — the cost oracle the rewrite engine trusts:**
-
-- [x] complexity lens projection is total over the kernel (cost.dag U2); the *gate* runs a curated subject roster (COMPREP wave-1: add / bind / branch / loop) — roster-bound, not detection-bound
-- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — the class-delta oracle must not lie
-- [ ] a subject-producer for every fn (not name-keyed placeholders)
-
-**The rewrite lane (seed → catalog):**
-
-- [ ] framework + **2 seed rules** (`nested-membership→set` O(n²)→O(n); `naive-recursion→memoize` O(2ⁿ)→O(n)) — each with the **four-witness DONE bar** (rewrites · class drops · equivalence-by-execution · non-firing control). *⚠ canonical-form-is-truth adds a pipeline normalization pass — load-bearing, escalate before editing stages*
-  - [ ] **corpus hit-rate acceptance gate** — run the catalog over real code, report % files with ≥1 finding ("surprised if it missed something," made measurable)
-    - [ ] grow the catalog by rows (Tier-1 pure-effect, then Tier-2 refinement-typed: binary search, heap; constant-factor fusion/hoist deferred)
-- [ ] transparency report: "rewrote N; classes X→Y; does **not** verify global optimality"
-
-**Residue (undecidable tail — stays advisory, never gates):**
-
-- [ ] synthesis lens stays advisory — lower-bound gap; by Rice, optimality is a *ratchet forever*, not a wall (DESIGN §5)
+*The rewrite-catalog construction design (detection-vs-enforcement, the catalog, `Unknown`-as-anemic-atom
+dissolution) is preserved in [docs/plans/algebraic-rewrite-optimization.md](docs/plans/algebraic-rewrite-optimization.md)
+and relocated to §5 as a post-stability expansion lane.*
 
 ## 4. Testgen as the bug-class oracle (coverage by construction)
 
@@ -134,6 +123,15 @@ structurally).
 Anchor (do not flip-flop): `.dag` = truth; **purely self-hosting** (v2 emits its own seed, no stage0
 hand-edits); emit **Rust + TypeScript**; then shrink the seed to zero.
 → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)
+
+**Adjacent expansion lane — algorithmic-cost rewrite engine** (the §3 *construction* design, relocated
+here per operator 2026-06-21: it is expansion, not stability, and IR-rewrite / canonicalization is most
+natural once `.dag` is the self-hosted truth). **Post-stability.**
+→ [plan](docs/plans/algebraic-rewrite-optimization.md)
+
+- [ ] rewrite common suboptimal patterns to the cheaper equivalent (`O(n²)→O(n)`, `O(2ⁿ)→O(n)`, polynomial-degree peel by **structural-redundancy keying**, not degree) — construction on the cost axis; **bulletproof where it fires**, **published finite catalog** (silence ≠ optimal), four-witness DONE bar; *⚠ canonical-form-is-truth adds a pipeline normalization pass — load-bearing, escalate*
+- [ ] `Unknown` dissolved over time as an **anemic atom** (decompress→map→reduce), reusing the `Disposition` carrier — never a false pass (`Unknown ⇒ Violates`, already holds)
+- [ ] `O(n^x)→O(n log n)` substitution class as **per-idiom** rules (operator-flagged open: is there a cleaner shared framing?)
 
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)

@@ -1,8 +1,11 @@
 # Plan — algorithmic-cost reduction by construction (rewrite suboptimal patterns)
 
-**Status:** design spec (decisions resolved in-conversation 2026-06-21) · **DESIGN.md + the carriers
-remain the authority** (DESIGN §6 "no parallel-ledger docs"). A rule's real state is its branch/PR +
-the rule-row carrier. Linked from `ROADMAP.md` §3 *Algorithmic-cost reduction*.
+**Status:** design spec · **POST-STABILITY EXPANSION** (operator 2026-06-21: budget-gate validation
+holds the stability §3 for now; this rewrite-*construction* design is relocated to **`ROADMAP.md` §5**,
+homed with self-hosting — IR-rewrite/canonicalization is most natural once `.dag` is the self-hosted
+truth). Do not build the rewrite catalog in the stability window; the cost-lens *foundation* (#5437
+`symbolic_max` + per-fn subject) stays in-window as §3 budget-gate plumbing. **DESIGN.md + the carriers
+remain the authority** (DESIGN §6). A rule's real state is its branch/PR + the rule-row carrier.
 
 ## 0. What this is — and what it is NOT
 
