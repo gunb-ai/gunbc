@@ -5323,6 +5323,39 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        // chars_to_string(chars: List<Int>, start, end) -> String: slice a
+        // code-point list [start, end) into a String (v1_rt::chars_to_string /
+        // languages.dag). The lexer builds token text this way, so the
+        // interpreter needs it to run the full compile/emit fold.
+        "chars_to_string" => {
+            let cps = match positional.first().copied() {
+                Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
+                    msg: "chars_to_string expects a list of code points".to_string(),
+                })?,
+                None => {
+                    return Err(InterpError::TypeError {
+                        msg: "chars_to_string requires a code-point list".to_string(),
+                    })
+                }
+            };
+            let len = cps.len() as i64;
+            let start = expect_int(positional.get(1).copied(), "chars_to_string start")?
+                .max(0)
+                .min(len);
+            let end = expect_int(positional.get(2).copied(), "chars_to_string end")?
+                .max(0)
+                .min(len)
+                .max(start);
+            let s: String = cps[start as usize..end as usize]
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Int(cp) => char::from_u32(*cp as u32),
+                    _ => None,
+                })
+                .collect();
+            Ok(Some(Value::Str(s)))
+        }
+
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
             match s.parse::<i64>() {
