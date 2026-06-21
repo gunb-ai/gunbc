@@ -18,6 +18,7 @@ type Gate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate
+  | CachePurityAuditGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -44,7 +45,8 @@ data gunbc_ci_gates: List<Gate> = [
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   CiYamlGate,
-  SourceRootIngestGate
+  SourceRootIngestGate,
+  CachePurityAuditGate
 ]
 
 data gunbc_ci_spec: CiSpec = {
