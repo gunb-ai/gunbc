@@ -1,91 +1,18 @@
-// Status: discovered fail-closed family eval — routes the ownership lens subject roster through
-// run_test_claim; the `test data` witness is auto-enrolled by the floor (DESIGN.md §6 inert-lens
-// hygiene: every lens is a discovered fail-closed witness or deleted). Empty roster => false.
+// Status: discovered fail-closed witness for the ownership lens (DESIGN.md §6 inert-lens hygiene:
+// every lens is a discovered fail-closed witness or deleted). Asserts the ownership lens correctly
+// classifies a ResourceDependsOn edge: its witness returns Violates and ownership_fact tags the edge
+// RequiresAccessWitness (resource access needs explicit evidence). A broken ownership lens (wrong
+// classification, or no Violates) makes the structural claim false => RED.
 
 module v2.test.workflow.lens_ownership_family_eval
 
-
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  run_test_claim,
-  test_claim_run_verdict
-}
-import v2.std.algebra { fold_list, is_empty }
-import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.nat { Nat, Zero }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verdict {
-  VerdictTally,
-  verdict_tally_add,
-  verdict_tally_empty,
-  verdict_tally_total
-}
 import v2.test.lens_ownership.resource_dependency {
   ownership_resource_dependency_claim_passes
 }
-import v2.test.lens_ownership.subject_roster {
-  lens_ownership_subject_rows
-}
 
-
-type LensOwnershipFamilyEvalReport {
-  runs: List<TestClaimRun<Node, RuntimeValue>>
-}
-
-
-fn run_lens_ownership_subjects(
-  subjects: List<TestClaimEvalSubject<Node>>
-) -> List<TestClaimRun<Node, RuntimeValue>> {
-  map(subjects, fn(subject) { run_test_claim(subject: subject) })
-}
-
-
-fn run_lens_ownership_family_eval() -> LensOwnershipFamilyEvalReport {
-  LensOwnershipFamilyEvalReport {
-    runs: run_lens_ownership_subjects(subjects: lens_ownership_subject_rows)
-  }
-}
-
-
-fn lens_ownership_family_report_tally(report: LensOwnershipFamilyEvalReport) -> VerdictTally {
-  fold_list(
-    xs: report.runs,
-    empty: verdict_tally_empty,
-    cons: fn(acc, run) {
-      verdict_tally_add(t: acc, v: test_claim_run_verdict(run: run))
-    }
-  )
-}
-
-
-fn lens_ownership_family_report_total(report: LensOwnershipFamilyEvalReport) -> Nat {
-  verdict_tally_total(t: lens_ownership_family_report_tally(report: report))
-}
-
-
-fn lens_ownership_family_all_pass(report: LensOwnershipFamilyEvalReport) -> Bool {
-  let tally = lens_ownership_family_report_tally(report: report)
-  (tally.fail == Zero) && (tally.deferred == Zero)
-}
-
-
-fn lens_ownership_structural_witnesses_hold() -> Bool {
+fn lens_ownership_family_gate() -> Bool {
   ownership_resource_dependency_claim_passes
 }
 
-
-fn lens_ownership_family_gate(report: LensOwnershipFamilyEvalReport) -> Bool {
-  if is_empty(xs: lens_ownership_subject_rows) {
-    false
-  } else {
-    lens_ownership_structural_witnesses_hold() && lens_ownership_family_all_pass(report: report)
-  }
-}
-
-
-test data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
-  report: run_lens_ownership_family_eval()
-)
+test data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate()

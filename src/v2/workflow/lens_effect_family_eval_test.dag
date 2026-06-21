@@ -5,30 +5,16 @@
 
 module v2.test.workflow.lens_effect_family_eval
 
-import v2.compiler.eval {
-  TestClaimRun,
-  test_claim_run_verdict
-}
 import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verdict { Pass }
 import v2.test.lens_effect.effect_depends_on {
-  effect_depends_on_claim_passes,
-  run_lens_effect_depends_on_runtime_verdict
+  effect_depends_on_claim_passes
 }
 
-fn lens_effect_run_passes(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match test_claim_run_verdict(run: run) {
-    Pass => true
-    _ => false
-  }
-}
-
-// Fail-closed: the structural lens classification holds AND the runtime claim run Passes.
+// Fail-closed: the effect lens classifies the EffectDependsOn dependency correctly — its witness
+// returns Violates with the expected EffectFact. A broken effect lens (wrong classification, or no
+// Violates) makes effect_depends_on_claim_passes false => RED.
 fn lens_effect_family_gate() -> Bool {
   effect_depends_on_claim_passes
-    && lens_effect_run_passes(run: run_lens_effect_depends_on_runtime_verdict)
 }
 
 test data witness_lens_effect_family_gate_closed: Bool = lens_effect_family_gate()

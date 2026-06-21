@@ -28,20 +28,43 @@ import v2.std.leaf_model_verification {
   TargetCompileRejected
 }
 
-// A fixture pair is verification-ready iff its happy probe is expected to ACCEPT and its
-// falsification probe is expected to REJECT — i.e. the two probes discriminate.
-fn leaf_model_pair_discriminates(pair: LeafModelFixturePair) -> Bool {
+fn leaf_model_pair_happy_accepts(pair: LeafModelFixturePair) -> Bool {
   match pair.expected_happy_verdict {
-    TargetCompileAccepted =>
-      match pair.falsification.expected_verdict {
-        TargetCompileRejected { diagnostic_code: _ } => true
-        TargetCompileAccepted => false
-      }
+    TargetCompileAccepted => true
     TargetCompileRejected { diagnostic_code: _ } => false
   }
 }
 
-fn leaf_model_rust_fixture_pairs() -> List<LeafModelFixturePair> {
+fn leaf_model_pair_falsification_rejects(pair: LeafModelFixturePair) -> Bool {
+  match pair.falsification.expected_verdict {
+    TargetCompileRejected { diagnostic_code: _ } => true
+    TargetCompileAccepted => false
+  }
+}
+
+// A COMPILE-discriminated pair is verification-ready iff its happy probe is expected to compile-ACCEPT
+// and its falsification probe to compile-REJECT — the "claim without a paired falsification is not
+// verifiable" invariant, on the compile axis (std §5).
+fn leaf_model_pair_compile_discriminates(pair: LeafModelFixturePair) -> Bool {
+  leaf_model_pair_happy_accepts(pair: pair)
+    && leaf_model_pair_falsification_rejects(pair: pair)
+}
+
+// R1 (type mismatch), R2a (method-not-found) and R3 (alias-vs-ctor) discriminate at COMPILE time.
+// R2b (default integer overflow) discriminates at RUNTIME (debug panic vs release wrap) — both probes
+// compile-accept — so it is excluded from the compile-discrimination fold and covered by the T-22
+// runtime exercise instead.
+fn leaf_model_compile_discriminated_pairs() -> List<LeafModelFixturePair> {
+  [
+    rust_r1_fixture_pair(),
+    rust_r2a_fixture_pair(),
+    rust_r3_external_fixture_pair()
+  ]
+}
+
+// All generated pairs (incl. the runtime-discriminated R2b) must at least have a happy probe expected
+// to compile-accept — a verification fixture whose happy case does not compile is malformed.
+fn leaf_model_all_rust_pairs() -> List<LeafModelFixturePair> {
   [
     rust_r1_fixture_pair(),
     rust_r2a_fixture_pair(),
@@ -52,17 +75,22 @@ fn leaf_model_rust_fixture_pairs() -> List<LeafModelFixturePair> {
 }
 
 fn lens_leaf_model_verification_family_gate() -> Bool {
-  let pairs = leaf_model_rust_fixture_pairs()
-  if is_empty(xs: pairs) {
+  let compile_pairs = leaf_model_compile_discriminated_pairs()
+  let all_pairs = leaf_model_all_rust_pairs()
+  if is_empty(xs: compile_pairs) {
     false
   } else {
     fold_list(
-      xs: pairs,
+      xs: compile_pairs,
       empty: true,
-      cons: fn(acc, pair) { acc && leaf_model_pair_discriminates(pair: pair) }
+      cons: fn(acc, pair) { acc && leaf_model_pair_compile_discriminates(pair: pair) }
+    )
+    && fold_list(
+      xs: all_pairs,
+      empty: true,
+      cons: fn(acc, pair) { acc && leaf_model_pair_happy_accepts(pair: pair) }
     )
   }
 }
 
-test data witness_lens_leaf_model_verification_family_gate_closed: Bool =
-  lens_leaf_model_verification_family_gate()
+test data witness_lens_leaf_model_verification_family_gate_closed: Bool = lens_leaf_model_verification_family_gate()

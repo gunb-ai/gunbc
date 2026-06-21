@@ -22,5 +22,4 @@ fn lens_unused_parameters_family_gate() -> Bool {
     && unused_parameters_rollup_claim_passes
 }
 
-test data witness_lens_unused_parameters_family_gate_closed: Bool =
-  lens_unused_parameters_family_gate()
+test data witness_lens_unused_parameters_family_gate_closed: Bool = lens_unused_parameters_family_gate()
