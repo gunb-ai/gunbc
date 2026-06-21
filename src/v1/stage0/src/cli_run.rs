@@ -2454,17 +2454,32 @@ pub fn discover_floor_corpus_rows(
     }
 
     let mut test_fn_violations: Vec<String> = Vec::new();
+    // Import-closure graph captured during the single walk (zero extra IO) — feeds the
+    // inert-lens hygiene backstop below (DESIGN.md §6: an inert lens is a lie). Keyed on
+    // repo-relative paths so it is stable whether callers pass absolute (tests) or relative
+    // (`claim_batch --source-root src/v2`) roots, matching authored `unified_claim_*` entries.
+    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut module_to_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
         collect_dag_files_tolerant(Path::new(root), &mut dag_files);
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            // Capture the import graph for EVERY file (even floor-excluded ones — a lens may be
+            // reached only through a non-witness implementation file). Seeds are rows only.
+            let rel = repo_relative_dag_path(&entry);
+            if let Some(m) = extract_module_path(&content) {
+                module_to_path.insert(m, rel.clone());
+            }
+            path_imports.insert(rel, extract_import_paths(&content));
             if floor_discovery_path_excluded(&entry) {
                 continue;
             }
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
             let names = scan_test_decl_names(&content);
             if names.is_empty() {
                 continue;
@@ -2496,7 +2511,96 @@ pub fn discover_floor_corpus_rows(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
+    // Inert-lens hygiene backstop (DESIGN.md §6): every `v2.lens.*` module must be a discovered
+    // fail-closed witness or be deleted — an inert lens is a lie. This runs over the corpus on
+    // every floor discovery and fails closed if any lens is unreached by the discovered roster.
+    let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
+    if !inert.is_empty() {
+        return Err(format!(
+            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
+             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
+             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
+             scan-dir `unified_claim_*`) or delete it: {}",
+            inert.len(),
+            inert.join(", ")
+        ));
+    }
     Ok(rows)
+}
+
+/// Repo-relative, forward-slash form of a walked `.dag` path (strips the absolute workspace
+/// prefix and any leading `./`), so the import-closure graph and authored `unified_claim_*`
+/// `witness_entry` strings key identically regardless of how `source_roots` were spelled.
+fn repo_relative_dag_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let ws = workspace_root();
+    let ws_prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    let stripped = normalized
+        .strip_prefix(&ws_prefix)
+        .map(|s| s.to_string())
+        .unwrap_or(normalized);
+    stripped.trim_start_matches("./").to_string()
+}
+
+/// `true` iff `module` is a top-level lens module `v2.lens.<name>` (exactly three segments —
+/// support/witness sub-modules like `v2.lens.extdeps_shape_transport_policy.module_refs` are
+/// excluded; only the lens itself is held to the wired-or-deleted contract).
+fn is_top_level_lens_module(module: &str) -> bool {
+    match module.strip_prefix("v2.lens.") {
+        Some(rest) => !rest.is_empty() && !rest.contains('.'),
+        None => false,
+    }
+}
+
+/// Lens modules (`v2.lens.<name>`) authored under the source roots but NOT reachable from any
+/// discovered witness via transitive imports — the inert set the backstop fails closed on.
+/// Sorted, deduped. An empty result means every authored lens is wired.
+fn inert_lens_modules(
+    rows: &[DiscoveryRow],
+    path_imports: &std::collections::HashMap<String, Vec<String>>,
+    module_to_path: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    let path_to_module: std::collections::HashMap<&String, &String> =
+        module_to_path.iter().map(|(m, p)| (p, m)).collect();
+    // Seed: every discovered witness entry file — its own module plus its direct imports.
+    let entry_paths: std::collections::BTreeSet<String> =
+        rows.iter().map(|r| repo_relative_dag_path(&r.entry)).collect();
+    for ep in &entry_paths {
+        if let Some(module) = path_to_module.get(ep) {
+            if reached.insert((*module).clone()) {
+                queue.push((*module).clone());
+            }
+        }
+        if let Some(imports) = path_imports.get(ep) {
+            for imp in imports {
+                if reached.insert(imp.clone()) {
+                    queue.push(imp.clone());
+                }
+            }
+        }
+    }
+    // Transitive closure over the module import graph.
+    while let Some(module) = queue.pop() {
+        if let Some(mpath) = module_to_path.get(&module) {
+            if let Some(imports) = path_imports.get(mpath) {
+                for imp in imports {
+                    if reached.insert(imp.clone()) {
+                        queue.push(imp.clone());
+                    }
+                }
+            }
+        }
+    }
+    let mut inert: Vec<String> = module_to_path
+        .keys()
+        .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
+        .cloned()
+        .collect();
+    inert.sort();
+    inert.dedup();
+    inert
 }
 
 /// Phase 1.5a REDO v2 — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
