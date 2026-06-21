@@ -13,6 +13,7 @@
 //!   1. an `#[ignore]` with no written reason (a silent skip), and
 //!   2. a `*.rs` test file not declared `mod` in `lib.rs` (a test that exists but
 //!      never compiles/runs).
+//!
 //! Both leave a test "neither run nor excused-with-reason"; both go RED here.
 //!
 //! Because this lens is itself a test in the widened suite, the gate covers its own
