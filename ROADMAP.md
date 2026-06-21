@@ -17,7 +17,7 @@ goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/
 
 - [x] lens/gate wiring audit — most analytical lenses are inert (authored, no discovered gate)
 - [x] fail-open code audit — cache lossy-digest + under-keyed memos + `unwrap_or_default` infer
-- [ ] **model↔realization fork audit — the suspected ROOT** (every primitive = coproduct *modeled* + native `Value` *realized*, reconciled per-site → coverage accidental & non-compositional; DESIGN open thread)
+- [x] **model↔realization fork audit — ROOT CONFIRMED** ([plan](docs/plans/model-realization-fork.md)): one seam (coproduct *modeled* vs native `Value` *realized*, ~13 per-site bridges); two sub-roots — numeric tower (grounds cleanly) + `Value::Null` overload (needs *splitting*, the deeper root)
 - [ ] coercion/equality fail-closure audit (`Bool` & `Optional`/`Null`-sentinel straddles after the `==` fix)
 - [ ] inference fail-open audit (return-type / record-field remaining after #5293)
 - [ ] cache-purity audit — enumerate every cache; each needs a warm==cold oracle
@@ -32,7 +32,7 @@ goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/
 - [ ] self-host purity enforced — wire `regen_stage0 --verify` into the floor (= §3 keystone)
 - [ ] complexity/cost enforced — zero-absorption fix → change-set budget gate (= §6)
 - [ ] cache-redundancy fail-closed — land §7 P3 redundancy cut **before expansion**
-- [ ] ground each primitive into its realization (dissolves the model↔realization fork at the root)
+- [ ] ground the root ([model↔realization fork](docs/plans/model-realization-fork.md)): (1) numeric tower `Int=GroupCompletion<Nat>` → straddle guard becomes dead code; (2) **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — the deeper root
 - [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters)
 
 **Meta:**
@@ -47,7 +47,7 @@ goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/
 
 De-anchor the compiler from CODE as the medium: a program is a canonical `Node` (the *idea*);
 ingest / emit / eval across **many media** via one grammar read both directions (§2 N+M, not N×M).
-Two axes:
+→ [plan](docs/plans/idea-machine.md) · Two axes:
 
 - [x] **medium axis** — `Medium<R>` + `DecodeFidelity` carrier; `LanguageModel` unified (13 forks dissolved); Source/DagSource/TargetSource → `Medium<String>`; `compile(Eval) → EvalResult{value: Medium<Node>}`
 - [ ] **language axis** — 15+ targets wave-1; English emit proven (`english_emit_add_test`)

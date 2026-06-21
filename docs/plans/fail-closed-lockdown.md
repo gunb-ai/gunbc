@@ -75,8 +75,10 @@ the root is dissolved (ground each primitive into its realization — numeric to
 
 Audits to run (each: how many sites, how deep, is there one root):
 
-1. **model↔realization fork audit** — enumerate every primitive modeled-as-coproduct + realized-as-native
-   and its reconciliation site; classify fail-open vs fail-closed; confirm/refute the single root.
+1. **model↔realization fork audit** — ✅ DONE → [model-realization-fork.md](model-realization-fork.md).
+   ROOT CONFIRMED (one seam, ~13 per-site bridges). Two sub-roots: numeric tower (grounds cleanly →
+   guard dead code) + `Value::Null` overload (None/Absent/miss/Violates — needs *splitting*, the deeper
+   root; ~131 legitimate `present==None→false` sites mean it can't be guarded).
 2. **coercion/equality fail-closure audit** — the `==` fix landed for the numeric tower; remaining:
    `Bool True|False` over `Value::Bool`, `Optional/Witness` over the overloaded `Value::Null` sentinel
    (resists a blanket guard — `present == None` at ~131 sites is a *legitimate* `false`; needs grounding).
