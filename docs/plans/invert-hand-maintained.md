@@ -109,7 +109,11 @@ non-tautology proof).
 
 1. **The work-DAG authority model** — what a roadmap line *is* in `.dag` (a work node: title, deps,
    status-source = its PR/branch, plan-doc carrier). DFS the existing work-item carriers + the dashboard
-   model before minting (§2/§3 — do not re-coin the work graph).
+   model before minting (§2/§3 — do not re-coin the work graph). **Seed already landed:**
+   `gunbc.roadmap_status.CompletesIff { prs }` (slice-1) is the *first row* of this model — the explicit
+   "this line completes iff #N merges" edge. Slice-2 **widens** that same binding from a status surface
+   (`RoadmapStatusEntry`) to the full emitted work node (title/deps/pointer); it must build on
+   `CompletesIff`, not re-coin a parallel completion edge (§3).
 2. **`Markdown` as an emit target** — rows in `06_translate` / `extdeps/languages/` (the §6 medium axis);
    `emit(work_model, Markdown)` produces the ROADMAP bytes.
 3. **The drift gate** — `roadmap_gate`: `ROADMAP.md == emit(work_model)`, the `ci_yaml_gate` clone.
