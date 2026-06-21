@@ -14,7 +14,7 @@ module tools.ci_yaml_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_yaml_emit { expected_ci_yml, expected_nightly_yml }
+import gunbc.ci_yaml_emit { expected_ci_yml, expected_nightly_yml, ci_yml_drifted, nightly_yml_drifted }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 
 data ci_yml_path: String = ".github/workflows/ci.yml"
@@ -49,21 +49,36 @@ fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-// §5 receipt: clean bytes match; perturbed bytes must drift (the gate has teeth).
-func drift_red_receipt(path: String, expected: String, label: String) -> ProcessExit {
-  let committed = Filesystem.Read(path: path)
-  let clean_ok = committed.success && (committed.content == expected)
-  let perturb_drifts = !(concat(expected, "\n# drift-receipt-perturb") == expected)
+// §5 receipt: the gate has teeth — clean committed bytes match the generator AND perturbed
+// bytes drift. The perturb check routes through the REAL drift predicate (`*_drifted`, which
+// compares against the live `expected_*_yml()`), NOT a re-inlined `concat(..) == expected`
+// tautology that would pass regardless of whether the gate's comparison works (DESIGN §5:
+// prove drift DETECTION by execution, not by re-stating it). One per instance because the
+// predicate is per-instance (each `*_drifted` closes over its own `expected_*_yml`).
+func ci_drift_red_receipt() -> ProcessExit {
+  let committed = Filesystem.Read(path: ci_yml_path)
+  let clean_ok = committed.success && !ci_yml_drifted(committed: committed.content)
+  let perturb_drifts = ci_yml_drifted(committed: concat(expected_ci_yml(), "\n# drift-receipt-perturb"))
   return if clean_ok && perturb_drifts {
     ExitSuccess
   } else {
-    exit_failure(reason: concat(label, " drift red receipt failed: clean must match; perturb must drift"))
+    exit_failure(reason: "ci.yml drift red receipt failed: clean must match; perturb must drift")
   }
 }
 
-func run_gate_with_receipt(path: String, expected: String, label: String) -> ProcessExit {
-  let gate = run_workflow_yaml_gate_body(path: path, expected: expected, label: label)
-  let red = drift_red_receipt(path: path, expected: expected, label: label)
+func nightly_drift_red_receipt() -> ProcessExit {
+  let committed = Filesystem.Read(path: nightly_yml_path)
+  let clean_ok = committed.success && !nightly_yml_drifted(committed: committed.content)
+  let perturb_drifts = nightly_yml_drifted(committed: concat(expected_nightly_yml(), "\n# drift-receipt-perturb"))
+  return if clean_ok && perturb_drifts {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "nightly.yml drift red receipt failed: clean must match; perturb must drift")
+  }
+}
+
+// Single-authority composition of a gate body + its §5 receipt (gate failure dominates).
+func compose_gate_receipt(gate: ProcessExit, red: ProcessExit) -> ProcessExit {
   return if exit_ok(gate) && exit_ok(red) {
     ExitSuccess
   } else if !exit_ok(gate) {
@@ -87,7 +102,7 @@ func main_wet() -> ProcessExit {
 }
 
 func run_ci_yaml_gate() -> ProcessExit {
-  run_gate_with_receipt(path: ci_yml_path, expected: expected_ci_yml(), label: "ci.yml")
+  compose_gate_receipt(gate: run_ci_yaml_gate_body(), red: ci_drift_red_receipt())
 }
 
 // ── nightly.yml instance ────────────────────────────────────────────────────────────────
@@ -104,5 +119,5 @@ func nightly_main_wet() -> ProcessExit {
 }
 
 func run_nightly_yaml_gate() -> ProcessExit {
-  run_gate_with_receipt(path: nightly_yml_path, expected: expected_nightly_yml(), label: "nightly.yml")
+  compose_gate_receipt(gate: run_nightly_yaml_gate_body(), red: nightly_drift_red_receipt())
 }
