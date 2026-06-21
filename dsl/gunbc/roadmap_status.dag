@@ -1,0 +1,64 @@
+// gunbc/roadmap_status.dag — derive a ROADMAP checkbox from PR/branch state.
+//
+// The first slice of "invert hand-maintained artifacts" (docs/plans/invert-hand-maintained.md
+// §6 step 4): a roadmap line's `[x]`/`[ ]` is *derived* from its PR, never hand-toggled — so the
+// stale-checkbox class becomes unwritable (DESIGN §5 construction-over-validation).
+//
+// §3 single authority: the PR-lifecycle fact is NOT re-coined here. The PR→stage mapping already
+// lives in ctrl.code_change_workflow (`classify_github_pr_terminal_anchor`); `RoadmapStatus` is a
+// *coarsening projection* of its `CodeChangeStage` for the roadmap-render need (merged = done,
+// any live stage = in-progress, closed/absent = todo) — a render projection, not a fork.
+//
+// The PR value itself is the §7 host-fed bridge: the dashboard/`gh` feeds the live `PullRequest`
+// (or `none` for a line with no PR yet); this module owns only the pure derivation over it.
+
+module gunbc.roadmap_status
+
+import extdeps.github.pulls { PullRequest }
+import ctrl.code_change_workflow {
+  CodeChangeStage, CodeChangeActive, CodeChangeTerminal,
+  ChangeMerged, ChangeClosed,
+  classify_github_pr_terminal_anchor,
+}
+
+// 🟢 TERMINAL coproduct — the three rendered states of a roadmap line.
+// A coarsening projection of CodeChangeStage; Todo and InProgress both render `[ ]` but stay
+// distinct because the *authority* distinguishes them (an open-PR line vs an untouched one).
+type RoadmapStatus = RoadmapDone | RoadmapInProgress | RoadmapTodo
+
+// Project a PR-lifecycle stage onto the roadmap-render state.
+fn roadmap_status_from_stage(stage: CodeChangeStage) -> RoadmapStatus {
+  match stage {
+    CodeChangeTerminal { stage: ChangeMerged } => RoadmapDone
+    CodeChangeTerminal { stage: ChangeClosed } => RoadmapTodo
+    CodeChangeActive { stage: _ } => RoadmapInProgress
+  }
+}
+
+// Derive a roadmap line's status from its PR (host-fed; `none` = no PR yet = todo).
+// An open PR has no terminal anchor (Absent) → it is in progress.
+fn roadmap_status_from_pr(pr: PullRequest?) -> RoadmapStatus {
+  match pr {
+    Absent => RoadmapTodo
+    Present { value: p } =>
+      match classify_github_pr_terminal_anchor(pr: p) {
+        Present { value: stage } => roadmap_status_from_stage(stage: stage)
+        Absent => RoadmapInProgress
+      }
+  }
+}
+
+// The rendered checkbox glyph. Binary by the ROADMAP legend (`[x]` done · `[ ]` todo);
+// in-progress renders `[ ]` like todo (the line's real state is its open branch/PR).
+fn checkbox_glyph(status: RoadmapStatus) -> String {
+  match status {
+    RoadmapDone => "[x]"
+    RoadmapInProgress => "[ ]"
+    RoadmapTodo => "[ ]"
+  }
+}
+
+// Convenience: PR → glyph in one step (what a roadmap-line emitter calls).
+fn roadmap_checkbox_from_pr(pr: PullRequest?) -> String {
+  checkbox_glyph(status: roadmap_status_from_pr(pr: pr))
+}

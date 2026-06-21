@@ -1,0 +1,97 @@
+// test/claim/roadmap_status_witness_test.dag — §5 discriminating witnesses for
+// gunbc.roadmap_status (the PR→checkbox status derivation).
+//
+// Discriminates BOTH directions: a merged PR must render `[x]`; every non-merged case
+// (open / closed-unmerged / no-PR) must render `[ ]`. So an always-Done derivation reds the
+// non-merged asserts, an always-Todo derivation reds the merged assert.
+
+module test.claim.roadmap_status_witness_test
+
+import gunbc.roadmap_status {
+  RoadmapStatus, RoadmapDone, RoadmapInProgress, RoadmapTodo,
+  roadmap_status_from_pr, checkbox_glyph, roadmap_checkbox_from_pr,
+}
+import extdeps.github.pulls {
+  PullRequest, PullRequestRef, PullRequestState, Open, Closed,
+}
+import extdeps.github.github { GitHubUser, User }
+import std.types { CommitSha, Timestamp, Url }
+
+data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
+
+fn witness_pr(state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
+  PullRequest {
+    number: 1,
+    title: "witness",
+    body: none,
+    state: state,
+    html_url: witness_pr_url,
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef { ref: "feature", sha: witness_head_sha, label: "gunb-ai:feature" },
+    base: PullRequestRef {
+      ref: "main",
+      sha: "def456789012345678901234567890abcdef12",
+      label: "gunb-ai:main",
+    },
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T00:00:00Z",
+    merged_at: merged_at,
+    draft: false,
+  }
+}
+
+fn status_is(actual: RoadmapStatus, expected: RoadmapStatus) -> Bool {
+  match actual {
+    RoadmapDone => match expected { RoadmapDone => true  _ => false }
+    RoadmapInProgress => match expected { RoadmapInProgress => true  _ => false }
+    RoadmapTodo => match expected { RoadmapTodo => true  _ => false }
+  }
+}
+
+// A merged PR (closed-with-merged_at) → Done → `[x]`.
+fn witness_merged_pr_done() -> Bool {
+  let pr = witness_pr(state: Closed, merged_at: Present { value: witness_merged_at })
+  status_is(actual: roadmap_status_from_pr(pr: Present { value: pr }), expected: RoadmapDone)
+    && (roadmap_checkbox_from_pr(pr: Present { value: pr }) == "[x]")
+}
+
+// An open PR (no merge) → InProgress → `[ ]` (NOT `[x]`).
+fn witness_open_pr_in_progress() -> Bool {
+  let pr = witness_pr(state: Open, merged_at: none)
+  status_is(actual: roadmap_status_from_pr(pr: Present { value: pr }), expected: RoadmapInProgress)
+    && (roadmap_checkbox_from_pr(pr: Present { value: pr }) == "[ ]")
+}
+
+// A closed-but-unmerged PR → Todo → `[ ]`.
+fn witness_closed_unmerged_todo() -> Bool {
+  let pr = witness_pr(state: Closed, merged_at: none)
+  status_is(actual: roadmap_status_from_pr(pr: Present { value: pr }), expected: RoadmapTodo)
+    && (roadmap_checkbox_from_pr(pr: Present { value: pr }) == "[ ]")
+}
+
+// No PR yet → Todo → `[ ]`.
+fn witness_no_pr_todo() -> Bool {
+  status_is(actual: roadmap_status_from_pr(pr: none), expected: RoadmapTodo)
+    && (roadmap_checkbox_from_pr(pr: none) == "[ ]")
+}
+
+// Glyph is binary by the ROADMAP legend.
+fn witness_glyph_binary() -> Bool {
+  (checkbox_glyph(status: RoadmapDone) == "[x]")
+    && (checkbox_glyph(status: RoadmapInProgress) == "[ ]")
+    && (checkbox_glyph(status: RoadmapTodo) == "[ ]")
+}
+
+fn all_roadmap_status_witnesses() -> Bool {
+  witness_merged_pr_done()
+    && witness_open_pr_in_progress()
+    && witness_closed_unmerged_todo()
+    && witness_no_pr_todo()
+    && witness_glyph_binary()
+}
+
+test fn roadmap_status_witnesses() -> Bool {
+  all_roadmap_status_witnesses()
+}
