@@ -13,6 +13,18 @@
 
 module extdeps.access.posix
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// External-authority anchor (promotes the Source citation above to the structured carrier
+// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_stat.h.html"
+  }
+}
+
 // The three permission bits applied per class (e.g. S_IRUSR / S_IWUSR / S_IXUSR for the owner).
 type PermissionBits {
   read: Bool       // r

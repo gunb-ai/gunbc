@@ -27,6 +27,16 @@ import std.os.invocation {
 }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew"
+  }
+}
+
 data kernel32_create_file_w: ApiEntry = ApiEntry { symbol: "CreateFileW", module: "kernel32" }
 data kernel32_read_file: ApiEntry = ApiEntry { symbol: "ReadFile", module: "kernel32" }
 data kernel32_write_file: ApiEntry = ApiEntry { symbol: "WriteFile", module: "kernel32" }

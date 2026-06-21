@@ -11,6 +11,16 @@ import std.os.types {
   Sequoia15,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/macos-release-notes/macos-15-release-notes"
+  }
+}
+
 // Anchor: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
 data sequoia_15_catalog: MacosDistributionCatalogRow = MacosDistributionCatalogRow {
   distribution: Sequoia15,
