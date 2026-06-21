@@ -49,5 +49,13 @@ debug = 0
 debug-assertions = false
 opt-level = 2
 
+# v1-compiler under `cargo test` pays a ~30-120s/test amplification cost at opt-level=2
+# because its interpreter runs unoptimised fixture evaluation. opt-level=3 recovers wall
+# time without changing behaviour (no debug_assert! in generated stage0 code — see note
+# on dev.package.v1-compiler above). The one-time optimised build is sccache-cached
+# cross-run; run-2+ is near-instant.
+[profile.test.package.v1-compiler]
+opt-level = 3
+
 [profile.release]
 debug = 0

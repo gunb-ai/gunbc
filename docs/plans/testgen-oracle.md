@@ -55,7 +55,7 @@ The retro the operator wants: for every bug class we hit, ask three questions an
 | bug class (from memory / recent PRs) | category | structural? | gated? |
 |---|---|---|---|
 | coproduct non-exhaustive match (`Value::eq` `_ => false`) | CoproductExhaustiveness ✓ | **yes** (§4.2 — every declared coproduct) | **yes** (floor-discovered) |
-| cross-representation `==` straddle (model↔realization fork) | — (none) | — | — |
+| cross-representation `==` straddle (model↔realization fork) | CrossRepresentationEquality ✓ | partial (modeled side structural; native-realization roster curated — §4.3) | **yes** (floor-discovered) |
 | algebra-law violation | AlgebraLawConformance ✓ | **yes** (the exemplar) | no |
 | flat-namespace fn collision (#5185) | — | — | — |
 | heterogeneous `==` module resolve-fail | — | — | — |
@@ -96,8 +96,19 @@ universe-enumeration through it.
    `generated_conformance_floor_test` with a non-empty-roster guard (fail-closed on a dormant
    enumeration) and independent arm recomputation for TestClaim + Connective; perturbing the roster to
    empty goes RED (verified).
-3. **Add the cross-representation-equality category** — generate, for each modeled coproduct × native
-   realization, the straddle witness (the `==` fork is the live root; testgen should cover the *class*).
+3. **Add the cross-representation-equality category** — ✅ LANDED (SCOPE TIGHT). New `TestgenConcept`
+   arm `CrossRepresentationEquality { modeled_coproduct, native_realization }` + generated anchor
+   `GeneratedCrossRepresentationEquality`; the generator emits the `EqualsClaim` that the modeled form
+   reconciles with its native realization (the grounding TARGET — emitted, not executed: grounding each
+   straddle is its own runway). Floor-discovered in `generated_conformance_floor_test`
+   (`cross_representation_equality.dag`), checking emit shape + curated straddle-roster coverage with
+   each modeled coproduct's arm keys recomputed independently (`coproduct_arm_keys`) to exclude a
+   vacuous pass (perturbing the roster or pointing it at a non-coproduct goes RED — verified). SCOPE:
+   ONLY the straddles that remain UNSTRUCTURED — Bool over Value::Bool, and the Value::Null sentinel
+   (Optional/Witness, fenced to its own runway). The numeric tower is GROUNDED (#5428) and excluded.
+   The modeled side is structural; the native-realization side is curated (no Node-tree reflection for
+   "realized as Value::Bool"). **Remaining (own runway):** ground each straddle so the `EqualsClaim`
+   actually executes green (Bool, then the deeper Value::Null None/Absent/miss split, ~131 sites).
 4. **affected-set completeness** — model the full repo-process universe (incl. meta) under the lens, on
    the reflection primitive; selection stays shelved (0-min) until a corpus makes it pay.
 

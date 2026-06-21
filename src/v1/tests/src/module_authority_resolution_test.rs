@@ -67,6 +67,79 @@ fn same_named_sum_type_in_two_modules_resolves_to_own_authority() {
     );
 }
 
+/// §5 truthful-diagnostic guard: modules whose ONLY problem is an unresolved
+/// import must report `UnresolvedImport`, never a fabricated `CircularDependency`.
+///
+/// Pre-fix, `topological_sort` counted EVERY import toward a module's in-degree
+/// (including imports of modules absent from the resolve set), while the
+/// adjacency only carried in-set edges. So a module blocked solely on a missing
+/// import never reached in-degree 0, never drained, and the leftover set was
+/// reported as a circular dependency — a §5 fabricated wrong answer masking the
+/// real error. `a` and `b` here import only *missing* modules and never each
+/// other; the diagnosis must be unresolved-import, with no false cycle.
+#[test]
+fn unresolved_imports_do_not_masquerade_as_circular_dependency() {
+    let a = "module false_cycle_a\nimport totally.missing.one\n";
+    let b = "module false_cycle_b\nimport totally.missing.two\n";
+
+    let result = compile_multi(&[("false_cycle_a.dag", a), ("false_cycle_b.dag", b)]);
+
+    let circular: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                &*d.diagnostic,
+                CompilerDiagnostic::CircularDependency { .. }
+            )
+        })
+        .collect();
+    assert!(
+        circular.is_empty(),
+        "modules blocked only on missing imports must NOT be reported as a \
+         circular dependency: {:?}",
+        diagnostic_messages(&result)
+    );
+    let unresolved: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::UnresolvedImport { .. }))
+        .collect();
+    assert_eq!(
+        unresolved.len(),
+        2,
+        "both missing imports must surface as UnresolvedImport: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
+/// The discriminating control for the test above: a *genuine* mutual import
+/// cycle (a→b→a, both in-set) must STILL be detected as `CircularDependency`.
+/// This goes RED if the in-degree fix over-corrected and dropped real cycles.
+#[test]
+fn genuine_import_cycle_still_detected() {
+    let a = "module real_cycle_a\nimport real_cycle_b\n";
+    let b = "module real_cycle_b\nimport real_cycle_a\n";
+
+    let result = compile_multi(&[("real_cycle_a.dag", a), ("real_cycle_b.dag", b)]);
+
+    let circular: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                &*d.diagnostic,
+                CompilerDiagnostic::CircularDependency { .. }
+            )
+        })
+        .collect();
+    assert!(
+        !circular.is_empty(),
+        "a genuine mutual-import cycle must still be detected: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
 /// §3 cross-authority guard: a record `T` and a sum `T` coexist in the compile
 /// set (the shape of the v1-record vs v2-sum `FreeMonoid` collision). A consumer
 /// that imports the SUM must resolve its variant to the sum — never to the
