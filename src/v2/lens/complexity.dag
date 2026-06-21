@@ -19,6 +19,7 @@
 
 
 module v2.lens.complexity
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 
 import v2.lens.cost {
@@ -358,4 +359,13 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
           }
       }
   }
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever {
+    undecidable_because: "tight asymptotic class / optimality is undecidable (Rice), and cost is a runtime property -- slow code is never a representational error, so it can never be made unwritable by construction"
+  },
+  rationale: "Budget-dominance is a complete decidable hard-gate (DESIGN's wall), but the asymptotic optimum the lens projects toward is undecidable; the lens is the residue mechanism for a class that has no representational wall."
 }
