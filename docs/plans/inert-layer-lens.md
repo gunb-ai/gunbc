@@ -26,6 +26,58 @@ graph. The subtlety that makes this a real lens and not a grep:
 
 So: **inert = declared ∧ ¬reachable(run-roots)**. Decidable (graph reachability), a pure Node read.
 
+### 1.1 The rules — what is a hard wall, and what only looks like one
+
+Four cases decide whether this is a *rule* or a *vibe*. Each lands in a different frontier region
+([expressibility-frontier](expressibility-frontier.md)); the design discipline is to keep them apart.
+
+- **Does a test consumer count? — NO, for the *live* verdict; it is a separate, labeled state.** Run
+  reachability from each root set independently: run-roots (executed entries) → "inert in production?";
+  test-roots (witnesses) → "covered?". A concept reachable from tests but not from run-roots is
+  **"tested but unrun"** — its own bucket (a test can pin dead code alive). Report it; **wall only on
+  run-root-inert.** Decidable per root set → ①.
+
+- **One consumer, but that consumer is dead? — you never count local consumers.** The verdict is
+  *membership in the complement of the reachable set*, a fixpoint from the roots over the whole tree. A
+  node alive only through a dead consumer is simply not in the reachable set → inert. "Inspect the entire
+  tree" is exactly right: global reachability, not per-node degree. This is the case reference-count gets
+  wrong (§1). Decidable → ①.
+
+- **Dead arms / fields (one honest reading of "should be 10, has 1") — decidable, a sharper wall.** A
+  reachable carrier can still have *arms never constructed* or *fields never read*. Arm-level
+  reachability is decidable (an arm appears in some reached construction or it doesn't), and the *match*
+  side is already CoproductExhaustiveness (§4 testgen). So "a 6-arm coproduct where 3 arms are never
+  built" is a wall, not a guess → ①.
+
+- **One consumer, but it *should* be ten call-sites? — this is NOT inertness, and forcing it into this
+  rule breaks the wall.** "Should be ten" needs the set of sites that *ought* to consume the concept —
+  not derivable from the concept alone (③ undecidable directly, by Rice). But its **dual is decidable**:
+  the sites that should have consumed an authority and didn't are the ones that *rolled their own
+  equivalent* — a §3 nickname / §2 anemic pattern. So under-consumption is detected **as redundancy**, by
+  the anemic / nicknaming lens, *not* by counting expected consumers.
+
+**The framing rule: inertness (0 reachable) is a wall; under-wiring (too few) is a hand-rolled fork —
+keep them separate.** Fusing them is the trap: you would try to make "should be N" a hard gate, fail by
+Rice, and either fire falsely or abandon the whole rule.
+
+So the hard rule is exactly the **0-reachability** one, and it is a wall on three conditions:
+1. **the run-root set is enumerable** — it is (the floor plan, the compiler/emit drivers, the CLI bins:
+   things with a `main` or a discovered entry). A fuzzy root set is a fuzzy wall — pin it.
+2. **reflective / host-bridge consumption counts as an edge** — `concept_index` is host-fed and the floor
+   discovers witnesses by marker scan, not import; a carrier consumed only through such a bridge is
+   *live* and would false-positive a pure import walk. The roots must include the bridge entry points.
+3. **a named, shrinking exception roster** for carriers deliberately modeled ahead of their consumer (the
+   realization loop is model-first by design) — each entry names its dissolve-on PR; the roster empties
+   as the loop wires them, and the lens flips advisory → wall when it does (the #5433 / realization-vocab
+   shape).
+
+The rule, stated once:
+
+> A declared concept must be **reachable from a live run-root** (over static **and** reflective edges),
+> be on the **exception roster** with a dissolve-on, or be **deleted**. Test-only reachability is a
+> separate "unrun" bucket — reported, not gated. **Under-consumption is out of scope** — it is the
+> redundancy lens, not this one.
+
 ## 2. The census (the discriminating witnesses the lens must reproduce)
 
 Measured 2026-06-21 over `dsl/**` + `src/v2/**`, reachability cross-checked against run-roots
