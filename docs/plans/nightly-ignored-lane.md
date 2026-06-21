@@ -43,23 +43,29 @@ These hit external services; they cannot be hermeticized away (the *replay* is h
 runs per-PR, but the *record* leg that proves the fixture still matches upstream is genuinely
 wet). They are the §1 honest-periodic residue — run on a cadence, never on the per-PR floor.
 
-**GRAY ZONE — cargo-subprocess on *emitted* output (pending warm-ram #5450 confirmation):**
-- `pipeline.rs:8135` (temp project + `cargo check`), `8173` (disk + temp + `cargo check`),
-  `bootstrap.rs:483` (build + full compile + `cargo check`), `976` (compiles `.dag` + builds
-  emitted crate + `cargo test`).
+**EMITTED-CARGO subprocess — in the lane, but WITH a named dissolution trigger** (confirmed by
+warm-ram-537, #5450 is answer (b): it swaps the stage0 *build* only; the `cargo check`/`cargo
+test` over the **emitted crate** is a *separate* subprocess it does NOT drain):
+- `bootstrap.rs:483` `bootstrap_stage0_to_stage1` (emit Rust + `cargo check` on emitted crate),
+  `579` `bootstrap_fixed_point` (full compile + `cargo check`/`test`), `976`
+  `bootstrap_l4_structural` (compile `weather.dag` in-process + write emitted + `cargo test`),
+  `pipeline.rs:8135` `v2_trivial_import_emits_rust_that_cargo_checks`, `8173`
+  `review_dag_compiles_to_rust`.
 
-`#5450`'s build-once gives these a prebuilt *stage0* bin, but the `cargo check`/`cargo test`
-that verifies the **emitted crate** compiles is a *separate* subprocess. **Open question to
-warm-ram-537:** does #5450 also hermeticize that emitted-output check to an in-process
-structural check (→ drains, NOT in this lane), or only swap the stage0 build (→ the
-emitted-cargo subprocess remains a periodic build-smoke → in this lane)? Finalize this set on
-warm-ram's answer; do not commit the candidate list until then.
+> **Dissolution trigger (§6 — a lane is the residue fallback, not a parking lot for a fixable
+> defect):** these 5 are scheduled *only because* they currently shell to real `rustc` via
+> `cargo`. If their intent is "emitted Rust is **structurally well-formed**," an in-process
+> structural check can replace the subprocess and **drain them to per-PR** (the cause-table
+> records this as a candidate second drain). They leave this lane the moment such a check exists.
+> They stay only if the intent is genuinely "emitted Rust **compiles under real rustc**" (then
+> truly periodic). Not my fix to build; flagged to warm-ram-537.
 
-**EXISTING `ci_`-tagged set (pending warm-ram confirmation):**
+**EXISTING `ci_`-tagged ratchets — in the lane (genuine periodic):**
 - `bootstrap.rs:863/906/923/940/956` — `ci_full_dsl`, `ci_diagnostic_ratchet`,
-  `ci_performance_ratchet`, `ci_freshness`, `ci_fixed_point`. These are the pre-existing
-  nightly-intent ratchets. In the lane *iff* they are genuine periodic ratchets and not
-  build-bound work #5450 already drains.
+  `ci_performance_ratchet`, `ci_freshness`, `ci_fixed_point`. Confirmed by warm-ram-537:
+  untouched by #5450 (they already used `find_or_build_stage0()` pre-Pop-B), they run the full
+  CI self-compile pipeline (fixed-point, diagnostic-count, perf, freshness) — the classic
+  "needs the richer nightly environment," genuine honest-periodic.
 
 **NOT in the lane:**
 - Red-tracked / unimplemented (`pipeline.rs:1532` "stage0 does not yet validate …") — stay
@@ -98,18 +104,31 @@ drift/parse gate (`gunbc.ci_yaml_emit`, `tools/ci_yaml_gate.dag`). The nightly r
 network secret for the wet leg). §3-clean: each workflow is a distinct authority; the nightly
 gate set is explicitly *not* the per-PR floor.
 
-## Sequencing (LOCKED): residue confirmation gates the candidate set
+## The confirmed CONVERT set (12 tests, final)
 
-1. **Confirm the residue with warm-ram-537** (#5450): finalize the gray-zone + `ci_` set above.
-   Until then the CONVERT list is just the two live-network core tests.
-2. **`expensive: → cfg_attr` conversion**, but only over the *confirmed residue* (live-network
-   core + un-drained gray-zone), deriving the set ONCE so `cfg_attr` becomes the ongoing single
-   authority.
+`#[cfg_attr(not(feature = "ci_nightly"), ignore = "<prose>")]` over exactly:
+- **live-network (2):** `interp_recorded_fixture_test.rs:1103`, `pipeline.rs:10510`.
+- **emitted-cargo (5, w/ dissolution trigger):** `bootstrap.rs:483/579/976`, `pipeline.rs:8135/8173`.
+- **`ci_` ratchets (5):** `bootstrap.rs:863/906/923/940/956`.
+
+Everything else keeps plain `#[ignore]` (red-tracked) or is already per-PR (#5450 / opt-level
+drained): NOT converted.
+
+## Sequencing (LOCKED): residue confirmed → build
+
+1. ~~Confirm the residue with warm-ram-537~~ **DONE** (#5450 = answer (b); set above is final).
+2. **`expensive: → cfg_attr` conversion** over exactly the 12 confirmed tests, deriving the set
+   ONCE so `cfg_attr` becomes the ongoing single authority (the reason-prefix stops being
+   load-bearing for selection after conversion — not a §3 fork).
 3. **Add the `ci_nightly` feature** to the test crate `Cargo.toml`.
 4. **`nightly_workflow`** value + `expected_nightly_yml()` + commit `.github/workflows/nightly.yml`.
 5. **Nightly drift/parse gate** (mirror of `ci_yaml_gate`: clean matches, perturb drifts).
 6. **Recognize `cfg_attr(…, ignore = "…")`** in the completeness lens (a conditional-ignore still
    counts as reasoned; a reasonless one still goes RED).
+
+Steps 2–6 touch the load-bearing CI-gen — **escalate the concrete diff to quick-ant-298 before
+landing** (next section). Coordinate step 1's input with #5450's merge so the drained tests are
+not in the floor AND not in the lane (no double-coverage, no gap).
 
 ## Escalation (guardrail stands)
 
