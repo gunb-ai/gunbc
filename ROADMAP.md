@@ -7,6 +7,22 @@ A task's real state is its branch/PR + the carrier marks.
 
 Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**.
 
+## 0. Fail-closed lock-down — BLOCKS expansion
+
+Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not **enforced fail-closed
+by execution in CI**. Lock the machine down before adding features. → [audit + checklist](docs/plans/fail-closed-lockdown.md)
+
+- [ ] cache flakes physically impossible
+  - [ ] content-key on **raw bytes** (kill `from_utf8_lossy` digest, `resolved_graph_cache.rs:146`)
+  - [ ] content-hash keys for `parse_table_memo` + `pure_call_memo` (not position/address)
+  - [ ] **warm==cold purity-oracle witness per cache** (discovered, RED on divergence)
+  - [ ] realizer-key lens: executed digest ⊇ declared inputs, else RED (= §7 P1.1)
+- [ ] self-host purity enforced — wire `regen_stage0 --verify` into the floor (= §3 keystone)
+- [ ] complexity/cost enforced — zero-absorption fix → change-set budget gate (= §6)
+- [ ] cache-redundancy fail-closed — land §7 P3 redundancy cut **before expansion**
+- [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters)
+- [ ] **meta-invariant gate:** every `lens/*.dag` has a discovered fail-closed discriminating witness, or is removed (closes the "authored ≠ enforced" loophole)
+
 ## 1. Session dashboard on `.dag` (backend only)
 
 - [ ] idea → PR pipeline
@@ -35,9 +51,10 @@ hand-edits); emit **Rust + TypeScript**; then shrink the seed to zero.
   - [ ] seed-honesty discharge (Diverse Double-Compiling — trust the seed once)
   - [ ] collapse `src/v1` → pinned reproducible v2-emitted seed; delete the 154k hand-written compiler logic (terminal, not a big-bang `rm`)
 
-## 4. HTML / React rendering
+## 4. HTML / React rendering (the "website" sellable piece)
 
-- [ ] get it working
+- [ ] react/html rendering stands up (real page, not fixture)
+- [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
 
 ## 5. Compute fabric
 
