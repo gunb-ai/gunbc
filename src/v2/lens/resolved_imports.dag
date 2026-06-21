@@ -17,6 +17,7 @@
 // Consumer: tools.resolved_imports_gate → tools.resolved_imports_transport host scan.
 
 module v2.lens.resolved_imports
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.std.algebra {
   fold_list,
@@ -113,4 +114,14 @@ fn import_resolution_facts_live(
     importer_roots: importer_roots,
     exclude_substrings: exclude_substrings
   )
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "front_end_sources parse-resilience so the resolver's own UnresolvedImport rule gates the whole tree",
+    dissolve_on: "whole-tree resolve runs (front_end_sources no longer short-circuits to graph:none on a parse error), so UnresolvedImport is the authority"
+  },
+  rationale: "A dangling import is decidable and is the resolver's authoritative UnresolvedImport rule; this lens is the interim projection of that single authority into a CI gate the parse-gated whole-tree compile never reaches."
 }

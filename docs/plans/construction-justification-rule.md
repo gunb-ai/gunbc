@@ -1,0 +1,71 @@
+# The construction-justification rule (authoring-time) — §0
+
+> ROADMAP §0 meta-item. The authoring-time judgment that layers **on top of** the executable #5433
+> inert-lens backstop. DESIGN refs: §5 (construction over validation; the decidability trichotomy;
+> the "never" trap), §6 ("construction first"; lenses are the residue mechanism; coverage-by-illusion),
+> §7 (the recursion — make the lens discipline itself fail-closed). Sibling frame:
+> [expressibility-frontier.md](expressibility-frontier.md) (the same three regions, generalized).
+
+## 1. The rule
+
+DESIGN §6: a lens is **validation** — it concedes the bad state is *writable*. So **before adding any
+lens**, justify why its target bad-state class cannot be made *unwritable by construction* (single
+authority / realization derived from model). Convert what can be converted; reserve a lens only for the
+genuinely **unstructurable residue**. Each lens must classify its target class into one of DESIGN §5's
+three buckets, with a rationale:
+
+| Class | DESIGN §5 / frontier §2 | Meaning for a lens |
+| --- | --- | --- |
+| `WallNow` | wall-now / ① Wall | Decidable **and** grounded now: a single authority already makes the bad state unwritable, or the value is total-by-construction. A thing in this class **should be construction, not a validation lens** — recording `WallNow` honestly says "this module filed under `v2.lens.*` is actually a construction" (a §3 home question). |
+| `WallAfterGrounding` | wall-after-grounding / ② Lens-residue | Decidable, but the construction is not built yet. An **interim, shrinking** lens that names the `grounding_authority` that will turn it into a wall and the `dissolve_on` trigger that deletes it. |
+| `RatchetForever` | ratchet-forever / ③ Inexpressible | Undecidable (Rice) or needs domain knowledge. A **permanent** residue / honest review — never a wall. `undecidable_because` states which. Pricing this region as a wall is the §5 "never" trap. |
+
+This is **not a parallel taxonomy** (§3): the names are DESIGN §5's, which
+[expressibility-frontier.md](expressibility-frontier.md) §2 generalizes into regions ①/②/③. The single
+authority for the typed model is `v2.lens.common.construction_justification`.
+
+## 2. Why this layers on the #5433 backstop — and does not supersede it
+
+The two checks cover the same set (`is_top_level_lens_module`) but answer different questions, and both
+run in `discover_floor_corpus_rows` (the seed floor-discovery walk, not new cemented Rust):
+
+- **#5433 inert-lens backstop** — *is this lens wired?* Every `v2.lens.*` module must be reached by a
+  discovered fail-closed witness, or be deleted. Runs over the **corpus**; it is the floor guarantee.
+- **construction-justification rule** (this) — *should this be a lens at all, and if so why?* Every
+  `v2.lens.*` module must **record** its construction-justification.
+
+A judgment applied at authoring time **executes nothing**, so it can never replace a check that runs
+over the corpus (DESIGN §6 is explicit). The two are complementary: the backstop kills the *inert* lens
+(machinery with nothing gating on it); this rule kills the *unjustified* lens (validation reached for
+where construction was available). Neither subsumes the other.
+
+## 3. The shape — construction applied to the rule itself (§7 recursion)
+
+The **judgment** (which class, and the rationale) is human and unstructurable — its *correctness* cannot
+be machine-verified (deciding decidability is itself ③, see frontier §6). But the **requirement to have
+recorded a judgment is structurable**, so we make the *missing-justification* state unwritable:
+
+- **Carrier (the mark, §3/§6):** every lens module declares
+  `data construction_justification: ConstructionJustification = …` — the judgment lives **on the lens**,
+  not in a parallel ledger. This mirrors the `extdeps_external_authority_anchor` precedent (a
+  fixed-name required decl per module).
+- **Fail-closed presence check:** `discover_floor_corpus_rows` captures which lenses carry the decl
+  during its single walk (zero extra IO) and **fails the floor closed** on any top-level lens that does
+  not. A lens stripped of its justification goes **RED** (green-by-execution; discriminating on revert
+  — `construction_justification_hygiene_tests`).
+
+So the bad state ("a lens with no recorded reason to be a lens") is unwritable by construction, while the
+honest residue (is the recorded reason *true*?) stays review — exactly the partition the rule itself
+prescribes.
+
+## 4. Status
+
+- `v2.lens.common.construction_justification` — the typed model (`ConstructionClass` + `ConstructionJustification`).
+- All 35 top-level `v2.lens.*` modules carry a recorded justification (retroactive classification from
+  each lens's existing header — the audit that surfaces any lens that is secretly a `WallNow`).
+- Presence check + discriminating tests wired into `discover_floor_corpus_rows`.
+- **Residue / follow-on (honest):** the *correctness* of each recorded class is review, not gated.
+  Modules recorded as `WallNow` (cost, application_serializer) and the support module
+  `affected_set_examples` flag a §3 home question — they are computations/support filed under
+  `v2.lens.*`, not validation lenses; relocating them is out of scope here (it touches module
+  resolution) and is left as a marked follow-up.

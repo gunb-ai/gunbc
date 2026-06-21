@@ -10,6 +10,7 @@
 
 
 module v2.lens.structural_resolution
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.compiler.infer {
   InferredFacts,
@@ -192,4 +193,14 @@ fn structural_resolution_classified_eq(
 // equality or content_hash for lens facts; multiset compare is compile-only until B2.
 fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: structural_resolution_classified_eq)
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the resolver / InferredFacts as the binding-status authority (read at classify time, not stored on the row)",
+    dissolve_on: "binding status is read from the resolved tree by construction, not projected per-edge by a lens"
+  },
+  rationale: "Binding status is decidable from the resolved tree; a projection-only per-edge ratchet over the resolver's facts, never a second authority."
 }

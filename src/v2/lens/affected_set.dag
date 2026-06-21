@@ -3,6 +3,7 @@
 // Status: filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI node-precision closure via affected_set_from_diff.
 
 module v2.lens.affected_set
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 
 import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_get, map_insert }
@@ -1530,4 +1531,14 @@ fn repo_process_universe() -> RepoProcessUniverse {
   repo_process_universe_from(
     processes: list_append(left: ci_gate_processes(), right: meta_processes())
   )
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the v2 scheduler consuming the re-execution frontier natively (B-4/B-5 node-precision closure)",
+    dissolve_on: "the scheduler derives incremental re-execution from the changed-subgraph fold by construction"
+  },
+  rationale: "Changed-subgraph reachability is a decidable fold (re_exec_frontier_from_diff); it is a lens today only because the scheduler does not yet consume the frontier as a construction."
 }
