@@ -3,7 +3,7 @@
 **Status:** carrier-grounded audit + sequencing · **DESIGN.md + the carriers remain the authority** —
 this doc is an audit/tracker, not a fact ledger (DESIGN §6 "no parallel-ledger docs"). Each collapse
 dissolves into a mark on its carrier (a deleted file, a re-pointed import) when it lands. A task's real
-state is its branch/PR, not this file. Linked from `ROADMAP.md §3`.
+state is its branch/PR, not this file. Linked from `ROADMAP.md` §5 *Self-host v2 → delete `src/v1`* (the de-fork sub-lane).
 
 **Verified against the live tree on 2026-06-21.** Line numbers are receipts; re-check before acting.
 
