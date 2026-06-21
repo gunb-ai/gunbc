@@ -108,6 +108,8 @@ mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
+mod resolve_typed_cache_equivalence_test;
+#[cfg(test)]
 mod source_audit;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
