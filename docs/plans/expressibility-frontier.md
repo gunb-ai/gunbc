@@ -35,6 +35,13 @@ Two laws govern the frontier:
 - **Presentability of the fix is a property of the region, not the discipline.** A lens can *present the
   alternative* (not just flag) exactly when the corrected form is **determined** — the RHS of an equation
   you already proved — rather than **searched**. That is a ② phenomenon; it never reaches into ③.
+  Within ②, presentability has two flavors: a **single determined rewrite** (one safe RHS — `a+b ⇒
+  measure_add`), or a **surfaced choice** (≥2 determined-but-safety-distinct RHSs, where picking is a
+  §5 decision the anemic form *hid*). The lens presents the set and forces intent; it does not auto-pick.
+  Division is the canonical case — `byte_size(count ÷ n)` buried whether to **ceil** (a per-shard
+  *demand*: under-estimate ⇒ over-fit ⇒ OOM) or **floor** (a fit *count*: over-estimate ⇒ OOM): opposite
+  directions, *both* fail-closed. So "present alternatives" is literal — the round-trip hid a safety
+  decision, not merely a redundancy.
 
 ## 3. The two instances, side by side
 
@@ -43,7 +50,7 @@ This is the pattern the frontier names — the same three regions, in two unrela
 | Region | **Anemic modeling** | **Algorithmic complexity** |
 | --- | --- | --- |
 | **① Wall** | *round-trip through representation* — `wrap(op_M(unwrap a, unwrap b))` is provably `op_T(a,b)` (homomorphism law); provide the lifted op + fence the projector ⇒ the unwrap-form is unwritable. Dimensional safety: the `Measure<Q,S>` phantom types already wall it. | *budget-dominance* — a cost-fold verdict that a step's cost is dominated by its declared budget is a decidable hard-gate (the complexity lens *can* gate this). |
-| **② Lens-residue** | the round-trip at the **grounding seam** you can't fence (host `Int` → `ByteSize`); a pure reader flags a constructor whose magnitude derives from a projector — **and presents the exact `op_T`** (the op→op_T table is finite) | the cost-budget lens over the corpus where construction isn't available yet — flags, but the *cheaper algorithm* is **searched**, so it cannot present it |
+| **② Lens-residue** | the round-trip at the **grounding seam** you can't fence (host `Int` → `ByteSize`); a pure reader flags a constructor whose magnitude derives from a projector — **and presents the exact `op_T`** (the op→op_T table is finite). Lifted algebra (`+`,`max`) is one determined rewrite; the two divisions (`Measure÷scalar`, `Measure÷Measure`) **surface a ceil/floor choice** the round-trip hid (demand ceils, width floors) | the cost-budget lens over the corpus where construction isn't available yet — flags, but the *cheaper algorithm* is **searched**, so it cannot present it |
 | **③ Inexpressible** | *leaf under-decomposition* — "`LGA4926`" should be a record; needs **domain knowledge**, undecidable ⇒ stays review (DESIGN's parked §2 open thread) | *optimality* — "is this the minimal cost?" is undecidable (**Rice**); *synthesis* — "produce a faster version" has no constructive patch ⇒ permanent ratchet/review |
 
 The reading: anemic-modeling and complexity are not analogous by coincidence — they are **two samples of
