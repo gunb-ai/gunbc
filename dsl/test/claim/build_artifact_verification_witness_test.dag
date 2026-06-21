@@ -42,7 +42,7 @@ fn probe_source_roots() -> List<ShellWord> {
 }
 
 fn probe_stmts() -> List<ShellStmt> {
-  emit_verifications(produces: [probe_artifact()], roots: probe_source_roots(), pattern: "*.rs")
+  emit_verifications(produces: [probe_artifact()], roots: probe_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
 }
 
 // Serialize a single statement (no set -e) so order/identity of each emitted stmt is checkable.
@@ -87,15 +87,18 @@ fn witness_existence_precedes_freshness() -> Bool {
     && string_contains(s: probe, pattern: "-quit")
 }
 
-// TOKENS: the serialized verification carries both conjuncts, the declared source set + glob,
-// and the fail-closed `exit 1`. Each clause is a discriminating tooth.
+// TOKENS: the serialized verification carries both conjuncts, the declared source set + all
+// patterns (*.rs, Cargo.toml, Cargo.lock), and the fail-closed `exit 1`. Each clause is a
+// discriminating tooth; adding Cargo.toml/Cargo.lock goes RED if name_predicate_words drops them.
 fn witness_serialized_conjuncts_and_teeth() -> Bool {
-  let script = verifications_script(produces: [probe_artifact()], roots: probe_source_roots(), pattern: "*.rs")
+  let script = verifications_script(produces: [probe_artifact()], roots: probe_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
   string_contains(s: script, pattern: "-x")                              // existence
     && string_contains(s: script, pattern: "-newer")                     // freshness
     && string_contains(s: script, pattern: "-print")
     && string_contains(s: script, pattern: "-quit")
-    && string_contains(s: script, pattern: "'*.rs'")                     // declared pattern
+    && string_contains(s: script, pattern: "'*.rs'")                     // *.rs pattern present
+    && string_contains(s: script, pattern: "Cargo.toml")                 // manifest pattern present
+    && string_contains(s: script, pattern: "Cargo.lock")                 // lockfile pattern present
     && string_contains(s: script, pattern: "/target/release/probe_bin") // declared artifact
     && string_contains(s: script, pattern: "/src")                       // declared source root
     && string_contains(s: script, pattern: "exit 1")                     // fail-closed
@@ -105,7 +108,7 @@ fn witness_serialized_conjuncts_and_teeth() -> Bool {
 // floor consumes (claim_executor, gunbc), and each gets the verification. 2 artifacts ⇒ 6
 // statements; both paths + the freshness probe present in the emitted script.
 fn witness_floor_covers_both_release_bins() -> Bool {
-  let stmts = emit_verifications(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), pattern: "*.rs")
+  let stmts = emit_verifications(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
   let script = ci_floor_build_verify_script()
   stmts.length() == 6
     && string_contains(s: script, pattern: "/target/release/claim_executor")

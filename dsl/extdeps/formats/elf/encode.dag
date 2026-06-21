@@ -55,6 +55,16 @@ import extdeps.formats.elf.types {
 }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
+  }
+}
+
 data elf_ident_padding_zeros: List<Int> = [0, 0, 0, 0, 0, 0, 0]
 
 fn u8_le_byte(value: Int) -> Int {

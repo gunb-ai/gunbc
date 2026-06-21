@@ -5,4 +5,14 @@ module extdeps.vendor.sk_hynix
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/SK_Hynix"
+  }
+}
+
 data sk_hynix: Vendor<Hardware> = Vendor { legal_name: "SK hynix Inc." }

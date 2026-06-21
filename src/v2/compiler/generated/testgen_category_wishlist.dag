@@ -146,11 +146,13 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept>
     classification: TestClassification { tier: Tier1, layer: Unit },
     anchor: generated_claim_anchor(
       anchor: GeneratedCoproductExhaustiveness {
-        omitted_variant: TestClaimDiagnosticClaimVariant,
+        coproduct_type: ^TestClaim,
+        omitted_variant: ^DiagnosticClaim,
       }
     ),
     slot: DiagnosticExhaustiveness {
-      omitted_variant: TestClaimDiagnosticClaimVariant,
+      coproduct_type: ^TestClaim,
+      omitted_variant: ^DiagnosticClaim,
     },
     provenance: generator_provenance(id: ^wishlist_gen_id_diagnostic_exhaustiveness),
     profile_metadata: default_generator_profile(),

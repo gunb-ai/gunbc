@@ -11,6 +11,16 @@ module extdeps.toolchain.types
 
 import std.types { String }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "wiki.debian.org/ArchitectureSpecificsMemo"
+  }
+}
+
 // Single ISA authority — hardware cpu rows, OCI GOARCH wire, and target triples share this axis.
 type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
 
