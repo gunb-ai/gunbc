@@ -37,9 +37,14 @@ import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
-import std.types { ContentHash }
+import std.types { ContentHash, Int }
 import std.measure { HardwareThreadCount, hardware_thread_count }
-import std.realization_width { width_fold_objective_goals }
+import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_floor_per_shard_peak_rss_bytes,
+  gunbc_ci_floor_conservative_fallback_width
+}
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.realization_schedule {
   RealizationPlan,
   RealizationObjective,
@@ -282,11 +287,34 @@ fn gunbc_ci_floor_breadth() -> Int {
   length(xs: gunbc_ci_spec.gates)
 }
 
-// claim_executor spawn-width companion (host never decides width). Pinned constant: the
-// memory-aware placement model was unwired complexity; a flat width is what the fleet
-// effectively ran. Re-derive from real load if it ever earns its keep.
-fn gunbc_ci_floor_spawn_width() -> HardwareThreadCount {
-  hardware_thread_count(4)
+// The fleet's hardware-thread cap (CPU term). Sourced from the operator-fleet CPU catalog
+// (Ampere Altra Max M128-30, 128t), not a literal — the part a host runs is a deployment fact.
+// Never binds for the floor today (shard_count = breadth = 7 < 128); kept for fidelity so the
+// fold is the full min(shard_count, threads, memory).
+fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
+  altra_max_m12830_catalog.threads
+}
+
+// claim_executor spawn-width companion (host never decides width — it READS the live budget
+// and threads it in here; this fold stays the pure authority). §1-C MEMORY-AWARE, DERIVED, not
+// the pinned constant #5419 left behind:
+//   width = min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_per_shard_peak⌋)
+// - shard_count   = gunbc_ci_floor_breadth() (spec-derived; corpus-explosion is Phase 1)
+// - hardware_threads = the fleet CPU cap (non-binding today)
+// - memory_budget_bytes = LIVE cgroup budget, read by the host realizer (claim_executor) and
+//   passed as this arg (§3 measured⇒peripheral; an external system authors it → read it live)
+// - per_shard_peak = the MEASURED VmHWM÷width fact (gunbc.ci_floor_measurement), NOT a literal
+// The memory term is non-binding today (admits ≫7) — it is the fail-closed FLOOR that only
+// REDUCES width below the topology cap once the tree outgrows budget/7 (DESIGN §5). A ≤0 budget
+// (host could not read one) yields the conservative committed fallback, never an OOM.
+fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  memory_aware_spawn_width(
+    shard_count: gunbc_ci_floor_breadth(),
+    hardware_threads: gunbc_ci_floor_hardware_threads(),
+    memory_budget_bytes: memory_budget_bytes,
+    per_shard_peak_bytes: gunbc_ci_floor_per_shard_peak_rss_bytes(),
+    conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
+  )
 }
 
 // ── §5 plan oracle: at most one heavy whole-tree resolve per readiness layer ──
