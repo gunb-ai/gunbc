@@ -980,6 +980,10 @@ fn dag_pipeline_smoke() {
 }
 
 #[test]
+#[ignore = "failing: reads removed fixture `fixtures/v2-mvp1` (absent from the tree and every git ref \
+— a hand-maintained v2 slice deleted upstream). Pre-existing red, hidden by the old 3-filter allowlist \
+and surfaced by widening the gate (#5427). Needs the fixture restored or the parity receipt retargeted \
+at a live source set; not fixed here (FLAG-DON'T-FIX)."]
 fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
     let ws = workspace_root();
     let fixture_dir = ws.join("fixtures/v2-mvp1");
