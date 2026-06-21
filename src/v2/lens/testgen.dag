@@ -100,8 +100,6 @@ import v2.std.verification {
   TestClaimCoproductVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
-  TestClaimStructuralEqualsClaimVariant,
-  TestClaimRoundTripClaimVariant,
   ManualAnchorAbsent,
   ManualAnchorKey,
   ManualClaimAnchor,
@@ -322,21 +320,22 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   }
 }
 
-// F.2-P1: derive identity from a generated coproduct-exhaustiveness variant (one id per omitted arm).
-fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> GeneratorId {
-  match v {
-    TestClaimCompilesClaimVariant => ^gen_id_coproduct_compiles
-    TestClaimDiagnosticClaimVariant => ^gen_id_coproduct_diagnostic
-    TestClaimEqualsClaimVariant => ^gen_id_coproduct_equals
-    TestClaimStructuralEqualsClaimVariant => ^gen_id_coproduct_structural_equals
-    TestClaimRoundTripClaimVariant => ^gen_id_coproduct_roundtrip
-  }
+// F.2-P1: derive identity from a generated coproduct-exhaustiveness anchor — one id per
+// (coproduct type × omitted arm). DERIVED from the two structural symbols (single authority —
+// no literal table that could drift from the declared arms), so distinct (type, arm) pairs get
+// distinct GeneratorIds. The same derivation is used when stamping a generator's provenance, so
+// generator_carries_provenance round-trips (anchor → id == provenance.generator_id).
+fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratorId {
+  concat(
+    "gen_id_coproduct_exhaustiveness::",
+    concat(coproduct_type, concat("::", omitted_variant))
+  )
 }
 
 fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
   match key {
-    GeneratedCoproductExhaustiveness { omitted_variant } =>
-      generator_id_for_coproduct_variant(v: omitted_variant)
+    GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant } =>
+      generator_id_for_coproduct_arm(coproduct_type: coproduct_type, omitted_variant: omitted_variant)
   }
 }
 
@@ -455,7 +454,6 @@ data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect
 data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
 data idempotent_label_create_if_absent: String = "generated/idempotent_operation: CreateIfAbsentEffect f(f(x)) == f(x)"
-data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
     language: ^dag_language_model_surface_id,
@@ -1544,7 +1542,7 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
           d: testgen_non_algebra_law_scheduled_slot_diagnostic()
         )
       }
-    DiagnosticExhaustiveness { omitted_variant: _ } =>
+    DiagnosticExhaustiveness { coproduct_type: _, omitted_variant: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: testgen_non_algebra_law_scheduled_slot_diagnostic()
@@ -1621,53 +1619,71 @@ fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> 
   )
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
+// Structural coproduct-exhaustiveness anchor (docs/plans/testgen-oracle.md §4.2): one anchor per
+// (declared coproduct type × one of its omitted arms), both carried as the authored Symbols read
+// off the Node tree. No hand-roster of TestClaim variants survives.
+fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { coproduct_type: coproduct_type, omitted_variant: omitted_variant }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_compiles() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant }
-}
-
-fn coproduct_exhaustiveness_subject_testclaim_equals() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant }
-}
-
-fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
-}
-
-fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
+fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: GeneratedAnchorKey) -> Symbol {
   match anchor {
-    GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
+    GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant: _ } => coproduct_type
   }
 }
 
-fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> Node {
+fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant } => omitted_variant
+  }
+}
+
+// The omitted arm, as a leaf TypeNode tagged by the arm's authored key. The key is already the
+// Symbol read off the coproduct's arm edge (coproduct_arm_keys), so no discriminant projection is
+// needed — the structural arm name IS the node identity.
+fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: discriminant(v: variant) }
+      connective: Atom { identity: omitted_variant }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
+// The synthetic match-input witness: a node tagged by the coproduct's authored type name carrying
+// the single omitted-arm coordinate. A match over `coproduct_type` that drops `omitted_variant` is
+// non-exhaustive and must be rejected (coproduct_exhaustiveness_diagnostic).
 fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: ^coproduct_exhaustiveness_testclaim_variant }
+      connective: Atom { identity: coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor) }
     },
     children: [
       Edge {
         label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
-          variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
+          omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )
       }
     ],
     occurrence_id: SyntheticOccurrence
 }
+}
+
+// Per-claim label naming the covered coproduct type and omitted arm (was a single shared TestClaim
+// literal). Distinguishable so a structural roster of N claims reads back which arm each pins.
+fn coproduct_exhaustiveness_label(anchor: GeneratedAnchorKey) -> String {
+  concat(
+    "generated/diagnostic-exhaustiveness: coproduct ",
+    concat(
+      coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor),
+      concat(
+        " missing arm ",
+        concat(coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor), " rejects")
+      )
+    )
+  )
 }
 
 fn coproduct_exhaustiveness_diagnostic(
@@ -1686,7 +1702,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   let input = coproduct_exhaustiveness_input(anchor: anchor)
   Accepted {
     value: DiagnosticClaim {
-      label: coproduct_exhaustiveness_label,
+      label: coproduct_exhaustiveness_label(anchor: anchor),
       anchor: generated_claim_anchor(anchor: anchor),
       input: input,
       expected_rejection: diagnostics_singleton(
@@ -1698,49 +1714,61 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   }
 }
 
+// One generator for a single (coproduct type × omitted arm). Provenance id is DERIVED from the
+// same anchor (generator_id_for_generated_anchor), so generator_carries_provenance round-trips.
+fn coproduct_exhaustiveness_generator(
+  coproduct_type: Symbol,
+  omitted_variant: Symbol
+) -> Generator<TestgenConcept> {
+  let anchor = coproduct_exhaustiveness_anchor(
+    coproduct_type: coproduct_type,
+    omitted_variant: omitted_variant
+  )
+  Generator {
+    kind: TestClaimDiagnosticClaimVariant,
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    anchor: generated_claim_anchor(anchor: anchor),
+    slot: DiagnosticExhaustiveness {
+      coproduct_type: coproduct_type,
+      omitted_variant: omitted_variant,
+    },
+    provenance: generator_provenance(id: generator_id_for_generated_anchor(key: anchor)),
+    profile_metadata: default_generator_profile(),
+  }
+}
+
+// All generators for one declared coproduct: one missing-arm witness per arm, with arm keys read
+// directly off the decl's own materialized Node (no re-resolve by name — single walk, collision-free).
+fn coproduct_exhaustiveness_generators_for_decl(
+  decl: ConceptDecl
+) -> List<Generator<TestgenConcept>> {
+  fold(
+    coproduct_arm_key_list_from_node(node: decl.node),
+    init: Empty,
+    f: fn(acc, arm) {
+      list_snoc_item(
+        xs: acc,
+        item: coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
+      )
+    }
+  )
+}
+
+// STRUCTURAL roster: every declared coproduct in the compiled corpus contributes one missing-arm
+// witness per declared arm. Adding an arm to ANY coproduct extends this roster by construction;
+// removing one shrinks it (the discriminating RED, docs/plans/testgen-oracle.md §4.2). Replaces the
+// former hand-anchored 4-variant TestClaim roster.
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
-  [
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimCompilesClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimDiagnosticClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_equals()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimEqualsClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimRoundTripClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-  ]
+  fold(
+    enumerate_coproduct_decls(),
+    init: Empty,
+    f: fn(acc, decl) {
+      list_append(
+        left: acc,
+        right: coproduct_exhaustiveness_generators_for_decl(decl: decl)
+      )
+    }
+  )
 }
 
 // F.2-P1 provenance integrity: a generator's identity must be the one DERIVED from its
@@ -2035,9 +2063,9 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: v } } =>
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: v } } =>
       Accepted {
-        value: DiagnosticExhaustiveness { omitted_variant: v },
+        value: DiagnosticExhaustiveness { coproduct_type: ct, omitted_variant: v },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>

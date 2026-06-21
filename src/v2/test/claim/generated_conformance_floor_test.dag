@@ -95,7 +95,10 @@ test fn generated_algebra_law_annihilator_emits() -> Bool {
   generated_claim_emitted(o: generated_nat_mul_annihilator_claim)
 }
 
-// --- CoproductExhaustiveness ---
+// --- CoproductExhaustiveness (STRUCTURAL — every declared coproduct, docs/plans/testgen-oracle.md §4.2) ---
+// The roster is derived from enumerate_coproduct_decls × coproduct_arm_keys, not a hand-list. These
+// fail RED if the host enumeration goes empty (vacuous pass guarded by the non-empty roster check) or
+// if any arm of a covered coproduct loses its matching missing-arm witness.
 test fn generated_coproduct_exhaustiveness_is_diagnostic() -> Bool {
   witness_coproduct_exhaustiveness_diagnostic_claim
 }
@@ -104,11 +107,11 @@ test fn generated_coproduct_exhaustiveness_anchor_holds() -> Bool {
   witness_coproduct_exhaustiveness_uses_generated_anchor
 }
 
-test fn generated_coproduct_exhaustiveness_all_variants_emit() -> Bool {
+test fn generated_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
   witness_coproduct_exhaustiveness_all_variants_emit
 }
 
-test fn generated_coproduct_exhaustiveness_generator_count_holds() -> Bool {
+test fn generated_coproduct_exhaustiveness_covers_every_coproduct() -> Bool {
   witness_coproduct_exhaustiveness_generator_count
 }
 
