@@ -6514,12 +6514,17 @@ fn raw_map_lookup(
             Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
             None => Ok(Value::Null),
         },
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+        Value::Record { fields, type_name, .. } | Value::Variant { fields, variant_name: type_name, .. } => {
             let lookup_sym = ctx.sym("lookup");
             let lookup = fields
                 .get(&lookup_sym)
                 .ok_or_else(|| InterpError::TypeError {
-                    msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
+                    msg: format!(
+                        "raw_map_lookup expects Map, got {} (type={}, key={})",
+                        map.type_label(),
+                        resolve_sym(*type_name),
+                        key
+                    ),
                 })?;
             match lookup {
                 Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
