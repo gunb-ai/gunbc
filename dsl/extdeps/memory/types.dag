@@ -12,6 +12,16 @@ import std.types { Bool, Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Registered_memory"
+  }
+}
+
 // SdramSignalingFamily — the SDRAM clock/signaling technology. DoubleDataRate is the DDR
 // family (data transferred on both clock edges). A closed enum because SDR vs DDR vs LPDDR
 // are genuinely categorical signaling regimes — not a magnitude.

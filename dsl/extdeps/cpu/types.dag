@@ -14,6 +14,16 @@ import extdeps.hardware { Hardware }
 
 import extdeps.toolchain.types { Architecture }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/CPU_socket"
+  }
+}
+
 // CpuSocket — the physical CPU mount, decomposed from the marketing string (e.g.
 // "LGA4926" = a Land Grid Array package with 4926 contacts/lands). `package` is the
 // contact technology (a closed set); `contact_count` is the number of electrical
