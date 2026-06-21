@@ -5,12 +5,10 @@
 
 module extdeps.realization.resolved_graph
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ToolchainSpec }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
-  ContentAddressedByValue,
-  UpsertSubject,
   ContentAddressLookup,
   WriteOnce,
   MissThenCreate,
@@ -38,14 +36,15 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "gunbc-resolved-graph-per-host-cache"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: ContentAddressedByValue
-    // ToolchainSpec is keyed BY CONSTRUCTION: the resolved graph depends on the
-    // resolve transform (the compiler/toolchain), and invalidation_triggers promises
-    // ToolchainChange — so the toolchain MUST be a considered input or the derived key
-    // omits it (key-completeness, extdeps.cache.key_completeness; §5 stale-pass trap).
-    // This supersedes the realizer's hand-authored RESOLVE_LOGIC_VERSION /
-    // KERNEL_INTERN_SEED_VERSION stand-ins for content(transform).
-    inputs_considered: [UpsertSubject, ToolchainSpec]
+    // OUR content-addressed cache: the inputs are DERIVED from invalidation_triggers, not
+    // authored. Because invalidation_triggers promises ToolchainChange, the derived input
+    // set is [UpsertSubject, ToolchainSpec] (content_addressed_inputs) — the transform is
+    // keyed BY CONSTRUCTION, and declaring ToolchainChange WITHOUT keying the toolchain (or
+    // vice versa) is UNWRITABLE: there is no inputs field to author out of agreement. This
+    // dissolves the model side of the model↔realizer fork PR #5423 false-greened (a
+    // spec-only lens over a hand-authored list). The realizer (resolved_graph_cache.rs)
+    // folds the same set; the two Rust/.dag impls unify at v2/realize (subgraph-hash).
+    key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true

@@ -2454,17 +2454,32 @@ pub fn discover_floor_corpus_rows(
     }
 
     let mut test_fn_violations: Vec<String> = Vec::new();
+    // Import-closure graph captured during the single walk (zero extra IO) — feeds the
+    // inert-lens hygiene backstop below (DESIGN.md §6: an inert lens is a lie). Keyed on
+    // repo-relative paths so it is stable whether callers pass absolute (tests) or relative
+    // (`claim_batch --source-root src/v2`) roots, matching authored `unified_claim_*` entries.
+    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut module_to_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for root in source_roots {
         let mut dag_files: Vec<PathBuf> = Vec::new();
         collect_dag_files_tolerant(Path::new(root), &mut dag_files);
         dag_files.sort();
         for path in dag_files {
             let entry = path.to_string_lossy().into_owned();
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            // Capture the import graph for EVERY file (even floor-excluded ones — a lens may be
+            // reached only through a non-witness implementation file). Seeds are rows only.
+            let rel = repo_relative_dag_path(&entry);
+            if let Some(m) = extract_module_path(&content) {
+                module_to_path.insert(m, rel.clone());
+            }
+            path_imports.insert(rel, extract_import_paths(&content));
             if floor_discovery_path_excluded(&entry) {
                 continue;
             }
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
             let names = scan_test_decl_names(&content);
             if names.is_empty() {
                 continue;
@@ -2496,7 +2511,98 @@ pub fn discover_floor_corpus_rows(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
+    // Inert-lens hygiene backstop (DESIGN.md §6): every `v2.lens.*` module must be a discovered
+    // fail-closed witness or be deleted — an inert lens is a lie. This runs over the corpus on
+    // every floor discovery and fails closed if any lens is unreached by the discovered roster.
+    let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
+    if !inert.is_empty() {
+        return Err(format!(
+            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
+             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
+             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
+             scan-dir `unified_claim_*`) or delete it: {}",
+            inert.len(),
+            inert.join(", ")
+        ));
+    }
     Ok(rows)
+}
+
+/// Repo-relative, forward-slash form of a walked `.dag` path (strips the absolute workspace
+/// prefix and any leading `./`), so the import-closure graph and authored `unified_claim_*`
+/// `witness_entry` strings key identically regardless of how `source_roots` were spelled.
+fn repo_relative_dag_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let ws = workspace_root();
+    let ws_prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    let stripped = normalized
+        .strip_prefix(&ws_prefix)
+        .map(|s| s.to_string())
+        .unwrap_or(normalized);
+    stripped.trim_start_matches("./").to_string()
+}
+
+/// `true` iff `module` is a top-level lens module `v2.lens.<name>` (exactly three segments —
+/// support/witness sub-modules like `v2.lens.extdeps_shape_transport_policy.module_refs` are
+/// excluded; only the lens itself is held to the wired-or-deleted contract).
+fn is_top_level_lens_module(module: &str) -> bool {
+    match module.strip_prefix("v2.lens.") {
+        Some(rest) => !rest.is_empty() && !rest.contains('.'),
+        None => false,
+    }
+}
+
+/// Lens modules (`v2.lens.<name>`) authored under the source roots but NOT reachable from any
+/// discovered witness via transitive imports — the inert set the backstop fails closed on.
+/// Sorted, deduped. An empty result means every authored lens is wired.
+fn inert_lens_modules(
+    rows: &[DiscoveryRow],
+    path_imports: &std::collections::HashMap<String, Vec<String>>,
+    module_to_path: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    let path_to_module: std::collections::HashMap<&String, &String> =
+        module_to_path.iter().map(|(m, p)| (p, m)).collect();
+    // Seed: every discovered witness entry file — its own module plus its direct imports.
+    let entry_paths: std::collections::BTreeSet<String> = rows
+        .iter()
+        .map(|r| repo_relative_dag_path(&r.entry))
+        .collect();
+    for ep in &entry_paths {
+        if let Some(module) = path_to_module.get(ep) {
+            if reached.insert((*module).clone()) {
+                queue.push((*module).clone());
+            }
+        }
+        if let Some(imports) = path_imports.get(ep) {
+            for imp in imports {
+                if reached.insert(imp.clone()) {
+                    queue.push(imp.clone());
+                }
+            }
+        }
+    }
+    // Transitive closure over the module import graph.
+    while let Some(module) = queue.pop() {
+        if let Some(mpath) = module_to_path.get(&module) {
+            if let Some(imports) = path_imports.get(mpath) {
+                for imp in imports {
+                    if reached.insert(imp.clone()) {
+                        queue.push(imp.clone());
+                    }
+                }
+            }
+        }
+    }
+    let mut inert: Vec<String> = module_to_path
+        .keys()
+        .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
+        .cloned()
+        .collect();
+    inert.sort();
+    inert.dedup();
+    inert
 }
 
 /// Phase 1.5a REDO v2 — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
@@ -3794,4 +3900,113 @@ pub fn emit_source_root_ingest_manifest(
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+#[cfg(test)]
+mod inert_lens_hygiene_tests {
+    use super::{
+        discover_floor_corpus_rows, inert_lens_modules, is_top_level_lens_module, DiscoveryRow,
+    };
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn row(entry: &str, function: &str) -> DiscoveryRow {
+        DiscoveryRow {
+            label: function.to_string(),
+            entry: entry.to_string(),
+            function: function.to_string(),
+        }
+    }
+
+    #[test]
+    fn top_level_lens_module_predicate() {
+        assert!(is_top_level_lens_module("v2.lens.effect"));
+        assert!(is_top_level_lens_module(
+            "v2.lens.extdeps_shape_transport_policy"
+        ));
+        // support/witness sub-modules are NOT the lens itself.
+        assert!(!is_top_level_lens_module(
+            "v2.lens.extdeps_shape_transport_policy.module_refs"
+        ));
+        assert!(!is_top_level_lens_module(
+            "v2.test.lens_effect.effect_depends_on"
+        ));
+        assert!(!is_top_level_lens_module("v2.std.algebra"));
+        assert!(!is_top_level_lens_module("v2.lens."));
+    }
+
+    // Discriminating witness for the detector: it goes RED on an unreached lens, GREEN once a
+    // discovered witness reaches it (directly or transitively). An always-green check would be
+    // the very coverage-by-illusion (DESIGN.md §6) the backstop exists to kill.
+    #[test]
+    fn detector_red_on_unreached_green_on_wired() {
+        let mut module_to_path: HashMap<String, String> = HashMap::new();
+        let mut path_imports: HashMap<String, Vec<String>> = HashMap::new();
+        module_to_path.insert(
+            "v2.lens.demo".to_string(),
+            "src/v2/lens/demo.dag".to_string(),
+        );
+        path_imports.insert("src/v2/lens/demo.dag".to_string(), vec![]);
+
+        // No discovered witness reaches it → inert (RED).
+        let inert = inert_lens_modules(&[], &path_imports, &module_to_path);
+        assert_eq!(inert, vec!["v2.lens.demo".to_string()]);
+
+        // A discovered witness importing it → wired (GREEN).
+        module_to_path.insert(
+            "v2.test.lens_demo.w".to_string(),
+            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
+        );
+        path_imports.insert(
+            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
+            vec!["v2.lens.demo".to_string()],
+        );
+        let rows = vec![row("src/v2/workflow/lens_demo_family_eval_test.dag", "w")];
+        assert!(
+            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            "wiring a discovered witness must clear the inert flag"
+        );
+
+        // Transitive: a sibling lens reached only through `demo` (lens-imports-lens) is wired.
+        module_to_path.insert("v2.lens.sib".to_string(), "src/v2/lens/sib.dag".to_string());
+        path_imports.insert("src/v2/lens/sib.dag".to_string(), vec![]);
+        path_imports.insert(
+            "src/v2/lens/demo.dag".to_string(),
+            vec!["v2.lens.sib".to_string()],
+        );
+        assert!(
+            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            "a transitively-reached sibling lens must count as wired"
+        );
+    }
+
+    // Whole-corpus enforcement: floor discovery over the real witness roots must succeed, which
+    // (per the backstop wired into `discover_floor_corpus_rows`) means zero inert lenses.
+    #[test]
+    fn floor_corpus_has_no_inert_lenses() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = vec![
+            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let scan_dirs = vec![
+            "dsl/test/claim".to_string(),
+            "src/v2/compiler/manual".to_string(),
+        ];
+        let result = discover_floor_corpus_rows(&roots, &scan_dirs);
+        assert!(
+            result.is_ok(),
+            "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
+            result.err().unwrap_or_default()
+        );
+    }
 }

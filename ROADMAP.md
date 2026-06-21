@@ -34,7 +34,7 @@ the `Value::Null` overload (~131 sites) — stays **OPEN** until its own runway;
 
 - [ ] **numeric-tower grounding** ([plan](docs/plans/model-realization-fork.md)) — `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code. *Start here* (highest value / lowest risk). **Authoritative home for this item** — §5's *de-fork integer-row* and the fork plan §3.1 are the same work seen from the self-host side; they point here, no second checkbox
 - [ ] **cache trustworthy** (**= §2 F2/F3/P1** — that is the authoritative home; this is a pure pointer, progress tracked there) — the same key-from-`inputs_considered` construction, listed here only because it is the in-window stability driver. Ship the **warm==cold oracle now as a detective** — it stops the cache lying *today* while the from-inputs construction is built behind it (detective and constructive coexist in time). *(first instance: child adhoc-cc232dbc-1be)*
-- [ ] **widen/retire the rust gate** — run the v1 test set or explicitly retire it (no test exists-but-doesn't-run); shared with §1
+- [ ] **rust-gate coverage by cadence-decoupling** (shared with §1; *not* "run-all per-PR" — proven CPU-hours, the v1 SEED compiler costs ~tens of CPU-sec per trivial test) — per-PR = a **cost-bounded subset** (budget-derived, replacing the hand-picked 3-filter), full coverage = a **periodic `--ignored` lane**; completeness = **every test runs on ≥1 cadence** (fail-closed). #5427 lands the per-PR half now
 - [ ] **promote-or-delete every inert lens** + de-vacuum thin gates (emit_host 4-fixtures, advisory rosters); whole-corpus the `discrimination` enforcer
 
 **Fenced OUT of this window (flag-days / the fan-out — after stability):**
@@ -59,7 +59,9 @@ upstream of every §0 correctness claim. Getting CI under control *is* stability
 here: it's the substrate CI runs on; selling it as an infra piece is downstream.)
 
 - [x] privacy (compute fabric)
-- [ ] **floor runs the right things** — close the coverage holes: widen/retire the rust gate + CI-coverage-completeness (shared with §0; today the rust gate runs 3 suites of 60 v1 test files, `ci_spec.dag:160`)
+- [ ] **floor runs the right things** — close the coverage holes by **cadence-decoupling** (shared with §0; the 3-filter allowlist was COST selection, not arbitrary — the v1 SEED compiler costs ~tens of CPU-sec per trivial test, so run-all-per-PR is off the table):
+  - [ ] per-PR cost-bounded subset + measured `#[ignore="expensive: Ns"]` + a completeness lens ("no un-run test without a written reason" — legit §6 residue: rustc `#[ignore]` is unstructurable) — **#5427** (fierce-hawk-540)
+  - [ ] **nightly `--ignored` lane** (load-bearing CI-gen via `gunbc ci`/`ci_spec`) so expensive + the 58 currently-`#[ignore]`'d tests have a destination; upgrades completeness to "every reasoned-ignore has a lane". *Owned by §1 (quick-ant-298), sequenced after #5431 (per-test cost = measurement keystone applied to tests); dissolves as v2 self-host shrinks the seed. ⚠ scheduled-workflow gen is load-bearing — escalate before editing the CI-gen machinery*
 - [ ] **floor runs reliably & affordably** — memory-aware scheduling (spawn_width is memory-blind → deterministic OOM as the corpus grows; `ResourceEnvelope.memory` modeled but unwired) and kill build flakes (sccache corruption ⇒ false-green: exit-0 with no artifact)
 - [ ] repo model (internal repo) on compute fabric
 - [ ] CI on compute fabric
@@ -75,17 +77,30 @@ here is the §0 in-scope "cache trustworthy" item. → [plan](docs/plans/realiza
   - [ ] P1 honest keys by construction (key = fn of declared inputs · stable transform-id · census parity is the residue check)
     - [ ] P2 one door: `realize(subject)` as sole API (dissolves hand-rolled `ParseTable`)
       - [ ] P3 reach → minimal layer + fail-closed completeness gate + supplier provisioning ← **core ask**
-- [ ] P4 economic tier (measured cost → `Materialization` by cost) — needs Phase-0 timing
+- [ ] P4 economic tier (measured cost → `Materialization` by cost) — Phase-0 **instrument done** (model side was already floor-enrolled; step timing already emitted; only peak-RSS was missing, closed by #5431 emitting `VmHWM`+spawn_width). Remaining = Phase-1 *consumer* (measured→plan feedback + width-fold), which also unblocks §1-C memory-aware width
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 v2 cross-tree content-hash / increment-4 (gates P5)
 
-## 3. Complexity / synthesis lens over the whole codebase
+## 3. Complexity budget gate (stability — validation; the rewrite *construction* design is deferred to §5)
 
-- [x] complexity lens gates a curated roster (COMPREP wave-1: add / bind / branch / loop)
-- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless
-  - [ ] a subject-producer for every fn (not name-keyed placeholders)
-    - [ ] complexity budget gates the whole codebase
-- [ ] synthesis stays advisory (feasibility limit, not a wiring gap)
+**Operator decision (2026-06-21): budget-gate validation is fine for the stability window; the
+algorithmic-cost *rewrite* design comes after stability, homed with self-hosting (§5).** A budget gate is
+*validation* (§5 — it concedes the suboptimal state is writable, flags after the fact) — accepted here as
+the in-window tool; the construction replacement (rewrite to the cheaper equivalent) is **expansion**, not
+stabilization, so it does not belong in this window (same fencing as Disposition / `Value::Null`-split in
+§0). Detection itself is **total by construction** (cost.dag U2 — every program has an asymptotic class
+via the kernel-level fold), so the gate's reach is a *subject-production* limit (fn-body reflection), not
+a detection one.
+
+- [x] complexity lens projection is total over the kernel (cost.dag U2); the *gate* runs a curated subject roster (COMPREP wave-1: add / bind / branch / loop)
+- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless (**#5437**)
+  - [ ] a subject-producer for every fn (not name-keyed placeholders) (#5437 helper; the *whole-corpus* gate needs fn-body reflection)
+    - [ ] complexity budget gates the whole codebase (gated on fn-body reflection)
+- [ ] synthesis stays advisory (feasibility limit, not a wiring gap; by Rice optimality is a *ratchet*, not a wall — DESIGN §5)
+
+*The rewrite-catalog construction design (detection-vs-enforcement, the catalog, `Unknown`-as-anemic-atom
+dissolution) is preserved in [docs/plans/algebraic-rewrite-optimization.md](docs/plans/algebraic-rewrite-optimization.md)
+and relocated to §5 as a post-stability expansion lane.*
 
 ## 4. Testgen as the bug-class oracle (coverage by construction)
 
@@ -108,6 +123,15 @@ structurally).
 Anchor (do not flip-flop): `.dag` = truth; **purely self-hosting** (v2 emits its own seed, no stage0
 hand-edits); emit **Rust + TypeScript**; then shrink the seed to zero.
 → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)
+
+**Adjacent expansion lane — algorithmic-cost rewrite engine** (the §3 *construction* design, relocated
+here per operator 2026-06-21: it is expansion, not stability, and IR-rewrite / canonicalization is most
+natural once `.dag` is the self-hosted truth). **Post-stability.**
+→ [plan](docs/plans/algebraic-rewrite-optimization.md)
+
+- [ ] rewrite common suboptimal patterns to the cheaper equivalent (`O(n²)→O(n)`, `O(2ⁿ)→O(n)`, polynomial-degree peel by **structural-redundancy keying**, not degree) — construction on the cost axis; **bulletproof where it fires**, **published finite catalog** (silence ≠ optimal), four-witness DONE bar; *⚠ canonical-form-is-truth adds a pipeline normalization pass — load-bearing, escalate*
+- [ ] `Unknown` dissolved over time as an **anemic atom** (decompress→map→reduce), reusing the `Disposition` carrier — never a false pass (`Unknown ⇒ Violates`, already holds)
+- [ ] `O(n^x)→O(n log n)` substitution class as **per-idiom** rules (operator-flagged open: is there a cleaner shared framing?)
 
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)

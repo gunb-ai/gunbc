@@ -27,6 +27,16 @@ import std.os.invocation { SyscallAbiSurface }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst"
+  }
+}
+
 data aarch64_stack_grows_down: StackLayout = { grows_down: true }
 
 data aarch64_general_purpose_registers: List<ArchitecturalRegister> = [

@@ -8,6 +8,16 @@ module extdeps.formats.elf.primitives
 
 import std.exec_format { ExecutableFormat, Elf }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
+  }
+}
+
 // 🟢 terminal — gABI ELFMAG0..ELFMAG3 are irreducible identification bytes.
 type ElfMagicByte = Mag0 | Mag1 | Mag2 | Mag3
 
