@@ -17,13 +17,21 @@ redirect analog; Rust uses `eprintln!`). It is medium-agnostic intent expressed 
 
 ## 2. The audit: a bash-only bypass of a half-connected stack
 
-Sweep of the corpus found **9 `.dag` consumers** that import the bash-AST sidecar
-`extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent:
+Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar
+`extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent.
+**The live grep is the authority for this roster — 10 importers at authoring time, shrinking to 0 as
+the bash-sidecar arc migrates them.** A frozen count would rot (the roster is *derived*, not a
+hand-maintained list — the single-authority point):
 
 - `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`,
   `layering_imports_transport`, `resolved_imports_transport`
-- `dsl/gunbc/ci_yaml_validate`
+- `dsl/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring, landed after the
+  first pre-merge grep — exactly the rot a frozen count invites)
 - `src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`
+
+(Two `*_test` importers — `bash_serializer_witness_test`, `build_artifact_verification_witness_test` —
+are intentionally **not** walled: the guard scans consumer-source roots only, so test harnesses that
+exercise the serializer are excluded by construction, not a roster gap.)
 
 The intent primitives **already exist** but are not wired to a realization path, so consumers reach past
 them and hand-author shell:
@@ -105,8 +113,8 @@ Extending emission=ingestion⁻¹ past syntax to the intent layer:
 host-enumerated `LayerImportFact{layer, path, import_module}` rows. Predicate:
 `import_module ∈ target_ast_vocab_modules ∧ path ∉ realization_edge_allowset`.
 
-**Sequencing (honest, fail-closed):** the 9 current importers go RED today, so it ships with them as a
-**named, shrinking exception roster** = a ratchet, not an instant wall. **Dissolve-on:** the
+**Sequencing (honest, fail-closed):** the importers in the live-grep roster (10 today) go RED today, so
+it ships with them as a **named, shrinking exception roster** = a ratchet, not an instant wall. **Dissolve-on:** the
 bash-sidecar arc migrates each consumer to `emit(intent, Bash)` ⇒ roster empties ⇒ guard flips to a
 pure wall ⇒ `program.dag` is deletable. Discriminating witness: a fresh non-edge module importing
 `ShellStmt` goes RED; an edge module does not. This is what makes `shell(intent())` a realization-edge
