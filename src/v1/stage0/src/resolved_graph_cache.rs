@@ -22,6 +22,22 @@ use crate::v1_std_core::NewlineIndex;
 const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 
+// REALIZATION of the .dag cache authority, not a co-equal definition (DESIGN §3 single
+// authority). The TYPES below — `CacheRejectReason`, `CacheLookupResult`, `CacheWriteOutcome`
+// — are the v1-seed mirror of the modeled vocabulary in `dsl/std/cache_interface.dag`
+// (`CacheRejectReason`, `CacheLookupResult<T>`, `CacheWriteResult<T>`), and the
+// reuse-vs-recompute routing the CALLER does over a `CacheLookupResult`
+// (`cli_run.rs:547-552`) is a realization of the modeled `realize_route` one-door kernel
+// (`cache_interface.dag` §1.7). The .dag is THE definition; this Rust is the transient seed
+// handler of it (§7 Rust→zero). They are not literally unified only because the seed cannot
+// import a .dag type, and the realizer cannot read its own .dag declaration at key-compute
+// time without re-entering this very cache — the SAME wall-after-grounding residual the key
+// axes carry (see the `KeyInputAxis` RESIDUAL FORK note below; DESIGN §5).
+//
+// RESIDUAL FORK (named dissolution trigger — DESIGN §6 / §7): this Rust vocabulary and the
+// `.dag` authority unify when the realizer becomes a `.dag` subgraph and
+// `content(T) = content_hash(subgraph)` (v2/realize), at which point this seed mirror is
+// deleted and the routing IS `realize_route`. Until then: point UP at the .dag, never fork.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheRejectReason {
     ContentDigestMismatch,
@@ -47,6 +63,10 @@ struct CachePayload {
     source_indices: HashMap<String, NewlineIndex>,
 }
 
+// Seed mirror of the modeled `CacheWriteResult<T>` (`cache_interface.dag`); the `write`
+// fn's first-writer-wins decision realizes the modeled `classify_write` purity oracle —
+// `AlreadyExists` is the `WriteSkippedIdempotent` collapse (WriteOnce, same subject). Same
+// point-UP authority + v2/realize dissolution trigger as the lookup enums above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheWriteOutcome {
     Written,
