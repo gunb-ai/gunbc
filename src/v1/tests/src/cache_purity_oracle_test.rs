@@ -394,31 +394,31 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
         resolve_entry_with_index(&warm_index, &entry).expect("warm resolve");
 
     // === TOOTH 2: a verdict-only check is GREEN — the ResolvedGraph (every downstream verdict's
-    // input: emit/lower/eval read the graph, never the diagnostic offsets) is canonically
-    // byte-identical, so ANY verdict over the warm hit agrees with cold. This is precisely why a
+    // input: emit/lower/eval read the graph, never the diagnostic offsets) is structurally
+    // UNCHANGED, so ANY verdict over the warm hit agrees with cold. This is precisely why a
     // two-run verdict measurement (proud-deer's 8/8 gates, 616/616 witnesses) cannot see this
-    // impurity. Canonicalized through `serde_json::Value` so the graph's own internal HashMap
-    // iteration order (benign, quotiented out) cannot stand in for the offsets poison. ===
-    let canon_graph = |g: &ResolvedGraph| -> Vec<u8> {
-        let v: serde_json::Value = serde_json::to_value(g).expect("graph to value");
-        serde_json::to_vec(&v).expect("value to bytes")
-    };
-    let cold_graph_only = canon_graph(&cold_graph);
-    let warm_graph_only = canon_graph(&warm_graph);
+    // impurity — the verdict-bearing graph is identical; only the diagnostic offsets moved. ===
     assert_eq!(
-        v1_rt::bytes_identity_hash(&cold_graph_only),
-        v1_rt::bytes_identity_hash(&warm_graph_only),
+        cold_graph, warm_graph,
         "the verdict-bearing ResolvedGraph must be UNCHANGED — the poison is diagnostic-only"
     );
 
-    // === TOOTH 3: the byte-audit is RED — canonical FULL-payload bytes diverge warm!=cold. ===
+    // === TOOTH 3: the canonical audit is RED — the decoded payload diverges warm!=cold. The gate
+    // compares structurally (`source_indices` is a derived-PartialEq HashMap, so this IS canonical
+    // equality, depth-safe where a serde_json::Value round-trip overflows on a real graph). The
+    // diagnostic offsets are poisoned, so warm != cold — the lossy decode verify-on-read and a
+    // verdict-run both miss. A byte-level corroboration on this small fixture confirms it. ===
+    assert_ne!(
+        cold_si, warm_si,
+        "the warm-decoded source_indices must diverge from cold (the offsets poison) — the audit's \
+         canonical `==` comparison goes RED on exactly this"
+    );
     let warm_full = canonical_graph_bytes(&warm_graph, &warm_si);
     let cold_digest = v1_rt::bytes_identity_hash(&cold_full);
     let warm_digest = v1_rt::bytes_identity_hash(&warm_full);
     assert_ne!(
         cold_digest, warm_digest,
-        "the warm-decoded graph must diverge from the cold compute at the BYTE level — the lossy \
-         decode that verify-on-read and verdict-runs both miss"
+        "byte-level corroboration: the full canonical payload also diverges warm!=cold"
     );
 
     // The audit reports it as a located, typed, LOUD §5 violation (what the floor gate fails on).
