@@ -147,7 +147,7 @@ both directions (§2 N+M). → [plan](docs/plans/idea-machine.md)
 - [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
-- [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern on the markdown medium); makes stale-checkbox / dangling-link / orphan unwritable ([plan](docs/plans/invert-hand-maintained.md))
+- [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) ([plan](docs/plans/invert-hand-maintained.md))
 
 ## 7. HTML / React rendering (expansion — the "website" sellable piece)
 
