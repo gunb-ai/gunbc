@@ -80,13 +80,6 @@ fn derive_checkbox(prs: List<Int>, merged: List<Int>) -> CheckboxState {
   }
 }
 
-fn checkbox_eq(a: CheckboxState, b: CheckboxState) -> Bool {
-  match a {
-    Done => match b { Done => true  Todo => false }
-    Todo => match b { Done => false  Todo => true }
-  }
-}
-
 // === Drift: only an explicit binding can drift ===============================
 
 // The §5 boundary made explicit in the verdict. A HandChecked line is UNDERIVABLE — never Drifted,
@@ -99,7 +92,7 @@ fn status_drift(entry: RoadmapStatusEntry, merged: List<Int>) -> DriftVerdict {
   match entry.binding {
     HandChecked => Underivable
     CompletesIff { prs } =>
-      if checkbox_eq(a: entry.claimed, b: derive_checkbox(prs: prs, merged: merged)) {
+      if entry.claimed == derive_checkbox(prs: prs, merged: merged) {
         Clean
       } else {
         Drifted
