@@ -10,11 +10,9 @@ import v2.compiler.name_resolve {
   AdmissionState,
   Import,
   ImportVisible,
-  admit_import_entry,
-  module_root_nodes_to_qns
+  admit_import_entry
 }
-import v2.std.cross_tree.import_model { FundamentalityUnknown }
-import v2.std.cross_tree.resolution { source_root_set_from_module_roots }
+import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge
@@ -117,8 +115,8 @@ fn witness_malformed_root_is_rejected_holds() -> Bool {
       import_edge: import_edge_for_malformed(),
       state: initial_admission_state(),
       subject_qn: malformed_entry_name(),
-      order: FundamentalityUnknown,
-      active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
+      index: source_root_index_empty(),
+      active_roots: Empty
     )
   )
 }
