@@ -297,6 +297,15 @@ pub fn doc_graph_dangling_link_count() -> i64 {
     build_doc_graph_report().dangling.len() as i64
 }
 
+/// Number of `docs/**/*.md` discovered on the live tree (the node universe size). The §5
+/// empty-result-must-RED backstop: `doc_universe()` fail-OPENS on a `read_dir` error (an empty
+/// universe yields 0 orphans = a false green), so the witness asserts this is `> 0` — zero
+/// discovered docs is itself the bug (`docs/` vanished or unreadable), mirroring the extdeps gate's
+/// `external_authority_live_roster_module_count() > 150` non-emptiness floor.
+pub fn doc_graph_doc_count() -> i64 {
+    doc_universe().len() as i64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,6 +409,16 @@ mod tests {
             report.orphans.is_empty(),
             "orphan docs (unreachable from any root): {:?}",
             report.orphans
+        );
+    }
+
+    // §5 non-emptiness floor: a real repo always has docs, so a zero universe means `read_dir`
+    // failed (fail-open) — the witness must catch it.
+    #[test]
+    fn live_tree_doc_universe_is_nonempty() {
+        assert!(
+            doc_graph_doc_count() > 0,
+            "expected a non-empty docs/ universe; zero means read_dir fail-open"
         );
     }
 

@@ -6071,6 +6071,9 @@ fn eval_builtin(
         "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
             crate::doc_reachability_project::doc_graph_dangling_link_count(),
         ))),
+        "doc_graph_doc_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_doc_count(),
+        ))),
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),

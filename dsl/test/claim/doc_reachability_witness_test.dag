@@ -33,3 +33,9 @@ test fn doc_graph_has_no_orphan_docs() -> Bool {
 test fn doc_graph_has_no_dangling_links() -> Bool {
   return doc_graph_dangling_link_count() == 0
 }
+
+// §5 non-emptiness floor: a zero universe means the `docs/` walk fail-opened (read_dir error),
+// which would make orphan_count==0 a false green — so zero discovered docs is itself RED.
+test fn doc_graph_universe_is_nonempty() -> Bool {
+  return doc_graph_doc_count() > 0
+}

@@ -301,6 +301,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "doc_graph_dangling_link_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),
