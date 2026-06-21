@@ -82,6 +82,8 @@ mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
 mod measure_field_access_test;
 #[cfg(test)]
+mod module_authority_resolution_test;
+#[cfg(test)]
 mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;

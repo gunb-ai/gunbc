@@ -509,16 +509,6 @@ pub fn topological_sort(
             }
             __result
         });
-        let has_std_types = {
-            let mut __found = false;
-            for name in module_names.clone().iter().cloned() {
-                if (name.clone().as_str() == "std.types".to_string().as_str()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
         let explicit_edges = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
@@ -539,91 +529,20 @@ pub fn topological_sort(
             }
             __result
         });
-        let implicit_std_types_edges = if has_std_types.clone() {
-            Rc::new({
-                let mut __result = Vec::new();
-                for m in modules.clone().iter().cloned() {
-                    __result.extend(
-                        (*{
-                            let m_name = authored_name_at(source_indices.clone(), m.clone());
-                            let imports_std_types = {
-                                let mut __found = false;
-                                for imp in module_imports(m.clone()).iter().cloned() {
-                                    if (authored_name_at(source_indices.clone(), imp.clone())
-                                        .as_str()
-                                        == "std.types".to_string().as_str())
-                                    {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            };
-                            if ((((m_name.clone().as_str() != "std.types".to_string().as_str())
-                                && (m_name.clone().as_str()
-                                    != "std.algebra".to_string().as_str()))
-                                && (m_name.clone().as_str()
-                                    != "std.error_primitives".to_string().as_str()))
-                                && (imports_std_types.clone() == false))
-                            {
-                                Rc::new(vec![Rc::new(DepEdge {
-                                    from_module: "std.types".to_string(),
-                                    to_module: m_name.clone(),
-                                })])
-                            } else {
-                                Rc::new(vec![])
-                            }
-                        })
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            })
-        } else {
-            Rc::new(vec![])
-        };
-        let adjacency = v1_rt::concat(explicit_edges, implicit_std_types_edges)
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-                |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
-                    adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
-                },
-            );
+        // §3 single-authority: ordering is import-driven only — the std.types
+        // implicit-parent bootstrap bridge was removed (mirrors
+        // v1.compiler.resolve topological_sort in src/v1/03_resolve.dag).
+        let adjacency = explicit_edges.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
+                adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
+            },
+        );
         let in_degree_map = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, i64>(),
             |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
-                let imports_std_types = {
-                    let mut __found = false;
-                    for imp in module_imports(m.clone()).iter().cloned() {
-                        if (authored_name_at(source_indices.clone(), imp.clone()).as_str()
-                            == "std.types".to_string().as_str())
-                        {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                };
-                let implicit_std_types_in_degree = if ((((has_std_types.clone()
-                    && (m_name.clone().as_str() != "std.types".to_string().as_str()))
-                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str()))
-                    && (m_name.clone().as_str() != "std.error_primitives".to_string().as_str()))
-                    && (imports_std_types.clone() == false))
-                {
-                    1
-                } else {
-                    0
-                };
-                v1_rt::rc_map_insert(
-                    acc,
-                    m_name.clone(),
-                    ((module_imports(m.clone()).len() as i64)
-                        + implicit_std_types_in_degree.clone()),
-                )
+                v1_rt::rc_map_insert(acc, m_name.clone(), module_imports(m.clone()).len() as i64)
             },
         );
         let initial_queue = Rc::new({
