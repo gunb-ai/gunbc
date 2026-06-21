@@ -29,7 +29,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus ([plan](docs/plans/model-realization-fork.md))
 - [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
-- [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427) ([cause table](docs/plans/expensive-test-cause-table.md))
+- [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427) ([cause table](docs/plans/ci-selection-vs-scheduling.md))
 - [ ] **promote-or-delete every inert lens** + de-vacuum thin gates *(silent-wren-739)*
 - [x] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
@@ -45,6 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 **Meta — lock down the reasoning (§7 recursion):**
 
 - [x] **inert-lens hygiene backstop** — every `lens/*.dag` wired or deleted; runs over the corpus (#5433)
+- [ ] **reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs ([plan](docs/plans/inert-layer-lens.md))
 - [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2) *(quick-ant-298)*
 - [ ] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens ([DESIGN §6](DESIGN.md)) *(silent-wren-739)*
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
