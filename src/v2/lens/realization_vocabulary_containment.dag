@@ -32,6 +32,7 @@
 //   receipt), plus the hardcoded-fact lens-unit discriminators.
 
 module v2.lens.realization_vocabulary_containment
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.lens.layering_imports {
   LayerImportFact,
@@ -216,4 +217,14 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
   realization_vocab_containment_holds_canonical(
     facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash)",
+    dissolve_on: "the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
+  },
+  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster."
 }

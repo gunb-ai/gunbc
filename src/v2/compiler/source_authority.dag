@@ -43,6 +43,8 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
+import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.medium { Lossless, Medium }
@@ -70,6 +72,11 @@ type DagSourceReadWitness {
   // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
   // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
   compilation_unit: Symbol
+  // Grounded source-tree provenance: which `--source-root` the host read this file from
+  // (filesystem truth at ingest), NOT a guess from the module's self-declared QN prefix.
+  // Replaces the resolution.dag QN-prefix fallback — see source_root_set_from_ingest below.
+  // dissolve-on: PR-B wires this into resolve_with_admission + deletes the QN fallback.
+  source_root: SourceRootRef
 }
 
 // Whole source-root ingest closure — the same set `--source-root src/v2` walks.
@@ -431,6 +438,23 @@ fn source_root_provenance_coverage_receipt(
     produced_row_count: length(xs: produced),
     coverage_complete: length(xs: ingest) == length(xs: produced)
   }
+}
+
+
+// Grounded active source-root set, folded from the host-tagged ingest witnesses.
+// This is the §4-grounded replacement for resolution.dag's QN-prefix
+// `source_root_set_from_module_roots` — each witness carries the filesystem truth of
+// which `--source-root` it was read from, so the set is derived from provenance, not a
+// guess. INERT in PR-A (defined, not yet wired); PR-B threads it into resolve_with_admission
+// and deletes the QN-prefix fallback (the activation gate in resolution.dag's header).
+fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      source_root_set_insert(roots: acc, r: read.source_root)
+    }
+  )
 }
 
 
