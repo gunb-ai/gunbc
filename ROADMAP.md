@@ -1,99 +1,63 @@
 # gunbc — Roadmap
 
-`DESIGN.md` is the authority for *why*; this is *what's in flight*. A task's real state is its
-branch/PR and the marks on the carrier (SCAFFOLD / dissolve-on / 🟡), not this file.
+`DESIGN.md` is the authority for *why*. This is the **shape of the work** — a scannable,
+dependency-ordered checklist that keeps us honest over time. **Checkboxes are authoritative for
+progress**; detail lives in the linked plan docs — don't restate it here (no dual representations).
+A task's real state is its branch/PR + the carrier marks.
 
-## 1. Session dashboard on `.dag`
+Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**.
 
-Backend only — NOT the frontend.
+## 1. Session dashboard on `.dag` (backend only)
 
-- idea → PR pipeline
+- [ ] idea → PR pipeline
 
-## 2. idea → idea compiler
+## 2. idea → idea compiler (stop anchoring on code)
 
-Stop anchoring on code.
+- [ ] scope
 
-## 3. Self-hosting v2 (Rust + TypeScript)
+## 3. Self-host v2 → delete `src/v1`
 
-**Anchor (decided 2026-06-21, do not flip-flop):** `.dag` is the truth; v2 compiles itself to a
-bit-identical fixed point. Emit to **multiple realizations — Rust AND TypeScript** (both first-class
-self-host targets, not one-or-the-other). Three languages total: **dag** (authority) · **rust** ·
-**typescript**.
+Anchor (do not flip-flop): `.dag` = truth; emit **Rust + TypeScript**; then delete the seed.
+→ [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)
 
-**Terminal goal: delete `src/v1`.** Once v2's emitted compiler builds green and reproduces itself,
-**delete `src/v1/stage0`** (~125k lines of Rust seed + the `gunbc`/`claim_executor`/`regen_stage0`/
-`claim_batch`/`discover_owned_data`/`yaml_check` bins) and any redundant v1 files. The seed shrinks to
-zero — literally.
-
-Today: front-end **done** (whole tree parses/resolves/infers). Open: the emitted whole-tree crate
-doesn't `cargo build` green yet (Route-A last mile); the fixed-point gate is fail-closed (Stage C,
-gated on candidate generation); TS proven only on the `add` slice.
-
-Plan (verified state + tracks + the v1-deletion gating): [docs/plans/v2-self-hosting.md](docs/plans/v2-self-hosting.md)
-
-### De-fork dsl ↔ v2 (collapse the duplication)
-
-`dsl/` is the single authority; `src/v2/` is the compiler. During bootstrap v2 made **mirror
-copies** of pieces of `dsl/std` (because it can't import `dsl/` across trees yet). End goal:
-**v2 imports `dsl/` directly, every duplicate collapses, and no concept has two homes** —
-especially no genuinely historical fork (a name shared by two copies, or two names for one
-concept). Folder/module naming should reflect one authority, not the fork's history.
-
-- **Prerequisite (blocking):** turn on cross-tree import — it's wired but fail-closed
-  (`src/v2/compiler/03_name_resolve.dag` defaults `FundamentalityUnknown` → deny). Needs
-  grounded `source_root` tagging at ingest.
-- Then collapse the clear duplicates (algebra, logic `Classical`→`Bool`, nat, reducible, measure).
-- Then decide per-concept the same-name/different-job pairs (integer, effects, float, coercion,
-  node, verification): rename to disambiguate or merge.
-
-Audit (carrier-grounded census + sequencing): [docs/plans/dsl-v2-defork-audit.md](docs/plans/dsl-v2-defork-audit.md)
+- [x] front-end (parse / resolve / infer) over the whole tree
+- [x] emit whole tree `--target rust` (well-typed under CI gate)
+- [ ] de-fork dsl ↔ v2 (one std authority, no historical forks)
+  - [ ] turn on cross-tree import (wired but fail-closed today)
+    - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
+    - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
+- [ ] emitted crate `cargo build`s green (Route-A last mile)
+  - [ ] regen `stage0` from emitted crate; flip the fixed-point gate (Stage C)
+  - [ ] TypeScript to first-class (target-completeness beyond the `add` slice)
+  - [ ] delete `src/v1` (terminal — after emitted compiler reproduces + covers every v1 host effect/bin)
 
 ## 4. HTML / React rendering
 
-Get it working.
+- [ ] get it working
 
 ## 5. Compute fabric
 
-- privacy — done
-- repo model (internal repo) on compute fabric
-- CI on compute fabric
+- [x] privacy
+- [ ] repo model (internal repo) on compute fabric
+- [ ] CI on compute fabric
 
 ## 6. Complexity / synthesis lens over the whole codebase
 
-End goal: every `fn`/node carries a structural **complexity budget** the lens gates on — not just a
-curated roster. Today coverage is partial:
-
-- Complexity lens (`src/v2/lens/complexity.dag`) is the asymptotic projection of `cost.dag`
-  SymbolicCost; it gates only a **subject roster** (`complexity_gate/subject_complexity_budget_roster.dag`)
-  — COMPREP **wave-1** producers (`add`/`bind`/`branch`/`loop`). Subject reach is tied to COMPREP
-  grammar coverage; more arrives with self-host breadth.
-- Synthesis lens (`src/v2/lens/synthesis.dag`) is compiler-wide but **advisory** (existence
-  lower-bounds don't yield a constructive patch — feasibility limit, not a wiring gap).
-
-Blockers to "whole codebase": (a) a subject-producer for every fn (not name-keyed placeholders);
-(b) the cost-lens loop **zero-absorption** that makes budgets toothless (`symbolic_max` floor fix);
-(c) synthesis stays advisory by nature.
+- [x] complexity lens gates a curated roster (COMPREP wave-1: add / bind / branch / loop)
+- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless
+  - [ ] a subject-producer for every fn (not name-keyed placeholders)
+    - [ ] complexity budget gates the whole codebase
+- [ ] synthesis stays advisory (feasibility limit, not a wiring gap)
 
 ## 7. Minimal work — caching by realization (fail-closed)
 
-**End-state invariant (the acceptance gate):** for every pure transform `T` (resolve, parse, typecheck,
-*and* derived analyses like complexity-synthesis / affected-set — ties to §6), `realize(T)` returns a
-result content-addressed by `hash(inputs ⊕ content(T))`, materialized at the **minimal `Placement`
-spanning T's consumers (its reach)**. A **non-redundant** transform (shared across a layer boundary, or
-recompute-cost > cache-cost) with **no cache supplier at its reach layer** is a located, typed **ERROR**
-that emits a *request to provision a supplier there*. No silent `Recompute`; no under-keyed hit.
+Gate: uncached non-redundant work is an **ERROR**, not "slow". → [plan](docs/plans/realization-measurement-loop.md)
 
-Spine (dependency-ordered): **F1** scheduler width (#5421 merged) · **F2/F3** key-completeness lens +
-`resolved_graph` keyed by construction (#5423) → **P1** honest keys verified by execution (realizer-key
-lens; stable transform-id; census parity) → **P2** one door: `realize(subject)` as sole API
-(dissolves hand-rolled `ParseTable`) → **P3 (core ask)** reach analysis → completeness gate fail-closed
-(land the redundancy-only cut first; cost-based half waits on P4) + supplier provisioning → **P4**
-economic tier (per-transform measured cost → `Materialization` by cost) → **P5** v2 dissolution
-(`content(T) = content_hash(subgraph)` native). External blockers: **B1** #5295 generic-instantiation
-(gates cross-shard `Share`); **B2** v2 cross-tree content-hash / increment-4 (gates P5, turns
-approximation into native).
-
-Inhabits existing carriers (`RealizedStep`/`Materialization`/`Placement`, `CacheLayerPlan`, `reach`,
-`reconcile`), not re-coined. Detailed plan: [docs/plans/realization-measurement-loop.md](docs/plans/realization-measurement-loop.md)
-(⚠️ owned by zesty-deer-479; quick-ant-298's dependency-ordered refinement above should be **reconciled
-into that one doc**, not forked).
+- [x] F1 scheduler gives heavy nodes budgeted width (#5421)
+- [ ] F2/F3 key-completeness lens + `resolved_graph` keyed by construction (#5423, in review)
+  - [ ] P1 honest keys verified by execution (realizer-key lens · stable transform-id · census parity)
+    - [ ] P2 one door: `realize(subject)` as sole API (dissolves hand-rolled `ParseTable`)
+      - [ ] P3 reach → minimal layer + fail-closed completeness gate + supplier provisioning ← **core ask**
+- [ ] P4 economic tier (measured cost → `Materialization` by cost) — needs Phase-0 timing
+- [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
+- blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 v2 cross-tree content-hash / increment-4 (gates P5)
