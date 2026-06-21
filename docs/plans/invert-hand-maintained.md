@@ -83,6 +83,17 @@ prose. The ROADMAP is almost all frame (that is why it is the flagship); DESIGN 
 3. **The drift gate** — `roadmap_gate`: `ROADMAP.md == emit(work_model)`, the `ci_yaml_gate` clone.
 4. **Status derivation** — wire `[x]` / in-progress from PR-merged / branch-open (closes the
    stale-checkbox class; this is the host-fed status bridge, see §7).
+   - **Landed (pure core, first slice):** `gunbc.roadmap_status` derives a line's `RoadmapItemStatus`
+     (`ItemDone | ItemInProgress | ItemTodo`) — and its GFM checkbox `[x]`/`[ ]` — from the *existing*
+     authorities, no re-coining: PR state (`extdeps.github.pulls.PullRequest`) classified by the
+     lifecycle owner (`ctrl.code_change_workflow.classify_github_pr_terminal_anchor` →
+     `CodeChangeStage`). The only new fact is roadmap-specific — a line may have no work node yet
+     (`Absent → Todo`). The 3→2 medium collapse (in-progress → `[ ]`) is the §5 fidelity boundary,
+     faithful to the current legend. Discriminating witnesses
+     (`test/claim/roadmap_status_witness_test.dag`) cover every branch and go RED on a merged-line →
+     `[ ]` regression — the exact stale-checkbox bug this project kills.
+   - **Still ahead:** the *host-fed* wiring (live PR/branch state → status), and consuming this status
+     in the markdown line emit (#2) under the drift gate (#3).
 5. Then the **doc index** (orphan / dangling become emit errors — the reachability wall by construction),
    then partial plan-doc frames.
 
