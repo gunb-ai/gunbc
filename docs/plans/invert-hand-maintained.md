@@ -95,6 +95,16 @@ content) is **not derivable** → author it. The seam is the idea-machine's **`D
 emit what is lossless, fence what is authored, and be *honest at the boundary* rather than fake-generating
 prose. The ROADMAP is almost all frame (that is why it is the flagship); DESIGN is almost all body.
 
+The status edge has a sharper boundary than "has a `(#NNNN)`": a line cites a PR in two roles, and only
+one is derivable. **Completes-iff** — "this line is done iff #N merges" — is the binding the box derives
+from. A bare **mention** as partial evidence is not: ROADMAP §0 "rust-gate coverage" cites merged #5456
+yet correctly stays `[ ]` because the item isn't done (same shape #5427/#5452). So the gate must key on an
+explicit completes-iff marker, never prose-scan for any `#N` — a mention-based rule false-positives on
+every partial-evidence line, a fail-closed-but-*wrong* gate worse than none (§5). Unbound lines are honest
+un-derivable residue (`gunbc.roadmap_status`: `CompletesIff` derives + drift-gates; `HandChecked` never
+gates). Landed as the slice-1 model + discriminating witness (the merged-mention-stays-green case is the
+non-tautology proof).
+
 ## 6. Sequencing
 
 1. **The work-DAG authority model** — what a roadmap line *is* in `.dag` (a work node: title, deps,
