@@ -38,8 +38,8 @@ use crate::cli_run::{
     resolve_entry_with_index, MultiEntryIndex,
 };
 use crate::resolved_graph_cache::{
-    resolved_graph_cache_root_from_env, serialize_fixture_payload_for_test,
-    subject_digest_for_closure,
+    lookup, resolved_graph_cache_root_from_env, serialize_fixture_payload_for_test,
+    subject_digest_for_closure, CacheLookupResult,
 };
 use crate::v1_compiler_compile::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
@@ -58,6 +58,25 @@ fn divergence_fingerprint(
     )
 }
 
+/// Whether the warm path actually exercised the write→read CODEC, made OBSERVABLE so the depth
+/// behavior is a measured fact, not an assertion. After COLD writes the artifact, a `lookup` on
+/// its key classifies the read:
+/// - `Decoded` — the written artifact decoded on read (the codec WAS exercised; warm is a true hit).
+/// - `MissOnRead` — the artifact is on disk (write succeeded) but `read_cached_file`'s
+///   `serde_json::from_slice::<CachePayload>` returned Err (the SAME serde 128-level recursion
+///   limit that overflowed the audit's `Value` round-trip — a graph too DEEP to decode). Production
+///   `read_cached_file` maps this Err to `Miss`, so the warm path RECOMPUTES: FAIL-SAFE (correct
+///   answer, just uncached), NOT a lossy decode. The codec is NOT exercised for such entries.
+/// - `Rejected` — a backend-key / content-digest reject (storage integrity), distinct from depth.
+/// - `Skipped` — the entry did not load/resolve (the discovery gate's concern, not purity's).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DecodeReach {
+    Decoded,
+    MissOnRead,
+    Rejected,
+    Skipped,
+}
+
 /// Audit one entry: a WARM cache hit must equal the COLD compute it cached (canonical structural
 /// `==`, see the module header). Requires `GUNBC_RESOLVED_GRAPH_CACHE_DIR` set to an EMPTY dir
 /// (caller's responsibility) so the entry's key starts UNPRIMED and COLD genuinely computes.
@@ -69,19 +88,20 @@ fn divergence_fingerprint(
 /// rebuilds (the naive form) are ~1200× redundant whole-tree parse-index builds.
 ///
 /// - COLD: the unprimed key → DISK MISS → compute → WRITE.
-/// - WARM: the now-primed key → DISK HIT → DECODE.
+/// - WARM: the now-primed key → DISK HIT → DECODE (or MissOnRead → recompute, fail-safe).
 /// Divergence ⟹ a located, typed [`CachePurityViolation`] (the codec is lossy / the warm hit
-/// is stale): the §5 fail-closed signal. Returns `Ok(())` on equality (pure).
+/// is stale): the §5 fail-closed signal. On equality returns the [`DecodeReach`] — whether the
+/// codec was actually exercised (so the report can state real codec coverage vs depth-Miss).
 pub fn audit_entry_warm_equals_cold(
     index: &MultiEntryIndex,
     roots: &[String],
     entry: &str,
-) -> Result<(), CachePurityViolation> {
+) -> Result<DecodeReach, CachePurityViolation> {
     let sources = match load_sources_for_entry(roots, entry) {
         Ok(s) => s,
         // An entry that no longer loads is not a cache-purity signal; skip (the discovery
         // gate itself fails closed on a missing entry).
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(DecodeReach::Skipped),
     };
     let content_key = subject_digest_for_closure(&sources);
 
@@ -89,14 +109,27 @@ pub fn audit_entry_warm_equals_cold(
     // and writes; the returned graph is the fresh in-memory compute (not a disk read-back).
     let (cold_graph, cold_si) = match resolve_entry_with_index(index, entry) {
         Ok(r) => r,
-        Err(_) => return Ok(()), // resolve error is the discovery gate's concern, not purity's
+        Err(_) => return Ok(DecodeReach::Skipped), // resolve error is the discovery gate's concern
+    };
+
+    // Classify the codec reach: COLD has now written the artifact; a lookup on its key tells us
+    // whether that artifact DECODES on read (codec exercised) or Misses (too deep to decode →
+    // production recomputes, fail-safe). Distinguishes a §5 lossy-decode from a fail-safe Miss.
+    let reach = match resolved_graph_cache_root_from_env() {
+        Some(root) => match lookup(&root, &content_key) {
+            CacheLookupResult::Hit(_) => DecodeReach::Decoded,
+            CacheLookupResult::Miss => DecodeReach::MissOnRead,
+            CacheLookupResult::RejectedHit(_) => DecodeReach::Rejected,
+        },
+        None => DecodeReach::MissOnRead,
     };
 
     // WARM: the now-primed key → DISK HIT → decode (cross_process_lookup short-circuits before any
-    // in-process cache, so this exercises the write→read codec even on the shared index).
+    // in-process cache, so this exercises the write→read codec even on the shared index). On a
+    // MissOnRead this recomputes (fail-safe), so warm == cold trivially holds.
     let (warm_graph, warm_si) = match resolve_entry_with_index(index, entry) {
         Ok(r) => r,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(reach),
     };
 
     // Canonical structural equality (depth-safe; HashMaps compared order-independently).
@@ -108,26 +141,31 @@ pub fn audit_entry_warm_equals_cold(
             cold_digest: divergence_fingerprint(&cold_graph, &cold_si),
         });
     }
-    Ok(())
+    Ok(reach)
 }
 
 /// Audit the floor discovery corpus: each audited entry's warm hit must equal its cold compute.
 /// Fail-closed: returns ALL violations found (the caller fails the gate if non-empty).
 /// `GUNBC_RESOLVED_GRAPH_CACHE_DIR` must be set to an empty dir.
 ///
-/// `max_entries` bounds the audit to the first N entries (sorted, deterministic). The bound is
-/// SOUND for the property under test: the write→read CODEC is a property of the *serializer*,
-/// UNIFORM across entries, so a structurally-diverse sample falsifies a lossy serializer just as a
-/// full sweep does — at a per-run cost the §6 "cheapest path to the pain" demands (a full sweep is
-/// ~one cold resolve of every `*_test.dag` in both trees, eating the very floor wall the cache
-/// enable saves). `None` = full corpus (for a periodic / manual deep run).
+/// `max_entries` bounds the audit to the first N entries (sorted, deterministic). This is an
+/// optional FAST EARLY-SMOKE, NOT the soundness gate — `None` (full corpus) is the sound gate. A
+/// sample cannot be the guarantee: codec fidelity is DEPTH-dependent (the serde 128-level limit,
+/// see [`DecodeReach`]), so "uniform across entries" does NOT hold and entries 51..N are a conceded
+/// bad-state surface. The per-run cost of the full sweep is a wall-clock-on-critical-path problem
+/// solved by scheduling (own readiness layer / job), not by dropping coverage.
 ///
-/// `entries_discovered` vs `entries_audited` makes the bound EXPLICIT (DESIGN §6 "no silent caps").
-/// The §5 HONEST EDGE: sound over what is audited, not complete over all realizations — a codec
-/// loss on a rare type only present in an UN-audited entry can still slip (surfaced, not papered).
+/// `decode_*` counts make the codec's actual REACH a measured fact (DESIGN §6 "no silent caps"):
+/// `decoded` = entries whose write→read codec was truly exercised; `miss_on_read` = entries too
+/// deep to decode → production recomputes (FAIL-SAFE, codec not exercised); `rejected` = storage
+/// reject; `skipped` = did not load/resolve.
 pub struct CorpusAuditReport {
     pub entries_discovered: usize,
     pub entries_audited: usize,
+    pub decoded: usize,
+    pub miss_on_read: usize,
+    pub rejected: usize,
+    pub skipped: usize,
     pub violations: Vec<CachePurityViolation>,
 }
 
@@ -147,7 +185,7 @@ pub fn audit_floor_discovery_corpus(
     let rows = discover_floor_corpus_rows(roots, scan_dirs)?;
 
     // Dedup by ENTRY (the resolved graph is per closure, not per (entry, function)) and sort —
-    // the BTreeSet gives a deterministic order, so the bounded sample is reproducible.
+    // the BTreeSet gives a deterministic order, so the bounded smoke is reproducible.
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for row in &rows {
         seen.insert(row.entry.clone());
@@ -163,14 +201,26 @@ pub fn audit_floor_discovery_corpus(
     let index = build_multi_entry_index(roots);
 
     let mut violations = Vec::new();
+    let mut decoded = 0usize;
+    let mut miss_on_read = 0usize;
+    let mut rejected = 0usize;
+    let mut skipped = 0usize;
     for entry in &entries {
-        if let Err(v) = audit_entry_warm_equals_cold(&index, roots, entry) {
-            violations.push(v);
+        match audit_entry_warm_equals_cold(&index, roots, entry) {
+            Ok(DecodeReach::Decoded) => decoded += 1,
+            Ok(DecodeReach::MissOnRead) => miss_on_read += 1,
+            Ok(DecodeReach::Rejected) => rejected += 1,
+            Ok(DecodeReach::Skipped) => skipped += 1,
+            Err(v) => violations.push(v),
         }
     }
     Ok(CorpusAuditReport {
         entries_discovered,
         entries_audited: entries.len(),
+        decoded,
+        miss_on_read,
+        rejected,
+        skipped,
         violations,
     })
 }
