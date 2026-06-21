@@ -74,9 +74,10 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
 
 - [x] F1 scheduler gives heavy nodes budgeted width (#5421)
 - [x] F2/F3 `resolved_graph` key derived from declared `inputs_considered` — construction, not a lens (#5425)
-  - [ ] P1 honest keys by construction — warm==cold purity oracle (#5429)
+  - [x] P1 honest keys by construction — warm==cold purity oracle (#5429)
     - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
-      - [ ] P3 **resolve-cache enable** — cuts ~18% of floor wall; purity proven (616/616); gated on #5429 ← **core ask**
+      - [x] P3 **resolve-cache enable** + warm==cold co-run audit — full 291-corpus EVERY run, off the floor critical path (width-4 co-process: 695s wall / 17.7GB, hidden under floor wall); purity proven by EXECUTION (0 violations), not "byte-identity by construction"; ~18% floor-wall saving (#5468)
+        - [ ] cache-effectiveness residue: 79% of the corpus is too deep for serde's 128-level decode → uncached-by-design (production Miss→recompute, FAIL-SAFE, not a soundness hole); `serde` `unbounded_depth` would let the deep tail cache and grow the saving (follow-up)
 - [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)
