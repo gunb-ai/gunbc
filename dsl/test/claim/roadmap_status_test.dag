@@ -1,0 +1,150 @@
+// dsl/test/claim/roadmap_status_test.dag
+//
+// §5 discriminating proof for gunbc.roadmap_status — the PR-to-checkbox status derivation, the
+// first slice of inverting the hand-maintained ROADMAP (docs/plans/invert-hand-maintained.md).
+// Proven BY EXECUTION over the derivation folds, not by typecheck or grep.
+//
+// Two halves:
+//
+//   Authority (pr_merged) — merged-ness reads the real `PullRequest.merged_at` field: a PR with
+//   `merged_at` set is merged, one with `merged_at: none` is not. RED if the grounding stops
+//   reading the authority field.
+//
+//   Derivation + drift (derive_checkbox / status_drifted) — a PR-citing line is Done iff EVERY
+//   cited PR is merged; a committed box that disagrees with the derived one is drift. The
+//   discriminating cases are the stale-checkbox defects the plan cites:
+//     - `[x]` claimed on an UNMERGED ref  -> derives Todo -> DRIFT
+//     - `[ ]` claimed on a MERGED ref     -> derives Done -> DRIFT (the #5445/#5453 case)
+//   Flip status_drifted to a tautology (always false) and witness_*_drifts go red.
+//
+// Run: gunbc run --source-root dsl --entry dsl/test/claim/roadmap_status_test.dag \
+//        --function roadmap_status_witnesses --claim-run
+
+module test.claim.roadmap_status
+
+import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
+import extdeps.github.github { GitHubUser, User }
+import gunbc.roadmap_status {
+  CheckboxState,
+  Done,
+  Todo,
+  RoadmapStatusEntry,
+  pr_merged,
+  merged_pr_numbers,
+  derive_checkbox,
+  status_drifted,
+}
+
+// --- Fixtures: two PRs, one merged one open -----------------------------------
+
+data witness_user: GitHubUser = { login: "gunbai-bot", id: 1, type: User }
+data witness_ref: PullRequestRef = { ref: "feature", sha: "deadbeef", label: "gunb:feature" }
+
+// A merged PR (merged_at populated) and an open one (merged_at: none). String->Timestamp
+// coercion is accepted in record-field position, so these are built as direct literals.
+data pr_5445: PullRequest = {
+  number: 5445,
+  title: "merged witness pr",
+  body: none,
+  state: Open,
+  html_url: "https://github.com/gunb/gunbc/pull/5445",
+  user: witness_user,
+  head: witness_ref,
+  base: witness_ref,
+  created_at: "2026-06-21T00:00:00",
+  updated_at: "2026-06-21T00:00:00",
+  merged_at: "2026-06-20T00:00:00",
+  draft: false,
+}
+data pr_open_9999: PullRequest = {
+  number: 9999,
+  title: "open witness pr",
+  body: none,
+  state: Open,
+  html_url: "https://github.com/gunb/gunbc/pull/9999",
+  user: witness_user,
+  head: witness_ref,
+  base: witness_ref,
+  created_at: "2026-06-21T00:00:00",
+  updated_at: "2026-06-21T00:00:00",
+  merged_at: none,
+  draft: false,
+}
+
+// === Authority: pr_merged reads merged_at =====================================
+
+// A PR with merged_at set is merged. RED if the grounding ignores the authority field.
+fn witness_merged_pr_is_merged() -> Bool {
+  pr_merged(pr: pr_5445)
+}
+
+// A PR with merged_at: none is NOT merged.
+fn witness_open_pr_not_merged() -> Bool {
+  !pr_merged(pr: pr_open_9999)
+}
+
+// The host-bridge projection keeps only the merged numbers.
+fn witness_merged_numbers_projection() -> Bool {
+  let nums = merged_pr_numbers(prs: [pr_5445, pr_open_9999])
+  count(nums) == 1 && (nums |> any(n => n == 5445))
+}
+
+// === Derivation: derive_checkbox ==============================================
+
+fn checkbox_is_done(c: CheckboxState) -> Bool {
+  match c { Done => true  Todo => false }
+}
+
+// All cited PRs merged -> Done.
+fn witness_all_merged_derives_done() -> Bool {
+  checkbox_is_done(c: derive_checkbox(refs: [5445], merged: [5445]))
+}
+
+// A single unmerged ref -> Todo (not yet landed).
+fn witness_one_unmerged_derives_todo() -> Bool {
+  !checkbox_is_done(c: derive_checkbox(refs: [5445, 9999], merged: [5445]))
+}
+
+// A line that cites NO merged ref -> Todo.
+fn witness_no_merged_ref_derives_todo() -> Bool {
+  !checkbox_is_done(c: derive_checkbox(refs: [9999], merged: [5445]))
+}
+
+// === Drift: status_drifted (the stale-checkbox tooth) =========================
+
+// `[x]` on an unmerged PR is drift — the committed box claims done, PR state says todo.
+fn witness_done_on_unmerged_drifts() -> Bool {
+  let entry = RoadmapStatusEntry { title: "stale-done line", claimed: Done, pr_refs: [9999] }
+  status_drifted(entry: entry, merged: [5445])
+}
+
+// `[ ]` on a MERGED PR is drift — the #5445/#5453 realization-vocab-guard case the plan cites.
+fn witness_todo_on_merged_drifts() -> Bool {
+  let entry = RoadmapStatusEntry { title: "stale-todo line", claimed: Todo, pr_refs: [5445] }
+  status_drifted(entry: entry, merged: [5445])
+}
+
+// A correctly-marked `[x]` (merged ref) does NOT drift — the gate stays quiet when honest.
+fn witness_done_on_merged_no_drift() -> Bool {
+  let entry = RoadmapStatusEntry { title: "honest-done line", claimed: Done, pr_refs: [5445] }
+  !status_drifted(entry: entry, merged: [5445])
+}
+
+// A correctly-marked `[ ]` (unmerged ref) does NOT drift.
+fn witness_todo_on_unmerged_no_drift() -> Bool {
+  let entry = RoadmapStatusEntry { title: "honest-todo line", claimed: Todo, pr_refs: [9999] }
+  !status_drifted(entry: entry, merged: [5445])
+}
+
+test fn roadmap_status_witnesses() -> Bool {
+  witness_merged_pr_is_merged()
+    && witness_open_pr_not_merged()
+    && witness_merged_numbers_projection()
+    && witness_all_merged_derives_done()
+    && witness_one_unmerged_derives_todo()
+    && witness_no_merged_ref_derives_todo()
+    && witness_done_on_unmerged_drifts()
+    && witness_todo_on_merged_drifts()
+    && witness_done_on_merged_no_drift()
+    && witness_todo_on_unmerged_no_drift()
+}
