@@ -43,18 +43,38 @@ So the operator's instinct holds both ways: the big cost is (c) (seed compiler, 
 and Population B is largely (a)/(b) that should drain back to the per-PR gate, leaving a small
 nightly residue.
 
-### Bimodal evidence (Population A)
+### Bimodal evidence + the isolation-vs-marginal caveat (Population A)
 
 fierce-hawk's single-threaded set has **nothing between 1s and 28s** — tests are either ~instant
 (pure unit) or ≥28s (whole-pipeline). A 2-line `module clean\ntype Widget {…}` snippet
 (`compile_multi`, **no imports**, so the transitive closure is just itself) still costs **69s**.
-The cost is therefore a **fixed whole-pipeline floor, not input-proportional**. PRIMARY cause is
-(c) (the seed compiler's inherent per-compile cost). But that fixed ~28–118s floor is paid
-**identically across ~21 `diagnostics`/`a4_opacity`/`data_cache_scoping`/`cron_tag` tests** —
-so there is a **secondary (b) suspicion at the suite level**: a large constant compiled per
-test (an implicit prelude / a constant analysis pass) that a shared compile-fixture or memoized
-resolve could amortize. This is the exact "re-does work that could be cached" the parent flagged
-(§2, the floor's dormant resolve-cache). Flagged for verification — NOT fixed here.
+The cost is therefore a **fixed floor, not input-proportional**. Two clusters: ~28–39s
+(`cross_representation_equality`, `coproduct_reflection` — which never call `compile_multi`) and
+~66–118s (the `compile_multi`/`diagnostics` tests). Two constants stacked.
+
+**Critical caveat — these are ISOLATION numbers, not marginal suite cost.** fierce-hawk measured
+each test **run alone** (`a4_opacity isolated = 108s`). But:
+- `module_index()` (`helpers.rs:154`) is `MODULE_INDEX.get_or_init(build_module_index)` — a
+  **once-per-process** static; `build_module_index` scans the whole `dsl/`+`src/v2` tree and
+  parses every `.dag`'s module declaration. In an isolated single-test process **each test pays
+  this once**; in a real `cargo test` run (all tests share one process) it is paid **once total**.
+- So the per-test isolation time **double-counts** every once-per-process cost (the module-index
+  whole-tree parse, lazy statics, binary load). The **marginal** per-PR cost of adding these 29
+  tests to the suite is plausibly **far below** the 29×(28–118s) isolation sum.
+
+This bifurcates the root cause and is the pivotal verification:
+- **If the floor is once-per-process setup** (module-index parse / lazy statics): the real per-PR
+  impact is small → these tests may **not need `#[ignore=expensive]` at all** (the "expensive"
+  reading is a measurement artifact of isolation). That dissolves the lane question for Pop A.
+- **If the floor is genuine per-call `compile_sources` cost** (the seed compiler is slow even on
+  2 lines): it is real (c) per-test work that sums in the suite → interim-periodic, dissolve-on
+  self-host.
+- A **suite-level (b)** (a cacheable closure recompiled per `compile_multi` call) sits between:
+  amortizable by a shared compile-fixture / memoized resolve (§2, the dormant resolve-cache).
+
+**The discriminating experiment** (parent's call — it is measurement, which the directive
+reserves): compare *single-test-isolation* time vs *full-suite-marginal* time (suite-with-test
+minus suite-without). Cheap, decisive, and host-load-tolerant if run carefully. NOT run here.
 
 ## Population A — fierce-hawk's measured (c) set (single-threaded user-CPU ≈ wall)
 
