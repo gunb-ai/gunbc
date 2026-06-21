@@ -358,6 +358,37 @@ fn parse_table_empty() -> ParseTable {
   }
 }
 
+// --- ParseTable content-key (realize SUBJECT) — DESIGN-FIRST model, node adhoc-822f5c65-e9c P2 ---
+//
+// The positional cell key ParsePositionKey {position, production} is unique only WITHIN one table;
+// the table itself is scoped by grammar_digest × token_stream_digest. The realize kernel
+// (std.cache_interface, ROADMAP §2 P2 "one door") keys EVERY cache on a single content-addressed
+// SUBJECT, so a parse-memo cell's subject must fold BOTH the table scope and the cell coordinate
+// into one content hash (the "ParseTableSubject" the parse_table_memo.dag evidence row names):
+//   subject = grammar_digest ⊕ token_stream_digest ⊕ position ⊕ production
+// reusing v2.std.node combine_hash / byte_limb_hash_peano_digest / atom_identity_hash — NO fresh
+// hashing authority (§2/§3 single authority). Distinct (grammar, token-stream, position, production)
+// derive distinct subjects; identical inputs derive an identical subject (deterministic) — that IS
+// the content-addressing property a realize subject requires (proven by execution in
+// parse/parse_table_content_key_test.dag).
+//
+// SCOPE (per manager, model-before-implement): this derives the subject ONLY. It does NOT route
+// parse_table_lookup / parse_table_insert / parse_nonterminal_memoized_core through it — that fold
+// rewire is the cementing step, HELD (escalate before touching the fold). Binding this subject to the
+// std `realize` kernel proper (ArtifactIdentity<ParseExprResult> / realize_route) is BLOCKED on the
+// dsl→v2 cross-tree import: 02_parse is `module v2.compiler.parse` and the realize kernel lives in
+// `dsl/std/cache_interface` (there is no v2.std.cache_interface), so the ArtifactKindId stays the
+// Symbol mirror (parse_table_artifact_kind above) on the same de-fork horizon.
+fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
+  combine_hash(
+    a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
+    b: combine_hash(
+      a: byte_limb_hash_peano_digest(limb: key.position),
+      b: atom_identity_hash(s: key.production)
+    )
+  )
+}
+
 fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
   length(xs: all_tokens) - length(xs: tokens)
 }
