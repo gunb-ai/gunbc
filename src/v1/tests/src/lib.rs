@@ -18,13 +18,13 @@ mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
 #[cfg(test)]
-mod body_producer_infer_profile_test;
-#[cfg(test)]
 mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod coproduct_reflection_conformance_test;
+#[cfg(test)]
+mod coverage_completeness_lens_test;
 #[cfg(test)]
 mod cron_tag_test;
 #[cfg(test)]

@@ -28,9 +28,11 @@ import gunbc.ci_spec {
 
 // Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
 // pass iff all three succeed.
-// SCAFFOLD — gate scope: hermetic seam discriminators only (interp_recorded_fixture).
-// Dissolve-on: promote to extra_args ["--workspace"] when v1-compiler --lib self_* quartet
-// and full v1-compiler-tests package are green without ignored tests (§6 named trigger).
+// SCAFFOLD — gate scope: the WHOLE v1-compiler-tests suite (no allowlist filter); coverage holds
+// by construction (cargo runs all-except-`#[ignore]`d), excuses are written reasons in source,
+// and `coverage_completeness_lens_test` is the fail-closed residue (ci_spec.ci_rust_gate_test_command).
+// Dissolve-on: promote to extra_args ["--workspace"] when the v1-compiler --lib self_* quartet
+// joins the gate green (§6 named trigger).
 func run_gates() -> ProcessExit {
   fmt = shell.Exec.Run(
     script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())

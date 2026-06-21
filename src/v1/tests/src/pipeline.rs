@@ -18,7 +18,7 @@ use v1_compiler::v1_std_core::CompilerDiagnostic;
 /// is tested by strict_compile_diagnostic_count (which also discovers
 /// src/v1/ files from disk, no hardcoded list).
 #[test]
-#[ignore] // run with: cargo test -p v1-compiler-tests full_dsl_compiles -- --ignored
+#[ignore = "run with: cargo test -p v1-compiler-tests full_dsl_compiles -- --ignored"]
 fn full_dsl_compiles() {
     let ws = workspace_root();
 
@@ -1529,7 +1529,7 @@ fn lambda_record_optional_fields_are_wrapped() {
 }
 
 #[test]
-#[ignore] // stage0 does not yet validate that func defaults must be literals
+#[ignore = "stage0 does not yet validate that func defaults must be literals"]
 fn workflow_cli_defaults_must_be_literal() {
     let source = "module test\nfn helper() -> String { \"x\" }\nfunc greet(name: String = helper()) -> String { name }\n";
     let result = compile_dag(source);
@@ -2426,7 +2426,7 @@ fn map_index_emits_lookup_style_rust() {
 }
 
 #[test]
-#[ignore] // Rc sharing bridge regressed from partial cherry-pick; needs full bootstrap-closure branch
+#[ignore = "Rc sharing bridge regressed from partial cherry-pick; needs full bootstrap-closure branch"]
 fn rust_container_ops_emit_rc_sharing_bridges() {
     let source = "module test_ff8\nfn empty_registry() -> Map<String, Int> { empty_map() }\nfn keys(m: Map<String, Int>) -> List<String> { map_keys(m) }\nfn values(m: Map<String, Int>) -> List<Int> { map_values(m) }\nfn prefix(xs: List<Int>) -> List<Int> { xs |> take(3) }\nfn append_one(xs: List<Int>) -> List<Int> { xs |> append(42) }\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
@@ -2624,7 +2624,7 @@ fn parse_error_does_not_leak_to_resolve() {
 // ── Complexity report tests ─────────────────────────────────────────────
 
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_report_structured() {
     let source = "module cplx\nfn constant_work(x: Int) -> Int { x }\nfn linear_map(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i + 1 })\n}\nfn linear_fold(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn nested_iteration(groups: List<List<Int>>) -> List<Int> {\n  flat_map(groups, fn(g) { map(g, fn(i) { i }) })\n}\nfn filter_then_map(items: List<Int>) -> List<Int> {\n  let filtered = filter(items, fn(i) { i > 0 })\n  map(filtered, fn(i) { i * 2 })\n}\nfn for_each_loop(items: List<Int>) -> List<Int> {\n  for i in items { i + 1 }\n}\nfn count_items(items: List<Int>) -> Int {\n  items |> count\n}\n";
     let result = compile_dag(source);
@@ -2653,7 +2653,7 @@ fn complexity_report_structured() {
 
 /// Non-recursive functions should always have Proven certainty.
 #[test]
-#[ignore] // 119s — hanging in complexity analysis; triage under PERF track
+#[ignore = "119s — hanging in complexity analysis; triage under PERF track"]
 fn complexity_non_recursive_proven() {
     let source = r#"module baseline
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -2847,7 +2847,7 @@ fn parse_items(state: ParserState) -> ParseResult {
 }
 
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn soundness_lambda_fold_children_accepted() {
     let source = r#"module lambda_fold
 type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
@@ -2909,7 +2909,7 @@ fn is_constant_class_str(class: &str) -> bool {
 
 /// O(1) — constant time: pure arithmetic and conditionals.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_class_constant() {
     let source = r#"module constant
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -2933,7 +2933,7 @@ fn triple(x: Int) -> Int { x * 3 }
 
 /// O(n) — linear: single fold, map, filter, count.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_class_linear() {
     let source = r#"module linear
 fn sum_items(items: List<Int>) -> Int {
@@ -2961,7 +2961,7 @@ fn pos_only(items: List<Int>) -> List<Int> {
 
 /// O(n²) — quadratic: nested fold over same collection.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_class_quadratic() {
     let source = r#"module quadratic
 fn all_pairs_sum(items: List<Int>) -> Int {
@@ -2989,7 +2989,7 @@ fn all_pairs_sum(items: List<Int>) -> Int {
 
 /// O(n × m) — bilinear: fold over one collection, inner operation on another.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_class_bilinear() {
     let source = r#"module bilinear
 fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
@@ -3016,7 +3016,7 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
 
 /// sort_by — should be Proven with O(n log n) via CostLog.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_class_sort_proven() {
     let source = r#"module sorting
 fn sort_ascending(items: List<Int>) -> List<Int> {
@@ -3072,7 +3072,7 @@ fn complexity_class_max_keeps_log_terms() {
 
 /// Structural classification: O(1) functions produce constant class.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn structural_classify_constant_is_cost_const() {
     let source = r#"module sconst
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -3116,7 +3116,7 @@ fn expand(items: List<Int>) -> List<Int> {
 
 /// Verify that the structural complexity report contains all analyzed functions.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_report_covers_all_functions() {
     let source = r#"module coverage
 fn f1(x: Int) -> Int { x + 1 }
@@ -3151,7 +3151,7 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
 
 /// Structural data scales to any number of functions without elision.
 #[test]
-#[ignore] // complexity analysis disabled for memory — re-enable with CX track
+#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
 fn complexity_report_scales_to_large_programs() {
     let mut source = String::from("module huge\n");
     for idx in 0..401 {
@@ -3202,7 +3202,7 @@ fn match_bound_variable_always_cloned() {
 // real code with recursive tree-walk functions.
 
 #[test]
-#[ignore] // heavy test — run manually with --ignored --nocapture
+#[ignore = "heavy test — run manually with --ignored --nocapture"]
 fn complexity_self_analysis_subset() {
     // Self-compile complexity analysis requires the release binary
     // (debug mode OOMs on ~1600 functions). Use the subprocess approach.
@@ -3776,7 +3776,7 @@ fn render(name: String) -> String {
 // Diagnostic: compile only 02_parse.dag and dump parser SCC edge classifications.
 // Avoids OOM from full self-compile while giving ground truth on edge progress.
 #[test]
-#[ignore]
+#[ignore = "diagnostic harness: dumps parser SCC edge classifications for manual triage, no assertions"]
 fn diag_parser_scc_edges() {
     use v1_compiler::std_termination::DescentEvidence;
     use v1_compiler::v1_compiler_compile::{extract_func_entries, front_end_sources};
@@ -3870,7 +3870,7 @@ fn diag_parser_scc_edges() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "diagnostic harness: dumps parse node-decl progress env for manual triage, no assertions"]
 fn diag_parse_node_decl_env() {
     use v1_compiler::v1_compiler_compile::{extract_func_entries, front_end_sources};
     use v1_compiler::v1_compiler_complexity::{
@@ -4059,7 +4059,7 @@ fn tco_through_match_arms() {
 // =========================================================================
 
 #[test]
-#[ignore] // CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite
+#[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
 fn non_descending_recursion_is_rejected() {
     let source = "module spin_test\n\nfn spin(n: Int) -> Int {\n  spin(n: n)\n}\n";
     let result = compile_dag(source);
@@ -4095,7 +4095,7 @@ fn shadowed_descending_recursion_is_allowed() {
 }
 
 #[test]
-#[ignore] // CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite
+#[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
 fn ascending_recursion_is_rejected() {
     let source = "module spin_up\n\nfn spin(n: Int) -> Int {\n  spin(n: n + 1)\n}\n";
     let result = compile_dag(source);
@@ -4110,7 +4110,7 @@ fn ascending_recursion_is_rejected() {
 }
 
 #[test]
-#[ignore] // CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite
+#[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
 fn multiplicative_recursion_is_rejected() {
     let source = "module spin_mul\n\nfn spin(n: Int) -> Int {\n  spin(n: n * n)\n}\n";
     let result = compile_dag(source);
@@ -4125,7 +4125,7 @@ fn multiplicative_recursion_is_rejected() {
 }
 
 #[test]
-#[ignore] // CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite
+#[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
 fn variable_rethread_recursion_is_rejected() {
     let source = "module bounce_test\n\nfn bounce(n: Int, m: Int) -> Int {\n  if n <= 0 { 0 }\n  else { bounce(n: m, m: m) }\n}\n";
     let result = compile_dag(source);
@@ -4142,7 +4142,7 @@ fn variable_rethread_recursion_is_rejected() {
 }
 
 #[test]
-#[ignore] // CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite
+#[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
 fn mutual_recursion_is_rejected() {
     let source = "module mutual_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
@@ -4167,7 +4167,7 @@ fn mutual_arithmetic_recursion_is_allowed() {
 }
 
 #[test]
-#[ignore] // CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite
+#[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
 fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
     let source = "module mutual_wrong_measure\n\nfn ping(n: Int, m: Int) -> Bool {\n  if n <= 0 { true }\n  else { pong(n: n, m: n - 1) }\n}\n\nfn pong(n: Int, m: Int) -> Bool {\n  if n <= 0 { false }\n  else { ping(n: n, m: n - 1) }\n}\n";
     let result = compile_dag(source);
@@ -4183,7 +4183,7 @@ fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
 }
 
 #[test]
-#[ignore] // CX acceptance criteria: non-SCC callers into cycles must not be flagged (PR #301)
+#[ignore = "CX acceptance criteria: non-SCC callers into cycles must not be flagged (PR #301)"]
 fn function_calling_into_cycle_is_not_rejected() {
     // h calls into the ping<->pong cycle but is not part of it.
     // Must NOT be flagged as mutual recursion.
@@ -5249,7 +5249,7 @@ fn join_ints(xs: List<Int>) -> String {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
+#[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
 fn map_wrong_callback_arity_fails_closed() {
     let source = r#"module map_wrong_arity
 
@@ -5267,7 +5267,7 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
+#[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
 fn sort_by_wrong_callback_arity_fails_closed() {
     let source = r#"module sort_by_wrong_arity
 
@@ -5285,7 +5285,7 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
+#[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
 fn map_named_callable_wrong_arity_fails_closed() {
     let source = r#"module map_named_wrong_arity
 
@@ -5307,7 +5307,7 @@ fn broken(xs: List<Int>) -> List<String> {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
+#[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
 fn flat_map_wrong_callback_return_type_fails_closed() {
     let source = r#"module flat_map_wrong_return
 
@@ -5325,7 +5325,7 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
-#[ignore] // requires full structural algebra authority (codex/l1-bootstrap-closure)
+#[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
 fn flat_map_named_callable_wrong_return_type_fails_closed() {
     let source = r#"module flat_map_named_wrong_return
 
@@ -8040,7 +8040,7 @@ fn scoped_closure_is_smaller_than_whole_v2_tree() {
 }
 
 #[test]
-#[ignore] // Boundary: N_v1 — v1 emitter (`compile_dag_named_with_source_roots`) on scoped v2 closure.
+#[ignore = "Boundary: N_v1 — v1 emitter (`compile_dag_named_with_source_roots`) on scoped v2 closure."]
 fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
     let dsl_root = ws.join("dsl");
@@ -8132,7 +8132,7 @@ fn count_dag_files_under(dir: &std::path::Path) -> usize {
 }
 
 #[test]
-#[ignore] // Boundary test: writes temp project and runs cargo check.
+#[ignore = "Boundary test: writes temp project and runs cargo check."]
 fn v2_trivial_import_emits_rust_that_cargo_checks() {
     let ws = crate::helpers::workspace_root();
     let trivial_root = unique_temp_dir("v2-trivial-src");
@@ -8170,7 +8170,7 @@ fn v2_trivial_import_emits_rust_that_cargo_checks() {
 }
 
 #[test]
-#[ignore] // Expensive: reads from disk, writes temp project, runs cargo check
+#[ignore = "Expensive: reads from disk, writes temp project, runs cargo check"]
 fn review_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
@@ -8270,7 +8270,7 @@ fn review_dag_compiles_to_rust() {
 
 // ── RE-2: review.dag acceptance tests ─────────────────────────────────────
 #[test]
-#[ignore] // Expensive: reads review.dag from disk, resolves transitive imports
+#[ignore = "Expensive: reads review.dag from disk, resolves transitive imports"]
 fn review_dag_has_review_subcommand() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
@@ -8288,7 +8288,7 @@ fn review_dag_has_review_subcommand() {
 }
 
 #[test]
-#[ignore] // Expensive: reads review.dag from disk, resolves transitive imports
+#[ignore = "Expensive: reads review.dag from disk, resolves transitive imports"]
 fn review_dag_emits_cargo_with_deps() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
@@ -8307,7 +8307,7 @@ fn review_dag_emits_cargo_with_deps() {
 
 // ── RE-2: review.dag builds and runs ─────────────────────────────────────
 #[test]
-#[ignore] // Expensive: full cargo build + binary execution (~60-120s)
+#[ignore = "Expensive: full cargo build + binary execution (~60-120s)"]
 fn review_dag_builds_and_runs_dry_run() {
     // ── Stage 1: Compile review.dag to Rust ──────────────────────────
     let ws = crate::helpers::workspace_root();
@@ -10330,7 +10330,7 @@ service test.Llm {
 }
 
 #[test]
-#[ignore] // Expensive: reads from disk, resolves transitive imports
+#[ignore = "Expensive: reads from disk, resolves transitive imports"]
 fn anthropic_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
@@ -10507,7 +10507,7 @@ func ask_rest(api_key: Secret, prompt: String) -> String {
 // Full L4 tests require Track 12 (verification from structure).
 // Requires ANTHROPIC_API_KEY in the environment.
 #[test]
-#[ignore] // Expensive: builds binary, calls real Anthropic API
+#[ignore = "Expensive: builds binary, calls real Anthropic API"]
 fn anthropic_live_e2e() {
     if std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!("Skipping live test: ANTHROPIC_API_KEY not set");
@@ -12081,7 +12081,7 @@ fn depth(w: Wrapper) -> Int {
 // ── CX complexity report dump ──────────────────────────────────────────
 
 #[test]
-#[ignore] // run with: cargo test -p v1-compiler-tests dump_complexity_report -- --ignored --nocapture
+#[ignore = "run with: cargo test -p v1-compiler-tests dump_complexity_report -- --ignored --nocapture"]
 fn dump_complexity_report() {
     let ws = workspace_root();
     let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
@@ -12140,7 +12140,7 @@ fn dump_complexity_report() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "diagnostic harness: dumps render_node_type self-call evidence for manual triage, no assertions"]
 fn diag_render_node_type_evidence() {
     use v1_compiler::v1_compiler_compile::{extract_func_entries, front_end_sources};
     use v1_compiler::v1_compiler_complexity::{collect_self_call_evidence, max_path_self_calls};
@@ -12228,7 +12228,7 @@ fn diag_render_node_type_evidence() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "diagnostic harness: dumps emitter SCC/CX tree edges for manual triage, no assertions"]
 fn diag_emitter_scc() {
     use v1_compiler::v1_compiler_compile::{extract_func_entries, front_end_sources};
     use v1_compiler::v1_compiler_complexity::{
