@@ -35,7 +35,7 @@ so they cannot be mutually consistent:
 
 | Dimension | Set today by | Blind to |
 | --- | --- | --- |
-| floor **spawn width** | `min(shard_count, cores)` (`std/realization_width.dag`) + memory term (#5444, merging) | the true core count (envelope says 64c — **a lie**, it's 128c); pids cap |
+| floor **spawn width** | a **pinned constant 4** (`gunbc_ci_floor_spawn_width`, `ci_floor_plan.dag:292`) — the memory-aware derivation was *removed* as unwired (#5419); #5444 (not yet on main) re-adds the memory term | the true core count (envelope says 64c — **a lie**, it's 128c); the ~124 idle cores; the pids cap |
 | **host packing** (PRs/host) | implicit — ~one PR's CI runs at a time across 50 runner units | the idle 120+ cores |
 | per-build **fan-out** | `CARGO_BUILD_JOBS` × codegen-units (debug 256) × LLVM | the pids cap it then bursts |
 | cgroup **pids cap** | `TasksMax=4096` hand-set drop-in (ctrl) | the fan-out that legitimately needs >4096 |
@@ -57,7 +57,7 @@ and thrashing, because both the width floor and the fan-out ceiling come from th
 | Knob | Derivation from the envelope | Tier (§4) | Owner | Status |
 | --- | --- | --- | --- | --- |
 | measured host facts | **the envelope itself** — cores, mem, pids capacity, *measured* | ctrl realization | ctrl | model is **wrong** (64c/256GB; real 128c/128GB) — **fix first** |
-| spawn width | `min(shard_demand, cores, mem_budget ÷ per-shard-peak, pids_budget ÷ per-shard-pids)` — generalize `bounded_host_spawn_width` (today `min(shard_count, cores)`) with the mem term (#5444) + the pids term, and raise `shard_demand` so width isn't bottlenecked below the envelope | public | quick-ant (slice) | §2 below |
+| spawn width | `min(shard_demand, cores, mem_budget ÷ per-shard-peak, pids_budget ÷ per-shard-pids)` — replace the **pinned 4** with a derivation that lifts **both** the pin **and** the `shard_demand` cap from the envelope (cores ∧ mem ∧ pids), building on #5444's mem term (+#5421's layer-at-once, done) so the corpus actually uses the 128c/115GB-free headroom | public | quick-ant (slice) | §5 below |
 | per-build fan-out | codegen-units / `CARGO_BUILD_JOBS` capped so one build's pids ≤ `pids_cap ÷ peak_concurrent_builds` | public (test profile) | bright-stag (#5456 area) | §3 below |
 | pids cap (`TasksMax`) | `≥ peak_per_build_pids × safety`, bounded by `kernel_threads_max ÷ runner_count` | ctrl realization | ctrl | tourniquet applied (4096→16384, 2026-06-21); should become **derived** |
 | jobserver tokens | a function of cores (the cooperative compile limit), consistent with the pids cap | ctrl realization | ctrl | derive, don't magic-constant |
@@ -90,10 +90,12 @@ host-fact grounding + unit generation → ctrl.
    *Everything downstream inherits this; you cannot derive width from a lying envelope.* (ctrl + the
    `compute_fabric` host facts.)
 2. **Spawn width up** — derive width from the grounded envelope (cores ∧ mem ∧ pids), raising it toward
-   the host's real capacity instead of the low bound that leaves 120 cores idle. Builds on **#5444**
-   (memory term) + **#5421/#5375** (per-node demand, even-width removal, memory-aware — *already
-   landed*); this is a **refinement**, not a re-derivation. **Owned by quick-ant** (single slice — see
-   §6; do **not** fork). Current effective width = **[quick-ant confirm]**.
+   the host's real capacity instead of the low bound that leaves ~124 cores idle. **Current width is a
+   pinned constant 4** (`ci_floor_plan.dag:292`; the memory-aware model was removed as unwired in #5419)
+   — on 128c that is ~3% of cores from width alone. The lever lifts **both** the pin **and** the
+   `shard_count` cap on the derivation. Builds on **#5444** (memory term, re-adds it; not yet on main) +
+   **#5421/#5375** (per-node demand, even-width removal — *already landed*); this is a **refinement**,
+   not a re-derivation. **Owned by quick-ant** (single fresh slice — see §6; do **not** fork).
 3. **Cap the per-build fan-out** — codegen-units, so one build can't burst the pids cap. Composes into
    **one** `[profile.test]` block with bright-stag's **#5456** opt-level work (not a fork).
 4. **(2) and (3) derive from the same envelope** ⇒ the coherent operating point. Then generate the ctrl
@@ -107,8 +109,10 @@ CI-slow win. (1) is its precondition.
 - **spawn width** is **quick-ant's lane** — a single slice on top of #5444/#5421. `warm-crane-135`
   (an earlier candidate owner) is **archived** (closed 2026-06-20); there is no parallel item, and one
   must not be opened — a forked width fix would be the exact §3 violation this doc exists to fix.
-  Note: `adhoc-240256ec-32b` is **done** (it = merged #5421); the remaining "derive width up /
-  host-packing" work needs its own correctly-scoped item — **[quick-ant to identify/open]**.
+  Note: `adhoc-240256ec-32b` is **done** (it = merged #5421) — *not* the open slice; no existing
+  open item covers "derive width up (unpin + lift the `shard_count` cap) + host-packing across PRs", so
+  quick-ant **reopen-scopes a fresh slice** (confirmed), sequenced after envelope-grounding (#1) and
+  built on #5444 + #5421.
 - **fan-out cap** → bright-stag (test-profile owner), composed with #5456.
 - **host-fact grounding + unit generation** → ctrl.
 - **this doc + the §1 ROADMAP bullets** → bright-stag applies (author→owner pattern); quick-ant
