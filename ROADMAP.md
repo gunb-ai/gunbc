@@ -50,8 +50,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **inert-lens hygiene backstop** — every `lens/*.dag` wired or deleted; runs over the corpus (#5433)
 - [ ] **reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs ([plan](docs/plans/inert-layer-lens.md))
-- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2) *(quick-ant-298)*
-- [x] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens (#5476) ([DESIGN §6](DESIGN.md)) *(silent-wren-739)*
+- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2; [merge-freshness decision record](docs/plans/ci-merge-freshness.md)) *(quick-ant-298)*
+- [x] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens (#5476; [plan](docs/plans/construction-justification-rule.md), [DESIGN §6](DESIGN.md)) *(silent-wren-739)*
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc
@@ -69,7 +69,7 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
   - [ ] per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)
   - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*
 - [ ] **floor runs reliably & affordably** — memory-aware scheduling (spawn_width is memory-blind → OOM as the corpus grows) + kill sccache false-greens
-- [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open *(quick-ant-298)*
+- [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open ([force-check plan](docs/plans/compile-clean-forcecheck.md)) *(quick-ant-298)*
 - [ ] repo model (internal repo) on compute fabric
 - [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
 - [ ] *(downstream)* compute fabric as a sellable infra piece
@@ -85,6 +85,7 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
 - [x] F2/F3 `resolved_graph` key derived from declared `inputs_considered` — construction, not a lens (#5425)
   - [ ] P1 honest keys by construction — warm==cold purity oracle (#5429)
     - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
+      - hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))
       - [ ] P3 **resolve-cache enable** — cuts ~18% of floor wall; purity proven (616/616); gated on #5429 ← **core ask**
 - [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2

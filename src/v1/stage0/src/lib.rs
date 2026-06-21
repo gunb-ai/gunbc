@@ -15,6 +15,7 @@
 pub mod cache_purity_oracle;
 pub mod cli_run;
 pub mod coproduct_reflection;
+pub mod doc_reachability_project;
 pub mod extdeps_cargo;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
