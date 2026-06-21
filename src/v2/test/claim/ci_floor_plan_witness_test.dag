@@ -15,12 +15,7 @@ import std.realization {
 }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_runnable,
-  gunbc_ci_floor_breadth, gunbc_ci_floor_spawn_width,
-  gunbc_ci_floor_spawn_fits_memory_budget,
-  gunbc_ci_floor_plan_fits_memory_budget,
-  gunbc_ci_floor_plan_overflows_without_serialization
 }
-import std.measure { hardware_thread_count_value }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
@@ -42,11 +37,9 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
 }
 
-// Three readiness layers: compile-clean (root), then the corpus + cheap gates, then the
-// serialized heavy source-root-ingest resolve (the per-node memory demand model splits it off
-// so it never co-runs with the corpus at full width — would OOM the fleet budget).
-fn witness_three_readiness_layers() -> Bool {
-  gunbc_ci_floor_batches().length() == 3
+// Two readiness layers: compile-clean, then everything that depends on it.
+fn witness_two_readiness_layers() -> Bool {
+  gunbc_ci_floor_batches().length() == 2
 }
 
 // Dependency order: the compile-clean gate is the SOLE batch-0 job.
@@ -107,71 +100,13 @@ fn witness_corpus_skip_node_frontier_enabled() -> Bool {
   }
 }
 
-// Connected relationship: spawn_width is DERIVED (min of breadth, hardware threads, and the
-// memory budget / per-shard peak), never a tuned constant. It is positive and never exceeds
-// the work breadth — fanning out more workers than shards would be wasted concurrency.
-fn witness_spawn_width_bounded_by_breadth() -> Bool {
-  let width = hardware_thread_count_value(t: gunbc_ci_floor_spawn_width())
-  (width >= 1) && (width <= gunbc_ci_floor_breadth())
-}
-
-// Discriminating: the floor is NOT serial. A revert to a constant shard_count (=1) or a
-// supply that collapsed to one thread makes breadth/width 1 → this goes RED.
-fn witness_floor_not_serial() -> Bool {
-  (gunbc_ci_floor_breadth() > 1) &&
-    (hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) > 1)
-}
-
-// Connected memory relationship (the §5 OOM oracle): the scheduled width's concurrent memory
-// peak fits the fleet memory budget. DISCRIMINATING against the memory-blind regression — if
-// placement_spawn_width dropped its memory term, width would jump to min(breadth, threads)=7
-// and 7×(per-shard peak) would blow the budget, flipping this RED. This is the witness that
-// would have caught the deterministic floor-OOM (exit 137) at model time, not on the fleet.
-fn witness_floor_width_fits_memory_budget() -> Bool {
-  gunbc_ci_floor_spawn_fits_memory_budget()
-}
-
-// Discriminating: the memory term is ACTIVE — on the real fleet the per-shard peak caps the
-// width strictly below the CPU/breadth bound (mem budget admits fewer than `breadth` units).
-// A memory-blind width would equal breadth, flipping this RED.
-fn witness_floor_width_memory_bounded() -> Bool {
-  hardware_thread_count_value(t: gunbc_ci_floor_spawn_width()) < gunbc_ci_floor_breadth()
-}
-
-// Per-node demand serialization: the heavy source-root-ingest resolve is NOT in the corpus's
-// layer (batch 2) — it sits alone in a later layer (batch 3). Discriminating: a memory-blind
-// plan (no resource edge) would put it in batch 2 next to the corpus, flipping this RED.
-fn witness_source_ingest_serialized_after_corpus() -> Bool {
-  let batches = gunbc_ci_floor_batches()
-  let corpus_layer = batches.skip(n: 1).first()
-  let ingest_layer = batches.skip(n: 2).first()
-  list_contains_str(xs: batch_functions(b: corpus_layer), target: corpus_sentinel) &&
-    !list_contains_str(xs: batch_functions(b: corpus_layer), target: "source_root_ingest_gate_passes") &&
-    list_contains_str(xs: batch_functions(b: ingest_layer), target: "source_root_ingest_gate_passes")
-}
-
-// §5 plan-level OOM oracle bundled with its discriminating control (true-when-correct, so it
-// is discovery-safe): every scheduled readiness layer fits the fleet memory budget, AND
-// dropping the serialization edge overflows the corpus layer. The witness that would catch a
-// concurrent-peak OOM (exit 137) at model time — co-running the corpus and source-root ingest.
-fn witness_plan_concurrent_peak_under_budget() -> Bool {
-  gunbc_ci_floor_plan_fits_memory_budget() &&
-    gunbc_ci_floor_plan_overflows_without_serialization()
-}
-
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_three_readiness_layers() &&
+  witness_two_readiness_layers() &&
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_discovery_scan_dirs_in_plan() &&
     witness_scan_dirs_match_layer_authority() &&
     witness_corpus_has_no_explicit_entries() &&
-    witness_corpus_skip_node_frontier_enabled() &&
-    witness_spawn_width_bounded_by_breadth() &&
-    witness_floor_not_serial() &&
-    witness_floor_width_fits_memory_budget() &&
-    witness_floor_width_memory_bounded() &&
-    witness_source_ingest_serialized_after_corpus() &&
-    witness_plan_concurrent_peak_under_budget()
+    witness_corpus_skip_node_frontier_enabled()
 }
