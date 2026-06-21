@@ -5701,6 +5701,43 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
+        "medium_structure_leak_facts" => {
+            let emit_roots =
+                expect_str_list(positional.first().copied(), "medium_structure_leak_facts")?;
+            let check_roots =
+                expect_str_list(positional.get(1).copied(), "medium_structure_leak_facts")?;
+            let markers =
+                expect_str_list(positional.get(2).copied(), "medium_structure_leak_facts")?;
+            let emit_fns =
+                expect_str_list(positional.get(3).copied(), "medium_structure_leak_facts")?;
+            let string_ops =
+                expect_str_list(positional.get(4).copied(), "medium_structure_leak_facts")?;
+            let facts = crate::medium_structure_project::medium_structure_leak_facts(
+                &emit_roots,
+                &check_roots,
+                &markers,
+                &emit_fns,
+                &string_ops,
+            );
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let face = Value::Variant {
+                    type_name: ctx.sym("MediumLeakFace"),
+                    variant_name: ctx.sym(f.face),
+                    fields: Rc::new(HashMap::new()),
+                };
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                fields.insert(ctx.sym("face"), face);
+                fields.insert(ctx.sym("detail"), Value::Str(f.detail));
+                items.push(Value::Record {
+                    type_name: ctx.sym("MediumStructureLeakFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
             crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
