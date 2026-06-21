@@ -19,6 +19,7 @@ import std.measure {
   Time,
   time_measure,
   measure_count,
+  measure_scale_fraction_ceil,
   ByteSize,
   byte_size,
 }
@@ -72,27 +73,34 @@ type ConcurrentMemoryPeakSample {
 }
 
 // Per-share peak: distribute the observed concurrent peak across the concurrency it was sampled
-// at, re-grounding the Memory magnitude at the same carrier — the measure-algebra idiom
-// (project via measure_count → magnitude arithmetic → reconstruct via byte_size, exactly as
-// time_measure_seq/_par above project→arithmetic→reconstruct over Time). Fail-closed (§5): a
-// non-positive concurrency is degenerate, so the whole peak stands (a share count of 1) rather
-// than a divide-by-zero or a fabricated share.
+// at. This is a per-share *demand* (expressibility-frontier §3 ②) — it must round UP, never down:
+// an under-estimated per-share peak makes ⌊budget ÷ peak⌋ too high ⇒ the spawn-width fold over-fits
+// ⇒ OOM (§5 round-toward-pessimism). So it is the lifted `measure_scale_fraction_ceil` (Memory
+// magnitude scaled by 1/concurrency, CEILED), NOT a manual unwrap→divide→re-ground round-trip — the
+// dimension stays attached through the carrier (the §3 ① wall the lifted algebra dissolves; #5470
+// landed the FLOOR pair, this completes the ceil≠floor money-pair). Fail-closed (§5): a non-positive
+// concurrency is degenerate, so the whole peak stands (a share count of 1) — the same pessimistic
+// direction the ceil op fails closed to, kept here because the op's `den` is `Nat`-positive in-domain.
 fn concurrent_memory_peak_per_share(sample: ConcurrentMemoryPeakSample) -> ByteSize {
-  if sample.concurrency <= 0 {
-    sample.peak
-  } else {
-    byte_size(count: measure_count(m: sample.peak) / sample.concurrency)
-  }
+  // Fail-closed (§5): a non-positive concurrency is degenerate, so the share count floors to 1 and
+  // the whole peak stands (ceil(peak × 1/1) = peak) — never a divide-by-zero or a fabricated share.
+  let shares = if sample.concurrency <= 0 { 1 } else { sample.concurrency }
+  measure_scale_fraction_ceil(m: sample.peak, num: 1, den: shares)
 }
 
 // Discriminating witness (§5): the per-share peak of an N-way sample is the whole peak ÷ N, and
 // re-grounds at the same Memory carrier — goes red if the derivation drops the concurrency, aliases
 // the whole peak, or loses the magnitude. Degenerate concurrency falls closed to the whole peak.
+// The `indivisible` case pins the CEIL direction (the demand round-toward-pessimism, §5): 10 ÷ 4 =
+// 2.5 → 3, NOT 2 — a floor here would silently under-estimate per-share demand and risk OOM, so a
+// floor impl goes RED. The exact case alone cannot tell ceil from floor; this one can.
 fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
   let sample = ConcurrentMemoryPeakSample { peak: byte_size(8400113664), concurrency: 4 }
   let degenerate = ConcurrentMemoryPeakSample { peak: byte_size(2100028416), concurrency: 0 }
+  let indivisible = ConcurrentMemoryPeakSample { peak: byte_size(10), concurrency: 4 }
   measure_count(m: concurrent_memory_peak_per_share(sample: sample)) == 2100028416
     && measure_count(m: concurrent_memory_peak_per_share(sample: degenerate)) == 2100028416
+    && measure_count(m: concurrent_memory_peak_per_share(sample: indivisible)) == 3
 }
 
 // --- Critical-path span roll-up (Phase 1.5b) --------------------------------
