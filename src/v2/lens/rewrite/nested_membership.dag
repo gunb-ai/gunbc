@@ -14,6 +14,23 @@ import v2.std.node_query { node_labeled_child_edges, node_positional_child_targe
 // 🟡 grammar-gap: MVP1 dag grammar cannot produce nested-loop source text;
 // end-to-end witness uses hand-constructed Node (single-level loop through bridge confirms liveness).
 // dissolve-on: dag grammar production for nested-cardinality source (writer-semantics round-trip).
+
+// Helper: takes the candidate inner Node (typed) and checks if it is Cardinality, returning
+// the hoisted rewrite if so. Extracted from try_nested_membership_rewrite so that the
+// `inner` binding from list_at_optional — otherwise inferred as generic T — is concretized
+// as Node by the typed parameter here (same pattern as node_is_callee_reference in node_query).
+fn try_hoist_inner_cardinality(inner: Node) -> Optional<Node> {
+  match inner.kind {
+    TypeNode { connective: Cardinality } =>
+      optional_present(value: Node {
+        kind: TypeNode { connective: Cardinality },
+        children: inner.children,
+        occurrence_id: SyntheticOccurrence
+      })
+    _ => optional_absent()
+  }
+}
+
 fn try_nested_membership_rewrite(n: Node) -> Optional<Node> {
   match n.kind {
     TypeNode { connective: Cardinality } =>
@@ -23,16 +40,7 @@ fn try_nested_membership_rewrite(n: Node) -> Optional<Node> {
           Present { value: inner } =>
             match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
               Present { value: _ } => optional_absent()
-              Absent =>
-                match inner.kind {
-                  TypeNode { connective: Cardinality } =>
-                    optional_present(value: Node {
-                      kind: TypeNode { connective: Cardinality },
-                      children: inner.children,
-                      occurrence_id: SyntheticOccurrence
-                    })
-                  _ => optional_absent()
-                }
+              Absent => try_hoist_inner_cardinality(inner: inner)
             }
         }
       } else {
