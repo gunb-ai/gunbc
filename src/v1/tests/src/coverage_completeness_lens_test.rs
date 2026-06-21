@@ -61,9 +61,19 @@ fn reasonless_ignore_lines(source: &str) -> Vec<usize> {
         let reasoned = if let Some(after_eq) = rest.strip_prefix('=') {
             // Expect a string literal; the reason is its non-empty contents.
             let after_eq = after_eq.trim_start();
-            match after_eq.strip_prefix('"').and_then(|s| s.find('"').map(|end| &s[..end])) {
-                Some(reason) => !reason.trim().is_empty(),
-                None => false, // `= ` with no string literal → malformed, reasonless
+            match after_eq.strip_prefix('"') {
+                // Closed on this line: reason is the content between the quotes.
+                Some(body) if body.contains('"') => {
+                    let end = body.find('"').expect("contains('\"') implies find");
+                    !body[..end].trim().is_empty()
+                }
+                // Opened but not closed on this line → a multi-line reason
+                // (`\`-continued or a raw string spanning lines). Reasoned iff the
+                // content before the line break (sans a trailing `\` continuation)
+                // is non-empty — a written reason that simply wraps.
+                Some(body) => !body.trim_end().trim_end_matches('\\').trim().is_empty(),
+                // `= ` with no opening quote → malformed, reasonless.
+                None => false,
             }
         } else {
             // `]` (bare) or anything else (e.g. trailing comment) → reasonless.
@@ -177,6 +187,22 @@ fn detector_accepts_a_reasoned_ignore() {
     assert!(reasonless_ignore_lines("//! Most are `#[ignore]` because they are slow.").is_empty());
     // a normal, non-ignored test is covered by construction — nothing to flag
     assert!(reasonless_ignore_lines("#[test]\nfn runs() {}").is_empty());
+}
+
+#[test]
+fn detector_accepts_a_multiline_reason() {
+    // A long reason wrapped with `\` line-continuation across physical lines is
+    // still a written reason — the opening line carries non-empty content even
+    // though the closing quote lands on a later line. (Regression guard: an
+    // earlier detector required the closing `"` on the same line and false-flagged
+    // exactly this shape — the `fixtures/v2-mvp1` ignore in pipeline.rs.)
+    let src = "#[ignore = \"failing: a genuinely long reason that explains the \\\n  drift and names the owner, wrapped across lines for readability\"]\nfn x() {}";
+    assert!(reasonless_ignore_lines(src).is_empty());
+    // ...but a multi-line opener with NO content before the break is still empty → flagged.
+    assert_eq!(
+        reasonless_ignore_lines("#[ignore = \"\\\n  \"]\nfn y() {}"),
+        vec![1]
+    );
 }
 
 #[test]
