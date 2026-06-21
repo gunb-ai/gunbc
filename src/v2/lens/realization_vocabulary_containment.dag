@@ -219,7 +219,6 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
   )
 }
 
-<<<<<<< HEAD
 // ── REVERSE roster-soundness: shrinking-ratchet integrity (DESIGN §5/§6) ──────────
 // The forward gate (clean_tree witness) proves every live non-edge sidecar importer is
 // rostered. This is the CONVERSE: every roster ENTRY must still name a LIVE non-edge importer
@@ -296,7 +295,8 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
     roster: realization_vocab_exception_roster,
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
   )
-=======
+}
+
 // Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
 // (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
@@ -305,5 +305,4 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
     dissolve_on: "the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
   },
   rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster."
->>>>>>> origin/main
 }
