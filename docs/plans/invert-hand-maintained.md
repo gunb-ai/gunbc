@@ -51,6 +51,28 @@ expected_ci_yml()`, byte-for-byte. The doc project is the **same three pieces** 
 No new mechanism — a new **target medium** (`Markdown`) + the **work-DAG authority model**. The §6
 emission lane and the idea-machine's medium axis are exactly this; the doc is the next medium after ci.yml.
 
+### 3.1 Near-term: PR → checkbox status (the cheap first slice, before full emission)
+
+The single highest-pain hand-maintenance is the one we keep paying *manually*: after a PR merges, a human
+flips the matching `[ ]` to `[x]` (and we just did a whole reconciliation pass because they drift). That
+*status* edge can be automated **before** the full `emit(work_model, Markdown)` lands, because it needs
+only the trivial half of the authority — the **PR↔line binding** — not the whole work-DAG model:
+
+- **The binding.** Each roadmap milestone names its PR(s) inline (the `(#5473)` anchors this overlay just
+  added are exactly that link, authored for humans but machine-readable). So the binding *already exists in
+  the text* — a checkbox is derivable from "is the referenced PR merged?".
+- **The cheap realization — a GitHub Action.** On PR-merge / on a schedule, parse each `- [ ] … (#NNNN)`
+  line, query the PR state, and set `[x]` iff all referenced PRs are merged. A drift *check* (not an
+  auto-commit) is the fail-closed form: CI goes red if a checkbox disagrees with its PR state, so the human
+  fix is forced but never silently wrong — the `ci_yaml_gate` shape, one rung down.
+- **Why this is a *slice* of the real thing, not a fork.** It is `emit(status)` with the structure still
+  hand-authored — the authority is still partial (the binding, not the full DAG). It dissolves *into* the
+  full project: when `emit(work_model, Markdown)` lands, status is just one emitted field and the Action
+  retires. So build the Action as the **§2-status-derivation seam first** (kills the manual-reconcile pain
+  now), then widen the authority leftward to the whole line. Caveat (§5 `DecodeFidelity`): a milestone with
+  *no* `(#NNNN)` anchor (pure-analysis work, no PR) has no derivable status — those stay hand-checked and
+  must be marked so the check doesn't false-positive; that honest residue is the boundary, not a gap.
+
 ## 4. The census — what's hand-maintained, and how invertible
 
 | artifact | authority | status |
