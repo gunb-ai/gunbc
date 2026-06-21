@@ -109,7 +109,11 @@ fn every_ignore_carries_a_written_reason() {
     let src = tests_src_dir();
     let mut files = Vec::new();
     collect_rs_files(&src, &mut files);
-    assert!(!files.is_empty(), "no .rs files found under {}", src.display());
+    assert!(
+        !files.is_empty(),
+        "no .rs files found under {}",
+        src.display()
+    );
 
     let mut offenders = Vec::new();
     for file in &files {
@@ -170,19 +174,27 @@ fn every_test_file_is_declared_in_lib() {
 #[test]
 fn detector_flags_a_reasonless_ignore() {
     // bare attribute → flagged
-    assert_eq!(reasonless_ignore_lines("#[test]\n#[ignore]\nfn x() {}"), vec![2]);
+    assert_eq!(
+        reasonless_ignore_lines("#[test]\n#[ignore]\nfn x() {}"),
+        vec![2]
+    );
     // reason in a trailing comment, not the attribute → still flagged
     assert_eq!(
         reasonless_ignore_lines("    #[ignore] // expensive: 30s\n    fn y() {}"),
         vec![1]
     );
     // empty reason string → flagged
-    assert_eq!(reasonless_ignore_lines("#[ignore = \"\"]\nfn z() {}"), vec![1]);
+    assert_eq!(
+        reasonless_ignore_lines("#[ignore = \"\"]\nfn z() {}"),
+        vec![1]
+    );
 }
 
 #[test]
 fn detector_accepts_a_reasoned_ignore() {
-    assert!(reasonless_ignore_lines("#[ignore = \"wet-only: live network\"]\nfn x() {}").is_empty());
+    assert!(
+        reasonless_ignore_lines("#[ignore = \"wet-only: live network\"]\nfn x() {}").is_empty()
+    );
     // a prose mention of the token (comment / string) is not an attribute
     assert!(reasonless_ignore_lines("//! Most are `#[ignore]` because they are slow.").is_empty());
     // a normal, non-ignored test is covered by construction — nothing to flag
