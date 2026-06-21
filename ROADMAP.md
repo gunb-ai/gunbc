@@ -36,6 +36,7 @@ divergence unwritable, no lens needed.
 - [ ] **dissolve the model↔realization fork — THE root** ([plan](docs/plans/model-realization-fork.md)): realization *derived from* model (single authority): (1) numeric tower `Int=GroupCompletion<Nat>` → the straddle guard becomes dead code; (2) **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — the deeper root
 - [ ] **cache key derived FROM declared `inputs_considered`** (single authority) → you cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Includes: content-key on **raw bytes** (`resolved_graph_cache.rs:146`), content keys for `parse_table_memo`/`pure_call_memo` (not position/address). *(worked first instance: child adhoc-cc232dbc-1be)*
 - [ ] **self-host purity by construction** — emitter emits the whole seed so `patch_*`/`HAND_MAINTAINED_STAGE0_FILES` become unwritable (= §3); `regen_stage0 --verify` is then a residue check
+- [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — one typed carrier (`Terminal{reason} | Scaffold{dissolves_to}`) for lens-lifecycle **and** coproduct dissolve-markers (today freeform `🟡` comments, unreadable by lens); non-optional field ⇒ indeterminate-disposition unwritable. Middle path: construction-capable carrier + a **self-dissolving** lens that ratchets coverage → substrate-mandatory tag (#1) at the limit; redundancy (scaffold + its successor both present) is the one hard gate
 - [ ] widen the rust gate to run (or explicitly retire) the v1 test set — no test exists-but-doesn't-run
 
 **Fixes (tier 2) — LENS: only the genuinely-unstructurable residue.** Each must justify why it can't be construction.
@@ -48,6 +49,7 @@ divergence unwritable, no lens needed.
 **Meta — lock down the reasoning, not just the code (the §7 recursion):**
 
 - [ ] **construction-justification rule** (supersedes "every lens has a witness"): before adding any lens, justify why the class can't be made impossible by construction; convert what can (single authority / realization-from-model); lens-justify only the unstructurable residue
+- [ ] **confront the skipped modeling decisions** — now that `.dag` is mature *and lens exists* (it didn't when the `🟡` comments were written), each modeling ambiguity we used to skip gets resolved into construction or a justified `Terminal`, not a comment. The `🟡` corpus is the backlog; `Disposition` (above) is instance #1. General template: construction-capable carrier → ratcheting lens → substrate-mandatory at the limit → lens self-dissolves
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — model A1–A3 + the §1–§7 chain in `.dag`, enforce the syllogism: every claim a consequence-chain back to an axiom, **no orphan, no cycle** (the §4 acyclicity test turned on this document)
 
 ## 1. Session dashboard on `.dag` (backend only)
