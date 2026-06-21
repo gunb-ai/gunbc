@@ -30,8 +30,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus ([plan](docs/plans/model-realization-fork.md))
 - [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
 - [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427) ([cause table](docs/plans/expensive-test-cause-table.md))
-- [ ] **promote-or-delete every inert lens** + de-vacuum thin gates
-- [ ] **realization-vocabulary containment guard** — target-AST importable only at the realization edge (a construction wall) ([plan](docs/plans/emission-ingestion-inverse.md))
+- [ ] **promote-or-delete every inert lens** + de-vacuum thin gates *(silent-wren-739)*
+- [x] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
 
 **Fenced OUT (after stability):**
@@ -46,7 +46,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **inert-lens hygiene backstop** — every `lens/*.dag` wired or deleted; runs over the corpus (#5433)
 - [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2) *(quick-ant-298)*
-- [ ] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens ([DESIGN §6](DESIGN.md))
+- [ ] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens ([DESIGN §6](DESIGN.md)) *(silent-wren-739)*
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc
@@ -122,7 +122,7 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)
 - [ ] de-fork dsl ↔ v2 (one std authority, no historical forks)
-  - [ ] turn on cross-tree import (wired but fail-closed today)
+  - [ ] turn on cross-tree import (wired but fail-closed today) — Step 1 in flight *(nimble-koi-625)*
     - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
     - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
