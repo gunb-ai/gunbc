@@ -114,23 +114,29 @@ fn collect_env_map(node: Option<&serde_yaml::Value>, declared: &mut HashSet<Stri
     }
 }
 
-// Scan `run:` scripts for `echo "VAR=..." >> "$GITHUB_ENV"` patterns and add
-// found variable names to `declared`. This is a conservative scan: we accept
-// any VAR-like name that precedes `=` after an `echo "` in the script.
+// Scan `run:` scripts for `echo ... >> "$GITHUB_ENV"` patterns and add
+// found variable names to `declared`. Accepts quoted and unquoted forms:
+//   echo "VAR=value" >> "$GITHUB_ENV"
+//   echo 'VAR=value' >> "$GITHUB_ENV"
+//   echo VAR=value >> "$GITHUB_ENV"
 fn collect_github_env_writes(step: &serde_yaml::Value, declared: &mut HashSet<String>) {
     let Some(run) = step.get("run").and_then(|v| v.as_str()) else {
         return;
     };
-    // Pattern: echo "VAR=... >>  (with or without $GITHUB_ENV suffix on same line)
     for line in run.lines() {
         let trimmed = line.trim();
-        // Look for: echo "VAR= or echo 'VAR=
-        if let Some(rest) = trimmed.strip_prefix("echo \"").or_else(|| trimmed.strip_prefix("echo '")) {
-            if let Some(eq) = rest.find('=') {
-                let candidate = &rest[..eq];
-                if is_env_var_name(candidate) {
-                    declared.insert(candidate.to_owned());
-                }
+        let Some(after_echo) = trimmed.strip_prefix("echo ") else {
+            continue;
+        };
+        // Strip optional leading quote.
+        let payload = after_echo
+            .strip_prefix('"')
+            .or_else(|| after_echo.strip_prefix('\''))
+            .unwrap_or(after_echo);
+        if let Some(eq) = payload.find('=') {
+            let candidate = &payload[..eq];
+            if is_env_var_name(candidate) {
+                declared.insert(candidate.to_owned());
             }
         }
     }
