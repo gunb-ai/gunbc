@@ -3524,6 +3524,33 @@ fn eval_algebra_method(
             })
         }
 
+        // list_push(list, item): append the argument as a SINGLE element, even
+        // when it is itself a list (unlike concat/append/push below, which merge
+        // a list-valued arg). Mirrors the free-function list_push so the same op
+        // resolves through method dispatch too; the lexer drives it. Additive.
+        "list_push" => {
+            if matches!(&receiver, Value::Str(_)) {
+                return Err(InterpError::TypeError {
+                    msg: "list_push not supported on String".to_string(),
+                });
+            }
+            let item = args.first().cloned().unwrap_or(Value::Null);
+            match value_to_list_carrier(&receiver) {
+                Some((items, copied)) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += copied;
+                    drop(counters);
+                    let mut result = (*items).clone();
+                    result.push_back(item);
+                    Ok(list_value(result))
+                }
+                None => Err(InterpError::TypeError {
+                    msg: format!("list_push on non-list: {}", receiver.type_label()),
+                }),
+            }
+        }
+
         "concat" | "append" | "push" => {
             // String concat preserves the String representation: a String IS a
             // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
@@ -6514,27 +6541,33 @@ fn raw_map_lookup(
             Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
             None => Ok(Value::Null),
         },
-        Value::Record { fields, type_name, .. } | Value::Variant { fields, variant_name: type_name, .. } => {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
-            let lookup = fields
-                .get(&lookup_sym)
-                .ok_or_else(|| InterpError::TypeError {
-                    msg: format!(
-                        "raw_map_lookup expects Map, got {} (type={}, key={})",
-                        map.type_label(),
-                        resolve_sym(*type_name),
-                        key
-                    ),
-                })?;
-            match lookup {
-                Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
-                Value::Fn { node } => {
+            match fields.get(&lookup_sym) {
+                // A lookup-table abstraction carries a callable `lookup` field.
+                Some(lookup @ Value::Closure { .. }) => {
+                    apply_closure(lookup, &[key.clone()], env, ctx)
+                }
+                Some(Value::Fn { node }) => {
                     let named = vec![(None, key.clone())];
                     call_function(ctx, node, &named, env)
                 }
-                _ => Err(InterpError::TypeError {
+                Some(_) => Err(InterpError::TypeError {
                     msg: "Map.lookup field is not callable".to_string(),
                 }),
+                // Record-form map (a `data x: Map<K,V> = { ... }` literal, which
+                // the interpreter builds as a Record): look the key up as a
+                // field name. A miss yields Null, which the Witness/Optional
+                // bridge projects to Violates/Absent (see eval_match_pattern's
+                // record-form empty_map handling). Additive: this case
+                // previously errored.
+                None => match key {
+                    Value::Str(s) => {
+                        let k = ctx.sym(s);
+                        Ok(fields.get(&k).cloned().unwrap_or(Value::Null))
+                    }
+                    _ => Ok(Value::Null),
+                },
             }
         }
         _ => Err(InterpError::TypeError {
