@@ -19,15 +19,27 @@ redirect analog; Rust uses `eprintln!`). It is medium-agnostic intent expressed 
 
 Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar
 `extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent.
-**The live grep is the authority for this roster — 10 importers at authoring time, shrinking to 0 as
-the bash-sidecar arc migrates them.** A frozen count would rot (the roster is *derived*, not a
-hand-maintained list — the single-authority point):
+**11 importers at authoring time, shrinking to 0 as the bash-sidecar arc migrates them.** The prose
+list below is *informational* and will rot — re-grep for the live number; it is **not** the lens's
+enforcement set:
 
 - `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`,
-  `layering_imports_transport`, `resolved_imports_transport`
-- `dsl/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring, landed after the
-  first pre-merge grep — exactly the rot a frozen count invites)
+  `layering_imports_transport`, `resolved_imports_transport`, `extdeps_external_authority_transport`
+  (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction
+  race, reconciled by #5453)
+- `dsl/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)
 - `src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`
+
+**The lens's enforcement roster is a FROZEN grandfather set, deliberately NOT derived.** The predicate
+is `leak = non-edge importer AND NOT in roster`; if the roster were a live grep of current importers it
+would always contain every importer, `leak_count` would always be 0, and the guard would **never fire**
+— a vacuous lens (DESIGN §5/§6 coverage-by-illusion). The frozen list is load-bearing precisely so a
+*new* unrostered importer goes RED, forcing intent-migration or a conscious roster add. Do not conflate
+the informational prose count above (where a frozen number rots for readers) with this enforcement
+roster (which must be frozen to have teeth). Steady-state hardening against an *introduction race* (a
+sidecar importer landing while the guard's branch is cut, as #5418 did vs #5445): a **roster-completeness
+assertion** — the frozen roster must cover every current importer at merge time — which catches the race
+**without** deriving the roster (optional follow-up; #5453 already closed the one live instance).
 
 (Two `*_test` importers — `bash_serializer_witness_test`, `build_artifact_verification_witness_test` —
 are intentionally **not** walled: the guard scans consumer-source roots only, so test harnesses that
