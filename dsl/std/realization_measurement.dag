@@ -12,13 +12,15 @@
 
 module std.realization_measurement
 
-import std.types { ContentHash, Bool, String, List }
+import std.types { ContentHash, Bool, String, List, Int }
 import std.nat { Nat, nat_max }
 import std.measure {
   Measure,
   Time,
   time_measure,
   measure_count,
+  ByteSize,
+  byte_size,
 }
 import std.realization_schedule {
   CostAccount,
