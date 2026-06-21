@@ -75,7 +75,7 @@ here is the §0 in-scope "cache trustworthy" item. → [plan](docs/plans/realiza
   - [ ] P1 honest keys by construction (key = fn of declared inputs · stable transform-id · census parity is the residue check)
     - [ ] P2 one door: `realize(subject)` as sole API (dissolves hand-rolled `ParseTable`)
       - [ ] P3 reach → minimal layer + fail-closed completeness gate + supplier provisioning ← **core ask**
-- [ ] P4 economic tier (measured cost → `Materialization` by cost) — needs Phase-0 timing
+- [ ] P4 economic tier (measured cost → `Materialization` by cost) — Phase-0 **instrument done** (model side was already floor-enrolled; step timing already emitted; only peak-RSS was missing, closed by #5431 emitting `VmHWM`+spawn_width). Remaining = Phase-1 *consumer* (measured→plan feedback + width-fold), which also unblocks §1-C memory-aware width
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 v2 cross-tree content-hash / increment-4 (gates P5)
 
