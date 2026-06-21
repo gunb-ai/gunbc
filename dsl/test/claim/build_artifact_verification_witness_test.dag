@@ -104,15 +104,17 @@ fn witness_serialized_conjuncts_and_teeth() -> Bool {
     && string_contains(s: script, pattern: "exit 1")                     // fail-closed
 }
 
-// FLOOR COVERAGE: the wired `gunbc.ci_spec` bootstrap declares BOTH prebuilt release bins the
-// floor consumes (claim_executor, gunbc), and each gets the verification. 2 artifacts ⇒ 6
-// statements; both paths + the freshness probe present in the emitted script.
-fn witness_floor_covers_both_release_bins() -> Bool {
+// FLOOR COVERAGE: the wired `gunbc.ci_spec` bootstrap declares the THREE prebuilt release bins the
+// floor consumes (claim_executor, gunbc, and the ROADMAP §2 P3 cache_purity_audit co-process), and
+// each gets the verification. 3 artifacts ⇒ 9 statements; all three paths + the freshness probe
+// present in the emitted script.
+fn witness_floor_covers_release_bins() -> Bool {
   let stmts = emit_verifications(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
   let script = ci_floor_build_verify_script()
-  stmts.length() == 6
+  stmts.length() == 9
     && string_contains(s: script, pattern: "/target/release/claim_executor")
     && string_contains(s: script, pattern: "/target/release/gunbc")
+    && string_contains(s: script, pattern: "/target/release/cache_purity_audit")
     && string_contains(s: script, pattern: "-newer")
     && string_contains(s: script, pattern: "exit 1")
 }
@@ -121,5 +123,5 @@ test fn build_artifact_verification_holds() -> Bool {
   witness_single_artifact_shape_exists_then_fresh()
     && witness_existence_precedes_freshness()
     && witness_serialized_conjuncts_and_teeth()
-    && witness_floor_covers_both_release_bins()
+    && witness_floor_covers_release_bins()
 }
