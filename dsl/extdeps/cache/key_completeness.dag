@@ -1,0 +1,103 @@
+// extdeps/cache/key_completeness.dag — cache key-completeness lens (§5 stale-pass trap).
+//
+// A cache for a transform T over data D is sound only if its key content-addresses
+// every input that can change the cached value — content-addressed BY CONSTRUCTION
+// (DESIGN §2/§5; cache-key-by-construction spine). The recurring violation is a
+// DERIVED key that PROMISES to invalidate on toolchain change (ToolchainChange ∈
+// invalidation_triggers) while the toolchain is NOT among inputs_considered: the
+// derived key omits the toolchain, so a toolchain change yields a SILENT stale hit
+// (§5 fail-open) — a wrong answer with no error.
+//
+// The invariant, stated generally: validity-depends-on-X ⟹ X's source ∈
+// inputs_considered. Realized here for the toolchain axis (the one a catalog row can
+// express via RustcInvocation/ToolchainSpec). HandAuthoredString keys are exempt:
+// their key is NOT derived from inputs_considered (it is authored, and invalidation is
+// achieved by bumping the authored string) — that disfavored class is a separate
+// concern, not a key-completeness hole.
+//
+// This is a pure reader over the live extdeps.cache.cache catalog rows (no state, no
+// filesystem text-scan): the witness folds it over cache_catalog and goes RED if any
+// live row under-keys its toolchain dependency.
+
+module extdeps.cache.key_completeness
+
+import extdeps.cache.types {
+  CatalogKeyDerivationFacts,
+  CacheInterfaceCatalogFacts,
+  CatalogInputSurface,
+  catalog_has_vendor_only_key_inputs,
+}
+import std.cache_interface {
+  KeyDerivationClass,
+  ContentAddressedByValue,
+  HandAuthoredString,
+  NativeInternalHash,
+  InvalidationTrigger,
+  TtlExpiry,
+  ManualPurge,
+  ToolchainChange,
+  DependencyChange,
+}
+import std.lens_verdict {
+  LensVerdict,
+  Holds,
+  Violation,
+  LensVerdictDiagnostic,
+  ModuleWholeFile,
+}
+import std.types { Bool }
+import std.list { List }
+
+// True for caches whose key is DERIVED from inputs_considered (the content-address
+// classes). A HandAuthoredString key is not derived from inputs — invalidation is the
+// author bumping the key string — so the input-completeness invariant does not apply.
+fn cache_key_derived_from_inputs(classification: KeyDerivationClass) -> Bool {
+  match classification {
+    ContentAddressedByValue => true
+    NativeInternalHash => true
+    HandAuthoredString => false
+  }
+}
+
+fn invalidation_triggers_on_toolchain_change(triggers: List<InvalidationTrigger>) -> Bool {
+  triggers |> any(trigger => match trigger {
+    ToolchainChange => true
+    TtlExpiry => false
+    ManualPurge => false
+    DependencyChange => false
+  })
+}
+
+// The key-completeness invariant. A derived key that promises ToolchainChange
+// invalidation must actually CONSIDER a toolchain input — else the derived key omits
+// the toolchain and a toolchain change survives as a silent stale hit (§5).
+// `catalog_has_vendor_only_key_inputs` is reused (§3 single authority) as the
+// "inputs include a toolchain axis (RustcInvocation/ToolchainSpec)" detector.
+fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
+  if cache_key_derived_from_inputs(classification: facts.classification)
+     && invalidation_triggers_on_toolchain_change(triggers: facts.invalidation_triggers) {
+    catalog_has_vendor_only_key_inputs(inputs: facts.inputs_considered)
+  } else {
+    true
+  }
+}
+
+// Verdict projection (std.lens_verdict): rich diagnostic on violation. `module_name`
+// is the locus supplied by the caller (the cache row's home).
+fn cache_key_completeness_verdict(facts: CatalogKeyDerivationFacts, module_name: String) -> LensVerdict {
+  if cache_key_derivation_complete(facts: facts) {
+    Holds
+  } else {
+    Violation {
+      diagnostic: LensVerdictDiagnostic {
+        reason: "key_derivation declares ToolchainChange invalidation on a derived key but inputs_considered omits a toolchain axis (RustcInvocation/ToolchainSpec); the derived key omits the toolchain, so a toolchain change is a silent stale hit",
+        at: ModuleWholeFile { module_name: module_name },
+      }
+    }
+  }
+}
+
+// Roster fold — the live gate. Every catalog row must satisfy key-completeness.
+fn cache_catalog_key_completeness_holds(catalog: List<CacheInterfaceCatalogFacts>) -> Bool {
+  all(catalog, row => cache_key_derivation_complete(facts: row.key_derivation))
+}
