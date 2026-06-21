@@ -21,7 +21,7 @@
 module std.realization_width
 
 import std.types { Int, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_max }
 import std.measure {
   HardwareThreadCount,
   ByteSize,
@@ -102,41 +102,34 @@ fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCo
 // §1-C exists to prevent — OOM — in the future stale-low-peak case. Integer ×4/5 (no floats).
 // Stays in the ByteSize domain (a fractioned budget is still a budget): scale the underlying Nat
 // magnitude and re-ground via byte_size() — the dimension stays attached at the public seam.
+// The lifted std.measure op scales the magnitude WITHIN the carrier, so the dimension never
+// detaches — no unwrap→raw-arith→rewrap round-trip (expressibility-frontier §3 ①). 4/5 is the
+// §3 ② *capacity* rounding case → floor.
 fn budget_safety_fraction_apply(budget: ByteSize) -> ByteSize {
-  byte_size(count: (byte_size_count(b: budget) * 4) / 5)
-}
-
-// Nat→Int projection of a ByteSize count. The byte magnitude is a Nat (byte_size_count), but the
-// fold's shard-count arithmetic and the host's 0-byte sentinel live in Int (cf.
-// bounded_host_spawn_width's int_min over hardware_thread_count_value). Nat ⊂ Int, so this is the
-// widening at a typed boundary — the public ByteSize fields stay the canonical carrier, the inner
-// dimensionless shard-count plumbing is Int.
-fn byte_size_count_int(b: ByteSize) -> Int {
-  byte_size_count(b: b)
+  measure_scale_fraction_floor(m: budget, num: 4, den: 5)
 }
 
 // How many concurrent shards fit under the safety-fractioned budget, each peaking at the MEASURED
-// per-shard RSS. ByteSize in (the canonical carrier); the dimensionless shard count comes out as
-// Int (ByteSize ÷ ByteSize) via the projection above. Fail-closed forward progress: a non-positive
-// peak (unknown measurement) or a budget under one shard still admits 1, never 0.
+// per-shard RSS. This is the §3 ① "how many fit" op (`Measure ÷ Measure → count`): the dimensionless
+// shard count is a `Nat`, budget and peak stay `ByteSize` — no manual unwrap, no ByteSize→Int
+// projection. Fail-closed forward progress: a non-positive peak (unknown measurement → fit op floors
+// to 0 on a zero divisor) or a budget under one shard still admits 1, never 0.
 fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
-  let peak_bytes = byte_size_count_int(b: per_shard_peak)
-  if peak_bytes <= 0 {
-    1
-  } else {
-    let safe_budget = byte_size_count_int(b: budget_safety_fraction_apply(budget: memory_budget))
-    let fits = safe_budget / peak_bytes
-    if fits < 1 { 1 } else { fits }
-  }
+  let fits = measure_fit_count_floor(
+    capacity: budget_safety_fraction_apply(budget: memory_budget),
+    each: per_shard_peak
+  )
+  nat_max(a: fits, b: 1)
 }
 
 // Memory-aware spawn width: min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_peak⌋).
 // Byte quantities are std.measure ByteSize (the canonical Memory carrier), not flat Int — the
-// dimension is attached at the authority-layer API; the counts are projected to Int (the fold's
-// arithmetic domain) at the boundary. A zero budget means the host could NOT read a live budget —
-// fall back to the caller's conservative committed width so a missing measurement never OOMs and
-// is never fabricated here (DESIGN §5; the host supplies the fallback). The heavy-resolve topology
-// serialization stays the independent backstop either way.
+// dimension stays attached through the lifted measure algebra; only the dimensionless shard counts
+// surface as Int. A zero-magnitude budget means the host could NOT read a live budget — fall back
+// to the caller's conservative committed width so a missing measurement never OOMs and is never
+// fabricated here (DESIGN §5; the host supplies the fallback). This is a sentinel READ of the
+// budget magnitude (not arithmetic), so a plain `byte_size_count` projection is correct — no
+// round-trip. The heavy-resolve topology serialization stays the independent backstop either way.
 fn memory_aware_spawn_width(
   shard_count: Int,
   hardware_threads: HardwareThreadCount,
@@ -144,8 +137,8 @@ fn memory_aware_spawn_width(
   per_shard_peak: ByteSize,
   conservative_fallback_width: Int
 ) -> HardwareThreadCount {
-  let budget_bytes = byte_size_count_int(b: memory_budget)
-  if budget_bytes <= 0 {
+  let budget_bytes = byte_size_count(b: memory_budget)
+  if budget_bytes == 0 {
     hardware_thread_count(count: conservative_fallback_width)
   } else {
     let cpu_width = hardware_thread_count_value(

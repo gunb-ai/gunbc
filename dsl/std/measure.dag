@@ -309,11 +309,9 @@ fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
 // fractioned budget is still a budget). Fail-closed (§5): a zero denominator yields
 // a zero magnitude, never a host divide-by-zero.
 fn measure_scale_fraction_floor<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
-  if den == 0 {
-    Measure { count: 0 }
-  } else {
-    Measure { count: (measure_count(m: m) * num) / den }
-  }
+  // A zero denominator returns the zero magnitude `den` itself (already a `Nat` zero) — keeps both
+  // arms `Nat` and never divides by zero.
+  Measure { count: if den == 0 { den } else { (m.count * num) / den } }
 }
 
 // "How many fit": `Measure ÷ Measure → count`, rounded DOWN — the §3 ② *fit-count*
@@ -324,12 +322,10 @@ fn measure_scale_fraction_floor<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat)
 // consumer wanting forward progress on an unknown `each` guards positivity at its
 // own boundary.
 fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, S, Nat>) -> Nat {
-  let each_count = measure_count(m: each)
-  if each_count == 0 {
-    0
-  } else {
-    measure_count(m: capacity) / each_count
-  }
+  // A zero divisor returns `each_count` itself (a `Nat` zero) — keeps both arms `Nat` and never
+  // divides by zero; the consumer floors a fit-count of 0 up to ≥1 where 0-width is invalid.
+  let each_count = each.count
+  if each_count == 0 { each_count } else { capacity.count / each_count }
 }
 
 // Generic time-measure constructor: a `Time` magnitude at ANY scale `<S>`, magnitude
