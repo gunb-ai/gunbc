@@ -13,10 +13,12 @@ authority), not the goal.
 > **END GOAL (decided 2026-06-21 — anchored in ROADMAP §3, do not re-litigate).** Three languages:
 > **`.dag` is the authority/truth; v2 emits BOTH Rust AND TypeScript as first-class realizations** (not
 > one-or-the-other). The fixed point is proven per realization (Rust bytes reproduce; TS bytes
-> reproduce). **Terminal goal: delete `src/v1`** — once the v2-emitted compiler builds green and
-> reproduces itself, remove `src/v1/stage0` (~125k lines + its bins) and redundant v1 files. The seed
-> shrinks to zero, literally. Rust is furthest along (the seed language); TypeScript is proven only on
-> the `add` slice today and needs target-completeness to join the fixed point.
+> reproduce). **Purely self-hosting:** v2 emits its own seed — no stage0 hand-edits (enforced by the
+> regen-lockstep gate, see Track A "Purity"). **Terminal goal: shrink the seed to zero** — the ~154k
+> lines of hand-written Rust *compiler logic* go to zero; a minimal pinned, reproducible, v2-emitted
+> bootstrap binary survives (it must still run the first `.dag`). Not a big-bang `rm src/v1` (see Track
+> Z). Rust is furthest along (the seed language); TypeScript is proven only on the `add` slice today and
+> needs target-completeness to join the fixed point.
 
 ---
 
@@ -63,6 +65,28 @@ toward a green regen — import-completeness (E0425), List→host-`Vec`, Int-as-
 slices on main: #5413 (length→count, phantom-marker derives, Measure-alias E0560 peel, E0308 Box-deref
 cluster); MachineWidth is **#5397** (E0107), a separate PR.
 
+### Purity: no stage0 hand-edits (the requirement, and the enforcement gap)
+The requirement — **v2 emits its own seed; no human stage0 patches** — is *modeled, currently unmet, and
+un-enforced.* `src/v2/workflow/bootstrap.dag` is the authority and states it exactly ("seed→stage0→
+stage1→stage2, fixpt stage1==stage2 … seed used once; v2 is never in the loop again", DESIGN §7),
+including the trust machinery to retire the seed (`SeedHonestyDischarge`, `DiverseCompilationAgreement`/
+`IndependentCompilerPair` = Diverse Double-Compiling, the Thompson trusting-trust defense). But:
+- **The seed is hand-maintained today.** `regen_stage0.rs` carries `HAND_MAINTAINED_STAGE0_FILES` +
+  `patch_*` (e.g. `patch_bootstrap_dag_collect`) that compensate for emitter gaps — each a "stage0
+  hand-edit standing in for a thing v2 should emit itself," honestly marked with a dissolve-on pointing
+  at the emitter fix. (Gotcha: regen has pre-existing codegen drift, so focused PRs hand-edit the `.rs`
+  seed mirror rather than commit a full regen — itself a symptom of the gap.)
+- **The no-drift gate is real but not wired.** `regen_stage0 --verify` (`verify_stage0_matches` —
+  "committed stage0 matches fresh self-compile") exists, but a grep of the CI floor (`src/v2/workflow`,
+  `dsl/tools`, `dsl/gunbc`, `dsl/test`) finds it nowhere. The `Stage0LockstepGate` that would wire it in
+  is the content of **closed/unmerged #5325**. So hand-drift goes silently uncaught — erosion by one more
+  honest-looking `patch_*` at a time.
+- **bootstrap.dag is 🟡 scaffold** — structural wiring only, placeholder hashes (dissolve-on T-15/T-20
+  `content_hash` supplying real per-stage merkle digests), so it does not yet *prove* convergence.
+
+**This gate is the keystone for both the purity requirement and a trustworthy cutover.** It is what makes
+"no stage0 hand-edits" enforceable; without it the requirement can only erode.
+
 ### Track B — the fixed-point proof (Stage C)
 `candidate_generation.dag` (`generate_stage_candidate_from_ingest`) drives `assemble_program_from_ingest
 → infer → translate`, capturing the emitted **Node** before `serialize_target` — the input Stage C
@@ -76,15 +100,29 @@ TS is 1 of 14 emit targets, proven only on the `add` slice
 target-completeness over what the compiler actually uses (records, coproducts, folds, generics) — a gap
 census from `add` → full `src/v2`, then a TS regen + `node`-build green analogous to Track A's cargo path.
 
-### Track Z — delete the seed (terminal)
-The literal "seed shrinks to zero". Gated on A+B (and T, for the TS runtime) landing: only once a
-v2-emitted compiler **builds green and reproduces itself** can `src/v1` go. Scope to delete:
-`src/v1/stage0` (106 `.rs`, ~125k lines) ships the bins everything currently runs on — `gunbc`,
-`claim_executor`, `regen_stage0`, `claim_batch`, `discover_owned_data`, `yaml_check`,
-`v2_whole_tree_parse_scan` — plus `src/v1/stage0_core`, `stage0_emit_core`, `src/v1/tests` (60 `.rs`,
-~28k lines). **Hard precondition:** the v2-emitted compiler must provide every one of those bins green
-*and* cover every host effect v1 currently supplies (the CI floor itself runs via `claim_executor`).
-Delete only what becomes redundant — verify by execution, not by assumption.
+### Track Z — shrink the seed to zero (terminal)
+The clean cutover. **"Shrink to zero" = the ~154k lines of hand-written Rust *compiler logic* go to
+zero — not literally zero bytes.** Something must still execute the first `.dag` (the substrate is data;
+v1/Rust is the runner today). The honest end-state (rustc/GCC model; what `SeedHonestyDischarge`/DDC is
+for) is a **pinned, content-addressed, reproducible-from-`.dag`, v2-emitted bootstrap binary** — itself
+re-derivable, since v2 even models its own `V4EvaluatorRuntime`.
+
+So "delete stage0" decomposes — `src/v1` also provides the **CLI bins** (`claim_executor`,
+`regen_stage0`, `yaml_check`, …), the **CI floor runner**, the **host-effect transports**, and the
+**evaluator that runs `.dag`**. Each must be v2-emitted or pinned *before* it can go; a big-bang
+`rm -rf src/v1` after a green fixed point would take out the execution substrate, not just the redundant
+compiler.
+
+**Forced precondition order (each gates the next):**
+1. Whole-tree emit → `cargo build` green (Track A last mile).
+2. Real fixed point: `self_host_fixed_point_digests_match` over real `content_hash` (Track B / Stage C;
+   dissolve the placeholder hashes, T-15/T-20).
+3. `regen_stage0 --verify` green **and wired into CI** (the `Stage0LockstepGate`, closed #5325) + all
+   `patch_*` / `HAND_MAINTAINED_STAGE0_FILES` dissolved so the emitter emits the whole seed. **This is the
+   step that actually retires "stage0 hand-edits"** and makes the cutover trustworthy.
+4. Seed-honesty discharge (ideally via Diverse Double-Compiling).
+5. Then collapse `src/v1` to the pinned reproducible seed and delete its compiler logic **incrementally**
+   — verify by execution, not assumption.
 
 ## 2. Prerequisites / dependencies
 
