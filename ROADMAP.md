@@ -32,7 +32,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427) ([cause table](docs/plans/expensive-test-cause-table.md))
 - [ ] **promote-or-delete every inert lens** + de-vacuum thin gates
 - [ ] **realization-vocabulary containment guard** — target-AST importable only at the realization edge (a construction wall) ([plan](docs/plans/emission-ingestion-inverse.md))
-- [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim
+- [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
 
 **Fenced OUT (after stability):**
 
@@ -45,7 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 **Meta — lock down the reasoning (§7 recursion):**
 
 - [x] **inert-lens hygiene backstop** — every `lens/*.dag` wired or deleted; runs over the corpus (#5433)
-- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2)
+- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2) *(quick-ant-298)*
 - [ ] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens ([DESIGN §6](DESIGN.md))
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
@@ -60,9 +60,9 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 - [ ] **floor runs the right things** — cadence = two axes: SELECTION (by *what changed*) vs SCHEDULING (by cost); cost never drives selection ([plan](docs/plans/ci-selection-vs-scheduling.md))
   - [x] opt-level=3 restores Pop-A to per-PR — #5456 merged
   - [ ] per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)
-  - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing)
+  - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*
 - [ ] **floor runs reliably & affordably** — memory-aware scheduling (spawn_width is memory-blind → OOM as the corpus grows) + kill sccache false-greens
-- [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open
+- [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open *(quick-ant-298)*
 - [ ] repo model (internal repo) on compute fabric
 - [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
 - [ ] *(downstream)* compute fabric as a sellable infra piece
