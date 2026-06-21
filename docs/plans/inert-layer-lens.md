@@ -200,9 +200,12 @@ The same three conditions (§1.1) decide the doc wall:
 **5 orphans** — `compile-clean-forcecheck.md`, `inert-layer-lens.md` (this very doc, before its ROADMAP
 line landed — the self-demonstrating case), `m4-universal-hermetic-corpus.md`,
 `m5-fixture-store-consolidation.md`, `runbooks/bmc-redfish-operator-access.md` (likely a legitimate
-runbook-root case, not a roadmap orphan) — and **1 dangling link**: `ROADMAP.md` references
-`docs/plans/expensive-test-cause-table.md` **twice** and the file does not exist (a #5463
-forward-reference never written). The wall would have blocked all six.
+runbook-root case, not a roadmap orphan) — and **1 dangling link**: `ROADMAP.md`'s rust-gate-coverage
+bullet linked `docs/plans/expensive-test-cause-table.md`, a #5463 forward-reference never written (the
+Pop-A/Pop-B content already lives in `ci-selection-vs-scheduling.md`, so a new doc would §2/§3-duplicate
+it). **Repointed in this PR** to the doc that holds the content. The wall would have blocked all six.
+(Methodology note: the *first* census run reported this ref as 2× — it had read a stale local `ROADMAP`
+behind main's terse pass; the lens must run against the live tree, the same discipline it enforces.)
 
 ## 9. Open
 
