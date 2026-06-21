@@ -29,7 +29,8 @@ module v2.workflow.ci_floor_plan
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
-  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate, DslCompileCleanGate, CiYamlGate,
+  Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate,
   SourceRootIngestGate
 }
 import v2.std.algebra { length, list_snoc_item }
@@ -85,6 +86,7 @@ fn gate_node(g: Gate) -> Node {
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
     ResolvedImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_resolved_imports } }, children: [] }
+    ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
@@ -99,6 +101,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes" }
     ResolvedImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "resolved_imports_gate_passes" }
+    ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
     SourceRootIngestGate => RunnableSingleClaim {
@@ -160,6 +163,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
     EmitHostGate => false
     LayeringImportsGate => false
     ResolvedImportsGate => false
+    ExtdepsExternalAuthorityGate => false
     CiYamlGate => false
   }
 }

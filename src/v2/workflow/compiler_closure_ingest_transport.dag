@@ -16,9 +16,10 @@
 module v2.workflow.compiler_closure_ingest_transport
 
 import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
 import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt,
+  ShellProgram, ShellStmt, ShellWord,
   Command, Concat, CmdSubst,
   lit, var_ref, command, assign, serialize_bash
 }
@@ -31,6 +32,11 @@ data closure_witness_module_count: String = "compiler_closure_scoped_ingest_modu
 data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
 data closure_gap4_entry: String = "src/v2/test/claim/languages/gap4_parse_tokens_remain_test.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"
+
+// --source-root <r> for every witness_layer_root (§3 single authority — same roots as the rest of CI).
+fn cc_source_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
 
 fn emit_closure_manifest_stmt() -> ShellStmt {
   command(words: [
@@ -48,37 +54,37 @@ fn emit_closure_manifest_stmt() -> ShellStmt {
 }
 
 fn closure_gunbc_claim_run(function: String) -> ShellStmt {
-  command(words: [
-    var_ref(name: "GUNBC"), lit(text: "run"),
-    lit(text: "--source-root"), lit(text: "dsl"),
-    lit(text: "--source-root"), lit(text: closure_source_root),
-    lit(text: "--source-root"), var_ref(name: "CLOSURE_MANIFEST_DIR"),
-    lit(text: "--entry"), lit(text: closure_test_entry),
-    lit(text: "--function"), lit(text: function),
-    lit(text: "--claim-run")
-  ])
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], cc_source_root_flags()),
+    [
+      lit(text: "--source-root"), var_ref(name: "CLOSURE_MANIFEST_DIR"),
+      lit(text: "--entry"), lit(text: closure_test_entry),
+      lit(text: "--function"), lit(text: function),
+      lit(text: "--claim-run")
+    ]
+  ))
 }
 
 fn closure_gunbc_claim_run_no_overlay(function: String) -> ShellStmt {
-  command(words: [
-    var_ref(name: "GUNBC"), lit(text: "run"),
-    lit(text: "--source-root"), lit(text: "dsl"),
-    lit(text: "--source-root"), lit(text: closure_source_root),
-    lit(text: "--entry"), lit(text: closure_test_entry),
-    lit(text: "--function"), lit(text: function),
-    lit(text: "--claim-run")
-  ])
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], cc_source_root_flags()),
+    [
+      lit(text: "--entry"), lit(text: closure_test_entry),
+      lit(text: "--function"), lit(text: function),
+      lit(text: "--claim-run")
+    ]
+  ))
 }
 
 fn closure_gunbc_gap4_claim_run() -> ShellStmt {
-  command(words: [
-    var_ref(name: "GUNBC"), lit(text: "run"),
-    lit(text: "--source-root"), lit(text: "dsl"),
-    lit(text: "--source-root"), lit(text: closure_source_root),
-    lit(text: "--entry"), lit(text: closure_gap4_entry),
-    lit(text: "--function"), lit(text: closure_gap4_witness),
-    lit(text: "--claim-run")
-  ])
+  command(words: concat(
+    concat([var_ref(name: "GUNBC"), lit(text: "run")], cc_source_root_flags()),
+    [
+      lit(text: "--entry"), lit(text: closure_gap4_entry),
+      lit(text: "--function"), lit(text: closure_gap4_witness),
+      lit(text: "--claim-run")
+    ]
+  ))
 }
 
 func run_compiler_closure_ingest_gate() -> Bool {

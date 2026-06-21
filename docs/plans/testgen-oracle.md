@@ -16,7 +16,7 @@ A compile-time lens (`src/v2/lens/testgen.dag`, ~2078 lines) that emits conforma
 | category | file | source |
 |---|---|---|
 | AlgebraLawConformance | `algebra_law_conformance.dag` | **structural** — `nat_declared_algebra_law_obligations()` (`std/nat.dag`) |
-| CoproductExhaustiveness | `coproduct_exhaustiveness.dag` | hand-anchored |
+| CoproductExhaustiveness | `coproduct_exhaustiveness.dag` | **structural** — `enumerate_coproduct_decls()` × `coproduct_arm_keys` over EVERY declared coproduct (§4.2 landed) |
 | WitnessValidity | `witness_validity.dag` | hand-anchored (RoundTrip Deferred) |
 | IdempotentOperationConformance | `idempotent_operation_conformance.dag` | hand-anchored |
 | LanguageBehaviorEquivalence | `language_behavior_equivalence.dag` (+ `lbe_anchor_manifest`) | hand-anchored |
@@ -54,7 +54,7 @@ The retro the operator wants: for every bug class we hit, ask three questions an
 
 | bug class (from memory / recent PRs) | category | structural? | gated? |
 |---|---|---|---|
-| coproduct non-exhaustive match (`Value::eq` `_ => false`) | CoproductExhaustiveness ✓ | no (hand) | no |
+| coproduct non-exhaustive match (`Value::eq` `_ => false`) | CoproductExhaustiveness ✓ | **yes** (§4.2 — every declared coproduct) | **yes** (floor-discovered) |
 | cross-representation `==` straddle (model↔realization fork) | — (none) | — | — |
 | algebra-law violation | AlgebraLawConformance ✓ | **yes** (the exemplar) | no |
 | flat-namespace fn collision (#5185) | — | — | — |
@@ -89,8 +89,13 @@ universe-enumeration through it.
 
 1. **Gate the existing generated output** — make `generated/` floor-discovered (single-representation
    `test fn` in `*_test.dag`, or a drift gate regen==committed). Closes face #1+#2 with no new logic.
-2. **Make CoproductExhaustiveness structural** — route it through `coproduct_arm_keys` over *every*
-   declared coproduct (not a hand-roster); discriminating RED = a removed arm.
+2. **Make CoproductExhaustiveness structural** — ✅ LANDED. Routed through
+   `v2.std.concept_index.enumerate_coproduct_decls()` × `coproduct_arm_keys` over *every* declared
+   coproduct (the anchor is now `GeneratedCoproductExhaustiveness { coproduct_type: Symbol,
+   omitted_variant: Symbol }`, not the closed `TestClaimCoproductVariant` roster). Floor-discovered in
+   `generated_conformance_floor_test` with a non-empty-roster guard (fail-closed on a dormant
+   enumeration) and independent arm recomputation for TestClaim + Connective; perturbing the roster to
+   empty goes RED (verified).
 3. **Add the cross-representation-equality category** — generate, for each modeled coproduct × native
    realization, the straddle witness (the `==` fork is the live root; testgen should cover the *class*).
 4. **affected-set completeness** — model the full repo-process universe (incl. meta) under the lens, on
