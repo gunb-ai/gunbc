@@ -49,6 +49,18 @@ import v2.test.impossible_bug.transport_type_drift {
   claim_shared_declaration_compiles_both_sides,
   claim_target_contract_drift_impossible
 }
+import v2.test.impossible_bug.idempotency_contract {
+  claim_idempotent_inhabitant_passes,
+  claim_repeated_append_in_idempotent_position_caught
+}
+import v2.test.impossible_bug.unenumerated_effects {
+  claim_explicit_reread_passes,
+  claim_redundant_read_caught
+}
+import v2.test.impossible_bug.unhandled_diagnostic_paths {
+  claim_division_by_zero_total_or_proven_safe,
+  claim_unproven_division_rejected
+}
 
 // Each unit is a real change covered by a discriminating witness: a positive
 // (CompilesClaim over a base input, green by execution) paired with a discriminating
@@ -68,11 +80,34 @@ data unit_transport_type_drift: List<TestClaim> = [
   claim_target_contract_drift_impossible
 ]
 
+// De-vacuum widening (DESIGN.md §5/§6): three more real impossible-bug change-units, each a
+// positive paired with a PERTURBED discriminating negative (a falsification input distinct from
+// the positive's accepted input). The roster stays a CURATED set, not the whole change-set —
+// the dissolve trigger toward full change-coverage (the .dag structural-reflection wall shared by
+// lens/coverage.dag and lens/testgen.dag) is documented in lens_discrimination_family_eval_test.dag.
+data unit_idempotency_contract: List<TestClaim> = [
+  claim_idempotent_inhabitant_passes,
+  claim_repeated_append_in_idempotent_position_caught
+]
+
+data unit_unenumerated_effects: List<TestClaim> = [
+  claim_explicit_reread_passes,
+  claim_redundant_read_caught
+]
+
+data unit_unhandled_diagnostic_paths: List<TestClaim> = [
+  claim_division_by_zero_total_or_proven_safe,
+  claim_unproven_division_rejected
+]
+
 fn discrimination_subject_rows() -> List<List<TestClaim>> {
   [
     unit_suboptimal_complexity,
     unit_nested_optional_flatten,
-    unit_transport_type_drift
+    unit_transport_type_drift,
+    unit_idempotency_contract,
+    unit_unenumerated_effects,
+    unit_unhandled_diagnostic_paths
   ]
 }
 
