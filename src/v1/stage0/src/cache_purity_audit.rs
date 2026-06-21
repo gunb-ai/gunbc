@@ -2,14 +2,22 @@
 // (DESIGN §5; ROADMAP §2 P3). The LIVE continuous falsifier that makes enabling the
 // resolved-graph cache safe: a cache is enabled ONLY behind its purity oracle.
 //
-// The §5 principle: a content-keyed cache must return a WARM hit byte-identical to a fresh
-// COLD compute. If the write→read CODEC is lossy (a field that does not round-trip), a warm
-// hit decodes to a graph that differs from cold while every Bool verdict still agrees — a
-// latent impurity that bites when emit/lower consume the cached graph. verify-on-read only
-// checks stored-bytes INTEGRITY (a digest), not decode-FIDELITY; proud-deer's two-run VERDICT
-// measurement cannot catch a verdict-invariant lossy decode (warm decodes the same lossy way
-// both runs). This audit closes that gap by comparing the DECODED warm graph against a fresh
-// cold compute at the BYTE level, fail-closed.
+// The §5 principle: a content-keyed cache must return a WARM hit equal to a fresh COLD compute.
+// If the write→read CODEC is lossy (a field that does not round-trip), a warm hit decodes to a
+// graph that differs from cold while every Bool verdict still agrees — a latent impurity that
+// bites when emit/lower consume the cached graph. verify-on-read only checks stored-bytes
+// INTEGRITY (a digest), not decode-FIDELITY; proud-deer's two-run VERDICT measurement cannot
+// catch a verdict-invariant lossy decode (warm decodes the same lossy way both runs). This audit
+// closes that gap by comparing the DECODED warm graph against a fresh cold compute, fail-closed.
+//
+// CANONICAL EQUALITY = STRUCTURAL `==` (not a serialized-byte compare). `ResolvedGraph` and its
+// `source_indices` derive `PartialEq`, so `==` compares every field and, crucially, compares the
+// only nondeterministic members — the `item_registry` and `source_indices` HashMaps — order-
+// INDEPENDENTLY. For a derived `PartialEq` (no hand-written `eq` to under-cover a field) this IS
+// canonical-byte equality: equal ⟺ canonical bytes equal. It is preferred over a
+// `serde_json::Value` byte round-trip because the latter overflows serde's 128-level parse
+// recursion limit on a compiler-sized AST (and a giant `Value` risks a Drop stack-overflow); `==`
+// walks the existing structures with no allocation and is depth-safe.
 //
 // CODEC ISOLATION (why both sides go through `resolve_entry_with_index`): cold uses the SAME
 // cached-orchestration resolve path as warm, just with an empty cache (compute+write) vs a
@@ -24,8 +32,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use serde::Deserialize;
-
 use crate::cache_purity_oracle::CachePurityViolation;
 use crate::cli_run::{
     build_multi_entry_index, discover_floor_corpus_rows, load_sources_for_entry,
@@ -39,36 +45,28 @@ use crate::v1_compiler_compile::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
 
-/// Canonical serialized bytes of a resolved graph. Round-trips through `serde_json::Value`
-/// (whose object keys are a sorted `BTreeMap` — `preserve_order` is off in this workspace) so
-/// `source_indices`'s `HashMap` iteration order cannot make a byte compare false-fail. A
-/// reordered map is BENIGN (canonicalization quotients it out); a genuine semantic field diff
-/// survives — exactly the divergence the audit must catch.
-pub fn canonical_graph_bytes(
+/// A located divergence fingerprint for the violation report — computed ONLY when the two sides
+/// already differ structurally (so the order-nondeterminism of the raw HashMap serialization is
+/// irrelevant: the contents provably differ, so the fingerprints differ). Not a canonical cache
+/// key — purely a `warm`-vs-`cold` content fingerprint for the §5 located error.
+fn divergence_fingerprint(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Vec<u8> {
-    let raw = serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload");
-    // A real resolved graph nests far deeper than serde_json's default 128-level parse recursion
-    // limit (a compiler-sized AST), so `from_slice` must run with the limit disabled — otherwise
-    // canonicalization panics on the first large entry (it does not on the small P1 fixtures).
-    // `Value`'s object keys are a sorted `BTreeMap` (`preserve_order` off), so the re-serialize is
-    // canonical: HashMap iteration order is quotiented out, a genuine field diff survives.
-    let mut de = serde_json::Deserializer::from_slice(&raw);
-    de.disable_recursion_limit();
-    let value = serde_json::Value::deserialize(&mut de).expect("payload is valid json");
-    serde_json::to_vec(&value).expect("re-serialize canonical")
+) -> Hash {
+    v1_rt::bytes_identity_hash(
+        &serialize_fixture_payload_for_test(graph, source_indices).unwrap_or_default(),
+    )
 }
 
-/// Audit one entry: a WARM cache hit must be canonically byte-identical to the COLD compute it
-/// cached. Both go through `resolve_entry_with_index` so the ONLY difference under test is the
-/// write→read codec. Requires `GUNBC_RESOLVED_GRAPH_CACHE_DIR` to point at `cache_root` (set by
-/// the caller) so the cached path is actually exercised.
+/// Audit one entry: a WARM cache hit must equal the COLD compute it cached (canonical structural
+/// `==`, see the module header). Both go through `resolve_entry_with_index` so the ONLY difference
+/// under test is the write→read codec. Requires `GUNBC_RESOLVED_GRAPH_CACHE_DIR` to be set to an
+/// EMPTY dir (caller's responsibility) so COLD genuinely misses+computes.
 ///
-/// - COLD: a fresh index over an empty/primed-elsewhere key → MISS → compute → WRITE.
+/// - COLD: a fresh index over an unprimed key → MISS → compute → WRITE.
 /// - WARM: a fresh index over the now-primed key → HIT → DECODE.
 /// Divergence ⟹ a located, typed [`CachePurityViolation`] (the codec is lossy / the warm hit
-/// is stale): the §5 fail-closed signal. Returns `Ok(())` on byte-identity (pure).
+/// is stale): the §5 fail-closed signal. Returns `Ok(())` on equality (pure).
 pub fn audit_entry_warm_equals_cold(
     roots: &[String],
     entry: &str,
@@ -88,7 +86,6 @@ pub fn audit_entry_warm_equals_cold(
         Ok(r) => r,
         Err(_) => return Ok(()), // resolve error is the discovery gate's concern, not purity's
     };
-    let cold_digest = v1_rt::bytes_identity_hash(&canonical_graph_bytes(&cold_graph, &cold_si));
 
     // WARM: a fresh index over the now-primed key → HIT → decode.
     let warm_index = build_multi_entry_index(roots);
@@ -96,14 +93,14 @@ pub fn audit_entry_warm_equals_cold(
         Ok(r) => r,
         Err(_) => return Ok(()),
     };
-    let warm_digest = v1_rt::bytes_identity_hash(&canonical_graph_bytes(&warm_graph, &warm_si));
 
-    if cold_digest != warm_digest {
+    // Canonical structural equality (depth-safe; HashMaps compared order-independently).
+    if cold_graph != warm_graph || cold_si != warm_si {
         return Err(CachePurityViolation {
             content_key,
             unkeyed_axis: format!("resolved-graph cache codec (write→read) for entry {entry}"),
-            warm_digest,
-            cold_digest,
+            warm_digest: divergence_fingerprint(&warm_graph, &warm_si),
+            cold_digest: divergence_fingerprint(&cold_graph, &cold_si),
         });
     }
     Ok(())
