@@ -441,6 +441,23 @@ fn source_root_provenance_coverage_receipt(
 }
 
 
+// Grounded active source-root set, folded from the host-tagged ingest witnesses.
+// This is the §4-grounded replacement for resolution.dag's QN-prefix
+// `source_root_set_from_module_roots` — each witness carries the filesystem truth of
+// which `--source-root` it was read from, so the set is derived from provenance, not a
+// guess. INERT in PR-A (defined, not yet wired); PR-B threads it into resolve_with_admission
+// and deletes the QN-prefix fallback (the activation gate in resolution.dag's header).
+fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      source_root_set_insert(roots: acc, r: read.source_root)
+    }
+  )
+}
+
+
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
   canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
 }
