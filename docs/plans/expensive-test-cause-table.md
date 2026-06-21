@@ -76,6 +76,55 @@ This bifurcates the root cause and is the pivotal verification:
 reserves): compare *single-test-isolation* time vs *full-suite-marginal* time (suite-with-test
 minus suite-without). Cheap, decisive, and host-load-tolerant if run carefully. NOT run here.
 
+## Verify experiment — Pop-A floor decomposition (measured, this branch)
+
+Parent-authorized discriminating measurement (warm build, `--test-threads=1`, **box under load
+~2× vs fierce-hawk's clean run** — use ratios, not absolutes):
+
+| run | tests | wall | user |
+|---|---|--:|--:|
+| A | `clean_compile_produces_zero_diagnostics` (×1) | 138.10s | 138.18s |
+| B | + `unresolved_type_in_field` + `bare_container_type_detected` (×3) | 234.96s | 233.98s |
+
+Decomposition: marginal per added test = (234.96 − 138.10)/2 = **~48s/test** (loaded; ≈24s
+deloaded). Implied once-floor = 138.10 − 48 = **~90s** (loaded; ≈45s deloaded). **user ≈ wall**
+throughout (confirms fierce-hawk's single-threaded property). So Pop-A is **TWO costs stacked**:
+
+1. **A ~90s once-per-process floor** = the test-helper `module_index` OnceLock (whole-`dsl/`+
+   `src/v2` `parse_source`). Paid by the first `compile_multi` in a process → each *isolated*
+   test pays it (inflating fierce-hawk's per-test numbers), but a real `cargo test` suite
+   amortizes it **once**. This part *is* an isolation artifact.
+2. **A ~48s/test (≈24s deloaded) genuine per-test residue** that **sums in a real suite**. The
+   three snippets are 2–3 lines; two import **nothing**, one imports `std.types`, yet the
+   marginal was **uniform** → the residue is **import-invariant**, i.e. a *fixed per-
+   `compile_sources` call cost*, NOT a memoizable import-closure recompute.
+
+**Conclusions:**
+- **The pure-isolation-artifact hypothesis is REFUTED.** The floor is an artifact, but the
+  ~24s-deloaded per-test residue is real: ~21 compile tests ⇒ ~45s floor + ~21×24s ≈ **~9min
+  real per-PR suite cost**. So Pop-A genuinely merits cadence-decoupling — #5427's
+  `ignore=expensive` on Pop-A is justified, and the nightly-residue from Pop-A is **non-zero**.
+- **Resolve-path annotation (parent's ask):** the residue is on the **harness-other in-process
+  path** — `compile_multi → compile_sources → front_end_sources → resolve_modules` — which is
+  **cache-blind**: it routes through **neither** discovery (`cli_run.rs:~547`, cache-consulting)
+  **nor** SingleClaim (`cli_run.rs:~505`). Confirmed independently by keen-otter-380 (the only
+  test touching `GUNBC_RESOLVED_GRAPH_CACHE_DIR` is `resolve_cross_process_cache_test.rs`).
+- **§2 verdict for Pop-A: the disk resolve-cache does NOT drain it** — wrong path (in-process,
+  cache-blind) AND wrong cost (the residue is a fixed per-call seed cost, import-invariant, not
+  an import-resolve recompute). So **neither** the zero-code cache-dir **nor** stern-otter's
+  SingleClaim routing helps Pop-A. §2's lever lands on the *CLI/floor* resolve, not these tests.
+- **Two cheap wins surfaced anyway:** (i) the ~45–90s `module_index` floor is a **test-helper
+  inefficiency** — it `parse_source`s every `.dag` just to read module *names*; a light
+  module-decl scan (or sharing the compiler's index) cuts it. Test-infra fix, not §2.
+  (ii) Pop-B build-once (queued).
+- **Pop-A bucket stands (c)**, but split: floor = fixable test-helper artifact; per-test residue
+  = genuine seed-perf, **dissolve-on self-host shrink, interim-periodic**. The operator's
+  "most-expensive-is-a-fixable-defect" thesis holds for **Pop-B** (subprocess/network (a)/(b)),
+  **not** for Pop-A's per-test residue.
+- **Open (cheap profiling follow-up):** the ~24s-deloaded fixed per-`compile_sources` cost on a
+  2-line file is unexplained at the function level (a constant pass in resolve/typecheck/emit?).
+  Worth a flamegraph for whoever owns seed-perf — it is the real recurring Pop-A cost.
+
 ## Population A — fierce-hawk's measured (c) set (single-threaded user-CPU ≈ wall)
 
 All bucket **(c) v1-seed-structural**, mechanism = in-process full pipeline. Decision for every
