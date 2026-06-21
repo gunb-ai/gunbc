@@ -22,8 +22,9 @@
 // fold self-hosts this comparison (ROADMAP §2 P5; content(T)=content_hash(subgraph)).
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::rc::Rc;
+
+use serde::Deserialize;
 
 use crate::cache_purity_oracle::CachePurityViolation;
 use crate::cli_run::{
@@ -48,7 +49,14 @@ pub fn canonical_graph_bytes(
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Vec<u8> {
     let raw = serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload");
-    let value: serde_json::Value = serde_json::from_slice(&raw).expect("payload is valid json");
+    // A real resolved graph nests far deeper than serde_json's default 128-level parse recursion
+    // limit (a compiler-sized AST), so `from_slice` must run with the limit disabled — otherwise
+    // canonicalization panics on the first large entry (it does not on the small P1 fixtures).
+    // `Value`'s object keys are a sorted `BTreeMap` (`preserve_order` off), so the re-serialize is
+    // canonical: HashMap iteration order is quotiented out, a genuine field diff survives.
+    let mut de = serde_json::Deserializer::from_slice(&raw);
+    de.disable_recursion_limit();
+    let value = serde_json::Value::deserialize(&mut de).expect("payload is valid json");
     serde_json::to_vec(&value).expect("re-serialize canonical")
 }
 
