@@ -20,6 +20,16 @@ module extdeps.vendor
 
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Vendor"
+  }
+}
+
 type Vendor<Domain> {
   legal_name: NonEmptyStr
 }

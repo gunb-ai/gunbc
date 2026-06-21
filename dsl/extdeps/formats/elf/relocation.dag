@@ -6,6 +6,16 @@
 
 module extdeps.formats.elf.relocation
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.reloc.html"
+  }
+}
+
 // x86-64 relocation types cited from gABI / x86-64 psABI (subset).
 // 🟡 dissolve-on: Relocation decode deferred to Slice 2 (shift/mask primitives for sym+type split
 //    from Elf64Rela.info; do NOT add elf64_rela_to_relocation here until that lands).
