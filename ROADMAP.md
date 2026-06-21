@@ -13,15 +13,23 @@ Backend only — NOT the frontend.
 
 Stop anchoring on code.
 
-## 3. Self-hosting v2 (TypeScript)
+## 3. Self-hosting v2 (Rust + TypeScript)
 
-End goal: v2 compiles its own `src/v2` to a bit-identical fixed point; the Rust v1 seed shrinks toward
-zero. Front-end is **done** (whole tree parses/resolves/infers); the active self-host path is **Rust**
-(`--target rust`, cargo-green, regen_stage0) — TypeScript is one of 14 emit targets, not yet the
-self-host runtime (open decision). Open last mile: the emitted whole-tree crate doesn't `cargo build`
-green yet, and the fixed-point gate is still fail-closed (Stage C, gated on candidate generation).
+**Anchor (decided 2026-06-21, do not flip-flop):** `.dag` is the truth; v2 compiles itself to a
+bit-identical fixed point. Emit to **multiple realizations — Rust AND TypeScript** (both first-class
+self-host targets, not one-or-the-other). Three languages total: **dag** (authority) · **rust** ·
+**typescript**.
 
-Plan (verified state + the two tracks + open questions): [docs/plans/v2-self-hosting.md](docs/plans/v2-self-hosting.md)
+**Terminal goal: delete `src/v1`.** Once v2's emitted compiler builds green and reproduces itself,
+**delete `src/v1/stage0`** (~125k lines of Rust seed + the `gunbc`/`claim_executor`/`regen_stage0`/
+`claim_batch`/`discover_owned_data`/`yaml_check` bins) and any redundant v1 files. The seed shrinks to
+zero — literally.
+
+Today: front-end **done** (whole tree parses/resolves/infers). Open: the emitted whole-tree crate
+doesn't `cargo build` green yet (Route-A last mile); the fixed-point gate is fail-closed (Stage C,
+gated on candidate generation); TS proven only on the `add` slice.
+
+Plan (verified state + tracks + the v1-deletion gating): [docs/plans/v2-self-hosting.md](docs/plans/v2-self-hosting.md)
 
 ### De-fork dsl ↔ v2 (collapse the duplication)
 
@@ -65,3 +73,27 @@ curated roster. Today coverage is partial:
 Blockers to "whole codebase": (a) a subject-producer for every fn (not name-keyed placeholders);
 (b) the cost-lens loop **zero-absorption** that makes budgets toothless (`symbolic_max` floor fix);
 (c) synthesis stays advisory by nature.
+
+## 7. Minimal work — caching by realization (fail-closed)
+
+**End-state invariant (the acceptance gate):** for every pure transform `T` (resolve, parse, typecheck,
+*and* derived analyses like complexity-synthesis / affected-set — ties to §6), `realize(T)` returns a
+result content-addressed by `hash(inputs ⊕ content(T))`, materialized at the **minimal `Placement`
+spanning T's consumers (its reach)**. A **non-redundant** transform (shared across a layer boundary, or
+recompute-cost > cache-cost) with **no cache supplier at its reach layer** is a located, typed **ERROR**
+that emits a *request to provision a supplier there*. No silent `Recompute`; no under-keyed hit.
+
+Spine (dependency-ordered): **F1** scheduler width (#5421 merged) · **F2/F3** key-completeness lens +
+`resolved_graph` keyed by construction (#5423) → **P1** honest keys verified by execution (realizer-key
+lens; stable transform-id; census parity) → **P2** one door: `realize(subject)` as sole API
+(dissolves hand-rolled `ParseTable`) → **P3 (core ask)** reach analysis → completeness gate fail-closed
+(land the redundancy-only cut first; cost-based half waits on P4) + supplier provisioning → **P4**
+economic tier (per-transform measured cost → `Materialization` by cost) → **P5** v2 dissolution
+(`content(T) = content_hash(subgraph)` native). External blockers: **B1** #5295 generic-instantiation
+(gates cross-shard `Share`); **B2** v2 cross-tree content-hash / increment-4 (gates P5, turns
+approximation into native).
+
+Inhabits existing carriers (`RealizedStep`/`Materialization`/`Placement`, `CacheLayerPlan`, `reach`,
+`reconcile`), not re-coined. Detailed plan: [docs/plans/realization-measurement-loop.md](docs/plans/realization-measurement-loop.md)
+(⚠️ owned by zesty-deer-479; quick-ant-298's dependency-ordered refinement above should be **reconciled
+into that one doc**, not forked).

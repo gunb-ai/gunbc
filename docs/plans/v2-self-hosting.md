@@ -10,14 +10,13 @@ authority), not the goal.
 `emitter/seed-green-integration @ 239ff284d5` by session merry-deer-374 (5 evidence-backed verifiers,
 2026-06-21).** Re-check receipts before acting.
 
-> **END GOAL — CONFIRM (Rust vs TypeScript).** The ROADMAP titles this "self-hosting v2 (TypeScript)",
-> but **the active self-host path is Rust**: Rust is the seed language, so the fixed point is exercised
-> through the Rust emit path (`--target rust`, `cargo`-green, `regen_stage0`). TypeScript is *one of 14*
-> emit targets and is proven only on the `add` slice (Python→core→TS). So decide: is the north star
-> (a) finish the **Rust** self-host bootstrap (Rust seed shrinks to zero against a v2-emitted Rust
-> compiler), with TS as just another target; or (b) make **TypeScript** the self-host runtime (v2 emits
-> TS that re-emits bit-identical TS)? (a) is what the carrier is actually driving toward today; (b)
-> would be a new track. This decides whether the fixed point is measured over Rust bytes or TS bytes.
+> **END GOAL (decided 2026-06-21 — anchored in ROADMAP §3, do not re-litigate).** Three languages:
+> **`.dag` is the authority/truth; v2 emits BOTH Rust AND TypeScript as first-class realizations** (not
+> one-or-the-other). The fixed point is proven per realization (Rust bytes reproduce; TS bytes
+> reproduce). **Terminal goal: delete `src/v1`** — once the v2-emitted compiler builds green and
+> reproduces itself, remove `src/v1/stage0` (~125k lines + its bins) and redundant v1 files. The seed
+> shrinks to zero, literally. Rust is furthest along (the seed language); TypeScript is proven only on
+> the `add` slice today and needs target-completeness to join the fixed point.
 
 ---
 
@@ -48,7 +47,7 @@ authority), not the goal.
   python, go, bash, dag, cpp, typescript, kotlin, swift, java, lean, ptx, verilog, …), 5 in `dsl`. A new
   target is **data rows, never a new emitter**.
 
-## 1. The two tracks
+## 1. The tracks
 
 ### Track A — Rust self-host bootstrap (the active path)
 Get the v2-emitted Rust compiler to build and reproduce itself.
@@ -68,7 +67,24 @@ cluster); MachineWidth is **#5397** (E0107), a separate PR.
 `candidate_generation.dag` (`generate_stage_candidate_from_ingest`) drives `assemble_program_from_ingest
 → infer → translate`, capturing the emitted **Node** before `serialize_target` — the input Stage C
 needs. Comparison substrate (emitted Node vs emitted bytes) is operator-pending (merry-crab-687).
-When it lands, the fail-closed runner flips to `Accepted` + real-digest match.
+When it lands, the fail-closed runner flips to `Accepted` + real-digest match. Proven **per realization**
+(Rust first; TypeScript once its target rows are complete).
+
+### Track T — TypeScript as a first-class realization
+TS is 1 of 14 emit targets, proven only on the `add` slice
+(`cross_language_add_python_to_typescript_test.dag`, Python→core→TS). To join the fixed point it needs
+target-completeness over what the compiler actually uses (records, coproducts, folds, generics) — a gap
+census from `add` → full `src/v2`, then a TS regen + `node`-build green analogous to Track A's cargo path.
+
+### Track Z — delete the seed (terminal)
+The literal "seed shrinks to zero". Gated on A+B (and T, for the TS runtime) landing: only once a
+v2-emitted compiler **builds green and reproduces itself** can `src/v1` go. Scope to delete:
+`src/v1/stage0` (106 `.rs`, ~125k lines) ships the bins everything currently runs on — `gunbc`,
+`claim_executor`, `regen_stage0`, `claim_batch`, `discover_owned_data`, `yaml_check`,
+`v2_whole_tree_parse_scan` — plus `src/v1/stage0_core`, `stage0_emit_core`, `src/v1/tests` (60 `.rs`,
+~28k lines). **Hard precondition:** the v2-emitted compiler must provide every one of those bins green
+*and* cover every host effect v1 currently supplies (the CI floor itself runs via `claim_executor`).
+Delete only what becomes redundant — verify by execution, not by assumption.
 
 ## 2. Prerequisites / dependencies
 
@@ -82,16 +98,18 @@ When it lands, the fail-closed runner flips to `Accepted` + real-digest match.
 
 ## 3. Open questions (for the operator)
 
-1. **Rust or TypeScript self-host?** (see END GOAL block). The carrier drives Rust today.
-2. **Reopen direction** (raised by merry-deer-374, `node://session-merry-deer-374`): should the reopened
-   "v2 self host (p2)" item drive **(a)** finishing the Route-A green bootstrap (merge seed-green branch
-   → green regen → flip the lockstep gate), or **(b)** folding into a pure-`.dag` coherence restart?
-3. **Rust seed end-state** — retire the `src/v1` seed once self-host lands, or keep it as a second
-   realization?
-4. **Scope** — whole `src/v2` to a fixed point, or a defined compiler-core subset first?
+End goal is settled (Rust + TypeScript, `.dag` authority, delete v1 — see END GOAL). Remaining:
+
+1. **Reopen direction** (raised by merry-deer-374, `node://session-merry-deer-374`): should the reopened
+   "v2 self host (p2)" item drive **(a)** finishing the Route-A green bootstrap (merge the
+   `emitter/seed-green-integration` branch → green regen → flip the lockstep gate), or **(b)** folding
+   into a pure-`.dag` coherence restart? (Now decidable: (a) is the direct path to Track Z.)
+2. **Scope of the first fixed point** — whole `src/v2`, or a defined compiler-core subset first, before
+   widening to the full bin set Track Z must replace?
+3. **TS sequencing** — pursue Track T in parallel with A, or after the Rust fixed point lands?
 
 ## 4. Dissolution trigger (DESIGN §6)
 
-Delete this doc when Stage C lands: the whole v2 compiler emits a bit-identical copy of itself and
-`self_host.dag` flips from fail-closed to asserting the real-digest match. The self-host witness then
-*is* the authority and this tracker is redundant.
+Delete this doc when Track Z lands: `self_host.dag` asserts the real-digest fixed point (Stage C) and
+`src/v1` is gone. At that point the self-host witness + the absent `src/v1` *are* the authority and this
+tracker is redundant.
