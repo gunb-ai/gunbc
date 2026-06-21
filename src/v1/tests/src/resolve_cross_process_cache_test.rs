@@ -356,6 +356,34 @@ fn key_mismatch_forces_miss_not_stale_hit() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Falsifier 4b: the CODEC is in the key (transitively). The production key folds the
+/// `TransformContent` axis, which is `transform_content_digest()` = the running executable's
+/// content hash — and the resolved-graph serializer/deserializer (`CachePayload` serde,
+/// `read_cached_file`, `write`) is compiled INTO that executable. So any codec change → a
+/// different binary → a different `transform_content` → a different key → every entry MISSES
+/// and is cold-rewritten + re-audited. This closes the only place a piggyback audit-at-write
+/// could be weaker than audit-every-read: a subtly-lossy deserializer that still parses old
+/// bytes at an UNCHANGED key cannot exist, because a codec change is itself a key change.
+///
+/// Execution proof: hold the closure axis fixed, vary ONLY the transform_content material, and
+/// the derived subject digest must move. (RED if the fold ever drops the TransformContent axis.)
+#[test]
+fn codec_change_moves_key_via_transform_content_axis() {
+    use v1_compiler::v1_rt::atom_identity_hash;
+    let closure = atom_identity_hash("same-closure-content".to_string());
+    let codec_a = atom_identity_hash("transform-content-codec-A".to_string());
+    let codec_b = atom_identity_hash("transform-content-codec-B".to_string());
+
+    let key_a = derive_subject_digest(&KeyInputMaterials::new(closure.clone(), codec_a));
+    let key_b = derive_subject_digest(&KeyInputMaterials::new(closure, codec_b));
+
+    assert_ne!(
+        key_a, key_b,
+        "a change to transform_content (the executable hash — codec compiled in) MUST move the \
+         cache key, so a codec change forces miss → re-write → re-audit on every entry"
+    );
+}
+
 /// Cross-process child worker for the two-process concurrency receipt.
 #[test]
 fn cross_process_child_worker() {
