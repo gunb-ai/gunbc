@@ -33,9 +33,24 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
 
 ## Next
 
+- Construction-not-validation lens triage (§0/§7) — **the criterion**: a slippage class is
+  *make-impossible-by-construction* exactly when WE author the artifact (collapse to a single
+  authority; derive the dependent fact, leaving nothing to author out of agreement). It is
+  *lens-justified* only when the fact is a CITED observation of a system we do NOT control —
+  validating an external citation's internal consistency is the legit lens use (the §6
+  genuinely-unstructurable carve-out). **Root-cause before reaching for a lens.** Applied:
+  - cache key-completeness (#5423 spec-only lens → #5425): the model↔realizer fork was
+    OURS → dissolved by construction (the `CatalogKeyInputs.ContentAddressed` variant has no
+    inputs field; `content_addressed_inputs` derives them; the realizer folds a total
+    materializer over a closed axis set). The lens now fires ONLY on cited `NativeInternal`
+    vendor rows (cargo/rustup/sccache) — a citation we don't author. Triage answer = (a)+(b).
+  - **residual (v2-gated)**: the Rust realizer's axis set and the `.dag` model's derived set
+    are two impls of one rule; full R←M single authority needs v2/realize (realizer = `.dag`
+    subgraph, `content(T) = content_hash(subgraph)`). Absorbed by the self-host lane, not a lens.
 - Caching via Realization — consolidate the forked caches onto one kernel
   - caches forked: ParseTable / RecordedFixture / `resolved_graph_cache` share no kernel; `cache_interface` dead
   - kernel-to-be: `resolved_graph_cache`; RecordedFixture + (re-keyed) ParseTable become handlers
+  - key-derivation now single-authority per row (#5425): CAV inputs DERIVED, vendor inputs CITED
 - §3 extdeps/std de-conflation — shape / transport / policy split (verified backlog)
 - CI floor as one `.dag` binary — generate `ci.yml` from a `.dag` model; glob-discovery corpus cutover
 - Axioms (A1–A3) in `.dag` + a syllogism lens — DESIGN open thread

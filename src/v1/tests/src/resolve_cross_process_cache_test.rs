@@ -445,16 +445,22 @@ fn two_processes_share_cache_without_torn_read() {
 // The toolchain axis is passed in (KeyInputMaterials), not read from current_exe inside the
 // fold, precisely so this sensitivity is testable rather than asserted in a comment.
 
+// Axis materials are 16-char hex Hash digests (the realizer's contract: production passes
+// closure_content_digest / transform_content_digest, both digests).
+const CLOSURE_A: &str = "aaaaaaaaaaaaaaaa";
+const CLOSURE_B: &str = "bbbbbbbbbbbbbbbb";
+const TRANSFORM_1: &str = "1111111111111111";
+const TRANSFORM_2: &str = "2222222222222222";
+
 #[test]
 fn key_changes_when_transform_axis_changes() {
-    let closure = "closure-subject-digest-fixed".to_string();
     let k1 = derive_subject_digest(&KeyInputMaterials::new(
-        closure.clone(),
-        "transform-content-A".to_string(),
+        CLOSURE_A.to_string(),
+        TRANSFORM_1.to_string(),
     ));
     let k2 = derive_subject_digest(&KeyInputMaterials::new(
-        closure,
-        "transform-content-B".to_string(),
+        CLOSURE_A.to_string(),
+        TRANSFORM_2.to_string(),
     ));
     assert_ne!(
         k1, k2,
@@ -464,14 +470,13 @@ fn key_changes_when_transform_axis_changes() {
 
 #[test]
 fn key_changes_when_closure_axis_changes() {
-    let transform = "transform-content-fixed".to_string();
     let k1 = derive_subject_digest(&KeyInputMaterials::new(
-        "closure-subject-A".to_string(),
-        transform.clone(),
+        CLOSURE_A.to_string(),
+        TRANSFORM_1.to_string(),
     ));
     let k2 = derive_subject_digest(&KeyInputMaterials::new(
-        "closure-subject-B".to_string(),
-        transform,
+        CLOSURE_B.to_string(),
+        TRANSFORM_1.to_string(),
     ));
     assert_ne!(
         k1, k2,
@@ -481,8 +486,8 @@ fn key_changes_when_closure_axis_changes() {
 
 #[test]
 fn key_is_deterministic_in_its_axes() {
-    let m1 = KeyInputMaterials::new("same-closure".to_string(), "same-transform".to_string());
-    let m2 = KeyInputMaterials::new("same-closure".to_string(), "same-transform".to_string());
+    let m1 = KeyInputMaterials::new(CLOSURE_A.to_string(), TRANSFORM_1.to_string());
+    let m2 = KeyInputMaterials::new(CLOSURE_A.to_string(), TRANSFORM_1.to_string());
     assert_eq!(
         derive_subject_digest(&m1),
         derive_subject_digest(&m2),
