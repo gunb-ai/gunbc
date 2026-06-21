@@ -98,12 +98,4 @@ jobs:
           if '[' '-n' "$GUNBC_BUILD_FRESHNESS_NEWER_SRC" ']'; then 'echo' '::error::build verification: declared artifact '\''cache_purity_audit'\'' is older than a source file (stale — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/cache_purity_audit' >&2; exit 1; fi
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
-          set +e
-          "$ROOT/target/release/cache_purity_audit" --orchestrate --source-root dsl --source-root src/v2 --scan-dir dsl/test/claim --scan-dir src/v2/compiler/manual --width-entry dsl/tools/cache_purity_audit_corun.dag --width-function gunbc_cache_purity_audit_spawn_width_value --notice-title "cache purity audit (co-run, full corpus)" > "$ROOT/cpa_audit.log" 2>&1 &
-          CPA_PID=$!
           "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
-          FLOOR_RC=$?
-          wait "$CPA_PID"; CPA_RC=$?
-          echo "::group::cache purity audit (co-run, full corpus)"; cat "$ROOT/cpa_audit.log" 2>/dev/null || true; echo "::endgroup::"
-          if [ "$FLOOR_RC" -ne 0 ]; then echo "::error::CI floor failed (exit $FLOOR_RC)"; exit "$FLOOR_RC"; fi
-          if [ "$CPA_RC" -ne 0 ]; then echo "::error::cache purity audit (co-run) failed — warm!=cold on the discovery corpus, or a shard dropped (DESIGN §5 fail-closed)"; exit 1; fi

@@ -263,15 +263,18 @@ fn ci_run_join_lines(xs: List<String>) -> String {
   fold(xs, init: "", f: (acc, s) => concat(acc, s))
 }
 
-// The floor scheduler runs with the warm==cold cache-purity audit as a CONCURRENT CO-PROCESS
-// (ROADMAP §2 P3): the audit orchestrator is backgrounded on the host's spare capacity (128t/128 GiB
-// fleet; floor peaks ~8.4 GB), the floor runs in the foreground, and the step JOINS them FAIL-CLOSED
-// — RED if EITHER the floor OR the audit (any shard warm!=cold, or a crashed/OOM'd/dropped shard)
-// fails. `set +e` so an early FLOOR failure does NOT skip the audit `wait` (an orphaned, uncollected
-// audit = the co-process fail-open this guards against). Build+fetch above ran under the step's
-// `set -e` (fail-fast); only this join section manages exit codes by hand. Measured: full-corpus
-// width-4 audit ≈ 695s wall < floor wall, 17.7 GB aggregate (+ floor 8.4 GB ≪ budget) → ~0 added
-// wall-clock, full 291-entry coverage every run, off the floor critical path.
+// DISABLED ON BRANCH (pending the piggyback rebuild — see gunbc_ci_run_script). This co-process
+// wiring is PRESERVED as the documented fallback but is NOT invoked: measured on the real fleet
+// runner it was NET −18min (the audit cold+warm re-resolves the whole corpus at width-4, ~30min
+// contended, dominating the ~13min floor) AND it OOM-killed runners (the real floor peaks ~39.9 GB
+// at width-8 — ~5× the 8.4 GB this comment assumed — and two concurrent runs per push collide on one
+// 128 GB host). The §2-root fix is to PIGGYBACK the audit on the floor's own resolve (warm read-back +
+// compare at the cache-write site) instead of a duplicate re-resolve; until operator GO on that, the
+// branch runs a CLEAN floor (cache-enable, no audit) so it stops harming fleet CI.
+//
+// Original intent (the co-process JOIN): background the audit orchestrator, run the floor in the
+// foreground, JOIN fail-closed — RED if EITHER the floor OR the audit fails. `set +e` so an early
+// FLOOR failure does not skip the audit `wait`. Kept verbatim as the fallback.
 fn gunbc_ci_floor_with_co_audit(spec: CiSpec) -> String {
   ci_run_join_lines([
     "set +e\n",
@@ -287,12 +290,16 @@ fn gunbc_ci_floor_with_co_audit(spec: CiSpec) -> String {
 }
 
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
+  // CLEAN FLOOR (cache-enable, NO co-run audit). The co-run is disabled on-branch pending the
+  // piggyback rebuild (gunbc_ci_floor_with_co_audit preserved as the fallback): the co-run was
+  // net-negative AND OOM-killed fleet runners. The cache-enable (GUNBC_RESOLVED_GRAPH_CACHE_DIR,
+  // exported from the isolate step) stays — that half of P3 is net-positive and safe on its own.
   concat(
     concat(
       concat(ci_release_build_script(), "\n"),
       concat(git_fetch_script(policy: spec.diff_policy), "\n")
     ),
-    gunbc_ci_floor_with_co_audit(spec: spec)
+    scheduler_invoke(spec: spec)
   )
 }
 
