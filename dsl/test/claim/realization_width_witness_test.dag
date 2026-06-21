@@ -23,6 +23,11 @@ import std.realization {
   witness_width_fold_preserves_schedule_topology,
   witness_budget_ignoring_fold_fails,
   witness_measured_cost_affects_shard_balance,
+  witness_memory_term_non_binding_uses_shard_count,
+  witness_tight_budget_backs_off_below_shard_count,
+  witness_unreadable_budget_falls_back_conservative,
+  witness_safety_fraction_is_load_bearing,
+  witness_subunit_budget_admits_one,
 }
 
 fn synthetic_plan_total() -> CostAccount<Nano> {
@@ -106,6 +111,14 @@ fn witness_measured_balance_discriminator() -> Bool {
   witness_measured_cost_affects_shard_balance()
 }
 
+// §1-C memory-aware width: budget non-binding → width = shard_count (the 4→7 reality).
+fn witness_memory_non_binding_at_7() -> Bool {
+  witness_memory_term_non_binding_uses_shard_count(
+    shard_count: 7,
+    hardware_threads: witness_threads_64()
+  )
+}
+
 test fn realization_width_witnesses() -> Bool {
   witness_under_cap_uses_shard_count()
     && witness_over_cap_uses_hardware_threads()
@@ -114,4 +127,9 @@ test fn realization_width_witnesses() -> Bool {
     && witness_degenerate_shard_count_fail_closed_serial()
     && witness_budget_ignoring_fold_red_on_8_4()
     && witness_measured_balance_discriminator()
+    && witness_memory_non_binding_at_7()
+    && witness_tight_budget_backs_off_below_shard_count()
+    && witness_unreadable_budget_falls_back_conservative()
+    && witness_safety_fraction_is_load_bearing()
+    && witness_subunit_budget_admits_one()
 }
