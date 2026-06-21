@@ -23,12 +23,10 @@
 
 module extdeps.realization.hermetic_fixture
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
-  ContentAddressedByValue,
-  UpsertSubject,
   ContentAddressLookup,
   ExactKeyOnly,
   WriteOnce,
@@ -67,8 +65,8 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "gunbc-recorded-fixture-on-disk"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
+    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers (no toolchain).
+    key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
@@ -123,8 +121,8 @@ data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "gunbc-effect-io-fixture-in-memory"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    classification: ContentAddressedByValue
-    inputs_considered: [UpsertSubject]
+    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers (no toolchain).
+    key_inputs: ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: true

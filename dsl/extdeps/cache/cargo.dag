@@ -6,13 +6,13 @@ module extdeps.cache.cargo
 
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
+  NativeInternal,
   RustcInvocation,
   ToolchainSpec,
   CargoFingerprintEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  NativeInternalHash,
   FilePaths,
   NativeInternalLookup,
   ProviderInternal,
@@ -38,8 +38,10 @@ data cargo_target_dir_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "cargo-target-directory"
   transport_encoding: CargoFingerprintEncoding
   key_derivation: {
-    classification: NativeInternalHash
-    inputs_considered: [RustcInvocation, FilePaths, ToolchainSpec]
+    // EXTERNAL vendor cache: cargo computes its own fingerprint, so the inputs are a CITED
+    // observation of what it keys (§3 "model what the API returns"), not something we
+    // construct. key_completeness validates this citation (ToolchainChange ⟹ a toolchain axis).
+    key_inputs: NativeInternal { cited_inputs: [RustcInvocation, FilePaths, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
