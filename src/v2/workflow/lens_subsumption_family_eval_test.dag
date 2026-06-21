@@ -1,0 +1,45 @@
+// Status: discovered fail-closed family eval for the subsumption (dissolution) lens (DESIGN.md §6
+// inert-lens hygiene: every lens is a discovered fail-closed witness or deleted). Routes the
+// canonical DissolutionSubsumption MechanicalReverification receipt through run_test_claim and
+// asserts BOTH the row-receipt run and the reverifies run Pass AND the mechanical verdict is
+// Verified. Any non-Pass / non-Verified => RED (the lens carrier no longer reverifies).
+
+module v2.test.workflow.lens_subsumption_family_eval
+
+import v2.compiler.eval {
+  TestClaimRun,
+  test_claim_run_verdict
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.runtime { RuntimeValue }
+import v2.std.verdict { Pass }
+import v2.test.manual.dissolution_subsumption_reverification {
+  MechanicalReverificationVerdict,
+  Verified,
+  run_rust_language_model_emit_mechanical_reverification_claim,
+  run_rust_language_model_emit_subsumption_reverifies,
+  verdict_rust_language_model_emit_subsumption
+}
+
+fn lens_subsumption_run_passes(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match test_claim_run_verdict(run: run) {
+    Pass => true
+    _ => false
+  }
+}
+
+fn lens_subsumption_verdict_is_verified(v: MechanicalReverificationVerdict) -> Bool {
+  match v {
+    Verified => true
+    _ => false
+  }
+}
+
+fn lens_subsumption_family_gate() -> Bool {
+  lens_subsumption_run_passes(run: run_rust_language_model_emit_mechanical_reverification_claim)
+    && lens_subsumption_run_passes(run: run_rust_language_model_emit_subsumption_reverifies)
+    && lens_subsumption_verdict_is_verified(v: verdict_rust_language_model_emit_subsumption)
+}
+
+test data witness_lens_subsumption_family_gate_closed: Bool = lens_subsumption_family_gate()

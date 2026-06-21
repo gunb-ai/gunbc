@@ -1,0 +1,68 @@
+// Status: discovered fail-closed family eval for the leaf-model-verification lens (DESIGN.md §6
+// inert-lens hygiene: every lens is a discovered fail-closed witness or deleted). Folds the lens's
+// generated Rust leaf-model fixture pairs and asserts each is verification-READY: a happy fixture
+// expected to compile-accept paired with a falsification expected to compile-reject — the "claim
+// without a paired falsification is not verifiable" invariant (std §5). Empty roster => false; a
+// pair whose two probes do not discriminate (both accept / both reject) => RED.
+//
+// SCOPE: this verifies the generated corpus is well-formed and discriminating. Behavioral
+// host-execution verdicts (actually running rustc/python/tsc/go over the fixtures) arrive with the
+// T-22 `run_target_verification` runner; this witness UPGRADES to fold that runner's verdicts when
+// it lands (dissolve-on: T-22), and is the discriminating receipt that upgrade must reproduce.
+
+module v2.test.workflow.lens_leaf_model_verification_family_eval
+
+import v2.lens.leaf_model_verification {
+  rust_r1_fixture_pair,
+  rust_r2a_fixture_pair,
+  rust_r2b_debug_fixture_pair,
+  rust_r2b_release_fixture_pair,
+  rust_r3_external_fixture_pair
+}
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.leaf_model_verification {
+  LeafModelFixturePair,
+  TargetCompileAccepted,
+  TargetCompileRejected
+}
+
+// A fixture pair is verification-ready iff its happy probe is expected to ACCEPT and its
+// falsification probe is expected to REJECT — i.e. the two probes discriminate.
+fn leaf_model_pair_discriminates(pair: LeafModelFixturePair) -> Bool {
+  match pair.expected_happy_verdict {
+    TargetCompileAccepted =>
+      match pair.falsification.expected_verdict {
+        TargetCompileRejected { diagnostic_code: _ } => true
+        TargetCompileAccepted => false
+      }
+    TargetCompileRejected { diagnostic_code: _ } => false
+  }
+}
+
+fn leaf_model_rust_fixture_pairs() -> List<LeafModelFixturePair> {
+  [
+    rust_r1_fixture_pair(),
+    rust_r2a_fixture_pair(),
+    rust_r2b_debug_fixture_pair(),
+    rust_r2b_release_fixture_pair(),
+    rust_r3_external_fixture_pair()
+  ]
+}
+
+fn lens_leaf_model_verification_family_gate() -> Bool {
+  let pairs = leaf_model_rust_fixture_pairs()
+  if is_empty(xs: pairs) {
+    false
+  } else {
+    fold_list(
+      xs: pairs,
+      empty: true,
+      cons: fn(acc, pair) { acc && leaf_model_pair_discriminates(pair: pair) }
+    )
+  }
+}
+
+test data witness_lens_leaf_model_verification_family_gate_closed: Bool =
+  lens_leaf_model_verification_family_gate()

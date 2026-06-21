@@ -1,4 +1,6 @@
-// Status: source-shape receipt; host CI can pin this file until generated item-registry compile-time lens replaces explicit family rosters.
+// Status: discovered fail-closed family eval — routes the ownership lens subject roster through
+// run_test_claim; the `test data` witness is auto-enrolled by the floor (DESIGN.md §6 inert-lens
+// hygiene: every lens is a discovered fail-closed witness or deleted). Empty roster => false.
 
 module v2.test.workflow.lens_ownership_family_eval
 
@@ -84,6 +86,6 @@ fn lens_ownership_family_gate(report: LensOwnershipFamilyEvalReport) -> Bool {
 }
 
 
-data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
+test data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
   report: run_lens_ownership_family_eval()
 )
