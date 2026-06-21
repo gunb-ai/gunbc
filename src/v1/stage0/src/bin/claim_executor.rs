@@ -502,6 +502,19 @@ struct WalkOutcome {
 /// This replaces the prior even split (`width / chunk.len()`), which starved the corpus to
 /// `width = 1` whenever it was chunked with cheap gates that did not consume any of the
 /// width they were handed — the 1000s serial tentpole.
+/// Process high-water-mark RSS in bytes, read from `/proc/self/status` (`VmHWM`;
+/// linux best-effort, `None` elsewhere). `VmHWM` is the PEAK resident set over the
+/// process lifetime — at the floor's parallel batch this is the CONCURRENT peak at
+/// the run's `spawn_width`, the quantity a memory budget must bound. Emitted as a
+/// MEASURED fact so the §1-C memory-aware width derivation keys on it instead of a
+/// hand-grounded literal (realization-measurement-loop.md Phase 0).
+fn peak_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
@@ -863,6 +876,20 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // 2. Run batch by batch (executor ordering), claims within a batch in parallel.
     let outcome = run_walk(&source_roots, &batches, spawn_width);
+    // [measurement] memory instrument (Phase-0 keystone): the process high-water RSS
+    // is the CONCURRENT peak across the whole floor run at this spawn_width — the
+    // number a memory budget must bound. Per-shard peak ≈ this ÷ effective
+    // concurrency; a width=1 run measures one shard's peak directly. Emitting it
+    // (paired with spawn_width) is what lets §1-C derive width from a MEASURED peak
+    // rather than the hand-grounded literal #5419 deleted as unwired.
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!(
+            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+        ),
+        None => eprintln!(
+            "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
+        ),
+    }
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
