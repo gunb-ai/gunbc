@@ -31,12 +31,13 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
 import v2.std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DslTree, V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 import v2.std.qualified_name { QnCons, QnEmpty }
 
 
@@ -138,7 +139,7 @@ fn cross_tree_real_ingest_v2_to_dsl_resolves_holds() -> Bool {
   match assemble_program_from_ingest(
     ingest: ct_real_v2_to_dsl_ingest,
     admission: ct_real_v2_to_dsl_admission,
-    lm: dag_language_model_wave1()
+    lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -149,7 +150,7 @@ fn cross_tree_real_ingest_dsl_to_v2_denied_holds() -> Bool {
   match assemble_program_from_ingest(
     ingest: ct_real_dsl_to_v2_ingest,
     admission: ct_real_v2_to_dsl_admission,
-    lm: dag_language_model_wave1()
+    lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -160,4 +161,17 @@ fn cross_tree_real_ingest_dsl_to_v2_denied_holds() -> Bool {
 test fn cross_tree_real_ingest_activation_witnesses() -> Bool {
   cross_tree_real_ingest_v2_to_dsl_resolves_holds()
     && cross_tree_real_ingest_dsl_to_v2_denied_holds()
+}
+
+
+// TEMP DEBUG — surface the rejection reason of the GREEN case (remove before commit).
+fn ct_real_debug_v2_to_dsl_reason() -> Symbol {
+  match assemble_program_from_ingest(
+    ingest: ct_real_v2_to_dsl_ingest,
+    admission: ct_real_v2_to_dsl_admission,
+    lm: dag_language_model_surface_empty_prelude()
+  ) {
+    Accepted { value: _, diagnostics: _ } => ^accepted_no_rejection
+    Rejected { diagnostics: d } => d.head.reason
+  }
 }
