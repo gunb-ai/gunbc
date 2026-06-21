@@ -74,8 +74,9 @@ type DagSourceReadWitness {
   compilation_unit: Symbol
   // Grounded source-tree provenance: which `--source-root` the host read this file from
   // (filesystem truth at ingest), NOT a guess from the module's self-declared QN prefix.
-  // Replaces the resolution.dag QN-prefix fallback — see source_root_set_from_ingest below.
-  // dissolve-on: PR-B wires this into resolve_with_admission + deletes the QN fallback.
+  // Folded into the active source-root set (source_root_set_from_ingest below) and the
+  // QualifiedName -> SourceRootRef index (program_assembly), which together replaced the
+  // deleted resolution.dag QN-prefix fallback — cross-tree admission is grounded on this.
   source_root: SourceRootRef
 }
 
@@ -442,11 +443,11 @@ fn source_root_provenance_coverage_receipt(
 
 
 // Grounded active source-root set, folded from the host-tagged ingest witnesses.
-// This is the §4-grounded replacement for resolution.dag's QN-prefix
-// `source_root_set_from_module_roots` — each witness carries the filesystem truth of
-// which `--source-root` it was read from, so the set is derived from provenance, not a
-// guess. INERT in PR-A (defined, not yet wired); PR-B threads it into resolve_with_admission
-// and deletes the QN-prefix fallback (the activation gate in resolution.dag's header).
+// This is the §4-grounded replacement for resolution.dag's deleted QN-prefix
+// source-root guess — each witness carries the filesystem truth of which `--source-root`
+// it was read from, so the set is derived from provenance, not a guess. Wired into
+// assemble_program_from_ingest (program_assembly) as the active_roots of grounded
+// cross-tree admission.
 fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
   fold_list(
     xs: ingest,

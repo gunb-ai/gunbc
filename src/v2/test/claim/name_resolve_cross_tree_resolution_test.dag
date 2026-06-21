@@ -1,8 +1,14 @@
-// Scope: Route C Phase B witnesses — cross-tree resolution wiring in name_resolve.
+// Scope: Route C Phase C witnesses — GROUNDED cross-tree resolution in name_resolve.
 //
-// GREEN: dual-root pool, same-tree imports resolve (dsl→dsl, v2→v2).
-// GREEN: cross-tree import resolves when TreeFundamentalityOrder is MoreFundamental.
-// RED:   cross-tree import denied fail-closed when TreeFundamentalityOrder is Unknown.
+// GREEN: dual-root pool, same-tree imports resolve (dsl→dsl, v2→v2) via the index-less path.
+// GREEN: v2→dsl cross-tree import resolves — grounded index tags subject V2Tree / target
+//        DslTree, and tree_fundamentality_order(V2,Dsl)=MoreFundamental admits it (layer
+//        direction holds). This edge was DENIED before grounding landed (Unknown default).
+// RED:   dsl→v2 cross-tree import is denied fail-closed — grounded index tags subject DslTree
+//        / target V2Tree, and tree_fundamentality_order(Dsl,V2)=LessFundamental denies it.
+//        Subject and target are BOTH std-layer (equal ordinals) so layer direction holds:
+//        the denial is isolated to fundamentality, not the layer check. Flip either tag (or
+//        the fundamentality relation) and this witness goes the wrong way.
 //
 // Enrolled in CI via _test.dag naming convention (floor discovery auto-enroll).
 
@@ -13,9 +19,7 @@ import v2.compiler.name_resolve {
   Import,
   ImportVisible,
   ResolutionSubject,
-  module_root_nodes_to_qns,
-  resolve_with_admission,
-  resolve_with_admission_policy
+  resolve_with_admission_grounded
 }
 import v2.compiler.program_assembly { assemble_program_from_module_roots }
 import v2.extdeps.languages.dag {
@@ -24,8 +28,12 @@ import v2.extdeps.languages.dag {
   dag_named_edge
 }
 import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
-import v2.std.cross_tree.import_model { FundamentalityUnknown, MoreFundamental }
-import v2.std.cross_tree.resolution { source_root_set_from_module_roots }
+import v2.std.cross_tree.import_model { DslTree, SourceRootSet, V2Tree }
+import v2.std.cross_tree.resolution {
+  SourceRootIndex,
+  source_root_index_empty,
+  source_root_index_insert
+}
 import v2.std.diagnostic { Accepted, Rejected, locus_eq, port_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -132,6 +140,19 @@ fn ct_qn_v2(seg_b: Symbol) -> QualifiedName {
   }
 }
 
+// [v2, std] — a v2-tree std-layer module QualifiedName (layer ordinal 0).
+fn ct_qn_v2_std() -> QualifiedName {
+  QnCons {
+    head: ^v2,
+    tail: QnCons { head: ^std, tail: QnEmpty }
+  }
+}
+
+// Both source trees present in the compilation closure (active source-root set).
+fn ct_both_trees() -> SourceRootSet {
+  Cons { head: V2Tree, tail: Cons { head: DslTree, tail: Empty } }
+}
+
 
 // ── dsl same-tree (program_assembly_multi_file posture) ───────────────────────
 
@@ -205,7 +226,7 @@ fn ct_v2_same_tree_admission() -> Admission {
 }
 
 
-// ── cross-tree (v2 subject → dsl target) ─────────────────────────────────────
+// ── cross-tree v2 subject → dsl target (admitted: MoreFundamental) ────────────
 
 fn ct_cross_tree_roots() -> FreeMonoid<Node> {
   Cons {
@@ -242,6 +263,72 @@ fn ct_cross_tree_admission() -> Admission {
   }
 }
 
+// Grounded index: v2 subject is V2Tree, dsl target is DslTree (host filesystem truth).
+fn ct_v2_to_dsl_index() -> SourceRootIndex {
+  source_root_index_insert(
+    index: source_root_index_insert(
+      index: source_root_index_empty(),
+      module: ct_qn_v2(seg_b: ^ct_cross_v2_subject_seg),
+      root: V2Tree
+    ),
+    module: ct_qn_one(seg: ^ct_cross_dsl_target_seg),
+    root: DslTree
+  )
+}
+
+
+// ── cross-tree dsl subject → v2 target (denied: LessFundamental) ──────────────
+// Both modules std-layer (subject single-seg → std; target [v2, std] → std), so the layer
+// direction check passes at equal ordinals and the denial isolates to fundamentality.
+
+fn ct_dsl_to_v2_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: ct_subject_with_import_use(
+      qn_spine: ct_qn_node(seg: ^ct_inv_dsl_subject_seg),
+      import_use_sym: ^ct_inv_import_use_sym,
+      imported_decl: ^ct_inv_v2_export_sym
+    ),
+    tail: Cons {
+      head: ct_module_root(
+        qn_spine: ct_qn_spine(
+          segments: Cons { head: ^v2, tail: Cons { head: ^std, tail: Empty } }
+        ),
+        export_sym: ^ct_inv_v2_export_sym,
+        export_atom: ^dag_c3_surface_sugar_service
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn ct_dsl_to_v2_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: ct_qn_one(seg: ^ct_inv_dsl_subject_seg)
+    },
+    imports: Cons {
+      head: Import {
+        target: ct_qn_v2_std(),
+        visibility: ImportVisible
+      },
+      tail: Empty
+    }
+  }
+}
+
+// Grounded index: dsl subject is DslTree, v2 target is V2Tree (host filesystem truth).
+fn ct_dsl_to_v2_index() -> SourceRootIndex {
+  source_root_index_insert(
+    index: source_root_index_insert(
+      index: source_root_index_empty(),
+      module: ct_qn_one(seg: ^ct_inv_dsl_subject_seg),
+      root: DslTree
+    ),
+    module: ct_qn_v2_std(),
+    root: V2Tree
+  )
+}
+
 
 // ── GREEN witnesses ─────────────────────────────────────────────────────────
 
@@ -267,15 +354,13 @@ fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   }
 }
 
-fn witness_cross_tree_more_fundamental_resolves_holds() -> Bool {
-  let roots = ct_cross_tree_roots()
-  let lm = dag_language_model_surface_empty_prelude()
-  match resolve_with_admission_policy(
-    lm: lm,
-    roots: roots,
+fn witness_cross_tree_v2_to_dsl_grounded_resolves_holds() -> Bool {
+  match resolve_with_admission_grounded(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: ct_cross_tree_roots(),
     admission: ct_cross_tree_admission(),
-    order: MoreFundamental,
-    active_roots: source_root_set_from_module_roots(qns: module_root_nodes_to_qns(roots: roots))
+    index: ct_v2_to_dsl_index(),
+    active_roots: ct_both_trees()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -283,15 +368,15 @@ fn witness_cross_tree_more_fundamental_resolves_holds() -> Bool {
 }
 
 
-// ── RED witnesses ─────────────────────────────────────────────────────────────
+// ── RED witness ─────────────────────────────────────────────────────────────
 
-fn witness_cross_tree_unknown_order_denied_holds() -> Bool {
-  let roots = ct_cross_tree_roots()
-  let lm = dag_language_model_surface_empty_prelude()
-  match resolve_with_admission(
-    lm: lm,
-    roots: roots,
-    admission: ct_cross_tree_admission()
+fn witness_cross_tree_dsl_to_v2_grounded_denied_holds() -> Bool {
+  match resolve_with_admission_grounded(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: ct_dsl_to_v2_roots(),
+    admission: ct_dsl_to_v2_admission(),
+    index: ct_dsl_to_v2_index(),
+    active_roots: ct_both_trees()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
@@ -307,6 +392,6 @@ fn witness_cross_tree_unknown_order_denied_holds() -> Bool {
 test fn name_resolve_cross_tree_resolution_witnesses() -> Bool {
   witness_dsl_same_tree_import_resolves_holds()
     && witness_v2_same_tree_import_resolves_holds()
-    && witness_cross_tree_more_fundamental_resolves_holds()
-    && witness_cross_tree_unknown_order_denied_holds()
+    && witness_cross_tree_v2_to_dsl_grounded_resolves_holds()
+    && witness_cross_tree_dsl_to_v2_grounded_denied_holds()
 }
