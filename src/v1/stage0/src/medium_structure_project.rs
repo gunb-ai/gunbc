@@ -27,9 +27,15 @@
 //! job (mirrors `layering_imports_project`: the host enumerates candidate facts, the lens
 //! applies the predicate). The output is sorted, so a Wet run is byte-identical.
 //!
-//! dissolve-on: v2 self-host folds this projection over its own parsed module `Node` set;
-//!   and per-medium, the leak dissolves once the medium is a `Medium<R>` `Node` emitted via
-//!   grammar rows (then a check is a model walk or unwritable — the ① wall).
+//! dissolve-on (this hand-Rust seam): the host-reflection projections (`layering_imports_project`,
+//!   `transport_script_position_project`, this) collapse when v2 self-hosts `.dag`-structural
+//!   reflection over its OWN parsed module `Node` set — ROADMAP §5 (self-host v2 → delete
+//!   `src/v1`), the same lane `layering_imports_project` names. It is the precedented additive
+//!   host-reflection sibling (no logic — enumerate + project facts; the predicate lives in the
+//!   `.dag` lens), not Rust cemented into a template. Per-medium, the LEAK dissolves once the
+//!   medium is a `Medium<R>` `Node` emitted via grammar rows (a check becomes a model walk or
+//!   unwritable — the ① wall); the same step lands the `(b2)` receiver-TYPE detector that retires
+//!   the hand-listed emit-fn roster.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -40,8 +46,8 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{
-    arg_value, block_stmts, build_newline_index, expr_call_func_at, expr_var_name_at,
-    let_binding_name_at, let_value, ExprData, LiteralValue, NewlineIndex, Node,
+    arg_value, build_newline_index, expr_call_func_at, expr_var_name_at, let_binding_name_at,
+    let_value, ExprData, LiteralValue, NewlineIndex, Node,
 };
 
 pub const FACE_INLINE_SYNTAX_LITERAL: &str = "InlineSyntaxLiteral";
@@ -140,18 +146,25 @@ fn emit_side_walk(
 
 // ── detector (b1): check-side string-op over an emitted-medium receiver ──────────
 
-/// Collect the `let` name → bound-value `Node` map for one block (intra-function scope,
-/// one level — nested blocks are walked for their own lets by the caller's recursion).
+/// Collect the `let` name → bound-value `Node` map for an ENTIRE function body — every `let`
+/// at any nesting depth (top block, `if`/`match`-arm blocks, lambda bodies), not just the
+/// top-level statements. This OVER-approximates scope on purpose: it ignores block boundaries
+/// and shadowing so a receiver `let`-bound inside an inner block still resolves to its emit-fn.
+/// The bias is deliberately fail-CLOSED for a leak detector — over-approximation can only make a
+/// receiver resolve to an emit fn it otherwise wouldn't (flag MORE, the safe direction for a
+/// shrinking-roster wall: a false positive goes RED and forces a roster/fix, while the missed
+/// inner-block `let` of a narrow per-block walk would silently DROP a real leak, fail-open).
 fn collect_let_values(
-    block: &Rc<Node>,
+    body: &Rc<Node>,
     bindings: &mut HashMap<String, Rc<Node>>,
     si: &SourceIndices,
 ) {
-    for stmt in block_stmts(block.clone()).iter() {
-        if let ExprData::ExprLet { .. } = stmt.expr_data.as_ref() {
-            let name = let_binding_name_at(stmt.clone(), si.clone());
-            bindings.insert(name, let_value(stmt.clone()));
-        }
+    if let ExprData::ExprLet { .. } = body.expr_data.as_ref() {
+        let name = let_binding_name_at(body.clone(), si.clone());
+        bindings.insert(name, let_value(body.clone()));
+    }
+    for child in body.children.iter() {
+        collect_let_values(child, bindings, si);
     }
 }
 
@@ -223,9 +236,7 @@ fn check_side_scan_function(
     out: &mut Vec<MediumStructureLeakRaw>,
 ) {
     let mut bindings: HashMap<String, Rc<Node>> = HashMap::new();
-    if let ExprData::ExprBlock { .. } = body.expr_data.as_ref() {
-        collect_let_values(body, &mut bindings, si);
-    }
+    collect_let_values(body, &mut bindings, si);
     check_side_walk(body, &bindings, emit_fns, string_ops, path, si, out);
 }
 
