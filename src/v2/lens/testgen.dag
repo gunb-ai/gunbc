@@ -1577,6 +1577,12 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
           d: testgen_non_algebra_law_scheduled_slot_diagnostic()
         )
       }
+    CrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
     LensApplicability { subject: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
@@ -1658,12 +1664,14 @@ fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symb
 fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: GeneratedAnchorKey) -> Symbol {
   match anchor {
     GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant: _ } => coproduct_type
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
 fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> Symbol {
   match anchor {
     GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant } => omitted_variant
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
@@ -1956,12 +1964,13 @@ fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>
 }
 
 // F.2-P1 close criterion: every scheduled generator carries consistent provenance +
-// profile metadata. Covers ALL four scheduled producers — the two direct-List schedulers
-// (LBE + coproduct-exhaustiveness) and the two Outcome-returning schedulers
-// (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
+// profile metadata. Covers ALL five scheduled producers — the three direct-List schedulers
+// (LBE + coproduct-exhaustiveness + cross-representation-equality) and the two Outcome-returning
+// schedulers (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
 fn scheduled_generators_carry_provenance() -> Bool {
   all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
     && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_cross_representation_equality_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
 }
@@ -1971,7 +1980,10 @@ fn scheduled_generators_carry_provenance() -> Bool {
 fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
   list_append(
     left: testgen_scheduled_language_behavior_generators(),
-    right: testgen_scheduled_coproduct_exhaustiveness_generators()
+    right: list_append(
+      left: testgen_scheduled_coproduct_exhaustiveness_generators(),
+      right: testgen_scheduled_cross_representation_equality_generators()
+    )
   )
 }
 
@@ -2223,6 +2235,11 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: v } } =>
       Accepted {
         value: DiagnosticExhaustiveness { coproduct_type: ct, omitted_variant: v },
+        diagnostics: None,
+      }
+    GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
+      Accepted {
+        value: CrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
