@@ -51,6 +51,28 @@ expected_ci_yml()`, byte-for-byte. The doc project is the **same three pieces** 
 No new mechanism — a new **target medium** (`Markdown`) + the **work-DAG authority model**. The §6
 emission lane and the idea-machine's medium axis are exactly this; the doc is the next medium after ci.yml.
 
+### 3.1 Near-term: PR → checkbox status (the cheap first slice, before full emission)
+
+The single highest-pain hand-maintenance is the one we keep paying *manually*: after a PR merges, a human
+flips the matching `[ ]` to `[x]` (and we just did a whole reconciliation pass because they drift). That
+*status* edge can be automated **before** the full `emit(work_model, Markdown)` lands, because it needs
+only the trivial half of the authority — the **PR↔line binding** — not the whole work-DAG model:
+
+- **The binding.** Each roadmap milestone names its PR(s) inline (the `(#5473)` anchors this overlay just
+  added are exactly that link, authored for humans but machine-readable). So the binding *already exists in
+  the text* — a checkbox is derivable from "is the referenced PR merged?".
+- **The cheap realization — a GitHub Action.** On PR-merge / on a schedule, parse each `- [ ] … (#NNNN)`
+  line, query the PR state, and set `[x]` iff all referenced PRs are merged. A drift *check* (not an
+  auto-commit) is the fail-closed form: CI goes red if a checkbox disagrees with its PR state, so the human
+  fix is forced but never silently wrong — the `ci_yaml_gate` shape, one rung down.
+- **Why this is a *slice* of the real thing, not a fork.** It is `emit(status)` with the structure still
+  hand-authored — the authority is still partial (the binding, not the full DAG). It dissolves *into* the
+  full project: when `emit(work_model, Markdown)` lands, status is just one emitted field and the Action
+  retires. So build the Action as the **§2-status-derivation seam first** (kills the manual-reconcile pain
+  now), then widen the authority leftward to the whole line. Caveat (§5 `DecodeFidelity`): a milestone with
+  *no* `(#NNNN)` anchor (pure-analysis work, no PR) has no derivable status — those stay hand-checked and
+  must be marked so the check doesn't false-positive; that honest residue is the boundary, not a gap.
+
 ## 4. The census — what's hand-maintained, and how invertible
 
 | artifact | authority | status |
@@ -73,11 +95,25 @@ content) is **not derivable** → author it. The seam is the idea-machine's **`D
 emit what is lossless, fence what is authored, and be *honest at the boundary* rather than fake-generating
 prose. The ROADMAP is almost all frame (that is why it is the flagship); DESIGN is almost all body.
 
+The status edge has a sharper boundary than "has a `(#NNNN)`": a line cites a PR in two roles, and only
+one is derivable. **Completes-iff** — "this line is done iff #N merges" — is the binding the box derives
+from. A bare **mention** as partial evidence is not: ROADMAP §0 "rust-gate coverage" cites merged #5456
+yet correctly stays `[ ]` because the item isn't done (same shape #5427/#5452). So the gate must key on an
+explicit completes-iff marker, never prose-scan for any `#N` — a mention-based rule false-positives on
+every partial-evidence line, a fail-closed-but-*wrong* gate worse than none (§5). Unbound lines are honest
+un-derivable residue (`gunbc.roadmap_status`: `CompletesIff` derives + drift-gates; `HandChecked` never
+gates). Landed as the slice-1 model + discriminating witness (the merged-mention-stays-green case is the
+non-tautology proof).
+
 ## 6. Sequencing
 
 1. **The work-DAG authority model** — what a roadmap line *is* in `.dag` (a work node: title, deps,
    status-source = its PR/branch, plan-doc carrier). DFS the existing work-item carriers + the dashboard
-   model before minting (§2/§3 — do not re-coin the work graph).
+   model before minting (§2/§3 — do not re-coin the work graph). **Seed already landed:**
+   `gunbc.roadmap_status.CompletesIff { prs }` (slice-1) is the *first row* of this model — the explicit
+   "this line completes iff #N merges" edge. Slice-2 **widens** that same binding from a status surface
+   (`RoadmapStatusEntry`) to the full emitted work node (title/deps/pointer); it must build on
+   `CompletesIff`, not re-coin a parallel completion edge (§3).
 2. **`Markdown` as an emit target** — rows in `06_translate` / `extdeps/languages/` (the §6 medium axis);
    `emit(work_model, Markdown)` produces the ROADMAP bytes.
 3. **The drift gate** — `roadmap_gate`: `ROADMAP.md == emit(work_model)`, the `ci_yaml_gate` clone.
