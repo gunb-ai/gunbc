@@ -2672,6 +2672,12 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         .iter()
         .map(|arg_node| {
             let name = arg_name_at(arg_node.clone(), ctx.si());
+            if arg_node.children.is_empty() {
+                eprintln!(
+                    "DBG malformed-arg in call '{}' arg-name={:?} arg.name={:?} arg.expr_data={:?}",
+                    func_name, name, arg_node.name, arg_node.expr_data
+                );
+            }
             let val = eval_expr(&arg_value(arg_node.clone()), env, ctx)?;
             Ok((name, val))
         })
