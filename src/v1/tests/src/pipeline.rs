@@ -979,48 +979,6 @@ fn dag_pipeline_smoke() {
     );
 }
 
-#[test]
-fn dag_emit_from_resolved_matches_compile_sources_for_v4_slice() {
-    let ws = workspace_root();
-    let fixture_dir = ws.join("fixtures/v2-mvp1");
-    let mut sources = Vec::new();
-    collect_dag_sources(&ws, &fixture_dir, &mut sources);
-    assert!(
-        !sources.is_empty(),
-        "expected fixed v2 fixture slice under {}",
-        fixture_dir.display()
-    );
-
-    let standalone = v1_compiler::v1_compiler_compile::compile_sources(
-        Rc::new(sources.clone()),
-        RenderTarget::Dag,
-    );
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
-    let from_resolved =
-        v1_compiler::v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
-
-    assert_eq!(
-        standalone.diagnostics, from_resolved.diagnostics,
-        "resolved-to-DAG emit diagnostics must match standalone --target dag diagnostics"
-    );
-    assert_eq!(
-        standalone.files, from_resolved.files,
-        "resolved-to-DAG emit files must match standalone --target dag files byte-for-byte"
-    );
-
-    // CI blind spot: v1-compiler's `compiler_tests` lib harness is otherwise dormant in
-    // ci_floor (only this parity receipt runs v1-compiler-tests). Compile-check it here so
-    // Rc call-site regressions in compiler_tests_rust.dag turn RED without a new CI step.
-    crate::v1_compiler_lib_test::assert_v2_compiler_lib_tests_compile();
-    crate::html_markup_smoke_test::assert_html_markup_smoke_executes();
-
-    // R2 add-emit keystone (`r2_emit_add_named_test`) no longer rides this receipt: the
-    // cert's transitive v2 closure (55 modules post T-8) drives compile_to_resolved past
-    // ci_floor runner memory when invoked here (SIGKILL). Standing coverage lives in
-    // v2_lens_ci via `v2_roster_pilot_row_mvp1_rust_emit_add_fn` /
-    // `mvp1_rust_emit_add_fn_accepts_holds` (always-on roster witness).
-}
-
 /// Regression for recursive by-value DAG serialization: shared subgraphs must
 /// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
 #[test]

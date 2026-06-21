@@ -35,6 +35,12 @@ import v2.test.generated.coproduct_exhaustiveness {
   witness_coproduct_exhaustiveness_all_variants_emit,
   witness_coproduct_exhaustiveness_generator_count
 }
+import v2.test.generated.cross_representation_equality {
+  witness_cross_representation_equality_is_equals,
+  witness_cross_representation_equality_uses_generated_anchor,
+  witness_cross_representation_equality_covers_bool,
+  witness_cross_representation_equality_covers_optional_null
+}
 import v2.test.generated.refinement_preservation {
   witness_refinement_preserves_nonempty_list_base,
   witness_refinement_preservation_subject_anchor,
@@ -113,6 +119,27 @@ test fn generated_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
 
 test fn generated_coproduct_exhaustiveness_covers_every_coproduct() -> Bool {
   witness_coproduct_exhaustiveness_generator_count
+}
+
+// --- CrossRepresentationEquality (STRADDLE — docs/plans/testgen-oracle.md §4.3) ---
+// SCOPE TIGHT: only the straddles that remain UNSTRUCTURED — Bool over Value::Bool, and the Value::Null
+// sentinel (Optional/Witness) fenced to its own runway. The EqualsClaim is emitted, not executed
+// (grounding is its own runway); these check the emit shape + structural roster coverage, with each
+// modeled coproduct's arm keys recomputed independently to exclude a vacuous pass.
+test fn generated_cross_representation_equality_is_equals() -> Bool {
+  witness_cross_representation_equality_is_equals
+}
+
+test fn generated_cross_representation_equality_anchor_holds() -> Bool {
+  witness_cross_representation_equality_uses_generated_anchor
+}
+
+test fn generated_cross_representation_equality_covers_bool() -> Bool {
+  witness_cross_representation_equality_covers_bool
+}
+
+test fn generated_cross_representation_equality_covers_optional_null() -> Bool {
+  witness_cross_representation_equality_covers_optional_null
 }
 
 // --- RefinementPreservation ---
