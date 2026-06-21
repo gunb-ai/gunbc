@@ -164,9 +164,14 @@ impl AuditedRealization for ResolvedGraphRealization {
 
 #[test]
 fn real_resolved_graph_realization_is_pure_under_nonkeyed_probes() {
-    let _lock = CACHE_ENV_MUTEX.lock().expect("cache env mutex"); // serialize env touch below
     let dir = temp_dir("pure");
     let (roots, entry) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+    // Hermetic: isolate GUNBC_RESOLVED_GRAPH_CACHE_DIR to a temp path AND serialize the env-var
+    // probe below (the guard holds CACHE_ENV_MUTEX) — never read or write the host's real cache,
+    // matching tests 1 and 3.
+    let _guard = CacheEnvGuard::set(&cache_dir);
     let sibling = dir.join("unrelated_not_imported.dag");
 
     let realization = ResolvedGraphRealization {
