@@ -100,6 +100,7 @@ extdeps.memory.sk_hynix
 extdeps.object_storage
 extdeps.object_storage.content_addressed
 extdeps.os.os
+extdeps.realization.cache_purity
 extdeps.realization.hermetic_fixture
 extdeps.realization.parse_table_memo
 extdeps.realization.resolved_graph
