@@ -2973,35 +2973,65 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
-    } else if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
-      let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
-      let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
-      concat(
-        rust_visibility_prefix(),
-        rust_items().type_alias_keyword,
-        " ",
-        item_text,
-        type_params,
-        " = ",
-        render_rust_alias_rhs_type(
-          n: resolved_type(n: item),
-          generic_param_names: generic_names,
-          shared_types: shared_types,
-          source_indices: env.source_indices,
-          scope: scope,
-          imports: imports,
-          registry: registry,
-          module_name: module_name,
-          export_sets: export_sets,
-          typed_modules: typed_modules,
-        module_index: module_index,
-        variant_to_enum: emit_info.variant_to_enum),
-        ";"
-      )
-    } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
-      emit_parametric_phantom_opaque_struct(item: item, source_indices: env.source_indices)
     } else {
-      ""
+      // Seed corpus: a canonical container decl (`type List<element> =
+      // FreeMonoid<element>`) is NOT emittable-parametric (its FreeMonoid RHS
+      // shell has no Rust nominal authority), so it would skip to `""` and leave
+      // `List` undefined while the seed still references it (`list_length`'s
+      // `Rc<List<T>>` sig, consumers' `use crate::std_types::List`). Emit it as a
+      // host-container alias (`pub type List<element> = Vec<element>`) so every
+      // `List` reference + import resolves. Corpus-gated via
+      // `rust_seed_host_container_base` (List-only, v1-compiler seed only); the
+      // faithful v2-target emit keeps the FreeMonoid algebra (Absent → existing
+      // path). Dissolves with the seed.
+      match rust_seed_host_container_base(name: item_text, source_indices: env.source_indices) {
+        Present { value: host } =>
+          let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+          let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+          concat(
+            rust_visibility_prefix(),
+            rust_items().type_alias_keyword,
+            " ",
+            item_text,
+            type_params,
+            " = ",
+            host,
+            "<",
+            generic_names |> join(separator: ", "),
+            ">;"
+          )
+        Absent =>
+          if is_emittable_parametric_type_alias_item(item: item, item_text: item_text, source_indices: env.source_indices, module_name: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index) {
+            let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
+            let generic_names = item_generic_param_names(item: item, source_indices: env.source_indices)
+            concat(
+              rust_visibility_prefix(),
+              rust_items().type_alias_keyword,
+              " ",
+              item_text,
+              type_params,
+              " = ",
+              render_rust_alias_rhs_type(
+                n: resolved_type(n: item),
+                generic_param_names: generic_names,
+                shared_types: shared_types,
+                source_indices: env.source_indices,
+                scope: scope,
+                imports: imports,
+                registry: registry,
+                module_name: module_name,
+                export_sets: export_sets,
+                typed_modules: typed_modules,
+              module_index: module_index,
+              variant_to_enum: emit_info.variant_to_enum),
+              ";"
+            )
+          } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
+            emit_parametric_phantom_opaque_struct(item: item, source_indices: env.source_indices)
+          } else {
+            ""
+          }
+      }
     }
   } else if is_function_item(item: item) {
     let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
