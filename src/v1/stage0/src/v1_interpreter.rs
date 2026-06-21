@@ -245,6 +245,24 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     .find(|(k, _)| resolve_sym(**k) == "head")
                     .and_then(|(_, v)| match v {
                         Value::Str(s) => Some(s.clone()),
+                        Value::Variant {
+                            variant_name,
+                            fields: sym_fields,
+                            ..
+                        } => {
+                            let variant = resolve_sym(*variant_name);
+                            if variant == "Symbol" || variant == "Atom" {
+                                sym_fields
+                                    .iter()
+                                    .find(|(k, _)| resolve_sym(**k) == "identity")
+                                    .and_then(|(_, v)| match v {
+                                        Value::Str(s) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                            } else {
+                                None
+                            }
+                        }
                         _ => None,
                     })
                     .unwrap_or_else(|| {
@@ -5955,6 +5973,93 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "extdeps_external_authority_anchor_kind_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_anchor_kind_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_anchor_kind_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_external_authority_scheme_identity_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_scheme_identity_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_scheme_identity_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_external_authority_locator_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg:
+                    "extdeps_external_authority_locator_for_qualified_name requires a QualifiedName"
+                        .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_locator_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_derived_extdeps_modules" => {
+            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
+                    .to_string(),
+            })?;
+            Ok(Some(
+                crate::extdeps_shape_transport_policy_project::derived_extdeps_modules_value(ctx),
+            ))
+        }
+
+        "extdeps_external_authority_is_backfill_pending_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_backfill_pending_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_backfill_pending_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_is_machinery_exempt_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_machinery_exempt_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_machinery_exempt_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_clean_tree_roster_excluded_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_clean_tree_holds(),
+        ))),
+        "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
+        ))),
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),

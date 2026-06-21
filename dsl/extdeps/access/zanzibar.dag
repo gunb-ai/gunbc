@@ -15,6 +15,17 @@
 module extdeps.access.zanzibar
 
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// External-authority anchor (promotes the Source citation above to the structured carrier
+// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.usenix.org/conference/atc19/presentation/pang"
+  }
+}
 
 // ⟨object⟩ ::= ⟨namespace⟩ ':' ⟨object id⟩          (e.g. "doc:readme")
 type Object {

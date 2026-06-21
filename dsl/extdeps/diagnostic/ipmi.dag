@@ -7,6 +7,16 @@ module extdeps.diagnostic.ipmi
 
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html"
+  }
+}
+
 // 🟡 dissolved — feature:diagnostic-ipmi-mock-response — scaffold:hand-authored mock_response —
 // dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
 // (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
