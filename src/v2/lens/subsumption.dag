@@ -3,6 +3,7 @@
 // Status: scaffold; Lens-CI host runtime accepts structural row mirrors until TestClaim execution owns these rows.
 
 module v2.lens.subsumption
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 
 import v2.std.collection { List, Set }
@@ -80,4 +81,14 @@ data rust_language_model_emit_subsumption: DissolutionSubsumption = {
   verification: MechanicalReverification {
     test_claim: TestClaimId { id: ^rust_language_model_emit_mechanical_reverification_claim }
   }
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "TestClaim execution owning the subsumption ordering rows",
+    dissolve_on: "root-fix-to-leaf-fix subsumption is executed as TestClaims, not mirrored as structural rows"
+  },
+  rationale: "Subsumption ordering (a root fix mechanically closing leaf fixes) is decidable over the rows; a scaffold accepting structural mirrors until TestClaim execution owns them."
 }

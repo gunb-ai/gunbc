@@ -3,6 +3,7 @@
 // Status: structural Node -> Outcome gate — enforcement adapter runs via run_required_lens_gates (mechanism ratified 2026-05-25).
 
 module v2.lens.fact_density
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 
 import v2.std.diagnostic {
@@ -107,4 +108,14 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
     KernelAmbientAtom => outcome_accepted(value: Holds { value: node })
     NamedFieldFacts { density: _ } => outcome_accepted(value: Holds { value: node })
   }
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "fact-presence required at type declaration by construction (a hollow NoFact carrier becomes unwritable)",
+    dissolve_on: "a type carrier with no recorded spec facts is rejected at declaration, not flagged after the fact"
+  },
+  rationale: "Detecting a structurally-hollow alias (a NoFact carrier) is decidable and gateable; the deeper DESIGN sec 2 leaf-side -- whether a leaf is adequately DECOMPOSED -- needs domain knowledge and stays region-3 review (the parked sec 2 open thread)."
 }

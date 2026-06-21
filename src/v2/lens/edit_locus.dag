@@ -4,6 +4,7 @@
 //   EditLocusRead/PathRegex remains as a compatibility shim until Q-Regex-Primitive.
 
 module v2.lens.edit_locus
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.compiler.infer { InferredTree }
 import v2.lens.affected_set { AffectedSetReading, affected_set_reading }
@@ -284,4 +285,14 @@ fn affected_set_reading_from_git_diff_provenance(
     Violates { diagnostic: d } =>
       Violates { diagnostic: d }
   }
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "NodeArtifactProvenance -- the modeled path-to-Node authority",
+    dissolve_on: "the EditLocusRead/PathRegex shim is replaced once Q-Regex-Primitive lands and provenance owns the path-to-Node mapping"
+  },
+  rationale: "Diff path to substrate Node edit_locus is decidable; the lens is a compatibility shim over NodeArtifactProvenance until the regex primitive lands."
 }
