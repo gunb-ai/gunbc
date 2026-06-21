@@ -99,29 +99,39 @@ fn run() -> Result<ExitCode, ExitCode> {
         println!("::error title={notice_title}::{v}");
     }
 
-    // "No silent caps" (DESIGN §6): always state audited-of-discovered, never imply full coverage.
+    // "No silent caps" (DESIGN §6): state audited-of-discovered AND the codec's real reach.
     let coverage = format!(
-        "audited {} of {} discovered entries",
-        report.entries_audited, report.entries_discovered
+        "audited {} of {} discovered entries [decoded {} · miss-on-read(deep, fail-safe) {} · \
+         rejected {} · skipped {}]",
+        report.entries_audited,
+        report.entries_discovered,
+        report.decoded,
+        report.miss_on_read,
+        report.rejected,
+        report.skipped
     );
 
     if report.violations.is_empty() {
-        println!("cache purity audit: {coverage} — warm==cold (cache codec is lossless)");
-        // §5/§6 honest edge — the codec is uniform across entries, so a bounded sample falsifies a
-        // lossy serializer; what it does NOT cover (a rare type only in an un-audited entry, or a
-        // prod-only realization absent from CI) is the honest residual, recorded not papered.
+        println!("cache purity audit: {coverage} — warm==cold (no lossy/stale decode)");
         if report.entries_audited < report.entries_discovered {
             println!(
-                "note: BOUNDED sample — the cache codec is uniform across entries (a sample \
-                 falsifies a lossy serializer); a loss on a rare type only in an un-audited entry \
-                 is the §5 honest residual (run without --max-entries for the full sweep)"
-            );
-        } else {
-            println!(
-                "note: full discovery corpus; still NOT complete over prod-only realizations absent \
-                 from CI (DESIGN §5 honest edge)"
+                "note: BOUNDED — this is a FAST SMOKE, not the soundness gate (codec fidelity is \
+                 depth-dependent, so a sample is not a guarantee; run without --max-entries for the \
+                 full sound sweep)"
             );
         }
+        if report.miss_on_read > 0 {
+            println!(
+                "note: {} entr(ies) too DEEP to decode (serde 128-level limit) → production \
+                 read_cached_file Misses → recomputes (FAIL-SAFE, uncached, NOT a lossy decode); a \
+                 cache-effectiveness hole, not a §5 soundness hole",
+                report.miss_on_read
+            );
+        }
+        println!(
+            "note: sound over what was audited; NOT complete over prod-only realizations absent \
+             from CI (DESIGN §5 honest edge)"
+        );
         println!("::endgroup::");
         Ok(ExitCode::SUCCESS)
     } else {
