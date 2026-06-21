@@ -177,6 +177,25 @@ fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
     string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
 }
 
+// §5 runner-context env scope: the generated ci.yml must use runner context
+// (${{ runner.temp }}) for the toolchain cache path — not the env context
+// (${{ env.CARGO_HOME }}) whose value is only set at runtime via $GITHUB_ENV.
+// Using the env context would tie correctness to step-ordering rather than the
+// model. Both witnesses go RED if the generator switches context incorrectly
+// (DESIGN §5 discriminating: wrong form → false, correct form → true).
+fn witness_cache_uses_runner_temp_not_env_cargo_home() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "${{ runner.temp }}/cargo/registry/index/") &&
+    !string_contains(s: yaml, pattern: "${{ env.CARGO_HOME }}")
+}
+
+fn witness_no_runner_env_vars_accessed_via_env_context() -> Bool {
+  let yaml = expected_ci_yml()
+  !string_contains(s: yaml, pattern: "${{ env.RUNNER_TEMP }}") &&
+    !string_contains(s: yaml, pattern: "${{ env.RUNNER_OS }}") &&
+    !string_contains(s: yaml, pattern: "${{ env.RUNNER_ARCH }}")
+}
+
 test fn ci_yaml_serializer_keystone_holds() -> Bool {
   witness_fetch_depth_is_int_not_string() &&
     witness_rustflags_empty_string_quoted() &&
@@ -192,5 +211,7 @@ test fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_cache_path_not_flat_multiline_sibling() &&
     witness_restore_keys_content_deeper_than_key() &&
     witness_sccache_wired_when_fleet_daemon_up() &&
-    witness_gunbc_ci_step_projects_run_script_markers()
+    witness_gunbc_ci_step_projects_run_script_markers() &&
+    witness_cache_uses_runner_temp_not_env_cargo_home() &&
+    witness_no_runner_env_vars_accessed_via_env_context()
 }
