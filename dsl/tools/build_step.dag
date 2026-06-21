@@ -84,7 +84,7 @@ fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
 // for the pattern list. The `\( … \)` grouping binds the `-name` disjunction before `-newer`.
 fn name_predicate_words(patterns: List<String>) -> List<ShellWord> {
   concat(
-    [lit(text: "\\(")],
+    [lit(text: "(")],
     concat(
       fold(patterns, init: [], f: (acc, p) =>
         if acc.length() == 0 {
@@ -93,7 +93,7 @@ fn name_predicate_words(patterns: List<String>) -> List<ShellWord> {
           concat(acc, [lit(text: "-o"), lit(text: "-name"), lit(text: p)])
         }
       ),
-      [lit(text: "\\)")]
+      [lit(text: ")")]
     )
   )
 }
