@@ -108,6 +108,37 @@ each rule strictly decreases the cost measure, so the rewrite system terminates 
 (the `DescentEvidence` discipline, DESIGN §4/§5); pick a deterministic strategy so there is one normal
 form.
 
+## 2a. Generalization — key on structural redundancy, NOT on asymptotic degree
+
+The catalog must generalize (`O(n³)→O(n²)`, not only `O(n²)→O(n)`) without edge cases and without
+firing wrongly. The resolution: **a rule's match key is the structural redundancy; the degree drop is the
+*consequence*, never the key.**
+
+- **Why not key on degree.** A rule keyed on "is `O(n^x)`" would fire on programs that are *genuinely*
+  `O(n^x)` — e.g. three independent nested loops each doing real work (matmul-shaped). No sound rewrite
+  exists there, so it would either rewrite to something inequivalent (unsound) or emit a false
+  suboptimality claim. **Degree is not evidence of redundancy.**
+- **Key on the redundancy → generalization is free.** `nested-membership→set`, written structurally as
+  *"a pure linear membership/search over a collection invariant in the enclosing loop,"* fires wherever
+  that shape appears, **regardless of how many *outer* loops wrap it.** So `O(n³)→O(n²)` is the *same
+  rule* firing on the inner levels, and **fold-to-fixpoint** peels successive levels
+  (`O(n³)→O(n²)→O(n)`) when each carries the redundancy. The §2 "one concept, every scale" move — the
+  rule is degree-agnostic *by construction*, so there is no per-degree edge case to enumerate.
+- **The cost model supports any degree.** `PolynomialCost{degree}` / `ClassPolynomial{degree}` carry an
+  arbitrary integer degree, and `multiply_classes` increments/decrements it, so witness (b) (strict class
+  drop) holds at every peel for any x. **Detection is not the constraint; soundness of the peel is.**
+- **Termination/determinism of the fixpoint:** each peel strictly decreases the degree (well-founded);
+  a deterministic peel order (innermost-first) gives one normal form.
+
+**OPEN generalization problem (operator-flagged 2026-06-21): `O(n^x) → O(n log n)` is algorithmic
+SUBSTITUTION, not redundancy elimination.** Replacing nested pairwise comparison with a sort-based pass
+is *not* a local peel — the before/after are *different algorithms with the same I/O relation*, which
+verges on the undecidable equivalence problem. It does **not** generalize as "arbitrary x → n log n."
+Tractable form: enumerate specific high-value *idioms* (sort-based dedup, sort-based pair/closest-finding,
+repeated-linear-min → heap) as individual rules, each with its own once-proven soundness — bounded and
+honest, not a parameterized rule. **DECISION PENDING** operator input on whether a cleaner shared framing
+exists; until then, the n-log-n class is per-idiom and lands *after* the polynomial-peel seed.
+
 ## 3. The catalog — the common cases, by transition
 
 Tiered by how cleanly the precondition is structural (this is also the build order):
@@ -165,6 +196,10 @@ interpretation. (Surface shown in pseudo-syntax; the matcher operates on the des
 - **non-firing control (witness d):** the same shape where `b` *is* mutated in the loop (e.g.
   `b.append(...)`) — the precomputed set would go stale, so the rule **must not fire**; code untouched.
 - **discriminating equivalence input (witness c):** `a=[1,2,3]`, `b=[2,3,4]` → both forms yield `[2,3]`.
+- **author structurally (per §2a):** key on "pure invariant inner membership in a loop," *not* on
+  degree-2 — so the same rule peels one level wherever it matches and fold-to-fixpoint gives
+  `O(n³)→O(n²)→O(n)`. Add a **depth-2 witness** (a triply-nested instance reduced to doubly-nested) to
+  prove the generalization, alongside the depth-1 witnesses above.
 
 ### Rule 2 — `naive-recursion → memoize` · **O(2ⁿ) → O(n)** · D′: `Exponential → Linear`
 
