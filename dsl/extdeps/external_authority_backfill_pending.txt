@@ -17,6 +17,7 @@ extdeps.cache.cargo
 extdeps.cache.catalog_io
 extdeps.cache.catalog_placement
 extdeps.cache.github_actions
+extdeps.cache.key_completeness
 extdeps.cache.rustup
 extdeps.cache.sccache
 extdeps.cache.types
