@@ -77,6 +77,67 @@ fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCo
   hardware_thread_count(count: width)
 }
 
+// ── memory-aware width (§1-C): the third term — fail-closed against OOM ───────
+// The CPU/topology bound above is memory-BLIND: N concurrent whole-tree-resolve shards
+// each peak at the MEASURED per-shard RSS, and N×peak must stay under the host's cgroup
+// budget or the batch is OOM-killed (exit 137). The memory term backs fan-out off BEFORE
+// the kill — §1's safety axis made structural, CPU and memory ONE width relationship (a
+// CPU bound patched after an OOM is the §6 forked-logic trap). The per-shard peak is sourced
+// from the §1 measurement keystone (claim_executor's VmHWM emit), NOT a hand-grounded literal
+// (the literal #5419 deleted as unwired); the live budget is read by the host realizer and
+// threaded in — §3 measured⇒peripheral: WE author+commit the measurement, an EXTERNAL system
+// (the host/cgroup) authors the budget so the host READS it live.
+
+// Conservative fraction applied to the LIVE budget before dividing by the measured per-shard
+// peak: floor(budget × 4/5) = 0.80×budget. memory.max is the HARD OOM-kill ceiling and the
+// per-shard peak is a division-derived ESTIMATE (whole-floor VmHWM ÷ width) with non-shard
+// overhead around it (parent process, allocator slop, page-cache pressure, the in-shard gunbc
+// compile). 0.80 = a 20% margin: it costs nothing while memory is non-binding (width capped by
+// shard_count today) and is precisely the lean (DESIGN §5) that protects the one failure mode
+// §1-C exists to prevent — OOM — in the future stale-low-peak case. Integer ×4/5 (no floats).
+fn budget_safety_fraction_apply(budget_bytes: Int) -> Int {
+  (budget_bytes * 4) / 5
+}
+
+// How many concurrent shards fit under the safety-fractioned budget, each peaking at the
+// MEASURED per-shard RSS. Fail-closed forward progress: a non-positive peak (unknown
+// measurement) or a budget under one shard still admits 1, never 0.
+fn memory_bounded_shard_count(memory_budget_bytes: Int, per_shard_peak_bytes: Int) -> Int {
+  if per_shard_peak_bytes <= 0 {
+    1
+  } else {
+    let safe_budget = budget_safety_fraction_apply(budget_bytes: memory_budget_bytes)
+    let fits = safe_budget / per_shard_peak_bytes
+    if fits < 1 { 1 } else { fits }
+  }
+}
+
+// Memory-aware spawn width: min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_peak⌋).
+// A non-positive budget means the host could NOT read a live budget — fall back to the caller's
+// conservative committed width so a missing measurement never OOMs and is never fabricated here
+// (DESIGN §5; the host supplies the fallback). The heavy-resolve topology serialization stays
+// the independent backstop either way.
+fn memory_aware_spawn_width(
+  shard_count: Int,
+  hardware_threads: HardwareThreadCount,
+  memory_budget_bytes: Int,
+  per_shard_peak_bytes: Int,
+  conservative_fallback_width: Int
+) -> HardwareThreadCount {
+  if memory_budget_bytes <= 0 {
+    hardware_thread_count(count: conservative_fallback_width)
+  } else {
+    let cpu_width = hardware_thread_count_value(
+      t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
+    )
+    let mem_width = memory_bounded_shard_count(
+      memory_budget_bytes: memory_budget_bytes,
+      per_shard_peak_bytes: per_shard_peak_bytes
+    )
+    hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
+  }
+}
+
 // Pareto goals for width trade-off (wall-time ↓, peak-memory ↓) — reuse std.pareto vocabulary.
 fn width_fold_objective_goals() -> List<AxisGoal> {
   [LowerIsBetter, LowerIsBetter]
@@ -149,4 +210,87 @@ fn witness_measured_cost_affects_shard_balance() -> Bool {
   let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
   let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
   left != right
+}
+
+// ── §1-C memory-aware width witnesses ────────────────────────────────────────
+// Helper: derived width value given the four inputs (shard/threads/budget/peak) + fallback.
+fn memory_aware_width_value(
+  shard_count: Int,
+  hardware_threads: HardwareThreadCount,
+  memory_budget_bytes: Int,
+  per_shard_peak_bytes: Int,
+  conservative_fallback_width: Int
+) -> Int {
+  hardware_thread_count_value(
+    t: memory_aware_spawn_width(
+      shard_count: shard_count,
+      hardware_threads: hardware_threads,
+      memory_budget_bytes: memory_budget_bytes,
+      per_shard_peak_bytes: per_shard_peak_bytes,
+      conservative_fallback_width: conservative_fallback_width
+    )
+  )
+}
+
+// Non-binding case: budget admits far more than shard_count, so width = shard_count (the
+// 4→7 reality — 0.8×62.5GiB ÷ 2.1GB ≈ 23 ≫ 7, so memory does not bind).
+fn witness_memory_term_non_binding_uses_shard_count(
+  shard_count: Int,
+  hardware_threads: HardwareThreadCount
+) -> Bool {
+  memory_aware_width_value(
+    shard_count: shard_count,
+    hardware_threads: hardware_threads,
+    memory_budget_bytes: 67108864000,
+    per_shard_peak_bytes: 2100028416,
+    conservative_fallback_width: 4
+  ) == shard_count
+}
+
+// Binding case: a tight budget backs width BELOW the topology cap — the fail-closed floor.
+// budget 6 GiB × 0.8 = 4.8 GiB ÷ 2.1 GB = 2 shards < shard_count 7 → width 2.
+fn witness_tight_budget_backs_off_below_shard_count() -> Bool {
+  memory_aware_width_value(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget_bytes: 6442450944,
+    per_shard_peak_bytes: 2100028416,
+    conservative_fallback_width: 4
+  ) == 2
+}
+
+// Fail-closed: an unreadable budget (≤0 sentinel from the host) → the conservative fallback,
+// never an unbounded width and never an OOM. RED if a memory-blind fold ignored the sentinel.
+fn witness_unreadable_budget_falls_back_conservative() -> Bool {
+  memory_aware_width_value(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget_bytes: 0,
+    per_shard_peak_bytes: 2100028416,
+    conservative_fallback_width: 4
+  ) == 4
+}
+
+// Fraction is load-bearing: 0.8×budget changes the bound. budget exactly 2×peak admits 2 raw
+// but 0.8×(2×peak)=1.6×peak admits only 1 — the safety margin demoted it. RED without ×4/5.
+fn witness_safety_fraction_is_load_bearing() -> Bool {
+  let peak = 2100028416
+  memory_aware_width_value(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget_bytes: peak * 2,
+    per_shard_peak_bytes: peak,
+    conservative_fallback_width: 4
+  ) == 1
+}
+
+// Fail-closed forward progress: a budget under one shard still admits width 1 (never 0).
+fn witness_subunit_budget_admits_one() -> Bool {
+  memory_aware_width_value(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget_bytes: 1000000000,
+    per_shard_peak_bytes: 2100028416,
+    conservative_fallback_width: 4
+  ) == 1
 }
