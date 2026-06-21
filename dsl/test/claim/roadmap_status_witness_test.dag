@@ -1,0 +1,121 @@
+// test/claim/roadmap_status_witness_test.dag — §5 discriminating witnesses for gunbc.roadmap_status.
+//
+// Proves the PR→checkbox status projection BY EXECUTION (DESIGN §5): the checkbox is derived from
+// merge-state via the ctrl.code_change_workflow authority, and the drift detector fires exactly when
+// the committed glyph disagrees. Discriminating both ways — a merged-but-`[ ]` line drifts (the
+// stale-checkbox class), a `[x]`-but-unmerged line drifts (premature), and the agreeing cases do not.
+// Break `pr_checkbox_checked` (e.g. always-true) and the Open-PR cases flip; invert `status_drifted`
+// and every case flips.
+
+module test.claim.roadmap_status_witness_test
+
+import gunbc.roadmap_status {
+  RoadmapStatusLine,
+  pr_checkbox_checked, status_drifted, any_status_drift,
+}
+import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open, Closed }
+import extdeps.github.github { GitHubUser, User }
+import std.types { CommitSha, Timestamp, Url }
+
+data witness_pr_url: Url = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_base_sha: CommitSha = "def456789012345678901234567890abcdef12"
+data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
+
+// Synthetic PR fixture — the same shape the code_change_workflow witness builds. merge-state is
+// driven by (state, merged_at), exactly the github_pr_terminal_anchor inputs.
+fn witness_pr(state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
+  PullRequest {
+    number: 1,
+    title: "witness",
+    body: none,
+    state: state,
+    html_url: witness_pr_url,
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef { ref: "feature", sha: witness_head_sha, label: "gunb-ai:feature" },
+    base: PullRequestRef { ref: "main", sha: witness_base_sha, label: "gunb-ai:main" },
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T00:00:00Z",
+    merged_at: merged_at,
+    draft: false,
+  }
+}
+
+fn merged_pr() -> PullRequest {
+  witness_pr(state: Open, merged_at: Present { value: witness_merged_at })
+}
+
+fn open_pr() -> PullRequest {
+  witness_pr(state: Open, merged_at: none)
+}
+
+fn closed_unmerged_pr() -> PullRequest {
+  witness_pr(state: Closed, merged_at: none)
+}
+
+// --- the derived checkbox truth (the single authority) ---
+
+fn witness_merged_checks() -> Bool {
+  pr_checkbox_checked(pr: merged_pr())
+}
+
+fn witness_open_unchecked() -> Bool {
+  !pr_checkbox_checked(pr: open_pr())
+}
+
+fn witness_closed_unmerged_unchecked() -> Bool {
+  !pr_checkbox_checked(pr: closed_unmerged_pr())
+}
+
+// --- the drift detector: agreement = clean, disagreement = drift ---
+
+fn witness_merged_checked_clean() -> Bool {
+  !status_drifted(line: RoadmapStatusLine { pr: merged_pr(), committed_checked: true })
+}
+
+// The stale-checkbox class: PR merged but the committed glyph is still `[ ]`.
+fn witness_merged_unchecked_drifts() -> Bool {
+  status_drifted(line: RoadmapStatusLine { pr: merged_pr(), committed_checked: false })
+}
+
+fn witness_open_unchecked_clean() -> Bool {
+  !status_drifted(line: RoadmapStatusLine { pr: open_pr(), committed_checked: false })
+}
+
+// Premature check: committed `[x]` while the PR is still open/unmerged.
+fn witness_open_checked_drifts() -> Bool {
+  status_drifted(line: RoadmapStatusLine { pr: open_pr(), committed_checked: true })
+}
+
+// --- the aggregate (the gate's pure core) ---
+
+fn witness_clean_list_no_drift() -> Bool {
+  !any_status_drift(lines: [
+    RoadmapStatusLine { pr: merged_pr(), committed_checked: true },
+    RoadmapStatusLine { pr: open_pr(), committed_checked: false },
+    RoadmapStatusLine { pr: closed_unmerged_pr(), committed_checked: false },
+  ])
+}
+
+fn witness_one_stale_line_drifts() -> Bool {
+  any_status_drift(lines: [
+    RoadmapStatusLine { pr: merged_pr(), committed_checked: true },
+    RoadmapStatusLine { pr: merged_pr(), committed_checked: false },
+  ])
+}
+
+fn all_roadmap_status_witnesses() -> Bool {
+  witness_merged_checks()
+    && witness_open_unchecked()
+    && witness_closed_unmerged_unchecked()
+    && witness_merged_checked_clean()
+    && witness_merged_unchecked_drifts()
+    && witness_open_unchecked_clean()
+    && witness_open_checked_drifts()
+    && witness_clean_list_no_drift()
+    && witness_one_stale_line_drifts()
+}
+
+test fn roadmap_status_witnesses() -> Bool {
+  all_roadmap_status_witnesses()
+}
