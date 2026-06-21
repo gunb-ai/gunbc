@@ -217,3 +217,78 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
     facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
+
+// ── REVERSE roster-soundness: shrinking-ratchet integrity (DESIGN §5/§6) ──────────
+// The forward gate (clean_tree witness) proves every live non-edge sidecar importer is
+// rostered. This is the CONVERSE: every roster ENTRY must still name a LIVE non-edge importer
+// of the sidecar. A STALE entry — its path migrated off serialize_bash (warm-badger-46) or was
+// deleted/renamed — keeps a DEAD excuse: it lies about the ratchet "shrinking" AND silently
+// EXCUSES a future re-leak at that path (a non-edge module re-importing the sidecar there would
+// be scored not-a-leak because the path is rostered → §5 fail-open). Soundness asserts the
+// FROZEN roster against the SAME INDEPENDENT live scan the forward gate uses (single authority):
+// it does NOT derive the roster (that would be vacuous), and it does NOT auto-classify — it
+// forces the author to consciously DROP a stale entry.
+
+// The live set of would-be-leak paths: non-edge modules that live-import the sidecar AST today
+// (the exact paths the canonical roster exists to excuse). Independent host enumeration.
+fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+  fold_list(
+    xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
+    empty: [],
+    cons: fn(acc, fact) {
+      if module_is_target_ast_vocab(module: fact.import_module)
+        && (path_is_realization_edge(path: fact.path) == false) {
+        list_snoc_item(xs: acc, item: fact.path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// Stale roster entries: roster paths with NO live sidecar-import in the independent scan.
+fn realization_vocab_stale_roster_entries(
+  roster: List<String>,
+  live_leak_paths: List<String>
+) -> List<String> {
+  fold_list(
+    xs: roster,
+    empty: [],
+    cons: fn(acc, entry) {
+      if list_contains_str(xs: live_leak_paths, target: entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+fn realization_vocab_roster_stale_count(
+  roster: List<String>,
+  live_leak_paths: List<String>
+) -> Int {
+  length(xs: realization_vocab_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+}
+
+fn realization_vocab_roster_sound(
+  roster: List<String>,
+  live_leak_paths: List<String>
+) -> Bool {
+  is_empty(xs: realization_vocab_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+}
+
+// Canonical live bindings (bind the single-authority roster + consumer scan roots).
+fn realization_vocab_roster_stale_count_live(scan_roots: List<String>) -> Int {
+  realization_vocab_roster_stale_count(
+    roster: realization_vocab_exception_roster,
+    live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
+
+fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
+  realization_vocab_roster_sound(
+    roster: realization_vocab_exception_roster,
+    live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
