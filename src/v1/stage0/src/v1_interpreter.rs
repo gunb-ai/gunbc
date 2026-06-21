@@ -5702,16 +5702,18 @@ fn eval_builtin(
         }
 
         "medium_structure_leak_facts" => {
+            // `markers` arrives as a COMPUTED list (the per-medium table flattened in `.dag`), so
+            // use the FreeMonoid-tolerant coercion for every arg.
             let emit_roots =
-                expect_str_list(positional.first().copied(), "medium_structure_leak_facts")?;
+                expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
             let check_roots =
-                expect_str_list(positional.get(1).copied(), "medium_structure_leak_facts")?;
+                expect_str_list_flex(positional.get(1).copied(), "medium_structure_leak_facts")?;
             let markers =
-                expect_str_list(positional.get(2).copied(), "medium_structure_leak_facts")?;
+                expect_str_list_flex(positional.get(2).copied(), "medium_structure_leak_facts")?;
             let emit_fns =
-                expect_str_list(positional.get(3).copied(), "medium_structure_leak_facts")?;
+                expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
             let string_ops =
-                expect_str_list(positional.get(4).copied(), "medium_structure_leak_facts")?;
+                expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
             let facts = crate::medium_structure_project::medium_structure_leak_facts(
                 &emit_roots,
                 &check_roots,
@@ -6631,6 +6633,42 @@ fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<Strin
             msg: format!("{} requires a List<String> argument", context),
         }),
     }
+}
+
+/// Like `expect_str_list`, but also accepts a FreeMonoid `Cons`/`Empty` chain — a COMPUTED
+/// string list (e.g. a single-authority `.dag` table flattened via `fold_list`/`list_append`),
+/// not only a native `Value::List`. Reuses the same list-bridge the list builtins use.
+fn expect_str_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<String>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<String> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<String> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        match item {
+            Value::Str(s) => out.push(s),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<String>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {

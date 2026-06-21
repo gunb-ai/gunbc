@@ -171,7 +171,11 @@ data medium_realization_edge_path_prefixes: List<String> = [
   "src/v2/extdeps/languages/",
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
-  "src/v2/compiler/self_host/candidate_generation"
+  "src/v2/compiler/self_host/candidate_generation",
+  // This guard's OWN module: it MUST name the grounded marker (`${{`) as a string literal to
+  // detect it — that single-authority token definition is the detection vocabulary, definitionally
+  // exempt (exactly as the §5 realization-vocab guard names the forbidden module in its own vocab).
+  "src/v2/lens/medium_structure_containment.dag"
 ]
 
 // Emit-side scan roots — consumer AUTHORING source, EXCLUDING test trees (a planted fixture

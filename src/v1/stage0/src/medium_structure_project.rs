@@ -81,6 +81,7 @@ fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
     Some((module.children.clone(), source_indices))
 }
 
+/// Function bodies (check-side: receiver-provenance needs per-function `let` scope).
 fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
     let mut bodies = Vec::new();
     for item in items.iter() {
@@ -92,6 +93,12 @@ fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
         }
     }
     bodies
+}
+
+/// Every item value `Node` (emit-side: a `${{` literal can sit in a fn body OR a `data` decl
+/// value — both are stored in `item.body`, NOT `item.children`).
+fn item_value_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
+    items.iter().filter_map(|item| item.body.clone()).collect()
 }
 
 // ── detector (a): emit-side marker-in-literal ──────────────────────────────────
@@ -251,8 +258,8 @@ pub fn medium_structure_leak_facts(
             }
             if let Some((items, _si)) = parse_file(&file) {
                 let rel = rel_path(&file);
-                for node in items.iter() {
-                    emit_side_walk(node, markers, &rel, &mut out);
+                for body in item_value_bodies(&items) {
+                    emit_side_walk(&body, markers, &rel, &mut out);
                 }
             }
         }
