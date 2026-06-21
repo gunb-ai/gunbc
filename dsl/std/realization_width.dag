@@ -24,9 +24,12 @@ import std.types { Int, List }
 import std.nat { Nat }
 import std.measure {
   HardwareThreadCount,
+  ByteSize,
   Measure,
   Time,
   Nano,
+  byte_size,
+  byte_size_count,
   hardware_thread_count,
   hardware_thread_count_value,
   time_measure,
@@ -95,44 +98,50 @@ fn bounded_host_spawn_width(shard_count: Int, hardware_threads: HardwareThreadCo
 // compile). 0.80 = a 20% margin: it costs nothing while memory is non-binding (width capped by
 // shard_count today) and is precisely the lean (DESIGN §5) that protects the one failure mode
 // §1-C exists to prevent — OOM — in the future stale-low-peak case. Integer ×4/5 (no floats).
-fn budget_safety_fraction_apply(budget_bytes: Int) -> Int {
-  (budget_bytes * 4) / 5
+// Stays in the ByteSize domain: scale the underlying Nat count and re-ground via byte_size() —
+// a measure-aware scaling (the dimension stays attached), not raw Int arithmetic on a bare field.
+fn budget_safety_fraction_apply(budget: ByteSize) -> ByteSize {
+  byte_size(count: (byte_size_count(b: budget) * 4) / 5)
 }
 
 // How many concurrent shards fit under the safety-fractioned budget, each peaking at the
-// MEASURED per-shard RSS. Fail-closed forward progress: a non-positive peak (unknown
-// measurement) or a budget under one shard still admits 1, never 0.
-fn memory_bounded_shard_count(memory_budget_bytes: Int, per_shard_peak_bytes: Int) -> Int {
-  if per_shard_peak_bytes <= 0 {
+// MEASURED per-shard RSS. ByteSize ÷ ByteSize is a dimensionless shard count, so the division
+// extracts the grounded Nat counts (the std.measure pattern, cf. placement_supply). Fail-closed
+// forward progress: a zero peak (unknown measurement) or a budget under one shard still admits
+// 1, never 0.
+fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
+  let peak_count = byte_size_count(b: per_shard_peak)
+  if peak_count <= 0 {
     1
   } else {
-    let safe_budget = budget_safety_fraction_apply(budget_bytes: memory_budget_bytes)
-    let fits = safe_budget / per_shard_peak_bytes
+    let safe_budget = byte_size_count(b: budget_safety_fraction_apply(budget: memory_budget))
+    let fits = safe_budget / peak_count
     if fits < 1 { 1 } else { fits }
   }
 }
 
 // Memory-aware spawn width: min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_peak⌋).
-// A non-positive budget means the host could NOT read a live budget — fall back to the caller's
-// conservative committed width so a missing measurement never OOMs and is never fabricated here
-// (DESIGN §5; the host supplies the fallback). The heavy-resolve topology serialization stays
-// the independent backstop either way.
+// Byte quantities are std.measure ByteSize (the canonical Memory carrier), not flat Int — the
+// dimension is attached at the authority layer. A zero budget means the host could NOT read a
+// live budget — fall back to the caller's conservative committed width so a missing measurement
+// never OOMs and is never fabricated here (DESIGN §5; the host supplies the fallback). The
+// heavy-resolve topology serialization stays the independent backstop either way.
 fn memory_aware_spawn_width(
   shard_count: Int,
   hardware_threads: HardwareThreadCount,
-  memory_budget_bytes: Int,
-  per_shard_peak_bytes: Int,
+  memory_budget: ByteSize,
+  per_shard_peak: ByteSize,
   conservative_fallback_width: Int
 ) -> HardwareThreadCount {
-  if memory_budget_bytes <= 0 {
+  if byte_size_count(b: memory_budget) <= 0 {
     hardware_thread_count(count: conservative_fallback_width)
   } else {
     let cpu_width = hardware_thread_count_value(
       t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
     )
     let mem_width = memory_bounded_shard_count(
-      memory_budget_bytes: memory_budget_bytes,
-      per_shard_peak_bytes: per_shard_peak_bytes
+      memory_budget: memory_budget,
+      per_shard_peak: per_shard_peak
     )
     hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
   }
