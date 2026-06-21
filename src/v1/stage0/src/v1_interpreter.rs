@@ -3677,14 +3677,15 @@ fn eval_algebra_method(
             Ok(Value::Str(strs.join(&sep)))
         }
 
-        // chars(s) -> List<String>: decompose a String into single-character
-        // strings (primitives.dag `chars_contract`). Free-call `chars(source)`
-        // desugars to receiver-style method dispatch here; the lexer
-        // (01_tokenize) drives it, so the interpreter must implement it to run
-        // the full compile/emit fold.
+        // chars(s) -> List<Int>: decompose a String into its Unicode code
+        // points (Ints), matching the emitted Rust template in
+        // languages.dag (`{recv}.chars().map(|c| c as i64).collect()`) and the
+        // lexer's `source_chars: List<Int>` consumer (01_tokenize). Free-call
+        // `chars(source)` desugars to receiver-style method dispatch here; the
+        // interpreter must implement it to run the full compile/emit fold.
         "chars" => {
             let s = expect_str(Some(&receiver), "chars")?;
-            let items: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
+            let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
             Ok(list_value(items))
         }
 
@@ -5330,15 +5331,12 @@ fn eval_builtin(
             }
         }
 
-        // chars(s: String) -> List<String>: decompose into single-character
-        // strings (primitives.dag `chars_contract`). Mirrors the emitted
-        // `v1_rt` char iteration; the lexer (01_tokenize) drives this, so it
-        // must exist for the interpreter to run the full compile/emit fold.
-        "chars" => {
-            let s = expect_str(positional.first().copied(), "chars")?;
-            let items: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
-            Ok(Some(list_value(items)))
-        }
+        // Source-char cost metering primitive (runtime_rust.dag): a zero-arg
+        // side-effecting host fn the lexer (01_tokenize) calls directly. The
+        // compiled seed records a counter; the interpreter has no such counter,
+        // so it is a no-op returning unit. Needed for the interpreter to run
+        // the full compile/emit fold.
+        "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
 
         "concat" => {
             // Variadic string concat (common in .dag code)
