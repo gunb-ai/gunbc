@@ -117,6 +117,25 @@ throughout (confirms fierce-hawk's single-threaded property). So Pop-A is **TWO 
   inefficiency** — it `parse_source`s every `.dag` just to read module *names*; a light
   module-decl scan (or sharing the compiler's index) cuts it. Test-infra fix, not §2.
   (ii) Pop-B build-once (queued).
+
+### Handoff: Pop-A part-(a) fix (module_index light-scan) — for the test-infra fix-worker
+
+*Diagnosis is mine (proud-deer-709); the FIX is shed to a separate test-infra worker (parent
+2026-06-21) so it doesn't block the two gating measurements. Notes for the picker-up:*
+- **Location:** `src/v1/tests/src/helpers.rs` — `MODULE_INDEX: OnceLock` (`:152`), built by
+  `build_module_index()` (`:124`) → `scan_dag_files` (`:128`) → `extract_module_declaration`
+  (`:146`), which calls **`parse_source(&content)`** on **every** `.dag` under the source roots
+  just to read the `module x.y` name.
+- **Fix:** replace the full `parse_source` in `extract_module_declaration` with a **light
+  module-decl line scan** (read the leading `module <name>` declaration only — no full parse),
+  or share the compiler's own module index. Keep it the single authority for the test module
+  map (it overlays co-roots: "later roots win").
+- **Win:** the `OnceLock` builds on the **first `compile_multi` call in every rust-gate
+  process**, so the floor (~45s deloaded / ~90s loaded here) is paid on **every per-PR rust-gate
+  run regardless of which tests run** → a recurring per-PR CI win, not just a Pop-A one.
+- **Proof by execution (DESIGN §5):** time the floor before/after (e.g. a single `compile_multi`
+  test's wall, or instrument `module_index()` build time); the build-time must drop from ~tens
+  of seconds to sub-second, with the test map **byte-identical** (same module→path entries).
 - **Pop-A bucket stands (c)**, but split: floor = fixable test-helper artifact; per-test residue
   = genuine seed-perf, **dissolve-on self-host shrink, interim-periodic**. The operator's
   "most-expensive-is-a-fixable-defect" thesis holds for **Pop-B** (subprocess/network (a)/(b)),
