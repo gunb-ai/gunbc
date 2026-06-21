@@ -87,9 +87,16 @@ construction, not a warning (the §2 redundancy move on the *cost* axis). **Bull
 (absolute soundness, fail-closed), **honestly finite** (a published catalog; silence ≠ optimal), never
 an optimality oracle. → [plan](docs/plans/algebraic-rewrite-optimization.md)
 
+**Detection vs enforcement** (grounded in cost.dag U2, [plan §1a](docs/plans/algebraic-rewrite-optimization.md)):
+detection is **total by construction** — every program has an asymptotic class via the kernel-level cost
+fold (arbitrary fns *are* detectable; boundary is *precision* — `Unknown` — not coverage). Enforced
+rewrites are a strict subset: **E ⊆ D′(precisely-detected) ⊆ D(all)**, structurally guaranteed by the
+class-drop witness. Today's small gate roster is a *subject-production* limit (fn-body reflection), not a
+detection limit.
+
 **Foundation — the cost oracle the rewrite engine trusts:**
 
-- [x] complexity lens gates a curated roster (COMPREP wave-1: add / bind / branch / loop)
+- [x] complexity lens projection is total over the kernel (cost.dag U2); the *gate* runs a curated subject roster (COMPREP wave-1: add / bind / branch / loop) — roster-bound, not detection-bound
 - [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — the class-delta oracle must not lie
 - [ ] a subject-producer for every fn (not name-keyed placeholders)
 

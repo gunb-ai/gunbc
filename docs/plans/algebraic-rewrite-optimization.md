@@ -49,6 +49,48 @@ Soundness is discharged **once, abstractly** (prove `R` turns any instance of `P
 not per-instance; the per-instance obligation is just the structural precondition check, **fail-closed**
 (can't prove it ⇒ don't fire). Sound, incomplete, grows by rules.
 
+## 1a. Detection vs enforcement — the containment (grounded in the actual models)
+
+The set of complexities we **detect** and the set of violations we **enforce/rewrite** are different
+sets, and the second is a subset of the first. Verified against `src/v2/lens/cost.dag` +
+`complexity.dag` (2026-06-21):
+
+- **Detection is TOTAL by construction.** `cost.dag` U2 (lines 6–17): `SymbolicCost` is defined at the
+  **closed kernel** (6 connectives × behaviors), composed by a total `fold_node` — `base_cost_for_connective`
+  / `base_cost_for_behavior` match *every* kernel case, so **every well-formed program has a cost /
+  asymptotic class by construction**. No per-function or per-feature opt-in; a new surface feature
+  dissolves to already-costed kernel nodes (a new *connective/behavior* is a STOP). `complexity.dag` is
+  purely the asymptotic *projection* of that one carrier (`complexity_lens = asymptotic_projection ∘
+  cost_lens`) — it never re-derives. **So: arbitrary functions ARE detectable.**
+- **The verdict alphabet** (`AsymptoticClass`): `Constant · Log · Linear · Linearithmic ·
+  Polynomial{degree} · PolyLog{exponent} · Exponential · Factorial · Unknown`.
+- **The boundary is precision, not coverage.** When a loop bound is not witnessable, the verdict is
+  `ClassUnknown` — the **fail-closed lattice top** (`asymptotic_class_dominates(Unknown, _) = true`). So
+  detection has *total coverage*, *partial precision*. Two model-grounded precision limits worth naming:
+  - `PolynomialDegree` is **integer-only** (`NonZeroNat`), so `n√n` (n^1.5) is **literally
+    unrepresentable** — a concrete reason it is excluded from the catalog (§3), not mere taste.
+  - log **base** is not distinguished (asymptotically correct) — so "binary vs ternary search" is *not*
+    a class distinction; both are `Log`. (Another reason ternary search is out.)
+
+**The three nested sets:**
+
+| set | definition | bound |
+|---|---|---|
+| **D** — detected | all programs (total fold); verdict ∈ alphabet incl. `Unknown` | **unbounded** (total) |
+| **D′** — precisely detected | verdict ≠ `Unknown` (bound witnessable, no unmodeled construct) | D′ ⊊ D |
+| **E** — enforced / rewritten | the rewrite catalog (§3) | **E ⊆ D′** |
+
+`E ⊆ D′ ⊆ D` is not just expected — it is **structurally guaranteed by the DONE bar** (§5): witness (b)
+requires `complexity_lens` to confirm a *strict* class drop `class_after ≺ class_before`, which is
+impossible if either side is `Unknown`. A rule literally cannot land outside D′.
+
+**Why today's gate runs a small roster — and why that is NOT a detection limit.** The ROADMAP's
+"complexity lens gates a curated roster (add/bind/branch/loop)" is about which *subjects* are fed to the
+gate, not what cost *can* analyze. The roster is small because subject-*production* is not whole-corpus
+yet (the fn-body reflection gap — `enumerate_concepts()` covers type decls, not fn bodies). Detection is
+total; the gate's *reach* is subject-bound. Wire whole-corpus fn-body reflection and the gate runs over
+**all** of D. (This is the same reflection dependency the corpus hit-rate gate (§6) carries.)
+
 ## 2. The model — a rewrite rule is a row (§2 horizontal)
 
 Each rule is a content-addressed row carrying:
@@ -86,13 +128,63 @@ Tiered by how cleanly the precondition is structural (this is also the build ord
 | linear scan of **sorted** data → binary search | **O(n)→O(log n)** | sortedness carried in the type, or traceable to a `sort` with no intervening mutation; silent otherwise |
 | repeated linear min/max extraction → heap | **O(n²)→O(n log n)** | extraction pure; structural recurrence recognized |
 
-**Deliberately excluded (the "exotic" guardrail):** `n·√n` (sqrt-decomposition is a *deliberate
-technique*, not an accidental mistake) and ternary search (niche unimodal optimization). Including them
-is the exotic-coverage trap; binary search covers the search case developers actually hit.
+**Deliberately excluded (model-grounded, not just taste):** `n·√n` is excluded because the cost model
+**cannot represent it** — `PolynomialDegree` is integer-only (`NonZeroNat`), so n^1.5 ∉ D′ and no rule
+targeting it could satisfy witness (b) (§1a). Ternary search is excluded because log base is not a class
+distinction — it is `Log`, identical to binary search (§1a); and sqrt-decomposition / ternary search are
+*deliberate techniques*, not accidental mistakes. Including either is the exotic-coverage trap.
 
 **Deferred — constant-factor (class unchanged), in scope later, labeled as such:** loop fusion (two
 sequential loops over one range → one) and loop-invariant hoisting. Real wins, but they do not move
 between asymptotic classes, so they are kept out of the seed to keep the class-reduction headline clean.
+
+## 3a. The seed rules, fully specified up front (input → output → controls)
+
+Every rule lands as a row carrying *exactly* these fields; the worker builds to these, no
+interpretation. (Surface shown in pseudo-syntax; the matcher operates on the desugared `Loop` Node.)
+
+### Rule 1 — `nested-membership → set` · **O(n²) → O(n)** · D′: `Polynomial{2} → Linear`
+
+- **INPUT (slow form it fires on):**
+  ```
+  out = []
+  for x in a:                 // |a| = n
+    if contains(b, x):        // linear scan of b = O(|b|) → whole loop O(n·m)
+      out.append(x)
+  ```
+- **OUTPUT (rewritten):**
+  ```
+  bset = set(b)               // O(|b|)
+  out = []
+  for x in a:
+    if bset.contains(x):      // O(1) amortized → whole loop O(n + m)
+      out.append(x)
+  ```
+- **precondition (structural):** the membership test is pure (`EffectShape` pure) **and** `b` is not
+  mutated anywhere in the loop body.
+- **non-firing control (witness d):** the same shape where `b` *is* mutated in the loop (e.g.
+  `b.append(...)`) — the precomputed set would go stale, so the rule **must not fire**; code untouched.
+- **discriminating equivalence input (witness c):** `a=[1,2,3]`, `b=[2,3,4]` → both forms yield `[2,3]`.
+
+### Rule 2 — `naive-recursion → memoize` · **O(2ⁿ) → O(n)** · D′: `Exponential → Linear`
+
+- **INPUT (slow form):**
+  ```
+  fn f(n):
+    if n < 2: return n
+    return f(n-1) + f(n-2)    // overlapping subproblems → O(2ⁿ)
+  ```
+- **OUTPUT (rewritten):** `f` memoized on its argument — each `f(k)` computed once → O(n).
+- **precondition (structural):** `f` is a **pure function of its arguments** (`EffectShape` pure — a
+  *different precondition shape* from Rule 1, which is why D2 seeds with both: it proves the framework on
+  both "no-mutation" and "pure-fn" preconditions).
+- **non-firing control (witness d):** `f` has an observable effect (prints / mutates a global) —
+  memoizing would change observable behavior, so **must not fire**.
+- **discriminating equivalence input (witness c):** `f(10)` → both forms yield `55`.
+
+This is the level of up-front specificity every later catalog row must reach **before** it is built — an
+under-specified rule is how the project never finishes (DESIGN §5: "done" = a real consumer green by
+execution + a discriminating input that goes red when wrong).
 
 ## 4. Decisions (resolved in-conversation 2026-06-21)
 
