@@ -147,7 +147,6 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
 
 /// Vacuous-by-construction scaffold: lens_mock_totality witnesses do not
 /// dispatch live service calls under either mode; this only guards roster wiring.
-#[ignore = "failing: wet_hermetic whole-tree mock-corpus precompute (run_discovery_corpus over ci_witness_layer_roots) fails resolving dsl/test/claim/doc_reachability_witness_test.dag (from #5484 doc-graph reachability-completeness lens) — functions doc_graph_orphan_count / doc_graph_dangling_link_count / doc_graph_doc_count 'not found in scope'. The witness either references undefined fns or omits the import of the doc_graph module; the normal 647-witness discovery corpus passes, so the whole-tree precompute resolves it in a different (mock-corpus) context. Pre-existing on origin/main (never ran under the old 3-test allowlist), surfaced by the run-all widening (#5427), NOT caused by it (file untouched by this PR). Route to the #5484 doc-graph reachability-lens owner. bucket=doc-graph-wholetree-resolve"]
 #[test]
 fn wet_hermetic_scaffold_roster_outcomes_agree() {
     let roots = ci_witness_layer_roots();
