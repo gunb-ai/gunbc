@@ -53,7 +53,6 @@ import std.cache_interface {
   WriteOnceConflict,
   BackendWriteRejected,
   realize_route,
-  realize_route_reuses,
   classify_write,
 }
 
@@ -105,8 +104,10 @@ fn witness_miss_recomputes() -> Bool {
 // A refused hit is NEVER served — it routes to Recompute. THIS is the §5 fail-closed tooth:
 // flip realize_route's RejectedHit arm to Reuse and this goes red.
 fn witness_refused_hit_never_reused() -> Bool {
-  let route = realize_route(lookup: RejectedHit { reason: ContentDigestMismatch })
-  !realize_route_reuses(route: route)
+  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+    Recompute { reason: _ } => true
+    Reuse { receipt: _ } => false
+  }
 }
 
 // The refusal is surfaced, not silent — the Recompute carries HitRefused with the reason

@@ -340,14 +340,10 @@ fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
   }
 }
 
-// True iff the route reuses a hit — the §2 "minimal work" predicate a scheduler/planner consumes
-// (born with the fold, not a stray reader: it eliminates RealizeRoute, the kernel's own type).
-fn realize_route_reuses<T>(route: RealizeRoute<T>) -> Bool {
-  match route {
-    Reuse { receipt: _ } => true
-    Recompute { reason: _ } => false
-  }
-}
+// No `realize_route_reuses`-style Bool reader is minted over RealizeRoute (predicate-dissolution
+// rule, §6): the reuse-vs-recompute question is answered by `match` at the consumer. The §2
+// "minimal work" predicate a scheduler/planner will consume is born WITH that caller (P3 reach /
+// cache-layer planner), not as a stray std reader awaiting one.
 
 // The one door, write side — the purity oracle. Classify an offered write against the backend's
 // CURRENT state for the SAME subject: a fresh subject is Written; an existing key offered the SAME
