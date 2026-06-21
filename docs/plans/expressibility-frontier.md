@@ -19,6 +19,39 @@ mispricing the location is itself the failure mode (§4).
 This is not new machinery; it is DESIGN §5's trichotomy turned from a property of *one* class into a
 *method* applied to *every* discipline.
 
+### 1.1 Why these are one family — the lens schema
+
+Step back from enforcement and ask what every discipline *is*. Each names a **preferred form** — the
+§1-*minimal* representation along one axis — and flags a program point sitting *away* from it. The gap is
+never free: it is a **displaced cost** (§1), time the author saved now that someone pays later, at
+interest. The disciplines differ only in *which* of §1's three times the gap is billed to:
+
+- **complexity** → the **cost** axis (time-to-run): preferred = budget-dominated; the deviation runs too
+  long (perf bugs later).
+- **anemic modeling / nicknaming / under-decomposition** → the **complexity** axis (time-to-change):
+  preferred = grounded + single-authority; the deviation cheaped out on upfront modeling and bills every
+  consumer plus the eventual de-fork.
+- **discrimination / cache-purity / effect-leak** → the **safety** axis (time-to-recover): preferred =
+  fails closed; the deviation lets a wrong answer pass silently.
+
+So the lenses are not independent inventions — they are **§1 projected onto each of its three costs**,
+each a "distance from the preferred (minimal) form" detector. That is the broader pattern: a lens is the
+schema
+
+> ⟨ **preferred form** · **deviation witness** · **which §1-cost the gap displaces** · **where on the
+> frontier (§2) it is enforceable** · **the drag-to-preferred fix** ⟩
+
+and the *frontier* (§2 below) is just the schema's fourth field. Two payoffs fall out, both about
+*authoring* lenses, not running them:
+
+1. **Adding a lens is filling the schema, not inventing machinery.** A proposed lens that cannot name its
+   preferred form or its §1-axis is incoherent — it cannot say what it *prefers*. The schema is the
+   intake form.
+2. **Two lenses on the same ⟨axis, preferred form⟩ are a meta-fork** — §3 single-authority turned on the
+   lens *corpus itself* (a nickname *between lenses*). The schema makes it a forced question — "is
+   `unused_parameters` just `subsumption` along the same axis?" — instead of a coincidence noticed years
+   later.
+
 ## 2. The frontier — three regions by decidability of membership
 
 | Region | Membership | Enforcement | Can the fix be *presented*? |
@@ -49,8 +82,8 @@ This is the pattern the frontier names — the same three regions, in two unrela
 
 | Region | **Anemic modeling** | **Algorithmic complexity** |
 | --- | --- | --- |
-| **① Wall** | *round-trip through representation* — `wrap(op_M(unwrap a, unwrap b))` is provably `op_T(a,b)` (homomorphism law); provide the lifted op + fence the projector ⇒ the unwrap-form is unwritable. Dimensional safety: the `Measure<Q,S>` phantom types already wall it. | *budget-dominance* — a cost-fold verdict that a step's cost is dominated by its declared budget is a decidable hard-gate (the complexity lens *can* gate this). |
-| **② Lens-residue** | the round-trip at the **grounding seam** you can't fence (host `Int` → `ByteSize`); a pure reader flags a constructor whose magnitude derives from a projector — **and presents the exact `op_T`** (the op→op_T table is finite). Lifted algebra (`+`,`max`) is one determined rewrite; the two divisions (`Measure÷scalar`, `Measure÷Measure`) **surface a ceil/floor choice** the round-trip hid (demand ceils, width floors) | the cost-budget lens over the corpus where construction isn't available yet — flags, but the *cheaper algorithm* is **searched**, so it cannot present it |
+| **① Wall** | *round-trip through representation* — `wrap(op_M(unwrap a, unwrap b))` is provably `op_T(a,b)` (homomorphism law); provide the lifted op + fence the projector ⇒ the unwrap-form is unwritable. Two walls stack here: the `Measure<Q,S>` phantom types wall *dimensional* conflation, and the **operation signature** walls *operational* conflation — "split into k parts" (`Measure×count→Measure`) and "how many fit" (`Measure÷Measure→count`) have *different return types*, so the raw-`Nat` divide that fuses them is a type error, not a flagged smell. | *budget-dominance* — a cost-fold verdict that a step's cost is dominated by its declared budget is a decidable hard-gate (the complexity lens *can* gate this). |
+| **② Lens-residue** | the round-trip at the **grounding seam** you can't fence (host `Int` → `ByteSize`); a pure reader flags a constructor whose magnitude derives from a projector — **and presents the exact `op_T`** (the op→op_T table is finite). Lifted algebra (`+`,`max`) is one determined rewrite; once the operation is typed (①), the only residue is the **rounding direction** — a §5 "round toward pessimism" choice no type can pick, splitting three ways: *demand* ceils, *capacity* floors, *fit-count* floors. The lens surfaces it and forces intent | the cost-budget lens over the corpus where construction isn't available yet — flags, but the *cheaper algorithm* is **searched**, so it cannot present it |
 | **③ Inexpressible** | *leaf under-decomposition* — "`LGA4926`" should be a record; needs **domain knowledge**, undecidable ⇒ stays review (DESIGN's parked §2 open thread) | *optimality* — "is this the minimal cost?" is undecidable (**Rice**); *synthesis* — "produce a faster version" has no constructive patch ⇒ permanent ratchet/review |
 
 The reading: anemic-modeling and complexity are not analogous by coincidence — they are **two samples of
