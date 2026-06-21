@@ -117,7 +117,7 @@ fn transform_content_digest() -> Hash {
                     exe, e
                 )
             });
-            v1_rt::atom_identity_hash(String::from_utf8_lossy(&bytes).into_owned())
+            v1_rt::bytes_identity_hash(&bytes)
         })
         .clone()
 }
@@ -169,7 +169,7 @@ fn artifact_path(cache_root: &Path, subject_digest: &str) -> PathBuf {
 }
 
 fn payload_content_digest(payload_bytes: &[u8]) -> Hash {
-    v1_rt::atom_identity_hash(String::from_utf8_lossy(payload_bytes).into_owned())
+    v1_rt::bytes_identity_hash(payload_bytes)
 }
 
 fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
