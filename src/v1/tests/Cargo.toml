@@ -9,6 +9,14 @@ description = "Integration tests for the v2 self-hosted compiler"
 [dependencies]
 v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter"] }
 
+# Nightly Pop-B residue lane (ROADMAP §1): the nightly workflow runs
+# `cargo test -p v1-compiler-tests --features ci_nightly`, which un-ignores the
+# cfg_attr(not(feature = "ci_nightly"), ignore = "...")-gated residue tests. The per-test
+# markings are held for the post-#5450 baseline; until they land this feature is
+# declared-but-unused (the harness lands ahead of the markings).
+[features]
+ci_nightly = []
+
 [dev-dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

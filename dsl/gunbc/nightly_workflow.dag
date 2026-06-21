@@ -1,0 +1,58 @@
+// gunbc/nightly_workflow.dag — authoritative GitHub Actions Workflow value for the nightly
+// Pop-B residue lane (ROADMAP §1).
+//
+// Single authority for `.github/workflows/nightly.yml` (DESIGN §3), and ONE ROW of
+// `repo_ci_workflow` (gunbc.ci_workflow_shape) — it shares the per-PR ci row's runner prelude,
+// concurrency, env, permissions, and timeout by construction, differing ONLY in name, triggers
+// (a daily `Schedule` + manual `WorkflowDispatch` instead of push/PR), and the final run step
+// (the `--features ci_nightly` residue run instead of the claim_executor floor).
+//
+// Why a separate workflow (not a Schedule bolted onto ci.yml): each workflow is a distinct
+// authority with its own drift gate; the nightly gate set is explicitly NOT the per-PR floor
+// (DESIGN §3). The committed file is the literal byte output of
+// `serialize_yaml(project_workflow_to_yaml(nightly_workflow))` — regenerate via `main_wet` on
+// tools.ci_yaml_gate.
+
+module gunbc.nightly_workflow
+
+import gunbc.ci_workflow_shape { repo_ci_workflow }
+import gunbc.ci_spec { gunbc_nightly_run_script }
+import extdeps.github.actions {
+  Workflow, Step, RunStep,
+  WorkflowTrigger, Schedule, WorkflowDispatch
+}
+import extdeps.cron.schedule_model { CronSchedule, CronField, Wildcard, Exact }
+
+// 07:00 UTC daily — off-peak; renders to the GHA cron `0 7 * * *`.
+data nightly_cron: CronSchedule = {
+  minute: Exact { value: 0 },
+  hour: Exact { value: 7 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+// The nightly residue run step: build + `cargo test --features ci_nightly` (the Pop-B
+// residue), EAGAIN-retry-wrapped. Policy lives in ci_spec (gunbc_nightly_run_script).
+fn nightly_run_step() -> Step {
+  RunStep {
+    name: Present { value: "gunbc nightly (Pop-B residue: --features ci_nightly)" },
+    id: none,
+    run: gunbc_nightly_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+data nightly_workflow: Workflow = repo_ci_workflow(
+  name: "nightly",
+  triggers: [
+    Schedule { cron: nightly_cron },
+    WorkflowDispatch { inputs: [] }
+  ],
+  run_step: nightly_run_step()
+)

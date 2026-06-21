@@ -258,3 +258,29 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_run_script(spec: spec)
 }
+
+// ── Nightly residue lane (Pop-B) ────────────────────────────────────────────────────────
+// The nightly workflow runs the irreducible out-of-process residue (live-network +
+// emitted-crate cargo-check/test) that opt-level and build-once (#5450) cannot restore to
+// per-PR. The cargo feature `ci_nightly` (v1-compiler-tests) un-ignores the cfg_attr-gated
+// residue tests; until those per-test markings land (held for the post-#5450 baseline) the
+// feature is declared-but-unused and this command runs the ordinary suite — the HARNESS is in
+// place ahead of the markings (DESIGN §6 model just-in-time, harness-first).
+data ci_nightly_features: String = "ci_nightly"
+
+fn ci_nightly_test_command() -> String {
+  concat(
+    "cargo test -p v1-compiler-tests --release --features ",
+    ci_nightly_features
+  )
+}
+
+// Nightly run step: repo-root + the EAGAIN-retry-wrapped nightly test command (same fleet
+// build-resilience as the floor's release bootstrap). No claim_executor scheduler — the
+// nightly residue is rust tests, not the .dag floor corpus.
+fn gunbc_nightly_run_script() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    ci_cargo_eagain_retry_script(command: ci_nightly_test_command())
+  )
+}

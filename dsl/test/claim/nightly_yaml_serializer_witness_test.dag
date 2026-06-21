@@ -1,0 +1,70 @@
+// dsl/test/claim/nightly_yaml_serializer_witness_test.dag
+//
+// By-execution witnesses for the nightly workflow YAML projection + drift gate (ROADMAP §1
+// Pop-B residue lane). Two obligations:
+//   (2) the Schedule trigger renders a real GHA `schedule: - cron: "..."` block (NOT the
+//       pre-fix `YamlNull` drop) — a discriminating cron-render witness.
+//   (3) the nightly.yml drift gate is FLOOR-ENROLLED (this is a `*_test.dag` with a `test fn`,
+//       so the source-root pass auto-enrolls it) and has teeth — green on the committed file,
+//       red on a perturbed one.
+
+module test.claim.nightly_yaml_serializer_witness
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.ci_yaml_emit { expected_nightly_yml, nightly_yml_drifted }
+import gunbc.nightly_workflow { nightly_workflow }
+import gunbc.ci_spec { gunbc_nightly_run_script }
+
+data nightly_yml_committed_path: String = ".github/workflows/nightly.yml"
+
+// (2) The cron renders — `schedule:` carries a `- cron:` entry with the rendered crontab line,
+// NOT YamlNull. Pre-fix (`Schedule { cron: _ } => YamlNull`) this is structurally RED: the
+// YamlNull arm cannot emit the cron substring.
+fn witness_nightly_schedule_renders_cron() -> Bool {
+  let yaml = expected_nightly_yml()
+  string_contains(s: yaml, pattern: "schedule:") &&
+    string_contains(s: yaml, pattern: "cron:") &&
+    string_contains(s: yaml, pattern: "0 7 * * *")
+}
+
+// (2b) the schedule value is the cron SEQUENCE block, not the pre-fix null. Positively asserts
+// the rendered structure `schedule:\n    - cron:` — which the pre-fix `YamlNull` arm cannot
+// emit — and that it is not a bare `schedule: null` scalar.
+fn witness_nightly_schedule_is_cron_sequence() -> Bool {
+  let yaml = expected_nightly_yml()
+  string_contains(s: yaml, pattern: "schedule:\n    - cron:") &&
+    !string_contains(s: yaml, pattern: "schedule: null")
+}
+
+// The nightly workflow carries the residue run step (the --features ci_nightly run), not the
+// per-PR claim_executor floor.
+fn witness_nightly_run_step_is_feature_run() -> Bool {
+  let yaml = expected_nightly_yml()
+  let script = gunbc_nightly_run_script()
+  string_contains(s: yaml, pattern: "cargo test -p v1-compiler-tests --release --features ci_nightly") &&
+    string_contains(s: script, pattern: "--features ci_nightly") &&
+    !string_contains(s: yaml, pattern: "claim_executor")
+}
+
+// The nightly workflow is manually dispatchable too.
+fn witness_nightly_has_workflow_dispatch() -> Bool {
+  string_contains(s: expected_nightly_yml(), pattern: "workflow_dispatch:")
+}
+
+// (3) Floor-enrolled drift gate: committed nightly.yml == generator output (green), AND the
+// check has teeth (a perturbed file drifts). A positive witness (true when correct AND the
+// check discriminates) — RED if the committed file drifts OR the gate is toothless.
+fn witness_nightly_yaml_gate_holds() -> Bool {
+  let committed = Filesystem.Read(path: nightly_yml_committed_path)
+  committed.success &&
+    !nightly_yml_drifted(committed: committed.content) &&
+    nightly_yml_drifted(committed: concat(expected_nightly_yml(), "\n# perturb"))
+}
+
+test fn nightly_yaml_serializer_keystone_holds() -> Bool {
+  witness_nightly_schedule_renders_cron() &&
+    witness_nightly_schedule_is_cron_sequence() &&
+    witness_nightly_run_step_is_feature_run() &&
+    witness_nightly_has_workflow_dispatch() &&
+    witness_nightly_yaml_gate_holds()
+}

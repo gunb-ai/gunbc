@@ -1,19 +1,37 @@
-// gunbc/ci_yaml_emit.dag — composed CI workflow YAML projection.
+// gunbc/ci_yaml_emit.dag — composed workflow YAML projection (ci + nightly rows).
 //
-// `runs-on:` is derived from `gunbc_ci_fleet_offer` via `runner_spec_from_offer`
-// (Phase 3a seam) — see gunbc.ci_fleet + gunbc.runner_spec_from_offer.
+// ONE emit authority `expected_workflow_yml(workflow)` = serialize_yaml ∘
+// project_workflow_to_yaml (the projection is already polymorphic over Workflow — DESIGN §2
+// horizontal). `expected_ci_yml` / `expected_nightly_yml` are two thin wrapper ROWS, NOT a
+// forked second emitter (§3). `runs-on:` derives from `gunbc_ci_fleet` via
+// `runner_spec_from_offer` (Phase 3a seam).
 
 module gunbc.ci_yaml_emit
 
 import extdeps.formats.yaml { serialize_yaml }
+import extdeps.github.actions { Workflow }
 import gunbc.workflow_yaml_project { project_workflow_to_yaml }
 import gunbc.ci_workflow { ci_workflow }
+import gunbc.nightly_workflow { nightly_workflow }
+
+// The single workflow-emit authority: any Workflow value → its committed-file bytes.
+fn expected_workflow_yml(workflow: Workflow) -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: workflow))
+}
 
 fn expected_ci_yml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: ci_workflow))
+  expected_workflow_yml(workflow: ci_workflow)
+}
+
+fn expected_nightly_yml() -> String {
+  expected_workflow_yml(workflow: nightly_workflow)
 }
 
 // Drift check shared by the gate and discriminating witnesses (committed == projection).
 fn ci_yml_drifted(committed: String) -> Bool {
   !(committed == expected_ci_yml())
+}
+
+fn nightly_yml_drifted(committed: String) -> Bool {
+  !(committed == expected_nightly_yml())
 }
