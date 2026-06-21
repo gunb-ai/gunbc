@@ -29,6 +29,7 @@ import product.compute_fabric {
   IndependentShards,
   offer_placement_supply_row,
   placement_spawn_width,
+  placement_memory_width_bound,
   placement_floor_memory_budget_bytes,
 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
@@ -140,6 +141,25 @@ fn ci_fleet_floor_spawn_width(corpus_shard_count: Int) -> HardwareThreadCount {
     Absent => hardware_thread_count(1)
     Present { value: row } =>
       placement_spawn_width(supply: row, demand: gunbc_ci_floor_corpus_work_demand(corpus_shard_count: corpus_shard_count))
+  }
+}
+
+// Memory budget expressed in per-shard-peak UNITS (budget / per-shard peak) — the same
+// quantity the spawn-width memory bound divides by, named once for the floor plan's per-node
+// demand oracle. It is the number of concurrent heavy resolves the fleet memory budget admits;
+// the floor plan compares each readiness layer's concurrent unit-peak against it. Absent supply
+// or Absent memory demand → 1 (fail-closed forward progress, never 0).
+fn gunbc_ci_floor_memory_budget_units() -> Int {
+  match gunbc_ci_floor_placement_supply() {
+    Absent => 1
+    Present { value: row } =>
+      match placement_memory_width_bound(
+        supply: row,
+        demand: gunbc_ci_floor_corpus_work_demand(corpus_shard_count: 1)
+      ) {
+        Absent => 1
+        Present { value: units } => units
+      }
   }
 }
 

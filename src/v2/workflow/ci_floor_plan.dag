@@ -34,12 +34,16 @@ import gunbc.ci_spec {
 }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
-import gunbc.ci_fleet { ci_fleet_floor_spawn_width, ci_fleet_floor_spawn_fits_memory_budget }
+import gunbc.ci_fleet {
+  ci_fleet_floor_spawn_width,
+  ci_fleet_floor_spawn_fits_memory_budget,
+  gunbc_ci_floor_memory_budget_units
+}
 import std.types { ContentHash }
-import std.measure { HardwareThreadCount }
+import std.measure { HardwareThreadCount, hardware_thread_count_value }
 import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
   RealizationPlan,
