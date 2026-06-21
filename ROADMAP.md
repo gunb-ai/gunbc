@@ -7,10 +7,22 @@ A task's real state is its branch/PR + the carrier marks.
 
 Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**.
 
-## 0. Fail-closed lock-down — BLOCKS expansion
+## 0. Fail-closed lock-down LANE — BLOCKS expansion into products
 
 Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not **enforced fail-closed
-by execution in CI**. Lock the machine down before adding features. → [audit + checklist](docs/plans/fail-closed-lockdown.md)
+by execution in CI**. Lock the machine down before selling pieces. The lane = *audit how deep the root
+goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/fail-closed-lockdown.md)
+
+**Audits — how bad / how deep:**
+
+- [x] lens/gate wiring audit — most analytical lenses are inert (authored, no discovered gate)
+- [x] fail-open code audit — cache lossy-digest + under-keyed memos + `unwrap_or_default` infer
+- [ ] **model↔realization fork audit — the suspected ROOT** (every primitive = coproduct *modeled* + native `Value` *realized*, reconciled per-site → coverage accidental & non-compositional; DESIGN open thread)
+- [ ] coercion/equality fail-closure audit (`Bool` & `Optional`/`Null`-sentinel straddles after the `==` fix)
+- [ ] inference fail-open audit (return-type / record-field remaining after #5293)
+- [ ] cache-purity audit — enumerate every cache; each needs a warm==cold oracle
+
+**Fixes — make fail-open unwritable:**
 
 - [ ] cache flakes physically impossible
   - [ ] content-key on **raw bytes** (kill `from_utf8_lossy` digest, `resolved_graph_cache.rs:146`)
@@ -20,8 +32,12 @@ by execution in CI**. Lock the machine down before adding features. → [audit +
 - [ ] self-host purity enforced — wire `regen_stage0 --verify` into the floor (= §3 keystone)
 - [ ] complexity/cost enforced — zero-absorption fix → change-set budget gate (= §6)
 - [ ] cache-redundancy fail-closed — land §7 P3 redundancy cut **before expansion**
+- [ ] ground each primitive into its realization (dissolves the model↔realization fork at the root)
 - [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters)
-- [ ] **meta-invariant gate:** every `lens/*.dag` has a discovered fail-closed discriminating witness, or is removed (closes the "authored ≠ enforced" loophole)
+
+**Meta:**
+
+- [ ] **meta-invariant gate:** every `lens/*.dag` has a discovered fail-closed discriminating witness, or is removed (closes the "authored ≠ enforced" loophole permanently)
 
 ## 1. Session dashboard on `.dag` (backend only)
 
@@ -29,7 +45,18 @@ by execution in CI**. Lock the machine down before adding features. → [audit +
 
 ## 2. idea → idea compiler (stop anchoring on code)
 
-- [ ] scope
+De-anchor the compiler from CODE as the medium: a program is a canonical `Node` (the *idea*);
+ingest / emit / eval across **many media** via one grammar read both directions (§2 N+M, not N×M).
+Two axes:
+
+- [x] **medium axis** — `Medium<R>` + `DecodeFidelity` carrier; `LanguageModel` unified (13 forks dissolved); Source/DagSource/TargetSource → `Medium<String>`; `compile(Eval) → EvalResult{value: Medium<Node>}`
+- [ ] **language axis** — 15+ targets wave-1; English emit proven (`english_emit_add_test`)
+  - [ ] English vocabulary closure → **fail-closed** English ingest (today's catch-all `english_token_word` is fail-open — also a §0 item)
+  - [ ] English ingest round-trip (only emit proven today)
+- [ ] cross-media targets beyond syntax — JSON / react / diagram as **first-class media** (not stringified)
+  - [ ] `Medium<A> ↔ Medium<B>` homomorphisms (Realization pattern over media)
+- [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity` at the decode boundary
+- [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 
 ## 3. Self-host v2 → delete `src/v1`
 

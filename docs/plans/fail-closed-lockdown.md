@@ -60,6 +60,33 @@ These are the **structural** gates. The gap is everything *analytical* and the *
 Already fixed (precedent for the pattern): cross-representation `==` straddle (now raises
 `CrossRepresentationEquality`); strict record-field typecheck (#5293).
 
+## 3a. How deep does the root go — the remaining audits
+
+§1–§3 were the first two passes (lens wiring + fail-open code). They found *symptoms*. The lane needs
+deeper audits before we trust the fixes are complete, because the symptoms likely share **one root**.
+
+**Suspected root — the model↔realization fork (DESIGN open thread, §1/§2/§7).** Every primitive is
+*modeled* as a coproduct and *realized* as a native `Value`, reconciled by **per-site bridges** — so
+coverage is accidental and non-compositional. That is the same shape as: the `==` straddle (`Value::eq`
+`_ => false`), the lossy cache digest (native bytes vs modeled content), and the under-keyed memos
+(native Rc address vs modeled content identity). If true, the fixes in §4 are *per-site patches* unless
+the root is dissolved (ground each primitive into its realization — numeric tower first,
+`Int = GroupCompletion<Nat>` bottoming in Peano `Nat`), which makes whole classes of guard *dead code*.
+
+Audits to run (each: how many sites, how deep, is there one root):
+
+1. **model↔realization fork audit** — enumerate every primitive modeled-as-coproduct + realized-as-native
+   and its reconciliation site; classify fail-open vs fail-closed; confirm/refute the single root.
+2. **coercion/equality fail-closure audit** — the `==` fix landed for the numeric tower; remaining:
+   `Bool True|False` over `Value::Bool`, `Optional/Witness` over the overloaded `Value::Null` sentinel
+   (resists a blanket guard — `present == None` at ~131 sites is a *legitimate* `false`; needs grounding).
+3. **inference fail-open audit** — what remains after strict record-field (#5293): return-type inference
+   defaults, other `unwrap_or_default` type fabrications.
+4. **cache-purity audit** — enumerate every cache (resolved_graph, parse_table_memo, pure_call_memo,
+   typed_module, sccache); each must have a warm==cold oracle; only typed_module has one today.
+
+The lane is done when these audits return *no new fail-open class* and §4 is green.
+
 ## 4. Lock-down checklist (the meta-gate — blocks expansion)
 
 Ordered so each makes a class of fail-open *unwritable*. The cache items are the operator's top priority.
