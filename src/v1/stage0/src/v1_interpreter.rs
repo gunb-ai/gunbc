@@ -3524,6 +3524,33 @@ fn eval_algebra_method(
             })
         }
 
+        // list_push(list, item): append the argument as a SINGLE element, even
+        // when it is itself a list (unlike concat/append/push below, which merge
+        // a list-valued arg). Mirrors the free-function list_push so the same op
+        // resolves through method dispatch too; the lexer drives it. Additive.
+        "list_push" => {
+            if matches!(&receiver, Value::Str(_)) {
+                return Err(InterpError::TypeError {
+                    msg: "list_push not supported on String".to_string(),
+                });
+            }
+            let item = args.first().cloned().unwrap_or(Value::Null);
+            match value_to_list_carrier(&receiver) {
+                Some((items, copied)) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += copied;
+                    drop(counters);
+                    let mut result = (*items).clone();
+                    result.push_back(item);
+                    Ok(list_value(result))
+                }
+                None => Err(InterpError::TypeError {
+                    msg: format!("list_push on non-list: {}", receiver.type_label()),
+                }),
+            }
+        }
+
         "concat" | "append" | "push" => {
             // String concat preserves the String representation: a String IS a
             // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
@@ -3675,6 +3702,18 @@ fn eval_algebra_method(
             let sep = args.first().map(|v| format!("{}", v)).unwrap_or_default();
             let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
             Ok(Value::Str(strs.join(&sep)))
+        }
+
+        // chars(s) -> List<Int>: decompose a String into its Unicode code
+        // points (Ints), matching the emitted Rust template in
+        // languages.dag (`{recv}.chars().map(|c| c as i64).collect()`) and the
+        // lexer's `source_chars: List<Int>` consumer (01_tokenize). Free-call
+        // `chars(source)` desugars to receiver-style method dispatch here; the
+        // interpreter must implement it to run the full compile/emit fold.
+        "chars" => {
+            let s = expect_str(Some(&receiver), "chars")?;
+            let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
+            Ok(list_value(items))
         }
 
         // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
