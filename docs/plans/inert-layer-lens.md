@@ -172,7 +172,39 @@ but are unwired" — surfaced as the ranked head of the inert list.
   roster* dissolves to empty as the realization loop wires each carrier, at which point the lens flips
   from advisory ② to fail-closed ① wall.
 
-## 8. Open
+## 8. Generalization — one rule, N substrates (code · docs · lenses)
+
+Reachability-completeness is **not specific to code** — it is a §2-horizontal "one concept, every
+breadth": *every declared node in a graph must be reachable from a root, on an exception roster, or
+deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph —
+and the doc instance is the **cheapest wall of all** (pure link reachability, no reflective edges, no
+host bridges):
+
+| substrate | nodes | edges | roots | inert = | dangling = |
+| --- | --- | --- | --- | --- | --- |
+| code | declared concepts | reference / `BindsTo` | run entries | unreachable carrier | — |
+| **docs** | `docs/**/*.md` | markdown links (+ `.dag`-comment `bind:` refs) | `ROADMAP.md`, `DESIGN.md`, runbook index | **orphan plan doc** | **broken `](path)` link** |
+| lenses | `v2.lens.*` | module imports | discovered witnesses | inert lens (#5433) | — |
+
+The same three conditions (§1.1) decide the doc wall:
+1. **enumerable roots** — `ROADMAP.md` + `DESIGN.md` for *plan* docs; **runbooks need their own root** (an
+   operational index), or they false-positive (a runbook is not a roadmap item). Pin the root per doc
+   *kind*.
+2. **reflective edges count** — a doc referenced only from a `.dag` comment (`bind: docs/...`, the
+   CLAUDE.md open thread) is *consumed* but invisible to a markdown-link walk; include those refs.
+3. **exception roster** — best expressed as a **PR-local rule**: a PR that adds `docs/plans/X.md` must add
+   its inbound link in the same PR. That is the doc-graph analog of "an inert lens is a lie" — and this PR
+   honors it (it adds this doc *and* its ROADMAP line).
+
+**Live census (2026-06-21) — the doc instance's discriminating witnesses:** 18 docs, 13 reachable,
+**5 orphans** — `compile-clean-forcecheck.md`, `inert-layer-lens.md` (this very doc, before its ROADMAP
+line landed — the self-demonstrating case), `m4-universal-hermetic-corpus.md`,
+`m5-fixture-store-consolidation.md`, `runbooks/bmc-redfish-operator-access.md` (likely a legitimate
+runbook-root case, not a roadmap orphan) — and **1 dangling link**: `ROADMAP.md` references
+`docs/plans/expensive-test-cause-table.md` **twice** and the file does not exist (a #5463
+forward-reference never written). The wall would have blocked all six.
+
+## 9. Open
 
 - Confirm the run-root set (is `scheduler.dag` the sole runtime, or also the v1 `claim_executor` path?
   the digest census touched both).

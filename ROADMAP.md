@@ -45,6 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 **Meta — lock down the reasoning (§7 recursion):**
 
 - [x] **inert-lens hygiene backstop** — every `lens/*.dag` wired or deleted; runs over the corpus (#5433)
+- [ ] **reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs ([plan](docs/plans/inert-layer-lens.md))
 - [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2) *(quick-ant-298)*
 - [ ] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens ([DESIGN §6](DESIGN.md)) *(silent-wren-739)*
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
