@@ -85,7 +85,10 @@ fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
 fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
     let mut bodies = Vec::new();
     for item in items.iter() {
-        if !matches!(item_kind(item.clone()), ItemKind::FuncItem | ItemKind::FnItem) {
+        if !matches!(
+            item_kind(item.clone()),
+            ItemKind::FuncItem | ItemKind::FnItem
+        ) {
             continue;
         }
         if let Some(body) = item.body.as_ref() {
@@ -113,7 +116,12 @@ fn string_literal_text(node: &Rc<Node>) -> Option<String> {
     }
 }
 
-fn emit_side_walk(node: &Rc<Node>, markers: &[String], path: &str, out: &mut Vec<MediumStructureLeakRaw>) {
+fn emit_side_walk(
+    node: &Rc<Node>,
+    markers: &[String],
+    path: &str,
+    out: &mut Vec<MediumStructureLeakRaw>,
+) {
     if let Some(text) = string_literal_text(node) {
         for marker in markers {
             if !marker.is_empty() && text.contains(marker.as_str()) {
@@ -134,7 +142,11 @@ fn emit_side_walk(node: &Rc<Node>, markers: &[String], path: &str, out: &mut Vec
 
 /// Collect the `let` name → bound-value `Node` map for one block (intra-function scope,
 /// one level — nested blocks are walked for their own lets by the caller's recursion).
-fn collect_let_values(block: &Rc<Node>, bindings: &mut HashMap<String, Rc<Node>>, si: &SourceIndices) {
+fn collect_let_values(
+    block: &Rc<Node>,
+    bindings: &mut HashMap<String, Rc<Node>>,
+    si: &SourceIndices,
+) {
     for stmt in block_stmts(block.clone()).iter() {
         if let ExprData::ExprLet { .. } = stmt.expr_data.as_ref() {
             let name = let_binding_name_at(stmt.clone(), si.clone());
@@ -221,7 +233,9 @@ fn check_side_scan_function(
 //    parsed Node, so the prefilter never drops a real leak — it only skips clean files) ──
 
 fn any_present(text: &str, needles: &[String]) -> bool {
-    needles.iter().any(|n| !n.is_empty() && text.contains(n.as_str()))
+    needles
+        .iter()
+        .any(|n| !n.is_empty() && text.contains(n.as_str()))
 }
 
 fn dag_files_sorted(root: &str) -> Vec<PathBuf> {
