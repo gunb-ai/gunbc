@@ -1,0 +1,163 @@
+// Scope: §5 de-fork ACTIVATION arbiter — real-compile-path cross-tree resolution.
+//
+// The existing name_resolve_cross_tree_resolution_test proves resolve_with_admission_grounded
+// admits v2→dsl GIVEN a HAND-BUILT grounded index (source_root_index_insert). This witness
+// closes the remaining leg: it drives the REAL grounded compile entry
+// assemble_program_from_ingest with a HOST-TAGGED SourceRootIngest and supplies NOTHING about
+// fundamentality — the QualifiedName→SourceRootRef index and the active source-root set are
+// both DERIVED from each DagSourceReadWitness.source_root tag (program_assembly fold +
+// source_root_set_from_ingest), and the MoreFundamental/LessFundamental order is derived from
+// tree_fundamentality_order. No explicit MoreFundamental anywhere (that is the illusion the
+// audit doc names: the explicit-supply test only passes because it hands the order in).
+//
+// GREEN: a V2Tree-tagged subject importing a DslTree-tagged target resolves end-to-end —
+//        tree_fundamentality_order(V2,Dsl)=MoreFundamental + layer direction (compiler→std)
+//        admits it. This is the by-execution proof that cross-tree import is LIVE on the real
+//        compile path (carrier consumed, not merely carried).
+// RED:   reverse the tags (DslTree subject importing a V2Tree target) and the SAME real path
+//        denies it fail-closed (LessFundamental). Flip either source_root tag and the witness
+//        goes the wrong way — the discriminating oracle.
+//
+// Enrolled in CI via _test.dag naming convention (floor discovery auto-enroll).
+
+module v2.test.claim.cross_tree_real_ingest_activation
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  Import,
+  ImportVisible,
+  ResolutionSubject
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DslTree, V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QnCons, QnEmpty }
+
+
+// ── Real module source text (parsed by the wave1 LM, the real-compile language model) ──
+
+// V2Tree subject: a v2.* module (layer ordinal compiler). Bare module — the import edge it
+// is admitted on is carried by the Admission below, exactly as the host parses it from the
+// entry's import list. The cross-tree admit/deny decision is index-driven, not body-driven.
+data ct_real_v2_subject_source: Medium<String> = Medium {
+  carried: "module v2.ct_real_subject\n",
+  fidelity: Lossless
+}
+
+// DslTree target: a single-segment (dsl, std-layer) module exporting one type.
+data ct_real_dsl_target_source: Medium<String> = Medium {
+  carried: "module ct_real_target\n\ntype CtRealExport = CtRealExportValue\n",
+  fidelity: Lossless
+}
+
+
+// ── Artifacts (filesystem provenance the host would attach at ingest) ──
+
+data ct_real_v2_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^ct_real_v2_subject_artifact,
+  file_path: "src/v2/ct_real_subject.dag"
+}
+
+data ct_real_dsl_target_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^ct_real_dsl_target_artifact,
+  file_path: "dsl/ct_real_target.dag"
+}
+
+
+// ── GREEN ingest: V2Tree subject + DslTree target (host filesystem truth) ──
+// source_root tags are the ONLY grounding input; index + active_roots derive from them.
+
+data ct_real_v2_to_dsl_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_v2_subject_source,
+  artifact: ct_real_v2_subject_artifact,
+  compilation_unit: ^ct_real_subject_cu,
+  source_root: V2Tree
+}
+
+data ct_real_v2_to_dsl_target_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_dsl_target_source,
+  artifact: ct_real_dsl_target_artifact,
+  compilation_unit: ^ct_real_target_cu,
+  source_root: DslTree
+}
+
+data ct_real_v2_to_dsl_ingest: SourceRootIngest = Cons {
+  head: ct_real_v2_to_dsl_subject_read,
+  tail: Cons { head: ct_real_v2_to_dsl_target_read, tail: Empty }
+}
+
+data ct_real_v2_to_dsl_admission: Admission = Admission {
+  subject: ResolutionSubject {
+    name: QnCons { head: ^v2, tail: QnCons { head: ^ct_real_subject, tail: QnEmpty } }
+  },
+  imports: Cons {
+    head: Import {
+      target: QnCons { head: ^ct_real_target, tail: QnEmpty },
+      visibility: ImportVisible
+    },
+    tail: Empty
+  }
+}
+
+
+// ── RED ingest: tags reversed — DslTree subject + V2Tree target ──
+// Same source modules, only the source_root tags swap. Importing toward a LESS fundamental
+// tree (dsl→v2) must be denied fail-closed by the same real path.
+
+data ct_real_dsl_to_v2_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_v2_subject_source,
+  artifact: ct_real_v2_subject_artifact,
+  compilation_unit: ^ct_real_subject_cu,
+  source_root: DslTree
+}
+
+data ct_real_dsl_to_v2_target_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_dsl_target_source,
+  artifact: ct_real_dsl_target_artifact,
+  compilation_unit: ^ct_real_target_cu,
+  source_root: V2Tree
+}
+
+data ct_real_dsl_to_v2_ingest: SourceRootIngest = Cons {
+  head: ct_real_dsl_to_v2_subject_read,
+  tail: Cons { head: ct_real_dsl_to_v2_target_read, tail: Empty }
+}
+
+
+// ── Witnesses ──
+
+fn cross_tree_real_ingest_v2_to_dsl_resolves_holds() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: ct_real_v2_to_dsl_ingest,
+    admission: ct_real_v2_to_dsl_admission,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cross_tree_real_ingest_dsl_to_v2_denied_holds() -> Bool {
+  match assemble_program_from_ingest(
+    ingest: ct_real_dsl_to_v2_ingest,
+    admission: ct_real_v2_to_dsl_admission,
+    lm: dag_language_model_wave1()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+
+test fn cross_tree_real_ingest_activation_witnesses() -> Bool {
+  cross_tree_real_ingest_v2_to_dsl_resolves_holds()
+    && cross_tree_real_ingest_dsl_to_v2_denied_holds()
+}
