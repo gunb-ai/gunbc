@@ -64,6 +64,14 @@ prescribes.
 - All 35 top-level `v2.lens.*` modules carry a recorded justification (retroactive classification from
   each lens's existing header — the audit that surfaces any lens that is secretly a `WallNow`).
 - Presence check + discriminating tests wired into `discover_floor_corpus_rows`.
+- **Vacuity residual (honest bound):** the presence check enforces that a well-typed
+  `construction_justification` exists, but an empty/stub value (`rationale: ""`,
+  `grounding_authority: ""`) still typechecks — i.e. the carrier is *stub-satisfiable*. Closing
+  this by construction wants a non-empty-string refinement on the payload fields, but v2 has **no
+  `NonEmptyStr`** (it lives in `dsl/std/types.dag`; the v2 std omits it), so making vacuity
+  unwritable is itself a **WallAfterGrounding** — dissolve-on: a v2 refinement-type / `NonEmptyStr`
+  (or the cross-tree import of `dsl`'s), which is nimble-koi's load-bearing lane. Until then the
+  empty-field case is honest review residue, not a silent gap.
 - **Residue / follow-on (honest):** the *correctness* of each recorded class is review, not gated.
   Modules recorded as `WallNow` (cost, application_serializer) and the support module
   `affected_set_examples` flag a §3 home question — they are computations/support filed under
