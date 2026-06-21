@@ -32,7 +32,7 @@ the `Value::Null` overload (~131 sites) — stays **OPEN** until its own runway;
 
 **In-scope this window (localized, stabilizing):**
 
-- [ ] **numeric-tower grounding** ([plan](docs/plans/model-realization-fork.md)) — `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code. *Start here* (highest value / lowest risk). **Authoritative home for this item** — §5's *de-fork integer-row* and the fork plan §3.1 are the same work seen from the self-host side; they point here, no second checkbox
+- [x] **numeric-tower grounding** (#5428) ([plan](docs/plans/model-realization-fork.md)) — `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code (now dead-in-corpus, kept as fail-closed backstop). *Start here* (highest value / lowest risk). **Authoritative home for this item** — §5's *de-fork integer-row* and the fork plan §3.1 are the same work seen from the self-host side; they point here, no second checkbox
 - [ ] **cache trustworthy** (**= §2 F2/F3/P1** — that is the authoritative home; this is a pure pointer, progress tracked there) — the same key-from-`inputs_considered` construction, listed here only because it is the in-window stability driver. Ship the **warm==cold oracle now as a detective** — it stops the cache lying *today* while the from-inputs construction is built behind it (detective and constructive coexist in time). *(first instance: child adhoc-cc232dbc-1be)*
 - [ ] **rust-gate coverage by cadence-decoupling** (shared with §1; *not* "run-all per-PR" — proven CPU-hours, the v1 SEED compiler costs ~tens of CPU-sec per trivial test) — per-PR = a **cost-bounded subset** (budget-derived, replacing the hand-picked 3-filter), full coverage = a **periodic `--ignored` lane**; completeness = **every test runs on ≥1 cadence** (fail-closed). #5427 lands the per-PR half now
 - [ ] **promote-or-delete every inert lens** + de-vacuum thin gates (emit_host 4-fixtures, advisory rosters); whole-corpus the `discrimination` enforcer
@@ -48,7 +48,7 @@ the `Value::Null` overload (~131 sites) — stays **OPEN** until its own runway;
 
 **Meta — lock down the reasoning (the DESIGN §7 recursion):**
 
-- [ ] **inert-lens hygiene (executable backstop):** every `lens/*.dag` is wired (a discovered fail-closed witness) or **deleted** — an inert lens is a lie. This *runs* over the corpus
+- [x] **inert-lens hygiene (executable backstop):** every `lens/*.dag` is wired (a discovered fail-closed witness) or **deleted** — an inert lens is a lie. This *runs* over the corpus (#5433)
 - [ ] **construction-justification rule (layered ON TOP, authoring-time):** before adding a lens, justify why the class can't be construction; convert what can; lens-justify only the residue. Does **not** supersede the executable backstop above (per [DESIGN §6](DESIGN.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment corpus is the backlog; each resolves to construction or a justified `Terminal` ([Disposition plan](docs/plans/disposition-carrier.md), fan-out)
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every design claim a consequence-chain back to an axiom, no orphan, no cycle (the §4 acyclicity test turned on this document). *Manual pass run 2026-06-21 (bright-eagle-46 review of #5424): found one orphan (testgen backlink), un-pointered duplicate checkboxes (cache-key, numeric-tower), a §0↔§5 lane cycle, and an undeclared §7→§6 edge — all fixed in this file. The lens stays `[ ]` until it runs **executably** over the doc; the manual pass is the discriminating witness it must reproduce*
@@ -74,7 +74,7 @@ Gate: uncached non-redundant work is an **ERROR**, not "slow". The cache-key-fro
 here is the §0 in-scope "cache trustworthy" item. → [plan](docs/plans/realization-measurement-loop.md)
 
 - [x] F1 scheduler gives heavy nodes budgeted width (#5421)
-- [ ] F2/F3 `resolved_graph` key **derived from** declared `inputs_considered` (single authority — construction, not a validating lens; #5423's spec-only lens was the false-green proof)
+- [x] F2/F3 `resolved_graph` key **derived from** declared `inputs_considered` (single authority — construction, not a validating lens; #5423's spec-only lens was the false-green proof; landed #5425)
   - [ ] P1 honest keys by construction (key = fn of declared inputs · stable transform-id · census parity is the residue check)
     - [ ] P2 one door: `realize(subject)` as sole API (dissolves hand-rolled `ParseTable`)
       - [ ] P3 reach → minimal layer + fail-closed completeness gate + supplier provisioning ← **core ask**
@@ -94,7 +94,7 @@ via the kernel-level fold), so the gate's reach is a *subject-production* limit 
 a detection one.
 
 - [x] complexity lens projection is total over the kernel (cost.dag U2); the *gate* runs a curated subject roster (COMPREP wave-1: add / bind / branch / loop)
-- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless (**#5437**)
+- [x] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless (**#5437**)
   - [ ] a subject-producer for every fn (not name-keyed placeholders) (#5437 helper; the *whole-corpus* gate needs fn-body reflection)
     - [ ] complexity budget gates the whole codebase (gated on fn-body reflection)
 - [ ] synthesis stays advisory (feasibility limit, not a wiring gap; by Rice optimality is a *ratchet*, not a wall — DESIGN §5)
@@ -112,11 +112,11 @@ subject — its generated output is **not floor-discovered** (zero `test fn`, no
 drift gate** (output can fork from generator), and is **mostly hand-anchored** (only AlgebraLaw derives
 structurally).
 
-- [ ] gate the existing generated output — floor-discover `generated/` (or a regen==committed drift gate); closes coverage-by-illusion + drift with no new logic
+- [x] gate the existing generated output — floor-discover `generated/` (or a regen==committed drift gate); closes coverage-by-illusion + drift with no new logic (#5434)
 - [ ] make CoproductExhaustiveness **structural** — route through `node_query.coproduct_arm_keys` over *every* declared coproduct (not a hand-roster); RED = a removed arm
 - [ ] add a **cross-representation-equality** category — generate the straddle witness per modeled-coproduct × native realization (the `==` fork is the live root; testgen should cover the *class*)
 - [ ] **the oracle method (retro):** for each bug class, record — is there a category? structural? output gated? A "no" on a *structural* class is the work ([map](docs/plans/testgen-oracle.md) §2)
-- [ ] **affected-set = the completeness half** ([same plan](docs/plans/testgen-oracle.md) §3) — model the full repo-process universe (incl. meta) under the lens so nothing is a blind spot; selection-as-CI-gate stays shelved (retired 0-min; v2 corpus is cheap). Shares testgen's reflection blocker (`node_query` now exists). Ties to the §0/§1 rust-gate-coverage hole
+- [x] **affected-set = the completeness half** (#5430) ([same plan](docs/plans/testgen-oracle.md) §3) — model the full repo-process universe (incl. meta) under the lens so nothing is a blind spot; selection-as-CI-gate stays shelved (retired 0-min; v2 corpus is cheap). Shares testgen's reflection blocker (`node_query` now exists). Ties to the §0/§1 rust-gate-coverage hole
   - [ ] *anemia lens?* (operator-parked open thread, DESIGN §2 leaf-side decomposition) — flag `String` leaves that hide named structure. Almost certainly **advisory** (knowing a leaf *should* decompose needs the richer source — near the synthesis-feasibility limit), not a hard gate. Decide whether to elevate
 
 ## 5. Self-host v2 → delete `src/v1` (expansion)
