@@ -21,6 +21,7 @@ goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/
 - [ ] coercion/equality fail-closure audit (`Bool` & `Optional`/`Null`-sentinel straddles after the `==` fix)
 - [ ] inference fail-open audit (return-type / record-field remaining after #5293)
 - [ ] cache-purity audit — enumerate every cache; each needs a warm==cold oracle
+- [ ] **CI-coverage-completeness audit** — tests/gates that exist but don't run: the rust gate runs only a known-green subset (3 suites of **60** `src/v1/tests` files) → most of v1 rots silently (`ci_spec.dag:160`)
 
 **Fixes — make fail-open unwritable:**
 
@@ -34,10 +35,13 @@ goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/
 - [ ] cache-redundancy fail-closed — land §7 P3 redundancy cut **before expansion**
 - [ ] ground the root ([model↔realization fork](docs/plans/model-realization-fork.md)): (1) numeric tower `Int=GroupCompletion<Nat>` → straddle guard becomes dead code; (2) **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — the deeper root
 - [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters)
+- [ ] widen the rust gate to run (or explicitly retire) the v1 test set — no test exists-but-doesn't-run
+- [ ] the §5-discriminating-witness enforcer (`discrimination` lens) is itself roster-only — make it whole-corpus (the enforcer can't be vacuous)
 
-**Meta:**
+**Meta — lock down the reasoning, not just the code (the §7 recursion):**
 
 - [ ] **meta-invariant gate:** every `lens/*.dag` has a discovered fail-closed discriminating witness, or is removed (closes the "authored ≠ enforced" loophole permanently)
+- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — model A1–A3 + the §1–§7 chain in `.dag` and have a lens enforce the syllogism: every claim is a consequence-chain back to an axiom, **no orphan and no cycle**. Lock down the *argument* itself (the deepest application of fail-closed discipline; the §4 acyclicity test turned on this document).
 
 ## 1. Session dashboard on `.dag` (backend only)
 

@@ -86,8 +86,19 @@ Audits to run (each: how many sites, how deep, is there one root):
    defaults, other `unwrap_or_default` type fabrications.
 4. **cache-purity audit** — enumerate every cache (resolved_graph, parse_table_memo, pure_call_memo,
    typed_module, sccache); each must have a warm==cold oracle; only typed_module has one today.
+5. **CI-coverage-completeness audit** — tests/gates that *exist but don't run*. Confirmed instance: the
+   rust gate runs a "known-green subset" (`interp_recorded_fixture wet_hermetic
+   resolve_expr_types_retraversal`, `ci_spec.dag:160`) of **60** `src/v1/tests` files — the rest rot
+   silently (how the Behavior-arm test went stale). Also: the `discrimination` lens (the §5
+   discriminating-witness enforcer) is itself roster-only, not whole-corpus — the enforcer is vacuous.
 
 The lane is done when these audits return *no new fail-open class* and §4 is green.
+
+**Deepest recursion (DESIGN open thread #1) — lock down the reasoning, not just the code.** The same
+fail-closed discipline applies to the *argument*: model A1–A3 + the §1–§7 chain in `.dag` and have a lens
+enforce the syllogism — every claim a consequence-chain back to an axiom, **no orphan, no cycle** (the §4
+acyclicity test turned on this document; the §7 recursion). Currently not modeled at all (grep empty).
+This is the apex lock-down: a design claim with no axiom-chain is an orphan = should be RED.
 
 ## 4. Lock-down checklist (the meta-gate — blocks expansion)
 
