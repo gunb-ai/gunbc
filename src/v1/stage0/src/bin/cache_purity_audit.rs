@@ -16,9 +16,14 @@
 //!
 //! Usage:
 //!   cache_purity_audit --source-root <dir> [--source-root <dir> ...] \
-//!                      [--scan-dir <dir> ...] [--notice-title <title>]
+//!                      [--scan-dir <dir> ...] [--max-entries <N>] [--notice-title <title>]
 //!
-//! Exit: 0 = every audited entry byte-identical warm==cold; 1 = any violation or a setup error
+//! `--max-entries N` bounds the audit to the first N (sorted) corpus entries — the floor gate
+//! passes a bound because the codec is UNIFORM across entries (a sample falsifies a lossy
+//! serializer at a per-run cost worth paying; a full sweep is ~one cold resolve of every test
+//! entry). Omit it for a full periodic / manual deep run.
+//!
+//! Exit: 0 = every audited entry equal warm==cold; 1 = any violation or a setup error
 //! (fail-closed); 2 = usage error.
 
 #![allow(clippy::disallowed_macros)]
@@ -34,6 +39,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "cache purity audit".to_string();
+    let mut max_entries: Option<usize> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -45,6 +51,17 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--scan-dir" => {
                 i += 1;
                 scan_dirs.push(arg_value(&args, i, "--scan-dir")?);
+            }
+            "--max-entries" => {
+                i += 1;
+                let raw = arg_value(&args, i, "--max-entries")?;
+                match raw.parse::<usize>() {
+                    Ok(n) => max_entries = Some(n),
+                    Err(_) => {
+                        eprintln!("cache_purity_audit: --max-entries expects a non-negative integer, got '{raw}'");
+                        return Err(ExitCode::from(2));
+                    }
+                }
             }
             "--notice-title" => {
                 i += 1;

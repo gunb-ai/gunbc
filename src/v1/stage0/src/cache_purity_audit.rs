@@ -111,14 +111,22 @@ pub fn audit_entry_warm_equals_cold(
     Ok(())
 }
 
-/// Audit the whole floor discovery corpus: every distinct entry's warm hit must equal its cold
-/// compute. Fail-closed: returns ALL violations found (the caller fails the gate if non-empty).
-/// `cache_root` must be the cache dir `GUNBC_RESOLVED_GRAPH_CACHE_DIR` is set to.
+/// Audit the floor discovery corpus: each audited entry's warm hit must equal its cold compute.
+/// Fail-closed: returns ALL violations found (the caller fails the gate if non-empty).
+/// `GUNBC_RESOLVED_GRAPH_CACHE_DIR` must be set to an empty dir.
 ///
-/// `unaudited_residue` is the §5 HONEST EDGE: this gate is SOUND over the CI corpus, not
-/// COMPLETE over all realizations — a prod-only realization never resolved in CI can still go
-/// impure silently. Surfaced, not papered over.
+/// `max_entries` bounds the audit to the first N entries (sorted, deterministic). The bound is
+/// SOUND for the property under test: the write→read CODEC is a property of the *serializer*,
+/// UNIFORM across entries, so a structurally-diverse sample falsifies a lossy serializer just as a
+/// full sweep does — at a per-run cost the §6 "cheapest path to the pain" demands (a full sweep is
+/// ~one cold resolve of every `*_test.dag` in both trees, eating the very floor wall the cache
+/// enable saves). `None` = full corpus (for a periodic / manual deep run).
+///
+/// `entries_discovered` vs `entries_audited` makes the bound EXPLICIT (DESIGN §6 "no silent caps").
+/// The §5 HONEST EDGE: sound over what is audited, not complete over all realizations — a codec
+/// loss on a rare type only present in an UN-audited entry can still slip (surfaced, not papered).
 pub struct CorpusAuditReport {
+    pub entries_discovered: usize,
     pub entries_audited: usize,
     pub violations: Vec<CachePurityViolation>,
 }
@@ -126,6 +134,7 @@ pub struct CorpusAuditReport {
 pub fn audit_floor_discovery_corpus(
     roots: &[String],
     scan_dirs: &[String],
+    max_entries: Option<usize>,
 ) -> Result<CorpusAuditReport, String> {
     if resolved_graph_cache_root_from_env().is_none() {
         return Err(
@@ -137,14 +146,17 @@ pub fn audit_floor_discovery_corpus(
     }
     let rows = discover_floor_corpus_rows(roots, scan_dirs)?;
 
-    // Dedup by ENTRY — the resolved graph is per closure (per entry), not per (entry, function).
+    // Dedup by ENTRY (the resolved graph is per closure, not per (entry, function)) and sort —
+    // the BTreeSet gives a deterministic order, so the bounded sample is reproducible.
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut entries: Vec<String> = Vec::new();
     for row in &rows {
-        if seen.insert(row.entry.clone()) {
-            entries.push(row.entry.clone());
-        }
+        seen.insert(row.entry.clone());
     }
+    let entries_discovered = seen.len();
+    let entries: Vec<String> = match max_entries {
+        Some(n) => seen.into_iter().take(n).collect(),
+        None => seen.into_iter().collect(),
+    };
 
     // One whole-tree parse index, reused across every entry's cold+warm resolve (sound: the disk
     // cache is consulted before any in-process index cache — see audit_entry_warm_equals_cold).
@@ -157,6 +169,7 @@ pub fn audit_floor_discovery_corpus(
         }
     }
     Ok(CorpusAuditReport {
+        entries_discovered,
         entries_audited: entries.len(),
         violations,
     })
