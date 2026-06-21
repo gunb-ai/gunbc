@@ -55,16 +55,16 @@ import v2.std.passing_candidate_fold {
   PassingCandidateFold
 }
 import v2.std.cross_tree.import_model {
-  CrossTreeAdmitted,
-  CrossTreeDenied,
-  FundamentalityUnknown,
-  SourceRootRef,
-  TreeFundamentalityOrder
+  SourceRootRef
 }
 import v2.std.cross_tree.resolution {
-  cross_tree_import_admitted_qualified,
-  cross_tree_import_is_same_tree,
-  source_root_set_from_module_roots
+  EdgeCrossAdmitted,
+  EdgeCrossAmbiguous,
+  EdgeCrossDenied,
+  EdgeNormalResolution,
+  SourceRootIndex,
+  cross_tree_edge_decision,
+  source_root_index_empty
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -424,12 +424,28 @@ fn admit_import_root_find(
 }
 
 
+fn admit_import_visible_entry(
+  roots: FreeMonoid<Node>,
+  import_edge: Import,
+  state: AdmissionState
+) -> AdmissionState {
+  admit_import_root_find(
+    found: module_root_find(
+      roots: roots,
+      name: import_edge.target
+    ),
+    origin: import_edge.target,
+    state: state
+  )
+}
+
+
 fn admit_import_entry(
   roots: FreeMonoid<Node>,
   import_edge: Import,
   state: AdmissionState,
   subject_qn: QualifiedName,
-  order: TreeFundamentalityOrder,
+  index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
 ) -> AdmissionState {
   match state {
@@ -442,36 +458,24 @@ fn admit_import_entry(
             diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
           }
         ImportVisible =>
-          if cross_tree_import_is_same_tree(from_qn: subject_qn, to_qn: import_edge.target) {
-            admit_import_root_find(
-              found: module_root_find(
-                roots: roots,
-                name: import_edge.target
-              ),
-              origin: import_edge.target,
-              state: state
-            )
-          } else {
-            match cross_tree_import_admitted_qualified(
-              from_qn: subject_qn,
-              to_qn: import_edge.target,
-              roots: active_roots,
-              order: order
-            ) {
-              CrossTreeAdmitted =>
-                admit_import_root_find(
-                  found: module_root_find(
-                    roots: roots,
-                    name: import_edge.target
-                  ),
-                  origin: import_edge.target,
-                  state: state
-                )
-              CrossTreeDenied { reason: _ } =>
-                AdmissionRejected {
-                  diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
-                }
-            }
+          match cross_tree_edge_decision(
+            index: index,
+            from_qn: subject_qn,
+            to_qn: import_edge.target,
+            active_roots: active_roots
+          ) {
+            EdgeNormalResolution =>
+              admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
+            EdgeCrossAdmitted =>
+              admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
+            EdgeCrossDenied =>
+              AdmissionRejected {
+                diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
+              }
+            EdgeCrossAmbiguous =>
+              AdmissionRejected {
+                diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_ambiguous)
+              }
           }
       }
   }
@@ -483,7 +487,7 @@ fn admit_imports(
   imports: FreeMonoid<Import>,
   state: AdmissionState,
   subject_qn: QualifiedName,
-  order: TreeFundamentalityOrder,
+  index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
 ) -> AdmissionState {
   fold_list(
@@ -495,7 +499,7 @@ fn admit_imports(
         import_edge: import_edge,
         state: acc,
         subject_qn: subject_qn,
-        order: order,
+        index: index,
         active_roots: active_roots
       )
     }
@@ -523,7 +527,7 @@ fn namespace_for_subject(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission,
-  order: TreeFundamentalityOrder,
+  index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
 ) -> Outcome<AdmittedSubject> {
   match validate_module_roots(roots: roots) {
@@ -549,7 +553,7 @@ fn namespace_for_subject(
                 state: admission_initial(base: base)
               ),
               subject_qn: admission.subject.name,
-              order: order,
+              index: index,
               active_roots: active_roots
             ) {
               AdmissionAccepted { bindings: b, origins: _ } =>
@@ -585,14 +589,14 @@ fn resolve_with_admission_policy(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
   admission: Admission,
-  order: TreeFundamentalityOrder,
+  index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
 ) -> Outcome<ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
     roots: roots,
     admission: admission,
-    order: order,
+    index: index,
     active_roots: active_roots
   ) {
     Accepted { value: admitted, diagnostics: namespace_diag } =>
