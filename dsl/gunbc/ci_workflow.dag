@@ -42,14 +42,11 @@ data ci_workflow: Workflow = {
   env: Present {
     value: [
       kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-      kv(key: "RUSTFLAGS", value: yaml_string(s: "-D warnings")),
-      // ROADMAP §2 P3 — ENABLE the resolved-graph cache for the floor discovery corpus (warming it
-      // cuts ~18% of CI floor wall / 29.5% resolve CPU; proud-deer #5447 @d6b42b02ed). Persisted
-      // cross-run via the "Cache resolved-graph" step below; SAFE only because it lands BUNDLED
-      // with the warm==cold cache-purity audit gate (the live falsifier — a cache is enabled ONLY
-      // behind its purity oracle, DESIGN §5). The audit's OWN run uses an isolated mktemp -d, so it
-      // is unaffected by this shared dir.
-      kv(key: "GUNBC_RESOLVED_GRAPH_CACHE_DIR", value: yaml_string(s: "${{ runner.temp }}/gunbc-resolved-graph-cache"))
+      kv(key: "RUSTFLAGS", value: yaml_string(s: "-D warnings"))
+      // NOTE: GUNBC_RESOLVED_GRAPH_CACHE_DIR (ROADMAP §2 P3 cache enable) is NOT set here. The
+      // `runner` context is INVALID in a workflow-level `env:` (GitHub fails to parse the whole
+      // workflow → it never runs), so it is exported from the "Isolate toolchain dirs" step below
+      // via `$RUNNER_TEMP` into `$GITHUB_ENV` — the same idiom CARGO_HOME/RUSTUP_HOME use.
     ]
   },
   permissions: Present {
@@ -74,7 +71,15 @@ data ci_workflow: Workflow = {
           concat(
             concat(
               "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
-              "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
+              concat(
+                "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+                // ROADMAP §2 P3 — ENABLE the resolved-graph cache (persisted cross-run via the "Cache
+                // resolved-graph" step; ~18% floor wall / 29.5% resolve CPU, proud-deer #5447). Exported
+                // here (not workflow `env:`) because `runner.temp` is invalid at workflow scope. SAFE
+                // only bundled with the warm==cold purity audit (DESIGN §5); the audit's own run uses an
+                // isolated mktemp -d, unaffected by this shared dir.
+                "echo \"GUNBC_RESOLVED_GRAPH_CACHE_DIR=$RUNNER_TEMP/gunbc-resolved-graph-cache\" >> \"$GITHUB_ENV\"\n"
+              )
             ),
             "if sccache --show-stats >/dev/null 2>&1; then\n"
           ),

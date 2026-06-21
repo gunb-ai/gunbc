@@ -15,7 +15,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-  GUNBC_RESOLVED_GRAPH_CACHE_DIR: ${{ runner.temp }}/gunbc-resolved-graph-cache
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
@@ -25,6 +24,7 @@ jobs:
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+          echo "GUNBC_RESOLVED_GRAPH_CACHE_DIR=$RUNNER_TEMP/gunbc-resolved-graph-cache" >> "$GITHUB_ENV"
           if sccache --show-stats >/dev/null 2>&1; then
             echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
             echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
