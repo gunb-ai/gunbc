@@ -1,0 +1,122 @@
+// tools/cache_purity_audit_corun.dag — the warm==cold cache-purity audit as a CO-PROCESS of the CI
+// floor job (DESIGN §5; ROADMAP §2 P3). FULL discovery corpus EVERY run, OFF the floor critical path.
+//
+// The §5 principle (caching-via-realization): a content-keyed cache must return a WARM hit equal to a
+// fresh COLD compute; if the write→read CODEC is lossy/stale, a warm hit serves a different graph than
+// cold while every Bool verdict still agrees — a latent impurity. This audit is the LIVE continuous
+// falsifier that makes ENABLING the resolved-graph cache (GUNBC_RESOLVED_GRAPH_CACHE_DIR) safe.
+//
+// WHY A CO-PROCESS, NOT A FLOOR GATE: the full sweep is ~one extra cold resolve of the whole corpus —
+// the floor's heaviest component. Measured single-thread ≈ 44min; on the floor critical path it would
+// eat the ~231s the cache enable SAVES. So it runs CONCURRENTLY with claim_executor on the host's
+// spare capacity (128-thread / 128 GiB fleet; floor peaks ~8.4 GB at width 4): the floor job's run-step
+// backgrounds the orchestrator and JOINS it fail-closed at the end. Measured co-run: width-4 sharded =
+// 695s wall (< floor wall), 17.7 GB aggregate peak (+ floor 8.4 GB ≪ budget) → ~0 added wall-clock,
+// full 291-entry coverage every run. A bounded SAMPLE is rejected: codec fidelity is DEPTH-dependent
+// (serde's 128-level decode limit), so entries 51..N are a conceded bad-state surface — coverage is a
+// SCHEDULING problem (this co-run), never a coverage drop.
+//
+// TWO §5 surfaces the hand-rolled co-run must close, both green by execution:
+//  - JOIN fail-closedness: any shard reporting warm!=cold (incl. the deepest/last shard) OR a shard
+//    that crashes/OOMs/drops (no result) ⟹ the job goes RED. Owned by the orchestrator's K-way join
+//    (cache_purity_audit.rs) so it is testable in Rust, not a fragile shell aggregation.
+//  - RESIDUAL budget: the audit shares the one cgroup budget with the concurrent floor, so its fan-out
+//    width is sized against 0.8·total − the floor's MEASURED concurrent peak (std.realization
+//    co_run_residual_spawn_width), fail-closed to width 0 (no co-run) if it cannot fit beside the floor.
+//
+// §5 honest residual: SOUND over the CI discovery corpus, NOT COMPLETE over all realizations — a
+// prod-only realization never resolved in CI can still go impure silently (surfaced by the bin).
+// dissolve-on: the v2 realize fold self-hosts this comparison (ROADMAP §2 P5).
+
+module tools.cache_purity_audit_corun
+
+import std.types { Int, String, List }
+import std.measure { ByteSize, HardwareThreadCount, byte_size, hardware_thread_count, hardware_thread_count_value }
+import std.realization { co_run_residual_spawn_width }
+import std.realization_measurement { ConcurrentMemoryPeakSample, concurrent_memory_peak_per_share }
+import gunbc.ci_floor_measurement { gunbc_ci_floor_measured_peak }
+import gunbc.ci_layer_roots {
+  witness_layer_roots,
+  witness_layer_source_flags,
+  witness_layer_scan_flags,
+}
+
+// ── MEASURED audit per-shard peak (§3 measured⇒committed; re-stamp on re-measure) ─────────────
+//   source : 4-shard full-corpus run (this PR) — isolated mktemp caches, both source-roots + both
+//            scan-dirs, 291 entries, 0 violations.
+//   reading: aggregate VmHWM 17747 MiB at concurrency 4, wall 695s.
+//   reach  : decoded 62 (21%) / miss-on-read 229 (79%, deep → production recomputes, FAIL-SAFE) /
+//            rejected 0 / skipped 0.
+// Per-share = aggregate ÷ concurrency (each shard does a whole-tree resolve), via the std measure
+// algebra — no inline divide.
+data gunbc_cache_purity_audit_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
+  peak: byte_size(18609078272)
+  concurrency: 4
+}
+
+fn gunbc_cache_purity_audit_per_shard_peak_rss_bytes() -> ByteSize {
+  concurrent_memory_peak_per_share(sample: gunbc_cache_purity_audit_measured_peak)
+}
+
+// Audit fan-out cap (shard_count): the residual-budget term only REDUCES width below this. 4 matches
+// the measured run; the corpus is partitioned idx % width so K shards cover all 291 exactly once.
+data gunbc_cache_purity_audit_shard_count: Int = 4
+
+// Fail-closed fallback width when the host cannot read a live budget (never OOM, never fabricated).
+data gunbc_cache_purity_audit_fallback_width: Int = 2
+
+// Hardware thread cap — non-binding for the audit (shard_count 4 ≪ host threads). A literal keeps this
+// transport dsl-only (no v2 fleet-catalog import); 128 = the Altra fleet thread count.
+fn gunbc_cache_purity_audit_hardware_threads() -> HardwareThreadCount {
+  hardware_thread_count(128)
+}
+
+// Co-run width authority: residual-budget-aware (reserves the floor's concurrent peak), fail-closed to
+// 0 when the audit cannot fit beside the floor. The orchestrator (cache_purity_audit --orchestrate)
+// reads the LIVE cgroup budget and EVALUATES this fold (single authority — the formula is not
+// re-implemented host-side); width 0 ⟹ the orchestrator fails closed (no fan-out, loud error).
+fn gunbc_cache_purity_audit_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
+  co_run_residual_spawn_width(
+    shard_count: gunbc_cache_purity_audit_shard_count,
+    hardware_threads: gunbc_cache_purity_audit_hardware_threads(),
+    memory_budget: byte_size(memory_budget_bytes),
+    floor_concurrent_peak: gunbc_ci_floor_measured_peak.peak,
+    audit_per_shard_peak: gunbc_cache_purity_audit_per_shard_peak_rss_bytes(),
+    conservative_fallback_width: gunbc_cache_purity_audit_fallback_width
+  )
+}
+
+// Int projection the host realizer evaluates (a bare Int is trivially read back from the interpreter
+// Value; the orchestrator never re-derives the formula — it consults THIS, the single authority).
+fn gunbc_cache_purity_audit_spawn_width_value(memory_budget_bytes: Int) -> Int {
+  hardware_thread_count_value(
+    t: gunbc_cache_purity_audit_spawn_width(memory_budget_bytes: memory_budget_bytes)
+  )
+}
+
+data cache_purity_audit_corun_width_entry: String = "dsl/tools/cache_purity_audit_corun.dag"
+data cache_purity_audit_corun_width_function: String = "gunbc_cache_purity_audit_spawn_width_value"
+
+// The orchestrator command, consumed by ci_spec's co-run run-step (which backgrounds it beside the
+// floor and joins it fail-closed). It reads its own live budget, evaluates the width fold above, fans
+// the residual width over the FULL corpus (no --max-entries), and exits non-zero on any shard
+// violation or drop. `$ROOT` is set by the floor build script. Roots/scan-dirs are the §3 single
+// authority (gunbc.ci_layer_roots) — the SAME corpus the floor discovers.
+fn cache_purity_audit_corun_command() -> String {
+  concat(
+    concat(
+      concat(
+        "\"$ROOT/target/release/cache_purity_audit\" --orchestrate",
+        witness_layer_source_flags(roots: witness_layer_roots)
+      ),
+      witness_layer_scan_flags()
+    ),
+    concat(
+      concat(
+        concat(" --width-entry ", cache_purity_audit_corun_width_entry),
+        concat(" --width-function ", cache_purity_audit_corun_width_function)
+      ),
+      " --notice-title \"cache purity audit (co-run, full corpus)\""
+    )
+  )
+}

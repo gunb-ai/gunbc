@@ -1,0 +1,40 @@
+// dsl/test/claim/cache_purity_audit_corun_test.dag
+//
+// §5 discriminating proof for the cache-purity audit's CO-RUN width binding (TOOTH 2): the audit
+// shares the host cgroup budget with the concurrent floor, so its fan-out width is derived against the
+// RESIDUAL budget (0.8·total − the floor's MEASURED concurrent peak), fail-closed to 0 when it cannot
+// fit beside the floor. These pin the gunbc binding (real floor-peak + measured audit-peak constants)
+// by execution — the std formula itself is proven in realization_width_witness_test.dag.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function cache_purity_audit_corun_witnesses --claim-run
+
+module test.claim.cache_purity_audit_corun
+
+import tools.cache_purity_audit_corun { gunbc_cache_purity_audit_spawn_width_value }
+
+// Healthy real-fleet host (128 GB): residual 0.8·128 − 8.4 = 94 GB ≫ 4·4.65 GB → memory non-binding,
+// width = shard_count cap (4). RED if the residual term were ignored (would still be 4 here, but the
+// tiny-budget witness below is the discriminator that the reservation BINDS).
+fn audit_corun_healthy_host_width_is_shard_count() -> Bool {
+  gunbc_cache_purity_audit_spawn_width_value(memory_budget_bytes: 128000000000) == 4
+}
+
+// FAIL-CLOSED over-budget (TOOTH 2 discriminator): a 12 GB budget — 0.8·12 = 9.6 GB; reserve the
+// floor's 8.4 GB concurrent peak → residual 1.2 GB < one 4.65 GB audit shard → width 0 (the
+// orchestrator fails closed, never a silent width-1 that busts the shared cap). RED if the floor
+// reservation were ignored (9.6 GB ÷ 4.65 GB = 2 → would wrongly admit 2 shards beside the floor).
+fn audit_corun_tiny_budget_fails_closed() -> Bool {
+  gunbc_cache_purity_audit_spawn_width_value(memory_budget_bytes: 12000000000) == 0
+}
+
+// Unreadable budget (0-byte host sentinel) → the conservative committed fallback width (2), never
+// an unbounded memory-blind fan-out and never an OOM.
+fn audit_corun_unreadable_budget_fallback() -> Bool {
+  gunbc_cache_purity_audit_spawn_width_value(memory_budget_bytes: 0) == 2
+}
+
+test fn cache_purity_audit_corun_witnesses() -> Bool {
+  audit_corun_healthy_host_width_is_shard_count()
+    && audit_corun_tiny_budget_fails_closed()
+    && audit_corun_unreadable_budget_fallback()
+}

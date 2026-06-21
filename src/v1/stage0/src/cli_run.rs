@@ -337,6 +337,62 @@ pub enum ClaimOutcome {
 }
 
 /// Resolve one entry `.dag` file's transitive import closure into a typed graph,
+/// Live host memory budget in bytes — the guaranteed slice a process may use before the cgroup
+/// OOM-killer fires. The §1-C / DESIGN §3 "read, don't commit" half: the cgroup budget is authored
+/// by an EXTERNAL system (the host/scheduler), so the host realizer reads it LIVE while OUR per-shard
+/// peak is the committed measured fact. Single authority for budget-reading, shared by the floor
+/// scheduler (`claim_executor`) and the co-running cache-purity audit orchestrator.
+///
+/// Source order: cgroup v2 unified `memory.max` walked leaf→root, reduced by `min` (the EFFECTIVE
+/// limit is the tightest ancestor cap), then `/proc/meminfo` `MemAvailable`/`MemTotal` as a fallback
+/// for hosts with no cgroup cap. `None` when nothing is readable → the `.dag` width fold falls back
+/// to its conservative committed width (fail-closed: never OOM, never fabricated).
+pub fn read_host_memory_budget_bytes() -> Option<u64> {
+    // cgroup v2 unified hierarchy: `/proc/self/cgroup` is a single `0::/<rel>` line.
+    if let Ok(self_cg) = std::fs::read_to_string("/proc/self/cgroup") {
+        if let Some(rel) = self_cg
+            .lines()
+            .find_map(|l| l.strip_prefix("0::"))
+            .map(|p| p.trim().trim_start_matches('/').to_string())
+        {
+            let root = Path::new("/sys/fs/cgroup");
+            let mut dir = root.join(&rel);
+            let mut effective: Option<u64> = None;
+            loop {
+                if let Ok(s) = std::fs::read_to_string(dir.join("memory.max")) {
+                    let s = s.trim();
+                    if s != "max" {
+                        if let Ok(v) = s.parse::<u64>() {
+                            effective = Some(effective.map_or(v, |cur| cur.min(v)));
+                        }
+                    }
+                }
+                if dir == root || !dir.pop() {
+                    break;
+                }
+            }
+            if let Some(v) = effective {
+                return Some(v);
+            }
+        }
+    }
+    // Fallback (no cgroup cap): /proc/meminfo. MemAvailable is volatile/multi-tenant, so it is the
+    // fallback only — a transient dip should not collapse width when a real cgroup cap exists.
+    if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+        for key in ["MemAvailable", "MemTotal"] {
+            if let Some(kb) = meminfo
+                .lines()
+                .find(|l| l.starts_with(key))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|n| n.parse::<u64>().ok())
+            {
+                return Some(kb.saturating_mul(1024));
+            }
+        }
+    }
+    None
+}
+
 /// or return formatted blocking diagnostics. This is the expensive step
 /// (`build_module_index` + closure resolve + full compile); callers that run
 /// many witnesses against the SAME entry should call this once and reuse the
