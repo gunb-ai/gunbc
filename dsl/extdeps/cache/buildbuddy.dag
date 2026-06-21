@@ -4,12 +4,10 @@
 
 module extdeps.cache.buildbuddy
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   CasContentEncoding,
-  ContentAddressedByValue,
-  UpsertSubject,
   ContentAddressLookup,
   WriteOnce,
   MissThenCreate,
