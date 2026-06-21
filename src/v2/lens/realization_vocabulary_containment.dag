@@ -229,12 +229,15 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
 // it does NOT derive the roster (that would be vacuous), and it does NOT auto-classify — it
 // forces the author to consciously DROP a stale entry.
 
+// Typed empty path accumulator (an empty `[]` literal cannot infer its element type here).
+data empty_realization_vocab_path_list: List<String> = []
+
 // The live set of would-be-leak paths: non-edge modules that live-import the sidecar AST today
 // (the exact paths the canonical roster exists to excuse). Independent host enumeration.
 fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
   fold_list(
     xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
-    empty: [],
+    empty: empty_realization_vocab_path_list,
     cons: fn(acc, fact) {
       if module_is_target_ast_vocab(module: fact.import_module)
         && (path_is_realization_edge(path: fact.path) == false) {
@@ -253,7 +256,7 @@ fn realization_vocab_stale_roster_entries(
 ) -> List<String> {
   fold_list(
     xs: roster,
-    empty: [],
+    empty: empty_realization_vocab_path_list,
     cons: fn(acc, entry) {
       if list_contains_str(xs: live_leak_paths, target: entry) {
         acc
