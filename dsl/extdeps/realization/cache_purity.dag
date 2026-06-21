@@ -49,11 +49,6 @@ fn cache_purity_verdict(warm_equals_cold: Bool, violation: CachePurityViolation)
   }
 }
 
-// Discriminator: a pure verdict is honest (a hit serves what cold would); an impure one is a
-// located §5 stale-hit. Used by consumers (and the witness) to branch on the oracle's output.
-fn cache_purity_is_pure(verdict: CachePurityVerdict) -> Bool {
-  match verdict {
-    Pure => true
-    Impure { violation: _ } => false
-  }
-}
+// (No `is_pure` Bool projection: that would restate the `CachePurityVerdict` coproduct as a
+// predicate — the §5 predicate-dissolution anti-pattern. Consumers `match` the verdict directly
+// so the located violation stays in hand on the Impure arm, never flattened to a bare Bool.)

@@ -14,6 +14,13 @@
 // invariant). This Rust module is the v1 proving HANDLER (§7 Rust→zero); the `.dag` carrier is
 // the durable artifact v2 inherits. The realizer it audits is the lone correct content-keyed
 // realization — `resolved_graph_cache.rs` (`subject_digest_for_closure`).
+//
+// SCAFFOLD — §7 Rust-shrinkage receipt (the hand-Rust gate): this module is NET-NEW capability
+// (no prior oracle existed, so there is no scaffold to delete here), bound to a named dissolution
+// trigger rather than left open-ended. dissolve-on: when the v2 `fold_node` evaluator self-hosts
+// the realize fold and `content(T) = content_hash(subgraph)` lands (DESIGN §7; ROADMAP §2 P5), the
+// axis set and the audit become one derived `.dag` fact — delete this Rust handler then. Until
+// that fixed point, the `.dag` carrier above is the authority and this is one handler of it.
 
 use crate::v1_rt::{self, Hash};
 

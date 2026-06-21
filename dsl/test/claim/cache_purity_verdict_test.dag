@@ -19,7 +19,6 @@ import extdeps.realization.cache_purity {
   Pure,
   Impure,
   cache_purity_verdict,
-  cache_purity_is_pure,
 }
 import std.types { Bool }
 
@@ -49,14 +48,7 @@ fn witness_impure_on_divergence() -> Bool {
   }
 }
 
-// `cache_purity_is_pure` discriminates: Pure ⟹ true, Impure ⟹ false (the consumer's branch).
-fn witness_is_pure_discriminates() -> Bool {
-  cache_purity_is_pure(cache_purity_verdict(warm_equals_cold: true, violation: sample_violation()))
-    && !cache_purity_is_pure(cache_purity_verdict(warm_equals_cold: false, violation: sample_violation()))
-}
-
 test fn cache_purity_verdict_witnesses() -> Bool {
   witness_pure_on_match()
     && witness_impure_on_divergence()
-    && witness_is_pure_discriminates()
 }
