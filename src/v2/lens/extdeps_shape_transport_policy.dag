@@ -15,6 +15,7 @@
 // Consumer: claim_batch discovery over src/v2/compiler/extdeps_shape_transport_policy.
 
 module v2.lens.extdeps_shape_transport_policy
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.std.algebra {
   any,
@@ -599,4 +600,14 @@ fn extdeps_shape_transport_policy_embedded_policy_literal_count(
   facts: List<ExtdepsEmbeddedPolicyLiteralFact>
 ) -> Int {
   length(xs: scan_embedded_policy_facts_for_violations(facts: facts))
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the Node-tree argv projection that supersedes the text scan, plus the shape/transport/policy de-fusion model (#5059 corollary)",
+    dissolve_on: "the four tells (policy leak, transport fusion, dead param, embedded literal) become unwritable once interface-shape, transport-handler and workflow-policy are separated by construction"
+  },
+  rationale: "Each of the four tells is a decidable structural pattern over the argv/Node projection; the lens is interim until the DESIGN sec 3 extdeps de-fusion is realized in the substrate."
 }

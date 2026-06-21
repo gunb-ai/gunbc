@@ -177,8 +177,8 @@ but are unwired" — surfaced as the ranked head of the inert list.
 Reachability-completeness is **not specific to code** — it is a §2-horizontal "one concept, every
 breadth": *every declared node in a graph must be reachable from a root, on an exception roster, or
 deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph —
-and the doc instance is the **cheapest wall of all** (pure link reachability, no reflective edges, no
-host bridges):
+and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges
+*needed for the dangling half*, and far simpler than the code substrate):
 
 | substrate | nodes | edges | roots | inert = | dangling = |
 | --- | --- | --- | --- | --- | --- |
@@ -207,6 +207,24 @@ it). **Repointed in this PR** to the doc that holds the content. The wall would 
 (Methodology note: the *first* census run reported this ref as 2× — it had read a stale local `ROADMAP`
 behind main's terse pass; the lens must run against the live tree, the same discipline it enforces.)
 
+**LANDED — the doc-graph wall is live (gunbc#5484), with one premise correction.** The "no host
+bridges" claim above holds **only for the dangling half**. The *orphan* half is `universe ∖ reachable`,
+and the universe is `docs/**/*.md` — which requires filesystem **enumeration**, and there is no
+list-dir host effect in `.dag` today (`std/filesystem` exposes only `Read`/`Write`). So the orphan
+half is host-fed: `src/v1/stage0/src/doc_reachability_project.rs` walks the tree and exposes two scalar
+verdicts (`doc_graph_orphan_count` / `doc_graph_dangling_link_count`) through the same additive
+corpus-gate builtin seam as `extdeps_external_authority_live_clean_tree_holds` / `fact_cardinality_*`
+(it does **not** touch `cli_run.rs`'s #5433 closure). The reachability primitive is the **same BFS
+shape** as `inert_lens_modules` re-expressed over doc nodes — the §3-single-authority doc *instance* of
+the one rule, not a forked concept. The dangling half alone *is* expressible in pure `.dag`
+(`filesystem_read` BFS from roots). **DISSOLUTION TRIGGER:** when `.dag` gains list-dir / compile-graph
+access (gunbc#5364, the Tier-2 note), the dir-walk + BFS fold into a pure `.dag` reader and the Rust
+census deletes. Re-derived against the **live** tree at landing: **22 docs, 22 reachable, 0 orphans, 0
+dangling** — clean, because this PR added the five missing inbound links + a `docs/runbooks/README.md`
+index root (the runbook-kind root) and linked the runbook from it. Witness:
+`dsl/test/claim/doc_reachability_witness_test.dag` (floor-discovered `test fn`s, fail-closed, RED on
+revert); RED/GREEN controls over a synthetic graph in the project module's unit tests.
+
 ## 9. Open
 
 - Confirm the run-root set (is `scheduler.dag` the sole runtime, or also the v1 `claim_executor` path?
@@ -214,3 +232,8 @@ behind main's terse pass; the lens must run against the live tree, the same disc
 - Decide Tier-1-now vs wait for Tier-2's host bridge so the first landing is symbol-granular (the census
   shows the interesting cases are symbol-level — `execution_receipt_digest`, `CacheLayerPlan` — so a
   module-only first cut may under-deliver; weigh against Tier 1's zero-new-machinery cost).
+- **Doc-graph next steps (post gunbc#5484):** (a) fold the dangling half into a pure `.dag`
+  `filesystem_read` BFS now (no new host effect needed), leaving only the orphan-half enumeration
+  host-fed until gunbc#5364; (b) the **code** Tier-1/Tier-2 instances (the original target class —
+  `CacheLayerPlan`, `WorkDemand`, `execution_receipt_digest`) remain unbuilt; the doc instance is the
+  cheapest, not the substantive one.
