@@ -3677,6 +3677,17 @@ fn eval_algebra_method(
             Ok(Value::Str(strs.join(&sep)))
         }
 
+        // chars(s) -> List<String>: decompose a String into single-character
+        // strings (primitives.dag `chars_contract`). Free-call `chars(source)`
+        // desugars to receiver-style method dispatch here; the lexer
+        // (01_tokenize) drives it, so the interpreter must implement it to run
+        // the full compile/emit fold.
+        "chars" => {
+            let s = expect_str(Some(&receiver), "chars")?;
+            let items: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
+            Ok(list_value(items))
+        }
+
         // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
         // FreeMonoid<Char>, but `.get` on a String is not char-list indexing (ctrl#1476 B1;
         // same Str-representation rule as `index` / `slice` / `contains`).
@@ -5317,6 +5328,16 @@ fn eval_builtin(
                 Ok(n) => Ok(Some(Value::Int(n))),
                 Err(_) => Ok(Some(Value::Null)),
             }
+        }
+
+        // chars(s: String) -> List<String>: decompose into single-character
+        // strings (primitives.dag `chars_contract`). Mirrors the emitted
+        // `v1_rt` char iteration; the lexer (01_tokenize) drives this, so it
+        // must exist for the interpreter to run the full compile/emit fold.
+        "chars" => {
+            let s = expect_str(positional.first().copied(), "chars")?;
+            let items: Vec<Value> = s.chars().map(|c| Value::Str(c.to_string())).collect();
+            Ok(Some(list_value(items)))
         }
 
         "concat" => {
