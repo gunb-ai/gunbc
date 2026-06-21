@@ -286,8 +286,23 @@ fn topo_sort_key(name: String) -> String {
 
 fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> TopoResult {
   let module_names = modules |> map(m => authored_name_at(source_indices: source_indices, node: m))
+  // Set of names actually present in this resolve set — an import of a module
+  // NOT in the set (unresolved / external) carries no intra-set ordering
+  // constraint, so it must not contribute an edge or an in-degree term.
+  let module_name_set = module_names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
+  // §5 fail-closed (truthful diagnostic): count only in-set import edges. If
+  // in-degree counted unresolved imports (whose adjacency edge is keyed by a
+  // name never dequeued), a module blocked solely on a missing import would
+  // never reach in-degree 0 and the leftover set would be reported as a FALSE
+  // circular dependency — a fabricated wrong answer masking the real
+  // unresolved-import error. Filtering both sides keeps adjacency and in-degree
+  // consistent so only genuine cycles surface as CircularDependency.
   let explicit_edges = modules |> flat_map(m =>
-    module_imports(n: m) |> map(imp => DepEdge { from_module: authored_name_at(source_indices: source_indices, node: imp), to_module: authored_name_at(source_indices: source_indices, node: m) })
+    module_imports(n: m)
+      |> filter(imp => map_has(m: module_name_set, key: authored_name_at(source_indices: source_indices, node: imp)))
+      |> map(imp => DepEdge { from_module: authored_name_at(source_indices: source_indices, node: imp), to_module: authored_name_at(source_indices: source_indices, node: m) })
   )
   // §3 single-authority: ordering is import-driven only. The std.types
   // implicit-parent bootstrap bridge was removed — it coupled every module
@@ -300,7 +315,9 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
 
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
     let m_name = authored_name_at(source_indices: source_indices, node: m)
-    map_insert(acc, m_name, module_imports(n: m) |> count)
+    map_insert(acc, m_name, module_imports(n: m)
+      |> filter(imp => map_has(m: module_name_set, key: authored_name_at(source_indices: source_indices, node: imp)))
+      |> count)
   )
 
   let initial_queue = module_names
