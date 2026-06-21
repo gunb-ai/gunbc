@@ -125,8 +125,8 @@ Extending emission=ingestion⁻¹ past syntax to the intent layer:
 host-enumerated `LayerImportFact{layer, path, import_module}` rows. Predicate:
 `import_module ∈ target_ast_vocab_modules ∧ path ∉ realization_edge_allowset`.
 
-**Sequencing (honest, fail-closed):** the importers in the live-grep roster (10 today) go RED today, so
-it ships with them as a **named, shrinking exception roster** = a ratchet, not an instant wall. **Dissolve-on:** the
+**Sequencing (honest, fail-closed):** the 11 current importers would go RED under a pure wall, so it
+ships with them on the **frozen, shrinking exception roster** = a ratchet, not an instant wall. **Dissolve-on:** the
 bash-sidecar arc migrates each consumer to `emit(intent, Bash)` ⇒ roster empties ⇒ guard flips to a
 pure wall ⇒ `program.dag` is deletable. Discriminating witness: a fresh non-edge module importing
 `ShellStmt` goes RED; an edge module does not. This is what makes `shell(intent())` a realization-edge
