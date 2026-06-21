@@ -1,0 +1,43 @@
+module v2.lens.rewrite.nested_membership
+
+import v2.std.algebra { is_empty }
+import v2.std.collection { Absent, Optional, Present, list_at_optional, optional_absent, optional_present }
+import v2.std.node { Cardinality, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node_query { node_labeled_child_edges, node_positional_child_targets }
+
+// Rewrite: nested Cardinality O(n·m) → single Cardinality O(n).
+// Models: precompute membership set(inner body); replace inner O(n) scan with O(1) lookup.
+// Precondition: outer is Cardinality with exactly one positional child (= inner Cardinality)
+// and no named children (outer body has no mutation coordinate — safe to hoist inner.children).
+// Returns: Present { value: node } with inner.children in the outer Cardinality slot.
+//
+// 🟡 grammar-gap: MVP1 dag grammar cannot produce nested-loop source text;
+// end-to-end witness uses hand-constructed Node (single-level loop through bridge confirms liveness).
+// dissolve-on: dag grammar production for nested-cardinality source (writer-semantics round-trip).
+fn try_nested_membership_rewrite(n: Node) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Cardinality } =>
+      if is_empty(xs: node_labeled_child_edges(node: n)) {
+        match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+          Absent => optional_absent()
+          Present { value: inner } =>
+            match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+              Present { value: _ } => optional_absent()
+              Absent =>
+                match inner.kind {
+                  TypeNode { connective: Cardinality } =>
+                    optional_present(value: Node {
+                      kind: TypeNode { connective: Cardinality },
+                      children: inner.children,
+                      occurrence_id: SyntheticOccurrence
+                    })
+                  _ => optional_absent()
+                }
+            }
+        }
+      } else {
+        optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
