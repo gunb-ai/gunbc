@@ -3,6 +3,7 @@
 // Status: example data for the affected-set frontier model.
 
 module v2.lens.affected_set_examples
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 import v2.std.diagnostic {
   Accepted,
@@ -194,4 +195,14 @@ fn affected_set_example_post_edit_rejects(dag: Dag, edit: Edit) -> AffectedPostE
 
 data affected_set_example_two_edit_diff: Diff = Diff {
   edits: [affected_set_example_edit, affected_set_example_edit]
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "v2.lens.affected_set owning its example values as a sub-module / test fixture",
+    dissolve_on: "the affected-set frontier examples fold into v2.lens.affected_set as a sub-module, not a top-level lens"
+  },
+  rationale: "Example frontier values for the affected-set lens: carries no independent bad-state class; its single-authority home (DESIGN sec 3) is a sub-module of affected_set, not a separate top-level lens."
 }

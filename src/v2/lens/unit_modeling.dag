@@ -41,6 +41,7 @@
 //     regions, so reviewer load ∝ new code.
 
 module v2.lens.unit_modeling
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 import v2.std.node {
   Node,
@@ -357,3 +358,12 @@ fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
 // validate_then_compile is not on the `gunbc compile` emit path — compile() runs no
 // lens gates — so the enforce registration cannot break full-tree emit; it is
 // exercised by the lens_unit_modeling compile-gate + always-required witnesses.)
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever {
+    undecidable_because: "whether a bare scalar DENOTES a modeled quantity needs domain knowledge (is 4926 a contact_count? is count a magnitude?) -- the DESIGN sec 2 leaf-side, undecidable"
+  },
+  rationale: "The Measure<Quantity,Scale> phantom-type wall is the region-1 construction; flagging a scalar NOT yet on Measure requires deciding whether the scalar is a quantity, which is domain knowledge -- so this stays an ADVISORY region-3 lens."
+}
