@@ -14,7 +14,7 @@ module tools.ci_yaml_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_yaml_emit { expected_ci_yml, expected_nightly_yml, ci_yml_drifted, nightly_yml_drifted }
+import gunbc.ci_yaml_emit { expected_ci_yml, expected_nightly_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 
 data ci_yml_path: String = ".github/workflows/ci.yml"
@@ -49,31 +49,35 @@ fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-// §5 receipt: the gate has teeth — clean committed bytes match the generator AND perturbed
-// bytes drift. The perturb check routes through the REAL drift predicate (`*_drifted`, which
-// compares against the live `expected_*_yml()`), NOT a re-inlined `concat(..) == expected`
-// tautology that would pass regardless of whether the gate's comparison works (DESIGN §5:
-// prove drift DETECTION by execution, not by re-stating it). One per instance because the
-// predicate is per-instance (each `*_drifted` closes over its own `expected_*_yml`).
-func ci_drift_red_receipt() -> ProcessExit {
-  let committed = Filesystem.Read(path: ci_yml_path)
-  let clean_ok = committed.success && !ci_yml_drifted(committed: committed.content)
-  let perturb_drifts = ci_yml_drifted(committed: concat(expected_ci_yml(), "\n# drift-receipt-perturb"))
-  return if clean_ok && perturb_drifts {
+// §5 receipt — GENUINE execution teeth, not a synthetic tautology. The earlier
+// `*_drifted(concat(expected, suffix))` form (and its inline `!(concat(E,suffix)==E)` twin)
+// is constant-TRUE by string algebra: the perturb input is built from `E`, so the comparison
+// is vacuous regardless of whether the drift detector works (the tautological-control trap,
+// DESIGN §5 spec-without-execution). Real teeth need an INDEPENDENT on-disk fact: write a
+// perturbed copy of the generator output to a temp path, then run the ACTUAL gate body against
+// it — a working detector MUST flag it as drifted (exit failure). A broken/stuck detector
+// (always-pass) makes the probe pass → this receipt goes red. The clean direction (committed
+// file matches the generator) is the gate body itself (`main` / `run_*_yaml_gate_body`), which
+// already reads the live committed file. `target/` is gitignored; the probe file is transient.
+func ci_drift_wet_receipt() -> ProcessExit {
+  let probe_path = "target/.gunbc_ci_yaml_drift_probe.yml"
+  let w = Filesystem.Write(path: probe_path, content: concat(expected_ci_yml(), "\n# drift-receipt-perturb\n"))
+  let probe = run_workflow_yaml_gate_body(path: probe_path, expected: expected_ci_yml(), label: "ci.yml drift-probe")
+  return if w.success && !exit_ok(probe) {
     ExitSuccess
   } else {
-    exit_failure(reason: "ci.yml drift red receipt failed: clean must match; perturb must drift")
+    exit_failure(reason: "ci.yml drift wet receipt failed: gate did not flag a perturbed on-disk file as drifted")
   }
 }
 
-func nightly_drift_red_receipt() -> ProcessExit {
-  let committed = Filesystem.Read(path: nightly_yml_path)
-  let clean_ok = committed.success && !nightly_yml_drifted(committed: committed.content)
-  let perturb_drifts = nightly_yml_drifted(committed: concat(expected_nightly_yml(), "\n# drift-receipt-perturb"))
-  return if clean_ok && perturb_drifts {
+func nightly_drift_wet_receipt() -> ProcessExit {
+  let probe_path = "target/.gunbc_nightly_yaml_drift_probe.yml"
+  let w = Filesystem.Write(path: probe_path, content: concat(expected_nightly_yml(), "\n# drift-receipt-perturb\n"))
+  let probe = run_workflow_yaml_gate_body(path: probe_path, expected: expected_nightly_yml(), label: "nightly.yml drift-probe")
+  return if w.success && !exit_ok(probe) {
     ExitSuccess
   } else {
-    exit_failure(reason: "nightly.yml drift red receipt failed: clean must match; perturb must drift")
+    exit_failure(reason: "nightly.yml drift wet receipt failed: gate did not flag a perturbed on-disk file as drifted")
   }
 }
 
@@ -102,7 +106,7 @@ func main_wet() -> ProcessExit {
 }
 
 func run_ci_yaml_gate() -> ProcessExit {
-  compose_gate_receipt(gate: run_ci_yaml_gate_body(), red: ci_drift_red_receipt())
+  compose_gate_receipt(gate: run_ci_yaml_gate_body(), red: ci_drift_wet_receipt())
 }
 
 // ── nightly.yml instance ────────────────────────────────────────────────────────────────
@@ -119,5 +123,5 @@ func nightly_main_wet() -> ProcessExit {
 }
 
 func run_nightly_yaml_gate() -> ProcessExit {
-  compose_gate_receipt(gate: run_nightly_yaml_gate_body(), red: nightly_drift_red_receipt())
+  compose_gate_receipt(gate: run_nightly_yaml_gate_body(), red: nightly_drift_wet_receipt())
 }
