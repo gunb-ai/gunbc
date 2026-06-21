@@ -292,12 +292,84 @@ type CacheWriteResult<T>
   | WriteSkippedIdempotent { receipt: CachedArtifactReceipt<T> }
   | WriteRejected { reason: CacheWriteRejectReason }
 
-// No outcome eliminators are minted here: classifying these coproducts is naming their variants,
-// which `match` already does at the consumer. The lookup/write folds (recorded_fixture.rs
-// FixtureError collapse / v2 05_eval) are the canonical consumers and arrive in step 3-4 (held for
-// operator sign-off); any fold over CacheLookupResult / CacheWriteResult is born WITH them, not as
-// per-question Bool readers in std/ (predicate-dissolution rule). These types parallel the existing
-// un-consumed CacheLookupResult above — terminal vocabulary awaiting its fold.
+// No per-question Bool readers are minted over these coproducts (predicate-dissolution rule):
+// classifying a variant is what `match` already does at a consumer. The handler MIGRATIONS that
+// fold these at the load-bearing seams (recorded_fixture.rs FixtureError collapse / v2 05_eval)
+// remain held for operator sign-off. What IS born here is the §1.7 `realize` kernel below — the
+// SINGLE eliminator these coproducts were declared to be folded by, with its own green-by-execution
+// consumer (test.claim.realize_kernel). `realize` is the fold; the handler migrations route through
+// it rather than re-deciding (§2 one-kernel/N-handlers), so this is the fold arriving WITH its
+// consumer, not a stray std predicate.
+
+// --- §1.7 realize — the one-door cache kernel (ROADMAP §2 P2) -----------------
+//
+// `realize(subject)` is the SOLE cache entry: every hand-rolled cache (resolved_graph_cache.rs,
+// the v2.compiler.parse ParseTable, pure_call_memo, sccache) becomes a HANDLER routed through
+// this decision, never a fork (DESIGN §2 one-kernel/N-handlers; §6's own ParseTable example). The
+// kernel is the eliminator the lookup/write coproducts above were born to be folded by: it turns a
+// backend's CacheLookupResult into a Reuse-vs-Recompute ROUTE, and an offered write into a
+// CacheWriteResult, with §5 fail-closed baked in — a refused or under-keyed hit is NEVER served;
+// the worst case is Recompute (always correct), never a stale payload.
+//
+// Why a route and not the value: materializing the cached value is the backend HANDLER's effect
+// (deserialize bytes / read the in-process map). The kernel owns only the PURE decision — which is
+// exactly the seam where mis-keying would serve a stale hit — so the route is testable
+// green-by-execution with no host effect, and the §5 discriminating tooth lives in std, not a
+// handler. The Rust realizer (cli_run.rs:547-552, resolved-graph) and the v1_interpreter
+// ParseTableMemo are realizations of THIS decision; they unify with it at v2/realize.
+
+// Why a hit was not reused — the Recompute cause, kept named (no Option/Bool conflation, §5).
+type RecomputeReason
+  = SubjectAbsent                              // Miss: no entry for this subject
+  | HitRefused { reason: CacheRejectReason }   // a hit existed but failed verification — surfaced, never silent
+
+// The realize decision: reuse a verified hit (the §2 win — recompute is redundant) or recompute.
+type RealizeRoute<T>
+  = Reuse { receipt: CachedArtifactReceipt<T> }
+  | Recompute { reason: RecomputeReason }
+
+// The one door, read side. A verified Hit reuses; a Miss recomputes; a RejectedHit recomputes AND
+// surfaces the reject reason (observability) — it is never served (§5 fail-closed). This is the
+// single authority every realizer routes through; a realizer that decided reuse-vs-recompute itself
+// would be the fork this kernel dissolves.
+fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
+  match lookup {
+    Hit { receipt } => Reuse { receipt: receipt }
+    Miss => Recompute { reason: SubjectAbsent }
+    RejectedHit { reason: r } => Recompute { reason: HitRefused { reason: r } }
+  }
+}
+
+// No `realize_route_reuses`-style Bool reader is minted over RealizeRoute (predicate-dissolution
+// rule, §6): the reuse-vs-recompute question is answered by `match` at the consumer. The §2
+// "minimal work" predicate a scheduler/planner will consume is born WITH that caller (P3 reach /
+// cache-layer planner), not as a stray std reader awaiting one.
+
+// The one door, write side — the purity oracle. Classify an offered write against the backend's
+// CURRENT state for the SAME subject: a fresh subject is Written; an existing key offered the SAME
+// content is the idempotent no-op (the double-init Share collapse, cf. realization.dag); an existing
+// key offered DIFFERENT content for the same subject FAILS CLOSED (WriteOnceConflict — the
+// byte-identical-warm-vs-cold falsifier: equal inputs that produced unequal output means the
+// transform was impure or the key under-specified, §5). A prior RejectedHit composes the backend
+// reason. WriteSkippedIdempotent's receipt.content_digest == offered BY CONSTRUCTION — this fold
+// only reaches that variant on the equality branch.
+fn classify_write<T>(
+  existing: CacheLookupResult<T>,
+  offered_content: ContentHash,
+  fresh_receipt: CachedArtifactReceipt<T>,
+) -> CacheWriteResult<T> {
+  match existing {
+    Miss => Written { receipt: fresh_receipt }
+    Hit { receipt } =>
+      if receipt.content_digest == offered_content {
+        WriteSkippedIdempotent { receipt: receipt }
+      } else {
+        WriteRejected { reason: WriteOnceConflict }
+      }
+    RejectedHit { reason: r } =>
+      WriteRejected { reason: BackendWriteRejected { backend_reason: r } }
+  }
+}
 
 // --- §1.8 cache-layer planner (catalog-parameterized; rows live in extdeps/cache/*) ---
 
