@@ -181,6 +181,13 @@ heuristic): (a) a string literal containing a medium's syntax markers in a non-e
 string-op (`string_contains`/`starts_with`/…) whose receiver is an emitted-medium value in a non-edge
 module. Both are `MediumStructureLeak`, the generalization of `RealizationVocabularyLeak`.
 
+*The detector must not become the heuristic it forbids* (the rule turned on its own enforcement): (i) the
+check-side detector identifies an "emitted-medium value" receiver by **provenance/type** — it is a
+`Medium<R>` or traces to the emit edge — **never by guessing** from the string's shape, which would be the
+same ad-hoc re-ingest in the lens itself; (ii) the emit-side detector scans **authoring source** (the
+legitimate ② residue, with the named ① dissolve-on), **not** emitted output — emitted output is *supposed*
+to contain target syntax, so flagging it there would wall the realization edge it is meant to protect.
+
 **Frontier placement** (per [expressibility-frontier](expressibility-frontier.md)): **② now** — flag the
 two faces over a **shrinking roster** (same shape as §5); **① wall** — once a medium is a `Medium<R>`
 `Node` emitted via grammar rows, *"no runner env var accessed"* is a **model walk**
