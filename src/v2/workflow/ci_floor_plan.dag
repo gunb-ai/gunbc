@@ -158,6 +158,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
     EmitHostGate => false
     LayeringImportsGate => false
     ResolvedImportsGate => false
+    ExtdepsExternalAuthorityGate => false
     CiYamlGate => false
   }
 }
