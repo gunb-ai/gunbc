@@ -1,0 +1,45 @@
+// Status: discovered fail-closed witness for the subsumption (dissolution) lens (DESIGN.md §6
+// inert-lens hygiene: every lens is a discovered fail-closed witness or deleted). Exercises the
+// lens's two canonical DissolutionSubsumption rows directly and asserts each is a verifiable
+// dissolution: its verification is a MechanicalReverification (a test-claim re-runs it, not an
+// un-grounded ProducerStageDerivation) AND it actually subsumes its declared leaf fixes. Flipping a
+// row's verification arm or dropping a subsumed leaf fix => RED.
+//
+// Note: the run_test_claim receipt over these rows lives in the manual lane
+// (v2.test.manual.dissolution_subsumption_reverification); this structural witness is the
+// floor-discovered guarantee the lens carrier stays grounded.
+
+module v2.test.workflow.lens_subsumption_family_eval
+
+import v2.std.logic { Bool }
+import v2.lens.subsumption {
+  DiffId,
+  DissolutionSubsumption,
+  MechanicalReverification,
+  ProducerStageDerivation,
+  affected_set_irt1_subsumption,
+  rust_language_model_emit_subsumption
+}
+
+fn subsumption_row_is_mechanical(row: DissolutionSubsumption) -> Bool {
+  match row.verification {
+    MechanicalReverification { test_claim: _ } => true
+    ProducerStageDerivation { derivation_path: _ } => false
+  }
+}
+
+fn lens_subsumption_family_gate() -> Bool {
+  subsumption_row_is_mechanical(row: rust_language_model_emit_subsumption)
+    && subsumption_row_is_mechanical(row: affected_set_irt1_subsumption)
+    && rust_language_model_emit_subsumption.subsumed_fixes.member(
+         DiffId { id: ^emit_rust_template_leaf_fix }
+       )
+    && rust_language_model_emit_subsumption.subsumed_fixes.member(
+         DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
+       )
+    && affected_set_irt1_subsumption.subsumed_fixes.member(
+         DiffId { id: ^affected_set_boundary_receipt_leaf_fix }
+       )
+}
+
+test data witness_lens_subsumption_family_gate_closed: Bool = lens_subsumption_family_gate()
