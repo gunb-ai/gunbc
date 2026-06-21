@@ -70,13 +70,18 @@ data realization_edge_path_prefixes: List<String> = [
 // SHRINKING exception roster — the consumer modules that import the sidecar TODAY (verified by
 // `grep -rln 'extdeps.languages.bash.program' dsl src/v2 | grep -v _test | grep -v
 // 'extdeps/languages/bash'`). Each migrates off serialize_bash under warm-badger-46; drop it
-// here when it lands. DO NOT ADD ROWS — a new non-edge importer is a RealizationVocabularyLeak.
+// here when it lands. DO NOT ADD ROWS for code authored AFTER this guard — a new non-edge
+// importer is a RealizationVocabularyLeak and must use intent, not be rostered. The one
+// admissible addition is skew-reconciliation: an importer that PREDATES this guard but was
+// missed by the authoring grep because it landed between the guard's branch-CI and merge —
+// e.g. extdeps_external_authority_transport.dag, from #5418's external-authority arc.
 data realization_vocab_exception_roster: List<String> = [
   "dsl/gunbc/ci_spec.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
   "dsl/tools/dsl_compile_clean_transport.dag",
   "dsl/tools/emit_host_transport.dag",
+  "dsl/tools/extdeps_external_authority_transport.dag",
   "dsl/tools/host_prelude.dag",
   "dsl/tools/layering_imports_transport.dag",
   "dsl/tools/resolved_imports_transport.dag",
