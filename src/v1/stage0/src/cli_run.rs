@@ -2565,8 +2565,10 @@ fn inert_lens_modules(
     let path_to_module: std::collections::HashMap<&String, &String> =
         module_to_path.iter().map(|(m, p)| (p, m)).collect();
     // Seed: every discovered witness entry file — its own module plus its direct imports.
-    let entry_paths: std::collections::BTreeSet<String> =
-        rows.iter().map(|r| repo_relative_dag_path(&r.entry)).collect();
+    let entry_paths: std::collections::BTreeSet<String> = rows
+        .iter()
+        .map(|r| repo_relative_dag_path(&r.entry))
+        .collect();
     for ep in &entry_paths {
         if let Some(module) = path_to_module.get(ep) {
             if reached.insert((*module).clone()) {
@@ -3927,12 +3929,16 @@ mod inert_lens_hygiene_tests {
     #[test]
     fn top_level_lens_module_predicate() {
         assert!(is_top_level_lens_module("v2.lens.effect"));
-        assert!(is_top_level_lens_module("v2.lens.extdeps_shape_transport_policy"));
+        assert!(is_top_level_lens_module(
+            "v2.lens.extdeps_shape_transport_policy"
+        ));
         // support/witness sub-modules are NOT the lens itself.
         assert!(!is_top_level_lens_module(
             "v2.lens.extdeps_shape_transport_policy.module_refs"
         ));
-        assert!(!is_top_level_lens_module("v2.test.lens_effect.effect_depends_on"));
+        assert!(!is_top_level_lens_module(
+            "v2.test.lens_effect.effect_depends_on"
+        ));
         assert!(!is_top_level_lens_module("v2.std.algebra"));
         assert!(!is_top_level_lens_module("v2.lens."));
     }
@@ -3944,7 +3950,10 @@ mod inert_lens_hygiene_tests {
     fn detector_red_on_unreached_green_on_wired() {
         let mut module_to_path: HashMap<String, String> = HashMap::new();
         let mut path_imports: HashMap<String, Vec<String>> = HashMap::new();
-        module_to_path.insert("v2.lens.demo".to_string(), "src/v2/lens/demo.dag".to_string());
+        module_to_path.insert(
+            "v2.lens.demo".to_string(),
+            "src/v2/lens/demo.dag".to_string(),
+        );
         path_imports.insert("src/v2/lens/demo.dag".to_string(), vec![]);
 
         // No discovered witness reaches it → inert (RED).
