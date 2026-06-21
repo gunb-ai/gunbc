@@ -186,6 +186,23 @@ still a violation) · internal review finds missing tests, external review finds
   the argument itself; the §7 recursion, with this document as the first target). (operator's next
   project)
 - can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)
+- the model↔realization fork is systemic, and where unfinished it fails open: every primitive is
+  modeled as a coproduct and realized as a native `Value`, reconciled by per-site bridges, so coverage
+  is accidental and non-compositional. `match` bridges `Int→Zero/Succ` but `Value::eq` has no
+  `Int↔Variant` arm, so `nat_add(85, 32) == 117` silently compared `false` at its `_ => false`
+  chokepoint — a §5 fail-open, not the §2/§7 redundancy the 🟡 dissolve-on markers track. **Landed:** the
+  *numeric tower* fork now fails closed — `eval_binop`'s `BinOp::Eq`/`Ne` raises
+  `InterpError::CrossRepresentationEquality` when a `false` result is *explained* by a native
+  `Int`/`Float` vs `Nat`-coproduct straddle (recursive: catches `nat_add == nat_add` and
+  `[nat_add(1,1)] == [2]`), with `Value::eq` left infallible so it stays the single `CanonKey` map-key
+  authority. The discriminating witness is `cross_representation_equality_test` (forks → typed error;
+  reconciled/native → `true`; genuine diffs `1 == 2`/`Succ{..} == Zero` → `false`, not error). **Remaining:**
+  (a) the same straddle for `Bool True|False` over `Value::Bool` (no `==` site in the corpus today) and
+  `Optional/Witness` over `Value::Null` — the latter resists a blanket guard because `Value::Null` is
+  the overloaded `None`/`Absent`/miss sentinel and `present == None` (131 sites) is a *legitimate* `false`,
+  so it needs grounding, not an error arm; (b) the root fix (§1/§2/§7) — ground each primitive into its
+  realization (numeric tower first, `Int = GroupCompletion<Nat>` still bottoming in Peano `Nat`), which
+  dissolves the straddle and makes the guard dead code. (operator: `==` fail-closed, 2026-06-20)
 - the remaining deleted-`docs/` references in `.dag` comments — provenance / `bind:` pointers into the bankrupted `docs/` tree (e.g. `docs/planning/*`, `design-*.md`) — fold into the dep-graph reform, not a blind repoint. (The named-corpus ledger marks — `Practice N`, and `INVARIANTS` / `THESIS` / `MODELING` / `RELEASE_TODO` / … citations — were swept: dropped, or re-homed to DESIGN.md §-anchors.)
 
 ## Building & checks
