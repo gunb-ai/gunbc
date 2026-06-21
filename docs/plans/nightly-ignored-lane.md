@@ -1,123 +1,142 @@
-# Nightly `--ignored` CI lane (ROADMAP §1)
+# Nightly expensive-test CI lane (ROADMAP §1)
 
-*Design-first. Surfaced for sign-off before editing the load-bearing CI-gen machinery
-(`gunbc.ci_spec`, `gunbc.ci_workflow`, the ci.yml drift gate). Owner: proud-deer-709 under
-§1 / quick-ant-298.*
+*Design-first, decisions locked by §1 owner (quick-ant-298, 2026-06-21). Implementation of
+the load-bearing CI-gen (`nightly.yml` via `gunbc ci`/`ci_spec`) is HELD until #5427 merges;
+the concrete machinery diff is escalated to the owner for review before it lands.*
+
+Owner: proud-deer-709 under §1 / quick-ant-298.
 
 ## The pain (denominated cost, DESIGN §6)
 
-62 rust tests in `v1-compiler-tests` are `#[ignore]`'d. ~24 are **correct but expensive**
-(build stage0 binary, run full compiles, hit live network). They are **never run by any
-cadence** — so a regression in expensive territory is invisible until someone runs them by
-hand. The deliverable is a *destination*: a scheduled lane that runs the expensive set so
-"every reasoned-ignore has a lane," upgrading the per-PR completeness story (#5427).
+62 rust tests in `v1-compiler-tests` are `#[ignore]`'d. ~22 are **correct but
+expensive/environmental** (build stage0 binary, run full compiles, write temp projects, hit
+live network). They are **never run by any cadence** — so a regression in that territory is
+invisible until someone runs them by hand. The deliverable is a *destination*: a scheduled
+lane that runs the expensive set so "every reasoned-ignore has a lane," upgrading the per-PR
+completeness story (#5427).
 
-## The category split (the heart of the ask)
+## Naming note (don't get held to the literal flag)
+
+ROADMAP §1 calls this the "`--ignored` lane," but **literal `cargo test -- --ignored` is the
+wrong mechanism**: it runs *all* ignored tests indiscriminately, including the red-tracked
+ones (known hangs, blocked-on-fix, disabled-pending-rewrite) → the lane would be perpetually
+red, a §5 fail-open (a gate that is always red protects nothing). The name is incidental; the
+mechanism is a **feature-gated conditional ignore** (below). The lane is the *nightly
+expensive-test lane*, not a literal `--ignored` run.
+
+## The category split (why a category selector is mandatory)
 
 An `#[ignore]` reason answers *why excused*, and the reasons fall into two disjoint buckets
-the lane MUST keep apart (inventory taken on main, `grep '#[ignore'` over `src/v1/tests/src`):
+the lane MUST keep apart (inventory on main, `grep '#[ignore'` over `src/v1/tests/src`):
 
-**RUN-NIGHTLY (expensive-but-correct):** `Expensive: …` (build/compile/cargo/disk, 8),
-`Requires building stage0 binary (~2 min)` (4), `wet-only: …` / `calls real Anthropic API`
-(2, network), the `ci_`-tagged set (5), `heavy test` / `run with: … --ignored` (≈4),
-`Boundary …` (2). ≈24 total.
+**RUN-NIGHTLY (expensive / needs-richer-env, ≈22):** `Expensive: …` (build/compile/cargo/
+disk), `Requires building stage0 binary (~2 min)`, `wet-only` / `calls real Anthropic API`
+(network), the `ci_`-tagged set, `heavy test`, `Boundary …` (temp project + cargo check).
+These are not strictly *cost* — several are "needs the richer environment nightly provides."
+The marker is **"runs nightly," regardless of why.**
 
-**STAY RED-TRACKED (not run in a green lane):** known hangs under triage
-(`78s/40s/119s — hanging … PERF track`, 3), blocked-on-a-fix
-(`emitter seed … until #5325 co-land`, `Rc sharing bridge regressed … needs full
-bootstrap-closure`), disabled-pending-rewrite (`complexity analysis disabled for memory`,
-`CX gate bypassed … CX-5 analyzer rewrite`, ≈17), unimplemented-feature
-(`requires full structural algebra authority`, `stage0 does not yet validate …`),
-and known-broken receipts (`receipt: … 779 typecheck diags`). ≈28 total.
+**STAY RED-TRACKED (not run in a green lane, ≈28):** known hangs under triage
+(`78s/40s/119s — hanging … PERF track`), blocked-on-a-fix (`emitter seed … until #5325`,
+`Rc sharing bridge regressed … needs full bootstrap-closure`), disabled-pending-rewrite
+(`complexity analysis disabled for memory`, `CX gate bypassed … CX-5 analyzer rewrite`),
+unimplemented (`requires full structural algebra authority`, `stage0 does not yet validate …`),
+known-broken receipts (`receipt: … 779 typecheck diags`), and perf-skips
+(`Stream D: parser uses List<Token> … O(n)`).
 
-Running a red-tracked test in the nightly lane makes the lane perpetually red → a useless
-gate (DESIGN §5: a gate that is always red protects nothing; the noise *is* the fail-open).
-So **category, not `--ignored`, is the selector**: `cargo test -- --ignored` runs *all*
-ignored tests indiscriminately and is wrong here.
+## Mechanism (LOCKED): feature-gated conditional ignore — single structural authority
 
-## §3 tension: the reason is the authority, but cargo can't filter on it
+Reject a name-prefix-plus-sync-lens (a §3 fork: name and reason both encode category, kept in
+sync by a *validation* lens — the exact anti-pattern §1 exists to kill). Reject a
+source-reflection roster (right instinct, derive-don't-duplicate, but heavier than needed).
+**Adopt conditional ignore**, which is libtest-native, has ONE machine-readable authority, and
+needs zero roster / zero sync-lens / zero source reflection:
 
-`#[ignore = "<reason>"]` is the single authority for "why excused" (established by #5427,
-whose completeness lens makes a reasonless ignore RED). But **libtest cannot filter tests by
-ignore-reason** — `cargo test <substr> -- --ignored` filters by *test name* only. So the
-run-set must be reachable by name, while the category lives in the reason. That fork is the
-design decision to lock before any edit:
+- **Nightly-runnable** tests:
+  ```rust
+  #[cfg_attr(not(feature = "ci_nightly"), ignore = "expensive: <Ns> <why>")]
+  ```
+- **Red-tracked / environmental-never** tests: plain unconditional
+  ```rust
+  #[ignore = "<reason>"]
+  ```
 
-- **Option A — name-prefix realization (cheap, ships now).** Adopt the existing `ci_`
-  convention as *the* nightly selector: a test is nightly-run IFF its name starts with the
-  agreed prefix (e.g. `ci_` / `nightly_`). The nightly lane runs `cargo test -p
-  v1-compiler-tests <prefix> -- --ignored`. The prefix is a *second* representation of
-  "expensive," so it is a §3 parallel-authority UNLESS bound: extend #5427's completeness
-  lens with a **categorization tooth** — for every `#[ignore = "<reason>"]`, assert
-  `reason ∈ run-nightly-vocab ⟺ name has the prefix`. The lens makes "expensive but no
-  lane" and "red-tracked but in the lane" both *unwritable*. This keeps the reason as the
-  authority and derives the binding by lens, not by a hand-maintained list.
+Behaviour falls out by construction:
 
-- **Option B — derived roster (purer §3, heavier).** A `.dag`-modeled selector reflects the
-  test sources, partitions by a closed category vocabulary parsed from the reason, and emits
-  the explicit `cargo test <name1> <name2> … -- --ignored` argv as the single authority. No
-  name convention. Costs source-reflection at gen time and a richer category grammar in the
-  reason string; more than §1's stabilization window needs.
+| build | conditional (`cfg_attr`) test | plain `#[ignore]` test |
+|---|---|---|
+| per-PR (`#5427`, no feature) | `ignore` applies → **skipped** (cheap-only) | skipped |
+| nightly (`--features ci_nightly`) | `ignore` removed → **RUNS** (+ all always-cheap) | **still skipped** |
 
-**Recommendation: Option A** — concrete-before-abstract (§6), ships the destination now,
-and the lens binding closes the parallel-authority hole. B is the dissolution target once
-fn-body/source reflection is cheap (ties to the §4 testgen reflection work).
+So "runs in nightly" is exactly the `cfg` condition — one authority, in the source, visible
+and reviewable. The reason-string reverts to **pure prose** (the `Ns` / the why); it is no
+longer load-bearing for selection. The §5 perpetually-red worry is *dissolved*: red-tracked
+tests keep plain `#[ignore]`, so they never enter the nightly run regardless of the feature.
 
-This requires a closed category vocabulary in the reason prefix
-(`expensive:` / `wet:` / `blocked-#NNNN:` / `hang:` / `cx:` / `unimplemented:`) so the lens
-can decide membership structurally rather than by ad-hoc substring. Normalizing the current
-free-text reasons to that vocabulary is a prerequisite — and it overlaps #5427's reason work,
-so it must be coordinated with fierce-hawk-540, not forked.
+This generalizes better than a cost-only prefix: `Requires-stage0` / `wet-only` aren't cost,
+they're environment — and the `cfg_attr` marker says "runs nightly" regardless of *why*,
+which is precisely the intent.
 
-## Where the lane lives (CI-gen, load-bearing)
+## Lane placement (LOCKED): separate `nightly.yml`
 
-The substrate is ready: `WorkflowTrigger::Schedule { cron: CronSchedule }` exists
-(`extdeps/github/actions.dag`), `CronSchedule` + `render_cron_schedule` exist
-(`extdeps/cron/schedule_model.dag`), and the YAML projection + drift gate are generic over a
-`Workflow` value (`gunbc.ci_yaml_emit`, `tools/ci_yaml_gate.dag`).
+A second authored `Workflow` value with its **own `Schedule` trigger and its own drift gate**,
+NOT a `Schedule` bolted onto `ci.yml`. The substrate is ready:
+`WorkflowTrigger::Schedule { cron: CronSchedule }` (`extdeps/github/actions.dag`),
+`CronSchedule` + `render_cron_schedule` (`extdeps/cron/schedule_model.dag`), and the generic
+YAML projection + drift/parse gate (`gunbc.ci_yaml_emit`, `tools/ci_yaml_gate.dag`). The
+nightly run step invokes `cargo test -p v1-compiler-tests --features ci_nightly` (+ the
+release build it needs). §3-clean: each workflow is a distinct authority; the nightly gate set
+is explicitly *not* the per-PR floor.
 
-- **Option 1 — `Schedule` trigger on the existing `ci.yml`.** One file, but the single job
-  runs the per-PR floor (cost-bounded subset); making it category-aware needs a
-  `github.event_name == 'schedule'` branch inside the run step → conditional sprawl, and the
-  floor scheduler takes no category arg today.
-- **Option 2 — separate `nightly.yml` (recommended).** A second authored `Workflow` value
-  with its own `Schedule` trigger and a run step that invokes the nightly cargo selector
-  (Option A's `cargo test <prefix> -- --ignored`), plus the expensive `.dag` witnesses if any
-  route through it. Emitted by a second `expected_nightly_yml()` and guarded by a second drift
-  gate row (mirror of `ci_yaml_gate`). §3-clean: each workflow is a distinct authority; the
-  nightly gate set is explicitly *not* the per-PR floor.
+## Sequencing (LOCKED): clean-sequence AFTER #5427 — do NOT couple
 
-**Recommendation: Option 2.** Model a `nightly_ci_spec` (or extend `CiSpec` with the lane's
-selector + schedule) and a `nightly_workflow`, mirroring the existing emit+drift+parse gate
-trio. Touches `gunbc.ci_spec` / `gunbc.ci_workflow` / a new drift gate — all load-bearing,
-hence this design-first surface.
+#5427 (fierce-hawk-540) is ~1h from ready and owns the `#[ignore = "<reason>"]` reason
+single-authority + the completeness lens. **Do not slow it / do not co-author its lens.** Let
+it land with plain `#[ignore = "expensive: …"]` / `"failing: …"` / `"environmental: …"`
+prefixes (already its scheme). After #5427 merges, THIS PR does, all in its own scope:
 
-## Sequencing / dependency
+1. **One-time `expensive: → cfg_attr` conversion.** Derive the set ONCE from #5427's
+   `expensive:`/environmental reason-category. This derivation *establishes* the `cfg_attr` as
+   the ongoing single authority — not a fork, because the reason-prefix stops being
+   load-bearing for selection after the conversion.
+2. **Add the `ci_nightly` feature** to the test crate `Cargo.toml`.
+3. **`nightly_workflow`** value + `expected_nightly_yml()` + commit `.github/workflows/
+   nightly.yml` as the byte projection.
+4. **Nightly drift/parse gate** (mirror of `ci_yaml_gate`: clean matches, perturb drifts).
+5. **Extend #5427's completeness lens** to also recognize the `cfg_attr(…, ignore = "…")`
+   form (so a conditional-ignore still counts as reasoned, and a reasonless one still goes
+   RED).
 
-- **#5427 (fierce-hawk-540) is upstream and NOT yet merged.** It establishes the
-  `#[ignore = "<reason>"]` single authority and the completeness lens this lane's
-  categorization tooth extends. Building the categorization lens or normalizing reasons before
-  #5427 lands would fork its lens and reason work. → **co-sequence with fierce-hawk-540**:
-  either land after #5427 merges, or coordinate the shared reason-vocab + lens so we extend,
-  not duplicate.
-- #5431 (per-test cost measurement) is **on main** — the sequencing gate named in ROADMAP §1
-  is satisfied.
+Coordination with fierce-hawk is therefore **minimal** — just rely on its consistent reason
+prefixes as the conversion input. No shared lens to co-author, no co-sequencing thrash.
 
-## Proposed increments (each lands green-by-execution, DESIGN §5)
+(#5431, the per-test-cost measurement keystone named as the ROADMAP §1 sequencing gate, is
+already on main — that gate is satisfied.)
 
-1. (coordinated w/ #5427) Closed category vocabulary in the ignore-reason prefix; normalize
-   the 62 reasons. Discriminating: the categorization lens goes RED if a reason is
-   uncategorized or prefix↔category disagree.
-2. `nightly_workflow` + `expected_nightly_yml()` + nightly drift/parse gate; commit
-   `.github/workflows/nightly.yml` as the byte projection. Discriminating: drift red-receipt
-   (clean matches, perturb drifts), mirroring `ci_yaml_gate`.
-3. The nightly run step invokes the category selector and is proven by *running* the expensive
-   subset (not a grep): a discriminating input where the lane goes red on a real expensive
-   regression and green on a clean tree.
+## Pre-staged conversion candidate list (provisional — finalize against #5427's reasons)
 
-## Open decisions for sign-off
+CONVERT to `cfg_attr(not(feature="ci_nightly"), ignore=…)` (run nightly):
+- `interp_recorded_fixture_test.rs:1103` — wet-only jsonplaceholder record→replay
+- `bootstrap.rs` 307/331/374/659 — Requires building stage0 binary
+- `bootstrap.rs` 483/578/976 — Expensive: build + full compile (+ emitted-crate cargo test)
+- `bootstrap.rs` 864 `ci_full_dsl`, 907 `ci_diagnostic_ratchet`, 924 `ci_performance_ratchet`,
+  941 `ci_freshness`, 957 `ci_fixed_point` — the existing `ci_`-tagged nightly set
+- `pipeline.rs` 21 `full_dsl_compiles`, 3205 (heavy), 8043/8135 (Boundary temp+cargo check),
+  8173/8273/8291/8310/10333 (Expensive disk/transitive/cargo build), 10334
+  `anthropic_dag_compiles_to_rust`, 10511 `anthropic_live_e2e` (live API)
 
-1. Option A (name-prefix + lens binding) vs B (derived roster)? — recommend A.
-2. Option 2 (separate `nightly.yml`) vs 1 (`Schedule` on ci.yml)? — recommend 2.
-3. Co-sequence with #5427 now (extend its lens/reason work) vs wait for its merge?
-4. Schedule cadence + runner: nightly (`0 <h> * * *`) on the same fleet runner as ci.yml?
+JUDGMENT-NEEDED (likely KEEP plain — diagnostic dumps, not pass/fail assertions):
+- `pipeline.rs:12084` `dump_complexity_report` — `--nocapture` report dump, not a green/red test.
+
+KEEP plain `#[ignore]` (red-tracked / disabled / unimplemented): the ≈28 hangs / `#5325` /
+`Rc`-regressed / `CX`-disabled / `requires structural algebra` / `779-diags` / `Stream D` set.
+
+(The release of #5427 will rewrite many `#[ignore] // comment` into `#[ignore = "reason"]`;
+the final CONVERT set is whatever carries an `expensive:`/environmental reason prefix in
+#5427's normalized form. Re-derive at conversion time.)
+
+## Proof obligation (DESIGN §5 — green-by-execution, not grep)
+
+The nightly workflow must be demonstrated to **actually run** the expensive+cheap set green
+and **skip** the red-tracked set — a discriminating input where the lane goes red on a real
+expensive regression and green on a clean tree. Drift gate proven by red-receipt (clean
+matches, perturb drifts), mirroring `ci_yaml_gate`.
