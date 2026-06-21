@@ -35,7 +35,7 @@ const READ_FN: &str = "ts_effect_read_call_source";
 const IO_MARKER: &str = "gunbc-effect-io-roundtrip-9f1c2";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn witness_sources() -> Vec<Rc<SourceFile>> {
