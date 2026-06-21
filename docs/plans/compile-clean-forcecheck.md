@@ -1,12 +1,16 @@
 # Plan — compile-clean gate force-check (ROADMAP §1 floor-coverage / §0 inference fail-open)
 
-**Status:** diagnosis (done, execution-proven) + design options · **DESIGN §5 (fail-closed) is
-authority.** Work-item `adhoc-6169238c-5e2`. Linked from `ROADMAP.md §0` (line 31, "inference fail-open —
-return-type after #5293") and §1 (floor-coverage). Sibling of
-[fail-closed-lockdown.md](fail-closed-lockdown.md) §3 (where the pipeline fails open).
+**Status:** diagnosis (done, execution-proven) + **(A) partition design** + **blast-radius measured
+(10 names / 102 sites)**. Scope confirmed by parent `quick-ant-298`: **DESIGN-FIRST + MEASURE-FIRST,
+land nothing enforcing** — the tree-scoping/registry-partition *flip* is operator-gated (escalates via
+parent + bright-stag). **DESIGN §5 (fail-closed) is authority.** Work-item `adhoc-6169238c-5e2`.
+Linked from `ROADMAP.md §0` (line 31, "inference fail-open — return-type after #5293") and §1
+(floor-coverage). Sibling of [fail-closed-lockdown.md](fail-closed-lockdown.md) §3 (where the pipeline
+fails open). Adjacent: 2(i) (bright-stag `adhoc-8e5771e1-14a`) grounds `utf8_decode_bytes` as a real std
+fn — **(A) is what makes such grounding required by construction** so the leak can't recur.
 
-**Verified against the live tree 2026-06-21** — `gunbc` built from `src/v1/stage0`, probes run. Line
-numbers are receipts.
+**Verified against the live tree 2026-06-21** — `gunbc` built from `src/v1/stage0`, probes + the
+empty-registry blast-radius compile run. Line numbers are receipts.
 
 ## 0. Verdict — the brief's mechanism is wrong; the leak is a global seed allowlist
 
@@ -84,33 +88,91 @@ Full dissolution (76 builtins → `.dag` defs) is a large migration, out of this
 bounded options below are stepping stones; (A) is the one that closes the literal witness *by
 construction*.
 
-## 4. Options (one shippable PR for this node)
+## 4. Scope decision (parent-confirmed) — (A), as design + measure only
 
-- **(A) Tree-scoped builtin availability / registry partition.** Split the registry into
-  *substrate-std* builtins and *seed-only kernel* intrinsics; admit the seed-only set only when the
-  entry root is the v1 seed. A dsl-substrate compile then fails closed on `utf8_decode_bytes`. Closes the
-  literal witness **by construction**; a stepping stone toward full dissolution. **Load-bearing**
-  (inference scope) and **changes what compiles** — needs operator/parent sign-off; carries DESIGN's
-  higher bar for named pipeline stages.
-- **(B) Return-type enforcement.** Flag a fn whose body type ≠ declared return type. Clean §5
-  construction, sanctioned by ROADMAP §0 line 31. **Does not close the literal witness** (the `as Secret`
-  cast satisfies the return type). Corpus-wide enable is risky — like #5293, expect latent reds; needs a
-  confident-only / staged rollout. Independent value; arguably its own node.
-- **(C) Gate RED witness + ground `utf8_decode_bytes`.** Add a discriminating RED receipt to the
-  compile-clean gate (plant a substrate reference to a seed-only builtin, assert compile fails) and model
-  `utf8_decode_bytes` as a real `std`/`extdeps` function (RFC 3629, already cited in the gcp comment) so
-  the live reference resolves within the substrate. Closes **this instance**, not the class — validation,
-  not construction (§5: prefer A).
+Parent `quick-ant-298` confirmed: this node ships **(A)'s design + the blast-radius measurement**, and
+**lands nothing enforcing**. (B) and (C) are split out:
 
-**Recommendation:** (A) is the true construction fix and the registry's own dissolution direction;
-gate it on sign-off because it is load-bearing and changes compile semantics. (B) is worth doing but is a
-separate fail-open class and a separate node. (C) is a fallback if a no-semantics-change PR is required
-this window — but pair its gate witness with a dissolution marker so it does not masquerade as the class
-fix.
+- **(A) Tree-scoped builtin availability / registry partition** — the direction. Split the registry into
+  *substrate-available* builtins (real `.dag`/std defs, or the sanctioned primitive surface) and
+  *seed-only kernel* intrinsics; admit the seed-only set only when the entry root is the v1 seed itself.
+  A dsl-substrate compile then fails closed on a seed-only name. This **advances the registry's own marked
+  dissolve-on** (04_method.dag:55-62) — it is not new debt. The enforcing flip is **load-bearing**
+  (inference scope) + **changes what compiles** → operator-gated; escalates via parent + bright-stag.
+  This doc + §6's measured number is the input to that sign-off.
+- **(B) Return-type enforcement** — SEPARATE (ROADMAP §0 line 31; #5293 closed only record-field). Does
+  not close the literal witness (the `as Secret` cast satisfies the return type). Its own PR later. Flagged
+  adjacent, not bundled.
+- **(C) Grounding `utf8_decode_bytes` as a real std fn** — **2(i)'s job** (bright-stag
+  `adhoc-8e5771e1-14a`). Nuance relayed: `utf8_decode_bytes` is a *registry entry* (→ `string_type`), not
+  purely undefined — so 2(i) must define the std fn **and** delete its registry bridge row, else the
+  registry shadows the new def. (A) is what makes that grounding *required* by construction.
 
-## 5. Discriminating witness (must go RED when the behavior is wrong)
+## 5. (A) partition design
 
-Whatever ships, the receipt is the same shape as probe 2/3 above: a planted substrate module that calls
-a seed-only builtin (`utf8_decode_bytes`) must make `gunbc compile` over the dsl pools **fail**; the
-identical module compiled with the `src/v1` seed root present must **pass**. Green-by-execution against
-the real `gunbc`, not a typecheck/grep. (DESIGN §5: spec-without-execution is not done.)
+**Two facts must be separated** at the call-head builtin-resolution seam:
+
+1. *Is this name a host intrinsic at all?* (registry membership — today's only question).
+2. *Is this name in-scope for the tree being compiled?* (new: substrate-available vs seed-only).
+
+**Construction shape (the registry's dissolve-on, staged):** each builtin row carries an
+**availability tag** — `SubstrateAvailable` vs `SeedOnly` — instead of a flat name→type map. The
+call-head resolver admits a `SeedOnly` row **only when the compile's entry root is the v1 seed**; for a
+substrate entry root (dsl/ + v2 pool) a `SeedOnly` hit is treated as *not a builtin* → falls through to
+the existing fail-closed "function not found in scope" (probe 2). `SubstrateAvailable` rows are the
+sanctioned primitive surface and, per the dissolve-on, migrate to real `std` `.dag` defs over time;
+once a name has a real def it leaves the registry entirely and resolves through normal func-env lookup.
+
+- *Entry-root signal*: the existing entry-vs-pool distinction (`main.rs:343-347` "entry modules = all
+  .dag in the FIRST source root; additional roots are dependency pools") already separates the compiled
+  tree from its pools. The infer scope must carry one bit — "entry root is the v1 seed" — derived from
+  whether `src/v1` is the primary `--source-root`. (Threading this into `InferScope` is the load-bearing
+  part; out of scope for this node — captured here for the enforce PR.)
+- *Why a tag, not a second map*: a second allowlist map would be a new parallel authority (§3). One row
+  per builtin with an availability field keeps single authority and reads as construction, not a lens.
+- *Non-enforcing intermediate (this node)*: the empty-registry measurement in §6 already enumerates the
+  exact leak set without any code change shipping. The enforce PR turns each `SeedOnly` substrate hit
+  into the fail-closed path behind operator sign-off.
+
+## 6. Blast radius (MEASURE-FIRST) — execution-proven, 10 names / 102 sites
+
+**Method (DESIGN §5, real consumer green-by-execution, not grep):** in a throwaway worktree off
+`origin/main`, `builtin_function_registry()` was replaced with an empty map (MEASURE-ONLY, uncommitted),
+`gunbc` rebuilt, and the **real gate compile** run —
+`gunbc compile --source-root dsl --source-root src/v2 --dependency-pool-index primary-precedence
+--target rust`. Every registry name a substrate module **free-calls without a real `.dag` def** then
+surfaces as a "function 'X' not found in scope" diagnostic. (Grep over-counted ~50 — most registry names
+are invoked as *methods* and resolve via the structural method path, not the free-call registry.)
+
+Result: **102 diagnostics, all "not found in scope", 10 distinct names** (all in `dsl/`; none in
+`src/v2`):
+
+| builtin | sites | leaf area | class |
+|---|--:|---|---|
+| `string_contains` | 51 | dsl/extdeps/formats, dsl/test/claim | general string primitive |
+| `to_string` | 25 | broad (examples, extdeps/*, product, tools) | general primitive |
+| `concat` | 11 | extdeps/git, languages/go, version, product, **std** | general primitive |
+| `filesystem_read` | 5 | dsl/test/claim | **lens host-reflection intrinsic** (known §3 `Filesystem.Read` fork) |
+| `set_contains` | 3 | dsl/std | set primitive |
+| `set_insert` | 2 | dsl/std | set primitive |
+| `count` | 2 | dsl/gunbc/tools | general primitive |
+| `utf8_decode_bytes` | 1 | **dsl/extdeps/cloud/gcp** | **the brief's witness — true domain leak (2(i) grounds it)** |
+| `hash_combine` | 1 | dsl/std | hashing primitive |
+| `atom_identity_hash` | 1 | dsl/std | hashing primitive |
+
+**Reading of the number:** the (A) rollout is **small and tractable**, not a corpus-wide flag day.
+8 of the 10 (96 sites) are the accepted general-purpose primitive surface (`string_contains`,
+`to_string`, `concat`, `count`, `set_contains`, `set_insert`, `hash_combine`, `atom_identity_hash`) —
+these become `SubstrateAvailable` and are the std-grounding backlog. `filesystem_read` (5) is the
+already-known lens reflection fork. Exactly **one** name — `utf8_decode_bytes` — is a genuine domain
+leak, and it is already owned by 2(i). So (A) tags 8–9 substrate primitives + the lens-reflection
+intrinsic, and the only domain code that fails closed under (A) today is the single gcp site, which 2(i)
+is already grounding. The blast radius gates the rollout: tag the 8 primitives `SubstrateAvailable` first
+(no breakage), then flip seed-only enforcement once `utf8_decode_bytes` is grounded.
+
+## 7. Discriminating witness (must go RED when the behavior is wrong)
+
+The enforce PR's receipt is the same shape as §6's method: a planted substrate module that free-calls a
+`SeedOnly` builtin (`utf8_decode_bytes`) must make `gunbc compile` over the dsl pools **fail**; the
+identical module compiled with the `src/v1` seed as primary root must **pass**. Green-by-execution
+against the real `gunbc`, not a typecheck/grep. (DESIGN §5: spec-without-execution is not done.)
