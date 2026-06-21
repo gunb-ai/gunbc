@@ -1,7 +1,7 @@
 # Plan — v2 self-hosting
 
 **Status:** planning tracker · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's
-real state is its branch/PR, not this file. Linked from `ROADMAP.md §3`. Related to but distinct from
+real state is its branch/PR, not this file. Linked from `ROADMAP.md` §5 *Self-host v2 → delete `src/v1`*. Related to but distinct from
 the de-fork audit ([dsl-v2-defork-audit.md](dsl-v2-defork-audit.md)): de-fork collapses duplication;
 self-hosting makes v2 compile itself. De-fork is a *prerequisite* (the compiler closure needs one std
 authority), not the goal.

@@ -32,15 +32,15 @@ the `Value::Null` overload (~131 sites) — stays **OPEN** until its own runway;
 
 **In-scope this window (localized, stabilizing):**
 
-- [ ] **numeric-tower grounding** ([plan](docs/plans/model-realization-fork.md)) — `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code. *Start here* (highest value / lowest risk)
-- [ ] **cache trustworthy** — key derived from declared `inputs_considered` + raw-bytes key (kills the verified flake `resolved_graph_cache.rs:146`); spec'd in **§2** (F2/F3/P1). Ship the **warm==cold oracle now as a detective** — it stops the cache lying *today* while the from-inputs construction is built behind it (detective and constructive coexist in time). *(first instance: child adhoc-cc232dbc-1be)*
+- [ ] **numeric-tower grounding** ([plan](docs/plans/model-realization-fork.md)) — `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code. *Start here* (highest value / lowest risk). **Authoritative home for this item** — §5's *de-fork integer-row* and the fork plan §3.1 are the same work seen from the self-host side; they point here, no second checkbox
+- [ ] **cache trustworthy** (**= §2 F2/F3/P1** — that is the authoritative home; this is a pure pointer, progress tracked there) — the same key-from-`inputs_considered` construction, listed here only because it is the in-window stability driver. Ship the **warm==cold oracle now as a detective** — it stops the cache lying *today* while the from-inputs construction is built behind it (detective and constructive coexist in time). *(first instance: child adhoc-cc232dbc-1be)*
 - [ ] **widen/retire the rust gate** — run the v1 test set or explicitly retire it (no test exists-but-doesn't-run); shared with §1
 - [ ] **promote-or-delete every inert lens** + de-vacuum thin gates (emit_host 4-fixtures, advisory rosters); whole-corpus the `discrimination` enforcer
 
 **Fenced OUT of this window (flag-days / the fan-out — after stability):**
 
 - [ ] **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; needs its own runway (this is what actually *closes* the fail-open class — until then the numeric guards are dead but the class is open)
-- [ ] **self-host purity gate** (§5) — entangled with the Route-A green build (seed hand-maintained via `patch_*`, regen drift, gate closed #5325); self-host last mile, not stability plumbing
+- [ ] **self-host purity gate** — *a §5 deliverable, not a §0-contained one* (avoids the §0↔§5 cycle: the edge runs **§5 self-host purity → §0 expansion-gate → products**, never §0 owning a §5 piece). Entangled with the Route-A green build (seed hand-maintained via `patch_*`, regen drift, gate closed #5325); self-host last mile, not stability plumbing. Listed here only to record that *shipping any product depends on it*
 - [ ] **cross-tree import activation** (§5) — load-bearing, escalate before editing
 - [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — a new typed carrier + ratcheting self-dissolving lens; unambiguously a new concept (the fan-out wearing a stability badge). **Parked** until after the window
 - [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — lens residue, after the construction lands
@@ -50,7 +50,7 @@ the `Value::Null` overload (~131 sites) — stays **OPEN** until its own runway;
 - [ ] **inert-lens hygiene (executable backstop):** every `lens/*.dag` is wired (a discovered fail-closed witness) or **deleted** — an inert lens is a lie. This *runs* over the corpus
 - [ ] **construction-justification rule (layered ON TOP, authoring-time):** before adding a lens, justify why the class can't be construction; convert what can; lens-justify only the residue. Does **not** supersede the executable backstop above (per [DESIGN §6](DESIGN.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment corpus is the backlog; each resolves to construction or a justified `Terminal` ([Disposition plan](docs/plans/disposition-carrier.md), fan-out)
-- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every design claim a consequence-chain back to an axiom, no orphan, no cycle (the §4 acyclicity test turned on this document)
+- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every design claim a consequence-chain back to an axiom, no orphan, no cycle (the §4 acyclicity test turned on this document). *Manual pass run 2026-06-21 (bright-eagle-46 review of #5424): found one orphan (testgen backlink), un-pointered duplicate checkboxes (cache-key, numeric-tower), a §0↔§5 lane cycle, and an undeclared §7→§6 edge — all fixed in this file. The lens stays `[ ]` until it runs **executably** over the doc; the manual pass is the discriminating witness it must reproduce*
 
 ## 1. CI under control (the correctness floor)
 
@@ -139,6 +139,9 @@ ingest / emit / eval across **many media** via one grammar read both directions 
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 
 ## 7. HTML / React rendering (expansion — the "website" sellable piece)
+
+**Depends on §6** — react/html is a *first-class medium* (idea-machine.md §3 item 3 / §4 "Website product"),
+so this lane sits downstream of §6's "cross-media targets beyond syntax" item, not just the §0 expansion gate.
 
 - [ ] react/html rendering stands up (real page, not fixture)
 - [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
