@@ -77,7 +77,7 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
   - [x] P1 honest keys by construction — warm==cold purity oracle (#5429)
     - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
       - [x] P3 **resolve-cache enable** + warm==cold co-run audit — full-corpus EVERY run, off the floor critical path; purity proven by EXECUTION (0 violations); ~18% floor-wall saving; deep tail (serde 128-depth) uncached-by-design/fail-safe, `unbounded_depth` follow-up (#5468)
-- [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold
+        - [ ] follow-up: `yaml_check` (hand-written SCAFFOLD) greens a workflow GitHub can't parse — it missed the workflow-vs-step `runner`-context scope rule (#5468 set `runner.temp` at workflow `env:` → HTTP 422, zero CI runs until fixed). Local parse-green is NOT authoritative; the §5 consumer is GitHub's parser. Model the context-scope rule (or run `actionlint`) so the parse gate is green-by-execution, not grep-green.
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)
 
