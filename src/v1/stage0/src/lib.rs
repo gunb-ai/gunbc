@@ -12,6 +12,7 @@
     clippy::all
 )]
 
+pub mod cache_purity_audit;
 pub mod cache_purity_oracle;
 pub mod cli_run;
 pub mod coproduct_reflection;
