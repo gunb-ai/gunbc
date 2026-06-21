@@ -394,11 +394,17 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
         resolve_entry_with_index(&warm_index, &entry).expect("warm resolve");
 
     // === TOOTH 2: a verdict-only check is GREEN — the ResolvedGraph (every downstream verdict's
-    // input: emit/lower/eval read the graph, never the diagnostic offsets) is byte-identical, so
-    // ANY verdict over the warm hit agrees with cold. This is precisely why a two-run verdict
-    // measurement (proud-deer's 8/8 gates, 616/616 witnesses) cannot see this impurity. ===
-    let cold_graph_only = serde_json::to_vec(&cold_graph).expect("ser cold graph");
-    let warm_graph_only = serde_json::to_vec(&warm_graph).expect("ser warm graph");
+    // input: emit/lower/eval read the graph, never the diagnostic offsets) is canonically
+    // byte-identical, so ANY verdict over the warm hit agrees with cold. This is precisely why a
+    // two-run verdict measurement (proud-deer's 8/8 gates, 616/616 witnesses) cannot see this
+    // impurity. Canonicalized through `serde_json::Value` so the graph's own internal HashMap
+    // iteration order (benign, quotiented out) cannot stand in for the offsets poison. ===
+    let canon_graph = |g: &ResolvedGraph| -> Vec<u8> {
+        let v: serde_json::Value = serde_json::to_value(g).expect("graph to value");
+        serde_json::to_vec(&v).expect("value to bytes")
+    };
+    let cold_graph_only = canon_graph(&cold_graph);
+    let warm_graph_only = canon_graph(&warm_graph);
     assert_eq!(
         v1_rt::bytes_identity_hash(&cold_graph_only),
         v1_rt::bytes_identity_hash(&warm_graph_only),
