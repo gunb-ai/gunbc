@@ -296,10 +296,31 @@ impl AuditedRealization for KeyedRealization {
     }
 }
 
+#[test]
+fn oracle_skips_probes_that_move_the_content_key() {
+    let input = Rc::new(Cell::new(1u8));
+    let realization = KeyedRealization {
+        input: input.clone(),
+    };
+    let input_for_perturb = input.clone();
+    let input_for_restore = input.clone();
+    let mut probes = [HiddenInputProbe {
+        axis: "declared_keyed_input",
+        perturb: Box::new(move || input_for_perturb.set(2)),
+        restore: Box::new(move || input_for_restore.set(1)),
+    }];
+
+    // The probe moves BOTH the key and the output → it is a declared axis (a miss), not impurity.
+    assert!(
+        audit_warm_equals_cold(&realization, &mut probes).is_ok(),
+        "a probe that moves the content-key is a DECLARED axis (a miss, not a stale hit) — skip it"
+    );
+}
+
 // === 5. KEYSTONE: a verdict-INVARIANT lossy decode — verify-on-read GREEN, verdict GREEN, =========
 //        byte-audit RED. The discriminating witness that the byte-audit has teeth the cheaper
-//        checks lack (DESIGN §5: byte-identity by construction is the spec-without-execution claim
-//        the audit falsifies; a verdict-only two-run test cannot see this).
+//        checks lack (DESIGN §5: "byte-identity by construction" is the spec-without-execution
+//        claim the audit falsifies; a verdict-only two-run test cannot see this).
 
 /// Poison ONE file's `NewlineIndex.offsets` — a verdict-IRRELEVANT axis (offsets feed only
 /// diagnostic line/col rendering; the `ResolvedGraph` every verdict consumes is untouched). The
@@ -408,27 +429,4 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
     );
 
     let _ = fs::remove_dir_all(&dir);
-}
-
-// === 6. A probe that moves the content-key is a DECLARED axis — skipped, not flagged =============
-
-#[test]
-fn oracle_skips_probes_that_move_the_content_key() {
-    let input = Rc::new(Cell::new(1u8));
-    let realization = KeyedRealization {
-        input: input.clone(),
-    };
-    let input_for_perturb = input.clone();
-    let input_for_restore = input.clone();
-    let mut probes = [HiddenInputProbe {
-        axis: "declared_keyed_input",
-        perturb: Box::new(move || input_for_perturb.set(2)),
-        restore: Box::new(move || input_for_restore.set(1)),
-    }];
-
-    // The probe moves BOTH the key and the output → it is a declared axis (a miss), not impurity.
-    assert!(
-        audit_warm_equals_cold(&realization, &mut probes).is_ok(),
-        "a probe that moves the content-key is a DECLARED axis (a miss, not a stale hit) — skip it"
-    );
 }
