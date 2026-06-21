@@ -76,6 +76,51 @@ This bifurcates the root cause and is the pivotal verification:
 reserves): compare *single-test-isolation* time vs *full-suite-marginal* time (suite-with-test
 minus suite-without). Cheap, decisive, and host-load-tolerant if run carefully. NOT run here.
 
+## VERDICT (b)-vs-(c): Pop-A is DEBUG-BUILD AMPLIFICATION, restorable to per-PR
+
+> **OPEN (append in follow-up):** g-z tail names pending fierce-hawk's cap-6s pass; this verdict
+> is settled. (#5447 flipped ready 2026-06-21 per the >30min nudge threshold; docs-only, so the
+> inherited #5445 main-red CI is irrelevant to its correctness.)
+
+The decisive measurement uses the **release** `gunbc` CLI as the (b)-vs-(c) discriminator:
+
+| compile (release CLI, full pipeline) | wall |
+|---|--:|
+| 2-line no-import file (`--source-root` = 1 file) | **0.010s** |
+| std-importing snippet, **`--source-root dsl`** → indexes **387 modules** + resolves the `std.types` closure + typechecks | **0.099s** |
+
+The release seed compiler does the **entire whole-tree index (387 module decls) + transitive
+resolve + typecheck in ~0.1s** — the *same* work the **debug** test binary takes ~55–80s (floor)
++ ~27–44s/test for (measured above). The per-PR rust gate runs `cargo test` **in debug**
+(`ci_spec.dag ci_rust_gate_test_command` = `cargo test … --` , no `--release`), so the
+unoptimized seed compiler runs ~100–800× slower → the 28–118s/test isolation numbers.
+
+**Therefore Pop-A's cost is NOT (c) seed-structural / self-host's problem — it is DEBUG-BUILD
+AMPLIFICATION (a build-config / test-infra (b)).** Both earlier hypotheses are refuted: it is
+not a shared-prelude payload (import-invariant), and the release compiler proves the algorithm
+is fast. Two contributing levers, both fixable now:
+
+1. **Compiler optimization in the test profile (the big lever).** Add a Cargo profile override so
+   `v1-compiler` builds optimized under `cargo test` — e.g. in `Cargo.toml`:
+   `[profile.test.package.v1-compiler] opt-level = 3` (and/or `[profile.dev.package.v1-compiler]`).
+   This optimizes only the hot compiler dependency (the test harness still compiles fast), so the
+   per-test cost collapses from ~tens-of-seconds toward the release ~0.1s. **This restores the
+   ~21 Pop-A tests to per-PR coverage** — #5427 then would not need `ignore=expensive` on them,
+   closing the coverage hole directly (beats the nightly lane).
+2. **module_index light-scan (part-a, already handed off).** The test helper's `module_index`
+   full-`parse_source` of the whole tree (vs the CLI's light first-lines `extract_module_path`
+   scan, which indexed 387 modules in ~0.1s release) is an *additional* floor cost; the light
+   scan removes it. Independent of lever 1.
+
+**Recommended next step (build-config worker, not me — needs proof-by-execution):** apply the
+`opt-level` override and re-measure the Pop-A suite under `cargo test` (debug-harness +
+optimized compiler). Expect per-test to drop from ~30–118s toward sub-second. Confirm the rust
+gate's total wall stays acceptable (the one-time optimized `v1-compiler` build is shared with the
+floor's existing release `gunbc`/`claim_executor` builds, so marginal build cost should be low).
+*Caveat:* the direct `cargo test --release` confirmation run was blocked by an sccache fleet
+flake (10-min build died); the release-CLI 0.1s result is the standing proof and is decisive on
+its own (same compiler code path).
+
 ## Verify experiment — Pop-A floor decomposition (measured, this branch)
 
 Parent-authorized discriminating measurement (warm build, `--test-threads=1`, **box under load
