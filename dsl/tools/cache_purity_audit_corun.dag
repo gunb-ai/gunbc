@@ -58,6 +58,35 @@ fn gunbc_cache_purity_audit_per_shard_peak_rss_bytes() -> ByteSize {
   concurrent_memory_peak_per_share(sample: gunbc_cache_purity_audit_measured_peak)
 }
 
+// ── MEASURED co-run topology (the numbers the off-critical-path decision rests on) ────────────
+// Committed observations from the width-4 full-corpus run (this PR), so the "it fits off the floor
+// critical path" conclusion is DERIVED from measured facts (the fit witness in the corun_test), not
+// asserted. Re-stamp on re-measure. wall/entries/reach are plain counts; the peak is the ByteSize
+// carrier reused by the width fold above.
+type CachePurityAuditCorunMeasurement {
+  aggregate_peak: ByteSize   // whole-orchestrator VmHWM at the sampled width
+  width: Int                 // shards sampled concurrently
+  wall_seconds: Int          // wall-clock of the full sharded sweep
+  entries_audited: Int       // full discovery corpus
+  decoded: Int               // codec truly exercised (warm decode == cold)
+  miss_on_read: Int          // too deep for serde's 128-level decode → production recomputes (FAIL-SAFE)
+  rejected: Int
+  skipped: Int
+  violations: Int            // warm!=cold divergences (0 = the cache codec is pure over the corpus)
+}
+
+data gunbc_cache_purity_audit_corun_measurement: CachePurityAuditCorunMeasurement = CachePurityAuditCorunMeasurement {
+  aggregate_peak: byte_size(18609078272)
+  width: 4
+  wall_seconds: 695
+  entries_audited: 291
+  decoded: 62
+  miss_on_read: 229
+  rejected: 0
+  skipped: 0
+  violations: 0
+}
+
 // Audit fan-out cap (shard_count): the residual-budget term only REDUCES width below this. 4 matches
 // the measured run; the corpus is partitioned idx % width so K shards cover all 291 exactly once.
 data gunbc_cache_purity_audit_shard_count: Int = 4

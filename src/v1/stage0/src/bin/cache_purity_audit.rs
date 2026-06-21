@@ -77,7 +77,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--max-entries" => {
                 i += 1;
-                a.max_entries = Some(parse_usize(&arg_value(&raw, i, "--max-entries")?, "--max-entries")?);
+                a.max_entries = Some(parse_usize(
+                    &arg_value(&raw, i, "--max-entries")?,
+                    "--max-entries",
+                )?);
             }
             "--shard" => {
                 i += 1;
@@ -135,26 +138,42 @@ fn run_leaf(a: &Args) -> Result<ExitCode, ExitCode> {
         if test_env_matches("GUNBC_CPA_TEST_VIOLATE_SHARD", s.index) {
             // Synthetic warm!=cold in THIS shard: write a result with a violation and exit 1.
             println!("::error title={}::synthetic warm!=cold violation injected in shard {}/{} (test hook)", a.notice_title, s.index, s.count);
-            write_result_file(rf, &CorpusAuditReport { entries_discovered: 0, entries_audited: 1, decoded: 0, miss_on_read: 0, rejected: 0, skipped: 0, violations: Vec::new() }, 1);
+            write_result_file(
+                rf,
+                &CorpusAuditReport {
+                    entries_discovered: 0,
+                    entries_audited: 1,
+                    decoded: 0,
+                    miss_on_read: 0,
+                    rejected: 0,
+                    skipped: 0,
+                    violations: Vec::new(),
+                },
+                1,
+            );
             return Err(ExitCode::from(1));
         }
         if test_env_matches("GUNBC_CPA_TEST_DROP_SHARD", s.index) {
             // Simulate an OOM-kill / crash: exit WITHOUT writing a result file. The orchestrator must
             // treat the missing result as a fail-closed drop (NOT silently pass).
-            eprintln!("cache_purity_audit: shard {}/{} dropping (test hook, no result file)", s.index, s.count);
+            eprintln!(
+                "cache_purity_audit: shard {}/{} dropping (test hook, no result file)",
+                s.index, s.count
+            );
             std::process::exit(137);
         }
     }
 
     println!("::group::{}", a.notice_title);
-    let report = match audit_floor_discovery_corpus(&a.source_roots, &a.scan_dirs, a.max_entries, a.shard) {
-        Ok(r) => r,
-        Err(setup_err) => {
-            println!("::error title={}::{setup_err}", a.notice_title);
-            println!("::endgroup::");
-            return Err(ExitCode::from(1));
-        }
-    };
+    let report =
+        match audit_floor_discovery_corpus(&a.source_roots, &a.scan_dirs, a.max_entries, a.shard) {
+            Ok(r) => r,
+            Err(setup_err) => {
+                println!("::error title={}::{setup_err}", a.notice_title);
+                println!("::endgroup::");
+                return Err(ExitCode::from(1));
+            }
+        };
 
     for v in &report.violations {
         println!("::error title={}::{v}", a.notice_title);
@@ -189,7 +208,10 @@ fn orchestrate(a: &Args) -> Result<ExitCode, ExitCode> {
             Ok(w) => w,
             Err(msg) => {
                 // Fail-closed: an unevaluable width is NOT a green.
-                println!("::error title={}::width derivation failed: {msg}", a.notice_title);
+                println!(
+                    "::error title={}::width derivation failed: {msg}",
+                    a.notice_title
+                );
                 return Err(ExitCode::from(1));
             }
         },
@@ -220,7 +242,12 @@ fn orchestrate(a: &Args) -> Result<ExitCode, ExitCode> {
         let cache = orchestrator_tempdir("cache", idx);
         let result = orchestrator_tempdir("result", idx).join("result.txt");
         if let Err(e) = std::fs::create_dir_all(&cache) {
-            return fail_spawn(a, idx, &format!("could not create shard cache dir: {e}"), &tmp_caches);
+            return fail_spawn(
+                a,
+                idx,
+                &format!("could not create shard cache dir: {e}"),
+                &tmp_caches,
+            );
         }
         if let Some(parent) = result.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -234,7 +261,8 @@ fn orchestrate(a: &Args) -> Result<ExitCode, ExitCode> {
             cmd.arg("--scan-dir").arg(d);
         }
         cmd.arg("--result-file").arg(&result);
-        cmd.arg("--notice-title").arg(format!("{} shard {idx}/{width}", a.notice_title));
+        cmd.arg("--notice-title")
+            .arg(format!("{} shard {idx}/{width}", a.notice_title));
         cmd.env("GUNBC_RESOLVED_GRAPH_CACHE_DIR", &cache);
         match cmd.spawn() {
             Ok(child) => children.push((idx, child, result)),
@@ -252,7 +280,9 @@ fn orchestrate(a: &Args) -> Result<ExitCode, ExitCode> {
         let status = child.wait();
         let exit_code = status.as_ref().ok().and_then(|s| s.code());
         let succeeded = status.as_ref().map(|s| s.success()).unwrap_or(false);
-        let parsed = std::fs::read_to_string(&result).ok().and_then(|s| parse_result_line(&s));
+        let parsed = std::fs::read_to_string(&result)
+            .ok()
+            .and_then(|s| parse_result_line(&s));
         match parsed {
             Some(rep) if succeeded && rep.violations == 0 => {
                 agg.add(&rep);
@@ -295,7 +325,13 @@ fn orchestrate(a: &Args) -> Result<ExitCode, ExitCode> {
     println!(
         "cache purity audit (co-run, full corpus): {} shards · audited {} · [decoded {} · \
          miss-on-read(deep, fail-safe) {} · rejected {} · skipped {}] · violations {}",
-        width, agg.audited, agg.decoded, agg.miss_on_read, agg.rejected, agg.skipped, total_violations
+        width,
+        agg.audited,
+        agg.decoded,
+        agg.miss_on_read,
+        agg.rejected,
+        agg.skipped,
+        total_violations
     );
     if agg.miss_on_read > 0 {
         println!(
@@ -341,7 +377,10 @@ fn eval_audit_width(a: &Args) -> Result<usize, String> {
     let value = run_in_context_with_args(
         &ctx,
         function,
-        &[(Some("memory_budget_bytes".to_string()), Value::Int(budget_arg))],
+        &[(
+            Some("memory_budget_bytes".to_string()),
+            Value::Int(budget_arg),
+        )],
         false,
     )
     .map_err(|e| format!("width eval failed ({entry}::{function}): {e}"))?;
@@ -357,7 +396,10 @@ fn fail_spawn(a: &Args, idx: usize, msg: &str, tmp: &[PathBuf]) -> Result<ExitCo
     for c in tmp {
         let _ = std::fs::remove_dir_all(c);
     }
-    println!("::error title={}::shard {idx} could not be launched: {msg} (fail-closed)", a.notice_title);
+    println!(
+        "::error title={}::shard {idx} could not be launched: {msg} (fail-closed)",
+        a.notice_title
+    );
     println!("::endgroup::");
     Err(ExitCode::from(1))
 }
@@ -466,7 +508,10 @@ fn orchestrator_tempdir(kind: &str, idx: usize) -> PathBuf {
 }
 
 fn test_env_matches(var: &str, idx: usize) -> bool {
-    std::env::var(var).ok().and_then(|v| v.parse::<usize>().ok()) == Some(idx)
+    std::env::var(var)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        == Some(idx)
 }
 
 fn parse_usize(raw: &str, flag: &str) -> Result<usize, ExitCode> {

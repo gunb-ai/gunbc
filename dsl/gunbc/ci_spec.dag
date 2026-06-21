@@ -7,6 +7,7 @@ import gunbc.ci_layer_roots {
   witness_layer_source_flags
 }
 import tools.build_step { BuildArtifact, verifications_script }
+import tools.cache_purity_audit_corun { cache_purity_audit_corun_command }
 import extdeps.languages.bash.program { ShellWord, Concat, lit, var_ref }
 
 type Gate
@@ -18,7 +19,6 @@ type Gate
   | DslCompileCleanGate
   | CiYamlGate
   | SourceRootIngestGate
-  | CachePurityAuditGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -45,8 +45,7 @@ data gunbc_ci_gates: List<Gate> = [
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   CiYamlGate,
-  SourceRootIngestGate,
-  CachePurityAuditGate
+  SourceRootIngestGate
 ]
 
 data gunbc_ci_spec: CiSpec = {
@@ -149,7 +148,10 @@ fn ci_release_artifact(name: String) -> BuildArtifact {
 
 data ci_floor_required_artifacts: List<BuildArtifact> = [
   ci_release_artifact(name: "claim_executor"),
-  ci_release_artifact(name: "gunbc")
+  ci_release_artifact(name: "gunbc"),
+  // The cache-purity audit co-process (ROADMAP §2 P3): verify the bin exists before the run-step
+  // backgrounds it, so a missing build fails loudly at verify, not silently at the co-run launch.
+  ci_release_artifact(name: "cache_purity_audit")
 ]
 
 // Source packages whose `.rs` files and manifests determine the `claim_executor`/`gunbc` build
@@ -257,13 +259,40 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   )
 }
 
+fn ci_run_join_lines(xs: List<String>) -> String {
+  fold(xs, init: "", f: (acc, s) => concat(acc, s))
+}
+
+// The floor scheduler runs with the warm==cold cache-purity audit as a CONCURRENT CO-PROCESS
+// (ROADMAP §2 P3): the audit orchestrator is backgrounded on the host's spare capacity (128t/128 GiB
+// fleet; floor peaks ~8.4 GB), the floor runs in the foreground, and the step JOINS them FAIL-CLOSED
+// — RED if EITHER the floor OR the audit (any shard warm!=cold, or a crashed/OOM'd/dropped shard)
+// fails. `set +e` so an early FLOOR failure does NOT skip the audit `wait` (an orphaned, uncollected
+// audit = the co-process fail-open this guards against). Build+fetch above ran under the step's
+// `set -e` (fail-fast); only this join section manages exit codes by hand. Measured: full-corpus
+// width-4 audit ≈ 695s wall < floor wall, 17.7 GB aggregate (+ floor 8.4 GB ≪ budget) → ~0 added
+// wall-clock, full 291-entry coverage every run, off the floor critical path.
+fn gunbc_ci_floor_with_co_audit(spec: CiSpec) -> String {
+  ci_run_join_lines([
+    "set +e\n",
+    concat(cache_purity_audit_corun_command(), " > \"$ROOT/cpa_audit.log\" 2>&1 &\n"),
+    "CPA_PID=$!\n",
+    concat(scheduler_invoke(spec: spec), "\n"),
+    "FLOOR_RC=$?\n",
+    "wait \"$CPA_PID\"; CPA_RC=$?\n",
+    "echo \"::group::cache purity audit (co-run, full corpus)\"; cat \"$ROOT/cpa_audit.log\" 2>/dev/null || true; echo \"::endgroup::\"\n",
+    "if [ \"$FLOOR_RC\" -ne 0 ]; then echo \"::error::CI floor failed (exit $FLOOR_RC)\"; exit \"$FLOOR_RC\"; fi\n",
+    "if [ \"$CPA_RC\" -ne 0 ]; then echo \"::error::cache purity audit (co-run) failed — warm!=cold on the discovery corpus, or a shard dropped (DESIGN §5 fail-closed)\"; exit 1; fi\n"
+  ])
+}
+
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
   concat(
     concat(
       concat(ci_release_build_script(), "\n"),
       concat(git_fetch_script(policy: spec.diff_policy), "\n")
     ),
-    scheduler_invoke(spec: spec)
+    gunbc_ci_floor_with_co_audit(spec: spec)
   )
 }
 

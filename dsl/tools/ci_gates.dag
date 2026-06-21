@@ -15,7 +15,7 @@ import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate,
-  SourceRootIngestGate, CachePurityAuditGate
+  SourceRootIngestGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
@@ -24,7 +24,6 @@ import tools.resolved_imports_gate { run_resolved_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
 import tools.ci_yaml_gate { run_ci_yaml_gate }
-import tools.cache_purity_audit_gate { run_cache_purity_audit_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -42,7 +41,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
-    CachePurityAuditGate => run_cache_purity_audit_gate()
   }
 }
 
@@ -55,9 +53,12 @@ func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
   let g4 = if exit_ok(g3) { run_spec_gate(g: ExtdepsExternalAuthorityGate) } else { g3 }
   let g5 = if exit_ok(g4) { run_spec_gate(g: DslCompileCleanGate) } else { g4 }
   let g6 = if exit_ok(g5) { run_spec_gate(g: CiYamlGate) } else { g5 }
-  let g7 = if exit_ok(g6) { run_spec_gate(g: SourceRootIngestGate) } else { g6 }
-  if exit_ok(g7) { run_spec_gate(g: CachePurityAuditGate) } else { g7 }
+  if exit_ok(g6) { run_spec_gate(g: SourceRootIngestGate) } else { g6 }
 }
+
+// NB the warm==cold cache-purity audit is NOT a sequential gate: it runs as a CO-PROCESS of the floor
+// job (tools.cache_purity_audit_corun), concurrent with claim_executor and joined fail-closed at the
+// end of the run-step (ROADMAP §2 P3) — full coverage off the floor critical path.
 
 func main() -> ProcessExit {
   run_ci_gates_sequential(spec: gunbc_ci_spec)

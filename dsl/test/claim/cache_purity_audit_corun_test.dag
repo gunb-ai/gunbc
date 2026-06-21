@@ -10,7 +10,12 @@
 
 module test.claim.cache_purity_audit_corun
 
-import tools.cache_purity_audit_corun { gunbc_cache_purity_audit_spawn_width_value }
+import std.measure { byte_size_count }
+import tools.cache_purity_audit_corun {
+  gunbc_cache_purity_audit_spawn_width_value,
+  gunbc_cache_purity_audit_corun_measurement,
+}
+import gunbc.ci_floor_measurement { gunbc_ci_floor_measured_peak }
 
 // Healthy real-fleet host (128 GB): residual 0.8·128 − 8.4 = 94 GB ≫ 4·4.65 GB → memory non-binding,
 // width = shard_count cap (4). RED if the residual term were ignored (would still be 4 here, but the
@@ -33,8 +38,35 @@ fn audit_corun_unreadable_budget_fallback() -> Bool {
   gunbc_cache_purity_audit_spawn_width_value(memory_budget_bytes: 0) == 2
 }
 
+// ── topology: the measured numbers ENCODE the "fits off the floor critical path" decision ─────
+// Internal consistency: the reach split partitions the audited corpus exactly (62 + 229 + 0 + 0 ==
+// 291). A typo in the committed measurement (a miss-stamp) flips this RED.
+fn audit_corun_reach_split_partitions_corpus() -> Bool {
+  let m = gunbc_cache_purity_audit_corun_measurement
+  m.decoded + m.miss_on_read + m.rejected + m.skipped == m.entries_audited
+}
+
+// The cache codec is PURE over the full corpus: zero warm!=cold divergences in the measured run.
+fn audit_corun_pure_over_full_corpus() -> Bool {
+  gunbc_cache_purity_audit_corun_measurement.violations == 0
+}
+
+// The co-run FITS the host budget concurrently: measured audit aggregate peak (17.7 GB) + the floor's
+// measured concurrent peak (8.4 GB) ≤ 0.8·128 GB (the safety-fractioned fleet budget). This is the
+// "off the floor critical path" conclusion DERIVED from measured facts, not asserted — 27 GB ≪ 102 GB,
+// so the audit co-runs on the host's spare capacity without busting the shared cgroup.
+fn audit_corun_fits_host_budget_concurrently() -> Bool {
+  let audit_peak = byte_size_count(b: gunbc_cache_purity_audit_corun_measurement.aggregate_peak)
+  let floor_peak = byte_size_count(b: gunbc_ci_floor_measured_peak.peak)
+  let safe_budget = (128000000000 * 4) / 5
+  audit_peak + floor_peak <= safe_budget
+}
+
 test fn cache_purity_audit_corun_witnesses() -> Bool {
   audit_corun_healthy_host_width_is_shard_count()
     && audit_corun_tiny_budget_fails_closed()
     && audit_corun_unreadable_budget_fallback()
+    && audit_corun_reach_split_partitions_corpus()
+    && audit_corun_pure_over_full_corpus()
+    && audit_corun_fits_host_budget_concurrently()
 }

@@ -39,12 +39,12 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || (x == target) })
 }
 
-// Four readiness layers: compile-clean (root), then the corpus + cheap gates, then the serialized
-// heavy source-root-ingest resolve, then the serialized heavy cache-purity audit (it resolves the
-// whole corpus cold+warm). At most one heavy whole-tree resolve per layer, so none co-runs with
-// the corpus or with each other once run_walk launches a whole layer at once.
-fn witness_four_readiness_layers() -> Bool {
-  gunbc_ci_floor_batches().length() == 4
+// Three readiness layers: compile-clean (root), then the corpus + cheap gates, then the serialized
+// heavy source-root-ingest resolve. At most one heavy whole-tree resolve per layer, so none co-runs
+// with the corpus once run_walk launches a whole layer at once. (The warm==cold cache-purity audit
+// is NOT a floor layer — it runs as a co-process of the floor job, ROADMAP §2 P3.)
+fn witness_three_readiness_layers() -> Bool {
+  gunbc_ci_floor_batches().length() == 3
 }
 
 // Dependency order: the compile-clean gate is the SOLE batch-0 job.
@@ -117,18 +117,6 @@ fn witness_source_ingest_serialized_after_corpus() -> Bool {
     list_contains_str(xs: batch_functions(b: ingest_layer), target: "source_root_ingest_gate_passes")
 }
 
-// The cache-purity audit (a heavy cold+warm whole-corpus resolve) is serialized into its OWN
-// later layer (batch 3) — NOT the corpus layer and NOT the ingest layer. Discriminating: drop the
-// `floor_audit_serializes_behind_ingest` chain edge and it re-joins the ingest layer (two heavy
-// resolves co-run), flipping this RED.
-fn witness_cache_purity_audit_serialized_after_ingest() -> Bool {
-  let batches = gunbc_ci_floor_batches()
-  let ingest_layer = batches.skip(n: 2).first()
-  let audit_layer = batches.skip(n: 3).first()
-  !list_contains_str(xs: batch_functions(b: ingest_layer), target: "cache_purity_audit_gate_passes") &&
-    list_contains_str(xs: batch_functions(b: audit_layer), target: "cache_purity_audit_gate_passes")
-}
-
 // §5 plan oracle bundled with its discriminating control (true-when-correct, so discovery-safe):
 // every scheduled readiness layer carries at most one heavy whole-tree resolve, AND dropping the
 // serialization edge co-runs two in the corpus layer. The witness that would catch a concurrent
@@ -139,7 +127,7 @@ fn witness_plan_serializes_heavy_resolves() -> Bool {
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
-  witness_four_readiness_layers() &&
+  witness_three_readiness_layers() &&
     witness_compile_root_runs_first() &&
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
@@ -148,6 +136,5 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_corpus_has_no_explicit_entries() &&
     witness_corpus_skip_node_frontier_enabled() &&
     witness_source_ingest_serialized_after_corpus() &&
-    witness_cache_purity_audit_serialized_after_ingest() &&
     witness_plan_serializes_heavy_resolves()
 }

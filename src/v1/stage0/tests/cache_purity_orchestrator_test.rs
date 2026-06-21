@@ -43,7 +43,10 @@ fn orchestrate(width: &str, hook: Option<(&str, &str)>) -> std::process::Output 
 #[test]
 fn orchestrator_fails_closed_on_width_zero() {
     let out = orchestrate("0", None);
-    assert!(!out.status.success(), "width 0 must fail closed (non-zero exit)");
+    assert!(
+        !out.status.success(),
+        "width 0 must fail closed (non-zero exit)"
+    );
     let log = String::from_utf8_lossy(&out.stdout);
     assert!(
         log.contains("residual budget too small"),
@@ -56,7 +59,10 @@ fn orchestrator_fails_closed_on_width_zero() {
 #[test]
 fn orchestrator_red_on_violation_in_last_shard() {
     let out = orchestrate("4", Some(("GUNBC_CPA_TEST_VIOLATE_SHARD", "3")));
-    assert!(!out.status.success(), "a violation in the last shard must fail the run");
+    assert!(
+        !out.status.success(),
+        "a violation in the last shard must fail the run"
+    );
     let log = String::from_utf8_lossy(&out.stdout);
     assert!(
         log.contains("shard 3 RED") && log.contains("violations 1"),
@@ -69,7 +75,10 @@ fn orchestrator_red_on_violation_in_last_shard() {
 #[test]
 fn orchestrator_red_on_dropped_shard() {
     let out = orchestrate("4", Some(("GUNBC_CPA_TEST_DROP_SHARD", "2")));
-    assert!(!out.status.success(), "a dropped/crashed shard must fail the run (fail-closed)");
+    assert!(
+        !out.status.success(),
+        "a dropped/crashed shard must fail the run (fail-closed)"
+    );
     let log = String::from_utf8_lossy(&out.stdout);
     assert!(
         log.contains("shard 2 DROPPED") && log.contains("no parseable result"),
