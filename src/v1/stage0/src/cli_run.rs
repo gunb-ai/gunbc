@@ -3843,13 +3843,11 @@ mod manifest_emit_tests {
             "DslTree"
         );
         // fail-closed survives normalization: a file under no root is still rejected.
-        assert!(
-            source_root_ref_token_for_path(
-                ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
-                &abs_roots
-            )
-            .is_err()
-        );
+        assert!(source_root_ref_token_for_path(
+            ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
+            &abs_roots
+        )
+        .is_err());
     }
 }
 
