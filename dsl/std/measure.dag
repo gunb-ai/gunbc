@@ -281,6 +281,57 @@ fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
   m.count
 }
 
+// --- Lifted measure algebra (expressibility-frontier §3 ① wall) -----------
+// docs/plans/expressibility-frontier.md §3 ①: a consumer that "unwraps a Measure
+// to its raw count, does host arithmetic, and rewraps" — the
+// unwrap→raw-arith→rewrap round-trip — is *provably* the lifted op by the
+// homomorphism law `wrap(op_M(unwrap a, unwrap b)) = op_T(a, b)`. Providing op_T
+// here makes the unwrap-form a redundancy rather than the only path; FENCING the
+// projector (making `byte_size_count`-then-rewrap unwritable) is the §2 ②-residue
+// lens follow-up, NOT this slice.
+//
+// Rounding direction is the §3 ② residue — a §5 "round toward pessimism" choice no
+// type can pick (the spec splits it three ways: demand ceils, capacity floors,
+// fit-count floors). These two ops are the two FLOOR cases the spawn-width consumer
+// (std.realization_width) needs: a fractioned *capacity* (a budget is still a
+// budget) floors, and a *fit-count* ("how many fit") floors. A ceil-rounding
+// *demand* op is deliberately NOT minted — no consumer demands it (DESIGN §6
+// construction-over-ratchets: no carrier ahead of demand).
+//
+// `<M>` is fixed at `Nat`: the bodies do concrete numeric arithmetic (`*`, `/`)
+// over `count`, the same algebra-inhabitance substrate gap `time_measure` /
+// `GroupCompletion<M>` already carry (generic `<M>` arithmetic needs the
+// where-clause lane). `<Q>` / `<S>` stay generic so a single authority spans every
+// Measure breadth (DESIGN §2 horizontal: one concept, every breadth) — the op is
+// not re-coined per alias (cf. `measure_count`).
+
+// `Measure × num/den → Measure`, rounded DOWN — the §3 ② *capacity* case (a
+// fractioned budget is still a budget). Fail-closed (§5): a zero denominator yields
+// a zero magnitude, never a host divide-by-zero.
+fn measure_scale_fraction_floor<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
+  if den == 0 {
+    Measure { count: 0 }
+  } else {
+    Measure { count: (measure_count(m: m) * num) / den }
+  }
+}
+
+// "How many fit": `Measure ÷ Measure → count`, rounded DOWN — the §3 ② *fit-count*
+// case. The return type is a dimensionless `Nat`, NOT a `Measure`: that different
+// return type is the §3 ① wall against fusing fit-count with capacity-scaling (a
+// raw-`Nat` divide that returned the wrong type is a type error, not a flagged
+// smell). Fail-closed (§5): a zero divisor yields 0, never a host divide-by-zero; a
+// consumer wanting forward progress on an unknown `each` guards positivity at its
+// own boundary.
+fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, S, Nat>) -> Nat {
+  let each_count = measure_count(m: each)
+  if each_count == 0 {
+    0
+  } else {
+    measure_count(m: capacity) / each_count
+  }
+}
+
 // Generic time-measure constructor: a `Time` magnitude at ANY scale `<S>`, magnitude
 // fixed at the concrete `Nat` node. This is the scale-AGNOSTIC surface the realization /
 // measurement framework (std.realization_measurement) builds its roll-up algebra on —

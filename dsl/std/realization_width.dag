@@ -30,6 +30,8 @@ import std.measure {
   Nano,
   byte_size,
   byte_size_count,
+  measure_scale_fraction_floor,
+  measure_fit_count_floor,
   hardware_thread_count,
   hardware_thread_count_value,
   time_measure,
