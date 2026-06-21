@@ -79,13 +79,30 @@ here is the §0 in-scope "cache trustworthy" item. → [plan](docs/plans/realiza
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
 - blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 v2 cross-tree content-hash / increment-4 (gates P5)
 
-## 3. Complexity / synthesis lens over the whole codebase
+## 3. Algorithmic-cost reduction — rewrite suboptimal patterns by construction
+
+The real goal (*not* per-fn budgets): catch the common cases a normal developer hits
+(`O(n²)→O(n)`, `O(2ⁿ)→O(n)`, `O(n)→O(log n)`) and **rewrite** them to the cheaper equivalent —
+construction, not a warning (the §2 redundancy move on the *cost* axis). **Bulletproof where it fires**
+(absolute soundness, fail-closed), **honestly finite** (a published catalog; silence ≠ optimal), never
+an optimality oracle. → [plan](docs/plans/algebraic-rewrite-optimization.md)
+
+**Foundation — the cost oracle the rewrite engine trusts:**
 
 - [x] complexity lens gates a curated roster (COMPREP wave-1: add / bind / branch / loop)
-- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — makes budgets non-toothless
-  - [ ] a subject-producer for every fn (not name-keyed placeholders)
-    - [ ] complexity budget gates the whole codebase
-- [ ] synthesis stays advisory (feasibility limit, not a wiring gap)
+- [ ] cost-lens zero-absorption fix (`symbolic_max` floor) — the class-delta oracle must not lie
+- [ ] a subject-producer for every fn (not name-keyed placeholders)
+
+**The rewrite lane (seed → catalog):**
+
+- [ ] framework + **2 seed rules** (`nested-membership→set` O(n²)→O(n); `naive-recursion→memoize` O(2ⁿ)→O(n)) — each with the **four-witness DONE bar** (rewrites · class drops · equivalence-by-execution · non-firing control). *⚠ canonical-form-is-truth adds a pipeline normalization pass — load-bearing, escalate before editing stages*
+  - [ ] **corpus hit-rate acceptance gate** — run the catalog over real code, report % files with ≥1 finding ("surprised if it missed something," made measurable)
+    - [ ] grow the catalog by rows (Tier-1 pure-effect, then Tier-2 refinement-typed: binary search, heap; constant-factor fusion/hoist deferred)
+- [ ] transparency report: "rewrote N; classes X→Y; does **not** verify global optimality"
+
+**Residue (undecidable tail — stays advisory, never gates):**
+
+- [ ] synthesis lens stays advisory — lower-bound gap; by Rice, optimality is a *ratchet forever*, not a wall (DESIGN §5)
 
 ## 4. Testgen as the bug-class oracle (coverage by construction)
 
