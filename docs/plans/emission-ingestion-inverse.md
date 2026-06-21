@@ -132,6 +132,66 @@ pure wall ⇒ `program.dag` is deletable. Discriminating witness: a fresh non-ed
 `ShellStmt` goes RED; an edge module does not. This is what makes `shell(intent())` a realization-edge
 feature, never authored inside consumer code. **Ties to §6** (the item it protects).
 
+### 5.1 Generalization: the medium must stay a `Node`, string only at the edge
+
+The §5 guard catches a module *importing* a target AST it shouldn't. But there is a sin **one rung
+earlier**: a medium that is *never modeled as an AST at all* — its syntax authored as **string literals**
+and its correctness checked by **string-grep over the emitted output**. The §5 import-predicate cannot see
+this, because there is no import to flag. The CI-YAML workflow is the live example, and it is the same
+violation, generalized.
+
+**The single rule:**
+
+> A target medium — and every sub-language embedded in it — stays a modeled `Node` from authoring through
+> checking. A raw string is legitimate **only** at the realization edge (the grammar-row emitter). Both
+> *writing* target syntax as a string literal and *inspecting* emitted output with string operations are
+> the same violation: the medium's structure has leaked out of the `Node` into a string.
+
+**Why it is one rule** (the §3 architecture above, turned on the *check* direction): emission = ingestion⁻¹
+means a medium round-trips model↔string through the *same* grammar rows read both ways. A
+`string_contains(yaml, "${{ env.RUNNER_TEMP }}")` check is therefore an **ad-hoc partial re-ingest** — it
+re-implements a sliver of the parser to recover a fact the `Node` already holds. That is precisely the
+N×M heuristic the closed substrate forbids (§4 of DESIGN): fragile (misses `${{env.RUNNER_TEMP}}` without
+the spaces, or a newline-folded variant), lossy, and **fail-open** (an unanticipated surface form passes
+silently — §5 of DESIGN). The rule reduces to: **never re-ingest by string; walk the model.**
+
+**Two faces, one leak** (DESIGN §2-horizontal):
+- *emit-side* — inline target syntax in a string literal outside the realization edge
+  (`"${{ runner.temp }}"` in `dsl/gunbc/ci_workflow.dag`; `RunsOnExpression { expression: String }` 🟡 in
+  `extdeps/github/actions.dag` — the GHA expression language modeled as an opaque `String`);
+- *check-side* — string ops over an emitted-medium value (`string_contains(expected_ci_yml(), …)`, ~30 of
+  them in `dsl/test/claim/ci_yaml_serializer_witness_test.dag`, incl. the operator's
+  `witness_no_runner_env_vars_accessed_via_env_context`).
+
+**The audit census (worst → best — the spectrum is the finding):**
+
+| medium | state | tell |
+| --- | --- | --- |
+| GitHub Actions `${{ }}` expression language | **opaque `String`** (🟡 scaffold) — worst | `actions.dag` `*Expression { expression: String }`; inline `${{ runner.temp }}`/`${{ hashFiles(…) }}` in `ci_workflow.dag` |
+| CI YAML structure + shell-in-`run:` | partly modeled, values strings; **three nested unmodeled languages** (YAML + GHA-expr + shell) all grepped | `ci_yaml_serializer_witness_test.dag`, `ci_runner_seam_witness_test.dag` |
+| bash intent (`program.dag`) | sidecar AST, 11 importers | the §5 guard's existing target |
+| **markup** (react/html/markdown) | **modeled with escape semantics + MODEL-level discriminating witnesses** — the target state | `react_markup_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep |
+
+Markup already does it right; the CI YAML is the same problem three layers deep, still strings.
+
+**Mechanism (extend §5's predicate, don't fork):** the same host-enumerated `LayerImportFact`-style sweep,
+two added detectors keyed on a per-medium **grounded** syntax-marker set (the *real* upstream tokens —
+`${{`, the YAML structural tokens, the shell metacharacters — cited from each medium's spec, not a
+heuristic): (a) a string literal containing a medium's syntax markers in a non-edge module; (b) a
+string-op (`string_contains`/`starts_with`/…) whose receiver is an emitted-medium value in a non-edge
+module. Both are `MediumStructureLeak`, the generalization of `RealizationVocabularyLeak`.
+
+**Frontier placement** (per [expressibility-frontier](expressibility-frontier.md)): **② now** — flag the
+two faces over a **shrinking roster** (same shape as §5); **① wall** — once a medium is a `Medium<R>`
+`Node` emitted via grammar rows, *"no runner env var accessed"* is a **model walk**
+(`workflow.steps.any(s ⇒ s.env.references(RunnerContext.Temp))`) or **unwritable** (the model has no
+`RunnerEnvContext` variant for those vars), and the grep dissolves; **③** — none, fully decidable.
+**Dissolve-on:** each medium modeled as a `Node` emitted via grammar rows (GHA-expr first — it is the most
+anemic) ⇒ its roster entries empty ⇒ the guard flips from ratchet to wall. **First instance** (operator,
+2026-06-21): model the GHA env/runner context so `${{ env.RUNNER_TEMP }}` is a `Node`
+(`RunnerContextRef { var: RunnerTemp }`) and rewrite the witness as a model walk — the ① form if the model
+simply has no such variant.
+
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
 Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dsl")`
