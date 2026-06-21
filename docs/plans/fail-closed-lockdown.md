@@ -17,6 +17,16 @@ machine, dogfood daily, sell the pieces — infra/website/billing/backend — on
 The test for "locked": (a) wired into the floor (discovered + run), (b) fail-closed (RED on violation,
 never a warning), (c) green-by-execution with a **discriminating** input that goes RED when wrong.
 
+**But the stronger move is CONSTRUCTION, not validation (the operator principle).** A lens/gate is
+*validation* — it catches a bad thing post-hoc, which concedes the bad thing is *writable*. Root-cause
+instead and make it **unwritable**: single authority, realization **derived from** the model. A lens is
+*last resort*, reserved for the genuinely-unstructurable (complexity / necessity — you cannot
+structurally forbid an *unnecessary* loop). Live proof: #5423's key-completeness *lens* was spec-only —
+the worker satisfied it by editing the declaration while the realizer still faked the key
+(`from_utf8_lossy`), shipping a **false-green** a human caught. The construction fix (derive the realized
+key *from* `inputs_considered`) makes that divergence unwritable, lens unneeded. So §4 below is ordered
+**construction-first**; the lens items are the residue that survives it.
+
 ## 1. What IS enforced fail-closed today (the good baseline)
 
 | Gate | Scope | Evidence |
@@ -100,21 +110,30 @@ enforce the syllogism — every claim a consequence-chain back to an axiom, **no
 acyclicity test turned on this document; the §7 recursion). Currently not modeled at all (grep empty).
 This is the apex lock-down: a design claim with no axiom-chain is an orphan = should be RED.
 
-## 4. Lock-down checklist (the meta-gate — blocks expansion)
+## 4. Lock-down checklist (blocks expansion)
 
-Ordered so each makes a class of fail-open *unwritable*. The cache items are the operator's top priority.
+Two tiers: **construction** (the class becomes unwritable — this is the real work) then **lens** (the
+residue that genuinely can't be made impossible by construction). The cache items are the operator's top
+priority.
 
-- [ ] **Cache flakes impossible**
-  - [ ] content-key on **raw bytes**, not `from_utf8_lossy` (`resolved_graph_cache.rs:146`); fail-closed on malformed
-  - [ ] content-hash keys for `parse_table_memo` + `pure_call_memo` (kill position/address keys)
-  - [ ] **warm==cold purity-oracle witness per cache** (discovered, RED on divergence) — the structural ban
-  - [ ] realizer-key lens (P1.1): executed digest ⊇ declared `inputs_considered`, else RED (would have caught the lossy collision structurally)
-- [ ] **Self-host purity enforced** — wire `regen_stage0 --verify` (Stage0LockstepGate, #5325) into the floor; dissolve `patch_*`/`HAND_MAINTAINED_STAGE0_FILES`
-- [ ] **Complexity/cost enforced** — fix cost-lens zero-absorption (`symbolic_max` floor), then wire a complexity-budget gate over the change-set (not a roster) → §6 whole-codebase
-- [ ] **Cache redundancy fail-closed** — land the §7 P3 redundancy-only completeness cut (shared-across-boundary → ERROR; needs reach, not measurement) **before expansion**
-- [ ] **Promote inert lenses** — for each authored-but-inert lens (host_language_transport_script, extdeps_shape_transport_policy, leaf_model_verification, …): wire a discovered gate with a discriminating RED, or delete it (an inert lens is a lie)
-- [ ] **De-vacuum the thin gates** — EmitHostGate beyond 4 fixtures; advisory rosters → change-set enumerated
-- [ ] **Meta-invariant** — a lens/gate hygiene check: every `lens/*.dag` has a discovered fail-closed witness, or is removed (closes the "authored ≠ enforced" loophole permanently)
+**Tier 1 — construction (make the class unwritable):**
+
+- [ ] **Dissolve the model↔realization fork — THE root** ([model-realization-fork.md](model-realization-fork.md)): realization derived from model. (1) numeric tower `Int=GroupCompletion<Nat>` → the `==` straddle guard becomes dead code; (2) split `Value::Null` (None/Absent/miss/Violates → own carriers).
+- [ ] **Cache key derived FROM declared `inputs_considered`** (single authority) → cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Subsumes: content-key on **raw bytes** (`resolved_graph_cache.rs:146`), content keys for `parse_table_memo`/`pure_call_memo` (kill position/address keys). *(worked first instance: child adhoc-cc232dbc-1be)*
+- [ ] **Self-host purity by construction** — emitter emits the whole seed so `patch_*`/`HAND_MAINTAINED_STAGE0_FILES` are unwritable; `regen_stage0 --verify` (Stage0LockstepGate, #5325) then a residue check.
+- [ ] **Widen/retire the rust gate** — run the v1 test set or explicitly retire it (no test exists-but-doesn't-run).
+
+**Tier 2 — lens (only the genuinely-unstructurable residue; each must justify why not construction):**
+
+- [ ] **Complexity / cost / necessity** — legitimate lens (can't structurally forbid an *unnecessary* loop); fix cost-lens zero-absorption (`symbolic_max` floor), then gate the change-set (not a roster) → §6.
+- [ ] **Cache-redundancy completeness** (§7 P3) — shared-across-boundary → ERROR; reach, not measurement; the residue that survives the content-key construction.
+- [ ] **warm==cold purity-oracle witness per cache** — residue check behind the content-key construction (guaranteed once the key is fn-of-inputs, but cheap to witness).
+- [ ] **Promote-or-delete every inert lens** (host_language_transport_script, extdeps_shape_transport_policy, leaf_model_verification, …); de-vacuum thin gates (EmitHostGate beyond 4 fixtures; advisory rosters → change-set); the `discrimination` enforcer is itself roster-only — whole-corpus it.
+
+**Meta — the construction-justification rule (supersedes "every lens has a witness"):** before adding
+any lens, justify why the class can't be made impossible by construction; convert what can (single
+authority / realization-from-model); lens-justify only the unstructurable residue. (The old
+meta-invariant — "every `lens/*.dag` has a discovered witness" — is itself validation; this replaces it.)
 
 ## 5. Dissolution trigger (DESIGN §6)
 

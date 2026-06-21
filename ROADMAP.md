@@ -113,8 +113,8 @@ hand-edits); emit **Rust + TypeScript**; then shrink the seed to zero.
 Gate: uncached non-redundant work is an **ERROR**, not "slow". → [plan](docs/plans/realization-measurement-loop.md)
 
 - [x] F1 scheduler gives heavy nodes budgeted width (#5421)
-- [ ] F2/F3 key-completeness lens + `resolved_graph` keyed by construction (#5423, in review)
-  - [ ] P1 honest keys verified by execution (realizer-key lens · stable transform-id · census parity)
+- [ ] F2/F3 `resolved_graph` key **derived from** declared `inputs_considered` (single authority — construction, not a validating lens; #5423's spec-only lens was the false-green proof)
+  - [ ] P1 honest keys by construction (key = fn of declared inputs · stable transform-id · census parity is the residue check)
     - [ ] P2 one door: `realize(subject)` as sole API (dissolves hand-rolled `ParseTable`)
       - [ ] P3 reach → minimal layer + fail-closed completeness gate + supplier provisioning ← **core ask**
 - [ ] P4 economic tier (measured cost → `Materialization` by cost) — needs Phase-0 timing
