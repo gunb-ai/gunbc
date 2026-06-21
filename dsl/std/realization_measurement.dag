@@ -57,6 +57,44 @@ fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Tim
   )
 }
 
+// --- Concurrent memory-peak sample → per-share peak (§1-C) ------------------
+//
+// A whole-system peak resident-memory observation (VmHWM) is only meaningful paired with the
+// concurrency it was sampled at: each concurrent share does a whole-tree pass, so the observed
+// concurrent peak ≈ per-share peak × concurrency. Bundling (peak, concurrency) into ONE carrier
+// keeps the observation and the divisor it derives against as a single fact (§2/§3) — a loose
+// peak with the concurrency stored elsewhere is anemic (the two can drift apart, and neither
+// reads as "a measurement"). This is the agnostic SHAPE; the measured VALUES live peripherally
+// at the consumer (gunbc.ci_floor_measurement, §3 measured⇒peripheral).
+type ConcurrentMemoryPeakSample {
+  peak: ByteSize
+  concurrency: Int
+}
+
+// Per-share peak: distribute the observed concurrent peak across the concurrency it was sampled
+// at, re-grounding the Memory magnitude at the same carrier — the measure-algebra idiom
+// (project via measure_count → magnitude arithmetic → reconstruct via byte_size, exactly as
+// time_measure_seq/_par above project→arithmetic→reconstruct over Time). Fail-closed (§5): a
+// non-positive concurrency is degenerate, so the whole peak stands (a share count of 1) rather
+// than a divide-by-zero or a fabricated share.
+fn concurrent_memory_peak_per_share(sample: ConcurrentMemoryPeakSample) -> ByteSize {
+  if sample.concurrency <= 0 {
+    sample.peak
+  } else {
+    byte_size(count: measure_count(m: sample.peak) / sample.concurrency)
+  }
+}
+
+// Discriminating witness (§5): the per-share peak of an N-way sample is the whole peak ÷ N, and
+// re-grounds at the same Memory carrier — goes red if the derivation drops the concurrency, aliases
+// the whole peak, or loses the magnitude. Degenerate concurrency falls closed to the whole peak.
+fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
+  let sample = ConcurrentMemoryPeakSample { peak: byte_size(8400113664), concurrency: 4 }
+  let degenerate = ConcurrentMemoryPeakSample { peak: byte_size(2100028416), concurrency: 0 }
+  measure_count(m: concurrent_memory_peak_per_share(sample: sample)) == 2100028416
+    && measure_count(m: concurrent_memory_peak_per_share(sample: degenerate)) == 2100028416
+}
+
 // --- Critical-path span roll-up (Phase 1.5b) --------------------------------
 //
 // Authority: v1.compiler.complexity — `span` is critical-path length under DAG

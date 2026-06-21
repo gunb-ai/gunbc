@@ -36,21 +36,29 @@
 
 module gunbc.ci_floor_measurement
 
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size }
 import std.types { Int }
+import std.realization_measurement {
+  ConcurrentMemoryPeakSample,
+  concurrent_memory_peak_per_share,
+}
 
-// Raw measured whole-floor concurrent peak (VmHWM) and the spawn_width it was measured at.
-data gunbc_ci_floor_measured_peak_rss_bytes: ByteSize = byte_size(8400113664)
-data gunbc_ci_floor_measured_at_spawn_width: Int = 4
+// The measured whole-floor concurrent peak (VmHWM) bundled with the concurrency it was sampled
+// at — ONE fact (a ConcurrentMemoryPeakSample), the single authority for the §1-C derivation.
+// Peak and concurrency are only meaningful together (per-share = peak ÷ concurrency), so they
+// live in one carrier rather than as two loose rows that could drift apart. Re-stamp the pair
+// here on every re-measure (provenance above).
+data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
+  peak: byte_size(8400113664)
+  concurrency: 4
+}
 
-// Per-shard peak = measured whole-floor peak ÷ the concurrency it was measured at. The division
-// is kept here (not pre-computed into a literal) so the provenance pair above stays the authority
-// and the derivation is visible. ByteSize in / ByteSize out (the std.measure Memory carrier): the
-// concurrency divisor is dimensionless, so the Nat count is scaled and re-grounded via byte_size().
+// Per-shard peak: each DiscoveryBatch shard does a whole-tree resolve, so the per-shard peak is
+// the measured concurrent peak distributed across its sample concurrency. Delegates to the std
+// measure-algebra derivation (std.realization_measurement) — no inline unwrap/divide/re-ground
+// here; the division is a grounded measure operation, not a one-off expression.
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
-  byte_size(
-    count: byte_size_count(b: gunbc_ci_floor_measured_peak_rss_bytes) / gunbc_ci_floor_measured_at_spawn_width
-  )
+  concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak)
 }
 
 // Fail-closed fallback width when the host cannot read a live memory budget: the last
