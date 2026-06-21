@@ -35,7 +35,7 @@ use std::rc::Rc;
 use crate::cache_purity_oracle::CachePurityViolation;
 use crate::cli_run::{
     build_multi_entry_index, discover_floor_corpus_rows, load_sources_for_entry,
-    resolve_entry_with_index,
+    resolve_entry_with_index, MultiEntryIndex,
 };
 use crate::resolved_graph_cache::{
     resolved_graph_cache_root_from_env, serialize_fixture_payload_for_test,
@@ -59,15 +59,21 @@ fn divergence_fingerprint(
 }
 
 /// Audit one entry: a WARM cache hit must equal the COLD compute it cached (canonical structural
-/// `==`, see the module header). Both go through `resolve_entry_with_index` so the ONLY difference
-/// under test is the write→read codec. Requires `GUNBC_RESOLVED_GRAPH_CACHE_DIR` to be set to an
-/// EMPTY dir (caller's responsibility) so COLD genuinely misses+computes.
+/// `==`, see the module header). Requires `GUNBC_RESOLVED_GRAPH_CACHE_DIR` set to an EMPTY dir
+/// (caller's responsibility) so the entry's key starts UNPRIMED and COLD genuinely computes.
 ///
-/// - COLD: a fresh index over an unprimed key → MISS → compute → WRITE.
-/// - WARM: a fresh index over the now-primed key → HIT → DECODE.
+/// One `index` is shared across all entries and across this entry's cold+warm calls: it is SOUND
+/// because `resolve_entry_with_parse_cache` consults the DISK cache (`cross_process_lookup`)
+/// FIRST, before any in-process index cache — so the index's `parse_cache` only speeds the cold
+/// COMPUTE and never bypasses the warm DISK DECODE (the codec under test). Per-entry index
+/// rebuilds (the naive form) are ~1200× redundant whole-tree parse-index builds.
+///
+/// - COLD: the unprimed key → DISK MISS → compute → WRITE.
+/// - WARM: the now-primed key → DISK HIT → DECODE.
 /// Divergence ⟹ a located, typed [`CachePurityViolation`] (the codec is lossy / the warm hit
 /// is stale): the §5 fail-closed signal. Returns `Ok(())` on equality (pure).
 pub fn audit_entry_warm_equals_cold(
+    index: &MultiEntryIndex,
     roots: &[String],
     entry: &str,
 ) -> Result<(), CachePurityViolation> {
@@ -79,17 +85,16 @@ pub fn audit_entry_warm_equals_cold(
     };
     let content_key = subject_digest_for_closure(&sources);
 
-    // COLD: first resolve through the cached path. If the key is unprimed this MISSES, computes,
-    // and writes; the returned graph is the fresh compute.
-    let cold_index = build_multi_entry_index(roots);
-    let (cold_graph, cold_si) = match resolve_entry_with_index(&cold_index, entry) {
+    // COLD: resolve through the cached path. With the key unprimed this MISSES on disk, computes,
+    // and writes; the returned graph is the fresh in-memory compute (not a disk read-back).
+    let (cold_graph, cold_si) = match resolve_entry_with_index(index, entry) {
         Ok(r) => r,
         Err(_) => return Ok(()), // resolve error is the discovery gate's concern, not purity's
     };
 
-    // WARM: a fresh index over the now-primed key → HIT → decode.
-    let warm_index = build_multi_entry_index(roots);
-    let (warm_graph, warm_si) = match resolve_entry_with_index(&warm_index, entry) {
+    // WARM: the now-primed key → DISK HIT → decode (cross_process_lookup short-circuits before any
+    // in-process cache, so this exercises the write→read codec even on the shared index).
+    let (warm_graph, warm_si) = match resolve_entry_with_index(index, entry) {
         Ok(r) => r,
         Err(_) => return Ok(()),
     };
