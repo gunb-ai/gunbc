@@ -42,6 +42,7 @@ import std.measure {
   HardwareThreadCount,
   byte_size,
   byte_size_count,
+  measure_count,
   hardware_thread_count,
   hardware_thread_count_value,
   hertz,
@@ -151,7 +152,10 @@ fn money_micros(count: Nat) -> MoneyMicros {
 }
 
 fn money_micros_count(m: MoneyMicros) -> Nat {
-  m.count
+  // Cross-module Measure alias (MoneyAmount<Micro>): `.count` only peels where
+  // Measure is local, so route through the generic std.measure.measure_count
+  // accessor (same pattern as bandwidth_count in hardware_selection).
+  measure_count(m: m)
 }
 
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
