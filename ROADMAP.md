@@ -5,6 +5,8 @@ dependency-ordered checklist. **Checkboxes are authoritative for progress**; det
 plan docs — don't restate it here (no dual representations). A task's real state is its branch/PR.
 
 Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**.
+Each section opens with a **◆ Milestones** spine — the *verifiable* checkpoints in dependency order
+(`✓` reached · `▸` now · `○` ahead); the checklist below is the work toward them. Read L→R = the path.
 
 **Priority order, top = now.** Bands: **stability / correctness** (§0–§4) → **expansion** (§5–§7) →
 **shelved** (§8).
@@ -18,6 +20,8 @@ write*. Fix = correctness by construction, not validation ([DESIGN §5](DESIGN.m
 This window = a few days of STABILITY — shrink the fail-open surface, don't "lock" it. The deepest root
 (`Value::Null` overload, ~131 sites) stays OPEN until its own runway ([fork plan](docs/plans/model-realization-fork.md) §3).
 
+**◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*
+
 **Audits (done):**
 
 - [x] lens/gate wiring — most analytical lenses inert (authored, no discovered gate)
@@ -30,7 +34,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus ([plan](docs/plans/model-realization-fork.md))
 - [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
 - [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427) ([cause table](docs/plans/ci-selection-vs-scheduling.md))
-- [ ] **promote-or-delete every inert lens** + de-vacuum thin gates *(silent-wren-739)*
+- [ ] **promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection (also unlocks coverage/testgen) *(silent-wren-739)*
 - [x] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
 
@@ -38,7 +42,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [ ] **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; own runway
 - [ ] **self-host purity gate** — a §5 deliverable, not §0 (avoids the §0↔§5 cycle)
-- [ ] **cross-tree import activation** (§5) — load-bearing, escalate before editing
+- [x] **cross-tree import activation** (§5) — LANDED (#5473); the §0↔§5 escalate item is now closed
 - [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — a new concept; parked
 - [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction
 
@@ -47,7 +51,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **inert-lens hygiene backstop** — every `lens/*.dag` wired or deleted; runs over the corpus (#5433)
 - [ ] **reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs ([plan](docs/plans/inert-layer-lens.md))
 - [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2) *(quick-ant-298)*
-- [ ] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens ([DESIGN §6](DESIGN.md)) *(silent-wren-739)*
+- [x] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens (#5476) ([DESIGN §6](DESIGN.md)) *(silent-wren-739)*
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc
@@ -56,6 +60,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim.
 (Compute fabric lives here: the substrate CI runs on; selling it as infra is downstream.)
+
+**◆ Milestones:** opt-3 per-PR ✓ (#5456) → **▸ NOW — floor never OOMs (memory-aware width)** → floor runs the affected-set → every host knob from one measured `ResourceEnvelope`
 
 - [x] privacy (compute fabric)
 - [ ] **floor runs the right things** — cadence = two axes: SELECTION (by *what changed*) vs SCHEDULING (by cost); cost never drives selection ([plan](docs/plans/ci-selection-vs-scheduling.md))
@@ -73,6 +79,8 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-inputs construction is the
 §0 "cache trustworthy" item. → [plan](docs/plans/realization-measurement-loop.md)
 
+**◆ Milestones:** key-by-construction ✓ (#5425) → **▸ warm==cold purity proven (616/616, #5429)** → resolve-cache ON — ~18% floor cut *(core ask)* → native `content(T)` *(gated B2)*
+
 - [x] F1 scheduler gives heavy nodes budgeted width (#5421)
 - [x] F2/F3 `resolved_graph` key derived from declared `inputs_considered` — construction, not a lens (#5425)
   - [ ] P1 honest keys by construction — warm==cold purity oracle (#5429)
@@ -88,6 +96,8 @@ Operator decision (2026-06-21): budget-gate validation is the in-window tool; th
 *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2);
 the gate's reach is a subject-production limit (fn-body reflection), not a detection one.
 
+**◆ Milestones:** budget-gate non-toothless ✓ (#5437) → complexity gates the whole codebase *(gated on §5 fn-body reflection)*
+
 - [x] complexity lens total over the kernel (cost.dag U2); the gate runs a curated subject roster
 - [x] cost-lens zero-absorption fix — budgets non-toothless (#5437)
   - [ ] a subject-producer for every fn (#5437 helper; whole-corpus needs fn-body reflection)
@@ -100,6 +110,8 @@ the gate's reach is a subject-production limit (fn-body reflection), not a detec
 
 Prevent the next class, not the last instance: generate witnesses from declared structure.
 → [audit + method](docs/plans/testgen-oracle.md)
+
+**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → anemia lens? *(parked, likely advisory)*
 
 - [x] gate the generated output — floor-discover `generated/` (or regen==committed drift gate) (#5434)
 - [x] CoproductExhaustiveness made structural — over every declared coproduct, not a hand-roster (#5441)
@@ -117,13 +129,15 @@ hand-edits); emit Rust + TypeScript; then shrink the seed to zero.
 Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; post-stability, natural once
 `.dag` is the self-hosted truth). → [plan](docs/plans/algebraic-rewrite-optimization.md)
 
+**◆ Milestones (critical path):** front-end ✓ · emit-rust well-typed ✓ · de-fork Step 1 ✓ (#5473) → **▸ NOW: emitted crate cargo-builds green** → std forks collapsed → real fixed point → **KEYSTONE: `regen --verify` in CI** → seed-honesty → **TERMINAL: `src/v1` deleted**
+
 - [ ] rewrite suboptimal patterns to the cheaper equivalent (`O(n²)→O(n)` …) — published finite catalog, bulletproof where it fires
 - [ ] `Unknown` dissolved over time as an anemic atom (reuse the `Disposition` carrier)
 - [ ] `O(n^x)→O(n log n)` substitution as per-idiom rules (open: cleaner shared framing?)
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)
 - [ ] de-fork dsl ↔ v2 (one std authority, no historical forks)
-  - [ ] turn on cross-tree import (wired but fail-closed today) — Step 1 in flight *(nimble-koi-625)*
+  - [x] turn on cross-tree import — Step 1 **LANDED** (#5473); PR-B (collapse forks) next *(nimble-koi-625)*
     - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
     - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
@@ -138,6 +152,8 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 
 A program is a canonical `Node` (the *idea*); ingest / emit / eval across many media via one grammar read
 both directions (§2 N+M). → [plan](docs/plans/idea-machine.md)
+
+**◆ Milestones:** medium axis ✓ → language axis: English ingest round-trip → cross-media first-class (JSON/react/diagram) → invert hand-maintained: ROADMAP emitted + drift-gated
 
 - [x] **medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult{value: Medium<Node>}`
 - [ ] **language axis** — 15+ targets wave-1; English emit proven
@@ -154,6 +170,8 @@ both directions (§2 N+M). → [plan](docs/plans/idea-machine.md)
 ## 7. HTML / React rendering (expansion — the "website" sellable piece)
 
 Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4), downstream of §6's cross-media item.
+
+**◆ Milestones:** react/html page stands up (real page) → in the demo beside the TS emit
 
 - [ ] react/html rendering stands up (real page, not fixture)
 - [ ] add to the demo alongside the TypeScript emit (website + language, dogfoodable)
