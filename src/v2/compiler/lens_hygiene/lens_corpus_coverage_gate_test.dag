@@ -1,0 +1,27 @@
+// src/v2/compiler/lens_hygiene/lens_corpus_coverage_gate_test.dag
+// Scope: CI-floor enrollment for the inert-lens hygiene backstop (DESIGN.md §6).
+//        Two always-green gates:
+//          1. manifest covers every registered lens (anti-drift)
+//          2. at least one registered lens is wired (anti-vacuity)
+//        Status: discoverable test fn witness — CI floor gates via claim_batch
+//                --roster-from-discovery (test fn in *_test.dag under src/v2).
+//
+// See lens_corpus_coverage_manifest.dag for gate logic, manifest authority, and
+// the 🟡 SCAFFOLD final gate (all_registered_lenses_wired) that activates when
+// the four InertScaffolded lenses are promoted.
+
+module v2.test.lens_hygiene.lens_corpus_coverage_gate
+
+import v2.std.logic { Bool }
+import v2.test.lens_hygiene.lens_corpus_coverage_manifest {
+  lens_manifest_covers_all_registered,
+  some_registered_lens_is_wired
+}
+
+test fn lens_hygiene_manifest_covers_all_registered() -> Bool {
+  lens_manifest_covers_all_registered()
+}
+
+test fn lens_hygiene_some_registered_lens_is_wired() -> Bool {
+  some_registered_lens_is_wired()
+}

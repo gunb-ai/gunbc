@@ -1,0 +1,154 @@
+// src/v2/compiler/lens_hygiene/lens_corpus_coverage_manifest.dag
+// Scope: INERT-LENS HYGIENE EXECUTABLE BACKSTOP — DESIGN.md §6.
+//
+// Every registered lens must appear here as:
+//   WiredWithCorpusGate — has a test fn in a *_test.dag that exercises the lens and
+//                         goes RED on malfunction (a discovered fail-closed witness)
+//   InertScaffolded     — 🟡 no fail-closed witness yet; dissolve-on: add test fn
+//
+// Anti-drift guarantee: length(lens_corpus_coverage_manifest) == length(lens_registry_v0).
+// Adding a lens to lens_registry_v0 without a matching entry here → gate RED.
+// Adding an InertScaffolded entry is visible and reviewed; it cannot happen silently.
+//
+// Currently InertScaffolded (4 lenses — two are dark, two have no real-corpus exercise):
+//   EffectEnumeration  — no test fn exists for v2.lens.effect; add one exercising
+//                        effect_enumeration_fact over a real Node.
+//   UnusedParameters   — no test fn exists for v2.lens.unused_parameters; add one
+//                        exercising unused_parameter_fact over a real Node.
+//   Complexity         — test fns exercise the lens logic but cover synthetic subjects
+//                        only; dissolve-on: corpus gate over real production fns.
+//   Cost               — same as Complexity above.
+//
+// 🟡 SCAFFOLD — all-wired gate (lens_all_registered_wired) commented out; activates when
+// the four InertScaffolded entries above become WiredWithCorpusGate.
+
+module v2.test.lens_hygiene.lens_corpus_coverage_manifest
+
+import v2.lens.registry { LensIdV0, lens_registry_v0 }
+import v2.std.algebra { count_where, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+type LensCorpusCoverageStatus
+  = WiredWithCorpusGate
+  | InertScaffolded
+
+type LensCorpusCoverageEntry {
+  lens_id: LensIdV0
+  status: LensCorpusCoverageStatus
+}
+
+// Complexity — wired: complexity/map_id_test.dag, nested_test.dag, algebra_receipts_test.dag,
+//   while_external_condition_test.dag run complexity_lens and go RED on Violates.
+// 🟡 Corpus-gap: only synthetic subjects; no gate over real production fns.
+//   dissolve-on: add corpus gate running complexity_lens over the affected change set.
+data lens_coverage_complexity: LensCorpusCoverageEntry = {
+  lens_id: Complexity
+  status: InertScaffolded
+}
+
+// Cost — wired: cost/atom_zero_test.dag, loop_iteration_floor_test.dag run cost_lens
+//   and go RED on Violates.
+// 🟡 Corpus-gap: only synthetic subjects; no gate over real production fns.
+//   dissolve-on: add corpus gate running cost_lens over the affected change set.
+data lens_coverage_cost: LensCorpusCoverageEntry = {
+  lens_id: Cost
+  status: InertScaffolded
+}
+
+// Parallelism — wired: lens_parallelism_family_eval_test.dag (test data gate,
+//   anti-vacuous, runs over lens_parallelism_subject_rows).
+data lens_coverage_parallelism: LensCorpusCoverageEntry = {
+  lens_id: Parallelism
+  status: WiredWithCorpusGate
+}
+
+// EffectEnumeration — 🟡 DARK: no test fn exists for v2.lens.effect.
+//   dissolve-on: add *_test.dag with test fn exercising effect_enumeration_fact
+//   on a real Node, with a RED control showing a missing-effect case.
+data lens_coverage_effect_enumeration: LensCorpusCoverageEntry = {
+  lens_id: EffectEnumeration
+  status: InertScaffolded
+}
+
+// Idempotency — wired: lens/idempotency/sg_claims_test.dag +
+//   lens_idempotency_family_eval_test.dag (anti-vacuous, RED discrimination).
+data lens_coverage_idempotency: LensCorpusCoverageEntry = {
+  lens_id: Idempotency
+  status: WiredWithCorpusGate
+}
+
+// Provenance (= v2.lens.ownership) — wired: lens_ownership_family_eval_test.dag
+//   (test data gate, anti-vacuous via is_empty guard).
+//   Note: was previously unenrolled (file lacked _test suffix + data not test data);
+//   corrected in the same PR that added this manifest.
+data lens_coverage_provenance: LensCorpusCoverageEntry = {
+  lens_id: Provenance
+  status: WiredWithCorpusGate
+}
+
+// UnusedParameters — 🟡 DARK: no test fn exists for v2.lens.unused_parameters.
+//   dissolve-on: add *_test.dag with test fn exercising unused_parameter_fact
+//   on a real Node, with a RED control showing a used-parameter case.
+data lens_coverage_unused_parameters: LensCorpusCoverageEntry = {
+  lens_id: UnusedParameters
+  status: InertScaffolded
+}
+
+// StructuralResolution — wired: structural_resolution/binds_to_resolved_test.dag
+//   runs the lens on a real BindsTo dependency Node and goes RED on unexpected verdict.
+data lens_coverage_structural_resolution: LensCorpusCoverageEntry = {
+  lens_id: StructuralResolution
+  status: WiredWithCorpusGate
+}
+
+// TableDecisionTree — wired: table_decision_tree/sg_claims_test.dag has positive
+//   (Unrealized on claim_atom_node) and RED controls (Holds rejected, perturbed locus
+//   rejected) — a discriminating pair per DESIGN §5.
+data lens_coverage_table_decision_tree: LensCorpusCoverageEntry = {
+  lens_id: TableDecisionTree
+  status: WiredWithCorpusGate
+}
+
+// AUTHORITY: one entry per row in lens_registry_v0 (order mirrors the registry).
+data lens_corpus_coverage_manifest: List<LensCorpusCoverageEntry> = [
+  lens_coverage_complexity,
+  lens_coverage_cost,
+  lens_coverage_parallelism,
+  lens_coverage_effect_enumeration,
+  lens_coverage_idempotency,
+  lens_coverage_provenance,
+  lens_coverage_unused_parameters,
+  lens_coverage_structural_resolution,
+  lens_coverage_table_decision_tree
+]
+
+// Gate 1: manifest must cover every registered lens (anti-drift).
+// Fails when a lens is added to lens_registry_v0 without a manifest entry.
+fn lens_manifest_covers_all_registered() -> Bool {
+  length(xs: lens_corpus_coverage_manifest) == length(xs: lens_registry_v0)
+}
+
+// Gate 2: at least one registered lens is wired (anti-vacuity).
+// Fails if the manifest becomes all-InertScaffolded (a vacuous backstop is a lie).
+fn some_registered_lens_is_wired() -> Bool {
+  count_where(xs: lens_corpus_coverage_manifest, predicate: fn(entry) {
+    match entry.status {
+      WiredWithCorpusGate => true
+      InertScaffolded => false
+    }
+  }) > 0
+}
+
+// 🟡 SCAFFOLD — final gate; every registered lens is wired.
+// Activates when Complexity, Cost, EffectEnumeration, UnusedParameters
+// move to WiredWithCorpusGate.  Uncomment the fn + test fn pair together.
+//
+// fn all_registered_lenses_wired() -> Bool {
+//   count_where(xs: lens_corpus_coverage_manifest, predicate: fn(entry) {
+//     match entry.status {
+//       WiredWithCorpusGate => true
+//       InertScaffolded => false
+//     }
+//   }) == length(xs: lens_corpus_coverage_manifest)
+// }

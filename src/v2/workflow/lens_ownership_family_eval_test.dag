@@ -1,4 +1,6 @@
-// Status: source-shape receipt; host CI can pin this file until generated item-registry compile-time lens replaces explicit family rosters.
+// Status: discovered CI-floor gate — test data in *_test.dag, auto-enrolled by
+// claim_batch --roster-from-discovery. Source-shape receipt; host CI can pin this file
+// until generated item-registry compile-time lens replaces explicit family rosters.
 
 module v2.test.workflow.lens_ownership_family_eval
 
@@ -84,6 +86,6 @@ fn lens_ownership_family_gate(report: LensOwnershipFamilyEvalReport) -> Bool {
 }
 
 
-data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
+test data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate(
   report: run_lens_ownership_family_eval()
 )
