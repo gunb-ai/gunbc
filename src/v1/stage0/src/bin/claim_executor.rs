@@ -41,9 +41,7 @@ use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
     run_value, ClaimOutcome, DiscoveryCorpusOptions,
 };
-use v1_compiler::v1_interpreter::{
-    run_in_context_with_args, ExecutionMode, InterpContext, Value,
-};
+use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
 
 /// One runnable plan node, projected from the plan value. A `SingleClaim` is one
 /// `(entry, function)` Bool witness (the demo suite + the floor's per-gate
@@ -541,7 +539,10 @@ fn eval_spawn_width(
     let width_value = run_in_context_with_args(
         &plan_ctx,
         &width_fn,
-        &[(Some("memory_budget_bytes".to_string()), Value::Int(budget_arg))],
+        &[(
+            Some("memory_budget_bytes".to_string()),
+            Value::Int(budget_arg),
+        )],
         false,
     )
     .map_err(|e| {
