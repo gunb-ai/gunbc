@@ -298,12 +298,24 @@ fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
 // *demand* op is deliberately NOT minted — no consumer demands it (DESIGN §6
 // construction-over-ratchets: no carrier ahead of demand).
 //
-// `<M>` is fixed at `Nat`: the bodies do concrete numeric arithmetic (`*`, `/`)
-// over `count`, the same algebra-inhabitance substrate gap `time_measure` /
-// `GroupCompletion<M>` already carry (generic `<M>` arithmetic needs the
-// where-clause lane). `<Q>` / `<S>` stay generic so a single authority spans every
-// Measure breadth (DESIGN §2 horizontal: one concept, every breadth) — the op is
-// not re-coined per alias (cf. `measure_count`).
+// `<M>` is fixed at `Nat`, NOT the spec's M-generic `Measure<Q,S,M>` (#5467 derives
+// it from M's Semiring, §4 inhabitance): the bodies do concrete numeric arithmetic
+// (`*`, `/`) over `count`, and generic `<M>` arithmetic resolves only on concrete
+// numeric nodes — the same algebra-inhabitance substrate gap `time_measure` /
+// `GroupCompletion<M>` already carry. **Dissolution trigger:** widen to
+// `<Q, S, M> where M : CommutativeSemiring` when parametric where-clause / inhabitance
+// syntax lands in the substrate (the shared lane those notes name); the bodies and
+// every call site type-check unchanged. `<Q>` / `<S>` stay generic NOW so a single
+// authority spans every Measure breadth (DESIGN §2 horizontal: one concept, every
+// breadth) — the op is not re-coined per alias (cf. `measure_count`).
+//
+// OVERFLOW: `Nat` is machine-width (`Value::Int(i64)`), not arbitrary-precision — a
+// substrate-wide property of every `Nat` op, not specific to these. `(count * num)`
+// is evaluated before `/ den` (required for floor-correctness of a sub-unit fraction);
+// for the spawn-width consumer the operands stay ~8 orders below the i64 ceiling
+// (budget ≤ ~125 GiB ≈ 1.3e11 × num 4 ≈ 5e11 ≪ 9.2e18), so it does not overflow. A
+// general saturating/checked `Nat` guard belongs at the numeric-tower layer (one
+// authority), not forked per-op (DESIGN §6).
 
 // `Measure × num/den → Measure`, rounded DOWN — the §3 ② *capacity* case (a
 // fractioned budget is still a budget). Fail-closed (§5): a zero denominator yields
