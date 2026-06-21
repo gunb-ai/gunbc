@@ -9,9 +9,17 @@ Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits 
 
 ## 0. Fail-closed lock-down LANE — BLOCKS expansion into products
 
-Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not **enforced fail-closed
-by execution in CI**. Lock the machine down before selling pieces. The lane = *audit how deep the root
-goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/fail-closed-lockdown.md)
+Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not made **impossible to
+write**. Lock the machine down before selling pieces. → [audit + checklist](docs/plans/fail-closed-lockdown.md)
+
+**Principle — correctness by CONSTRUCTION, not validation.** A lens is *validation*: it catches a bad
+thing post-hoc, which *concedes the bad thing is writable*. Root-cause instead and make it **unwritable**
+(single authority / realization **derived from** the model). Lenses are **last resort**, reserved for the
+genuinely-unstructurable (complexity/necessity — you can't structurally forbid an *unnecessary* double
+loop). Proof it matters: #5423's key-completeness *lens* was spec-only — the worker satisfied it by
+editing the declaration while the realizer still faked the key (`from_utf8_lossy`) → **false-green** a
+human caught. The construction fix (derive the realized key *from* `inputs_considered`) makes that
+divergence unwritable, no lens needed.
 
 **Audits — how bad / how deep:**
 
@@ -20,28 +28,27 @@ goes → fix → make the class unwritable.* → [audit + checklist](docs/plans/
 - [x] **model↔realization fork audit — ROOT CONFIRMED** ([plan](docs/plans/model-realization-fork.md)): one seam (coproduct *modeled* vs native `Value` *realized*, ~13 per-site bridges); two sub-roots — numeric tower (grounds cleanly) + `Value::Null` overload (needs *splitting*, the deeper root)
 - [ ] coercion/equality fail-closure audit (`Bool` & `Optional`/`Null`-sentinel straddles after the `==` fix)
 - [ ] inference fail-open audit (return-type / record-field remaining after #5293)
-- [ ] cache-purity audit — enumerate every cache; each needs a warm==cold oracle
+- [ ] cache-purity audit — enumerate every cache; warm==cold should be **guaranteed by construction**, oracle only as residue
 - [ ] **CI-coverage-completeness audit** — tests/gates that exist but don't run: the rust gate runs only a known-green subset (3 suites of **60** `src/v1/tests` files) → most of v1 rots silently (`ci_spec.dag:160`)
 
-**Fixes — make fail-open unwritable:**
+**Fixes (tier 1) — CONSTRUCTION: make the class unwritable.** This is THE work; everything below is residue.
 
-- [ ] cache flakes physically impossible
-  - [ ] content-key on **raw bytes** (kill `from_utf8_lossy` digest, `resolved_graph_cache.rs:146`)
-  - [ ] content-hash keys for `parse_table_memo` + `pure_call_memo` (not position/address)
-  - [ ] **warm==cold purity-oracle witness per cache** (discovered, RED on divergence)
-  - [ ] realizer-key lens: executed digest ⊇ declared inputs, else RED (= §7 P1.1)
-- [ ] self-host purity enforced — wire `regen_stage0 --verify` into the floor (= §3 keystone)
-- [ ] complexity/cost enforced — zero-absorption fix → change-set budget gate (= §6)
-- [ ] cache-redundancy fail-closed — land §7 P3 redundancy cut **before expansion**
-- [ ] ground the root ([model↔realization fork](docs/plans/model-realization-fork.md)): (1) numeric tower `Int=GroupCompletion<Nat>` → straddle guard becomes dead code; (2) **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — the deeper root
-- [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters)
+- [ ] **dissolve the model↔realization fork — THE root** ([plan](docs/plans/model-realization-fork.md)): realization *derived from* model (single authority): (1) numeric tower `Int=GroupCompletion<Nat>` → the straddle guard becomes dead code; (2) **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — the deeper root
+- [ ] **cache key derived FROM declared `inputs_considered`** (single authority) → you cannot declare an input you don't key, nor key one you don't declare; divergence unwritable. Includes: content-key on **raw bytes** (`resolved_graph_cache.rs:146`), content keys for `parse_table_memo`/`pure_call_memo` (not position/address). *(worked first instance: child adhoc-cc232dbc-1be)*
+- [ ] **self-host purity by construction** — emitter emits the whole seed so `patch_*`/`HAND_MAINTAINED_STAGE0_FILES` become unwritable (= §3); `regen_stage0 --verify` is then a residue check
 - [ ] widen the rust gate to run (or explicitly retire) the v1 test set — no test exists-but-doesn't-run
-- [ ] the §5-discriminating-witness enforcer (`discrimination` lens) is itself roster-only — make it whole-corpus (the enforcer can't be vacuous)
+
+**Fixes (tier 2) — LENS: only the genuinely-unstructurable residue.** Each must justify why it can't be construction.
+
+- [ ] complexity / cost / necessity (= §6) — legitimate lens use (can't structurally forbid an *unnecessary* loop); fix zero-absorption first, gate the change-set
+- [ ] cache-redundancy completeness (= §7 P3) — reach→supplier; the residue that survives construction
+- [ ] warm==cold purity-oracle witness per cache — residue check behind the content-key construction
+- [ ] promote-or-delete every inert lens; de-vacuum thin gates (emit_host 4-fixtures, advisory rosters); the §5-discriminating enforcer (`discrimination`) is itself roster-only — whole-corpus it
 
 **Meta — lock down the reasoning, not just the code (the §7 recursion):**
 
-- [ ] **meta-invariant gate:** every `lens/*.dag` has a discovered fail-closed discriminating witness, or is removed (closes the "authored ≠ enforced" loophole permanently)
-- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — model A1–A3 + the §1–§7 chain in `.dag` and have a lens enforce the syllogism: every claim is a consequence-chain back to an axiom, **no orphan and no cycle**. Lock down the *argument* itself (the deepest application of fail-closed discipline; the §4 acyclicity test turned on this document).
+- [ ] **construction-justification rule** (supersedes "every lens has a witness"): before adding any lens, justify why the class can't be made impossible by construction; convert what can (single authority / realization-from-model); lens-justify only the unstructurable residue
+- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — model A1–A3 + the §1–§7 chain in `.dag`, enforce the syllogism: every claim a consequence-chain back to an axiom, **no orphan, no cycle** (the §4 acyclicity test turned on this document)
 
 ## 1. Session dashboard on `.dag` (backend only)
 
