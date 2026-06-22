@@ -1455,7 +1455,9 @@ pub fn resolve_node_bounded(
                                                         node: target,
                                                         ..
                                                     }) => {
-                                                        if ((((target.connective.clone()
+                                                        let target_is_coproduct_use = ((((target
+                                                            .connective
+                                                            .clone()
                                                             == Connective::NoConnective)
                                                             && ((target.children.clone().len()
                                                                 as i64)
@@ -1470,8 +1472,8 @@ pub fn resolve_node_bounded(
                                                             )
                                                             .connective
                                                             .clone()
-                                                                == Connective::Disj))
-                                                        {
+                                                                == Connective::Disj));
+                                                        if target_is_coproduct_use {
                                                             resolve_node_bounded(
                                                                 target.clone(),
                                                                 env.clone(),

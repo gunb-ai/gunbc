@@ -584,7 +584,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Present { value: Resolved { node: target } } =>
-                if target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj {
+                let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj
+                if target_is_coproduct_use {
                   resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
                 } else { target }
               _ => resolved
