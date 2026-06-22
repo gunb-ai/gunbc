@@ -1,46 +1,24 @@
-// std/baseboard.dag — agnostic server-baseboard (motherboard) identity shape.
-//
-// The baseboard is the physical board a server is built on; for the provisioning
-// lifecycle its load-bearing axis is the BMC firmware it ships, because the BMC's
-// *default login is board-dependent* — it comes from the firmware the manufacturer
-// installs (DESIGN §3: that default is a fact of the firmware family, cited once in
-// extdeps/bmc/<family>.dag, and the board merely *points at* its firmware).
-//
-// Mirrors the os.types cited-catalog idiom: a stable enum tag here (the identity) +
-// a cited catalog row whose authority lives in extdeps/boards/<vendor>.dag.
-
 module std.baseboard
 
 import std.types { NonEmptyStr }
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 
-// Board manufacturer. Closed enum; extend as real boards are modeled.
 type BaseboardManufacturer = | AsrockRack
 
-// Stable board-model identity. The cited facts for each row live in extdeps/boards/*.
 type BaseboardModel = | AsrockRackAltrad8ud1l2t
 
-// Cited bundle of facts about a baseboard model (authority: extdeps/boards/<vendor>.dag).
-// Manufacturer is NOT co-stored: the model tag already determines it, so a stored field
-// could disagree with itself (DESIGN §2 — one fact, derived globally). It is a projection
-// of `model` via `baseboard_manufacturer` below.
 type BaseboardCatalogRow {
   model: BaseboardModel
   model_label: NonEmptyStr
   bmc_firmware: BmcFirmwareFamily
 }
 
-// model → manufacturer: the single authority for "who makes this board". Closed match,
-// fail-closed when a new model lands without its manufacturer mapped.
 fn baseboard_manufacturer(model: BaseboardModel) -> BaseboardManufacturer {
   match model {
     AsrockRackAltrad8ud1l2t => AsrockRack
   }
 }
 
-// A specific deployed server's baseboard: which board it is, and the live endpoint at
-// which its BMC is reached. The factory login is NOT stored here — it is derived from
-// `catalog.bmc_firmware` via extdeps/bmc/<family>.dag, so the credential has one home.
 type ServerBaseboard {
   catalog: BaseboardCatalogRow
   bmc: BmcEndpoint

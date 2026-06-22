@@ -1,7 +1,3 @@
-// src/v2/std/language_model.dag
-// Scope: canonical LanguageModel carrier shared by compiler stages, workflow bootstrap, and extdeps.
-// Status: hollow-alias dissolution — replaces v2.compiler.target_carriers `LanguageModel = Node` hollow alias.
-
 module v2.std.language_model
 
 import v2.std.collection { Set }
@@ -20,16 +16,6 @@ import v2.std.model_core {
 }
 import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
-
-// Field edge keys — single authority (DESIGN.md §3).
-
-
-// Canonical LanguageModel fact-bundle (Shape A — lex/grammar/identity/symbols/core).
-// Per-language constructors in extdeps/languages/*.dag (e.g. `rust_language_model_wave1`) are
-// spec-authored inhabitants of this single carrier — the 13 per-language *LanguageModel type forks
-// were dissolved into it (Wave 3a-C). A language that has not yet modeled a field supplies the
-// canonical void/empty inhabitant (VoidLexRules / VoidGrammar / language_model_empty_canonical_symbols /
-// wave1_void), never a smaller forked type. Compiler ingest authority is this std/ type, not Node.
 type LanguageModel {
   lex: LexRules
   grammar: ParseGrammar
@@ -38,14 +24,12 @@ type LanguageModel {
   core: ModelCore
 }
 
-
 fn language_model_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Named { name: name },
     target: target
   }
 }
-
 
 fn language_model_empty_canonical_symbols() -> Set<Symbol> {
   Set {
@@ -54,7 +38,6 @@ fn language_model_empty_canonical_symbols() -> Set<Symbol> {
     }
   }
 }
-
 
 fn void_language_model(identity: Symbol) -> LanguageModel {
   LanguageModel {
@@ -66,14 +49,9 @@ fn void_language_model(identity: Symbol) -> LanguageModel {
   }
 }
 
-
-// 🟡 gated — feature:canonical-symbols-set-node-projection — bind gunbc#4766 —
-// Set<Symbol> is a predicate closure; Node substrate has no edge kind for function values.
-// Dissolve-on: reify Set<Symbol> as explicit membership list type (same gate as grammar_root_sync_tokens).
 fn language_model_canonical_symbols_to_node(symbols: Set<Symbol>) -> Node {
   grammar_empty_node()
 }
-
 
 fn language_model_to_node(lm: LanguageModel) -> Node {
   Node {

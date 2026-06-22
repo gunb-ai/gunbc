@@ -1,28 +1,16 @@
-// src/v2/std/determinism.dag
-// Scope: determinism classification carrier — orthogonal axis to v2.std.effects EffectShape.
-// Status: PR-1 carrier substrate; lens/plumbing deferred (co-evolves with #3468).
-// Anchor: https://en.wikipedia.org/wiki/Deterministic_algorithm
-
-
 module v2.std.determinism
-
 
 import v2.std.node { Symbol }
 
-
-// 🟢 coproduct dissolution
 type NonDetSource
   = HashIteration
   | TimeRead
   | RandomRead
   | EnvRead
 
-
-// 🟢 coproduct dissolution
 type DeterminismClass
   = Deterministic
   | NonDeterministic { source: NonDetSource }
-
 
 type DeterminismFact {
   signature: Symbol,

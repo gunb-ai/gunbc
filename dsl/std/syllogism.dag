@@ -1,51 +1,3 @@
-// std/syllogism.dag — a deductive argument as a rooted, acyclic inference graph.
-//
-// This is the universal framework "classical logic / syllogistic" that DESIGN §3
-// names as a std citizen — modeled here with the EXTDEPS DISCIPLINE the operator
-// asked for: cite the real definitions, keep the real names (axiom / premise /
-// conclusion / inference / validity / soundness), do NOT paraphrase or re-coin.
-// It mints no graph algebra of its own — the acyclicity and reachability facts are
-// REUSED from std/graph.dag (§2 net-concepts-must-not-grow). It is the substrate the
-// axiom+syllogism lens runs over (DESIGN open thread #1; the §4 acyclicity test and
-// the §8 reachability rule, turned on an *argument*).
-//
-// EXTERNAL AUTHORITY:
-//   - Axiom (a premise taken as true; the LOGICAL vs NON-LOGICAL distinction):
-//     https://en.wikipedia.org/wiki/Axiom
-//     "An axiom ... is a premise or starting point for reasoning ... taken to be
-//     true." The article draws two kinds: a LOGICAL axiom is a statement taken to
-//     be true within the logic itself (a tautology, true in every interpretation);
-//     a NON-LOGICAL axiom (a.k.a. a proper axiom / postulate) is a domain
-//     assumption — "the defining properties of a specific ... theory" — true of the
-//     intended subject matter, not of every interpretation. The axioms of a physical
-//     theory are non-logical. gunbc's A1-A3 are NON-LOGICAL axioms (assumed premises
-//     of the gunbc "theory" about goals/time/agreement), not logical tautologies.
-//   - Syllogism / deductive inference (premises entail a conclusion by valid FORM):
-//     https://en.wikipedia.org/wiki/Syllogism — Aristotle, Prior Analytics: "a
-//     syllogism is a discourse in which, certain things being stated, something other
-//     than what is stated follows of necessity from their being so." The conclusion
-//     follows from the premises. A chain in which each conclusion is in turn a premise
-//     of the next is a POLYSYLLOGISM (sorites) — the shape of a serially-reasoned
-//     document. The `premises` edge below IS that premise->conclusion relation.
-//   - Validity vs soundness (the appraisals of a deductive argument):
-//     https://en.wikipedia.org/wiki/Soundness — an argument is VALID iff it is
-//     impossible for its premises to be true and its conclusion false: a property of
-//     FORM. It is SOUND iff it is valid AND all its premises are actually true.
-//     Validity is about structure; soundness adds the truth of the premises.
-//
-// THE PARTITION THAT FALLS OUT (DESIGN §5, decidability = the wall/review line):
-//   VALIDITY is decidable here as a graph fact — the argument FORM is well-formed iff
-//   it is non-vacuous, rooted at the axioms (no orphan), acyclic (no claim derives
-//   itself), and closed (no smuggled axiom). So validity is a §5 ① WALL, checked by
-//   construction — and fail-CLOSED on the empty argument (non-vacuity is conjoined into
-//   the headline predicate, not left for the caller to remember).
-//   SOUNDNESS is NOT decidable — whether each non-logical premise (A1-A3) is actually
-//   true is a domain question, assumed not proven; whether each inference step truly
-//   entails is first-order validity of the *content* (semi-decidable at best). So
-//   soundness is the §5 ③ permanent-review residue. There is DELIBERATELY no
-//   `argument_is_sound` fold: pricing soundness as a wall is the §5 "never" trap. This
-//   module sells validity (form) only, and tells the truth about its own frontier.
-
 module std.syllogism
 
 import std.graph {
@@ -56,48 +8,32 @@ import std.graph {
   dfs_finish_order,
   graph_has_multi_node_scc
 }
-// An axiom is LOGICAL (true in every interpretation — part of the logic) or
-// NON-LOGICAL (a proper axiom / postulate — a domain assumption). A1-A3 are
-// NonLogicalAxiom: assumed premises of the gunbc theory, not tautologies.
+
 type AxiomKind = LogicalAxiom | NonLogicalAxiom
 
-// An axiom: a premise TAKEN AS TRUE, a root of the deductive system. It has no
-// premises by construction — that is exactly what makes it an axiom rather than a
-// derived conclusion. `id` is a stable handle (e.g. "A1", a §-anchor).
 type Axiom {
   id: String
   statement: String
   kind: AxiomKind
 }
 
-// A derived proposition: a conclusion asserted to FOLLOW FROM the `premises` it
-// names. `premises` IS the premise->conclusion inference edge (the `because:` of
-// DESIGN). A proposition with empty `premises` would be a covert axiom (smuggled
-// premise) — the closed-axiom-set check below walls that.
 type Proposition {
   id: String
   statement: String
   premises: List<String>
 }
 
-// A deductive argument: a finite set of axioms (the closed root set) and the
-// propositions derived over one inference relation. The DESIGN §1-§7 chain is one
-// Argument (a polysyllogism); A1-A3 are its axioms.
 type Argument {
   axioms: List<Axiom>
   propositions: List<Proposition>
 }
 
-// ---- projection onto std/graph.dag (no new graph algebra) -------------------
-
-// Every inference edge, caller = the conclusion, callee = a premise it follows from.
 fn argument_inference_edges(a: Argument) -> List<GraphEdge> {
   a.propositions |> flat_map(p =>
     p.premises |> map(prem => GraphEdge { caller: p.id, callee: prem })
   )
 }
 
-// All node ids: axioms ++ propositions.
 fn argument_node_ids(a: Argument) -> List<String> {
   concat(
     a.axioms |> map(ax => ax.id),
@@ -109,12 +45,6 @@ fn argument_inference_graph(a: Argument) -> CallGraph {
   CallGraph { edges: argument_inference_edges(a) }
 }
 
-// ---- the three VALIDITY (form) facts — all decidable graph facts, fail-closed --
-
-// No orphan: every proposition reaches an axiom over inference edges. Computed as
-// the inert-lens reachability shape — `reachable(axioms)` over the REVERSE relation
-// (premise -> the conclusions that cite it); a proposition outside it derives from
-// no axiom (a smuggled premise dressed as a conclusion).
 fn argument_reachable_from_axioms(a: Argument) -> Set<String> {
   let ids = argument_node_ids(a)
   let views = build_adjacency_views(names: ids, graph: argument_inference_graph(a))
@@ -129,9 +59,6 @@ fn argument_has_no_orphan(a: Argument) -> Bool {
   (a.propositions |> filter(p => set_contains(reachable, p.id) == false) |> count) == 0
 }
 
-// No cycle: no claim derives itself. A multi-node SCC over the inference graph is a
-// mutual-derivation cycle (the §4 acyclicity test); a self-premise (p cites p) is a
-// 1-node cycle SCC detection does not flag, so it is checked separately, fail-closed.
 fn argument_is_acyclic(a: Argument) -> Bool {
   let has_self_premise = argument_inference_edges(a) |> any(e => e.caller == e.callee)
   if has_self_premise {
@@ -141,9 +68,6 @@ fn argument_is_acyclic(a: Argument) -> Bool {
   }
 }
 
-// Closed axiom set: the only roots are the declared axioms. A proposition with no
-// premises is a covert root (a smuggled non-logical axiom); a premise that resolves
-// to no declared node is a dangling reference to an undeclared one. Both fail closed.
 fn argument_axiom_set_is_closed(a: Argument) -> Bool {
   let covert_root_count = a.propositions |> filter(p => (p.premises |> count) == 0) |> count
   let ids = argument_node_ids(a)
@@ -153,21 +77,10 @@ fn argument_axiom_set_is_closed(a: Argument) -> Bool {
   covert_root_count == 0 && dangling_premise_count == 0
 }
 
-// §5 non-vacuity floor: an empty argument fail-OPENS the three shape checks (a
-// zero-claim universe vacuously has no orphan / no cycle / no covert root), so an
-// argument with no axioms or no propositions is itself invalid. This is the single
-// authority for the non-vacuity fact; argument_form_is_valid composes it (it does not
-// re-implement the count check).
 fn argument_is_non_vacuous(a: Argument) -> Bool {
   (a.axioms |> count) > 0 && (a.propositions |> count) > 0
 }
 
-// VALIDITY: the argument FORM is well-formed — non-vacuous, rooted at the axioms,
-// acyclic, closed. Decidable, by construction. Non-vacuity is conjoined here (not left
-// for the caller to remember) so the headline validity predicate is fail-CLOSED on the
-// empty argument: there is no way to ask "is this a valid form?" and have an empty
-// Argument pass. (SOUNDNESS — the premises actually being true — is the undecidable ③
-// residue and has no fold here; see the header "never"-trap note.)
 fn argument_form_is_valid(a: Argument) -> Bool {
   argument_is_non_vacuous(a)
     && argument_has_no_orphan(a)

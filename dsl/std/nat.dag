@@ -1,30 +1,3 @@
-// std/nat.dag -- Natural numbers (ℕ) as semiring over the abstract counting carrier.
-//
-// Layer 2 of the construction chain:
-//
-//   Magnitude → Nat → Int → Rational → Real
-//
-// `Nat = CommutativeSemiring<Magnitude>` says "ℕ is the algebra of addition +
-// multiplication (with identities 0 and 1) over the unbounded counting carrier
-// `Magnitude`, and multiplication is commutative." No additive inverse —
-// `CommutativeSemiring` is the right algebra layer for ℕ; `Int` extends to
-// `AbelianGroup<Nat>` in a later slice (Grothendieck construction).
-//
-// CONSUMERS: none in this slice. Refinements `Nat<N>` (later slices, gated
-// on T-V2-Retirement per design doc §"path (a) coordination") parameterize
-// the namespace to bind concrete bit-width at grounding time.
-//
-// HARD BOUNDARIES:
-//   - Carrier is `Magnitude`, the canonical algebraic counting carrier.
-//     `Word64` / `Word128` (and `Byte`/`Word16`/`Word32`) at `dsl/std/bit.dag`
-//     remain **storage refinements** at the bit-/byte-record layer; they are
-//     not alternate `Nat`/`Magnitude` authorities.
-//   - No tokenizer / `LitInt` / literal-grammar changes.
-//   - No refinement syntax (`Nat<N>`, `where bits <= N`) — gated on
-//     T-V2-Retirement per design doc.
-//   - No migration of legacy `dsl/std/integer.dag` `Semiring<Word*>` / `OrderedRing<Word*>`
-//     chain — sequenced for design doc §6 cascade slice.
-
 module std.nat
 
 import std.algebra { CommutativeSemiring, Ordering, Less, Equal, Greater }
@@ -32,9 +5,6 @@ import std.magnitude { Magnitude }
 
 type Nat = CommutativeSemiring<Magnitude>
 
-// Total order on ℕ (non-negative counting magnitudes). std.algebra lists compare/min/max
-// as OrderedRing-derived operations; Nat stops at CommutativeSemiring, so these are the
-// minimal producers critical-path span roll-up needs (pareto.dag compare_int pattern).
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
 }
