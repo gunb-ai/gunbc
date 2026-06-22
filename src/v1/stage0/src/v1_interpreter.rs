@@ -3524,6 +3524,33 @@ fn eval_algebra_method(
             })
         }
 
+        // list_push(list, item): append the argument as a SINGLE element, even
+        // when it is itself a list (unlike concat/append/push below, which merge
+        // a list-valued arg). Mirrors the free-function list_push so the same op
+        // resolves through method dispatch too; the lexer drives it. Additive.
+        "list_push" => {
+            if matches!(&receiver, Value::Str(_)) {
+                return Err(InterpError::TypeError {
+                    msg: "list_push not supported on String".to_string(),
+                });
+            }
+            let item = args.first().cloned().unwrap_or(Value::Null);
+            match value_to_list_carrier(&receiver) {
+                Some((items, copied)) => {
+                    let mut counters = ctx.mutation_counters.borrow_mut();
+                    counters.list_push_calls += 1;
+                    counters.list_push_items_copied += copied;
+                    drop(counters);
+                    let mut result = (*items).clone();
+                    result.push_back(item);
+                    Ok(list_value(result))
+                }
+                None => Err(InterpError::TypeError {
+                    msg: format!("list_push on non-list: {}", receiver.type_label()),
+                }),
+            }
+        }
+
         "concat" | "append" | "push" => {
             // String concat preserves the String representation: a String IS a
             // FreeMonoid<Char>, but its canonical value form is Value::Str — concat must
@@ -3675,6 +3702,18 @@ fn eval_algebra_method(
             let sep = args.first().map(|v| format!("{}", v)).unwrap_or_default();
             let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
             Ok(Value::Str(strs.join(&sep)))
+        }
+
+        // chars(s) -> List<Int>: decompose a String into its Unicode code
+        // points (Ints), matching the emitted Rust template in
+        // languages.dag (`{recv}.chars().map(|c| c as i64).collect()`) and the
+        // lexer's `source_chars: List<Int>` consumer (01_tokenize). Free-call
+        // `chars(source)` desugars to receiver-style method dispatch here; the
+        // interpreter must implement it to run the full compile/emit fold.
+        "chars" => {
+            let s = expect_str(Some(&receiver), "chars")?;
+            let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
+            Ok(list_value(items))
         }
 
         // Map key lookup is checked BEFORE the FreeMonoid list path: a String IS a
@@ -5311,6 +5350,39 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        // chars_to_string(chars: List<Int>, start, end) -> String: slice a
+        // code-point list [start, end) into a String (v1_rt::chars_to_string /
+        // languages.dag). The lexer builds token text this way, so the
+        // interpreter needs it to run the full compile/emit fold.
+        "chars_to_string" => {
+            let cps = match positional.first().copied() {
+                Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
+                    msg: "chars_to_string expects a list of code points".to_string(),
+                })?,
+                None => {
+                    return Err(InterpError::TypeError {
+                        msg: "chars_to_string requires a code-point list".to_string(),
+                    })
+                }
+            };
+            let len = cps.len() as i64;
+            let start = expect_int(positional.get(1).copied(), "chars_to_string start")?
+                .max(0)
+                .min(len);
+            let end = expect_int(positional.get(2).copied(), "chars_to_string end")?
+                .max(0)
+                .min(len)
+                .max(start);
+            let s: String = cps[start as usize..end as usize]
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Int(cp) => char::from_u32(*cp as u32),
+                    _ => None,
+                })
+                .collect();
+            Ok(Some(Value::Str(s)))
+        }
+
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
             match s.parse::<i64>() {
@@ -5318,6 +5390,13 @@ fn eval_builtin(
                 Err(_) => Ok(Some(Value::Null)),
             }
         }
+
+        // Source-char cost metering primitive (runtime_rust.dag): a zero-arg
+        // side-effecting host fn the lexer (01_tokenize) calls directly. The
+        // compiled seed records a counter; the interpreter has no such counter,
+        // so it is a no-op returning unit. Needed for the interpreter to run
+        // the full compile/emit fold.
+        "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
 
         "concat" => {
             // Variadic string concat (common in .dag code)
@@ -6527,20 +6606,31 @@ fn raw_map_lookup(
         },
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
-            let lookup = fields
-                .get(&lookup_sym)
-                .ok_or_else(|| InterpError::TypeError {
-                    msg: format!("raw_map_lookup expects Map, got {}", map.type_label()),
-                })?;
-            match lookup {
-                Value::Closure { .. } => apply_closure(lookup, &[key.clone()], env, ctx),
-                Value::Fn { node } => {
+            match fields.get(&lookup_sym) {
+                // A lookup-table abstraction carries a callable `lookup` field.
+                Some(lookup @ Value::Closure { .. }) => {
+                    apply_closure(lookup, &[key.clone()], env, ctx)
+                }
+                Some(Value::Fn { node }) => {
                     let named = vec![(None, key.clone())];
                     call_function(ctx, node, &named, env)
                 }
-                _ => Err(InterpError::TypeError {
+                Some(_) => Err(InterpError::TypeError {
                     msg: "Map.lookup field is not callable".to_string(),
                 }),
+                // Record-form map (a `data x: Map<K,V> = { ... }` literal, which
+                // the interpreter builds as a Record): look the key up as a
+                // field name. A miss yields Null, which the Witness/Optional
+                // bridge projects to Violates/Absent (see eval_match_pattern's
+                // record-form empty_map handling). Additive: this case
+                // previously errored.
+                None => match key {
+                    Value::Str(s) => {
+                        let k = ctx.sym(s);
+                        Ok(fields.get(&k).cloned().unwrap_or(Value::Null))
+                    }
+                    _ => Ok(Value::Null),
+                },
             }
         }
         _ => Err(InterpError::TypeError {

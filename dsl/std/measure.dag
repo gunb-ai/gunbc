@@ -392,7 +392,7 @@ fn gibibyte(count: Nat) -> Gibibyte {
 }
 
 fn gibibyte_count(g: Gibibyte) -> Nat {
-  g.count
+  measure_count(g)
 }
 
 fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
@@ -444,7 +444,7 @@ fn watt(count: Nat) -> Watt {
 }
 
 fn watt_count(w: Watt) -> Nat {
-  w.count
+  measure_count(w)
 }
 
 fn celsius(count: Int) -> Celsius {
@@ -452,7 +452,7 @@ fn celsius(count: Int) -> Celsius {
 }
 
 fn celsius_count(c: Celsius) -> Int {
-  c.count
+  measure_count(c)
 }
 
 fn rpm(count: Nat) -> RevolutionsPerMinute {
@@ -460,7 +460,7 @@ fn rpm(count: Nat) -> RevolutionsPerMinute {
 }
 
 fn rpm_count(r: RevolutionsPerMinute) -> Nat {
-  r.count
+  measure_count(r)
 }
 
 // --- MoneyAmount<S>: price magnitude carrier ------------------------------
@@ -509,7 +509,7 @@ fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
 }
 
 fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
-  m.count
+  measure_count(m)
 }
 
 fn byte_size(count: Nat) -> ByteSize {
@@ -517,7 +517,7 @@ fn byte_size(count: Nat) -> ByteSize {
 }
 
 fn byte_size_count(b: ByteSize) -> Nat {
-  b.count
+  measure_count(b)
 }
 
 fn bit_width(count: Nat) -> BitWidth {
@@ -525,7 +525,7 @@ fn bit_width(count: Nat) -> BitWidth {
 }
 
 fn bit_width_count(b: BitWidth) -> Nat {
-  b.count
+  measure_count(b)
 }
 
 fn hertz(count: Nat) -> Hertz {
@@ -533,7 +533,7 @@ fn hertz(count: Nat) -> Hertz {
 }
 
 fn hertz_count(h: Hertz) -> Nat {
-  h.count
+  measure_count(h)
 }
 
 fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
@@ -541,5 +541,5 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 }
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
-  t.count
+  measure_count(t)
 }
