@@ -57,7 +57,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc ([scope](docs/plans/axiom-syllogism-lens.md))
 
-## ✦ Ergonomics LANE — make the fold the path of least resistance *(proposed; slots in the §0–§4 stability band, upstream of §0 — bright-stag to number/place)*
+## ✦ Ergonomics LANE — make the fold the path of least resistance *(lead lane of the stability band, upstream of §0 — placed bright-stag-194)*
+→ [charter: spine + ranked focus](docs/plans/fold-ergonomics.md)
 
 Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a hand-rolled `match` has a
 `_ =>` fail-open escape; a fold over a closed coproduct is total by construction and has none. So the chain
@@ -69,8 +70,8 @@ Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names 
 friction it retires** (displaced cost), never "cleaner."
 
 **◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a
-stage fold) → **▸ inert-abstraction lens (measure the residue)** → fold reachable by default (the combinators
-that stop hand-rolling) → new non-fold residue can't merge (pairs with §0 wall)
+stage fold) → **▸ measure the residue (inert-abstraction lens) + fix the root (generic inference)** → fold
+reachable *by default* → new non-fold residue can't merge (pairs with §0 wall)
 
 **Audit half — measure the friction + the residue (decidable; wall-able):**
 - [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers*; generalizes the inert-lens backstop (#5433) from lenses to all carriers. **First RED witness = `Placement` / `Materialization` / `RealizationObjective`** (charter §4: "modeled + witness-passing, no non-test consumer") — a genuinely-inert carrier the lens *fires* on day one, so the lens isn't itself inert (its own §6 guardrail). (`cached_stage` is the *resolved* case — now wired, see Fix half — so it's the worked example, not the witness.)
@@ -78,9 +79,9 @@ that stop hand-rolling) → new non-fold residue can't merge (pairs with §0 wal
 - [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
 
 **Fix half — make the fold the path of least resistance:**
+- [ ] **generic-inference fix** *(fix keystone — #1, start here)* — the root that makes the fold reachable *by default*, not just reachable; collapses a fan-out of hand-rolls (`qualified_name` trio · `ParseTable` · `cached_stage` indirection) and is the prereq for §0's realization-grounding (~120 `Value` bridges become a fold, not a 131-site grind). Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3)
 - [ ] **generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid
 - [ ] **wire the seams, don't strand them** — an abstraction lands *consumed* or scaffold-marked with a dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476). Worked example (the full arc): `cached_stage` seeded inert (#5512) → caught by the keystone lens → wired with a `Miss`-stub wrapping `stage_resolve`. **Boundary:** this lane owns only that the seam *lands consumed-or-marked*; **§1/§2 own *enabling* the resolve-cache** (the realization work) — one home each.
-- [ ] **fold ergonomics in the type system** — fix the inference friction the audit surfaces so the typed-param workaround isn't needed (composes with §0's fail-closed-inference work)
 
 **Own runway — down-ranked (the lane's §6 guardrail applied to its own scope):**
 - [ ] **ban source comments** (`.dag` + `.rs`) — *separate runway, sequenced BELOW the fold items.* Orthogonal to folds (it's documentation-hygiene), load-bearing (grammar `02_parse`/`syntax`), and the item most likely to swallow the lane. Displaced cost: reviewer reads multiples of the real diff (a comment-heavy `.dag` fn is ~10% code) + LOC inflation; that's the pain, not "cleaner." Construction arc: model the live-state survivors → migrate → **delete the rest aggressively** (git is the backup) → **parser refuses free `//`** (§5, lands LAST). *(calm-seal-13: pilot CI-gate files → fan out → wall; deletion has no modeling-blocker — no gate text-scans comment bodies)*
@@ -205,7 +206,7 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
   - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
     - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**
-      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`)
+      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate must reproduce: [required facts](docs/plans/regen-verify-gate-required-facts.md)
   - [ ] TypeScript to first-class (beyond the `add` slice)
   - [ ] seed-honesty discharge (Diverse Double-Compiling)
   - [ ] collapse `src/v1` → pinned v2-emitted seed; delete the 154k hand-written lines (terminal, not a big-bang `rm`)
