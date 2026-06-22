@@ -1,0 +1,62 @@
+// dsl/test/claim/roadmap_gate_test.dag — §5 by-execution proof for the RoadmapGate drift logic.
+//
+// The PURE half of the capstone (the ci_yaml_gate witness shape over the markdown medium): proves the
+// drift predicate `roadmap_drifted` has the right teeth WITHOUT a host effect (Filesystem.Read lives in
+// the effectful gate `tools.roadmap_gate`, which cannot run in a pure witness).
+//
+// TWO distinct teeth (warm-lark-306 ruling):
+//  - SET-perturbation (THE inversion proof): drop #5470/#5478 from the merged snapshot → the measure
+//    line's box flips [x]→[ ] → the projected bytes differ → drift RED. This proves the box is genuinely
+//    DERIVED from the set (a coincidental byte-match can't pass), the whole point of the inversion.
+//  - HAND-EDIT byte-diff: any edit to the committed bytes that diverges from the authority → drift RED.
+// And the clean case: the authority's own projection is drift-free (the gate is green on a faithful file).
+
+module test.claim.roadmap_gate
+
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.roadmap_document { project_roadmap_to_markdown }
+import gunbc.roadmap_authority {
+  roadmap_authority, authored_merged_prs, expected_roadmap_md, roadmap_drifted,
+}
+
+// The projection under a perturbed merged-set (the committed snapshot minus #5470/#5478, the measure PRs).
+fn emit_dropping_measure() -> String {
+  let perturbed = [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425, 5236,
+    5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527, 5444]
+  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: perturbed))
+}
+
+// Clean: the authority's own projection is NOT drift (the gate is green on a faithful ROADMAP.md).
+fn witness_clean_not_drift() -> Bool {
+  !roadmap_drifted(committed: expected_roadmap_md())
+}
+
+// SET-perturbation tooth (the inversion proof): the measure-dropped projection differs from the
+// authored-set projection (so it would drift), AND the difference is specifically the measure box
+// flipping [x]→[ ] — the box tracks the set, not a baked literal.
+fn witness_set_perturbation_drifts() -> Bool {
+  let dropped = emit_dropping_measure()
+  roadmap_drifted(committed: dropped)
+    && string_contains(s: dropped, pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    && !string_contains(s: dropped, pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    && string_contains(s: expected_roadmap_md(), pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+}
+
+// HAND-EDIT tooth: any byte that diverges from the authority is drift (a hand-toggle, a prose edit).
+fn witness_hand_edit_drifts() -> Bool {
+  roadmap_drifted(committed: concat(expected_roadmap_md(), "\n- [x] **a hand-added line**"))
+}
+
+// Non-vacuity: the authored set genuinely renders the measure line done (so the perturbation flip is a
+// real change, not a line that was [ ] either way).
+fn witness_authored_set_nonvacuous() -> Bool {
+  count(authored_merged_prs()) > 0
+    && string_contains(s: expected_roadmap_md(), pattern: "- [x] **numeric-tower grounding** (#5428)")
+}
+
+test fn roadmap_gate_witnesses() -> Bool {
+  witness_clean_not_drift()
+    && witness_set_perturbation_drifts()
+    && witness_hand_edit_drifts()
+    && witness_authored_set_nonvacuous()
+}

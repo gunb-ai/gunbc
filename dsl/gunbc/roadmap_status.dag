@@ -8,6 +8,8 @@ type RoadmapItem
 
   | AuthoredLine { done: Bool, content: String }
 
+  | PlainLine { content: String }
+
 fn pr_merged(pr: PullRequest) -> Bool {
   match pr.merged_at {
     Present { value: _ } => true
@@ -27,6 +29,7 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
   match item {
     DerivableLine { prs, title: _, description: _ } => prs_all_merged(prs: prs, merged: merged)
     AuthoredLine { done, content: _ } => done
+    PlainLine { content: _ } => false
   }
 }
 
@@ -35,6 +38,7 @@ type DriftVerdict = Drifted | Clean | Underivable
 fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
   match item {
     AuthoredLine { done: _, content: _ } => Underivable
+    PlainLine { content: _ } => Underivable
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean
