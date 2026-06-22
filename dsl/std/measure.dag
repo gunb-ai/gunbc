@@ -347,16 +347,6 @@ fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, 
   if each_count == 0 { each_count } else { capacity.count / each_count }
 }
 
-// `Measure − Measure → Measure` (same dimension), SATURATING at zero — the §3 ② *reservation* case
-// (reserve a measured demand from a budget). The dimension is preserved (a budget minus a demand is
-// still a budget); only the magnitude changes. Fail-closed (§5): an over-reservation (`b ≥ a`) floors
-// to a zero-magnitude budget the consumer reads as "no room", NEVER an underflowed huge `Nat` that
-// would fabricate budget out of nothing. On saturation `a.count - a.count` is the `Nat` zero source
-// (keeps both arms `Nat`, no literal).
-fn measure_saturating_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
-  Measure { count: if a.count <= b.count { a.count - a.count } else { a.count - b.count } }
-}
-
 // `Measure × num/den → Measure`, rounded UP — the §3 ② *demand* case (a per-share demand
 // that must NOT under-estimate: under-estimate ⇒ ⌊budget÷demand⌋ too high ⇒ over-fit ⇒ OOM).
 // The SAME shape as `measure_scale_fraction_floor`, OPPOSITE rounding — that opposition IS the

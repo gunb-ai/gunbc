@@ -98,4 +98,4 @@ jobs:
           if '[' '-n' "$GUNBC_BUILD_FRESHNESS_NEWER_SRC" ']'; then 'echo' '::error::build verification: declared artifact '\''cache_purity_audit'\'' is older than a source file (stale — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/cache_purity_audit' >&2; exit 1; fi
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
-          "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
+          GUNBC_CACHE_PURITY_AUDIT=1 "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"

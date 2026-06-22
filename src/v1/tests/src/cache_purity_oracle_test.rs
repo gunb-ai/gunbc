@@ -428,7 +428,8 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
     // the poisoned artifact (Hit), the structural `==` diverges on the offsets, and it returns a
     // located, typed, LOUD §5 violation as the Err the floor exits 1 on. RED-on-revert: undo the
     // offsets poison and this Hit compares equal → Ok(Decoded), the gate goes green. ===
-    let audit = audit_warm_readback_against_cold(&cache_dir, &subject, &cold_graph, &cold_si, &entry);
+    let audit =
+        audit_warm_readback_against_cold(&cache_dir, &subject, &cold_graph, &cold_si, &entry);
     let shouted = audit.expect_err(
         "the in-process piggyback audit MUST go RED on the poisoned warm read-back (warm!=cold)",
     );

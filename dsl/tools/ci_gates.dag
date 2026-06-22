@@ -56,9 +56,9 @@ func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
   if exit_ok(g6) { run_spec_gate(g: SourceRootIngestGate) } else { g6 }
 }
 
-// NB the warm==cold cache-purity audit is NOT a sequential gate: it runs as a CO-PROCESS of the floor
-// job (tools.cache_purity_audit_corun), concurrent with claim_executor and joined fail-closed at the
-// end of the run-step (ROADMAP §2 P3) — full coverage off the floor critical path.
+// NB the warm==cold cache-purity audit is NOT a sequential gate: it rides the floor's own resolve
+// in-process (GUNBC_CACHE_PURITY_AUDIT=1 on scheduler_invoke — the audit_warm_readback_against_cold
+// piggyback at the cache-write site), so it adds no separate gate and no double resolve (ROADMAP §2 P3).
 
 func main() -> ProcessExit {
   run_ci_gates_sequential(spec: gunbc_ci_spec)

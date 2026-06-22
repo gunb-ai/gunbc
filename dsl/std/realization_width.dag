@@ -32,7 +32,6 @@ import std.measure {
   byte_size_count,
   measure_scale_fraction_floor,
   measure_fit_count_floor,
-  measure_saturating_sub,
   hardware_thread_count,
   hardware_thread_count_value,
   time_measure,
@@ -151,85 +150,6 @@ fn memory_aware_spawn_width(
     )
     hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
   }
-}
-
-// ── co-run residual width (§1-C, concurrent realizations) ─────────────────────
-// When a SECOND fan-out (e.g. the warm==cold cache-purity audit) runs CONCURRENTLY with the floor
-// claim_executor on the SAME host, they SHARE the one cgroup budget. Sizing the second fan-out as
-// if it owned the whole budget re-introduces the very OOM the memory term exists to prevent:
-// floor_peak + audit_peak can exceed the cap even though each alone fits. So the concurrent realizer
-// sizes against the RESIDUAL budget = 0.8·total − the floor's MEASURED concurrent peak (reserve the
-// FULL floor peak — it really will use that RAM — from the already-safety-fractioned budget). This
-// is the floor-concurrent term made structural: the co-runner can never claim RAM the floor holds.
-// residual = 0.8·total − floor_peak, all in the ByteSize carrier via the lifted measure algebra
-// (no unwrap→raw-arith→rewrap fork): scale-floor for the 0.8 margin, saturating-sub to reserve the
-// full concurrent floor peak. Saturates to a zero-magnitude budget when the floor peak meets/exceeds
-// the safe budget (the consumer reads that as "no room", fail-closed).
-fn co_run_safe_residual_budget(memory_budget: ByteSize, floor_concurrent_peak: ByteSize) -> ByteSize {
-  measure_saturating_sub(
-    a: budget_safety_fraction_apply(budget: memory_budget),
-    b: floor_concurrent_peak
-  )
-}
-
-// Width for a fan-out co-running with the floor: min(shard_count, threads, ⌊residual ÷ peak⌋) where
-// residual already reserves the concurrent floor peak. Distinct from memory_aware_spawn_width in its
-// FAIL-CLOSED floor: where the standalone floor always admits ≥1 (it owns the host, forward progress
-// beats OOM), a co-runner that does NOT fit beside the floor must NOT silently run width-1 and bust
-// the shared cap — it returns width 0, the typed "cannot co-run safely" signal the host realizer
-// fails closed on (escalate, never OOM). A 0-byte (unreadable) budget → the conservative fallback,
-// same as the standalone fold.
-fn co_run_residual_spawn_width(
-  shard_count: Int,
-  hardware_threads: HardwareThreadCount,
-  memory_budget: ByteSize,
-  floor_concurrent_peak: ByteSize,
-  audit_per_shard_peak: ByteSize,
-  conservative_fallback_width: Int
-) -> HardwareThreadCount {
-  // Sentinel READ of the budget magnitude (not arithmetic), same as memory_aware_spawn_width: a
-  // zero-magnitude budget means the host could not read a live budget → conservative fallback.
-  let budget_bytes = byte_size_count(b: memory_budget)
-  if budget_bytes == 0 {
-    hardware_thread_count(count: conservative_fallback_width)
-  } else {
-    let cpu_width = hardware_thread_count_value(
-      t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
-    )
-    // "How many audit shards fit in the residual" via the lifted fit-count op. measure_fit_count_floor
-    // returns 0 on a zero divisor (unknown peak) AND on a saturated-to-zero residual — both of which
-    // are the FAIL-CLOSED co-run signal (width 0 = cannot co-run, NOT a silent width-1 OOM), so no
-    // separate peak/residual guards are needed.
-    let mem_fits = measure_fit_count_floor(
-      capacity: co_run_safe_residual_budget(memory_budget: memory_budget, floor_concurrent_peak: floor_concurrent_peak),
-      each: audit_per_shard_peak
-    )
-    if mem_fits < 1 {
-      hardware_thread_count(count: 0)
-    } else {
-      hardware_thread_count(count: int_min(a: cpu_width, b: mem_fits))
-    }
-  }
-}
-
-fn co_run_residual_width_value(
-  shard_count: Int,
-  hardware_threads: HardwareThreadCount,
-  memory_budget: ByteSize,
-  floor_concurrent_peak: ByteSize,
-  audit_per_shard_peak: ByteSize,
-  conservative_fallback_width: Int
-) -> Int {
-  hardware_thread_count_value(
-    t: co_run_residual_spawn_width(
-      shard_count: shard_count,
-      hardware_threads: hardware_threads,
-      memory_budget: memory_budget,
-      floor_concurrent_peak: floor_concurrent_peak,
-      audit_per_shard_peak: audit_per_shard_peak,
-      conservative_fallback_width: conservative_fallback_width
-    )
-  )
 }
 
 // Pareto goals for width trade-off (wall-time ↓, peak-memory ↓) — reuse std.pareto vocabulary.
@@ -387,87 +307,4 @@ fn witness_subunit_budget_admits_one() -> Bool {
     per_shard_peak: byte_size(2100028416),
     conservative_fallback_width: 4
   ) == 1
-}
-
-// ── co-run residual width witnesses (TOOTH 2: reserve the floor's concurrent peak) ──
-fn co_run_width_value(
-  shard_count: Int,
-  hardware_threads: HardwareThreadCount,
-  memory_budget: ByteSize,
-  floor_concurrent_peak: ByteSize,
-  audit_per_shard_peak: ByteSize,
-  conservative_fallback_width: Int
-) -> Int {
-  co_run_residual_width_value(
-    shard_count: shard_count,
-    hardware_threads: hardware_threads,
-    memory_budget: memory_budget,
-    floor_concurrent_peak: floor_concurrent_peak,
-    audit_per_shard_peak: audit_per_shard_peak,
-    conservative_fallback_width: conservative_fallback_width
-  )
-}
-
-// The reservation BINDS: at a budget where the audit alone would admit the full shard_count (8),
-// reserving the concurrent floor peak (8.4 GB) backs it below that cap. RED if the floor term were
-// ignored — the co-run width would then equal the standalone (no-reservation) width.
-// total 60 GB: 0.8×60=48 GB. standalone ⌊48 ÷ 5.55⌋=8 (=shard_count). residual 48−8.4=39.6 GB,
-// ⌊39.6 ÷ 5.55⌋=7 < 8. So co-run=7, standalone=8 → strictly less ⟺ reservation took effect.
-fn witness_co_run_reservation_binds() -> Bool {
-  let co_run = co_run_width_value(
-    shard_count: 8,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(60000000000),
-    floor_concurrent_peak: byte_size(8400113664),
-    audit_per_shard_peak: byte_size(5550000000),
-    conservative_fallback_width: 4
-  )
-  let standalone = memory_aware_width_value(
-    shard_count: 8,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(60000000000),
-    per_shard_peak: byte_size(5550000000),
-    conservative_fallback_width: 4
-  )
-  co_run == 7 && standalone == 8 && co_run < standalone
-}
-
-// FAIL-CLOSED over-budget: when 0.8×total − floor_peak admits less than ONE audit shard, the
-// co-runner returns width 0 — the typed "cannot co-run safely" signal (NOT a silent width-1 that
-// would bust the shared cap and OOM). total 12 GB: 0.8×12=9.6 GB; residual 9.6−8.4=1.2 GB <
-// 5.55 GB peak → 0. RED if it floored to 1 like the standalone fold.
-fn witness_co_run_over_budget_fails_closed() -> Bool {
-  co_run_width_value(
-    shard_count: 8,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(12000000000),
-    floor_concurrent_peak: byte_size(8400113664),
-    audit_per_shard_peak: byte_size(5550000000),
-    conservative_fallback_width: 4
-  ) == 0
-}
-
-// Healthy real-fleet host: residual ≫ shard_count·peak so memory is non-binding and width = the
-// topology cap (shard_count). 128 GB: 0.8×128=102.4 GB; residual 102.4−8.4=94 GB; ⌊94 ÷ 5.55⌋≈16 ≫ 4.
-fn witness_co_run_healthy_host_caps_at_shard_count() -> Bool {
-  co_run_width_value(
-    shard_count: 4,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(128000000000),
-    floor_concurrent_peak: byte_size(8400113664),
-    audit_per_shard_peak: byte_size(5550000000),
-    conservative_fallback_width: 4
-  ) == 4
-}
-
-// Unreadable budget (0-byte host sentinel) → conservative committed fallback, never an OOM.
-fn witness_co_run_unreadable_budget_falls_back() -> Bool {
-  co_run_width_value(
-    shard_count: 4,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(0),
-    floor_concurrent_peak: byte_size(8400113664),
-    audit_per_shard_peak: byte_size(5550000000),
-    conservative_fallback_width: 4
-  ) == 4
 }

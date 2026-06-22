@@ -7,7 +7,6 @@ import gunbc.ci_layer_roots {
   witness_layer_source_flags
 }
 import tools.build_step { BuildArtifact, verifications_script }
-import tools.cache_purity_audit_corun { cache_purity_audit_corun_command }
 import extdeps.languages.bash.program { ShellWord, Concat, lit, var_ref }
 
 type Gate
@@ -149,8 +148,10 @@ fn ci_release_artifact(name: String) -> BuildArtifact {
 data ci_floor_required_artifacts: List<BuildArtifact> = [
   ci_release_artifact(name: "claim_executor"),
   ci_release_artifact(name: "gunbc"),
-  // The cache-purity audit co-process (ROADMAP §2 P3): verify the bin exists before the run-step
-  // backgrounds it, so a missing build fails loudly at verify, not silently at the co-run launch.
+  // The standalone cache-purity audit tool (ROADMAP §2 P3): the CONTINUOUS floor gate is the
+  // in-process piggyback (GUNBC_CACHE_PURITY_AUDIT=1 on scheduler_invoke), but this manual
+  // full-corpus diagnostic bin is kept built so it is always runnable off the floor critical path;
+  // verifying it exists fails a broken build loudly at verify, not silently later.
   ci_release_artifact(name: "cache_purity_audit")
 ]
 
@@ -246,54 +247,35 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 
+// The floor run-step. `GUNBC_CACHE_PURITY_AUDIT=1` ARMS the in-process warm==cold piggyback
+// (cache_purity_audit::audit_warm_readback_against_cold): claim_executor already writes each cold
+// resolved-graph to the shared cache, so the audit rides that write — one warm read-back + a
+// structural compare per cold write (~1×, ~0 added peak), fail-closed (a divergence exits the
+// floor 1). This REPLACES the deleted co-run orchestrator (background process + K-way sharding +
+// fail-closed join), which on the real fleet was NET −18min and OOM'd runners (it double-resolved
+// the corpus beside the width-8 floor). DESIGN §5; ROADMAP §2 P3.
 fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
+    "GUNBC_CACHE_PURITY_AUDIT=1 ",
     concat(
       concat(
-        concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
-        concat(" --plan-function ", floor_plan_function)
+        concat(
+          concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
+          concat(" --plan-function ", floor_plan_function)
+        ),
+        concat(concat(" --notice-title \"", spec.notice_title), "\"")
       ),
-      concat(concat(" --notice-title \"", spec.notice_title), "\"")
-    ),
-    ""
+      ""
+    )
   )
 }
 
-fn ci_run_join_lines(xs: List<String>) -> String {
-  fold(xs, init: "", f: (acc, s) => concat(acc, s))
-}
-
-// DISABLED ON BRANCH (pending the piggyback rebuild — see gunbc_ci_run_script). This co-process
-// wiring is PRESERVED as the documented fallback but is NOT invoked: measured on the real fleet
-// runner it was NET −18min (the audit cold+warm re-resolves the whole corpus at width-4, ~30min
-// contended, dominating the ~13min floor) AND it OOM-killed runners (the real floor peaks ~39.9 GB
-// at width-8 — ~5× the 8.4 GB this comment assumed — and two concurrent runs per push collide on one
-// 128 GB host). The §2-root fix is to PIGGYBACK the audit on the floor's own resolve (warm read-back +
-// compare at the cache-write site) instead of a duplicate re-resolve; until operator GO on that, the
-// branch runs a CLEAN floor (cache-enable, no audit) so it stops harming fleet CI.
-//
-// Original intent (the co-process JOIN): background the audit orchestrator, run the floor in the
-// foreground, JOIN fail-closed — RED if EITHER the floor OR the audit fails. `set +e` so an early
-// FLOOR failure does not skip the audit `wait`. Kept verbatim as the fallback.
-fn gunbc_ci_floor_with_co_audit(spec: CiSpec) -> String {
-  ci_run_join_lines([
-    "set +e\n",
-    concat(cache_purity_audit_corun_command(), " > \"$ROOT/cpa_audit.log\" 2>&1 &\n"),
-    "CPA_PID=$!\n",
-    concat(scheduler_invoke(spec: spec), "\n"),
-    "FLOOR_RC=$?\n",
-    "wait \"$CPA_PID\"; CPA_RC=$?\n",
-    "echo \"::group::cache purity audit (co-run, full corpus)\"; cat \"$ROOT/cpa_audit.log\" 2>/dev/null || true; echo \"::endgroup::\"\n",
-    "if [ \"$FLOOR_RC\" -ne 0 ]; then echo \"::error::CI floor failed (exit $FLOOR_RC)\"; exit \"$FLOOR_RC\"; fi\n",
-    "if [ \"$CPA_RC\" -ne 0 ]; then echo \"::error::cache purity audit (co-run) failed — warm!=cold on the discovery corpus, or a shard dropped (DESIGN §5 fail-closed)\"; exit 1; fi\n"
-  ])
-}
-
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
-  // CLEAN FLOOR (cache-enable, NO co-run audit). The co-run is disabled on-branch pending the
-  // piggyback rebuild (gunbc_ci_floor_with_co_audit preserved as the fallback): the co-run was
-  // net-negative AND OOM-killed fleet runners. The cache-enable (GUNBC_RESOLVED_GRAPH_CACHE_DIR,
-  // exported from the isolate step) stays — that half of P3 is net-positive and safe on its own.
+  // The floor run-step: build the release bins, fetch the diff base, then run the scheduler with
+  // the cache ENABLED (GUNBC_RESOLVED_GRAPH_CACHE_DIR, exported from the isolate step) and the
+  // in-process warm==cold PIGGYBACK ARMED (GUNBC_CACHE_PURITY_AUDIT=1, set on scheduler_invoke).
+  // The audit rides the floor's own cache writes — no separate process, no double resolve — so it
+  // is net-positive and fits memory, unlike the deleted co-run orchestrator (DESIGN §5; ROADMAP §2 P3).
   concat(
     concat(
       concat(ci_release_build_script(), "\n"),

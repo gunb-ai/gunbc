@@ -70,7 +70,7 @@ fn divergence_fingerprint(
 ///   answer, just uncached), NOT a lossy decode. The codec is NOT exercised for such entries.
 /// - `Rejected` — a backend-key / content-digest reject (storage integrity), distinct from depth.
 /// - `Skipped` — the entry did not load/resolve (the discovery gate's concern, not purity's).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecodeReach {
     Decoded,
     MissOnRead,

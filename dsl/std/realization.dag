@@ -72,13 +72,6 @@ import std.realization_width {
   witness_unreadable_budget_falls_back_conservative,
   witness_safety_fraction_is_load_bearing,
   witness_subunit_budget_admits_one,
-  co_run_safe_residual_budget,
-  co_run_residual_spawn_width,
-  co_run_residual_width_value,
-  witness_co_run_reservation_binds,
-  witness_co_run_over_budget_fails_closed,
-  witness_co_run_healthy_host_caps_at_shard_count,
-  witness_co_run_unreadable_budget_falls_back,
 }
 
 // --- Independence classifier (fail-closed) ------------------------------------
