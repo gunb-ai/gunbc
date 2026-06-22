@@ -1,12 +1,9 @@
 module extdeps.cargo_build
 
-<<<<<<< HEAD
 // Default input values for the cargo ops below. Build references `env` in its input
 // block (not yet wired into shell argv). Fmt, Clippy and Nextest are invoked from
 // rust_gates_ci and must not carry a Map input — RecordedFixture cannot serialize Map
 // (fail-closed §5). (Test is kept for tools/build.dag; the rust gate runs Nextest.)
-=======
->>>>>>> origin/main
 data cargo_compile_env: Map<String, String> = empty_map()
 
 service cargo.Build {
@@ -47,6 +44,11 @@ service cargo.Build {
   // the rust gate (tools.rust_gates_ci) calls this op instead of hand-typing "cargo nextest run".
   // Requires `cargo-nextest` on PATH; the rust_tests CI job installs it (gunbc.ci_workflow).
   // Same feature-unification rule as Test: no `--features` at `-p v1-compiler-tests` scope.
+  // 🟡 SCAFFOLD — feature:cargo-test-interface-realization — bind DESIGN §2 Realization / Open Threads.
+  // Nextest and Test are two hand-defined SIBLING ops; the §2 Realization shape is ONE cargo-test
+  // INTERFACE (run a test selection) with nextest/libtest as bound handlers, not a fork per runner.
+  // Acceptable here only because Test is itself un-realized along this axis; the second sibling
+  // tightens the future fork. dissolve-on: fold Test+Nextest into one test-interface + runner handlers.
   operation Nextest {
     input { extra_args: List<String> = [] }
     output {

@@ -88,6 +88,11 @@ fn reasonless_ignore_lines(source: &str) -> Vec<usize> {
 }
 
 /// Module names declared in `lib.rs` (`mod foo;` / `pub mod foo;`).
+///
+/// ASSUMES a FLAT module tree — every `*_test.rs` is a top-level `mod` in `lib.rs`, which holds
+/// today. If anyone nests test modules under subdirs, this top-level-only scan would miss the
+/// nested declaration and `every_test_file_is_declared_in_lib` would false-positive; at that point
+/// it must recurse into nested `mod { … }` blocks / `foo/mod.rs`. Flagged in review of #5427.
 fn declared_modules(lib_rs: &str) -> std::collections::HashSet<String> {
     let mut mods = std::collections::HashSet::new();
     for line in lib_rs.lines() {
