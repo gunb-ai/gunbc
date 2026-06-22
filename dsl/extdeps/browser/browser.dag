@@ -8,7 +8,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "playwright.dev"
+    locator: "playwright.dev/docs/api/class-browsercontext"
   }
 }
 
