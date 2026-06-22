@@ -1,0 +1,27 @@
+// Scope: live clean-tree witness — the medium-structure containment guard, run by EXECUTION
+//        over the real tree (the §5 green-by-execution pass). Every current emit-side leaker
+//        (a `${{` literal outside the realization edge) and check-side leaker (a string-op over
+//        an emitted-medium value) is either a realization-edge module or carried by
+//        medium_structure_exception_roster, so the live scan must report ZERO leaks. A NEW
+//        (unrostered) non-edge leaker added anywhere under these roots makes this go RED.
+
+module v2.test.medium_structure_containment.clean_tree
+
+import v2.lens.medium_structure_containment {
+  medium_emit_side_scan_roots,
+  medium_check_side_scan_roots,
+  medium_structure_leak_count_live,
+  medium_structure_containment_clean_live
+}
+import v2.std.logic { Bool }
+
+test fn medium_structure_clean_tree_holds() -> Bool {
+  medium_structure_containment_clean_live(
+    emit_roots: medium_emit_side_scan_roots,
+    check_roots: medium_check_side_scan_roots
+  )
+    && (medium_structure_leak_count_live(
+      emit_roots: medium_emit_side_scan_roots,
+      check_roots: medium_check_side_scan_roots
+    ) == 0)
+}
