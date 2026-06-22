@@ -2391,20 +2391,6 @@ fn match_pattern(
                 // name is the record type must bind its fields here — the Value::Variant arm
                 // above only covers coproduct variants.
                 Value::Record { type_name, fields } => {
-                    // RECON-B (throwaway, do not commit): bridge a bare Record present-value
-                    // into Optional::Present (first/last realize -> bare-or-Null).
-                    if name == "Present" && parent_enum.as_deref() == Some("Optional") {
-                        let mut bindings = HashMap::new();
-                        for fb in field_bindings.iter() {
-                            let fb_pat = field_binding_pattern(fb.clone());
-                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
-                            bindings.extend(sub_bindings);
-                        }
-                        return Some(bindings);
-                    }
-                    if name == "Absent" && parent_enum.as_deref() == Some("Optional") {
-                        return None;
-                    }
                     if *type_name != ctx.sym(name) {
                         return None;
                     }
