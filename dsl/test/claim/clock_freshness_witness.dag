@@ -1,18 +1,3 @@
-// dsl/test/claim/clock_freshness_witness.dag
-//
-// By-execution witnesses for Clock.Now routed through the RecordedFixture seam.
-// Hermetic replay (Phase 2):
-//   claim_batch --source-root . --source-root dsl \
-//     --entry dsl/test/claim/clock_freshness_witness.dag \
-//     --function clock_freshness_keystone_holds --record --fixture-store /tmp/clock-fixtures
-//   claim_batch ... --hermetic --fixture-store /tmp/clock-fixtures
-//
-// Discriminators:
-//   * wet: Clock.Now returns a non-empty ISO Timestamp (witness below).
-// Hermetic replay + backdated recorded_at fail-closed: proven by execution in
-// v1-compiler-tests `interp_recorded_fixture_test` (clock_now_record_then_hermetic_replay_holds,
-// hermetic_clock_fixture_staleness_fails_closed) — bootstrap freshness uses Clock.UnixSecs.
-
 module test.claim.clock_freshness_witness
 
 import extdeps.clock

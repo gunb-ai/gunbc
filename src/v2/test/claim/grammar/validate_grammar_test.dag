@@ -1,11 +1,3 @@
-// Scope: validate_grammar(FormalGrammar) -> Witness<WellFormedFormalGrammar> witnesses.
-//
-// GREEN: minimal well-formed-by-(1)(2)(3) FormalGrammar accepts.
-// RED (1): start ∉ N.
-// RED (2): production lhs ∉ N.
-// RED (3): rhs symbol ∉ N∪Σ.
-// (4)(5) deferred fail-closed behind gunbc#4766 — positive witness carries EnumerationDeferred4766.
-
 module v2.test.claim.grammar.validate_grammar
 
 import v2.std.algebra { Cons, Empty }
@@ -23,13 +15,11 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates }
 
-
 data validate_grammar_fixture_start: Symbol = ^validate_grammar_fixture_start
 data validate_grammar_fixture_terminal_a: Symbol = ^validate_grammar_fixture_terminal_a
 data validate_grammar_fixture_other_nt: Symbol = ^validate_grammar_fixture_other_nt
 data validate_grammar_fixture_bad_lhs: Symbol = ^validate_grammar_fixture_bad_lhs
 data validate_grammar_fixture_orphan_terminal: Symbol = ^validate_grammar_fixture_orphan_terminal
-
 
 fn validate_grammar_fixture_well_formed() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
@@ -47,7 +37,6 @@ fn validate_grammar_fixture_well_formed() -> FormalGrammar {
     start: start
   }
 }
-
 
 fn validate_grammar_fixture_start_not_in_nonterminals() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
@@ -67,7 +56,6 @@ fn validate_grammar_fixture_start_not_in_nonterminals() -> FormalGrammar {
   }
 }
 
-
 fn validate_grammar_fixture_lhs_not_in_nonterminals() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
   let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
@@ -84,7 +72,6 @@ fn validate_grammar_fixture_lhs_not_in_nonterminals() -> FormalGrammar {
     start: start
   }
 }
-
 
 fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
@@ -103,7 +90,6 @@ fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> FormalGrammar {
   }
 }
 
-
 fn witness_validate_grammar_well_formed_accepts_holds() -> Bool {
   match validate_grammar(g: validate_grammar_fixture_well_formed()) {
     Holds { value: w } =>
@@ -113,14 +99,12 @@ fn witness_validate_grammar_well_formed_accepts_holds() -> Bool {
   }
 }
 
-
 fn witness_validate_grammar_start_not_in_nonterminals_rejects_holds() -> Bool {
   match validate_grammar(g: validate_grammar_fixture_start_not_in_nonterminals()) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
 }
-
 
 fn witness_validate_grammar_lhs_not_in_nonterminals_rejects_holds() -> Bool {
   match validate_grammar(g: validate_grammar_fixture_lhs_not_in_nonterminals()) {
@@ -129,14 +113,12 @@ fn witness_validate_grammar_lhs_not_in_nonterminals_rejects_holds() -> Bool {
   }
 }
 
-
 fn witness_validate_grammar_rhs_symbol_not_in_alphabet_rejects_holds() -> Bool {
   match validate_grammar(g: validate_grammar_fixture_rhs_symbol_not_in_alphabet()) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
 }
-
 
 test fn validate_grammar_witnesses() -> Bool {
   witness_validate_grammar_well_formed_accepts_holds()

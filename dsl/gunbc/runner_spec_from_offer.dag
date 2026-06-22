@@ -1,8 +1,3 @@
-// gunbc/runner_spec_from_offer.dag — Phase 3a-generic: ComputeOffer → RunnerSpec projection.
-//
-// Fleet-agnostic GHA `runs-on:` realization for any self-hosted ComputeOffer — no concrete
-// SKU catalog import, no operator host names. OUR fleet rows live in gunbc.ci_fleet.
-
 module gunbc.runner_spec_from_offer
 
 import extdeps.github.actions { RunnerSpec, SelfHosted }
@@ -36,8 +31,6 @@ fn cpu_architecture_runner_label(arch: Architecture) -> String {
   }
 }
 
-// GHA `runs-on:` realization of a self-hosted fleet offer (hosted/cloud variants
-// dissolve when RunnerSpec gains their typed carriers).
 fn runner_spec_from_offer(offer: ComputeOffer) -> RunnerSpec {
   let os = offer.supply.execution.os
   match compute_host_primary_cpu(host: offer.supply.physical) {

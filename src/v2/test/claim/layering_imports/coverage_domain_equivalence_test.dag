@@ -1,23 +1,9 @@
-// Scope: coverage-domain-equivalence witness (zesty sign=CUTOVER). This .dag proves the
-//        COVERING half by-execution — coverage_domain_equivalence_argument_holds() asserts the
-//        perturb roster spans EACH enumerated layer-root and EACH forbidden form (drift-resistant:
-//        a coverage-breaking roster edit goes RED, not merely count-shrink).
-// Authority: the (deleted) python layering gate's domain at daf95e49, git-recoverable. The v3
-//        generation has since been removed; this witness now covers the v2 layering domain only.
-//        (dsl/std is enforced by the lens root-independently but is not enumerated here — its
-//        former scanner row was v3/manifest-coupled and was retired with v3.)
-// Status: load-bearing — coverage roster pins wired in CI floor.
-
 module v2.test.layering_imports.coverage_domain_equivalence
 
 import v2.std.algebra { any, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-
-// Domain (post-v3-removal): 3 enumerated layer roots × the v2.compiler forbidden forms
-// (exact + prefix, root-independent), PLUS the std→extdeps import-arrow form (std-root-scoped,
-// DESIGN §3), leading-import, *.dag only.
 
 data layer_root_src_v2_std: String = "src/v2/std"
 data layer_root_src_v2_extdeps: String = "src/v2/extdeps"
@@ -47,7 +33,6 @@ type LayeringImportsScannerPerturbReceiptRow {
   scanner_function: String
 }
 
-// Scanner-execution perturb roster (host plant → REAL scan → witness; NOT hardcoded facts).
 data perturb_row_std_prefix: LayeringImportsScannerPerturbReceiptRow = LayeringImportsScannerPerturbReceiptRow {
   label: "src/v2/std × v2.compiler.* prefix",
   layer_root: layer_root_src_v2_std,
@@ -80,8 +65,6 @@ data perturb_row_parse_level_pre_resolve: LayeringImportsScannerPerturbReceiptRo
   scanner_function: "scanner_parse_level_pre_resolve_detects_holds"
 }
 
-// std-root-scoped: the std→extdeps rule only fires on a std-layer file (is_std_layer guard in
-// the lens), so this row carries the enumerated std root src/v2/std.
 data perturb_row_std_imports_extdeps: LayeringImportsScannerPerturbReceiptRow = LayeringImportsScannerPerturbReceiptRow {
   label: "src/v2/std × std→extdeps import",
   layer_root: layer_root_src_v2_std,
@@ -97,14 +80,6 @@ data layering_imports_scanner_perturb_receipt_rows: List<LayeringImportsScannerP
   perturb_row_parse_level_pre_resolve,
   perturb_row_std_imports_extdeps
 ]
-
-// COVERING: for EACH enumerated layer-root some row carries it, and for EACH forbidden form some
-// row carries it. A coverage-breaking roster edit (drop/duplicate-away a root or form) leaves a
-// cell uncovered → this goes RED. The v2.compiler form-check is ROOT-INDEPENDENT by lens structure
-// (is_layering_violation applies is_forbidden_compiler_import unconditionally —
-// src/v2/lens/layering_imports.dag), so per-root × per-form coverage ⇒ all classes. The
-// std→extdeps form is the one exception: it is STD-ROOT-SCOPED (guarded by is_std_layer), so it is
-// covered by the std-root row perturb_row_std_imports_extdeps specifically, not root-independently.
 
 fn rows_cover_root(root: String) -> Bool {
   any(

@@ -1,40 +1,14 @@
-// dsl/test/claim/extdeps_version_witness_test.dag
-//
-// By-execution witnesses for extdeps.version base model (DESIGN.md §3).
-//
-// GREEN: VersionIdentity and VersionConstraint preserve their labels;
-//        grounded constraint rows round-trip as declared;
-//        Ordering from std.algebra is reused (not re-minted).
-// DISCRIMINATING (RED if wrong):
-//   w_distinct_identities_not_equal — breaks if equality is collapsed to a constant.
-//   w_constraint_label_preserved    — breaks if VersionConstraint drops its label.
-//   w_ordering_exhaustive_match     — breaks if Ordering is re-minted with wrong variants.
-//   w_coreutils_constraint_grounded — breaks if gnu_coreutils min reverts to bare String.
-//
-// Ecosystem scheme mins (cargo SemVer, PEP 440, Go go directive) are witnessed in
-// their slice PRs — not here (slice-6 grounds only scheme-agnostic rows).
-//
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_version_witness_test.dag \
-//     --function extdeps_version_base_witnesses --claim-run
-
 module test.claim.extdeps_version_base
 
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.gnu_coreutils { min_coreutils_version }
 import std.algebra { Ordering, Less, Equal, Greater }
 
-// -- Test fixtures --------------------------------------------------
-
 fn identity_1_0_0() -> VersionIdentity { "1.0.0" }
 fn identity_2_0_0() -> VersionIdentity { "2.0.0" }
 fn constraint_ge_1() -> VersionConstraint { ">= 1.0.0" }
 
-// Helper: return Equal as a value to avoid match-subject ambiguity
-// (`match Equal { ... }` parses as record constructor; a call-result is unambiguous).
 fn mk_equal() -> Ordering { Equal }
-
-// -- Witnesses ------------------------------------------------------
 
 fn w_identity_label_preserved() -> Bool {
   identity_1_0_0() == "1.0.0"

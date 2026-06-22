@@ -1,34 +1,26 @@
-// src/v2/std/diagnostic.dag
-// Scope: fail-closed diagnostic schema.
-// Anchor: fail-closed "show the correct code" (DESIGN.md §5); one fold (DESIGN.md §6) — Ratified Q11.
-// Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
-
-
 module v2.std.diagnostic
-
 
 import v2.std.algebra { bag_eq, list_append, Magma, Monoid, Semigroup, list_snoc_item, fold_list, freemonoid_empty }
 import v2.std.node { Node }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Extent
   = WholeFile
   | ByteRange { start: Int, end: Int }
-// 🟢 coproduct dissolution — L1.4.b Pattern B: Node/Port payload tags
-// are recoverable from the parameterized anchor type.
+
 type LocusAnchor<T> {
   at: T
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { anchor: LocusAnchor<Node> }
   | PortLocus { anchor: LocusAnchor<Symbol> }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type NoCorrectionReason
   = UserInputBoundary
   | AmbiguousIntent
   | ExternalContractUnknown
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
@@ -41,15 +33,15 @@ type NonEmptyDiagnostics {
   head: Diagnostic
   tail: List<Diagnostic>
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Diagnostics
   = None
   | Some { diagnostics: NonEmptyDiagnostics }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Outcome<T>
   = Accepted { value: T, diagnostics: Diagnostics }
   | Rejected { diagnostics: NonEmptyDiagnostics }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type DiagnosticAccumulation
   = Accumulate
   | ShortCircuit
@@ -72,15 +64,7 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
 }
-// Named `extent_eq` (not bare `eq`) to follow the codebase's type-prefixed equality
-// convention (locus_eq, node_eq, fact_eq, ...). A bare `eq` module item shadows the
-// universal higher-order `eq:` comparison-function parameter (zip_eq/is_prefix_of/...) —
-// the bootstrap interpreter resolves a call name to a module item BEFORE an env-bound
-// lambda (v1_interpreter.rs eval_call: "module item wins over env-bound Value::Fn"), so a
-// bare `eq` global silently captures every `eq(x, y)` invocation inside those combinators
-// and crashes on non-Extent arguments. [Recurring class: multi-authority name resolution /
-// higher-order-param shadowing — the authority fix (env-bound fn wins, or a dup-name gate)
-// is tracked separately; this rename removes the one squatting name.]
+
 fn extent_eq(a: Extent, b: Extent) -> Bool {
   match a {
     WholeFile => match b {
@@ -129,14 +113,14 @@ fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
     && locus_eq(a: a.at, b: b.at)
     && correction_eq(a: a.correction, b: b.correction)
 }
-// Tail bag/multiset equality: order-insensitive; delegates to algebra bag_eq.
+
 fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
   bag_eq(xs: a, ys: b, eq: diagnostic_eq)
 }
 fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
   diagnostic_eq(a: a.head, b: b.head) && diagnostic_tail_eq(a: a.tail, b: b.tail)
 }
-// Monoid append over NonEmptyDiagnostics: list_append is the canonical FreeMonoid operation.
+
 fn non_empty_diagnostics_append(
   a: NonEmptyDiagnostics,
   b: NonEmptyDiagnostics,
@@ -305,10 +289,6 @@ fn append_outcome_value<T>(
   }
 }
 
-// Collect a list of outcomes into an outcome of a list, respecting the stage
-// diagnostic policy. ShortCircuit: first Rejected absorbs (pending warnings
-// from earlier Accepted results are prepended). Accumulate: all Rejected
-// diagnostics are merged before returning a final Rejected.
 fn sequence_outcome<T>(
   xs: List<Outcome<T>>,
   policy: StageDiagnosticPolicy
@@ -321,9 +301,7 @@ fn sequence_outcome<T>(
     }
   )
 }
-// traverse_outcome / traverse_node / sequence_node deferred: v2 bootstrap rejects
-// fn(T) -> Outcome<U> and fn(Node) -> Outcome<R> in higher-order parameter types
-// (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.
+
 fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
@@ -338,48 +316,6 @@ fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> 
   }
 }
 
-// =========================================================================
-// Diagnostic-emission intent (Gap A — emission = ingestion⁻¹ past syntax).
-// Anchor: docs/plans/emission-ingestion-inverse.md §4(A); DESIGN.md §3 (agnostic intent
-// stays central; the per-medium realization migrates outward / dispatch lives in extdeps),
-// §4 (emit = serialize_target ∘ translate — one grammar read backward), §5 (fail-closed).
-//
-// This is the MEDIUM-AGNOSTIC intent to SURFACE a diagnostic — distinct from `Diagnostic`
-// above (the rich compiler finding: reason/locus/correction). `EmitDirective` is what an
-// orchestration consumer actually expresses ("emit an Error-severity diagnostic"), and a
-// per-medium realization renders it the row-driven way (`emit(intent, medium)`), dissolving
-// hand-rolled forward emitters like the dead `render_log_annotation`.
-//
-// 🟡 SCAFFOLD — Bash-medium foundation only. The first realization is Bash
-// (`v2.extdeps.languages.bash` → `echo <message> >&2`), grounded by execution in
-// `v2.test.manual.emit_directive_bash`. The Bash transport is severity-INVARIANT (POSIX
-// `sh` has no severity concept; the stream is the only axis), so `severity` is carried by
-// the intent but realized only by a LATER medium layer.
-// Named dissolution / deferred-payoff markers (Phase 2, witty-wolf GHA-as-Node-gated):
-//   - severity REALIZATION: GitHub-Actions annotation prefix (severity Error → `::error`,
-//     Warning → `::warning`) is the GHA medium layered over the Bash transport; lands with
-//     the GHA-as-Node realization edge, NOT here.
-//   - source LOCUS (file/line for the GHA annotation) is added as `Optional<Locus>` WITH that
-//     GHA realizer (the only consumer that reads it); omitted now per JIT modeling (§6).
-//   - the live consumers (`tools.build_step` ::error, `gunbc.ci_spec` ::warning) migrate onto
-//     `emit(EmitDirective, GHA-over-Bash)` at that composed-arc landing, shrinking the §0
-//     realization-vocab containment roster (the bright-gull MediumStructureLeak dissolve-on).
-//
-// `Notice` is intentionally ABSENT: it has zero live consumers (only the dead
-// `render_log_annotation.AnnotationNotice`), so adding it now would be §5
-// specification-without-execution. Add it the moment a live info-level consumer appears.
-//
-// §3 SINGLE AUTHORITY — the single authority for diagnostic severity in v2.
-// Variants are prefixed (`SeverityError`/`SeverityWarning`), not bare `Error`/`Warning`, to
-// avoid the name-shadowing hazard this module documents (see `extent_eq` note above). Distinct
-// from `std.behavioral.Severity` (Low|Medium|High|Critical) — a different concept (external
-// edge-case risk scale), not a fork.
-//   TWIN DISSOLVED: `v2.lens.application.DiagnosticSeverity` (`= SeverityError {}`) was a
-//   second, same-named type (the C-8 lens-enforcement severity). Dissolved by REMOVING the
-//   dead severity apparatus entirely — `diagnostic_severity` had zero real consumers (set in
-//   two fixtures, discarded with `_` in every match arm, never read). §3 met: no same-named
-//   twin; std is the single DiagnosticSeverity authority. If lens enforcement ever needs to
-//   stamp a severity, it is added with its reading consumer at the emit site, grounded on std.
 type DiagnosticSeverity = SeverityError | SeverityWarning
 
 type EmitDirective {

@@ -1,11 +1,4 @@
-// Scope: Wave 3 TestClaim shadow selection — ROSTER AUTHORITY. Projects concrete manual
-//        `TestClaimEvalSubject` rows plus accepted generated LBE `TestClaimRun` rows to their `TestClaim` claims so the
-//        `v2.workflow.ci` Wave-3 shadow-selection wrappers narrow ONE authoritative roster by the
-//        affected-set rerun frontier. Shadow / non-gating: no corpus execution, no eval fork — the
-// Status: shadow — roster authority only; selection wrapper + fixture receipts live in v2.workflow.ci.
-
 module v2.test.workflow.wave3_shadow_roster
-
 
 import v2.compiler.eval { TestClaimEvalSubject, TestClaimRun, test_claim_run_claim }
 import v2.std.algebra { list_append }
@@ -22,15 +15,11 @@ import v2.test.generated.language_behavior_equivalence {
   run_lbe_transform_via_run_test_claim
 }
 
-
-// Concrete ACCEPTED generated rows (LBE corpus) — already `TestClaimRun<Node, RuntimeValue>` like the
-// manual roster. NOT scheduled-generator filtering (forbidden per header mark).
 data wave3_shadow_generated_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_lbe_conj_via_run_test_claim,
   run_lbe_disj_via_run_test_claim,
   run_lbe_transform_via_run_test_claim
 ]
-
 
 fn wave3_shadow_claims_from_runs(
   runs: List<TestClaimRun<Node, RuntimeValue>>
@@ -38,23 +27,19 @@ fn wave3_shadow_claims_from_runs(
   map(runs, fn(run) { test_claim_run_claim(run: run) })
 }
 
-
 fn wave3_shadow_claims_from_subjects(
   subjects: List<TestClaimEvalSubject<Node>>
 ) -> List<TestClaim> {
   map(subjects, fn(subject) { subject.claim })
 }
 
-
 fn ci_wave3_shadow_manual_claim_roster() -> List<TestClaim> {
   wave3_shadow_claims_from_subjects(subjects: manual_corpus_node_subject_rows)
 }
 
-
 fn ci_wave3_shadow_generated_claim_roster() -> List<TestClaim> {
   wave3_shadow_claims_from_runs(runs: wave3_shadow_generated_runtime_value_rows)
 }
-
 
 fn ci_wave3_shadow_claim_roster() -> List<TestClaim> {
   list_append(

@@ -1,12 +1,3 @@
-// Scope: unit witnesses for the v2 Repeat capture cons-spine encoding (gap 3 of the
-//   N_v2 self-host front-end). parse_repeat_captured_node previously stamped every
-//   matched element with the SAME Named label (grammar_repeat_element_node_projection),
-//   tripping all_names_distinct (conj-dupnames, code 2) for 2+ elements — blocking
-//   normalize over real modules (qualified names, comma-lists, import blocks).
-//   Fix: right-nested sequence-pair spine reusing grammar_sequence_left/right.
-// Anchor: DESIGN.md §5/§7 — green-by-execution consumers through tokenize->parse->normalize.
-// Discriminating control: a hand-built dup-named Conj must STILL fail well_formed.
-
 module v2.test.languages.dag_repeat_spine_wellformed
 
 import v2.compiler.tokenize { tokenize }
@@ -41,22 +32,18 @@ fn normalizes(src: String) -> Bool {
   }
 }
 
-// POSITIVE — 3-segment qualified module name (repeat spine of 2 `. ident` cells).
 test fn repeat_spine_three_seg_qual_name_normalizes_holds() -> Bool {
   normalizes(src: "module a.b.c\n")
 }
 
-// POSITIVE — multiname import block with newline-separated idents (comma-list repeat).
 test fn repeat_spine_import_block_newline_normalizes_holds() -> Bool {
   normalizes(src: "module m.t\nimport foo.bar {\n  a\n  b\n}\n")
 }
 
-// REGRESSION — single-segment qualified import (empty repeat spine / nil Conj).
 test fn repeat_spine_single_name_import_normalizes_holds() -> Bool {
   normalizes(src: "module m.t\nimport foo\n")
 }
 
-// REGRESSION — bare function module (no repeat-heavy constructs).
 test fn repeat_spine_bare_fn_normalizes_holds() -> Bool {
   normalizes(src: "module m.t\nfn f() -> Int { 0 }\n")
 }
@@ -88,7 +75,6 @@ data repeat_spine_dup_named_conj: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// NO-FAIL-OPEN CONTROL — duplicate Named labels on a Conj must still violate well_formed.
 test fn repeat_spine_dup_named_conj_still_ill_formed_control_holds() -> Bool {
   well_formed(n: repeat_spine_dup_named_conj) == false
 }

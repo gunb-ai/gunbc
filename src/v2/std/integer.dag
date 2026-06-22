@@ -1,13 +1,4 @@
-// src/v2/std/integer.dag
-// Scope: Abstract Int/UInt, fixed-width projections, divide/modulo carriers and diagnostics.
-// Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
-// Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).
-// Anchor: https://en.wikipedia.org/wiki/Integer
-// Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION, SL-3229-INTEGER-OVERFLOW-SEMANTICS, SL-3229-INTEGER-REPRESENTATION-STUBS.
-// 🟢
-
 module v2.std.integer
-
 
 import v2.std.algebra {
   AbelianGroup,
@@ -42,16 +33,13 @@ type Int = GroupCompletion<Nat>
 type UInt = Nat
 type Compose<carrier, dimension>
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Signedness = Signed | Unsigned
 
-// 🟡 coproduct dissolution — SL-3229-INTEGER-REPRESENTATION-STUBS — feature:integer-representation-stub-semantics — dissolve-on-arrival: OnesComplement and SignMagnitude gain target-backed representation semantics or are proven unused by the T-4 fact-bundle catalog.
 type Representation
   = TwosComplement
-  | OnesComplement // stub — no current target uses this representation
-  | SignMagnitude  // stub — no current target uses this representation
+  | OnesComplement
+  | SignMagnitude
 
-// 🟡 coproduct dissolution — SL-3229-INTEGER-OVERFLOW-SEMANTICS — feature:integer-overflow-disposition-semantics — dissolve-on-arrival: wrapping/saturating/trapping/undefined overflow are backed by width, bounds, and Outcome semantics consumed by T-4 fact-bundles.
 type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
 type Int8 = Compose<Int, MachineWidth<Word8>>
@@ -69,17 +57,14 @@ type UInt128 = Compose<UInt, MachineWidth<Word128>>
 type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerBoundSign
   = IntegerBoundNegative
   | IntegerBoundNonNegative
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerRangeEndpoint
   = IntegerRangeInclusiveMin
   | IntegerRangeInclusiveMax
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type DecimalDigit
   = D0
   | D1
@@ -92,7 +77,6 @@ type DecimalDigit
   | D8
   | D9
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type NonZeroDecimalDigit
   = D1
   | D2
@@ -104,29 +88,24 @@ type NonZeroDecimalDigit
   | D8
   | D9
 
-// 🟢 grounded.
 type DecimalNonZeroMagnitude {
   lead: NonZeroDecimalDigit
   tail: List<DecimalDigit>
 }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type DecimalMagnitude
   = DecimalZero
   | DecimalNonZero { magnitude: DecimalNonZeroMagnitude }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerIntervalBound
   = IntegerConcreteZero
   | IntegerConcreteBound { sign: IntegerBoundSign, magnitude: DecimalNonZeroMagnitude }
   | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
 
-// 🟢 grounded.
 type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound
   inclusive_max: IntegerIntervalBound
 }
-
 
 fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
   Diagnostic {
@@ -200,7 +179,6 @@ fn ordering_invert(ordering: Ordering) -> Ordering {
   }
 }
 
-// 🟡 coproduct dissolution — feature:standard-integer-type-decode — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: interval-spec containment consumes StandardIntegerType once, not a hand-rolled Node dispatch table.
 type StandardIntegerType
   = Int128
   | Int64
@@ -402,7 +380,6 @@ fn integer_interval_bound_less_or_equal(left: IntegerIntervalBound, right: Integ
   }
 }
 
-// 🟡 predicate dissolution — feature:integer-interval-family-gates — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: these Bool helpers are interim role classifiers for the closed IntegerIntervalBound / IntegerIntervalSpec family and should collapse into the shared typed containment path.
 fn integer_interval_bound_is_pointer_width(bound: IntegerIntervalBound) -> Bool {
   match bound {
     IntegerPointerWidthBound { signedness: _, endpoint: _ } => true
@@ -620,8 +597,6 @@ fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {
   }
 }
 
-// NonZeroDecimalDigit ⊂ DecimalDigit: widen the leading digit so a magnitude lowers as a
-// uniform digit sequence. The nonzero-lead invariant lives in the type, not the node.
 fn integer_nonzero_decimal_digit_widen(digit: NonZeroDecimalDigit) -> DecimalDigit {
   match digit {
     D1 => D1
@@ -636,9 +611,6 @@ fn integer_nonzero_decimal_digit_widen(digit: NonZeroDecimalDigit) -> DecimalDig
   }
 }
 
-// A decimal magnitude is an ordered digit sequence (place value = order), so it lowers via the
-// canonical FreeMonoid encoding (fold_list_node: named head/tail cons cells), NOT a flat
-// positional Conj — positional edges under a Conj fail well_formed (Conj requires labeled edges).
 fn integer_decimal_nonzero_node(magnitude: DecimalNonZeroMagnitude) -> Node {
   match magnitude {
     DecimalNonZeroMagnitude { lead, tail } =>

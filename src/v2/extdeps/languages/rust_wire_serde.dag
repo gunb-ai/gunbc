@@ -1,9 +1,3 @@
-// src/v2/extdeps/languages/rust_wire_serde.dag
-// Scope: V2 StringVariant wire-serde naming policy → Rust serde attribute emission (slice 1).
-// Status: grammar-inverse enum fixture + VariantNaming-driven attr tokens; CoproductWireContract
-//   module resolution is forward work (translate type-item hook).
-// Authority: std.serialization.VariantNaming + extdeps.languages.rust.emit rename_all rows.
-
 module v2.extdeps.languages.rust_wire_serde
 
 import std.serialization {
@@ -54,8 +48,6 @@ import v2.std.grammar {
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
 
-// --- VariantNaming → extdeps serde attr (single authority, no fork) -----------------
-
 fn rust_wire_serde_string_variant_rename_all_attr(naming: VariantNaming) -> String {
   match naming {
     AsAuthored => ""
@@ -91,8 +83,6 @@ fn rust_wire_serde_attr_lex_spelling(naming: VariantNaming) -> String {
   }
 }
 
-// --- ReviewEvent-shaped unit enum fixture (github pulls ReviewEvent wire contract) ---
-
 data rust_ws_review_event_body_golden: String = "pub enum ReviewEvent {\n    Approve,\n    RequestChanges,\n    Comment,\n    Pending,\n}"
 
 fn rust_ws_review_event_golden(naming: VariantNaming) -> String {
@@ -121,8 +111,6 @@ data rust_ws_review_event_screaming_golden: String = rust_ws_review_event_golden
 
 data rust_ws_review_event_snake_golden: String = rust_ws_review_event_golden(naming: SnakeCase)
 
-// Arrow sentinel — exact grammar_relation_field_emitted fixture match (Atom would take the
-// lhs-exact singleton-terminal path, which does not fit a multi-terminal enum production).
 data rust_wire_serde_review_event_emitted: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [

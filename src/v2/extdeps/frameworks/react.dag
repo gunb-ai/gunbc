@@ -1,51 +1,31 @@
-// src/v2/extdeps/frameworks/react.dag
-// Scope: React 19.2 framework extdeps — components, elements, props, hooks, context, cross-decl refs, optional ref handles, optional keys, optional hook value operands, dependency-array and cleanup sites.
-// Status: T-4.7
-
 module v2.extdeps.frameworks.react
 
-// Anchor: https://react.dev/learn/referencing-values-with-refs
-// 🟡 authority fork
 type ReactCrossDeclRef
 
-// Anchor: https://react.dev/reference/react/useEffect
-// 🟢 coproduct dissolution
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
 
-// Anchor: https://react.dev/reference/react/createElement
-// 🟢 coproduct dissolution
 type ReactOptKey
   = KeyPresent { key_ref: ReactCrossDeclRef }
   | KeyAbsent
 
-// Anchor: https://react.dev/reference/react/hooks
-// 🟢 coproduct dissolution
 type ReactOptValue
   = ValuePresent { value_ref: ReactCrossDeclRef }
   | ValueAbsent
 
-// Anchor: https://react.dev/reference/react/useEffect
-// 🟢 coproduct dissolution
 type ReactEffectCleanupSite
   = NoCleanup
   | CleanupBody { cleanup_body_ref: ReactCrossDeclRef }
 
-// Anchor: https://react.dev/reference/react/useEffect
-// 🟢 coproduct dissolution
 type ReactHookInlineDependenciesArgument
   = DependenciesArgOmitted
   | DependenciesArgPresent { dependency_refs: List<ReactCrossDeclRef> }
 
-// Anchor: https://react.dev/reference/rsc/server-components
-// 🟢 coproduct dissolution
 type ReactModuleSurface
   = ReactClientModule
   | ReactServerComponentsModule
 
-// Anchor: https://react.dev/reference/react/hooks
-// 🟡 coproduct dissolution — consumer:react-custom-hook-structural-classifier
 type ReactHookSite
   = UseState { initial_ref: ReactCrossDeclRef }
   | UseReducer {
@@ -104,24 +84,20 @@ type ReactHookSite
   | UseOptimistic { value_ref: ReactCrossDeclRef, reducer: ReactOptValue }
   | CustomHook { implementation_ref: ReactCrossDeclRef }
 
-// Anchor: https://react.dev/reference/react/use
 type ReactUseCallSite
   = UseResource { resource_ref: ReactCrossDeclRef }
 
-// Anchor: https://react.dev/reference/react/createElement
 type ReactPropsSite {
   props_type_ref: ReactCrossDeclRef
   props_value_ref: ReactCrossDeclRef
 }
 
-// Anchor: https://react.dev/reference/react/components
 type ReactFunctionComponent {
   surface: ReactModuleSurface
   props: ReactPropsSite
   render_root_ref: ReactCrossDeclRef
 }
 
-// Anchor: https://react.dev/reference/react-dom/components
 type ReactHostElement {
   tag_ref: ReactCrossDeclRef
   key: ReactOptKey
@@ -130,7 +106,6 @@ type ReactHostElement {
   children: List<ReactCreateElementChild>
 }
 
-// Anchor: https://react.dev/reference/react/createElement
 type ReactCompositeElement {
   component_ref: ReactCrossDeclRef
   key: ReactOptKey
@@ -139,20 +114,15 @@ type ReactCompositeElement {
   children: List<ReactCreateElementChild>
 }
 
-// Anchor: https://react.dev/reference/react/createElement
-// 🟢 coproduct dissolution
 type ReactElement
   = Host { host: ReactHostElement }
   | Composite { composite: ReactCompositeElement }
   | Fragment { key: ReactOptKey, children: List<ReactCreateElementChild> }
 
-// Anchor: https://react.dev/reference/react/createElement
-// 🟡 coproduct dissolution — consumer:react-child-lattice-arm-discriminator
 type ReactCreateElementChild
   = Element { element: ReactElement }
   | Text { text_value_ref: ReactCrossDeclRef }
 
-// Anchor: https://react.dev/reference/react/createContext
 type ReactContextBinding {
   context_ref: ReactCrossDeclRef
   default_value_ref: ReactCrossDeclRef

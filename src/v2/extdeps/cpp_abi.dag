@@ -1,24 +1,16 @@
-// src/v2/extdeps/cpp_abi.dag
-// Scope: C++ ABI / target data-model facts for implementation-defined fundamental widths.
-// Anchor: ISO/IEC 14882:2024 [basic.fundamental] + Itanium C++ ABI revision 1.86.
-// Status: T-29 modeled 2026-05-18.
-
 module v2.extdeps.cpp_abi
 
-// 🟢 grounded.
 type CppMachineWidth8
 type CppMachineWidth16
 type CppMachineWidth32
 type CppMachineWidth64
 
-// 🟢 coproduct dissolution — T29-ABI.
 type CppIntegerWidth
   = CppWidth8 { width: CppMachineWidth8 }
   | CppWidth16 { width: CppMachineWidth16 }
   | CppWidth32 { width: CppMachineWidth32 }
   | CppWidth64 { width: CppMachineWidth64 }
 
-// 🟢 grounded.
 type CppCoreIntegerWidthModel {
   char_width: CppIntegerWidth
   short_width: CppIntegerWidth
@@ -29,7 +21,6 @@ type CppCoreIntegerWidthModel {
   wchar_t_width: CppIntegerWidth
 }
 
-// 🟢 coproduct dissolution — T29-ABI.
 type CppPlainCharSignedness
   = PlainCharSigned { tag: CppPlainCharSigned }
   | PlainCharUnsigned { tag: CppPlainCharUnsigned }
@@ -37,7 +28,6 @@ type CppPlainCharSignedness
 type CppPlainCharSigned
 type CppPlainCharUnsigned
 
-// 🟢 coproduct dissolution — T29-ABI.
 type CppWcharTSignedness
   = WcharTSigned { tag: CppWcharTSigned }
   | WcharTUnsigned { tag: CppWcharTUnsigned }
@@ -45,7 +35,6 @@ type CppWcharTSignedness
 type CppWcharTSigned
 type CppWcharTUnsigned
 
-// 🟢 coproduct dissolution — T29-ABI.
 type CppDataModelFamily
   = ILP32 { tag: CppDataModelFamilyILP32 }
   | LP64 { tag: CppDataModelFamilyLP64 }
@@ -57,7 +46,6 @@ type CppDataModelFamilyLP64
 type CppDataModelFamilyLLP64
 type CppDataModelFamilyILP64
 
-// 🟢 coproduct dissolution — T29-ABI.
 type CppAbiModel
   = ItaniumCxxAbi186 { tag: CppAbiModelItaniumCxxAbi186 }
   | PlatformCxxAbi { tag: CppAbiModelPlatformCxxAbi }
@@ -65,17 +53,14 @@ type CppAbiModel
 type CppAbiModelItaniumCxxAbi186
 type CppAbiModelPlatformCxxAbi
 
-// 🟢 grounded.
 type CppTargetDataModel<family, integer_widths, plain_char_signedness, wchar_t_signedness>
 type CppTargetProfile<abi_model, data_model>
 
-// 🟢 grounded.
 type CppIntegerWidth8 = CppWidth8 { width: CppMachineWidth8 }
 type CppIntegerWidth16 = CppWidth16 { width: CppMachineWidth16 }
 type CppIntegerWidth32 = CppWidth32 { width: CppMachineWidth32 }
 type CppIntegerWidth64 = CppWidth64 { width: CppMachineWidth64 }
 
-// 🟢 grounded.
 type CppILP32IntegerWidths = CppCoreIntegerWidthModel {
   char_width: CppIntegerWidth8,
   short_width: CppIntegerWidth16,

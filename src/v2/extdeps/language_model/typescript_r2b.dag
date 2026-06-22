@@ -1,5 +1,3 @@
-// Status: modeled claim + fixture row.
-
 module v2.test.language_model.typescript_r2b
 
 import v2.extdeps.languages.typescript { ts_bigint_algebra_inhabitance_ts_facts_bigint }

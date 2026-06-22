@@ -1,12 +1,4 @@
-// src/v2/std/host_transport.dag
-// Scope: omni-emission host transport descriptor (design-omni-emission-transport.md §3.1).
-// Status: B3 minimal substrate — modeled workspace/build/run + runtime-value codec; one generic
-//   `run_host_process` primitive; executable host boundary is `dsl/tools/emit_host_gate.dag`.
-//   T-22: TargetEmitHostRuntimeRow on TargetModel dissolves per-target authority_source_text
-//   dispatch in emit_host.dag (gunbc#4750).
-
 module v2.std.host_transport
-
 
 import v2.std.algebra { length }
 import v2.std.collection { List }
@@ -27,9 +19,6 @@ import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.text { String }
 
 type ByteString = List<Byte>
-
-
-
 
 type RelPath = String
 
@@ -65,8 +54,6 @@ type HostTransportDescriptor {
   runtime_value_codec: RuntimeValueCodec
 }
 
-// T-22 — per-target emit-host runtime row (gunbc#4750). Typed field on TargetModel; extdeps
-// languages attach HostRuntimeRowPresent rows; absent targets stay HostRuntimeRowAbsent (fail-closed).
 type EmitHostRuntimeRow {
   transport: HostTransportDescriptor
   runtime_primitive_type: Node

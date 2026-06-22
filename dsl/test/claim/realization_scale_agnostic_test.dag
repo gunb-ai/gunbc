@@ -1,24 +1,3 @@
-// dsl/test/claim/realization_scale_agnostic_test.dag
-//
-// §5 witness: the realization measurement framework (std.realization_measurement /
-// std.realization_schedule) is exercised at the MILLI scale — a scale the framework
-// never names — and its roll-up ARITHMETIC composes correctly there (seq = add, par =
-// max, critical-path = seq-of-batch-max, and the CostAccount<Milli> bridge preserves the
-// count). That is what these witnesses actually bite on: perturbing the arithmetic (e.g.
-// dropping an addend in time_measure_seq) turns them FALSE.
-//
-// HONEST SCOPE (what this does NOT prove): scale-agnosticism is NOT enforced by execution
-// or type-checking. The `<S>` scale tag is a PHANTOM type the substrate erases — neither
-// the interpreter nor the dag compiler checks it (re-hardcoding a roll-up fn to
-// Measure<Time, Nano, Nat> leaves these Milli witnesses GREEN and emits 0 diagnostics).
-// This is the same no-where-clause / constrained-inhabitance substrate gap already cited
-// for `<M>` (std.measure.time_measure). So no runtime witness can carry anti-regression
-// teeth for the scale-agnosticism claim. The genuine guard is STRUCTURAL — a lens
-// asserting the framework modules contain no concrete scale literal — tracked as the
-// honest follow-up, not delivered here.
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_scale_agnostic_witnesses --claim-run
-
 module test.claim.realization_scale_agnostic
 
 import std.types { Bool, List }
@@ -33,12 +12,10 @@ import std.realization_measurement {
   witness_measured_rollup_differs_from_predicted_zero,
 }
 
-// Consumer-pinned scale anchor: MILLI (NOT nanosecond). Proves the framework names no scale.
 fn milli(count: Nat) -> Measure<Time, Milli, Nat> {
   time_measure(count: count)
 }
 
-// seq = add, par = max — at Milli scale.
 fn witness_milli_seq_and_par() -> Bool {
   let a = milli(count: 30)
   let b = milli(count: 12)
@@ -46,20 +23,17 @@ fn witness_milli_seq_and_par() -> Bool {
     && (measure_count(m: time_measure_par(a: a, b: b)) == 30)
 }
 
-// critical path (seq across batches, max within batch) at Milli scale: max(10,40) + max(5) = 45.
 fn witness_milli_critical_path() -> Bool {
   let batches = [[milli(count: 10), milli(count: 40)], [milli(count: 5)]]
   measure_count(m: schedule_critical_path_time(batch_times: batches)) == 45
 }
 
-// CostAccount<Milli> bridges through the roll-up; ledger preserves the Milli count.
 fn witness_milli_cost_account() -> Bool {
   let batches = [[milli(count: 7)], [milli(count: 8)]]
   let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
   cost_account_time_count(account: account) == 15
 }
 
-// The discriminating roll-up lens holds at Milli too (scale-parametric witness).
 fn witness_milli_rollup_discriminates() -> Bool {
   witness_measured_rollup_differs_from_predicted_zero(wall_time: milli(count: 99))
 }

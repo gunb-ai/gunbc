@@ -1,52 +1,15 @@
-// std/process.dag — Process exit semantics.
-//
-// Models the OS-level contract between a running program and its host
-// process: exit codes. The interpreter recognizes ProcessExit as the
-// signal to translate a .dag function's return value into a process
-// exit code.
-//
-// Spec: POSIX exit(3) — https://pubs.opengroup.org/onlinepubs/9699919799/functions/exit.html
-//
-// Why this exists:
-//   .dag functions return rich result types (PipelineResult, L1RatchetResult,
-//   FreshnessCheckResult, ...). When such a function is the entry point
-//   for `dag run`, the host needs to know whether the run succeeded.
-//
-//   Earlier versions of cli_run.rs guessed the exit code by substring-
-//   matching variant names ("Fail", "Missing", "Stale", "Diverged" → exit 1).
-//   That coupled host behavior to a naming convention and would
-//   misclassify any future variant whose name happens to contain those
-//   substrings. ProcessExit replaces that with a structural contract:
-//   functions intended as `dag run` entry points return a ProcessExit
-//   (directly or wrapped), and the host translates it to exit code by
-//   matching on the type and variant names structurally — not on
-//   substrings.
-//
-// Convention:
-//   Entry-point functions for `dag run` should return ProcessExit, OR
-//   wrap their richer result type with a final `to_process_exit(...)`
-//   conversion. The host (cli_run.rs) checks for type_name=="ProcessExit"
-//   AND variant_name=="ExitFailure" to set exit code 1.
-
 module std.process
 
 import std.types { NonEmptyStr }
 
-// ── Process exit ────────────────────────────────────────────────────
-
-// The structural contract for translating a .dag program's return
-// value into a host process exit code. Closed coproduct.
 type ProcessExit
   = ExitSuccess
   | ExitFailure { code: Int, reason: String }
 
-// Standard exit codes for common failure modes. POSIX leaves most
-// values application-defined; these are conventions.
 data exit_code_success: Int = 0
 data exit_code_general_error: Int = 1
 data exit_code_misuse: Int = 2
 
-// Convenience: a generic failure with code 1 and a string reason.
 fn exit_failure(reason: String) -> ProcessExit {
   ExitFailure { code: exit_code_general_error, reason: reason }
 }

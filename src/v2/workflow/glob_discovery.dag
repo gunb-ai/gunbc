@@ -1,8 +1,4 @@
-// Authority: host_owned_data_discovery_receipt + host_discovered_owned_decls from discover_owned_data.
-// Acyclic: excluded from discover_owned_data scan (imports manifest).
-
 module v2.test.workflow.glob_discovery
-
 
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -14,44 +10,33 @@ import v2.test.workflow.host_discovered_owned_data_manifest {
   host_owned_data_discovery_receipt
 }
 
-
 fn glob_discovery_smoke_set_is_nonempty() -> Bool {
   host_owned_data_discovery_receipt.unified_claim_arm_count > 0
 }
 
-
 data witness_glob_discovery_smoke_set_is_nonempty: Bool = glob_discovery_smoke_set_is_nonempty()
-
 
 fn discovered_bool_witness_claim_count_is_positive() -> Bool {
   host_owned_data_discovery_receipt.bool_witness_claim_arm_count > 0
 }
 
-
 data witness_discovered_bool_witness_claim_count_is_positive: Bool = discovered_bool_witness_claim_count_is_positive()
-
 
 fn glob_discovery_bool_witness_transport_is_complete() -> Bool {
   (host_owned_data_discovery_receipt.illegal_other_init_count == 0)
     && host_owned_data_discovery_receipt.transport_projection_complete
 }
 
-
 data witness_glob_discovery_bool_witness_transport_is_complete: Bool = glob_discovery_bool_witness_transport_is_complete()
-
 
 fn discovered_bool_witness_transport_projection_is_complete() -> Bool {
   (host_owned_data_discovery_receipt.bool_witness_claim_arm_count == host_owned_data_discovery_receipt.bool_witness_transport_row_count)
     && host_owned_data_discovery_receipt.transport_projection_complete
 }
 
-
 data witness_discovered_bool_witness_transport_projection_is_complete: Bool = discovered_bool_witness_transport_projection_is_complete()
 
-
-// Hermetic type-head perturb authority (scripts/fixtures/v2_discovery_completeness_slice).
 data discovery_perturb_fixture_decl_name: String = "unified_claim_edit_locus_narrow"
-
 
 fn discovery_type_head_perturb_fixture_decl_is_bool_witness_arm() -> Bool {
   discovered_contains_bool_witness_decl_by_name(
@@ -59,6 +44,5 @@ fn discovery_type_head_perturb_fixture_decl_is_bool_witness_arm() -> Bool {
     decl_name: discovery_perturb_fixture_decl_name
   )
 }
-
 
 data witness_discovery_type_head_perturb_fixture_decl_is_bool_witness_arm: Bool = discovery_type_head_perturb_fixture_decl_is_bool_witness_arm()

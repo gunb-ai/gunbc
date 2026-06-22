@@ -1,58 +1,12 @@
-// gunbc/ci_compile_measurement.dag — the CI COMPILE's measured per-rustc memory peak +
-// processes-per-job (§1-C), the committed half of the measurement→plan loop for cargo build
-// parallelism. The compile-jobs derivation (gunbc.ci_compile_jobs) divides the LIVE host
-// budgets (cgroup memory.max + pids.max) by the facts recorded HERE to pick CARGO_BUILD_JOBS
-// instead of the hand-set =1 clamp. Direct mirror of gunbc.ci_floor_measurement (which commits
-// the per-shard RESOLVE peak the floor spawn-width divides by). Per DESIGN §3 (measured⇒peripheral):
-//   - the per-rustc peak + procs-per-job are OUR measurements → we COMMIT them, provenance-stamped;
-//   - the cgroup budgets are authored by an EXTERNAL system (the host) → the host realizer READS
-//     them live, never committed.
-//
-// FAIL-CLOSED BY CONSTRUCTION (§5): the state is a closed sum `CompileJobMeasured | CompileJobUnmeasured`,
-// NOT a peak with a 0/None sentinel. Unmeasured is its OWN variant, so the derive must MATCH it and
-// REFUSE (a typed error — the build fails) rather than silently admitting a guessed job count. The
-// hand-set `=1` today IS that guess; replacing it with another default would miss the operator's
-// principle ("derive from the dag; compilation FAILS if there isn't enough information"). A committed
-// value is required before the derive yields a number — exactly how ci_floor_measurement required a
-// real VmHWM emit before the floor width was derivable.
-//
-// ── PROVENANCE (re-stamp on every re-measure; EMPTY until the first real fleet run) ──
-//   state       : CompileJobUnmeasured — NO fleet measurement committed yet
-//   needed      : a profiled fleet-runner CI build (srv1/srv2, 128t/128GiB) reporting (a) per-rustc
-//                 process peak RSS and (b) processes spawned per cargo job under sccache. MUST come
-//                 from the real runner — NOT this dev container (23 GiB / 4096 pids ≠ the fleet).
-//   measure-first: the binding budget is PIDS, not RSS — the =1 clamp's trigger is an EAGAIN-on-spawn
-//                 ("Resource temporarily unavailable" / "failed to spawn"), set ONLY when sccache is
-//                 active. Confirm pids-vs-mem headroom on the fleet when stamping (which term binds).
-//
-// 🟡 SCAFFOLD — feature:ci-compile-measurement — bind gunbc adhoc-67ab12eb-6e3 —
-// consumer: gunbc.ci_compile_jobs.ci_compile_jobs (via std.realization_width.process_memory_aware_spawn_width).
-// dissolve-on: the first provenance-stamped fleet measurement replaces CompileJobUnmeasured with a
-// CompileJobMeasured value; thereafter the same drift posture as ci_floor_measurement (stale-LOW
-// per-rustc peak ⇒ ⌊budget ÷ peak⌋ too HIGH ⇒ OOM/EAGAIN — the dangerous direction).
-
 module gunbc.ci_compile_measurement
 
 import std.measure { ByteSize }
 import std.types { Int }
 
-// The committed compile-parallelism measurement, as a closed sum so "not yet measured" is a
-// first-class, fail-closed state (never a 0/None sentinel overloaded onto a real peak).
-//   - per_rustc_peak: the MEASURED peak resident memory of a single rustc compilation (a ByteSize),
-//     the divisor for the memory term of the jobs fold.
-//   - procs_per_job : the processes a single cargo job spawns under sccache (rustc + the sccache
-//     client it forks) — a dimensionless cardinal, the divisor for the pids term (the binding one).
 type CompileJobMeasurement
   = CompileJobMeasured { per_rustc_peak: ByteSize, procs_per_job: Int }
   | CompileJobUnmeasured
 
-// EMPTY until a real fleet run stamps it (see PROVENANCE). Unmeasured ⇒ the derive refuses (§5),
-// so this scaffold can land without silently picking a job count; the wiring to cargo.Build only
-// goes live in the same increment that commits a CompileJobMeasured value.
 data gunbc_ci_compile_measurement: CompileJobMeasurement = CompileJobUnmeasured
 
-// Conservative committed jobs when the host cannot read a LIVE budget (0-byte / 0-pid sentinel):
-// serial. This is the known-safe degenerate-host fallback (matches the current sccache behavior),
-// distinct from the Unmeasured refusal above — a transient unreadable LIVE budget yields forward
-// progress at width 1, never an OOM/EAGAIN and never a fabricated wide value (DESIGN §5).
 data gunbc_ci_compile_conservative_fallback_jobs: Int = 1

@@ -1,0 +1,54 @@
+module v2.test.claim.staging
+
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
+import v2.std.staging { then_outcome, cached_stage, CacheProbe, Hit, Miss }
+
+fn s_double(n: Int) -> Outcome<Int> { outcome_accepted(value: n * 2) }
+fn s_inc(n: Int) -> Outcome<Int> { outcome_accepted(value: n + 1) }
+fn s_is_pos(n: Int) -> Outcome<Bool> { outcome_accepted(value: n > 0) }
+
+fn s_bool_to_int(b: Bool) -> Outcome<Int> {
+  if b { outcome_accepted(value: 1) } else { outcome_accepted(value: 0) }
+}
+
+fn acc_int(o: Outcome<Int>, dflt: Int) -> Int {
+  match o {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => dflt
+  }
+}
+
+test fn then_outcome_homogeneous() -> Bool {
+  let stage = then_outcome(f: s_double, g: s_inc)
+  acc_int(o: stage(3), dflt: 0) == 7
+}
+
+test fn then_outcome_heterogeneous() -> Bool {
+  let s1 = then_outcome(f: s_double, g: s_is_pos)
+  let s2 = then_outcome(f: s1, g: s_bool_to_int)
+  acc_int(o: s2(3), dflt: 99) == 1
+}
+
+fn make_adder(k: Int) -> fn(Int) -> Outcome<Int> {
+  fn(n) { outcome_accepted(value: n + k) }
+}
+test fn then_outcome_builder_capture() -> Bool {
+  let add5 = make_adder(k: 5)
+  let stage = then_outcome(f: add5, g: s_double)
+  acc_int(o: stage(1), dflt: 0) == 12
+}
+
+fn lookup_always_42(n: Int) -> CacheProbe<Int> { Hit { value: 42 } }
+fn lookup_never(n: Int) -> CacheProbe<Int> { Miss }
+
+test fn cached_stage_hit_skips_stage() -> Bool {
+  let staged = cached_stage(lookup: lookup_always_42, stage: s_double)
+  acc_int(o: staged(5), dflt: 0) == 42
+}
+
+test fn cached_stage_miss_runs_stage() -> Bool {
+  let staged = cached_stage(lookup: lookup_never, stage: s_double)
+  acc_int(o: staged(5), dflt: 0) == 10
+}

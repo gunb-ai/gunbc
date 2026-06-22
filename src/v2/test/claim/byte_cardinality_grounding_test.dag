@@ -1,0 +1,47 @@
+module v2.test.claim.byte_cardinality_grounding
+
+import v2.std.refinement { Refined, Validation, refine }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
+
+type Byte = Refined<List<Int>>
+
+fn byte_from_bits(bits: List<Int>, at: Locus) -> Outcome<Byte> {
+  refine(
+    base: bits,
+    by: Validation {
+      reason: ^byte_must_be_8_bits,
+      admits: fn(items) { length(xs: items) == 8 }
+    },
+    at: at
+  )
+}
+
+fn byte_locus() -> Locus { port_locus(port: ^byte_cardinality_grounding) }
+
+fn eight_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1, 0] }
+fn seven_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1] }
+
+fn is_accepted(o: Outcome<Byte>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+fn is_rejected(o: Outcome<Byte>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn byte_grounding_accepts_8_bits() -> Bool {
+  is_accepted(o: byte_from_bits(bits: eight_bits(), at: byte_locus()))
+}
+
+test fn byte_grounding_rejects_7_bits() -> Bool {
+  is_rejected(o: byte_from_bits(bits: seven_bits(), at: byte_locus()))
+}

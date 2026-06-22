@@ -1,35 +1,7 @@
-// std/languages.dag -- Language model: tautological definitions.
-//
-// Each type is a compositional building block. Each data declaration
-// is a tautology -- "what is Rust?", "what is Markdown?" -- that the
-// entire codebase inherits.
-//
-// Layering:
-//   Layer 0: Primitives (NamingCase, CommentSyntax, TypeMapping)
-//   Layer 0b: Rendering syntax primitives (StatementSyntax, ExpressionSyntax,
-//             ControlFlowSyntax, LiteralSyntax, ModuleSyntax, FunctionSyntax,
-//             ErrorHandlingSyntax, TypeDefinitionSyntax, PatternMatchSyntax,
-//             AsyncSyntax)
-//   Layer 0c: Runtime operation primitives (CollectionOps, StringOps, MapOps,
-//             NullCoalesceStrategy, ReservedWords, ValueSemantics,
-//             SerializationFramework, ProjectScaffold, ServiceCallSemantics)
-//   Layer 1: Categories (Language, LanguageSpec, ConfigFormat, MarkupFormat)
-//   Layer 2: Language identity data (rust_language, go_language, ...)
-//   Layer 2b: Rendering syntax data (rust_statements, go_expressions, ...)
-//   Layer 2c: Runtime operation data (rust_collection_ops, python_string_ops, ...)
-//   Layer 2d: LanguageSpec compositions (rust_spec, go_spec, python_spec)
-//   Layer 3: Rendering (render_heading, render_code_block, ...)
-//   Layer 4: Tools (gist, docgen, etc.)
-//
-// Generated Rust replaces hand-written code in core/ir/src/language/.
-
 module std.languages
 
 import std.types { LanguageId }
 
-// -- Layer 0: Primitives ----------------------------------------------
-
-// "How are identifiers cased?" -- universal across all languages.
 type NamingCase
   = SnakeCase
   | ScreamingSnakeCase
@@ -38,7 +10,6 @@ type NamingCase
   | Lowercase
   | KebabCase
 
-// "What is a comment?" -- universal across all languages.
 type CommentSyntax {
   line_prefix: String?
   block_start: String?
@@ -46,7 +17,6 @@ type CommentSyntax {
   doc_prefix: String?
 }
 
-// "What is naming?" -- how identifiers are written.
 type NamingConvention {
   type_case: NamingCase
   function_case: NamingCase
@@ -55,7 +25,6 @@ type NamingConvention {
   module_case: NamingCase
 }
 
-// "How is source formatted?" -- indentation and import organization.
 type IndentStyle
   = SpaceIndent { width: Int }
   | TabIndent
@@ -71,7 +40,6 @@ type FormatModel {
   trailing_newline: Bool
 }
 
-// "What triggers an import?" -- import derivation rules.
 type ImportTrigger
   = TypeUsageTrigger { type_name: String }
   | TraitImplTrigger { trait_name: String }
@@ -84,7 +52,6 @@ type ImportRule {
   import_path: String
 }
 
-// "What is a type system mapping?" -- abstract -> concrete types.
 type TypeMapping {
   string: String
   int: String
@@ -96,322 +63,238 @@ type TypeMapping {
   map_template: String
 }
 
-// -- Layer 0b: Rendering syntax primitives ----------------------------
-//
-// Structural facts about how each language writes code. Every field
-// value is a template string derivable from the language's specification.
-// Templates use {name}, {type}, {value}, {cond}, {body}, {lhs}, {rhs}
-// as positional placeholders -- the same convention as TypeMapping.
-
-// "How does a language write statements?"
-// Ref: Rust Reference 8.1, Go Spec "Short variable declarations",
-//      Python Reference 7 "Simple statements"
 type StatementSyntax {
-  let_binding: String              // e.g. "let \{name\}: \{type\} = \{value\};"
-  let_binding_inferred: String     // e.g. "let \{name\} = \{value\};"
-  assignment: String               // e.g. "\{name\} = \{value\};"
-  return_value: String             // e.g. "return \{value\};"
-  return_void: String              // e.g. "return;" or "return"
-  expression_statement: String     // e.g. "\{expr\};"
-  statement_terminator: String     // e.g. ";" or "" (Python: none)
+  let_binding: String
+  let_binding_inferred: String
+  assignment: String
+  return_value: String
+  return_void: String
+  expression_statement: String
+  statement_terminator: String
 }
 
-// "How does a language write expressions?"
-// Ref: Rust Reference 8.2, Go Spec "Expressions",
-//      Python Reference 6 "Expressions"
 type ExpressionSyntax {
-  binary_op: String                // e.g. "\{lhs\} \{op\} \{rhs\}"
-  unary_op: String                 // e.g. "\{op\}\{expr\}"
-  field_access: String             // e.g. "\{object\}.\{field\}"
-  method_call: String              // e.g. "\{object\}.\{method\}(\{args\})"
-  function_call: String            // e.g. "\{func\}(\{args\})"
-  index_access: String             // e.g. "\{object\}[\{index\}]"
-  string_interpolation: String?    // e.g. "f\"\{expr\}\"" or null if unsupported
-  closure: String                  // e.g. "|\{params\}| \{body\}" or "lambda \{params\}: \{body\}"
+  binary_op: String
+  unary_op: String
+  field_access: String
+  method_call: String
+  function_call: String
+  index_access: String
+  string_interpolation: String?
+  closure: String
 }
 
-// ForEachSyntax: structural authority for iteration rendering.
-// The emitter reads these fields directly — no branching on target identity.
-//   Rust:   "for {item} in {iter}"         (prefix="for ", sep=" in ", discard="")
-//   Go:     "for _, {item} := range {iter}" (prefix="for _, ", sep=" := range ", discard="_")
-//   Python: "for {item} in {iter}"         (prefix="for ", sep=" in ", discard="")
-// Block delimiters come from BlockSyntax (block_open/block_close).
 type ForEachSyntax {
-  prefix: String                   // "for " or "for _, "
-  separator: String                // " in " or " := range "
+  prefix: String
+  separator: String
 }
 
-// "How does a language write control flow?"
-// Ref: Rust Reference 8.2.16, Go Spec "Statements",
-//      Python Reference 8 "Compound statements"
 type ControlFlowSyntax {
-  if_then: String                  // e.g. "if \{cond\} { \{body\} }"
-  if_else: String                  // e.g. "if \{cond\} { \{then\} } else { \{else\} }"
-  match_header: String             // e.g. "match \{expr\} {" or "switch \{expr\} {"
-  match_arm: String                // e.g. "\{pattern\} => \{body\},"
-  for_each_syntax: ForEachSyntax   // structural authority for iteration rendering
-  while_loop: String               // e.g. "while \{cond\} { \{body\} }"
-  loop_infinite: String?           // e.g. "loop { \{body\} }" or null
-  break_keyword: String            // e.g. "break"
-  continue_keyword: String         // e.g. "continue"
+  if_then: String
+  if_else: String
+  match_header: String
+  match_arm: String
+  for_each_syntax: ForEachSyntax
+  while_loop: String
+  loop_infinite: String?
+  break_keyword: String
+  continue_keyword: String
 }
 
-// "How does a language write literals?"
-// Ref: Rust Reference 8.2.1, Go Spec "Integer literals",
-//      Python Reference 2.4 "Literals"
 type LiteralSyntax {
-  true_keyword: String             // e.g. "true" or "True"
-  false_keyword: String            // e.g. "false" or "False"
-  null_keyword: String             // e.g. "None" or "nil"
-  string_delimiter: String         // e.g. "\"" or "'" (primary)
-  raw_string_delimiter: String?    // e.g. "r\"" or "`" or null
-  multiline_string: String?        // e.g. "\"\"\"" or null
-  string_escape_backslash: Bool    // does \n, \t, \\ work?
-  integer_separator: String?       // e.g. "_" or null
+  true_keyword: String
+  false_keyword: String
+  null_keyword: String
+  string_delimiter: String
+  raw_string_delimiter: String?
+  multiline_string: String?
+  string_escape_backslash: Bool
+  integer_separator: String?
 }
 
-// "How does a language organize modules?"
-// Ref: Rust Reference 6.3 "Use declarations", Go Spec "Import declarations",
-//      Python Reference 7.11 "The import statement"
 type ModuleSyntax {
-  import_single: String            // e.g. "use \{path\};" or "import \{path\}"
-  import_from: String?             // e.g. "from \{module\} import \{names\}" or null
-  import_alias: String             // e.g. "use \{path\} as \{alias\};" or "import \{path\} as \{alias\}"
-  module_declaration: String?      // e.g. "mod \{name\};" or "package \{name\}" or null
-  visibility_public: String?       // e.g. "pub" or null (Python: convention only)
-  visibility_private: String?      // e.g. null or null (Go: lowercase)
-  path_separator: String           // e.g. "::" or "." or "/"
+  import_single: String
+  import_from: String?
+  import_alias: String
+  module_declaration: String?
+  visibility_public: String?
+  visibility_private: String?
+  path_separator: String
 }
 
-// "How does a language define functions?"
-// Ref: Rust Reference 6.4, Go Spec "Function declarations",
-//      Python Reference 8.7 "Function definitions"
 type FunctionSyntax {
-  definition: String               // e.g. "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
-  definition_exported: String      // e.g. "pub fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
-  definition_void: String          // e.g. "fn \{name\}(\{params\}) { \{body\} }"
-  param_with_type: String          // e.g. "\{name\}: \{type\}" or "\{name\} \{type\}"
-  param_separator: String          // e.g. ", "
-  async_definition: String?        // e.g. "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }" or null
-  async_await: String?             // e.g. "\{expr\}.await" or "await \{expr\}" or null
-  return_type_separator: String    // e.g. " -> " or " " (Go)
+  definition: String
+  definition_exported: String
+  definition_void: String
+  param_with_type: String
+  param_separator: String
+  async_definition: String?
+  async_await: String?
+  return_type_separator: String
 }
 
-// "How does a language handle errors?"
-// Ref: Rust Reference 8.2.17 "? operator", Go Spec "Errors",
-//      Python Reference 8.4 "The try statement"
 type ErrorHandlingSyntax
   = ResultType {
-      ok_template: String          // e.g. "Result<\{0\}, \{1\}>"
-      err_constructor: String      // e.g. "Err(\{value\})"
-      ok_constructor: String       // e.g. "Ok(\{value\})"
-      try_operator: String         // e.g. "\{expr\}?"
+      ok_template: String
+      err_constructor: String
+      ok_constructor: String
+      try_operator: String
     }
   | ExceptionBased {
-      try_block: String            // e.g. "try:\n    \{body\}"
-      except_clause: String        // e.g. "except \{type\} as \{name\}:\n    \{handler\}"
-      raise_keyword: String        // e.g. "raise" or "throw"
-      finally_block: String?       // e.g. "finally:\n    \{body\}" or null
+      try_block: String
+      except_clause: String
+      raise_keyword: String
+      finally_block: String?
     }
   | MultiReturn {
-      error_interface: String      // e.g. "error"
-      error_check: String          // e.g. "if \{name\} != nil { \{handler\} }"
-      error_return: String         // e.g. "return \{zero\}, fmt.Errorf(\{msg\})"
-      error_format: String         // e.g. "fmt.Errorf(\"\{template\}\", \{args\})"
+      error_interface: String
+      error_check: String
+      error_return: String
+      error_format: String
     }
 
-// "How does a language define types?"
-// Ref: Rust Reference 6.1 "Structs"/6.2 "Enumerations"/8.1.4 "Type aliases",
-//      Go Spec "Type declarations", Python Reference 8.9 "Class definitions"
 type TypeDefinitionSyntax {
-  struct_def: String               // e.g. "pub struct \{name\} {\n\{fields\}\n}"
-  struct_empty: String             // e.g. "pub struct \{name\};" (unit struct)
-  struct_field: String             // e.g. "pub \{name\}: \{type\},"
-  enum_def: String                 // e.g. "pub enum \{name\} {\n\{variants\}\n}"
-  enum_unit_variant: String        // e.g. "\{name\},"
-  enum_data_variant: String        // e.g. "\{name\} {\n\{fields\}\n},"
-  type_alias: String               // e.g. "pub type \{name\} = \{type\};"
-  generic_param: String            // e.g. "<\{params\}>" or "[\{params\}]"
-  derive_attribute: String?        // e.g. "#[derive(\{traits\})]" or "@dataclass" or null
-  visibility_modifier: String?     // e.g. "pub " or null (Go: capitalization)
+  struct_def: String
+  struct_empty: String
+  struct_field: String
+  enum_def: String
+  enum_unit_variant: String
+  enum_data_variant: String
+  type_alias: String
+  generic_param: String
+  derive_attribute: String?
+  visibility_modifier: String?
 }
 
-// "How does a language write pattern matching / destructuring?"
-// Ref: Rust Reference 18 "Patterns", Go Spec (no native patterns),
-//      Python PEP 634 "Structural Pattern Matching"
 type PatternMatchSyntax {
-  match_expr: String               // e.g. "match \{expr\} {\n\{arms\}\n}"
-  match_arm: String                // e.g. "\{pattern\} => \{body\},"
-  variant_pattern: String          // e.g. "\{name\} { \{bindings\} }"
-  variant_pattern_empty: String    // e.g. "\{name\}"
-  field_binding: String            // e.g. "\{field\}: \{binding\}"
-  field_binding_separator: String  // e.g. ", "
-  wildcard: String                 // e.g. "_"
-  guard: String?                   // e.g. " if \{cond\}" or null
-  or_pattern: String?              // e.g. "\{a\} | \{b\}" or null
+  match_expr: String
+  match_arm: String
+  variant_pattern: String
+  variant_pattern_empty: String
+  field_binding: String
+  field_binding_separator: String
+  wildcard: String
+  guard: String?
+  or_pattern: String?
 }
 
-// "How does a language handle async execution?"
-// Ref: Rust Reference 15 "Async/await", Python PEP 492 "Coroutines",
-//      Go Spec "Go statements"
 type AsyncSyntax
   = AwaitBased {
-      async_fn_def: String         // e.g. "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
-      await_expr: String           // e.g. "\{expr\}.await" or "await \{expr\}"
-      spawn_task: String?          // e.g. "tokio::spawn(\{expr\})" or "asyncio.create_task(\{expr\})"
-      gather: String?              // e.g. "futures::join!(\{exprs\})" or "asyncio.gather(\{exprs\})"
+      async_fn_def: String
+      await_expr: String
+      spawn_task: String?
+      gather: String?
     }
   | GoroutineBased {
-      go_stmt: String              // e.g. "go \{expr\}"
-      channel_send: String         // e.g. "\{chan\} <- \{value\}"
-      channel_recv: String         // e.g. "<-\{chan\}"
-      select_stmt: String          // e.g. "select {\n\{cases\}\n}"
+      go_stmt: String
+      channel_send: String
+      channel_recv: String
+      select_stmt: String
     }
 
-// -- Layer 0c: Runtime operation mappings ----------------------------
-//
-// "How does a language implement DSL builtin operations?"
-// Each field is a template mapping a DSL pipe method / builtin
-// function to its target-language equivalent.
-//
-// Templates use {recv} for the receiver, {arg} for the first argument,
-// {args} for the full argument list, {body} for a lambda body, and
-// {param} for a lambda parameter.
-
-// "How does a language operate on collections?"
-// Ref: Rust Iterator trait, Python builtins/itertools, Go slices package
 type CollectionOps {
-  count: String                  // e.g. "\{recv\}.len()" or "len(\{recv\})"
-  first: String                  // e.g. "\{recv\}.first().cloned()" or "\{recv\}[0] if \{recv\} else None"
-  last: String                   // e.g. "\{recv\}.last().cloned()" or "\{recv\}[-1] if \{recv\} else None"
-  enumerate: String              // e.g. "\{recv\}.iter().enumerate()..." or "list(enumerate(\{recv\}))"
-  join: String                   // e.g. "\{recv\}.join(&\{arg\})" or "\{arg\}.join(\{recv\})"
-  map: String                    // e.g. "\{recv\}.into_iter().map(\{body\}).collect()" or "[\{body\} for \{param\} in \{recv\}]"
-  filter: String                 // e.g. "\{recv\}.into_iter().filter(\{body\}).collect()" or "[x for x in \{recv\} if \{body\}]"
-  flat_map: String               // e.g. "\{recv\}.into_iter().flat_map(\{body\}).collect()"
-  fold: String                   // e.g. "\{recv\}.into_iter().fold(\{init\}, \{body\})"
-  any: String                    // e.g. "\{recv\}.iter().any(\{body\})" or "any(\{body\} for \{param\} in \{recv\})"
-  all: String                    // e.g. "\{recv\}.iter().all(\{body\})" or "all(\{body\} for \{param\} in \{recv\})"
-  empty_list: String             // e.g. "vec![]" or "[]"
-  list_literal: String           // e.g. "vec![\{elements\}]" or "[\{elements\}]"
+  count: String
+  first: String
+  last: String
+  enumerate: String
+  join: String
+  map: String
+  filter: String
+  flat_map: String
+  fold: String
+  any: String
+  all: String
+  empty_list: String
+  list_literal: String
 }
 
-// "How does a language operate on strings?"
-// Ref: Rust String methods, Python str methods, Go strings package
 type StringOps {
-  split: String                  // e.g. "\{recv\}.split(&\{arg\})...collect()" or "\{recv\}.split(\{arg\})"
-  chars: String                  // e.g. "\{recv\}.chars()...collect()" or "list(\{recv\})"
-  concat: String                 // e.g. "format!(\"{}\", \{args\})" or "f\"\{args\}\""
-  string_literal: String         // e.g. "\"\{value\}\".to_string()" or "\"\{value\}\""
-  string_interp: String          // e.g. "format!(\"\{fmt\}\", \{args\})" or "f\"\{fmt\}\""
-  code_point: String             // e.g. "\{recv\} as u32 as i64" or "ord(\{recv\})"
-  from_code_point: String        // e.g. "char::from_u32(\{arg\} as u32)..." or "chr(\{arg\})"
+  split: String
+  chars: String
+  concat: String
+  string_literal: String
+  string_interp: String
+  code_point: String
+  from_code_point: String
 }
 
-// "How does a language operate on maps?"
-// Ref: Rust HashMap, Python dict, Go map
 type MapOps {
-  empty_map: String              // e.g. "HashMap::new()" or "{}" or "map[K]V{}"
-  map_insert: String             // e.g. "\{recv\}.insert(\{key\}, \{value\})" or "\{recv\}[\{key\}] = \{value\}"
-  map_get: String                // e.g. "\{recv\}.get(&\{key\}).cloned()" or "\{recv\}.get(\{key\})"
-  map_contains: String           // e.g. "\{recv\}.contains_key(&\{key\})" or "\{key\} in \{recv\}"
+  empty_map: String
+  map_insert: String
+  map_get: String
+  map_contains: String
 }
 
-// "How does a language handle null/optional coalescing?"
-// This is deeply language-specific and not reducible to a template string.
-// Ref: Rust Option::unwrap_or_else, Python ternary, Go nil check
 type NullCoalesceStrategy
   = MethodBased {
-      template: String           // e.g. "\{lhs\}.unwrap_or_else(|| \{rhs\})"
+      template: String
     }
   | TernaryBased {
-      template: String           // e.g. "(\{lhs\} if \{lhs\} is not None else \{rhs\})"
+      template: String
     }
   | IIFEBased {
-      template: String           // e.g. "func() ... { if \{lhs\} != nil ... }()"
+      template: String
     }
 
-// "How does a language handle identifier conflicts with reserved words?"
-// Ref: Rust/Python _ suffix convention, Go capitalization
 type ReservedWordStrategy
   = PrefixEscape {
-      prefix: String             // e.g. "r#" for Rust
+      prefix: String
     }
   | SuffixEscape {
-      suffix: String             // e.g. "_" for Python
+      suffix: String
     }
-  | NoEscape                     // Go: no escape; visibility is by capitalization
+  | NoEscape
 
-// "What are the language's reserved words?"
-// The compiler needs these to escape identifiers that conflict with keywords.
 type ReservedWords {
   keywords: List<String>
   strategy: ReservedWordStrategy
 }
 
-// "How does a language pass values?"
-// Ref: Rust ownership, Python object references, Go value semantics
 type ValueSemantics
   = OwnershipBased {
-      reference_prefix: String   // e.g. "&" for Rust
-      mutable_prefix: String     // e.g. "mut " for Rust
-      copy_primitives: List<String>  // e.g. ["Int", "Bool", "Float", "Unit"] -- passed by value
-      clone_expr: String             // e.g. "{0}.clone()" -- clone an owned expression
-      deref_clone_expr: String       // e.g. "(*{0}).clone()" -- deref Rc/Box then clone
-      field_clone_expr: String       // e.g. "{0}.{1}.clone()" -- clone a field access
-      iterator_clone_suffix: String  // e.g. ".cloned()" -- clone iterator elements
+      reference_prefix: String
+      mutable_prefix: String
+      copy_primitives: List<String>
+      clone_expr: String
+      deref_clone_expr: String
+      field_clone_expr: String
+      iterator_clone_suffix: String
     }
-  | ReferenceBased               // Python: all objects are references
+  | ReferenceBased
   | ValueBased {
-      pointer_prefix: String     // e.g. "*" for Go pointers
+      pointer_prefix: String
     }
 
-// "What serialization framework does the language use?"
-// The emitter needs this for data definitions, service mocks, and
-// type derives. Each language has a canonical serialization story.
-// Ref: Rust serde, Python dataclasses/json, Go encoding/json
 type SerializationFramework {
-  struct_derives: String?        // e.g. "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
-  enum_derives: String?          // e.g. "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
-  tag_attribute: String?         // e.g. "#[serde(tag = \"_variant\")]" for tagged enums
-  rename_attribute: String?      // e.g. "#[serde(rename = \"\{key\}\")]" for field renaming
-  json_parse: String?            // e.g. "serde_json::from_str(\{input\})?" or "json.loads(\{input\})"
-  json_emit: String?             // e.g. "serde_json::to_string(\{value\})?" or "json.dumps(\{value\})"
-  json_type: String              // e.g. "serde_json::Value" or "dict" or "interface{}"
-  default_value: String          // e.g. "Default::default()" or "None" or "nil"
+  struct_derives: String?
+  enum_derives: String?
+  tag_attribute: String?
+  rename_attribute: String?
+  json_parse: String?
+  json_emit: String?
+  json_type: String
+  default_value: String
 }
 
-// "What project scaffolding does the language need?"
-// The emitter generates project files beyond just source files.
-// Ref: Cargo.toml, go.mod, requirements.txt, pyproject.toml
 type ProjectScaffold {
-  manifest_file: String?         // e.g. "Cargo.toml" or "go.mod" or null
-  module_init_file: String?      // e.g. null or "__init__.py" or null
-  source_file_extension: String  // e.g. ".rs" or ".py" or ".go"
-  source_dir: String?            // e.g. "src/" or null
-  entry_point_file: String?      // e.g. "src/main.rs" or "__main__.py" or "main.go"
+  manifest_file: String?
+  module_init_file: String?
+  source_file_extension: String
+  source_dir: String?
+  entry_point_file: String?
 }
 
-// "How does a language invoke async service calls?"
-// Different from AsyncSyntax (which covers general async constructs).
-// This is specifically about how service method invocations look.
-// Ref: Rust `.await?`, Python `await`, Go multi-return error check
 type ServiceCallSemantics
   = AwaitQuestion {
-      template: String           // e.g. "\{call\}.await?" -- Rust: Result-returning async
+      template: String
     }
   | AwaitPrefix {
-      template: String           // e.g. "await \{call\}" -- Python: exception-based async
+      template: String
     }
   | MultiReturnError {
-      template: String           // e.g. "\{result\}, \{err\} := \{call\}" -- Go: multi-return
+      template: String
     }
-// -- Layer 1: Categories ----------------------------------------------
 
-// "What is a language?" -- the baseline identity facts.
-// This captures what a language IS: its name, extensions, comment syntax,
-// naming conventions, and type mappings. It does NOT include how to write
-// code in the language (that's LanguageSpec).
 type Language {
   id: LanguageId
   name: String
@@ -421,25 +304,10 @@ type Language {
   types: TypeMapping?
 }
 
-// "What does the compiler need to emit code in a language?"
-// LanguageSpec is the COMPILER-OWNED CONTRACT. It composes all the
-// facts from Layer 0/0b/0c that the emitter consults when generating
-// target-language source files. A language extdep must fill in every
-// field of this type to be a valid emit target.
-//
-// This is layer 1 -- the interface. Layer 2 (language extdeps) provides
-// the concrete data for each target language.
-//
-// Design principle: every hardcoded fact in the emitters
-// (05_emit_rust.dag, 05_emit_python.dag, 05_emit_go.dag) must be
-// expressible as a field lookup on this type. If adding a new target
-// language requires changing the emitter rather than just providing a
-// new LanguageSpec value, a field is missing from this type.
 type LanguageSpec {
-  // -- Identity --
+
   language: Language
 
-  // -- Syntax (Layer 0b) --
   statements: StatementSyntax
   expressions: ExpressionSyntax
   control_flow: ControlFlowSyntax
@@ -449,31 +317,24 @@ type LanguageSpec {
   errors: ErrorHandlingSyntax
   type_defs: TypeDefinitionSyntax
   patterns: PatternMatchSyntax
-  async_model: AsyncSyntax?      // null for languages without async (C, etc.)
+  async_model: AsyncSyntax?
 
-  // -- Runtime operations (Layer 0c) --
   collection_ops: CollectionOps
   string_ops: StringOps
   map_ops: MapOps
   null_coalesce: NullCoalesceStrategy
 
-  // -- Identifier handling --
   reserved_words: ReservedWords
 
-  // -- Value semantics --
   value_semantics: ValueSemantics
 
-  // -- Serialization --
   serialization: SerializationFramework
 
-  // -- Project structure --
   scaffold: ProjectScaffold
 
-  // -- Service calls --
   service_calls: ServiceCallSemantics
 }
 
-// "What is a markup format?" -- subset for non-Turing languages.
 type MarkupFormat {
   id: LanguageId
   name: String
@@ -482,7 +343,6 @@ type MarkupFormat {
   code_fence: String?
 }
 
-// "What is a config format?" -- subset for configuration files.
 type ConfigFormat {
   id: LanguageId
   name: String
@@ -490,9 +350,6 @@ type ConfigFormat {
   comment: CommentSyntax
 }
 
-// -- Layer 2: Language data declarations ------------------------------
-
-// "What is Rust?"
 data rust_language: Language = {
   id: "rust",
   name: "Rust",
@@ -522,7 +379,6 @@ data rust_language: Language = {
   }
 }
 
-// "What is Go?"
 data go_language: Language = {
   id: "go",
   name: "Go",
@@ -552,7 +408,6 @@ data go_language: Language = {
   }
 }
 
-// "What is Python?"
 data python_language: Language = {
   id: "python",
   name: "Python",
@@ -582,7 +437,6 @@ data python_language: Language = {
   }
 }
 
-// "What is TypeScript?"
 data typescript_language: Language = {
   id: "typescript",
   name: "TypeScript",
@@ -612,15 +466,6 @@ data typescript_language: Language = {
   }
 }
 
-// -- Layer 2b: Rendering syntax data ----------------------------------
-//
-// Each data declaration answers "how does language X write construct Y?"
-// Every template is a tautology derivable from the language's specification.
-
-// -- Rust rendering syntax --------------------------------------------
-// Ref: The Rust Reference (doc.rust-lang.org/reference)
-
-// "How does Rust write statements?"
 data rust_statements: StatementSyntax = {
   let_binding: "let \{name\}: \{type\} = \{value\};",
   let_binding_inferred: "let \{name\} = \{value\};",
@@ -631,7 +476,6 @@ data rust_statements: StatementSyntax = {
   statement_terminator: ";"
 }
 
-// "How does Rust write expressions?"
 data rust_expressions: ExpressionSyntax = {
   binary_op: "\{lhs\} \{op\} \{rhs\}",
   unary_op: "\{op\}\{expr\}",
@@ -643,7 +487,6 @@ data rust_expressions: ExpressionSyntax = {
   closure: "|\{params\}| \{body\}"
 }
 
-// "How does Rust write control flow?"
 data rust_control_flow: ControlFlowSyntax = {
   if_then: "if \{cond\} { \{body\} }",
   if_else: "if \{cond\} { \{then\} } else { \{else\} }",
@@ -656,7 +499,6 @@ data rust_control_flow: ControlFlowSyntax = {
   continue_keyword: "continue"
 }
 
-// "How does Rust write literals?"
 data rust_literals: LiteralSyntax = {
   true_keyword: "true",
   false_keyword: "false",
@@ -668,7 +510,6 @@ data rust_literals: LiteralSyntax = {
   integer_separator: "_"
 }
 
-// "How does Rust organize modules?"
 data rust_modules: ModuleSyntax = {
   import_single: "use \{path\};",
   import_from: "use \{module\}::\{names\};",
@@ -679,7 +520,6 @@ data rust_modules: ModuleSyntax = {
   path_separator: "::"
 }
 
-// "How does Rust define functions?"
 data rust_functions: FunctionSyntax = {
   definition: "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
   definition_exported: "pub fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
@@ -691,7 +531,6 @@ data rust_functions: FunctionSyntax = {
   return_type_separator: " -> "
 }
 
-// "How does Rust handle errors?"
 data rust_errors: ErrorHandlingSyntax = ResultType {
   ok_template: "Result<\{0\}, \{1\}>",
   err_constructor: "Err(\{value\})",
@@ -699,8 +538,6 @@ data rust_errors: ErrorHandlingSyntax = ResultType {
   try_operator: "\{expr\}?"
 }
 
-// "How does Rust define types?"
-// Ref: Rust Reference 6.1, 6.2, 8.1.4, 19.2 "Derive macros"
 data rust_type_defs: TypeDefinitionSyntax = {
   struct_def: "pub struct \{name\} {\n\{fields\}\n}",
   struct_empty: "pub struct \{name\};",
@@ -714,8 +551,6 @@ data rust_type_defs: TypeDefinitionSyntax = {
   visibility_modifier: "pub "
 }
 
-// "How does Rust destructure values?"
-// Ref: Rust Reference 18 "Patterns"
 data rust_patterns: PatternMatchSyntax = {
   match_expr: "match \{expr\} {\n\{arms\}\n}",
   match_arm: "    \{pattern\} => \{body\},",
@@ -728,8 +563,6 @@ data rust_patterns: PatternMatchSyntax = {
   or_pattern: "\{a\} | \{b\}"
 }
 
-// "How does Rust handle async?"
-// Ref: Rust Reference 15 "Async and await", tokio runtime docs
 data rust_async: AsyncSyntax = AwaitBased {
   async_fn_def: "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
   await_expr: "\{expr\}.await",
@@ -737,10 +570,6 @@ data rust_async: AsyncSyntax = AwaitBased {
   gather: "futures::join!(\{exprs\})"
 }
 
-// -- Go rendering syntax ---------------------------------------------
-// Ref: The Go Programming Language Specification (go.dev/ref/spec)
-
-// "How does Go write statements?"
 data go_statements: StatementSyntax = {
   let_binding: "var \{name\} \{type\} = \{value\}",
   let_binding_inferred: "\{name\} := \{value\}",
@@ -751,7 +580,6 @@ data go_statements: StatementSyntax = {
   statement_terminator: ""
 }
 
-// "How does Go write expressions?"
 data go_expressions: ExpressionSyntax = {
   binary_op: "\{lhs\} \{op\} \{rhs\}",
   unary_op: "\{op\}\{expr\}",
@@ -763,7 +591,6 @@ data go_expressions: ExpressionSyntax = {
   closure: "func(\{params\}) \{ret\} { \{body\} }"
 }
 
-// "How does Go write control flow?"
 data go_control_flow: ControlFlowSyntax = {
   if_then: "if \{cond\} { \{body\} }",
   if_else: "if \{cond\} { \{then\} } else { \{else\} }",
@@ -776,7 +603,6 @@ data go_control_flow: ControlFlowSyntax = {
   continue_keyword: "continue"
 }
 
-// "How does Go write literals?"
 data go_literals: LiteralSyntax = {
   true_keyword: "true",
   false_keyword: "false",
@@ -788,7 +614,6 @@ data go_literals: LiteralSyntax = {
   integer_separator: "_"
 }
 
-// "How does Go organize modules?"
 data go_modules: ModuleSyntax = {
   import_single: "import \"\{path\}\"",
   import_from: null,
@@ -799,7 +624,6 @@ data go_modules: ModuleSyntax = {
   path_separator: "/"
 }
 
-// "How does Go define functions?"
 data go_functions: FunctionSyntax = {
   definition: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
   definition_exported: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
@@ -811,7 +635,6 @@ data go_functions: FunctionSyntax = {
   return_type_separator: " "
 }
 
-// "How does Go handle errors?"
 data go_errors: ErrorHandlingSyntax = MultiReturn {
   error_interface: "error",
   error_check: "if \{name\} != nil { \{handler\} }",
@@ -819,8 +642,6 @@ data go_errors: ErrorHandlingSyntax = MultiReturn {
   error_format: "fmt.Errorf(\"\{template\}\", \{args\})"
 }
 
-// "How does Go define types?"
-// Ref: Go Spec "Type declarations", "Struct types", "Interface types"
 data go_type_defs: TypeDefinitionSyntax = {
   struct_def: "type \{name\} struct {\n\{fields\}\n}",
   struct_empty: "type \{name\} struct{}",
@@ -834,9 +655,6 @@ data go_type_defs: TypeDefinitionSyntax = {
   visibility_modifier: null
 }
 
-// "How does Go destructure values?"
-// Ref: Go Spec "Switch statements" -- Go has type switches, not structural
-// pattern matching. Templates model what Go actually provides.
 data go_patterns: PatternMatchSyntax = {
   match_expr: "switch \{expr\} {\n\{arms\}\n}",
   match_arm: "case \{pattern\}:\n\t\{body\}",
@@ -849,8 +667,6 @@ data go_patterns: PatternMatchSyntax = {
   or_pattern: "\{a\}, \{b\}"
 }
 
-// "How does Go handle concurrency?"
-// Ref: Go Spec "Go statements", "Channel types", "Select statements"
 data go_async: AsyncSyntax = GoroutineBased {
   go_stmt: "go \{expr\}",
   channel_send: "\{chan\} <- \{value\}",
@@ -858,10 +674,6 @@ data go_async: AsyncSyntax = GoroutineBased {
   select_stmt: "select {\n\{cases\}\n}"
 }
 
-// -- Python rendering syntax -----------------------------------------
-// Ref: The Python Language Reference (docs.python.org/3/reference)
-
-// "How does Python write statements?"
 data python_statements: StatementSyntax = {
   let_binding: "\{name\}: \{type\} = \{value\}",
   let_binding_inferred: "\{name\} = \{value\}",
@@ -872,7 +684,6 @@ data python_statements: StatementSyntax = {
   statement_terminator: ""
 }
 
-// "How does Python write expressions?"
 data python_expressions: ExpressionSyntax = {
   binary_op: "\{lhs\} \{op\} \{rhs\}",
   unary_op: "\{op\}\{expr\}",
@@ -884,7 +695,6 @@ data python_expressions: ExpressionSyntax = {
   closure: "lambda \{params\}: \{body\}"
 }
 
-// "How does Python write control flow?"
 data python_control_flow: ControlFlowSyntax = {
   if_then: "if \{cond\}:\n    \{body\}",
   if_else: "if \{cond\}:\n    \{then\}\nelse:\n    \{else\}",
@@ -897,7 +707,6 @@ data python_control_flow: ControlFlowSyntax = {
   continue_keyword: "continue"
 }
 
-// "How does Python write literals?"
 data python_literals: LiteralSyntax = {
   true_keyword: "True",
   false_keyword: "False",
@@ -909,7 +718,6 @@ data python_literals: LiteralSyntax = {
   integer_separator: "_"
 }
 
-// "How does Python organize modules?"
 data python_modules: ModuleSyntax = {
   import_single: "import \{path\}",
   import_from: "from \{module\} import \{names\}",
@@ -920,7 +728,6 @@ data python_modules: ModuleSyntax = {
   path_separator: "."
 }
 
-// "How does Python define functions?"
 data python_functions: FunctionSyntax = {
   definition: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
   definition_exported: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
@@ -932,7 +739,6 @@ data python_functions: FunctionSyntax = {
   return_type_separator: " -> "
 }
 
-// "How does Python handle errors?"
 data python_errors: ErrorHandlingSyntax = ExceptionBased {
   try_block: "try:\n    \{body\}",
   except_clause: "except \{type\} as \{name\}:\n    \{handler\}",
@@ -940,9 +746,6 @@ data python_errors: ErrorHandlingSyntax = ExceptionBased {
   finally_block: "finally:\n    \{body\}"
 }
 
-// "How does Python define types?"
-// Ref: Python Reference 8.9 "Class definitions", PEP 557 "Data Classes",
-//      PEP 484 "Type Hints", PEP 613 "TypeAlias"
 data python_type_defs: TypeDefinitionSyntax = {
   struct_def: "@dataclass\nclass \{name\}:\n\{fields\}",
   struct_empty: "@dataclass\nclass \{name\}:\n    pass",
@@ -956,8 +759,6 @@ data python_type_defs: TypeDefinitionSyntax = {
   visibility_modifier: null
 }
 
-// "How does Python destructure values?"
-// Ref: PEP 634 "Structural Pattern Matching"
 data python_patterns: PatternMatchSyntax = {
   match_expr: "match \{expr\}:\n\{arms\}",
   match_arm: "    case \{pattern\}:\n        \{body\}",
@@ -970,24 +771,12 @@ data python_patterns: PatternMatchSyntax = {
   or_pattern: "\{a\} | \{b\}"
 }
 
-// "How does Python handle async?"
-// Ref: PEP 492 "Coroutines with async and await syntax",
-//      asyncio standard library docs
 data python_async: AsyncSyntax = AwaitBased {
   async_fn_def: "async def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
   await_expr: "await \{expr\}",
   spawn_task: "asyncio.create_task(\{expr\})",
   gather: "asyncio.gather(\{exprs\})"
 }
-
-// -- Layer 2c: Runtime operation data ---------------------------------
-//
-// How each language implements DSL builtin operations.
-// Each data declaration maps DSL pipe methods / builtins to the
-// target language's idiomatic equivalent.
-
-// -- Rust runtime ops -------------------------------------------------
-// Ref: Rust std::iter, std::collections, std::string
 
 data rust_collection_ops: CollectionOps = {
   count: "\{recv\}.len()",
@@ -1073,9 +862,6 @@ data rust_service_calls: ServiceCallSemantics = AwaitQuestion {
   template: "\{call\}.await?"
 }
 
-// -- Go runtime ops ---------------------------------------------------
-// Ref: Go slices package, strings package, fmt package
-
 data go_collection_ops: CollectionOps = {
   count: "len(\{recv\})",
   first: "\{recv\}[0]",
@@ -1158,9 +944,6 @@ data go_service_calls: ServiceCallSemantics = MultiReturnError {
   template: "\{result\}, \{err\} := \{call\}"
 }
 
-// -- Python runtime ops -----------------------------------------------
-// Ref: Python builtins, itertools, functools
-
 data python_collection_ops: CollectionOps = {
   count: "len(\{recv\})",
   first: "\{recv\}[0] if \{recv\} else None",
@@ -1235,12 +1018,6 @@ data python_service_calls: ServiceCallSemantics = AwaitPrefix {
   template: "await \{call\}"
 }
 
-// -- Layer 2d: LanguageSpec compositions ------------------------------
-//
-// Each LanguageSpec value composes all the Layer 0/0b/0c/2/2b/2c data
-// for a single target language. This is the value the emitter receives.
-
-// "Everything the compiler needs to emit Rust."
 data rust_spec: LanguageSpec = {
   language: rust_language,
   statements: rust_statements,
@@ -1264,7 +1041,6 @@ data rust_spec: LanguageSpec = {
   service_calls: rust_service_calls
 }
 
-// "Everything the compiler needs to emit Go."
 data go_spec: LanguageSpec = {
   language: go_language,
   statements: go_statements,
@@ -1288,7 +1064,6 @@ data go_spec: LanguageSpec = {
   service_calls: go_service_calls
 }
 
-// "Everything the compiler needs to emit Python."
 data python_spec: LanguageSpec = {
   language: python_language,
   statements: python_statements,
@@ -1311,9 +1086,7 @@ data python_spec: LanguageSpec = {
   scaffold: python_scaffold,
   service_calls: python_service_calls
 }
-// -- Markup formats ---------------------------------------------------
 
-// "What is Markdown?"
 data markdown_format: MarkupFormat = {
   id: "markdown",
   name: "Markdown",
@@ -1327,7 +1100,6 @@ data markdown_format: MarkupFormat = {
   code_fence: "```"
 }
 
-// "What is HTML?"
 data html_format: MarkupFormat = {
   id: "html",
   name: "HTML",
@@ -1341,9 +1113,6 @@ data html_format: MarkupFormat = {
   code_fence: null
 }
 
-// -- Config formats ---------------------------------------------------
-
-// "What is YAML?"
 data yaml_format: ConfigFormat = {
   id: "yaml",
   name: "YAML",
@@ -1356,7 +1125,6 @@ data yaml_format: ConfigFormat = {
   }
 }
 
-// "What is TOML?"
 data toml_format: ConfigFormat = {
   id: "toml",
   name: "TOML",
@@ -1369,7 +1137,6 @@ data toml_format: ConfigFormat = {
   }
 }
 
-// "What is a Makefile?"
 data makefile_format: ConfigFormat = {
   id: "makefile",
   name: "Makefile",
@@ -1382,7 +1149,6 @@ data makefile_format: ConfigFormat = {
   }
 }
 
-// "What is a .gitignore?"
 data gitignore_format: ConfigFormat = {
   id: "gitignore",
   name: "Gitignore",
@@ -1395,7 +1161,6 @@ data gitignore_format: ConfigFormat = {
   }
 }
 
-// "What is CSS?"
 data css_format: ConfigFormat = {
   id: "css",
   name: "CSS",
@@ -1407,13 +1172,3 @@ data css_format: ConfigFormat = {
     doc_prefix: null
   }
 }
-
-// -- Utility fn signatures --------------------------------------------
-//
-// These fns are not defined here as DSL fn items because the lowerer
-// creates standalone nodes for all fn items in a module, causing
-// "missing input" errors when the module is imported transitively.
-//
-// Signatures (for documentation):
-//   comment_line(text: String, syntax: CommentSyntax) -> String
-//   map_abstract_type(abstract_type: String, mapping: TypeMapping) -> String

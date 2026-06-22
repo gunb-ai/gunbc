@@ -1,24 +1,12 @@
-// tools/readme.dag -- README.md generation from source.
-//
-// Renders a minimal README derived from live repo data:
-// - Tool inventory pre-computed by the binary and injected as a parameter
-// - Static sections defined as DSL data (not hand-edited prose)
-//
-// Output: README.md via content_upsert (idempotent, freshness-checked).
-
 module tools.readme
 
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
 
-// -- Types ------------------------------------------------------------
-
 type ReadmeTool {
   name: String
   description: String
 }
-
-// -- Rendering helpers ------------------------------------------------
 
 fn render_tool_row(tool: ReadmeTool) -> String {
   "| `{tool.name}` | {tool.description} |"
@@ -71,8 +59,6 @@ fn render_readme(tools: List<ReadmeTool>) -> String {
   ]
   join(sections, "\n\n")
 }
-
-// -- Entry point ------------------------------------------------------
 
 func readme(tools: List<ReadmeTool>) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)

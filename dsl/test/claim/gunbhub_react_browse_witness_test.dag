@@ -1,9 +1,3 @@
-// dsl/test/claim/gunbhub_react_browse_witness_test.dag
-//
-// gunbhub R1 browse-page receipt: structurally compose a repo-browse page as a
-// ReactMarkupNode tree and serialize through canonical std.markup.Fragment.
-// Page composition authority: gunbc.gunbhub_serve (M2 serve surface).
-
 module test.claim.gunbhub_react_browse_witness
 
 import gunbc.gunbhub_serve { gunbhub_browse_page }

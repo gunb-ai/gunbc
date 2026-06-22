@@ -1,8 +1,3 @@
-// src/v2/extdeps/runtimes/v2_effect_io_pure.dag
-// Scope: Pure/test effect-IO handler bundle — file / HTTP / storage backends over an in-memory fixture store.
-// Status: Wave-2 M-E2 — inhabits EffectHandlerBinding from std/runtime.dag E-1; declare-per-claim fixture
-//   store + inject-per-run binding construction (Q-R3).
-
 module v2.extdeps.runtimes.v2_effect_io_pure
 
 import v2.std.algebra { Cons, Empty }
@@ -50,36 +45,21 @@ import v2.std.runtime {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-// 🟢 coproduct dissolution — resource transport backend axis; wave-2 gate exercises
-// FileResourceBackend; Http/Storage arms are declared honest stubs until host_run receipts land.
 type EffectIoResourceBackend
   = FileResourceBackend
   | HttpResourceBackend
   | StorageResourceBackend
 
-// 🟡 gated — illegal-states interim — feature:effect-io-backend-parameterized-store —
-// consumer: effect_io_pure_backends_match — locator carries backend tag alongside store.backend;
-// mismatch unrepresentable once fixture store is parameterized by backend. dissolve-on-arrival:
-// backend-indexed store type or eq/tag substrate in std/; forbidden: silent dual-tag drift.
-//
-// M5 fixture-store consolidation (node://adhoc-7e32be31-47c): identity is the content digest
-// of the reified operation-input Node (subject_digest = content_hash(inputs)) — the SAME digest
-// authority the v1 on-disk RecordedFixture handler uses, so this in-process handler is now
-// ContentAddressedByValue (std.cache_interface) rather than a HandAuthoredString constant pin.
 type EffectIoResourceLocator {
   backend: EffectIoResourceBackend
   identity: Hash
 }
 
-// 🟡 gated — illegal-states interim — feature:effect-io-backend-parameterized-store —
-// consumer: effect_io_pure_backends_match — store carries backend tag alongside locator.backend;
-// dissolve-on-arrival: backend-indexed store type makes cross-backend lookup unrepresentable.
 type EffectIoFixtureStore {
   backend: EffectIoResourceBackend
   entries: Map<Hash, RuntimeValue>
 }
 
-// Co-located inject-per-run authority: fixture store and handler binding are constructed together.
 type EffectIoPureHandlerBundle {
   fixture_store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
@@ -184,14 +164,6 @@ fn effect_io_pure_locator_unrepresentable_diagnostic() -> Diagnostic {
   }
 }
 
-// 🟢 M5 fixture-store consolidation (node://adhoc-7e32be31-47c) — the degenerate
-// HandAuthoredString constant pin is dissolved: the fixture key is now the content digest of the
-// reified operation-input Node, content_hash(runtime_value_node_projection(value)). This is the
-// ContentAddressedByValue derivation (std.cache_interface) that BOTH fixture handlers share — the
-// v1 on-disk RecordedFixture handler keys on content_hash(inputs) the same way — so distinct
-// locator args no longer silently alias. A RuntimeValue with no faithful Node reification
-// (RuntimeReference / RuntimeClosure / RuntimeUnit today) is a LOUD fail-closed reject (DESIGN.md
-// §5), never a silent collapse onto one key.
 fn effect_io_pure_locator_identity(value: RuntimeValue) -> Witness<Hash> {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: reified } =>
@@ -208,9 +180,6 @@ fn effect_io_pure_write_payload_from_args(args: List<RuntimeValue>) -> Witness<R
   }
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:effect-io-backend-match — dissolve-on-arrival: backend equality via declared carrier
-// projection instead of nested match; forbidden: permanent untagged Bool backend-alignment predicates.
 fn effect_io_pure_backends_match(
   left: EffectIoResourceBackend,
   right: EffectIoResourceBackend
@@ -234,18 +203,6 @@ fn effect_io_pure_backends_match(
   }
 }
 
-// 🟡 DEFERRED (node://adhoc-7e32be31-47c) — feature:effect-io-fixture-lookup-shared-coproduct.
-// Design-doc §5 step-4 envisioned this lookup returning the shared std.cache_interface
-// CacheLookupResult / CacheRejectReason (absent → Miss, backend fault → RejectedHit). That rewire
-// is BLOCKED by a substrate limitation, NOT a modeling gap: importing the dsl-tree
-// std.cache_interface into this v2 module pulls the dsl std closure, whose constructor names
-// (Empty / Cons, …) collide with v2.std under the v1 interpreter's flat namespace, so the module
-// fails to resolve. dissolve-on-arrival: the v1 interpreter resolves cross-tree imports by module
-// (no flat-namespace collision) OR v2.std and dsl.std unify. Until then the fail-closed reject
-// vocabulary stays v2-local (the M5 fork closure lands FULLY via the value-derived key above; the
-// cited std.cache_interface rows in extdeps/realization/hermetic_fixture.dag already describe this
-// handler as ContentAddressedByValue). MissIsDiagnostic holds: an absent fixture is a loud
-// diagnostic, never a fabricated value.
 fn effect_io_pure_store_lookup(
   store: EffectIoFixtureStore,
   locator: EffectIoResourceLocator
@@ -288,9 +245,6 @@ fn effect_io_pure_handle_read(
   }
 }
 
-// Q-R2: write handler returns the accepted payload; it does not mutate the injected fixture
-// store. Persistence/replay is orchestrator responsibility (see effect_io_pure_apply_write in
-// effect_io_pure_read_write_roundtrip, which re-binds handlers over the updated store).
 fn effect_io_pure_handle_write(
   store: EffectIoFixtureStore,
   request: EffectRequest
@@ -316,7 +270,6 @@ fn effect_io_pure_handle_write(
   }
 }
 
-// Invoke a bound handler (avoids `.handle` field-access inference pitfall in the v3 parse surface).
 fn effect_io_pure_invoke_handler(
   handler: EffectHandler,
   request: EffectRequest
@@ -326,7 +279,6 @@ fn effect_io_pure_invoke_handler(
   }
 }
 
-// Inject-per-run: handlers close over the declared fixture store at binding construction (Q-R3).
 fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHandlerBundle {
   EffectIoPureHandlerBundle {
     fixture_store: store,
@@ -412,7 +364,6 @@ fn effect_io_pure_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoP
   )
 }
 
-// Apply a handled write to the fixture store (returned-modified-resource pattern).
 fn effect_io_pure_apply_write(
   store: EffectIoFixtureStore,
   locator: EffectIoResourceLocator,
@@ -424,12 +375,6 @@ fn effect_io_pure_apply_write(
   }
 }
 
-// Wave-2 gate: ReadResource→WriteResource round-trip through EffectHandlerBinding dispatch for
-// one resource per backend (binding dispatch + Q-R2 receipt replay; not multi-resource).
-// M5 (node://adhoc-7e32be31-47c): the apply_write locator is now DERIVED from locator_arg through
-// the same content-addressed key path the handlers use, so the inserted key and the read-back key
-// are the SAME content digest by construction (no constant-pin coincidence). A locator_arg with no
-// faithful reification fails closed (false) rather than aliasing.
 fn effect_io_pure_read_write_roundtrip(
   backend: EffectIoResourceBackend,
   payload: RuntimeValue,

@@ -1,16 +1,3 @@
-// tools/dsl_compile_clean_gate.dag — whole-tree dsl/ compile-clean gate (dual-root pools), run by `gunbc`.
-//
-// Run in CI:
-//   cargo run -p v1-compiler --release --bin gunbc -- run \
-//     --source-root dsl --entry dsl/tools/dsl_compile_clean_gate.dag --function main
-//
-// Transport compiles every .dag under dsl/ with witness_layer_roots (dsl + src/v2) as import
-// pools — see tools.dsl_compile_clean_transport header for indexing semantics.
-//
-// SCAFFOLD — uses `--target rust` pending v1.compiler.dag_collect identity-key fix (180
-// collisions on `--target dag` emit); flip to `--target dag` when that backend bug lands.
-// Parse→resolve→typecheck front-end is identical; rust emit proves the tree is well-typed.
-
 module tools.dsl_compile_clean_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }

@@ -1,14 +1,3 @@
-// src/v2/test/claim/ci_spec_witness_test.dag
-//
-// Prove CiSpec fields drive the scheduler invocation `gunbc ci` runs (not
-// decorative literals), and that the run script invokes the dependency-ordered
-// scheduler — NOT a flat claim_batch + gates lane (DESIGN §3). Witness-entry
-// dissolution is re-homed on the plan's discovery batch (explicit_entries: [],
-// marker-driven roster) — proven in ci_floor_plan_witness_test.
-// Gate coproduct equivalence lives here — NOT in ci_spec.dag
-// (gunbc ci runtime closure must stay import-light; see qualified_name.dag:25).
-// Lives under src/v2 so dsl-only `gunbc compile` (compile-clean gate) stays v2-import-free.
-
 module v2.test.claim.ci_spec_witness
 
 import v2.std.algebra { bag_eq, list_snoc_item }
@@ -89,9 +78,6 @@ fn witness_layer_authority_drives_source_flags() -> Bool {
     !string_contains(s: flags, pattern: "Z9Z9Z9-witness-root")
 }
 
-// `claim_executor` has no `--scan-dir` flag (it hard-errors on unknown args), so
-// scan dirs must NOT leak onto the scheduler argv — they are carried by the plan
-// (`corpus_scan_dirs`, proven in `ci_floor_plan_witness_test`).
 fn witness_scan_subtree_not_in_scheduler_argv() -> Bool {
   let script = scheduler_invoke(spec: gunbc_ci_spec)
   !string_contains(s: script, pattern: " --scan-dir") &&

@@ -1,26 +1,3 @@
-// dsl/test/claim/http_pilot_rest_witness.dag
-//
-// Local-dev / wet-record recipe for REST hermetic pilot (extdeps/test/http_pilot.dag).
-// NOT discovery-roster enrolled (`http_pilot_rest_keystone_holds` is a plain fn).
-//
-// End-state hermetic behaviors (pilot op has dissolved inline mock_response):
-//   1. --record --fixture-store     → wet capture (fixture born by execution)
-//   2. --hermetic --fixture-store   → RecordedFixture replay ([hermetic:fixture])
-//   3. --hermetic (no store)        → eval_mock_response finds no mock_response →
-//      FAIL CLOSED ("no mock_response ... refusing to fabricate") — NOT a stub value
-//
-// CI floor (execution-backed via rust_gates_ci cargo test gate):
-//   * hermetic_http_pilot_without_fixture_store_fails_closed
-//   * hermetic_http_pilot_fixture_staleness_fails_closed
-//
-// Wet-only (#[ignore] in interp_recorded_fixture_test):
-//   * http_pilot_rest_record_then_hermetic_replay_holds — live jsonplaceholder record→replay
-//
-// Local wet recapture:
-//   claim_batch --source-root . --source-root dsl \
-//     --entry dsl/test/claim/http_pilot_rest_witness.dag \
-//     --function http_pilot_rest_keystone_holds --record --fixture-store /tmp/http-pilot-fixtures
-
 module test.claim.http_pilot_rest_witness
 
 import extdeps.test.http_pilot
