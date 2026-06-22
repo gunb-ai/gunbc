@@ -79,7 +79,7 @@ fn v1_std_float_dag_resolves_with_literal_machine_width() {
 }
 
 #[test]
-#[ignore = "emitter seed on main lacks dag fix until #5325 co-land; E0107 10→0 verified via 2-stage bootstrap"]
+#[ignore = "fix is in the .dag emitter (05_emit_rust) on this branch, but the in-process lib (committed stage0 seed) is not yet regenerated, so compile_sources here still uses the un-peeled emitter; un-ignore after the seed regen lands (2-stage bootstrap), per Track A step 3"]
 fn machine_width_phantom_arg_rust_emit_peels_literal_width_to_unit() {
     use v1_compiler::cli_run;
     use v1_compiler::v1_compiler_artifact::RenderTarget;

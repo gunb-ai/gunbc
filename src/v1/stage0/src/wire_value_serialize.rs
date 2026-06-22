@@ -149,17 +149,20 @@ fn serialize_variant_to_wire_json(
             .unwrap_or_else(|| format!("wire policy error for coproduct {type_name}")));
     }
 
-    if policy_is_untagged(&policy) {
+    // HAND-SYNCED MIRROR drift fix: the class-3 emit_rust splice takes the wire
+    // policy by value (Rc<RustEnumWireSerde>), so pass policy.clone() (cheap Rc
+    // clone) instead of &policy. See the carrier mark in v1_compiler_emit_rust.rs.
+    if policy_is_untagged(policy.clone()) {
         return serialize_untagged_variant(fields, ctx);
     }
 
-    if policy_is_string_variant(&policy) {
+    if policy_is_string_variant(policy.clone()) {
         let tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
             .ok_or_else(|| format!("no wire tag for string variant {type_name}::{variant_name}"))?;
         return Ok(serde_json::Value::String(tag));
     }
 
-    if let Some(tag_field) = policy_serde_tag_field(&policy) {
+    if let Some(tag_field) = policy_serde_tag_field(policy.clone()) {
         let wire_tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
@@ -176,7 +179,7 @@ fn serialize_variant_to_wire_json(
     }
 
     // TaggedVariant default: {"_variant": "Name", ...fields}
-    let tag_key = policy_serde_tag_field(&policy).unwrap_or_else(|| "_variant".to_string());
+    let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
     let default_tag = if policy.enum_attr == rust_serde_tag_attr() {
         variant_name.to_string()
     } else {

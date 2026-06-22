@@ -76,7 +76,10 @@ fn milliwatt(count: Nat) -> Milliwatt {
 }
 
 fn milliwatt_count(w: Milliwatt) -> Nat {
-  w.count
+  // Cross-module Measure alias (Measure<Power, Milli, Nat>): `.count` only peels
+  // where Measure is local, so route through the generic std.measure.measure_count
+  // accessor (same pattern as bandwidth_count below).
+  measure_count(m: w)
 }
 
 // === The decision point: five grounded axes ==============================

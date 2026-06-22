@@ -11,6 +11,7 @@
 module extdeps.cargo
 
 import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
+import extdeps.version.semver { SemVerConstraint }
 import std.types { FilePathParts }
 
 // -- Edition -------------------------------------------------------
