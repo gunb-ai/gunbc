@@ -825,9 +825,11 @@ fn anchor_present_in_any_source_root(module_path: &str) -> bool {
             let Ok(content) = std::fs::read_to_string(&file) else {
                 continue;
             };
-            let declares = content
-                .lines()
-                .find_map(|l| l.trim().strip_prefix("module ").map(|m| m.trim().to_string()));
+            let declares = content.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("module ")
+                    .map(|m| m.trim().to_string())
+            });
             if declares.as_deref() != Some(module_path) {
                 continue;
             }
@@ -850,7 +852,9 @@ fn anchor_present_in_any_source_root(module_path: &str) -> bool {
 pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: String) -> bool {
     match project_external_authority_anchor(&module_path) {
         ExternalAuthorityAnchorProjection::Present { .. } => false,
-        ExternalAuthorityAnchorProjection::Absent => anchor_present_in_any_source_root(&module_path),
+        ExternalAuthorityAnchorProjection::Absent => {
+            anchor_present_in_any_source_root(&module_path)
+        }
     }
 }
 
