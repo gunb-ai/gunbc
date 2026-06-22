@@ -12,9 +12,9 @@
 //     `DecomposeProcessNode { parent, children }` decomposition; the indentation edge IS that
 //     parent/child relation). Referenced, never re-coined — the ProcessGraph stays the single
 //     authority for work structure.
-//   - STATUS-source ← `gunbc.roadmap_status.CompletionBinding` (CompletesIff #N | HandChecked), the
-//     slice-1 model — row 1 of this authority, widened here from "status of a line" to "the line is
-//     a projection of a work node".
+//   - STATUS-source ← `gunbc.roadmap_status.RoadmapItem` (DerivableLine #N | AuthoredLine), the
+//     slice-1 model folded one layer down — row 1 of this authority, widened here from "status of a
+//     line" to "the line is a projection of a work node".
 //   - TITLE + plan-doc CARRIER ← the line's presentation surface, host-fed (like the live PR set);
 //     `ProcessNodeFacts` carries neither (Phase-1 identity is the map key), so they are new fields,
 //     not a fork of the work graph.
@@ -24,7 +24,7 @@
 // `roadmap_gate` (step 3, the `ci_yaml_gate` clone) supply them.
 //
 // Open (for the step-1 checkpoint): the work graph carries its OWN done-signal, `ProcessCloseState`
-// (ProcessOpen | ProcessClosed). It and the PR-grounded `CompletionBinding` are two groundings of
+// (ProcessOpen | ProcessClosed). It and the PR-grounded `RoadmapItem` binding are two groundings of
 // "done" that must agree (a node closes iff its completing PR merges). Slice-1/the parent chose the
 // PR-grounded one (it ties the box to the artifact's real authority, and carries the §5 derivable /
 // hand-checked boundary that close-state lacks). Reconciling the two is a bridge, flagged not built.
@@ -32,7 +32,7 @@
 module gunbc.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
-import gunbc.roadmap_status { RoadmapStatusEntry, CompletionBinding, DriftVerdict, status_drift }
+import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift }
 
 // The plan-doc pointer a line carries (`[plan](path)`), or none. A line may legitimately have no
 // pointer; the path is repo-root-relative.
@@ -40,12 +40,15 @@ type PlanDocCarrier
   = NoCarrier
   | PlanDoc { path: String }
 
-// A roadmap line as a work-node projection. `line` reuses the slice-1 status entry WHOLE (title +
-// committed box + CompletionBinding) — no field is re-coined; `node` binds it to the work graph
-// (identity + deps live in the ProcessGraph, keyed by this id); `carrier` is the plan-doc pointer.
+// A roadmap line as a work-node projection. `line` reuses the slice-1 model WHOLE (the `RoadmapItem`
+// closed sum: a DerivableLine's title + binding, or an AuthoredLine's verbatim content) — no field is
+// re-coined; `node` binds it to the work graph (identity + deps live in the ProcessGraph, keyed by
+// this id); `carrier` is the plan-doc pointer. The COMMITTED box is not stored here — it is host-fed
+// from the committed ROADMAP file at drift-check time (a DerivableLine derives its box, an AuthoredLine
+// carries its own), so the node holds only the authority, never a copy of the rendered box.
 type RoadmapNode {
   node: ProcessNodeId
-  line: RoadmapStatusEntry
+  line: RoadmapItem
   carrier: PlanDocCarrier
 }
 
@@ -55,6 +58,38 @@ type RoadmapNode {
 type RoadmapEdge {
   child: ProcessNodeId
   parent: ProcessNodeId
+}
+
+// === Section content: the frame-is-the-win element sequence ==================
+//
+// A real ROADMAP `##` section is NOT a single flat checkbox list (what the slice-2 RoadmapSection
+// assumed): it interleaves authored INTRO prose (the section rationale, the `◆ Milestones` spine, a
+// `→ [plan](…)` pointer) with one-or-MORE labelled checkbox SUB-GROUPS (`**Audits (done):**`,
+// `**In-scope this window:**`). `SectionElement` is that ordered sequence — the frame-is-the-win
+// faithful model of the section: model the FRAME (sub-group boxes + their bindings), FENCE the prose.
+//
+// - `SectionProse` carries authored prose VERBATIM (the §5 DecodeFidelity fence): an opaque String
+//   emitted as a paragraph, ALL markup (bold/links/refs/code-spans) living inside it. It is NOT modelled
+//   into medium constructs — fake-modelling prose is the forbidden over-reach (plan §5).
+// - `SectionGroup` is one checkbox list: an authored `label` + its node/edge forest (the EXISTING line
+//   model, reused whole). The label is SEMANTIC TEXT, not literal markup: every real sub-group renders as
+//   the UNIFORM `**{label}:**` frame, so the bold+colon is a rendering convention the projection owns
+//   (single authority, §3) — not the `**…:**` repeated in every String. An empty `label` is the bare
+//   unlabelled `[ ]`-list that opens a section (no label paragraph emitted).
+type SectionProse { content: String }
+type SectionGroup { label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+
+// The ordered content of a section: authored prose, or a checkbox sub-group. A closed sum so the
+// emitter dispatches the two renderings (a verbatim paragraph vs a task list) — no Optional straddle.
+type SectionElement
+  = Prose { prose: SectionProse }
+  | Group { group: SectionGroup }
+
+// Typed constructors so an element literal in list position carries its declared SectionElement type
+// (a bare inline payload arm is read as a Product, cf. roadmap_parent above).
+fn section_prose(content: String) -> SectionElement { Prose { prose: SectionProse { content: content } } }
+fn section_group(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> SectionElement {
+  Group { group: SectionGroup { label: label, nodes: nodes, edges: edges } }
 }
 
 // === Dependency projection: the indentation edge ============================
@@ -115,8 +150,8 @@ fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
 // === Status projection: reuse slice-1 over the embedded entry ================
 
 // The node's status drift, routed through the slice-1 authority over its embedded line — NOT a
-// second drift rule (§3). A HandChecked line is Underivable (honest residue), only an explicit
-// CompletesIff binding can drift.
-fn node_status_drift(rn: RoadmapNode, merged: List<Int>) -> DriftVerdict {
-  status_drift(entry: rn.line, merged: merged)
+// second drift rule (§3). An AuthoredLine is Underivable (honest residue), only a DerivableLine can
+// drift. `committed_box` is host-fed (the box observed in the committed ROADMAP file).
+fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
+  status_drift(item: rn.line, committed_box: committed_box, merged: merged)
 }

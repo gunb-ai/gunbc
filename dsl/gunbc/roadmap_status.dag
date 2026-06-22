@@ -7,17 +7,20 @@
 // checkbox is DERIVED, disagreement is a drift the gate catches (the construction upgrade of the
 // reachability lens — DESIGN §5/§6/§7).
 //
-// SOUNDNESS — the boundary is COMPLETES-IFF, not mere mention (DESIGN §5 fail-closed-but-RIGHT):
-// a ROADMAP line cites a PR in two distinct roles that must NOT be fused (§3):
-//   - COMPLETES-IFF: an explicit "this line is done iff these PR(s) merge" binding — the work-DAG
-//     authority edge; the ONLY class whose checkbox is derivable and drift-gated.
-//   - MENTION as partial evidence: a line may cite a MERGED PR while correctly staying `[ ]`
-//     because the whole item is not done (e.g. ROADMAP §0 "rust-gate coverage" cites merged #5456
-//     yet `[ ]`; same shape for #5427/#5452). Keying drift on a mention would fire RED on every
-//     such line — a fail-closed-but-WRONG gate, worse than no gate (§5).
-// So mentions are NOT modeled here; only the explicit binding is, and an unbound line is honest
-// un-derivable residue (the §5 DecodeFidelity boundary), never gated. Prose-scanning ROADMAP.md
-// for any `#N` is exactly the trap this avoids — the binding is a structured marker, not a regex.
+// SOUNDNESS — the boundary is COMPLETES-IFF, not mere mention (DESIGN §5 fail-closed-but-RIGHT), and
+// the fold makes it STRUCTURAL: a roadmap line is a closed sum (`RoadmapItem`), so a prose mention
+// CANNOT accidentally derive a box — a mention is AuthoredLine content (no `prs` to derive from), the
+// bad state unwritable, not runtime-rejected (§5 construction over validation).
+//   - DerivableLine: an explicit "this line is done iff these PR(s) merge" binding — the work-DAG
+//     authority edge; the ONLY class whose checkbox is derivable and drift-gated. `prs` is the single
+//     authority for both the derived box AND the emitted `(#ref)` annotation (§3, no fork).
+//   - AuthoredLine: a hand-set box; `content` is the whole line after the box, an opaque authored
+//     String emitted VERBATIM (the §5 DecodeFidelity fence — bold/refs/links live IN the String). A
+//     partial-evidence MENTION lives here as prose (e.g. ROADMAP §0 "rust-gate coverage" cites merged
+//     #5456 yet `[ ]`) — no binding, so honest un-derivable residue, never gated.
+// This sum SUBSUMES the slice-1 CompletionBinding (CompletesIff|HandChecked): the same
+// derivable-vs-authored split, one layer down, now carrying the per-arm line content too — one
+// authority for "what a line is", no parallel binding type (§3).
 //
 // Single authority (DESIGN §3): merged-ness is grounded in the GitHub `PullRequest` source fact
 // (`extdeps.github.pulls` — GitHub sets `merged_at` iff merged), NOT re-coined. The LIVE PR set is
@@ -28,26 +31,17 @@ module gunbc.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
-// The §5 boundary between a checkbox that can be DERIVED and one that must stay hand-checked.
-type CompletionBinding
-  // Explicit "this line is done IFF every one of these PRs merges" — the work-DAG authority edge.
-  // The ONLY derivable + drift-gated class. Populated from a structured marker, never from
-  // prose-scanned mentions.
-  = CompletesIff { prs: List<Int> }
-  // No completion binding: a partial-evidence mention, a no-PR audit, or a not-yet-started todo.
-  // The honest un-derivable residue — hand-checked, NEVER gated.
-  | HandChecked
-
-// A roadmap line's status surface: its title, whether the committed box reads done, and its completion
-// binding. The box is a plain Bool — markdown carries no third checkbox state, so completion is exactly
-// 2-valued; the GFM render-glyph (`std.markdown.CheckboxState = Checked | Unchecked`) is a SEPARATE
-// medium concept the emit projection maps this Bool onto (§2: don't restate a Bool as a 2-variant enum;
-// §3: completion ≠ glyph).
-type RoadmapStatusEntry {
-  title: String
-  claimed_done: Bool
-  binding: CompletionBinding
-}
+// A roadmap line. The closed sum IS the §5 soundness boundary made structural (see header): a
+// DerivableLine derives its box from `prs`; an AuthoredLine cannot derive at all. Folds in the slice-1
+// CompletionBinding (CompletesIff→DerivableLine, HandChecked→AuthoredLine), now carrying line content.
+type RoadmapItem
+  // Box DERIVED: done iff every bound PR merges. `title` is the structural label (emit bolds it);
+  // `description` is the fenced prose tail (verbatim, refs-free — the `(#ref)` annotation emits from
+  // `prs`, §3 single authority). Empty `description` renders a bare bold title.
+  = DerivableLine { prs: List<Int>, title: String, description: String }
+  // Box AUTHORED (`done`); `content` is the whole line after the box, opaque prose emitted verbatim
+  // (the §5 fence). Mentions are AuthoredLine content, so they cannot derive a box.
+  | AuthoredLine { done: Bool, content: String }
 
 // === Authority: merged-ness, grounded in the PullRequest source fact ========
 
@@ -67,41 +61,44 @@ fn merged_pr_numbers(prs: List<PullRequest>) -> List<Int> {
   prs |> filter(pr => pr_merged(pr: pr)) |> map(pr => pr.number)
 }
 
-// === Derivation: whether an explicitly-bound line SHOULD read done ============
+// === Derivation: whether a line SHOULD read done ============================
 
 // Done iff the binding is non-empty and EVERY bound PR merged — THE completion authority, a plain Bool
 // (no 2-variant enum restating it, §2). Single authority for the predicate, so the drift gate and the
-// emit projection both reuse it. Defined over the PR list of a CompletesIff binding only — a HandChecked
-// line has no derived box. An empty binding is not derivably-done (no merge evidence) → false,
+// emit projection both reuse it. An empty binding is not derivably-done (no merge evidence) → false,
 // fail-closed.
 fn prs_all_merged(prs: List<Int>, merged: List<Int>) -> Bool {
   count(prs) > 0 && all(prs, r => merged |> any(m => m == r))
 }
 
-// The done-ness an entry's box SHOULD show: DERIVED (every bound PR merged) for a CompletesIff binding
-// — the inversion; the AUTHORED box for a HandChecked line — honest residue (§5 DecodeFidelity). THE
-// completion authority the emitted checkbox glyph maps from (a Bool — the emit projection turns it into
-// `std.markdown.CheckboxState`, which it alone names).
-fn entry_is_done(entry: RoadmapStatusEntry, merged: List<Int>) -> Bool {
-  match entry.binding {
-    CompletesIff { prs } => prs_all_merged(prs: prs, merged: merged)
-    HandChecked => entry.claimed_done
+// The done-ness a line's box SHOULD show: DERIVED (every bound PR merged) for a DerivableLine — the
+// inversion; the AUTHORED box for an AuthoredLine — honest residue (§5 DecodeFidelity). The Bool the
+// emitted checkbox glyph maps from (the emit projection turns it into `std.markdown.CheckboxState`,
+// which it alone names).
+fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
+  match item {
+    DerivableLine { prs, title: _, description: _ } => prs_all_merged(prs: prs, merged: merged)
+    AuthoredLine { done, content: _ } => done
   }
 }
 
-// === Drift: only an explicit binding can drift ===============================
+// === Drift: only a DerivableLine can drift ==================================
 
-// The §5 boundary made explicit in the verdict. A HandChecked line is UNDERIVABLE — never Drifted,
-// honest residue; only a CompletesIff binding whose derived box ≠ committed box is Drifted. The
-// three states are disjoint repair paths: Drifted → fix the box (or the PR); Clean → nothing;
-// Underivable → out of the gate's reach, hand-checked.
+// The §5 boundary made explicit in the verdict. An AuthoredLine is UNDERIVABLE — never Drifted,
+// honest residue; only a DerivableLine whose derived box ≠ committed box is Drifted. The three states
+// are disjoint repair paths: Drifted → fix the box (or the PR); Clean → nothing; Underivable → out of
+// the gate's reach, hand-checked.
 type DriftVerdict = Drifted | Clean | Underivable
 
-fn status_drift(entry: RoadmapStatusEntry, merged: List<Int>) -> DriftVerdict {
-  match entry.binding {
-    HandChecked => Underivable
-    CompletesIff { prs } =>
-      if entry.claimed_done == prs_all_merged(prs: prs, merged: merged) {
+// `committed_box` is the OBSERVED box in the committed ROADMAP (host-fed: read from the file, or — in
+// the lens form — the box a fixture asserts). Slice-1 carried it as a `claimed_done` FIELD; the fold
+// reparameterizes it to this argument (the field was always a stand-in for the observed box), so a
+// DerivableLine need not store a box and the drift logic is otherwise unchanged.
+fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
+  match item {
+    AuthoredLine { done: _, content: _ } => Underivable
+    DerivableLine { prs, title: _, description: _ } =>
+      if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean
       } else {
         Drifted
@@ -109,18 +106,18 @@ fn status_drift(entry: RoadmapStatusEntry, merged: List<Int>) -> DriftVerdict {
   }
 }
 
-// The gate predicate: a line trips the gate ONLY when its explicit binding disagrees with the
-// committed box. A HandChecked line NEVER trips it — a false drift on a partial-evidence line is
-// worse than no gate (§5), so the residue is honestly excluded, not forced to a verdict.
-fn entry_drifted(entry: RoadmapStatusEntry, merged: List<Int>) -> Bool {
-  match status_drift(entry: entry, merged: merged) {
+// The gate predicate: a line trips the gate ONLY when its binding disagrees with the committed box. An
+// AuthoredLine NEVER trips it — a false drift on a partial-evidence line is worse than no gate (§5),
+// so the residue is honestly excluded, not forced to a verdict.
+fn item_drifted(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Bool {
+  match status_drift(item: item, committed_box: committed_box, merged: merged) {
     Drifted => true
     Clean => false
     Underivable => false
   }
 }
 
-// Convenience for the host/gate edge: drift one entry against the live PR set.
-fn entry_drifts_against_prs(entry: RoadmapStatusEntry, prs: List<PullRequest>) -> Bool {
-  entry_drifted(entry: entry, merged: merged_pr_numbers(prs: prs))
+// Convenience for the host/gate edge: drift one line against the live PR set.
+fn item_drifts_against_prs(item: RoadmapItem, committed_box: Bool, prs: List<PullRequest>) -> Bool {
+  item_drifted(item: item, committed_box: committed_box, merged: merged_pr_numbers(prs: prs))
 }

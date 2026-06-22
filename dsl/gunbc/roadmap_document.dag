@@ -20,16 +20,17 @@
 module gunbc.roadmap_document
 
 import std.markdown { MarkdownDocument, MarkdownBlock }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, SectionElement }
 import gunbc.roadmap_emit { project_roadmap_section }
 
-// One ROADMAP section: an editorial title (the `##` heading) over a work-node forest. The forest is the
-// EXISTING line model (nodes + their parent/child edges) — reused whole, not re-coined. This is the
-// grouping axis the work graph itself does not carry.
+// One ROADMAP section: an editorial title (the `##` heading) over an ORDERED element sequence
+// (`SectionElement` = authored intro prose | a labelled checkbox sub-group). This subsumes the
+// slice-2 single-list section (`nodes`+`edges`) — that flat list is now one `Group` element with an
+// empty label, no fork (§3) — and carries the real ROADMAP's frame faithfully: intro prose + the
+// `◆ Milestones` spine fenced as `Prose`, the `**…:**` sub-groups as `Group`s, all in document order.
 type RoadmapSection {
   title: String
-  nodes: List<RoadmapNode>
-  edges: List<RoadmapEdge>
+  elements: List<SectionElement>
 }
 
 // The whole ROADMAP as authority. `preamble` is the document-level authored frame above the first
@@ -43,13 +44,13 @@ type RoadmapDocument {
 
 // The medium blocks for one section: delegate to the per-section projection (step-2), take its blocks.
 fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
-  project_roadmap_section(title: s.title, nodes: s.nodes, edges: s.edges, merged: merged).blocks
+  project_roadmap_section(title: s.title, elements: s.elements, merged: merged).blocks
 }
 
 // THE whole-document projection (the ci.yml `project_workflow_to_yaml` analogue, markdown medium):
 // preamble blocks, then each section's blocks in order. A pure fold over the authored authority — the
-// checkbox boxes are rendered from each line's binding against `merged` (derived for CompletesIff,
-// authored for HandChecked), exactly as the per-section projection does.
+// checkbox boxes are rendered from each line's binding against `merged` (derived for a DerivableLine,
+// authored for an AuthoredLine), exactly as the per-section projection does.
 fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> MarkdownDocument {
   MarkdownDocument {
     blocks: fold(doc.sections, init: doc.preamble, f: fn(acc, s) {
