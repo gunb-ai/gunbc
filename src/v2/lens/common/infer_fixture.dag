@@ -1,5 +1,3 @@
-// Status: introduced as Phase-1 ratchet test-claim template (crisp-boar-896).
-
 module v2.test.lens_common.infer_fixture
 
 import v2.compiler.infer { InferredFacts, InferredTree }

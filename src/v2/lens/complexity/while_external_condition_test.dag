@@ -1,4 +1,3 @@
-
 module v2.test.lens_complexity.while_external_condition
 
 import v2.lens.complexity {
@@ -72,9 +71,6 @@ fn while_external_condition_actual_complexity() -> Witness<ComplexityBound> {
   complexity_lens(n: while_external_condition_input)
 }
 
-// By-execution gate (§5 fail-closed): a Loop with an undeclared bound has no
-// modeled cost, so cost_lens must Violate — never fabricate a finite bound. A
-// fail-open lens that returned Holds would go RED here.
 test fn while_external_condition_cost_fails_closed_holds() -> Bool {
   match while_external_condition_actual_cost() {
     Holds { value: _ } => false
@@ -82,8 +78,6 @@ test fn while_external_condition_cost_fails_closed_holds() -> Bool {
   }
 }
 
-// By-execution gate (§5 fail-closed): the asymptotic projection propagates the
-// cost Violation rather than inventing an UnknownComplexity Holds.
 test fn while_external_condition_complexity_fails_closed_holds() -> Bool {
   match while_external_condition_actual_complexity() {
     Holds { value: _ } => false
