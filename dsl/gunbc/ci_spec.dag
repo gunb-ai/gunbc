@@ -227,3 +227,32 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_run_script(spec: spec)
 }
+
+// The separate `rust_tests` GHA job (gunbc.ci_workflow) runs the v1 rust gate via `gunbc run`, so
+// the cargo invocation stays the MODELED cargo.Build op (cargo fmt/clippy/nextest — see
+// tools.rust_gates_ci), not a hand-typed String. Source roots come from the single authority
+// `witness_layer_source_flags(witness_layer_roots)`. The whole `gunbc run` is wrapped in the
+// EAGAIN cold-retry (same-shell `_script` variant so $ROOT resolves) — a fleet sccache
+// spawn-failure cold-retries CARGO_BUILD_JOBS=1, and that env is inherited by the gunbc→cargo
+// subprocess, the only resilience the cargo model cannot yet express (env→transport unwired).
+fn gunbc_ci_rust_gate_invoke() -> String {
+  ci_cargo_eagain_retry_script(
+    command: concat(
+      concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
+      " --entry dsl/tools/rust_gates_ci.dag --function main"
+    )
+  )
+}
+
+// rust_tests job step body: build the release `gunbc` (the gate is `.dag` interpreted by it, and
+// the build verifies its artifact exists — fail-closed §5), fetch the diff base (the gate is
+// `.rs`-diff-gated via should_run_gates), then run the modeled rust gate under EAGAIN retry.
+fn gunbc_ci_rust_job_run() -> String {
+  concat(
+    concat(ci_release_build_script(), "\n"),
+    concat(
+      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
+      gunbc_ci_rust_gate_invoke()
+    )
+  )
+}

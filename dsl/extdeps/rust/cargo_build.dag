@@ -11,8 +11,9 @@
 module extdeps.cargo_build
 
 // Default input values for the cargo ops below. Build references `env` in its input
-// block (not yet wired into shell argv). Clippy and Test are invoked from rust_gates_ci
-// and must not carry a Map input — RecordedFixture cannot serialize Map (fail-closed §5).
+// block (not yet wired into shell argv). Fmt, Clippy and Nextest are invoked from
+// rust_gates_ci and must not carry a Map input — RecordedFixture cannot serialize Map
+// (fail-closed §5). (Test is kept for tools/build.dag; the rust gate runs Nextest.)
 data cargo_compile_env: Map<String, String> = empty_map()
 
 // -- Service: shell transport wiring -----------------------------
@@ -48,6 +49,29 @@ service cargo.Build {
     exit {
       0 => Unit
       101 => String "Tests failed"
+    }
+  }
+
+  // cargo-nextest (https://nexte.st) — a next-generation test runner invoked as the cargo
+  // subcommand `cargo nextest run`. It process-isolates each test, so the heavy whole-tree-resolve
+  // tests that thrash libtest's shared process run ~4.6x faster (measured: 26m11s libtest →
+  // 5m41s nextest, same set, full coverage). It honors `#[ignore]` exactly like libtest, so the
+  // run-all-unless-`#[ignore]`d gate scope is unchanged. SINGLE AUTHORITY for the nextest argv —
+  // the rust gate (tools.rust_gates_ci) calls this op instead of hand-typing "cargo nextest run".
+  // Requires `cargo-nextest` on PATH; the rust_tests CI job installs it (gunbc.ci_workflow).
+  // Same feature-unification rule as Test: no `--features` at `-p v1-compiler-tests` scope.
+  operation Nextest {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["cargo", "nextest", "run", extra_args] }
+    exit {
+      0 => Unit
+      100 => String "Tests failed"
+      nonzero => String "Nextest run error"
     }
   }
 
