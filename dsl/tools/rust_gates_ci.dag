@@ -11,13 +11,12 @@ import gunbc.ci_spec {
   DiffTwoDot,
 }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
-import gunbc.operator_fleet { srv1_host, operator_fleet_kernel_pid_max }
+import gunbc.operator_fleet { srv1_host }
 import product.compute_fabric { compute_host_ram_bytes_total }
 
 fn rust_gate_build_jobs_args() -> List<String> {
   let jobs = ci_compile_jobs(
     memory_budget: compute_host_ram_bytes_total(host: srv1_host),
-    pids_budget: operator_fleet_kernel_pid_max,
     force_serial: false
   )
   cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))

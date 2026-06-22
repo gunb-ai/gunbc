@@ -4,7 +4,7 @@ import std.measure { ByteSize }
 import std.types { Int }
 
 type CompileJobMeasurement
-  = CompileJobMeasured { per_rustc_peak: ByteSize, procs_per_job: Int }
+  = CompileJobMeasured { per_rustc_peak: ByteSize, procs_per_job: Int, pids_budget: Int }
   | CompileJobUnmeasured
 
 data gunbc_ci_compile_measurement: CompileJobMeasurement = CompileJobUnmeasured

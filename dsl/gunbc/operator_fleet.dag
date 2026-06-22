@@ -9,7 +9,7 @@ import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
 import std.measure { gibibyte, gibibyte_to_byte_size, hertz }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
-import std.types { List, Int }
+import std.types { List }
 import product.compute_fabric {
   ComputeOffer,
   ComputeSupplyFacts,
@@ -108,5 +108,3 @@ data srv2_offer: ComputeOffer = ComputeOffer {
 }
 
 data operator_fleet_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]
-
-data operator_fleet_kernel_pid_max: Int = 4194304

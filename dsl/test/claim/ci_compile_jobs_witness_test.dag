@@ -29,7 +29,11 @@ fn jobs_is_refuse(d: DerivedCompileJobs) -> Bool {
 }
 
 fn sample_measured() -> CompileJobMeasurement {
-  CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3 }
+  measured_with_pids(p: 4096)
+}
+
+fn measured_with_pids(p: Int) -> CompileJobMeasurement {
+  CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3, pids_budget: p }
 }
 
 fn hypothetical_peak() -> ByteSize {
@@ -37,16 +41,15 @@ fn hypothetical_peak() -> ByteSize {
 }
 
 fn witness_committed_unmeasured_refuses() -> Bool {
-  jobs_is_refuse(ci_compile_jobs(memory_budget: byte_size(137438953472), pids_budget: 4096, force_serial: false))
+  jobs_is_refuse(ci_compile_jobs(memory_budget: byte_size(137438953472), force_serial: false))
 }
 
 fn witness_pids_budget_binds_the_count() -> Bool {
   jobs_count_or(
     ci_compile_jobs_for(
-      measurement: sample_measured(),
+      measurement: measured_with_pids(p: 24),
       hardware_threads: hardware_thread_count(128),
       memory_budget: byte_size(137438953472),
-      pids_budget: 24,
       force_serial: false
     ),
     0
@@ -59,7 +62,6 @@ fn witness_memory_budget_binds_the_count() -> Bool {
       measurement: sample_measured(),
       hardware_threads: hardware_thread_count(128),
       memory_budget: byte_size(6442450944),
-      pids_budget: 4096,
       force_serial: false
     ),
     0
@@ -67,7 +69,7 @@ fn witness_memory_budget_binds_the_count() -> Bool {
 }
 
 fn witness_force_serial_overrides_unmeasured() -> Bool {
-  jobs_count_or(ci_compile_jobs(memory_budget: byte_size(137438953472), pids_budget: 4096, force_serial: true), 0) == 1
+  jobs_count_or(ci_compile_jobs(memory_budget: byte_size(137438953472), force_serial: true), 0) == 1
 }
 
 fn witness_force_serial_beats_wide_budget() -> Bool {
@@ -76,7 +78,6 @@ fn witness_force_serial_beats_wide_budget() -> Bool {
       measurement: sample_measured(),
       hardware_threads: hardware_thread_count(128),
       memory_budget: byte_size(1099511627776),
-      pids_budget: 1000000,
       force_serial: true
     ),
     0
@@ -89,7 +90,6 @@ fn witness_unreadable_budget_falls_back_serial() -> Bool {
       measurement: sample_measured(),
       hardware_threads: hardware_thread_count(128),
       memory_budget: byte_size(0),
-      pids_budget: 4096,
       force_serial: false
     ),
     0
