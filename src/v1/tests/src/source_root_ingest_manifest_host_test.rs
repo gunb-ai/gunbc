@@ -34,7 +34,6 @@ fn source_root_ingest_symbol_leading_digit_gets_sr_prefix() {
     );
 }
 
-#[ignore = "failing: #5473 (source_root tagging at ingest) host fn discover_source_root_reads_for_entry has an absolute-vs-relative admission contradiction. ABSOLUTE source root is rejected by the new admission ('unknown --source-root <abs>/src/v2, authority gunbc.ci_layer_roots.witness_layer_roots=[src/v2,dsl]'); the RELATIVE 'src/v2' the admission wants then fails the file-existence check ('source root does not exist: src/v2', resolved vs CWD). No test-input satisfies both -> a real #5473 API bug (admission should canonicalize abs->relative authority name, or accept abs), proven by execution (tried both), not a trivial test update. Pre-existing #5473 bug surfaced by the #5427 run-all widening (never ran under the old 3-test allowlist), NOT caused by it (file untouched by this PR). HEAL-PR: the fix is up as PR #5504 (host fn grounds absolute --source-root via repo_relative_dag_path in source_root_ref_token_for_path; proven RED->green by execution), owned by the re-staffed de-fork lane (still-deer-248) + tracked as PRIORITY-1 work-item adhoc-2b64e7b9-8f1. UN-IGNORE when #5504 merges -> a freshness-merge then heals #5427 to zero ignores here (a tiny follow-up un-ignore). bucket=source-root-admission"]
 #[test]
 fn manifest_entry_admission_qualified_name_is_well_formed() {
     let ws = workspace_root();
