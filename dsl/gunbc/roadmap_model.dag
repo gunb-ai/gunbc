@@ -60,6 +60,38 @@ type RoadmapEdge {
   parent: ProcessNodeId
 }
 
+// === Section content: the frame-is-the-win element sequence ==================
+//
+// A real ROADMAP `##` section is NOT a single flat checkbox list (what the slice-2 RoadmapSection
+// assumed): it interleaves authored INTRO prose (the section rationale, the `◆ Milestones` spine, a
+// `→ [plan](…)` pointer) with one-or-MORE labelled checkbox SUB-GROUPS (`**Audits (done):**`,
+// `**In-scope this window:**`). `SectionElement` is that ordered sequence — the frame-is-the-win
+// faithful model of the section: model the FRAME (sub-group boxes + their bindings), FENCE the prose.
+//
+// - `SectionProse` carries authored prose VERBATIM (the §5 DecodeFidelity fence): an opaque String
+//   emitted as a paragraph, ALL markup (bold/links/refs/code-spans) living inside it. It is NOT modelled
+//   into medium constructs — fake-modelling prose is the forbidden over-reach (plan §5).
+// - `SectionGroup` is one checkbox list: an authored `label` + its node/edge forest (the EXISTING line
+//   model, reused whole). The label is SEMANTIC TEXT, not literal markup: every real sub-group renders as
+//   the UNIFORM `**{label}:**` frame, so the bold+colon is a rendering convention the projection owns
+//   (single authority, §3) — not the `**…:**` repeated in every String. An empty `label` is the bare
+//   unlabelled `[ ]`-list that opens a section (no label paragraph emitted).
+type SectionProse { content: String }
+type SectionGroup { label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+
+// The ordered content of a section: authored prose, or a checkbox sub-group. A closed sum so the
+// emitter dispatches the two renderings (a verbatim paragraph vs a task list) — no Optional straddle.
+type SectionElement
+  = Prose { prose: SectionProse }
+  | Group { group: SectionGroup }
+
+// Typed constructors so an element literal in list position carries its declared SectionElement type
+// (a bare inline payload arm is read as a Product, cf. roadmap_parent above).
+fn section_prose(content: String) -> SectionElement { Prose { prose: SectionProse { content: content } } }
+fn section_group(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> SectionElement {
+  Group { group: SectionGroup { label: label, nodes: nodes, edges: edges } }
+}
+
 // === Dependency projection: the indentation edge ============================
 
 // Where a roadmap line sits in the forest. A closed domain sum, NOT `ProcessNodeId?` — the Optional
