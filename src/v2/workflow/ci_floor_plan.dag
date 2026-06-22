@@ -4,7 +4,8 @@ import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate,
+<<<<<<< HEAD
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate, RoadmapGate,
   SourceRootIngestGate
 }
 import v2.std.algebra { length, list_snoc_item }
@@ -68,6 +69,7 @@ fn gate_node(g: Gate) -> Node {
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
     GitignoreGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_gitignore } }, children: [] }
+    RoadmapGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_roadmap } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
   }
 }
@@ -82,6 +84,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
     GitignoreGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "gitignore_gate_passes" }
+    RoadmapGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "roadmap_gate_passes" }
     SourceRootIngestGate => RunnableSingleClaim {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes"
@@ -132,6 +135,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
     ExtdepsExternalAuthorityGate => false
     CiYamlGate => false
     GitignoreGate => false
+    RoadmapGate => false
   }
 }
 

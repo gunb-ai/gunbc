@@ -2,7 +2,8 @@ module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate
+<<<<<<< HEAD
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate, RoadmapGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
@@ -36,4 +37,8 @@ func ci_yaml_gate_passes() -> Bool {
 
 func gitignore_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: GitignoreGate))
+}
+
+func roadmap_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: RoadmapGate))
 }
