@@ -23,7 +23,7 @@ import v2.compiler.normalize { normalize, NormalizedTree }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
-import v2.std.pipeline { then_outcome }
+import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }

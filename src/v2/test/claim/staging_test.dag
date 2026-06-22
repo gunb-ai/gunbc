@@ -1,13 +1,13 @@
-// Witnesses for v2.std.pipeline — green by execution.
+// Witnesses for v2.std.staging — green by execution.
 // then_outcome: composes same-typed and DIFFERENT-typed stages (Int -> Bool -> Int),
 //   including composing its own output, and a builder that captures config.
 // cached_stage: a HIT returns the cached value and SKIPS the stage; a MISS runs it.
-module v2.test.claim.pipeline
+module v2.test.claim.staging
 
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
-import v2.std.pipeline { then_outcome, cached_stage, CacheProbe, Hit, Miss }
+import v2.std.staging { then_outcome, cached_stage, CacheProbe, Hit, Miss }
 
 fn s_double(n: Int) -> Outcome<Int> { outcome_accepted(value: n * 2) }
 fn s_inc(n: Int) -> Outcome<Int> { outcome_accepted(value: n + 1) }

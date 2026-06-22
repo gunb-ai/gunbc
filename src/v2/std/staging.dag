@@ -1,4 +1,8 @@
-// v2.std.pipeline — Kleisli composition + stage caching for the Outcome (railway) monad.
+// v2.std.staging — Kleisli composition + stage caching for the Outcome (railway) monad.
+// (Named `staging`, not `pipeline`: `pipeline` is a reserved item keyword — dag_keyword_set in
+// extdeps/languages/dag/syntax.dag — so a module path segment `pipeline` parses inside `import`
+// but cannot round-trip as the `^pipeline` qualified-name port-literal the source-root-ingest
+// manifest emits.)
 //
 // `then_outcome(f, g)` composes two fail-closed stages — `f: A -> Outcome<B>` and
 // `g: B -> Outcome<C>` — into one `A -> Outcome<C>`. It short-circuits on the first
@@ -9,7 +13,7 @@
 // first-class, individually-typed values instead of lambdas buried in a nested
 // `bind_outcome` pyramid. (DESIGN §4: one epistemic chain run in a direction; §2: one
 // combinator, every pipeline.)
-module v2.std.pipeline
+module v2.std.staging
 
 import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
 
