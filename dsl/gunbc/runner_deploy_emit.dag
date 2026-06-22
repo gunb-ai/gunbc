@@ -1,0 +1,47 @@
+module gunbc.runner_deploy_emit
+
+import gunbc.ci_runner_placement {
+  RunnerDeploymentPlan,
+  PlanDerived,
+  PlanUnsound,
+  RunnerHostDeployment,
+  runner_deployment_plan,
+}
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import std.measure { byte_size_count }
+import std.types { String, List, Int, Bool }
+
+fn runner_labels_text(spec: RunnerSpec) -> String {
+  match spec {
+    SelfHosted { labels: labels } =>
+      fold(labels, init: "", f: (acc, l) => if acc == "" { l } else { concat(concat(acc, ","), l) })
+    HostedRunner { label: _ } => "hosted"
+    RunsOnExpression { expression: e } => e
+  }
+}
+
+fn manifest_host_line(h: RunnerHostDeployment) -> String {
+  concat(
+    concat(
+      concat(concat("host=", h.identity), concat(" runners=", to_string(h.runner_count))),
+      concat(" cap_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
+    ),
+    concat(concat(" labels=", runner_labels_text(spec: h.runner)), "\n")
+  )
+}
+
+fn expected_runner_deploy_manifest() -> String {
+  match runner_deployment_plan() {
+    PlanUnsound { reason: reason } =>
+      concat(concat("UNSOUND: ", reason), "\n")
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
+      concat(
+        fold(hosts, init: "", f: (acc, h) => concat(acc, manifest_host_line(h: h))),
+        concat("fleet_concurrent_runs=", concat(to_string(total), "\n"))
+      )
+  }
+}
+
+fn runner_deploy_drifted(committed: String) -> Bool {
+  !(committed == expected_runner_deploy_manifest())
+}

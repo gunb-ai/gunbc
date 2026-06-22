@@ -1,6 +1,15 @@
 module extdeps.docker
 
 import std.types { FilePath, NonEmptyStr, ContentHash }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/storage/"
+  }
+}
 
 type DockerImage {
   repository: NonEmptyStr

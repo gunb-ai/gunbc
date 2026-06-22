@@ -7,6 +7,16 @@ import std.baseboard {
 import std.bmc { OpenBmc }
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
+  }
+}
+
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: AsrockRackAltrad8ud1l2t,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",

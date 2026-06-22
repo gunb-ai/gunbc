@@ -2,6 +2,16 @@ module extdeps.apt
 
 import std.types { NonEmptyStr, FilePath }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/testing/apt/apt.8.en.html"
+  }
+}
+
 data apt_bin_dir: FilePath = "/usr/bin"
 data apt_local_bin_dir: FilePath = "/usr/local/bin"
 

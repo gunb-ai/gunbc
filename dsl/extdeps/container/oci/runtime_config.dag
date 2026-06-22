@@ -12,6 +12,15 @@ import extdeps.container.oci.types {
   RuntimeMountSource,
 }
 import std.types { Bool, FilePath, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/runtime-spec/blob/main/config.md"
+  }
+}
 
 type RuntimeProcess {
   terminal: Bool?

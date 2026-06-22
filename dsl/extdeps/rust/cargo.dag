@@ -3,6 +3,16 @@ module extdeps.cargo
 import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
 import std.types { FilePathParts }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/"
+  }
+}
+
 type RustEdition
   = Edition2015
   | Edition2018
