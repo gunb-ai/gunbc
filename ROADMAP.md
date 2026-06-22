@@ -30,6 +30,14 @@ One-line task tracker for gunbc (the compiler/language). `DESIGN.md` is the auth
   - tier 0: `std.lens_verdict` (`Holds | Violation | NotApplicable | Unrealized` fail-closed) — landed; ScheduleLensVerdict migrated; tier 1: `table_decision_tree` + `identical_variant_payload` bespoke verdicts migrated (#5194); interim `reason: String` dissolve-on → `v2.std.diagnostic.Diagnostic` when cross-tree import lands
   - tier 1: cost / complexity / synthesis → always-required, structural budget (enrolls resolve → catches P3 class)
   - tier 2: `InferredTree`+deps lenses → adapters, then enroll
+- Cardinality refinement — illegal cardinalities (wrong length, empty, overflow) made unwritable; cardinality as a fold-propagated, **decidable** refinement axis (linear arithmetic over counts — fits §4 where general refinement would not)
+  - **Plan: [cardinality refinement](docs/plans/cardinality-refinement.md)** · **[P1 where-clause lowering](docs/plans/p1-where-clause-lowering.md)**
+  - MVP-1 — fixed-width `Byte` grounded via a `Length<8>` refinement over existing `v2.std.refinement` (`refine`/`Validation`); a 7-element byte is a typed `Rejected` — proven by execution (#5512)
+  - P4 — cardinality propagates through folds: `length` is a fold homomorphism, and a uint8 overflow is a typed `Rejected`, not a silent wrap — proven by execution (#5512)
+  - P1 — `where Length<N>` surface sugar — **lowering, not parsing** (the v1 `where` parse exists `02_parse.dag:1339`; v2 grammar is data-driven rows): lower the currently-dropped predicate to a `Validation` at `03_normalize` `dag_surface_type_alias_rhs` — scoped, behind the fail-closed lock-down
+  - P2 — compiler-enforced construction (bare `Refined { base }` bypass; `refinement.dag` T-25-tail) — scoped
+  - P5 — phantom `MachineWidth<N>` → value reflection — substrate-blocked (a checker feature, or a value-carrying numeric-tower migration + a v2 `pow`)
+  - enabler: dsl↔v2 de-fork so dsl `bit.dag` `Byte` can consume v2 `refine` — see Route C above
 
 ## Next
 
