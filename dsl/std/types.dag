@@ -261,31 +261,6 @@ type StageResult {
   skipped: Bool
 }
 
-type DocumentLine {
-  text: String
-  is_comment: Bool
-  is_blank: Bool
-}
-
-type DocumentSection {
-  title: String
-  has_title: Bool
-  lines: List<DocumentLine>
-}
-
-type Document {
-  header: String
-  has_header: Bool
-  comment_prefix: String
-  sections: List<DocumentSection>
-  trailing_newline: Bool
-}
-
-type DocumentFile {
-  path: String
-  document: Document
-}
-
 type RenderedTextFile {
   path: String
   content: String
