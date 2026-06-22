@@ -9,6 +9,16 @@ import extdeps.container.oci.types {
   OciDescriptorV1,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/media-types.md"
+  }
+}
+
 data oci_image_schema_version: Int = 2
 
 data media_type_oci_image_manifest_v1: OciMediaType = OciImageManifestV1
