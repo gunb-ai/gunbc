@@ -5,101 +5,132 @@ this doc is an audit/tracker, not a fact ledger (DESIGN §6 "no parallel-ledger 
 dissolves into a mark on its carrier (a deleted file, a re-pointed import) when it lands. A task's real
 state is its branch/PR, not this file. Linked from `ROADMAP.md` §5 *Self-host v2 → delete `src/v1`* (the de-fork sub-lane).
 
-**Verified against the live tree on 2026-06-21.** Line numbers are receipts; re-check before acting.
+**Re-verified against the live tree on 2026-06-22 by execution** (decl-name set `comm` per concept +
+shared-type-body diff). This pass **corrected a load-bearing project assumption**: the dsl↔v2 std fork
+is *not* "mostly temporary v2 mirrors of dsl." It is **2 true mirrors + 2 pure name-collisions + 7
+divergent groundings** — the same concepts grounded on *different axes/realizations*. The hard part of
+the de-fork is therefore a grounding-unification **design** (operator-owned, downstream of the numeric
+tower #5428 and the model↔realization grounding), not a mechanical sweep. The prior version of this doc
+("11 mechanical PRs / 5 collapses / `Classical`↔`Bool` nickname") was wrong by execution and is
+superseded below.
 
 ---
 
 ## 0. Thesis — the only duplication is v2's bootstrap copies of dsl
 
 `dsl/` is the single authority (the standard library + the grounded `extdeps/` domain models +
-the CI spec). `src/v2/` is the **compiler**, and a compiler needs a standard library to run. It
-cannot import `dsl/` across trees yet, so during bootstrap it made **mirror copies** of pieces of
-`dsl/std` inside `src/v2/std`. Those copies are the entire fork surface.
+the CI spec). `src/v2/` is the **compiler**, and a compiler needs a standard library to run. During
+bootstrap it made copies of pieces of `dsl/std` inside `src/v2/std`. Those copies are the fork surface.
 
-So "de-fork" is not "move dsl into v2" and not a blanket direction. It is: **delete v2's duplicate
-copies and point v2 at the dsl authority**, until no concept has two homes — and no genuinely
-historical fork survives (a name shared by two copies, or two names for one concept). Folder/module
-naming must reflect one authority, not the fork's history.
+"De-fork" is: **delete v2's duplicate copies and point v2 at the dsl authority**, until no concept has
+two homes — and no genuinely historical fork survives (a name shared by two copies, or two names for
+one concept). Folder/module naming must reflect one authority, not the fork's history.
 
-The fork surface is small: **11 overlapping `std` basenames** (plus a couple in `extdeps`, e.g.
-`yaml`). `dsl/extdeps/**` domain models (~140 dsl-only files), `dsl/product/`, `dsl/gunbc/`, and
-~60 dsl-only `std` files have **no v2 counterpart** — they are authority, not fork.
+**The correction (2026-06-22):** only a *minority* of the overlapping basenames are clean copies. Most
+are the **model↔realization fork** (DESIGN open thread) surfacing across `std`: the *same concept*
+modeled on a different axis in each tree (e.g. `EffectShape` by operation-kind in dsl vs by
+idempotency-class in v2), or grounded into a realization in one tree and left thin in the other (the
+numeric tower). Those cannot be "delete + repoint" — repointing breaks consumers at missing-symbol
+level, and the *shared* type's body itself disagrees. They need a single-authority **design** first.
 
 ---
 
-## 1. The blocker — cross-tree import is wired but switched off
+## 1. Cross-tree import — ACTIVATED (the former blocker is dissolved)
 
-The machinery to import `dsl/` from `src/v2/` landed (cross-tree import model + resolution wiring,
-proven by `src/v2/test/claim/name_resolve_cross_tree_resolution_test.dag`). It is **fail-closed by
-default** and must stay that way until grounded:
+The machinery to import `dsl/` from `src/v2/` is **wired and on**, proven by execution:
 
-- `src/v2/compiler/03_name_resolve.dag:644` — the real compile entry `resolve_with_admission`
-  hardcodes `order: FundamentalityUnknown`.
-- `src/v2/std/cross_tree/import_model.dag` — `FundamentalityUnknown → CrossTreeDenied`. So every
-  real cross-tree import is denied today. The green witness only passes because it *explicitly*
-  supplies `MoreFundamental`, which no real compile does.
-- `src/v2/std/cross_tree/resolution.dag` header — **hard ACTIVATION GATE**: supplying a non-Unknown
-  order for real compilation MUST NOT land until grounded `source_root` tagging replaces the current
-  QualifiedName-prefix fallback (relying on a `v2.`-prefix to guess a file's tree is a DESIGN §4
-  violation).
+- Grounded `source_root` tagging landed (#5473 `source_root: SourceRootRef` on `DagSourceReadWitness`;
+  #5486 grounded cross-tree admission — the QualifiedName-prefix fallback is **deleted**, and
+  `tree_fundamentality_order(V2Tree, DslTree) = MoreFundamental` is derived, not guessed).
+- `src/v2/compiler/03_name_resolve.dag` no longer carries `FundamentalityUnknown`; `admit_import_entry`
+  calls the grounded `cross_tree_edge_decision`.
+- **Activation arbiter witness** (#5506, `src/v2/test/claim/cross_tree_real_ingest_activation_test.dag`)
+  feeds a host-tagged `SourceRootIngest` through the *real* grounding machinery
+  (`program_assembly_fold_ingest` builds the QN→`SourceRootRef` index; `source_root_set_from_ingest`
+  builds the active-root set) and runs the real per-edge decision: v2→dsl ⟹ `EdgeCrossAdmitted`,
+  tags-reversed dsl→v2 ⟹ `EdgeCrossDenied`. So cross-tree import is **live on main, carrier consumed,
+  no operator flip pending**.
+- The source-root admission abs-vs-rel host bug (#5473's `source_root_ref_token_for_path`) that blocked
+  the rust gate is **fixed** (#5504): file paths and `--source-root` values are grounded through
+  `repo_relative_dag_path` before matching, so admission is invocation-independent.
 
-**Activation prerequisite (the one thing standing between "wired" and "on"):** tag each file with
-which `--source-root` it came from at ingest. Dissolve-on named in the resolution header: add
-`source_root: SourceRootRef` to `DagSourceReadWitness` (`src/v2/compiler/source_authority.dag`); the
-host tags by source-root; then delete the QN-prefix fallback and flip the real-compile order.
-
-Separate concrete blocker for the first real cross-tree *data* import:
+Remaining concrete blocker, scoped to the first real cross-tree **data** import only (NOT the std
+collapses — std collapses resolve cross-tree clean, no `std.*` collision, no `Option`/`Optional`):
 `src/v2/std/probe_selector.dag:52` — v2 cannot import `dsl/product/compute_fabric` (`Option<T>` vs
 `Optional<T>`; `std.*` namespace collision under dual source-root). Repro:
-`dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag`.
+`dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag`. This is step-4 below.
 
 ---
 
-## 2. Fork census (the 11 overlapping `std` basenames)
+## 2. Fork census, re-verdicted by execution (the real shape)
 
-Classification by reading both files. **Collapse** = one is a copy/nickname, delete it and re-point.
-**Decide** = same name, genuinely different job (different layer or concern) → rename to disambiguate
-*or* merge, per concept. **Not-a-fork** = different concept, the shared name is the only collision.
+Three tiers. **Mirror** = v2's used symbols ⊆ dsl → mechanical delete + repoint. **Not-a-fork** =
+shared symbol count is *zero*, the basename is the only collision → rename to disambiguate.
+**Grounding cluster** = the same concept grounded on a different axis/realization in each tree (shared
+symbols exist, often with a *diverging shared-type body*) → single-authority **design**, operator-owned,
+downstream of #5428 + the model↔realization grounding. *Not* a repoint and *not* a clean additive merge.
 
-| concept | dsl/std | src/v2/std | verdict |
+### Mechanical lane (still-deer authority, bright-stag review) — finishable independently
+
+| concept | shared | each side | verdict / state |
 |---|---|---|---|
-| **algebra** | `Magma/Semigroup/Monoid<T>` … | byte-similar `Magma/Semigroup/Monoid<T>` … | **Collapse** — clearest historical duplicate |
-| **logic** | `Classical = True \| False` | `Bool = True \| False` (+ Bool*Fact) | **Collapse** — nickname (`Classical`↔`Bool`); pick one name |
-| **nat** | `Nat = CommutativeSemiring<Magnitude>` | `type Nat` + `nat_semiring: CommutativeSemiring<Nat>` | **Collapse** — same semiring concept, two encodings |
-| **reducible** | `ReduceVerdict` + combine | header: "ported from dsl/std/reducible.dag" | **Collapse** — declared port |
-| **measure** | carrier authority | header: "MIRROR … delete when v2 loads dsl/std directly" | **Collapse** — declared mirror |
-| **integer** | `Int8 = Compose<Int, MachineWidth<8>>` … (width surface) | `Int = GroupCompletion<Nat>`, `UInt = Nat` (algebraic) | **Decide** — different layers of one tower; merge, don't copy-delete |
-| **effects** | `EffectShape/CreateCause/KeySource` | `IdempotentShape/BreakingShape/…` | **Decide** — overlapping, diverged feature sets |
-| **float** | `Real = ApproximateField<…>` + `Ieee754Float` | `Float32Interchange = Word32` (bits) | **Decide** — algebraic vs bit-level layer |
-| **coercion** | `TypeCheckpoint/InhabitantDecl` (IR schema) | `FindWitnessRejectionKind/CoercionQuality` (witness results) | **Not-a-fork** — different concern; rename to stop name collision |
-| **node** | `compiler_inductive_fields` (metadata *about* Node) | `Symbol/OccurrenceId` (*is* the Node substrate) | **Not-a-fork** — rename to stop name collision |
-| **verification** | `TestClaim/AssertKind` (test-data model) | `TestgenTier/TestClassification` (testgen metadata) | **Not-a-fork** — rename to stop name collision |
+| **reducible** | 8 (full set) | v2 header self-declares "ported from dsl" | **Mirror — DONE** (#5507) |
+| **measure** | dsl 40-decl authority ⊇ all 10 importer symbols | v2 = 3-decl declared mirror | **Mirror — in flight** (#5509) |
+| **coercion** | **0** | dsl = cast / type-representation vocab (`TypeCheckpoint`, `CastRule`, `CastSyntax`, `CallableRepr`, `dag_cast_rules`); v2 = coercion-as-homomorphism (`coercion_fold` via `find_witness`, `CoercionWitness/Result/Quality`) | **Not-a-fork — rename** (in flight). Per DESIGN §4 the *fold* **is** coercion → keep `coercion` for the v2 side, rename the dsl side to `cast_rules`. (4 dsl importers vs 14 v2 → rename dsl, lower disruption.) |
+| **node** | **0** | dsl = 3-decl, **0-importer** "compiler inductive structure" (`compiler_inductive_fields`/`compiler_recursive_types`) — a name-imposter; v2 = 126-decl, **506-importer** real Node substrate | **Not-a-fork — rename** (dispatched). Rename the dead dsl side; the v2 substrate is the real `node` authority. Zero risk (no importers move). |
+| **probe_selector** (step-4) | — | `Option<T>` vs `Optional<T>` + `std.*` collision on the `compute_fabric` data import | **Unblock** (dispatched). Independent of the grounding cluster. |
 
-Note: `node` and `verification` v2 copies are partly `🟡 gated — feature:coproduct-variant-enumeration`,
-not pure forks.
+### Grounding cluster (operator authority) — 7 concepts, a unification *design*
+
+Each row is **operator decision-input**: what is shared (and whether the shared body itself diverges),
+what each side uniquely carries, and the specific grounding entanglement that makes it a design, not a
+repoint.
+
+| concept | shared | shared body diverges? | dsl-only / v2-only | grounding entanglement |
+|---|---|---|---|---|
+| **algebra** | 16 abstract structures (`Magma`…`Field`, `FreeMonoid`, `Ordering`) | no (the structures match) | dsl-only 19 = template/codegen machinery **+ `GroupCompletion`/`FieldOfFractions`**; v2-only 74 = **41 `_node`/`_type_node` substrate projections** + the list/fold framework (213 importers) | numeric tower (`GroupCompletion` = `Int = GroupCompletion<Nat>`) **+** model↔realization substrate reflection. Each side owns a different grounding. |
+| **logic** | **0** | — (no overlap) | dsl-only = `Classical`/`classical_and/or/not`; v2-only = `Bool` + boolean-algebra instance + 6 node-projections + `BoolEncodingFact`/`BoolWidthFact`/`BoolPrimitiveFacts` | Bool grounded into **bit-width** (model↔realization). Operator picks: genuinely different concepts (→ rename) **or** one boolean modeled twice (→ unify on v2's grounded). |
+| **nat** | `Nat` (the name) | yes (thin alias vs coproduct) | dsl = 4-decl `Nat = CommutativeSemiring<Magnitude>`; v2 = 12-decl coproduct `Zero/Succ` + `nat_cata`/`nat_add`/`nat_mul`/`is_zero`/`nat_lte`/`nat_gte`/`NatAlgebraLawObligation` | **#5428** grounded numeric tower (`Zero → Int(0)`, `Succ → Int(k+1)`). Escalated (smart-ant-466). |
+| **integer** | 14 = the **whole `Int`/`UInt` width tower** (`Int`, `Int8…128`, `UInt`, `UInt8…128`, `IntPlatform`, `UIntPlatform`) | no | v2-only +72 = the arithmetic ops grounded **on** the tower | `Int = GroupCompletion<Nat>` numeric tower. |
+| **float** | 3 (`Float`, `Float32`, `Float64`) | no | v2-only +18 = algebraic-vs-bit-level ops | the algebraic-vs-bit-level layer of the numeric tower + bit-width. |
+| **effects** | 6 core (`EffectShape`, `KeySource`, `CreateCause`, +3 fns) | **YES — the shared `EffectShape` body is re-modeled on a different axis** | dsl = **operation axis** (`ReadEffect`/`UpsertEffect`/`DeleteEffect`/`CreateEffect`/`AppendEffect`) + derivation (`derive_effect_shape`/`OperationEffect`/`compose_effects`); v2 = **idempotency-class axis** (`IsIdempotent(IdempotentShape)`/`IsBreaking(BreakingShape)`) + idempotency machinery + node-projections | DESIGN §4 "idempotency dissolved from an `idempotent:Bool` flag into the `EffectShape` variant" — v2 is that grounding. Unification question: *which axis is the single authority, or are they orthogonal dimensions of one `EffectShape`?* |
+| **verification** | 1 = `TestClaim` (**one concept modeled twice**) | **YES** | dsl = `TestClaim { kind, label }` simple proposition (+ `TestCase`/`TestNodeRef`/`NanosecondDuration`/cost-dimension); v2 = closed assertion coproduct `CompilesClaim`/`DiagnosticClaim`/`EqualsClaim`/`StructuralEqualsClaim`/`RoundTripClaim` (each carrying `anchor`/`Node`/`classification`) | v2's coproduct is entangled with **#5428 + the `Value::Null` straddle fencing + the testgen-oracle** (`GeneratedCrossRepresentationEquality`). Merge + grounding-adjacent. |
 
 ---
 
 ## 3. Sequencing
 
-1. **Activate cross-tree import** (§1 prerequisite). Grounded `source_root` tagging at ingest, then
-   flip the real-compile order off `FundamentalityUnknown`. *Touches load-bearing pipeline files
-   (`source_authority.dag`, `03_name_resolve.dag`) — escalate before editing.* Nothing below is safe
-   or easy until this lands.
-2. **Collapse the five declared duplicates** — `reducible`, `measure` (already self-describe as
-   port/mirror), then `algebra`, `logic` (`Classical`→`Bool`), `nat`. Delete the v2 copy, re-point
-   imports to `dsl/std/*`. Each must stay green by execution (the existing witnesses are the oracle).
-3. **Resolve the same-name/different-job pairs** — `integer`, `effects`, `float` (merge the layers),
-   and rename the not-a-forks (`coercion`, `node`, `verification`) so one name never denotes two
-   concepts. This is the naming-hygiene goal: module/folder names reflect one authority.
-4. **Unblock the first data import** — `Option`/`Optional` + `std.*` namespace collision
-   (`probe_selector.dag:52`) so `dsl/product/compute_fabric` imports cleanly into v2.
+**Mechanical lane — proceeds now (still-deer authority + bright-stag review, each PR atomic):**
+
+1. **Mirrors:** `reducible` (DONE #5507), `measure` (#5509). Delete the v2 copy, repoint imports to
+   `dsl/std/*`; decrement the `fact_cardinality.dag` cross-tree baseline by *exactly* the deleted
+   symbol count; stay green by execution (the existing witnesses are the oracle).
+2. **Renames (not-a-forks):** `coercion` (rename the dsl cast vocab → `cast_rules`), `node` (rename the
+   dead 0-importer dsl side). A rename deletes no symbol — verify the baseline is unchanged. Each
+   **atomic** (stage the renamed file + all repointed importers in one push — see hazard below).
+3. **Step-4 data import:** `probe_selector` `Option`/`Optional` + `std.*` collision, so
+   `dsl/product/compute_fabric` imports cleanly into v2.
+
+**Grounding cluster — held for the operator** (a single-authority unification *design*, downstream of
+the numeric tower #5428 and the model↔realization grounding): `algebra`, `logic`, `nat`, `integer`,
+`float`, `effects`, `verification`. These are **not** dispatched as mechanical PRs. The grounded dsl
+authority for each has to be *designed* before any fan-out can repoint to it (the same shape as the
+project's "substrate migration precedes the ratchet, is not a path to it"). `nat` is already escalated
+(smart-ant-466) and stays BLOCKED + LAST.
+
+**Hazard (atomicity):** the dashboard auto-committer can snapshot a multi-file rename/collapse
+mid-edit (a symbol deleted in file A while file B still calls it) → an internally-inconsistent
+intermediate commit caught by a *frozen* merge-sha CI run → phantom "not found in scope" red.
+`gh run rerun` cannot fix it (it re-merges the broken head); only a fresh consistent push. Stage every
+file of a rename/collapse together.
 
 ---
 
 ## 4. Dissolution trigger (DESIGN §6)
 
-Delete this doc when the fork census reaches zero — when no `std` basename exists in both
-`dsl/std` and `src/v2/std` for a concept with a single authority, and the cross-tree-import
-activation gate in `src/v2/std/cross_tree/resolution.dag` has dissolved. At that point the carriers
-(absent files, re-pointed imports) tell the whole story and this audit is redundant.
+Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and
+every concept has a single authority. The mechanical lane (§3 steps 1–3) dissolves into its carriers
+(absent files, re-pointed imports) as each PR lands. The **grounding-cluster** portion (the 7 concepts)
+is downstream of the operator's grounding-unification design; this doc tracks it as decision-input
+until that design lands and the repoints become mechanical. At that point the carriers tell the whole
+story and this audit is redundant.
