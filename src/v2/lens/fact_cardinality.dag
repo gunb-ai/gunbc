@@ -36,7 +36,8 @@ type FactCardinalityDeclFact {
 // Coexistence ratchet baseline — dual-authority keys in BOTH trees (any hash).
 // Only moves DOWN when one authority is deleted / consolidated; gate RED if count grows.
 // reducible collapsed: dsl/std/reducible.dag is now the sole authority (src/v2/std/reducible.dag deleted).
-data fact_cardinality_cross_tree_coexistence_baseline: Int = 46
+// measure collapsed: dsl/std/measure.dag is now the sole authority (src/v2/std/measure.dag deleted; -3: Quantity, Scale, Measure).
+data fact_cardinality_cross_tree_coexistence_baseline: Int = 43
 
 fn fact_cardinality_cross_tree_coexistence(
   left: FactCardinalityDeclFact,
