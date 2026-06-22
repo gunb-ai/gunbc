@@ -109,6 +109,35 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_std_core.rs",
 ];
 
+// =========================================================================
+// CARRIER MARK -- HAND-SYNCED MIRROR, NOT a regen fixpoint (class-3 splice).
+//
+// The committed stage0 seed is a HAND-SYNCED MIRROR of the .dag authority, NOT a
+// clean-regen fixpoint. `regen_stage0 --verify` is therefore EXPECTED to differ
+// from the committed seed today: a faithful full regen wires every emitted module,
+// including the std-tower modules that are DELIBERATELY UNWIRED in lib.rs here
+// (std_measure / std_algebra / std_realization_schedule / std_machine_constraints
+// / std_integer / extdeps_version_semver / extdeps_cargo_version), and that wiring
+// surfaces ~150 latent emitter-completeness gaps (std numeric/measure-tower generic
+// emission). Those modules stay UNWIRED here exactly as on main.
+//
+// The class-3 emitter mirror (v1_compiler_emit_rust.rs / v1_compiler_infer.rs /
+// v1_compiler_infer_emit_info.rs) was landed by overlay-3-committed: faithful regen
+// of the class-3 .dag for those three modules, spliced onto the committed seed,
+// with two local drifts hand-resolved (cargo header inlined to avoid importing the
+// unwired extdeps_cargo_version orphan; wire policy passed by value, Rc clone, at
+// wire_value_serialize.rs). Every other module is byte-identical to committed.
+//
+// LANE (deferred): regen-fixpoint emitter-self-host (~150-gap) -- wire-all-emitted-
+//   modules so a clean regen reproduces the committed seed bit-identically (the §7
+//   reproduce-fixpoint that licenses deleting src/v1).
+// PROVENANCE (#5514 verbatim deferral): "regen-write still emits a non-building seed
+//   from ~150 emitter-completeness gaps, the clean green regen fixpoint is deferred,
+//   converges with the Route-A emitter self-host".
+// DISSOLUTION TRIGGER: §7 fixpoint convergence with the Route-A emitter self-host --
+//   when wire-all-emitted-modules -> regen-equals-committed is in reach; a fresh
+//   work-item gets dispatched THEN. (breadcrumb: node://adhoc-80af9ff8-40f)
+// =========================================================================
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cache_purity_oracle.rs",
     "cli_run.rs",
