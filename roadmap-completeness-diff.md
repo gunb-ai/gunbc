@@ -30,16 +30,24 @@ live red-receipt (perturb the merged set → drift RED).
 - **Structural-title bold is now authored data** (not emit-applied): the emit no longer force-bolds derivable titles; bold lives in the title string (the §5 fence, consistent with AuthoredLine). This made the emit match main's *per-item* bolding exactly (main bolds some derivable titles, not others; I matched each). Two authored audit items (lens/gate wiring, fail-open code) un-bolded to match main.
 - **Uniform blank line after a sub-group label** (`**Audits (done):**` ¶ then list). main is inconsistent (§0 has the blank, §1 host-band doesn't); the projection is uniform.
 
-### [benign-rewrap — FLAGGED for your call] — 2 compact multi-task bullets
+### [option (B) — IMPLEMENTED] — 2 compact multi-task bullets, now plain
 main has two plain `- ` bullets carrying *inline* `[x]`/`[ ]` glyphs:
 - `- hermetic fixtures feed P2: [x] M4.1 … ; [ ] M5 …` (mixed states)
 - `- blockers: [ ] B1 … · [ ] B2 …`
 
-The `SectionElement` model emits task-items only (no plain-bullet variant), so these render with a
-leading `- [ ]` wrapper; **all content (inline boxes, both PR refs, both plan links) is preserved
-verbatim** inside. Byte-exact plain bullets would need an `UnorderedList` SectionElement variant (a new
-shape — not adding it unilaterally). Your call: accept the leading-box (content-complete) or request the
-variant.
+Resolved per both owners' ruling (B): a `PlainLine` RoadmapItem variant + roadmap-layer
+run-partitioning (consecutive task/plain nodes → adjacent `TaskListBlock`/`UnorderedListBlock`).
+**No std.markdown touch** — the heterogeneous-list unification is a separate parked defect (warm-lark).
+- **hermetic** (nested under P2): **byte-exact** — `md_item` joins nested blocks with `"\n"`, so it sits
+  contiguous between P2 and P3 with no leading checkbox and no blank line.
+- **blockers** (top-level): renders as a plain bullet with **one** structural blank line before it
+  (`block_separator` = `"\n\n"` between the task-list block and the unordered-list block). Classified
+  **[benign-rewrap]** — the std-heterogeneous-list fix that would remove the blank is deferred to its own
+  scoped PR (one unified `ListBlock`, item = `Task{state}` | `Plain`).
 
-**Net: zero [GAP] except the held ✦-lane. Awaiting bright-stag content sign-off (incl. C1 placement +
-the 2 flagged bullets) and warm-lark gate-integrity confirm; #5535 stays DRAFT until then + #5545 merges.**
+All content (inline boxes, both PR refs, both plan links) preserved verbatim inside the fenced strings.
+
+**Net: zero [GAP] except the held ✦-lane. Both owners signed (content + gate-integrity); option (B)
+implemented (plain bullets, no phantom checkbox); the only added top-level delta is the blockers blank-line
+([benign-rewrap]). #5535 stays DRAFT until #5545 merges → ✦-lane transcribed natively → bright-stag ✦
+sign-off → this artifact deleted → flip ready.**
