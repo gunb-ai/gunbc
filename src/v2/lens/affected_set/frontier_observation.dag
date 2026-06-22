@@ -1,14 +1,3 @@
-// Scope: shared observation helper for affected_set frontier receipts.
-// A ReExecFrontier carries `decisions: Map<ExclusionKey, FrontierDecision>`, and
-// std Map IS a PartialFunction (v2.std.collection: `lookup: fn(K) -> Witness<V>`).
-// Over structural (non-String) keys the v2 runtime represents that Map in its
-// closure/record form, which has NO decidable structural `==` — two structurally
-// identical maps compare false (even a value vs. itself). So a frontier receipt
-// must OBSERVE the map by application (look the key up and compare the resolved
-// FrontierDecision), never assert whole-frontier `==`. FrontierDecision is a
-// coproduct over lists/records, which DO compare structurally, so the resolved
-// decision is a sound equality target.
-
 module v2.test.lens_affected_set.frontier_observation
 
 import v2.lens.affected_set { ChangedSubgraphFrontier, ExclusionKey, FailClosed, FrontierDecision, ReExecFrontier }

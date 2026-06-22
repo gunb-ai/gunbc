@@ -1,5 +1,3 @@
-// Scope: shared TestClaim row carrier for structural_resolution lens claims.
-
 module v2.test.lens_structural_resolution.claim_carrier
 
 import v2.compiler.infer { InferredTree }
