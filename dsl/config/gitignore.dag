@@ -1,8 +1,3 @@
-// config/gitignore.dag -- Canonical gitignore categories.
-//
-// These records define the static .gitignore sections rendered by bootstrap.
-// Dynamic tool output categories are discovered separately and appended at
-// runtime.
 
 module config.gitignore
 
@@ -97,8 +92,6 @@ data categories: List<GitignoreCategory> = [
     rationale: "Local execution ledger and config; not source-of-truth",
     when_build_system: none
   },
-  // Placeholders (kept to preserve the 14-category data contract while tool
-  // output sections are generated dynamically from discovered tools).
   {
     id: "tool_outputs_bootstrap",
     name: "Stage0 regeneration temp dirs",
