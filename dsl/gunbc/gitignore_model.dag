@@ -14,19 +14,76 @@ type DerivableProducerKind
   | OpenClawArtifact
   | GithubCLICache
   | AuthSessionTranscript
+  | PythonLocalDevScript
 
 type CitedProducerKind
-  = OperatingSystem
-  | EditorIDE
+  = JetBrainsIDE
+  | VSCodeIDE
+  | VimEditor
+  | EmacsEditor
+  | GenericEditorBackup
+  | MacOSFinder
+  | WindowsExplorer
+  | Tmux
   | NodeJS
   | SecretsConvention
-  | PythonLang
+  | CPythonInterpreter
 
 type Producer
   = Derivable { kind: DerivableProducerKind }
   | Cited { kind: CitedProducerKind, upstream: String }
 
+type IgnoreArtifact
+  = CargoTargetDir
+  | CargoTargetCodexDir
+  | LocalCargoHome
+  | CodegenBinSymlink
+  | TarpaulinHtmlReport
+  | TarpaulinJsonReport
+  | CoberturaReport
+  | LcovReport
+  | CoverageOutputDir
+  | JetBrainsProjectDir
+  | VSCodeWorkspaceDir
+  | VimSwapFile
+  | VimSwapFileAlt
+  | EmacsBackupFile
+  | GenericBackupFile
+  | MacOSFinderMetadata
+  | WindowsThumbnailCache
+  | TmuxLogFile
+  | DotEnvFile
+  | DotEnvLocalFile
+  | DotEnvLocalWildcard
+  | GeneratorStampFile
+  | GunbcWorkflowDir
+  | TestgenOutputDir
+  | NodeModulesDir
+  | ClaudeSessionDir
+  | RegenSourcesDir
+  | RegenOutputDir
+  | RegenGeneratedSourceRootDir
+  | FreshnessCheckDir
+  | AuthTranscriptFile
+  | OpenClawControlDir
+  | OpenClawAgentsFile
+  | OpenClawHeartbeatFile
+  | OpenClawIdentityFile
+  | OpenClawSoulFile
+  | OpenClawToolsFile
+  | OpenClawUserFile
+  | OpenClawWorkboardFile
+  | OpenClawScriptsDir
+  | V2InspectFile
+  | V2InspectErrorsFile
+  | GithubCLICacheDir
+  | PythonLocalDevScriptFile
+  | PythonBytecodeCacheDir
+  | PythonCompiledBytecode
+  | ClaimMapDir
+  | ScratchProbeFile
+
 type IgnoreGroup {
   producer: Producer
-  patterns: List<String>
+  artifacts: List<IgnoreArtifact>
 }

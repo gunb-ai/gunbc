@@ -23,22 +23,40 @@ cobertura.xml
 lcov.info
 coverage/
 
-# --- Editor/IDE state [cited: github/gitignore/Global/JetBrains+VisualStudioCode+Vim] ---
+# --- JetBrains IDE project state [cited: jetbrains.com/idea] ---
 # Per-developer configuration, not project state
 .idea/
+
+# --- VS Code workspace state [cited: code.visualstudio.com] ---
+# Per-developer configuration, not project state
 .vscode/
+
+# --- Vim editor state [cited: vim.org] ---
+# Per-developer configuration, not project state
 *.swp
 *.swo
-*.bak
+
+# --- Emacs backup convention [cited: gnu.org/software/emacs] ---
+# Per-developer configuration, not project state
 *~
 
-# --- OS metadata [cited: github/gitignore/Global/macOS+Windows] ---
+# --- Generic editor backup files [cited: cross-editor backup convention] ---
+# Per-developer configuration, not project state
+*.bak
+
+# --- macOS Finder metadata [cited: developer.apple.com (Finder metadata)] ---
 # OS-generated, not project state
 .DS_Store
+
+# --- Windows Explorer cache [cited: microsoft.com (Explorer thumbnail cache)] ---
+# OS-generated, not project state
 Thumbs.db
+
+# --- tmux terminal multiplexer logs [cited: github.com/tmux/tmux (pipe-pane log naming)] ---
+# Session log; not project state
 tmux-*.log
 
-# --- Secrets and local config [cited: .env-files convention (dotenv standard)] ---
+# --- Secrets and local config [cited: github.com/motdotla/dotenv] ---
 # Environment-specific, may contain secrets
 .env
 .env.local
@@ -90,8 +108,11 @@ out.txt
 # --- GitHub CLI local cache (dashboard / gh API) ---
 .gh-cache/
 
-# --- Python (local dev-only scripts; never committed to the .dag/.rs substrate) [cited: github/gitignore/Python.gitignore] ---
+# --- Python local dev scripts ---
+# Python is used only for local dev tooling; never committed to the .dag/.rs substrate
 *.py
+
+# --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/
 *.pyc
 

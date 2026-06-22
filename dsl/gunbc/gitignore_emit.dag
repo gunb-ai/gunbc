@@ -1,15 +1,83 @@
 module gunbc.gitignore_emit
 
 import gunbc.gitignore_model {
-  Producer, IgnoreGroup,
+  Producer, IgnoreGroup, IgnoreArtifact,
   CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
   GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
   ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript,
-  OperatingSystem, EditorIDE, NodeJS, SecretsConvention, PythonLang,
-  Derivable, Cited
+  AuthSessionTranscript, PythonLocalDevScript,
+  JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
+  MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
+  Derivable, Cited,
+  CargoTargetDir, CargoTargetCodexDir, LocalCargoHome, CodegenBinSymlink,
+  TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir,
+  JetBrainsProjectDir, VSCodeWorkspaceDir,
+  VimSwapFile, VimSwapFileAlt, EmacsBackupFile, GenericBackupFile,
+  MacOSFinderMetadata, WindowsThumbnailCache, TmuxLogFile,
+  DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard,
+  GeneratorStampFile, GunbcWorkflowDir, TestgenOutputDir, NodeModulesDir,
+  ClaudeSessionDir, RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir,
+  FreshnessCheckDir, AuthTranscriptFile,
+  OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
+  OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
+  OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
+  PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
+  ClaimMapDir, ScratchProbeFile
 }
 import gunbc.gitignore_authority { gitignore_authority }
+
+fn artifact_pattern(a: IgnoreArtifact) -> String {
+  match a {
+    CargoTargetDir => "/target/"
+    CargoTargetCodexDir => "/target-codex/"
+    LocalCargoHome => "/.cargo-home/"
+    CodegenBinSymlink => "/bin/"
+    TarpaulinHtmlReport => "tarpaulin-report.html"
+    TarpaulinJsonReport => "tarpaulin-report.json"
+    CoberturaReport => "cobertura.xml"
+    LcovReport => "lcov.info"
+    CoverageOutputDir => "coverage/"
+    JetBrainsProjectDir => ".idea/"
+    VSCodeWorkspaceDir => ".vscode/"
+    VimSwapFile => "*.swp"
+    VimSwapFileAlt => "*.swo"
+    EmacsBackupFile => "*~"
+    GenericBackupFile => "*.bak"
+    MacOSFinderMetadata => ".DS_Store"
+    WindowsThumbnailCache => "Thumbs.db"
+    TmuxLogFile => "tmux-*.log"
+    DotEnvFile => ".env"
+    DotEnvLocalFile => ".env.local"
+    DotEnvLocalWildcard => ".env.*.local"
+    GeneratorStampFile => ".*-stamp"
+    GunbcWorkflowDir => "/.gunbc/"
+    TestgenOutputDir => "src/v1/10_test/generated-tests/src/generated/"
+    NodeModulesDir => "node_modules/"
+    ClaudeSessionDir => ".claude/"
+    RegenSourcesDir => ".regen-sources/"
+    RegenOutputDir => ".regen-output/"
+    RegenGeneratedSourceRootDir => ".regen-generated-source-root/"
+    FreshnessCheckDir => ".freshness-check/"
+    AuthTranscriptFile => "out.txt"
+    OpenClawControlDir => "/.openclaw/"
+    OpenClawAgentsFile => "/AGENTS.md"
+    OpenClawHeartbeatFile => "/HEARTBEAT.md"
+    OpenClawIdentityFile => "/IDENTITY.md"
+    OpenClawSoulFile => "/SOUL.md"
+    OpenClawToolsFile => "/TOOLS.md"
+    OpenClawUserFile => "/USER.md"
+    OpenClawWorkboardFile => "/WORKBOARD.md"
+    OpenClawScriptsDir => "/scripts/openclaw/"
+    V2InspectFile => ".v2-inspect"
+    V2InspectErrorsFile => ".v2-inspect-errors.txt"
+    GithubCLICacheDir => ".gh-cache/"
+    PythonLocalDevScriptFile => "*.py"
+    PythonBytecodeCacheDir => "__pycache__/"
+    PythonCompiledBytecode => "*.pyc"
+    ClaimMapDir => ".claim-map/"
+    ScratchProbeFile => "src/v2/compiler/manual/sg2_scratch_probe.dag"
+  }
+}
 
 fn producer_display(p: Producer) -> String {
   match p {
@@ -26,11 +94,18 @@ fn producer_display(p: Producer) -> String {
     Derivable { kind: OpenClawArtifact } => "OpenClaw workspace artifacts"
     Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
     Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
-    Cited { kind: OperatingSystem, upstream: u } => concat("OS metadata [cited: ", concat(u, "]"))
-    Cited { kind: EditorIDE, upstream: u } => concat("Editor/IDE state [cited: ", concat(u, "]"))
+    Derivable { kind: PythonLocalDevScript } => "Python local dev scripts"
+    Cited { kind: JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
+    Cited { kind: VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
+    Cited { kind: VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
+    Cited { kind: EmacsEditor, upstream: u } => concat("Emacs backup convention [cited: ", concat(u, "]"))
+    Cited { kind: GenericEditorBackup, upstream: u } => concat("Generic editor backup files [cited: ", concat(u, "]"))
+    Cited { kind: MacOSFinder, upstream: u } => concat("macOS Finder metadata [cited: ", concat(u, "]"))
+    Cited { kind: WindowsExplorer, upstream: u } => concat("Windows Explorer cache [cited: ", concat(u, "]"))
+    Cited { kind: Tmux, upstream: u } => concat("tmux terminal multiplexer logs [cited: ", concat(u, "]"))
     Cited { kind: NodeJS, upstream: u } => concat("Node.js [cited: ", concat(u, "]"))
     Cited { kind: SecretsConvention, upstream: u } => concat("Secrets and local config [cited: ", concat(u, "]"))
-    Cited { kind: PythonLang, upstream: u } => concat("Python (local dev-only scripts; never committed to the .dag/.rs substrate) [cited: ", concat(u, "]"))
+    Cited { kind: CPythonInterpreter, upstream: u } => concat("CPython bytecode cache (PEP 3147) [cited: ", concat(u, "]"))
   }
 }
 
@@ -49,11 +124,18 @@ fn producer_rationale_line(p: Producer) -> String {
     Derivable { kind: OpenClawArtifact } => "# The OpenClaw control plane lives in ~/ctrl, not in this repo"
     Derivable { kind: GithubCLICache } => ""
     Derivable { kind: AuthSessionTranscript } => "# Should never be committed; may contain OAuth URLs or session state"
-    Cited { kind: OperatingSystem, upstream: _ } => "# OS-generated, not project state"
-    Cited { kind: EditorIDE, upstream: _ } => "# Per-developer configuration, not project state"
+    Derivable { kind: PythonLocalDevScript } => "# Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
+    Cited { kind: JetBrainsIDE, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: VSCodeIDE, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: VimEditor, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: EmacsEditor, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: GenericEditorBackup, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: MacOSFinder, upstream: _ } => "# OS-generated, not project state"
+    Cited { kind: WindowsExplorer, upstream: _ } => "# OS-generated, not project state"
+    Cited { kind: Tmux, upstream: _ } => "# Session log; not project state"
     Cited { kind: NodeJS, upstream: _ } => "# Not part of this project"
     Cited { kind: SecretsConvention, upstream: _ } => "# Environment-specific, may contain secrets"
-    Cited { kind: PythonLang, upstream: _ } => ""
+    Cited { kind: CPythonInterpreter, upstream: _ } => ""
   }
 }
 
@@ -61,7 +143,7 @@ fn render_group(g: IgnoreGroup) -> String {
   let header = concat(concat("# --- ", producer_display(p: g.producer)), " ---\n")
   let rationale = producer_rationale_line(p: g.producer)
   let rat_section = if rationale == "" { "" } else { concat(rationale, "\n") }
-  let patterns_block = fold(g.patterns, init: "", f: fn(acc, pat) { concat(acc, concat(pat, "\n")) })
+  let patterns_block = fold(g.artifacts, init: "", f: fn(acc, a) { concat(acc, concat(artifact_pattern(a: a), "\n")) })
   concat(concat(header, rat_section), patterns_block)
 }
 

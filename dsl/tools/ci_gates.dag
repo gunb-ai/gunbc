@@ -4,7 +4,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-<<<<<<< HEAD
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, GitignoreGate, RoadmapGate,
   SourceRootIngestGate
 }
