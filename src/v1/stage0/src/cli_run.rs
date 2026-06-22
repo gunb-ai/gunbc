@@ -33,7 +33,7 @@ use serde::Serialize;
 
 use crate::resolved_graph_cache::{
     lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    write as cross_process_write, CacheLookupResult,
+    write as cross_process_write, CacheLookupResult, CacheWriteOutcome,
 };
 
 /// Which typecheck diagnostics block entry resolve. Strict is the default for
@@ -719,7 +719,35 @@ fn resolve_entry_with_parse_cache(
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
-        let _ = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref());
+        let outcome = cross_process_write(&cache_root, &subject, &typed, source_indices.as_ref());
+
+        // PIGGYBACK warm==cold purity audit (DESIGN §5; ROADMAP §2 P3), armed only on the CI floor
+        // run-step (GUNBC_CACHE_PURITY_AUDIT=1). `typed` is the COLD value we just wrote, so the
+        // audit costs one warm read-back + a structural `==` (~1×, ~0 added peak) — no second
+        // resolve, no second process. Production (flag unset) keeps the best-effort `let _`.
+        if crate::cache_purity_audit::cache_purity_audit_enabled() {
+            match &outcome {
+                Ok(CacheWriteOutcome::Written) => {
+                    crate::cache_purity_audit::audit_warm_readback_against_cold(
+                        &cache_root,
+                        &subject,
+                        &typed,
+                        source_indices.as_ref(),
+                        entry_file,
+                    )?;
+                }
+                // Audited at its first write; codec-in-key re-keys a codec change → re-write → re-audit.
+                Ok(CacheWriteOutcome::AlreadyExists) => {}
+                // A write we cannot complete cannot be proven cached==cold — fail closed under audit.
+                Err(e) => {
+                    return Err(format!(
+                        "cache purity audit (in-process): the resolved-graph cache WRITE failed for \
+                         entry {entry_file}: {e} — fail-closed (cannot guarantee a cached==cold \
+                         round-trip; DESIGN §5)"
+                    ));
+                }
+            }
+        }
     }
 
     Ok((typed, source_indices))

@@ -25,6 +25,7 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use v1_compiler::cache_purity_audit::audit_warm_readback_against_cold;
 use v1_compiler::cache_purity_oracle::{
     audit_warm_equals_cold, AuditedRealization, CachePurityViolation, HiddenInputProbe,
 };
@@ -421,14 +422,16 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
         "byte-level corroboration: the full canonical payload also diverges warm!=cold"
     );
 
-    // The audit reports it as a located, typed, LOUD §5 violation (what the floor gate fails on).
-    let violation = CachePurityViolation {
-        content_key: subject.clone(),
-        unkeyed_axis: format!("resolved-graph cache codec (write→read) for entry {entry}"),
-        warm_digest,
-        cold_digest,
-    };
-    let shouted = format!("{violation}");
+    // === TOOTH 3 (the FLOOR's actual gate): drive the PRODUCTION in-process piggyback hook against
+    // the poisoned warm read-back + the clean in-memory cold graph. This is exactly the call the
+    // floor's cache-WRITE site makes (cli_run, under GUNBC_CACHE_PURITY_AUDIT=1): `lookup` decodes
+    // the poisoned artifact (Hit), the structural `==` diverges on the offsets, and it returns a
+    // located, typed, LOUD §5 violation as the Err the floor exits 1 on. RED-on-revert: undo the
+    // offsets poison and this Hit compares equal → Ok(Decoded), the gate goes green. ===
+    let audit = audit_warm_readback_against_cold(&cache_dir, &subject, &cold_graph, &cold_si, &entry);
+    let shouted = audit.expect_err(
+        "the in-process piggyback audit MUST go RED on the poisoned warm read-back (warm!=cold)",
+    );
     assert!(
         shouted.contains("CACHE PURITY VIOLATION"),
         "the audit verdict must be a LOUD located §5 error; got: {shouted}"

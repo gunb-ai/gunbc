@@ -30,6 +30,7 @@
 // fold self-hosts this comparison (ROADMAP §2 P5; content(T)=content_hash(subgraph)).
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::rc::Rc;
 
 use crate::cache_purity_oracle::CachePurityViolation;
@@ -155,6 +156,71 @@ pub fn audit_entry_warm_equals_cold(
     Ok(reach)
 }
 
+/// Whether the in-process warm==cold piggyback audit is armed. The CI floor run-step sets
+/// `GUNBC_CACHE_PURITY_AUDIT=1`: every COLD cache WRITE is then immediately read back warm and
+/// compared, fail-closed. Off (unset / != "1") everywhere else, so `gunbc run`/`compile` pay
+/// nothing — the audit rides ONLY the floor's own resolve.
+pub fn cache_purity_audit_enabled() -> bool {
+    std::env::var("GUNBC_CACHE_PURITY_AUDIT")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+/// PIGGYBACK warm==cold audit at the floor's own cache-WRITE site (the cli_run resolve path). The
+/// COLD value is the in-memory graph the floor JUST computed and wrote — so this adds only a warm
+/// read-back (`lookup`) plus a structural `==`: ~1× cost, ~0 added peak. It REPLACES the standalone
+/// cold+warm corpus re-resolve, which on the real fleet runner was NET −18min and OOM'd runners (it
+/// double-resolved the whole corpus beside the width-8 floor). DESIGN §5; ROADMAP §2 P3.
+///
+/// Reach handling (the only difference under test is the write→read CODEC):
+/// - `Hit` (Decoded) → compare the decoded warm graph against the in-memory cold one. Divergence ⟹
+///   a located, typed §5 [`CachePurityViolation`] rendered as the `Err` string (the floor exits 1):
+///   the codec is lossy / a warm hit would be stale.
+/// - `Miss` (MissOnRead) → the artifact is on disk (the write succeeded) but too DEEP to decode
+///   (serde's 128-level recursion limit) → production `read_cached_file` Misses → recomputes
+///   (FAIL-SAFE, uncached, NOT lossy): `Ok(MissOnRead)`.
+/// - `RejectedHit` → we JUST wrote a valid artifact; an immediate reject is a storage-integrity
+///   fault on a fresh write, not fail-safe: fail-closed `Err`.
+///
+/// Caller contract: invoke ONLY after a `Written` outcome. An `AlreadyExists` was audited at its
+/// FIRST write; codec-in-key (transform_content = the running exe's bytes) guarantees a codec
+/// change re-keys → re-write → re-audit, so skipping `AlreadyExists` never serves unaudited bytes.
+pub fn audit_warm_readback_against_cold(
+    cache_root: &Path,
+    subject: &str,
+    cold_graph: &ResolvedGraph,
+    cold_si: &HashMap<String, Rc<NewlineIndex>>,
+    entry: &str,
+) -> Result<DecodeReach, String> {
+    match lookup(cache_root, subject) {
+        CacheLookupResult::Hit(warm) => {
+            // Canonical structural equality (derived PartialEq; HashMaps compared order-
+            // independently; depth-safe where a serde_json::Value round-trip overflows) — see the
+            // module header. `==` here is exactly the comparison `audit_entry_warm_equals_cold` runs.
+            if *warm.graph != *cold_graph || *warm.source_indices != *cold_si {
+                let violation = CachePurityViolation {
+                    content_key: subject.to_string(),
+                    unkeyed_axis: format!(
+                        "resolved-graph cache codec (write→read) for entry {entry}"
+                    ),
+                    warm_digest: divergence_fingerprint(&warm.graph, &warm.source_indices),
+                    cold_digest: divergence_fingerprint(cold_graph, cold_si),
+                };
+                Err(format!("{violation}"))
+            } else {
+                Ok(DecodeReach::Decoded)
+            }
+        }
+        CacheLookupResult::Miss => Ok(DecodeReach::MissOnRead),
+        CacheLookupResult::RejectedHit(reason) => Err(format!(
+            "CACHE PURITY VIOLATION (in-process, storage integrity): the immediate warm read-back \
+             of the JUST-written resolved-graph artifact for entry {entry} was REJECTED ({reason:?}) \
+             — a storage-integrity fault on a fresh write. Fail-closed: a write we cannot read back \
+             cannot be proven cached==cold (DESIGN §5)."
+        )),
+    }
+}
+
 /// Audit the floor discovery corpus: each audited entry's warm hit must equal its cold compute.
 /// Fail-closed: returns ALL violations found (the caller fails the gate if non-empty).
 /// `GUNBC_RESOLVED_GRAPH_CACHE_DIR` must be set to an empty dir.
@@ -180,23 +246,10 @@ pub struct CorpusAuditReport {
     pub violations: Vec<CachePurityViolation>,
 }
 
-/// A deterministic shard of the corpus: audit entries whose sorted index `idx` satisfies
-/// `idx % count == index`. `count` parallel shards (one CI job each) together cover EVERY entry
-/// exactly once — the mechanism by which full coverage runs off the floor critical path: the
-/// single-threaded full sweep is ~one extra resolve pass of the whole corpus (the floor's heaviest
-/// component), so it is parallelized across `count` shard-jobs, each ≈ the floor's own resolve
-/// time, all hidden under the floor wall. `index` must be `< count`.
-#[derive(Clone, Copy)]
-pub struct Shard {
-    pub index: usize,
-    pub count: usize,
-}
-
 pub fn audit_floor_discovery_corpus(
     roots: &[String],
     scan_dirs: &[String],
     max_entries: Option<usize>,
-    shard: Option<Shard>,
 ) -> Result<CorpusAuditReport, String> {
     if resolved_graph_cache_root_from_env().is_none() {
         return Err(
@@ -205,14 +258,6 @@ pub fn audit_floor_discovery_corpus(
              is a lie)"
                 .to_string(),
         );
-    }
-    if let Some(s) = shard {
-        if s.count == 0 || s.index >= s.count {
-            return Err(format!(
-                "cache purity audit: invalid --shard {}/{} (need 0 <= index < count, count >= 1)",
-                s.index, s.count
-            ));
-        }
     }
     let rows = discover_floor_corpus_rows(roots, scan_dirs)?;
 
@@ -223,20 +268,9 @@ pub fn audit_floor_discovery_corpus(
         seen.insert(row.entry.clone());
     }
     let entries_discovered = seen.len();
-    let sorted: Vec<String> = match max_entries {
+    let entries: Vec<String> = match max_entries {
         Some(n) => seen.into_iter().take(n).collect(),
         None => seen.into_iter().collect(),
-    };
-    // Shard deterministically by sorted position so `count` parallel jobs partition the corpus
-    // exactly (every entry covered once, none twice). No shard ⟹ the whole (bounded) set.
-    let entries: Vec<String> = match shard {
-        Some(s) => sorted
-            .into_iter()
-            .enumerate()
-            .filter(|(i, _)| i % s.count == s.index)
-            .map(|(_, e)| e)
-            .collect(),
-        None => sorted,
     };
 
     // One whole-tree parse index, reused across every entry's cold+warm resolve (sound: the disk
