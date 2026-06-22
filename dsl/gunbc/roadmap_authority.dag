@@ -9,6 +9,12 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import ctrl.process_algebra { ProcessNodeId }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 
+// Dispatch sequencing for the upcoming work across these sections — a transient
+// planning companion, NOT a roadmap task (so it carries no projected line). It
+// dissolves once its decisions fold into this authority and are dispatched; the
+// bind: keeps it reachable in the doc graph until then.
+// bind: docs/plans/upcoming-work-dispatch-plan.md
+
 fn nid(s: String) -> ProcessNodeId { s }
 
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
