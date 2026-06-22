@@ -3616,20 +3616,30 @@ fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
 /// Attribute a host-read file to the `--source-root` it came from (grounded in the actual
 /// filesystem path, NOT the module's self-declared QN prefix), then map to its
 /// `SourceRootRef` variant. Fail-closed: a path matching zero or 2+ roots is an error.
+///
+/// Both the file path and the roots are first normalized to repo-relative form
+/// (`repo_relative_dag_path`, the same workspace-anchored authority the import-closure keying
+/// uses) so admission is invocation-independent: an ABSOLUTE `--source-root`
+/// (`<ws>/src/v2`, as host tests pass) and a RELATIVE one (`src/v2`, as `claim_batch` passes)
+/// both ground to the same `src/v2`/`dsl` and map to the same `SourceRootRef`. Without this,
+/// an absolute root reached the variant map verbatim and fail-closed as `unknown --source-root`.
 fn source_root_ref_token_for_path(
     file_path: &str,
     source_roots: &[String],
 ) -> Result<String, String> {
-    let matched: Vec<&String> = source_roots
+    let rel_path = repo_relative_dag_path(file_path);
+    let matched: Vec<String> = source_roots
         .iter()
+        .map(|r| repo_relative_dag_path(r))
         .filter(|r| {
             let r = r.trim_end_matches('/');
-            file_path == r || file_path.starts_with(&format!("{r}/"))
+            rel_path == r || rel_path.starts_with(&format!("{r}/"))
         })
         .collect();
     match matched.as_slice() {
         [] => Err(format!(
-            "source_root tagging: file '{file_path}' matches no --source-root {source_roots:?}"
+            "source_root tagging: file '{file_path}' (repo-relative '{rel_path}') matches no \
+             --source-root {source_roots:?}"
         )),
         [one] => source_root_ref_variant_for_root(one),
         _ => Err(format!(
@@ -3796,6 +3806,48 @@ mod manifest_emit_tests {
         assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
         // boundary: a sibling dir sharing a prefix must not match (src/v20 ≠ src/v2).
         assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
+    }
+
+    // Discriminating regression for the abs-vs-rel admission bug: ABSOLUTE roots + an absolute
+    // file path (exactly how the host manifest tests invoke discover_source_root_reads_for_entry)
+    // must ground to the same SourceRootRef as the repo-relative form. Before the
+    // repo_relative_dag_path normalization, an absolute root reached the variant map verbatim and
+    // fail-closed as `unknown --source-root`. Goes RED on revert of that normalization.
+    #[test]
+    fn source_root_token_admits_absolute_roots() {
+        let ws = super::workspace_root();
+        let abs_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ];
+        // absolute file under an absolute root
+        assert_eq!(
+            source_root_ref_token_for_path(
+                ws.join("src/v2/std/algebra.dag").to_str().unwrap(),
+                &abs_roots
+            )
+            .unwrap(),
+            "V2Tree"
+        );
+        assert_eq!(
+            source_root_ref_token_for_path(
+                ws.join("dsl/std/algebra.dag").to_str().unwrap(),
+                &abs_roots
+            )
+            .unwrap(),
+            "DslTree"
+        );
+        // mixed: repo-relative file path against absolute roots also grounds correctly.
+        assert_eq!(
+            source_root_ref_token_for_path("dsl/std/algebra.dag", &abs_roots).unwrap(),
+            "DslTree"
+        );
+        // fail-closed survives normalization: a file under no root is still rejected.
+        assert!(source_root_ref_token_for_path(
+            ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
+            &abs_roots
+        )
+        .is_err());
     }
 }
 

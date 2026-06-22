@@ -40,7 +40,14 @@ import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.measure { HardwareThreadCount, hardware_thread_count, byte_size }
-import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width }
+import std.realization_width { width_fold_objective_goals, memory_aware_spawn_width, bounded_host_spawn_width }
+import product.compute_fabric {
+  ResourceEnvelope,
+  parallel_run_demand_envelope_from_budget,
+  parallel_run_demand_envelope,
+  demand_envelope_thread_count,
+  demand_envelope_fits_budget
+}
 import gunbc.ci_floor_measurement {
   gunbc_ci_floor_per_shard_peak_rss_bytes,
   gunbc_ci_floor_conservative_fallback_width
@@ -329,6 +336,61 @@ fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
     per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
     conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
   )
+}
+
+// ── §1-C per-run demand envelope: what THIS floor run needs (for cross-run placement) ─
+// The floor run's resource DEMAND as a ResourceEnvelope (product.compute_fabric — the carrier
+// placement already consumes, no parallel mint). Reuses the EXACT same width inputs as
+// gunbc_ci_floor_spawn_width above (breadth, fleet threads, measured per-shard peak, conservative
+// fallback) — one authority for "the floor's width inputs", so the exposed envelope and the spawn
+// width can never drift (§3 no re-derived shard_count fork). Memory demand = derived_width ×
+// per_shard_peak, ⌊0.8·budget⌋-bounded BY CONSTRUCTION (the demand never exceeds the budget it was
+// derived against — the floor that never OOMs). Cross-run bin-packing is operator/infra-owned and
+// out of scope here; this is the demand MODEL it rides on, exposed per run.
+fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
+  parallel_run_demand_envelope_from_budget(
+    shard_count: gunbc_ci_floor_breadth(),
+    hardware_threads: gunbc_ci_floor_hardware_threads(),
+    memory_budget: byte_size(memory_budget_bytes),
+    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes(),
+    conservative_fallback_width: gunbc_ci_floor_conservative_fallback_width
+  )
+}
+
+// Discriminating witness on the LIVE floor inputs (real breadth + measured peak): a tight host
+// budget (~10 GB — a smaller host than the fleet) backs the floor's derived width BELOW its
+// shard_count, and the exposed envelope's memory demand stays under that budget. The discriminating
+// input is the BUDGET (the floor's own peak/breadth are real), so it exercises the real model
+// end-to-end, not a synthetic shape.
+fn witness_floor_tight_budget_backs_off_envelope() -> Bool {
+  let tight_budget = 10000000000
+  let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: tight_budget)
+  // 0.8 × 10 GB = 8 GB ÷ ~2.1 GB measured peak = 3 shards < breadth 7 → derived width drops to 3.
+  demand_envelope_thread_count(envelope: envelope) < gunbc_ci_floor_breadth()
+    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(tight_budget))
+}
+
+// RED control through the SAME shared fit predicate: a memory-BLIND width = min(breadth, threads)
+// (what a fail-open derive picks, ignoring the budget) at the floor's real peak does NOT fit the
+// same tight budget — the floor's real shape over-commits without the memory term. Passes by
+// asserting the blind envelope FAILS the fit check, proving the derive is load-bearing on the live floor.
+fn witness_floor_fail_open_would_exceed_budget() -> Bool {
+  let tight_budget = 10000000000
+  let blind_envelope = parallel_run_demand_envelope(
+    width: bounded_host_spawn_width(
+      shard_count: gunbc_ci_floor_breadth(),
+      hardware_threads: gunbc_ci_floor_hardware_threads()
+    ),
+    per_shard_peak: gunbc_ci_floor_per_shard_peak_rss_bytes()
+  )
+  demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(tight_budget)) == false
+}
+
+// Fail-closed: a 0-byte budget (host could not read a live cap) exposes the conservative committed
+// width, never an unbounded demand — the floor under-subscribes rather than OOMs on a missing measurement.
+fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
+  let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: 0)
+  demand_envelope_thread_count(envelope: envelope) == gunbc_ci_floor_conservative_fallback_width
 }
 
 // ── §5 plan oracle: at most one heavy whole-tree resolve per readiness layer ──
