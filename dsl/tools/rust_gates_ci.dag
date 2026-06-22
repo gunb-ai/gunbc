@@ -23,26 +23,27 @@ import gunbc.ci_spec {
 }
 
 // Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
-// pass iff all three succeed.
-// SCAFFOLD — gate scope: the WHOLE v1-compiler-tests suite (no allowlist filter); coverage holds
-// by construction (cargo runs all-except-`#[ignore]`d), excuses are written reasons in source,
-// and `coverage_completeness_lens_test` is the fail-closed residue (ci_spec.ci_rust_gate_test_command).
-// Dissolve-on: promote to extra_args ["--workspace"] when the v1-compiler --lib self_* quartet
-// joins the gate green (§6 named trigger).
+// pass iff all three succeed. Each cargo invocation is the MODELED `extdeps.cargo_build` operation
+// (`cargo.Build.Fmt/Clippy/Test`) — the argv is the single authority in the cargo model's shell
+// transport, NOT a hand-typed command String (DESIGN §3: the raw `"cargo test …"` string was a
+// nickname for cargo's already-modeled test interface; `tools/build.dag` uses the same ops).
+// Gate scope: the WHOLE v1-compiler-tests suite — `Test(extra_args: ["-p","v1-compiler-tests"])`
+// with no name-filter; coverage holds by construction (cargo runs all-except-`#[ignore]`d), excuses
+// are written reasons in source, `coverage_completeness_lens_test` is the fail-closed residue.
+// EAGAIN cold-retry (CARGO_BUILD_JOBS=1 / unset RUSTC_WRAPPER under fleet sccache pressure) is a
+// transport-resilience concern the cargo model cannot yet express (env is not wired to the shell
+// transport — see extdeps/rust/cargo_build.dag), so it is applied OUTSIDE the gate at the CI
+// workflow STEP that invokes this entry (gunbc.ci_workflow rust_tests job, ci_cargo_eagain_retry_*).
+// Dissolve-on: fold the retry into a resilient cargo shell transport (env→transport wiring) — then
+// this gate needs no out-of-band wrapper (§6 named trigger).
 func run_gates() -> ProcessExit {
-  fmt = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
-  )
-  clippy = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_clippy_command())
-  )
-  test = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_test_command())
-  )
+  fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
+  clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
+  test = cargo.Build.Test(extra_args: ["-p", "v1-compiler-tests"])
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
-    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo test (hermetic discriminators)" }
+    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo test -p v1-compiler-tests" }
   }
 }
 

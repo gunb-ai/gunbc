@@ -187,26 +187,15 @@ fn ci_release_build_script() -> String {
   )
 }
 
-// Rust-monolith gate argv lines (workflow policy lives here, not in dispatch_shell).
-fn ci_rust_gate_fmt_command() -> String {
-  "cargo fmt --all --check"
-}
-
-fn ci_rust_gate_clippy_command() -> String {
-  "cargo clippy --all-targets -- -D warnings"
-}
-
-fn ci_rust_gate_test_command() -> String {
-  // Run the WHOLE v1-compiler-tests suite — no allowlist filter. Coverage =
-  // "every test runs" then holds BY CONSTRUCTION (DESIGN §5): cargo's default is
-  // run-all-EXCEPT-`#[ignore]`d, so a newly-written test is covered the moment it
-  // lands, with no hand-picked filter to drift out of date. The single authority
-  // for "excused from the gate" is the `#[ignore = "<reason>"]` attribute in the
-  // test source itself; the `coverage_completeness_lens_test` in the suite is the
-  // fail-closed residue lens that keeps every excuse written-and-reviewable (and
-  // runs inside this very command, so the gate covers its own completeness check).
-  "cargo test -p v1-compiler-tests"
-}
+// The Rust-monolith gate's cargo invocations are no longer hand-typed argv Strings here:
+// `tools.rust_gates_ci.run_gates` calls the MODELED `extdeps.cargo_build` operations
+// (`cargo.Build.Fmt(["--all","--check"])`, `cargo.Build.Clippy(["--all-targets"], ["-D","warnings"])`,
+// `cargo.Build.Test(["-p","v1-compiler-tests"])`) — the cargo shell-transport argv is the single
+// authority (DESIGN §3; the old `ci_rust_gate_{fmt,clippy,test}_command() -> String` were nicknames
+// for cargo's already-modeled interface). Coverage holds by construction (cargo runs
+// all-except-`#[ignore]`d; the `coverage_completeness_lens_test` is the fail-closed residue).
+// The EAGAIN cold-retry wrappers below stay (transport resilience the cargo model cannot yet express)
+// and are applied at the CI workflow step that runs the gate (see gunbc.ci_workflow).
 
 fn claim_executor_bin_shell() -> String {
   "\"$ROOT/target/release/claim_executor\""
