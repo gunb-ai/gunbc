@@ -1,11 +1,3 @@
-// src/v2/workflow/source_root_ingest_transport.dag — Lane 3a SourceRootIngest gate shell transport.
-//
-// Migrated from dsl/tools/source_root_ingest_transport (slice 3). The deleted
-// scripts/source-root-ingest-gate.sh wrapper is retired — legs are modeled as ONE computed
-// ShellProgram (serialize_bash today; dissolve-on: emit(intent, Bash)):
-//   (1) invoke pre-built discover_source_root_ingest to emit the ephemeral host manifest;
-//   (2) run the three real_ingest witnesses (manifest overlay) via gunbc claim-runs.
-
 module v2.workflow.source_root_ingest_transport
 
 import extdeps.shell
@@ -27,7 +19,6 @@ data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_m
 data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
 
-// --source-root <r> for every witness_layer_root (§3 single authority — same roots as the rest of CI).
 fn sri_source_root_flags() -> List<ShellWord> {
   fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }

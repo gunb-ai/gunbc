@@ -1,8 +1,3 @@
-// src/v2/workflow/bootstrap.dag
-// Scope: v2-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (self-hosting seed-used-once / meta-circular, DESIGN.md §7). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
-// 🟡 needs-more-work — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; bootstrap_plan_well_formed must then require computed digest equality (stage1 ≠ stage2 until fixpt proves convergence), not symbolic placeholder Hash data aliases. Until then, pin Symbols identify carrier slots; digest fields are placeholder identities — accepted bootstrap_plan below is structural wiring only, NOT proof of fixed-point convergence.
-// Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
-
 module v2.workflow.bootstrap
 
 import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, SyntheticOccurrence }
@@ -28,7 +23,7 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
-// RULING-1: 🟡 needs-more-work — opaque digest tags (B1 content_hash operands land later; T-15 dissolution replaces placeholder Hash data with computed merkle digests).
+
 data v2_stage0_hash: Hash = v2_stage0_hash
 data v2_stage1_hash: Hash = v2_stage1_hash
 data v2_stage2_hash: Hash = v2_stage2_hash
@@ -97,7 +92,6 @@ type DiverseCompilationAgreement {
   agreed_hash: BootstrapHashPin
 }
 
-// RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
 type CompileStage {
   consumes: List<Symbol>
   produces: Symbol
@@ -105,7 +99,6 @@ type CompileStage {
   compiled_by: Symbol
 }
 
-// RULING-1: 🟢 pretty-much-done — fixed-point assertion endpoint.
 type FixptStage1Stage2 {
   left: Symbol
   left_hash: BootstrapHashPin
@@ -119,7 +112,6 @@ type SeedHonestyDischarge {
   diverse_double_compilation: DiverseCompilationAgreement
 }
 
-// RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
 type BootstrapPlan {
   seed: CompileStage
   self0: CompileStage
@@ -148,7 +140,6 @@ fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -
   left.identity == right.identity
 }
 
-// §4: construct inventory is a finite set of identities — dedupe on accumulation, not only at bag_eq gate.
 fn bootstrap_construct_snoc_dedup(
   acc: List<BootstrapConstruct>,
   item: BootstrapConstruct
@@ -182,12 +173,10 @@ fn bootstrap_construct_subset_node(identity: Symbol) -> Node {
 }
 }
 
-// Live snapshot root: source-language facet only (target/runtime/lowering ride projection inputs).
 fn bootstrap_source_snapshot_root() -> Node {
   bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
 }
 
-// Declared frozen sub-model inventory (seed_capability authority — not derived from footprint).
 fn bootstrap_seed_capability_inventory_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -275,8 +264,7 @@ fn bootstrap_target_model_bundle_construct_fold_step(
     Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
     Positional => []
   }
-  // Facet labels only — do not merge child.constructs: target.bundle subtrees carry
-  // rust/inhabitant Atoms; §4 footprint inventories subset symbols, not grammar atoms.
+
   BootstrapConstructFoldState {
     constructs: bootstrap_construct_list_append_unique(left: acc.constructs, right: facet_constructs)
   }
@@ -309,7 +297,6 @@ fn bootstrap_snapshot_construct_inventory(snapshot: BootstrapSourceSnapshot) -> 
   bootstrap_footprint_constructs_from_node(root: snapshot.root)
 }
 
-// §4: construct inventory queries derived from each projection-input facet.
 fn bootstrap_footprint_constructs_from_projection_inputs(
   inputs: BootstrapProjectionInputs
 ) -> List<BootstrapConstruct> {
@@ -409,7 +396,6 @@ fn bootstrap_hash_pin_pair_projection_node(pin: Symbol, digest: Hash) -> Node {
 }
 }
 
-// 🟡 derived-operation — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; replace fixture-constant gate + closed (pin,digest) pair match with a total BootstrapHashPin digest coproduct projection.
 fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
   if bootstrap_hash_digest_in_fixture_constants(digest: pin.digest) {
     if (pin.pin == ^v2_stage0_hash_pin) && (pin.digest == v2_stage0_hash) {
@@ -490,10 +476,6 @@ fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
 
 data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_plan_accepted_hash_pins_projectable_ok()
 
-// Phase-1 closure: Node-projectable projection facts (B1 content_hash). BootstrapHashPin.digest
-// (Hash), TargetModel non-bundle fields, and V4EvaluatorRuntime fields beyond runtime_identity
-// are enforced by bootstrap_projection_inputs_well_formed equality against canonical wave-1
-// fixtures, not duplicated in the merkle fold.
 fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -667,19 +649,6 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
   runtime_model: v2_evaluator_runtime_wave1()
 }
 
-// --- P2: canonical manual corpus declaration symbols (CI + bootstrap harness single authority) ---
-// --- RR-A §5.2 / A.1: bootstrap evaluator corpus harness (stage0 Run entry) ---
-
-// Modeled `gunbc run --source-root … --function ^run_manual_testclaim_corpus_eval` surface for
-// T-38 manual corpus eval at runtime. Host transport (A.3b step-3) invokes this entry via the
-// pinned stage0 binary — not a new shell script (project_no_new_shell).
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) —
-// feature:rr-a-bootstrap-evaluator-corpus-harness — consumer: v2.workflow.cli
-// GunbcTestCorpusHarnessRoute (the v2.workflow.ci TestClaimCorpusEvalCommand half was deleted with ci.dag in PR #4543) — bind
-// docs/planning/v2-runtime-testclaim-rr-a-worksheet-2026-06-02.md §5.2 A.1 — dissolve-on-arrival:
-// delete when CI invokes `run_test_claim` at execution time via the bootstrap pin and A.3b
-// `HostVerdictSurfaceExecutionStatus` = RuntimeVerdicts is the sole terminal pass (RR-A §6);
-// forbidden: authoring-time verdict surface as terminal CI pass or an unwitnessed stage0 entry row.
 type BootstrapEvaluatorCorpusHarnessEntry {
   runtime_model: V4EvaluatorRuntime
   stage0_binary: Symbol
@@ -781,7 +750,6 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
   }
 }
 
-// A2+A3 regression: fixpt digest mismatch must fail closed (distinct stage-2 carrier ≠ stage-1).
 data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [^v2_dag_source],

@@ -1,0 +1,50 @@
+module gunbc.design_argument
+
+import std.syllogism {
+  Axiom, LogicalAxiom, NonLogicalAxiom,
+  Proposition, Argument
+}
+
+data design_axioms: List<Axiom> = [
+  Axiom {
+    id: "A1",
+    statement: "there is a goal: to solve a problem presupposes an agent with a goal to satisfy",
+    kind: NonLogicalAxiom
+  },
+  Axiom {
+    id: "A2",
+    statement: "time is the value: every agent intrinsically values time — time is life — the one value assumed shared",
+    kind: NonLogicalAxiom
+  },
+  Axiom {
+    id: "A3",
+    statement: "agreement is temporal: intersubjective agreement is possible only across time, on what stays stable under it",
+    kind: NonLogicalAxiom
+  }
+]
+
+data design_section_1_propositions: List<Proposition> = [
+
+  Proposition {
+    id: "s1.minimal-safe-efficient",
+    statement: "the solution is minimal, safe, efficient: a solution is good insofar as it spends less of the only thing valued, time (cost, safety, complexity)",
+    premises: ["A1", "A2"]
+  },
+
+  Proposition {
+    id: "s1.grounding-intersubjective",
+    statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
+    premises: ["A2", "A3"]
+  },
+
+  Proposition {
+    id: "s1.reduce-to-physics",
+    statement: "at the limit, reduce intersubjectivity to physics: the efficient, time-bound description of interactions that satisfies a goal — A1-A2 turned on grounding itself",
+    premises: ["A1", "A2", "s1.grounding-intersubjective"]
+  }
+]
+
+data design_section_1_argument: Argument = Argument {
+  axioms: design_axioms,
+  propositions: design_section_1_propositions
+}

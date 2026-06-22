@@ -1,16 +1,3 @@
-// Scope: compiler-semantics claim-witness corpus CI enrollment (baseline-pinned expectations).
-// Status: host gate scripts/v2-claim-witness-corpus-gate.sh (v2_claim_witness_corpus_{a,b}
-//   parallel shards). CI: --shard a|b --spot-perturb-check (1–2 rows/run, GITHUB_RUN_NUMBER
-// Design-sign notes (alternatives rejected):
-// - TSV/YAML sidecar manifest: rejected — substrate rows are the authority (DESIGN.md §3); one-row
-//   enrollment must stay a single .dag data binding.
-// - Reuse LensCiClaimRunRow (must-pass only): rejected — no field for ExpectFail + bind_anchor;
-//   extending lens_ci_gate.dag would mix lens-analysis receipts with compiler-semantics keystones.
-// - Reuse AffectedSetNodeFrontierClaimRunRow: rejected — same must-pass-only shape; this roster is
-//   a distinct enrollment family with pinned ExpectFail baselines.
-// - ExpectPass | ExpectFail { bind_anchor } coproduct: chosen — fail-closed bind anchor is required
-//   on every expected-red row at authoring time (shell gate also enforces non-empty bind_anchor).
-
 module v2.test.workflow.claim_witness_corpus_ci_runner
 
 import v2.std.collection { List }
@@ -97,7 +84,6 @@ data corpus_ci_gate_row_branch_if_then_else_emit_keystone: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
-// 🟡 gated — feature:claim-witness-corpus-roster-generator — bind R-reflect/D1c —
 data corpus_ci_gate_row_comprep_bind_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep bind eval by execution keystone",
   entry: "src/v2/compiler/manual/comprep_bind_eval_by_execution_test.dag",
@@ -119,7 +105,6 @@ data corpus_ci_gate_row_comprep_bind_round_trip_keystone: ClaimWitnessCorpusClai
   expected: ExpectPass
 }
 
-// 🟡 gated — feature:claim-witness-corpus-roster-generator — bind R-reflect/D1c —
 data corpus_ci_gate_row_comprep_loop_eval_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "comprep loop eval by execution keystone",
   entry: "src/v2/compiler/manual/comprep_loop_eval_by_execution_test.dag",
@@ -330,9 +315,6 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
   expected: ExpectPass
 }
 
-// dsl/-root parametric gate probe — permanent self-owned fixture proving the corpus gate
-// can host dsl/-rooted witnesses end-to-end (--source-root dsl, shard b).
-// NOT a domain model; lives here to prove the gate infrastructure, not to model facts.
 data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "dsl root parametric gate probe",
   entry: "dsl/test/claim/corpus_gate_dsl_root_probe.dag",
@@ -340,7 +322,6 @@ data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWit
   expected: ExpectPass
 }
 
-// P-PROBE-CF-IMPORT — resolved: `import std.compute_fabric` now resolves a real
 data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "probe-selector compute_fabric import resolves",
   entry: "dsl/test/claim/probe_selector_compute_fabric_import_repro.dag",
@@ -348,10 +329,6 @@ data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusCla
   expected: ExpectPass
 }
 
-// Fragment-IR markup serializer (dsl/std/markup.dag) — class-2 emit-correctness.
-// One keystone row ANDs by-execution-per-escaping-context + full-tree serialize +
-// CoC=1 one-fold-serves-both + emit->parse round-trip + perturb-discrimination.
-// dsl/-rooted (--source-root dsl), shard b alongside the dsl probes.
 data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markup fragment-ir serializer keystone",
   entry: "dsl/test/claim/markup_serializer_witness.dag",
@@ -359,9 +336,6 @@ data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRo
   expected: ExpectPass
 }
 
-// gunbhub HTML consumer XSS reject-witness (dsl/std/html_markup.dag) — fail-closed
-// scheme allowlist + perturb-discrimination (escape_url passes javascript:, consumer
-// rejects). dsl/-rooted, shard b alongside markup_serializer_keystone.
 data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "html markup xss reject keystone",
   entry: "dsl/test/claim/html_markup_xss_witness.dag",
@@ -369,8 +343,6 @@ data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow 
   expected: ExpectPass
 }
 
-// gunbhub R1 React/TSX consumer (dsl/std/react_markup.dag) — reduces to Fragment IR,
-// serializes through the one fold, and rejects javascript:/data: href schemes (XSS).
 data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "react markup consumer + XSS reject keystone",
   entry: "dsl/test/claim/react_markup_witness.dag",
@@ -378,8 +350,6 @@ data corpus_ci_gate_row_react_markup_keystone: ClaimWitnessCorpusClaimRunRow = C
   expected: ExpectPass
 }
 
-// gunbhub M1 CommonMark consumer (dsl/std/markdown.dag) — reduces to Fragment IR,
-// serializes through the one fold, and rejects javascript:/data: link/image URLs (XSS).
 data corpus_ci_gate_row_markdown_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markdown markup consumer + XSS reject keystone",
   entry: "dsl/test/claim/markdown_markup_xss_witness.dag",
@@ -387,9 +357,6 @@ data corpus_ci_gate_row_markdown_markup_xss_keystone: ClaimWitnessCorpusClaimRun
   expected: ExpectPass
 }
 
-// gunbhub M2 served render surface — request→serialized-page round-trip via
-// extdeps.http.server route bindings + canonical markup consumers; hostile href
-// rejected before response body.
 data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub serve render surface keystone",
   entry: "dsl/test/claim/gunbhub_serve_witness.dag",
@@ -397,10 +364,6 @@ data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = 
   expected: ExpectPass
 }
 
-// Live filesystem WRITE effect (extdeps/filesystem/filesystem_io.dag, dispatched
-// by dispatch_file in v1_interpreter.rs) — the host-effect peer of the shell/REST
-// transports. EFFECTFUL: write payload -> read it back -> bytes match; receipt
-// reports exact byte count; absent-path read fails closed. dsl/-rooted, shard b.
 data corpus_ci_gate_row_filesystem_write_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "live filesystem write effect keystone",
   entry: "dsl/test/claim/filesystem_write_witness.dag",
@@ -408,7 +371,6 @@ data corpus_ci_gate_row_filesystem_write_keystone: ClaimWitnessCorpusClaimRunRow
   expected: ExpectPass
 }
 
-// gunbhub R1 browse-page structural compose + serialize receipt.
 data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub react browse page serialize keystone",
   entry: "dsl/test/claim/gunbhub_react_browse_witness.dag",
@@ -416,7 +378,6 @@ data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRu
   expected: ExpectPass
 }
 
-// Measure<Q,S,M> magnitude-carrier witnesses (dsl-rooted, shard b) — the CI consumer
 data corpus_ci_gate_row_measure_nat_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "measure carrier M=Nat magnitude round-trip",
   entry: "dsl/test/claim/measure_magnitude_carrier.dag",
@@ -438,7 +399,6 @@ data corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip: ClaimWitnessCorpu
   expected: ExpectPass
 }
 
-// SPICE S1 Measure remodel witnesses (v2-rooted, shard b) — R/L/C map/fold step operators
 data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 resistor map v=R*i",
   entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
@@ -446,8 +406,6 @@ data corpus_ci_gate_row_timeseries_resistor_map: ClaimWitnessCorpusClaimRunRow =
   expected: ExpectPass
 }
 
-// GATE1 signed-magnitude class-4 (zesty): ENROLLED shard-b discriminating witnesses.
-// Deciding artifact: Form-B fold — signed int_mul/int_add crossing zero + int_div.
 data corpus_ci_gate_row_timeseries_signed_magnitude_resistor_map: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "timeseries S1 signed negative current resistor map (int_mul R·i)",
   entry: "src/v2/compiler/manual/timeseries_passive_map_fold_anchor.dag",
@@ -497,12 +455,6 @@ data corpus_ci_gate_row_spice_resistor_passive_topology: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
-// (Self-host rows removed — they were NOT live coverage: their `entry:` paths
-//  `src/v2/test/claim/self_host/...` do not exist, so nothing executed them. The real self-host
-//  coverage is now the live-executed `test fn` decls in src/v2/compiler/self_host/fixed_point_test.dag,
-//  discovered by the canonical claim_batch source-root scan. The remaining rows here are out of
-//  scope for that change and untouched.)
-
 data corpus_ci_gate_row_spice_rc_ngspice_op: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "SP-M1 spice RC tran ngspice emit matches golden",
   entry: "src/v2/extdeps/formats/spice_rc_ngspice_oracle_test.dag",
@@ -524,8 +476,6 @@ data corpus_ci_gate_row_spice_rc_passive_deck_authority: ClaimWitnessCorpusClaim
   expected: ExpectPass
 }
 
-// Sharded enrollment: two parallel CI jobs (~12–13 rows each). Wave A partition rows
-// co-locate with COMPREP emit shard-a (shared entry fixture cost); closure witnesses on shard-b.
 data claim_witness_corpus_shard_a_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_mvp1_emit_matches_serialize,
   corpus_ci_gate_row_mvp1_emit_ingest_round_trip,

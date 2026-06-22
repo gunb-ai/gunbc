@@ -115,7 +115,7 @@ fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: Dfs
     let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
       dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
     )
-    DfsFinishAcc { visited: explored.visited, order: list_push(explored.order, node) }
+    DfsFinishAcc { visited: explored.visited, order: explored.order |> list_push(node) }
   }
 }
 
@@ -127,7 +127,7 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
     acc
   } else {
     let next_visited = set_insert(acc.visited, node)
-    let next_members = list_push(acc.members, node)
+    let next_members = acc.members |> list_push(node)
     let neighbors = match map_get(adjacency, node) {
       Present { value: ns } => ns
       Absent => []

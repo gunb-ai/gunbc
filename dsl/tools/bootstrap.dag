@@ -1,10 +1,3 @@
-// tools/bootstrap.dag -- Workspace bootstrap (.gitignore generation).
-//
-// Generates .gitignore from DSL discovery + config data. Dynamic tool output
-// categories are pre-computed by the binary and injected as a parameter.
-//
-// Replaces: gunbc-app/src/bootstrap/graph.rs (~16 nodes)
-
 module tools.bootstrap
 
 import std.patterns { content_upsert }
@@ -16,8 +9,6 @@ import extdeps.gitignore {
   filter_categories
 }
 import extdeps.gitignore_render { render_gitignore_file }
-
-// -- Entry point -----------------------------------------------------
 
 func bootstrap(check_mode: Bool?, gitignore_categories: List<GitignoreCategory>) -> { success: Bool, crate_count: Int, gitignore_written: Bool }
   uses fs: Filesystem(mode: ReadWrite)

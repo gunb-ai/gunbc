@@ -1,13 +1,3 @@
-// tools/ci_yaml_gate.dag — fixed-point drift gate for `.github/workflows/ci.yml`.
-//
-// The committed ci.yml must equal `expected_ci_yml()` byte-for-byte (DESIGN §7 self-emit
-// fixed point — NO hash pin). Regenerate with `main_wet`.
-//
-// Run (check):
-//   gunbc run --source-root dsl --entry dsl/tools/ci_yaml_gate.dag --function main
-// Regenerate (write):
-//   gunbc run --source-root dsl --entry dsl/tools/ci_yaml_gate.dag --function main_wet
-
 module tools.ci_yaml_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -46,7 +36,6 @@ func main_wet() -> ProcessExit {
   }
 }
 
-// Composed CI entry point (tools.ci_gates imports this name).
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
@@ -63,7 +52,6 @@ func run_ci_yaml_gate() -> ProcessExit {
   }
 }
 
-// §5 receipt: perturbed bytes must drift (gate would exit non-zero on this content).
 func drift_red_receipt() -> ProcessExit {
   let committed = Filesystem.Read(path: ci_yml_path)
   let clean_ok = committed.success && !ci_yml_drifted(committed: committed.content)

@@ -1,9 +1,3 @@
-// gunbc/ci_fleet.dag — gunbc CI runner identity (ComputeOffer → GitHub Actions runs-on labels).
-//
-// OUR self-hosted runner as compute_fabric data, consumed by ci_workflow / ci_yaml_emit via
-// gunbc_ci_runner_spec(). The memory-aware spawn-width modeling was removed (the floor pins a
-// flat width); the real per-host fleet inventory lives in gunbc.operator_fleet.
-
 module gunbc.ci_fleet
 
 import extdeps.cpu.ampere { altra_q6430_catalog }

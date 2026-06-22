@@ -1,15 +1,3 @@
-// tools/rust_gates_ci.dag -- the Rust-monolith CI gate, run by `gunbc` (NOT a Rust binary).
-//
-// Realizes the three dependents of the Rust monolith (cargo fmt, cargo clippy, cargo test)
-// selected by `tools.rust_stage0_gates`. `git diff` is extdeps.git; cargo invocations use
-// `gunbc.ci_spec` EAGAIN retry scripts via shell.Exec (workflow policy, §3 — not dispatch_shell).
-// the gate logic is `.dag` authority, the only Rust left is the `gunbc` interpreter seed.
-//
-// Run in CI: gunbc run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
-//   (host maps the returned ProcessExit: ExitSuccess → 0, ExitFailure { code } → code.)
-//
-// SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7): no Rust monolith, no gate.
-
 module tools.rust_gates_ci
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -26,11 +14,6 @@ import gunbc.ci_spec {
   ci_rust_gate_test_command,
 }
 
-// Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
-// pass iff all three succeed.
-// SCAFFOLD — gate scope: hermetic seam discriminators only (interp_recorded_fixture).
-// Dissolve-on: promote to extra_args ["--workspace"] when v1-compiler --lib self_* quartet
-// and full v1-compiler-tests package are green without ignored tests (§6 named trigger).
 func run_gates() -> ProcessExit {
   fmt = shell.Exec.Run(
     script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
@@ -48,8 +31,6 @@ func run_gates() -> ProcessExit {
   }
 }
 
-// Entry: consult the diff, fire the gates only when the Rust monolith is touched.
-// Policy (which base ref, three-dot merge-base mode) lives here — not in extdeps/git.
 func run_rust_monolith_gate() -> ProcessExit {
   let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {

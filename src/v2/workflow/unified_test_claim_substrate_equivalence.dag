@@ -1,9 +1,4 @@
-// Status: runtime law — modality discrimination + sample-marker field preservation.
-// C9 post-delete standing gates: nonempty-by-execution + perturb (no committed oracle).
-// Host transport: scripts/v2-substrate-equivalence-gate.sh (--perturb-check).
-
 module v2.test.workflow.unified_test_claim_substrate_equivalence
-
 
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -27,14 +22,12 @@ import v2.test.manual.eval_runtime_mvp { claim_eval_mvp2_test_claim_route }
 import v2.test.workflow.host_discovered_owned_data_manifest {
   host_owned_data_discovery_receipt
 }
-// Sample-marker transport authority only — full discovered-set C9 equality is host-gated.
-data substrate_equivalence_sample_bool_witness_entry: String = "src/v2/lens/affected_set/edit_locus_resolver_test.dag"
 
+data substrate_equivalence_sample_bool_witness_entry: String = "src/v2/lens/affected_set/edit_locus_resolver_test.dag"
 
 fn substrate_equivalence_sample_bool_unified_claim() -> UnifiedTestClaim {
   unified_claim_edit_locus_narrow
 }
-
 
 fn substrate_equivalence_sample_node_corpus_claim() -> UnifiedTestClaim {
   NodeCorpus {
@@ -42,7 +35,6 @@ fn substrate_equivalence_sample_node_corpus_claim() -> UnifiedTestClaim {
     transport: EvalOnly
   }
 }
-
 
 fn substrate_equivalence_glob_discovery_marker_preserves_entry_function() -> Bool {
   match unified_test_claim_bool_witness(c: substrate_equivalence_sample_bool_unified_claim()) {
@@ -56,7 +48,6 @@ fn substrate_equivalence_glob_discovery_marker_preserves_entry_function() -> Boo
   }
 }
 
-
 fn substrate_equivalence_bool_modality_discriminates() -> Bool {
   match unified_test_claim_modality(c: substrate_equivalence_sample_bool_unified_claim()) {
     UnifiedBoolWitnessModality => true
@@ -64,14 +55,12 @@ fn substrate_equivalence_bool_modality_discriminates() -> Bool {
   }
 }
 
-
 fn substrate_equivalence_node_corpus_modality_discriminates() -> Bool {
   match unified_test_claim_modality(c: substrate_equivalence_sample_node_corpus_claim()) {
     UnifiedNodeCorpusModality => true
     UnifiedBoolWitnessModality => false
   }
 }
-
 
 fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
   match unified_test_claim_bool_witness(c: substrate_equivalence_sample_bool_unified_claim()) {
@@ -89,11 +78,9 @@ fn substrate_equivalence_unified_claim_preserves_bool_fields() -> Bool {
   }
 }
 
-
 fn substrate_equivalence_discovery_set_is_nonempty_by_execution() -> Bool {
   host_owned_data_discovery_receipt.unified_claim_arm_count > 0
 }
-
 
 fn substrate_equivalence_holds() -> Bool {
   substrate_equivalence_discovery_set_is_nonempty_by_execution()
@@ -102,6 +89,5 @@ fn substrate_equivalence_holds() -> Bool {
     && substrate_equivalence_node_corpus_modality_discriminates()
     && substrate_equivalence_unified_claim_preserves_bool_fields()
 }
-
 
 data witness_substrate_equivalence: Bool = substrate_equivalence_holds()
