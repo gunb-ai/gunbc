@@ -225,6 +225,13 @@ target** (emission-lane-owned, `quick-seal-137`): a target row-set is *done* iff
 green by execution, not iff it merely emits — the §5-of-DESIGN "green by a real consumer, with a
 discriminating input" bar applied to a medium.
 
+But *done* here is **medium-complete**, which is **not** the merge bar for an emit PR — collapsing the two
+would wrongly over-gate. The round-trip law is the medium-**completeness** gate — a *later* step than
+emit-rows-merge-ready, **never** the emit-PR bar. An emit-only PR with correct, green grammar rows is
+merge-ready *as the emit step*; the medium is *complete* only once its round-trip law is green
+(`DecodeFidelity`-bounded). E.g. markdown #5501 and the bash-diagnostic #5505 landed the **emit step** —
+their round-trip *completeness* is the named **next** step, not a merge precondition.
+
 **(B) The per-medium decidability partition (the boundary, not a blanket ban).** The rule is **not** "ban
 all string ops over media" — that is the "never" trap (§5 of DESIGN): a ratchet wearing a wall's clothes,
 and it would wall the realization edge itself (where target syntax is *supposed* to live). Partition each
