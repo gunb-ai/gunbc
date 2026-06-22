@@ -210,7 +210,19 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
   string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
 }
 
-// §3 faithful DAG String carrier for v2 Rust self-host (String = FreeMonoid<Char>, Char = Nat).
+// §3 faithful DAG String carrier for v2 Rust self-host (String = FreeMonoid<Char>, the
+// declared std alias — std/string_type.dag: "String is the free monoid over Char", Char =
+// Int where unicode_scalar, brand("Char")). The element is Char, NOT Nat: an earlier
+// "Char = Nat" shortcut here silently reduced Char→Nat (an unauthorized emitter-side
+// grounding), contradicting the declared alias and double-applying as FreeMonoid<Nat><Char>.
+// SCAFFOLD (§3 second-representation of string_type.dag, time-bounded, low staleness —
+// String=FreeMonoid<Char> is foundational/stable): the leaf base carries a Char element
+// LITERAL because the leaf type-node has no resolved type-arg to read; the applied path is
+// literal-free (bare FreeMonoid base + the resolved Char child drives the single application).
+// DISSOLVE-ON: when resolve attaches the element (Char) to String LEAF nodes uniformly
+// (resolve-side, not this PR), both the leaf literal AND the String special-case in
+// rust_named_type_base/render_rust_text_carrier/rust_applied_type_base delete — String then
+// expands as an ordinary closed alias through the applied path.
 // §7: carrier is v2-self-host target only — v1 seed/bootstrap keeps host String.
 // The corpus-representation choice is now a single corpus-global authority:
 // `rust_corpus_repr` (04_infer.dag) computes RustCorpusRepr ONCE over all modules and
@@ -229,7 +241,7 @@ fn corpus_repr_is_host(corpus_repr: RustCorpusRepr) -> Bool {
   match corpus_repr { HostNative => true  FaithfulFreeMonoid => false }
 }
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
-  render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Nat>", shared_types: shared_types)
+  render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Char>", shared_types: shared_types)
 }
 
 // §2 — route ALL host→DAG String boundary bridges through HostStringText seam (one authority).
@@ -311,13 +323,29 @@ fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> S
   }
 }
 
+// LEAF base. Faithful String renders its DECLARED element (String=FreeMonoid<Char>); the
+// Char literal here is the time-bounded scaffold (see the carrier comment above) — a leaf
+// type-node carries no resolved type-arg, so the element cannot be read from the node.
 fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
   } else if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    "FreeMonoid<Nat>"
+    "FreeMonoid<Char>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
+  }
+}
+
+// APPLIED base. When a faithful String node has a resolved type-arg child, the element is
+// READ from that child (single application), so the base must be the BARE container —
+// otherwise concat(base, "<", child, ">") double-applies (FreeMonoid<Char><Char>). Literal-
+// free for String (the element comes from the resolved child, not from here). All non-String
+// types delegate to the leaf base unchanged.
+fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
+  if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+    "FreeMonoid"
+  } else {
+    rust_named_type_base(name: name, corpus_repr: corpus_repr)
   }
 }
 
@@ -375,13 +403,18 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let base_name = authored_name_at(source_indices: source_indices, node: n)
-  let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
-    Present { value: host } => host
-    Absent => rust_named_type_base(name: base_name, corpus_repr: corpus_repr)
-  }
   if n.children |> count == 0 {
-    base
+    // leaf: full leaf base (faithful String → FreeMonoid<Char>, element from the scaffold literal)
+    match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+      Present { value: host } => host
+      Absent => rust_named_type_base(name: base_name, corpus_repr: corpus_repr)
+    }
   } else {
+    // applied: bare container base so the resolved type-arg child drives the single application
+    let base = match rust_seed_host_container_base(name: base_name, corpus_repr: corpus_repr) {
+      Present { value: host } => host
+      Absent => rust_applied_type_base(name: base_name, corpus_repr: corpus_repr)
+    }
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
       if peel {
@@ -432,7 +465,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
           render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
         } else {
-        let base = rust_named_type_base(name: name, corpus_repr: corpus_repr)
+        let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
         let args = n.children |> map(arg =>
           if peel {
