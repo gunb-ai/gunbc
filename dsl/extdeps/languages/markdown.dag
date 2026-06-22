@@ -413,7 +413,7 @@ fn md_strip_repeated(s: String, unit: String, n: Int) -> RepeatStrip {
 }
 
 fn md_is_digit(c: String) -> Bool {
-  (c != "") && string_contains("0123456789", c)
+  (c != "") && string_contains(s: "0123456789", pattern: c)
 }
 
 // Consume a maximal run of decimal digits from the front of `s`.
@@ -432,48 +432,25 @@ fn md_ingest_inlines(text: String) -> List<MarkdownInline> {
   [ TextInline { text: text } ]
 }
 
-// --- line grouping: split source into top-level block-source strings ---------
+// --- block splitting: split source into top-level block-source strings -------
 //
-// Top-level blocks are separated by a blank line (the emitter's block_separator
-// is one blank line); a fenced code block is delimited by the code_fence row and
-// may itself contain blank lines, so grouping is fence-aware (a blank line inside
-// a fence does NOT split). Mirror of the emitter's join-with-block_separator.
-
-type MdGroupState { in_fence: Bool, cur: List<String>, blocks: List<String> }
-
-fn md_flush(st: MdGroupState) -> MdGroupState {
-  if st.cur == [] {
-    st
+// The emitter joins top-level blocks with the `block_separator` ROW (:serialize_
+// markdown_source_with) and appends exactly one trailing newline at EOF. The
+// inverse READS the SAME row: strip the one trailing newline, then split on
+// `sp.block_separator`. This is row-shared in BOTH directions — perturb
+// block_separator and emit/ingest shift together (exercised by the witness).
+//
+// CORE BOUND: a fenced code block whose body contains the block_separator
+// sequence internally (e.g. a blank line when block_separator is "\n\n") would
+// be wrongly split here — that is the Lossy frontier (code with embedded
+// separators), not claimed. The core code-block body has no embedded separator.
+fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
+  let trimmed = if ends_with(s: src, suffix: "\n") {
+    substring(s: src, start: 0, end: src.length() - 1)
   } else {
-    MdGroupState {
-      in_fence: false,
-      cur: [],
-      blocks: concat(st.blocks, [ join(st.cur, "\n") ]),
-    }
+    src
   }
-}
-
-fn md_group_lines(lines: List<String>, sp: MarkdownSpellings) -> List<String> {
-  let st = fold(lines, init: MdGroupState { in_fence: false, cur: [], blocks: [] }, f: (acc, line) => {
-    if acc.in_fence {
-      // Inside a code fence: accumulate every line; the closing fence ends the block.
-      let cur2 = concat(acc.cur, [line])
-      if line == sp.code_fence {
-        MdGroupState { in_fence: false, cur: [], blocks: concat(acc.blocks, [ join(cur2, "\n") ]) }
-      } else {
-        MdGroupState { in_fence: true, cur: cur2, blocks: acc.blocks }
-      }
-    } else if line == sp.code_fence {
-      // Opening fence: flush any pending block, start the fenced one.
-      let flushed = md_flush(st: acc)
-      MdGroupState { in_fence: true, cur: [line], blocks: flushed.blocks }
-    } else if line == "" {
-      md_flush(st: acc)
-    } else {
-      MdGroupState { in_fence: false, cur: concat(acc.cur, [line]), blocks: acc.blocks }
-    }
-  })
-  md_flush(st: st).blocks
+  split(s: trimmed, delimiter: sp.block_separator)
 }
 
 // --- per-block parse, dispatching on the leading spelling row ----------------
@@ -568,9 +545,8 @@ fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> MarkdownBlock {
 // Ingest with an explicit spelling table (the inverse of
 // serialize_markdown_source_with over the same rows).
 fn ingest_markdown_source_with(src: String, sp: MarkdownSpellings) -> MarkdownDocument {
-  let lines = split(s: src, delimiter: "\n")
   MarkdownDocument {
-    blocks: map(md_group_lines(lines: lines, sp: sp), b => md_parse_block(block_src: b, sp: sp)),
+    blocks: map(md_split_blocks(src: src, sp: sp), b => md_parse_block(block_src: b, sp: sp)),
   }
 }
 
