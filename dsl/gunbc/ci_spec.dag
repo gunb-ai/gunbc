@@ -15,6 +15,7 @@ type Gate
   | ExtdepsExternalAuthorityGate
   | DslCompileCleanGate
   | CiYamlGate
+  | GitignoreGate
   | RoadmapGate
   | SourceRootIngestGate
 
@@ -39,6 +40,7 @@ data gunbc_ci_floor_gates: List<Gate> = [
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
   CiYamlGate,
+  GitignoreGate,
   RoadmapGate,
   SourceRootIngestGate
 ]

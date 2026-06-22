@@ -5309,7 +5309,7 @@ pub fn emit_zero_param_phantom_opaque_struct(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n".to_string(),
+                            "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n".to_string(),
                             rust_visibility_prefix(),
                         ),
                         rust_items().struct_keyword.clone(),
@@ -5346,7 +5346,7 @@ pub fn emit_parametric_phantom_opaque_struct(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n"
+                                        "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n"
                                             .to_string(),
                                         rust_visibility_prefix(),
                                     ),
