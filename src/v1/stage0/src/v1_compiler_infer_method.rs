@@ -317,6 +317,22 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "inert_carrier_declared_count".to_string(),
             int_type(),
         );
+        let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_unrostered_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_stale_roster_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_coproduct_universe_count".to_string(),
+            int_type(),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),

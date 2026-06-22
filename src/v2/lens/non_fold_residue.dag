@@ -1,0 +1,52 @@
+// The non-fold-residue audit lens (Lane 7 — DESIGN.md §6, docs/plans/fold-ergonomics.md §0/§3).
+// DESIGN §6: "a finished stage is one fold; any non-fold residue is either a named irreducible kernel
+// or un-migrated modeling — there is no third." A fold over a CLOSED coproduct is total and has no
+// `_ =>` wildcard; a hand-rolled match with a wildcard over a closed coproduct is the §0 fail-open
+// shape. This lens is the agnostic `.dag` surface over the `non_fold_residue_*` host bridges
+// (non_fold_residue_project.rs), sibling to v2.lens.inert_carrier.
+//
+// CONSTRUCTION-FIRST (DESIGN §5): the by-construction ideal is exhaustiveness-by-default (the §4
+// CoproductExhaustiveness direction) — a load-bearing typechecker change; and a wildcard is
+// legitimate over OPEN/primitive domains, so a blanket ban is wrong. The residue over CLOSED
+// coproducts is the unstructurable remainder the lens walls until exhaustiveness-by-default lands.
+// DISSOLUTION: folds into a pure `.dag` Node-tree reader (match node + scrutinee type) at gunbc#5364.
+
+module v2.lens.non_fold_residue
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.std.logic { Bool }
+
+// The fail-closed GATE verdict: zero residue sites OFF the exception roster, and zero stale roster
+// entries (a site migrated to a fold or deleted). A NEW wildcard over a closed coproduct reds; the
+// stale half forces the roster to SHRINK as each match migrates to a total fold.
+fn non_fold_residue_clean_holds() -> Bool {
+  non_fold_residue_unrostered_count() == 0 && non_fold_residue_stale_roster_count() == 0
+}
+
+// Raw residue-site count (rostered + unrostered) -- observability, not the gate.
+fn non_fold_residue_live_count() -> Int {
+  non_fold_residue_count()
+}
+
+// Off-roster residue sites -- the wall. Zero on a clean tree.
+fn non_fold_residue_live_unrostered_count() -> Int {
+  non_fold_residue_unrostered_count()
+}
+
+// Stale roster entries -- the ratchet. Zero on a clean tree.
+fn non_fold_residue_live_stale_roster_count() -> Int {
+  non_fold_residue_stale_roster_count()
+}
+
+// Closed-coproduct universe size -- the fail-open oracle (zero means the corpus walk found nothing).
+fn non_fold_residue_live_coproduct_universe_count() -> Int {
+  non_fold_residue_coproduct_universe_count()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "exhaustiveness-by-default in the typechecker (the DESIGN §4 CoproductExhaustiveness direction) making a wildcard over a closed coproduct unwritable, plus gunbc#5364 (.dag compile-graph access) folding the host match scan into a pure .dag Node-tree reader",
+    dissolve_on: "the residue roster reaches 0 as each hand-rolled match migrates to a total fold; the lens then walls any new wildcard over a closed coproduct outright"
+  },
+  rationale: "A wildcard over a closed coproduct is decidable residue, but cannot be banned by construction yet -- exhaustiveness-by-default is a load-bearing typechecker change, and a wildcard is legitimate over open/primitive domains. So this is the unstructurable residue a lens is for: a fail-closed wall against a named, shrinking roster, not a construction."
+}

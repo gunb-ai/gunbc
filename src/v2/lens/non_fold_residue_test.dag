@@ -1,0 +1,24 @@
+// Floor witness for the non-fold-residue audit lens (Lane 7 — DESIGN.md §6). Floor-discovered
+// (`test fn` in a `*_test.dag`), fail-closed: a NEW wildcard over a closed-coproduct param (off the
+// roster), or a stale roster entry, reds CI. Importing the lens module makes
+// `v2.lens.non_fold_residue` REACHED, so it is not itself flagged inert-lens (#5433).
+//
+// Discrimination (residue -> RED, total fold -> GREEN) is proven by execution in the host census's
+// synthetic RED/GREEN controls (non_fold_residue_project.rs: red_control_wildcard_over_closed...,
+// green_control_total_fold..., green_control_wildcard_over_open_domain...).
+
+module v2.test.lens_non_fold_residue.non_fold_residue_test
+
+import v2.std.logic { Bool }
+import v2.lens.non_fold_residue {
+  non_fold_residue_clean_holds,
+  non_fold_residue_live_coproduct_universe_count
+}
+
+test fn non_fold_residue_no_unrostered_or_stale() -> Bool {
+  return non_fold_residue_clean_holds()
+}
+
+test fn non_fold_residue_coproduct_universe_is_nonempty() -> Bool {
+  return non_fold_residue_live_coproduct_universe_count() > 0
+}

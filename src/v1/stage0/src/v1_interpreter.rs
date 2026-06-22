@@ -5251,6 +5251,19 @@ fn eval_builtin(
             crate::inert_carrier_project::inert_carrier_declared_count(),
         ))),
 
+        "non_fold_residue_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_count(),
+        ))),
+        "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_unrostered_count(),
+        ))),
+        "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_stale_roster_count(),
+        ))),
+        "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
+            crate::non_fold_residue_project::non_fold_residue_coproduct_universe_count(),
+        ))),
+
         _ => Ok(None),
     }
 }

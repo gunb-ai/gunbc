@@ -54,15 +54,15 @@ const INERT_CARRIER_ROSTER: &[&str] = &[
     // `*_test.dag` — DESIGN §5 coverage-by-illusion (a green test, no production consumer).
     // dissolve-on per entry: wire the real consumer, then DELETE the entry (the stale-roster ratchet
     // reds the floor until you do). A NEW self-tested-but-unconsumed carrier not listed here reds.
-    "AccessPolicy",          // dsl/std/rbac.dag — RBAC policy model; no authz consumer wired yet.
-    "CargoDependency",       // dsl/extdeps/rust/cargo.dag — Cargo manifest dep row; emit/ingest unwired.
-    "CargoPackage",          // dsl/extdeps/rust/cargo.dag — Cargo manifest package row; unwired.
-    "FilePermissions",       // dsl/std/* — POSIX/mode permission carrier; no filesystem consumer.
-    "FloorWitnessRow",       // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
+    "AccessPolicy", // dsl/std/rbac.dag — RBAC policy model; no authz consumer wired yet.
+    "CargoDependency", // dsl/extdeps/rust/cargo.dag — Cargo manifest dep row; emit/ingest unwired.
+    "CargoPackage", // dsl/extdeps/rust/cargo.dag — Cargo manifest package row; unwired.
+    "FilePermissions", // dsl/std/* — POSIX/mode permission carrier; no filesystem consumer.
+    "FloorWitnessRow", // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
     "GitCliReportedVersion", // dsl/extdeps/* — git --version parse target; no version consumer wired.
     "RbacPolicy",            // dsl/std/rbac.dag — RBAC policy aggregate; no authz consumer wired.
-    "ReactHookSite",         // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
-    "SecretValue",           // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
+    "ReactHookSite", // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
+    "SecretValue",   // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
 ];
 
 fn workspace_root() -> PathBuf {
@@ -130,10 +130,6 @@ fn strip_line_comment(line: &str) -> &str {
 /// declaration, recursive arms) from a real USE elsewhere — including a use by another fn in the same
 /// declaring file (a lens-local fact type IS consumed by its lens fn; only a use outside the type
 /// block counts).
-const ITEM_KEYWORDS: [&str; 8] = [
-    "data ", "fn ", "func ", "type ", "service ", "const ", "pattern ", "resource ",
-];
-
 fn brace_delta(line: &str) -> i32 {
     let c = strip_line_comment(line);
     c.matches('{').count() as i32 - c.matches('}').count() as i32
@@ -367,7 +363,10 @@ mod tests {
         // lens fires). This is coverage-by-illusion: a green test, no production consumer.
         let inert = report_of(&[
             ("a.dag", "module a\ntype Lonely { x: Int }\n"),
-            ("a_test.dag", "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
+            ),
         ]);
         assert!(
             inert.contains(&"Lonely".to_string()),
@@ -381,8 +380,14 @@ mod tests {
         // silent). The ONLY difference from the RED control is a real consumer — the discrimination.
         let inert = report_of(&[
             ("a.dag", "module a\ntype Used { x: Int }\n"),
-            ("b.dag", "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n"),
-            ("a_test.dag", "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n"),
+            (
+                "b.dag",
+                "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+            ),
         ]);
         assert!(
             !inert.contains(&"Used".to_string()),
@@ -427,8 +432,14 @@ mod tests {
         // never live in a comment, so this never false-flags a genuinely-used carrier.
         let inert = report_of(&[
             ("a.dag", "module a\ntype Noted { x: Int }\n"),
-            ("b.dag", "module b\n// Noted is described here\nfn f() -> Int { 1 }\n"),
-            ("a_test.dag", "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n"),
+            (
+                "b.dag",
+                "module b\n// Noted is described here\nfn f() -> Int { 1 }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
+            ),
         ]);
         assert!(inert.contains(&"Noted".to_string()));
     }

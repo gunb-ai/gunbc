@@ -35,6 +35,7 @@ pub mod languages_consumer_census;
 pub mod layering_imports_project;
 pub mod medium_structure_project;
 pub mod module_path_index;
+pub mod non_fold_residue_project;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;
