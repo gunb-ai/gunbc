@@ -16,6 +16,15 @@ import extdeps.bmc.types {
   redfish_privilege_wire,
 }
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
 
 data redfish_privilege_object: NonEmptyStr = "redfish"
 
