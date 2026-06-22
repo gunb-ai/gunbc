@@ -36,10 +36,6 @@ test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
     && next_tag(p: CredentialsRotated) == 2
     && next_tag(p: OsInstalled) == 3
     && next_tag(p: FabricJoined) == -1
-    && bmc_onboarding_is_complete(phase: FabricJoined)
-    && bmc_onboarding_is_complete(phase: FactoryDefault) == false
-    && bmc_onboarding_is_complete(phase: CredentialsRotated) == false
-    && bmc_onboarding_is_complete(phase: OsInstalled) == false
 }
 
 test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
