@@ -56,3 +56,10 @@ fn ci_compile_jobs(memory_budget_bytes: Int, pids_budget: Int, force_serial: Boo
     force_serial: force_serial
   )
 }
+
+fn compile_jobs_count_or_serial(jobs: DerivedCompileJobs) -> Int {
+  match jobs {
+    CompileJobs { count: c } => c
+    CompileJobsRefuse { reason: _ } => 1
+  }
+}
