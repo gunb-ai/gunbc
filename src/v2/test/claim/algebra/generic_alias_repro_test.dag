@@ -1,0 +1,23 @@
+module v2.test.claim.algebra.generic_alias_repro
+
+import v2.std.algebra {
+  Cons,
+  Empty,
+  FreeMonoid,
+  HeadAbsent,
+  HeadFound,
+  list_head,
+}
+
+type Bag<E> = FreeMonoid<E>
+
+fn sample_bag() -> Bag<Int> {
+  Cons { head: 1, tail: Cons { head: 2, tail: Empty } }
+}
+
+test fn bag_alias_resolves() -> Bool {
+  match list_head(xs: sample_bag()) {
+    HeadFound { value: v } => v == 1
+    HeadAbsent => false
+  }
+}
