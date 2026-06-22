@@ -130,7 +130,7 @@ fn emit_scalar(v: YamlValue) -> String {
 
 fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
   fold(elements, init: true, f: (acc, e) => acc && match e {
-    YamlString { value: _ } => true
+    YamlString { value: s } => !string_contains(s: s, pattern: "\n")
     YamlInt { lexeme: _ } => true
     YamlBool { value: _ } => true
     _ => false
@@ -154,11 +154,11 @@ fn nested_body_doc(body: Doc) -> Doc {
   doc_nest(levels: 1, body: doc_concat(parts: [DocLine, body]))
 }
 
-fn multiline_entry_doc(key: String, s: String) -> Doc {
+fn multiline_block_doc(prefix: String, s: String) -> Doc {
   let lines = filter(split(s: s, delimiter: "\n"), l => l != "")
   let content = fold(lines, init: [], f: (acc, l) => append(acc, items: [DocLine, doc_text(text: l)]))
   doc_concat(parts: [
-    doc_text(text: concat(key, ": |")),
+    doc_text(text: concat(prefix, "|")),
     doc_nest(levels: 1, body: doc_concat(parts: content)),
     DocLine
   ])
