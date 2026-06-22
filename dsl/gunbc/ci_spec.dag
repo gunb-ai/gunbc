@@ -166,7 +166,6 @@ fn ci_release_build_script() -> String {
   )
 }
 
-
 fn claim_executor_bin_shell() -> String {
   "\"$ROOT/target/release/claim_executor\""
 }

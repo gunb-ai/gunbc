@@ -1,4 +1,3 @@
-
 module product.network_topology
 
 import product.compute_fabric { NetworkLocality, Lan, DockerBridge, TailscaleOverlay }

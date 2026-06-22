@@ -1,4 +1,3 @@
-
 module product.placement_supply
 
 import std.measure {

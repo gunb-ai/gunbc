@@ -1,8 +1,4 @@
-// Scope: foldable-now claim-run witnesses for IRT-1 affected_set leaf receipts.
-// Excluded (A-blocked-v2-crash, not in roster): dimension_seed, excluded_propagation, leaf_suite.
-
 module v2.test.lens_affected_set.sg_claims
-
 
 import v2.std.logic { Bool }
 import v2.test.lens_affected_set.fail_closed_pending_escalation {
@@ -38,8 +34,6 @@ import v2.test.lens_affected_set.provenance_producer {
   provenance_producer_unknown_diff_fail_closed_holds
 }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -49,93 +43,70 @@ test fn lens_affected_set_irt1_boundary_prune_holds() -> Bool {
   irt1_boundary_prune_receipt_claim_holds()
 }
 
-
 test fn lens_affected_set_irt1_fail_closed_pending_escalation_holds() -> Bool {
   fail_closed_pending_escalation_claim_holds()
 }
-
 
 test fn lens_affected_set_irt1_fail_closed_absorption_holds() -> Bool {
   irt1_fail_closed_absorption_receipt_claim_holds()
 }
 
-
 test fn lens_affected_set_irt1_empty_diff_frontier_holds() -> Bool {
   irt1_empty_diff_frontier_receipt_claim_holds()
 }
-
 
 test fn lens_affected_set_closure_deep_chain_holds() -> Bool {
   closure_deep_chain_claim_holds()
 }
 
-
 test fn lens_affected_set_closure_superset_safe_holds() -> Bool {
   closure_superset_safe_claim_holds()
 }
-
 
 test fn lens_affected_set_changed_dimension_receipt_classifies_union_holds() -> Bool {
   irt1_public_changed_dimension_receipt_classifies_union()
 }
 
-
 test fn lens_affected_set_dimension_classification_conservative_discriminates_holds() -> Bool {
   irt1_dimension_classification_conservative_discriminates()
 }
-
 
 test fn lens_affected_set_changed_edit_yields_changed_subgraph_holds() -> Bool {
   irt1_public_affected_set_changed_edit_yields_changed_subgraph()
 }
 
-
 test fn lens_affected_set_provenance_producer_single_read_emits_row_holds() -> Bool {
   provenance_producer_single_read_emits_row_holds()
 }
-
 
 test fn lens_affected_set_provenance_producer_rejects_malformed_ingest_holds() -> Bool {
   provenance_producer_rejects_malformed_ingest_holds()
 }
 
-
 test fn lens_affected_set_provenance_producer_rejects_beyond_mvp1_surface_ingest_holds() -> Bool {
   provenance_producer_rejects_beyond_mvp1_surface_ingest_holds()
 }
-
 
 test fn lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds() -> Bool {
   provenance_producer_parse_coverage_known_diff_fail_closed_holds()
 }
 
-
 test fn lens_affected_set_provenance_producer_coverage_receipt_holds() -> Bool {
   provenance_producer_coverage_receipt_holds()
 }
-
 
 test fn lens_affected_set_provenance_producer_git_diff_wire_holds() -> Bool {
   provenance_producer_git_diff_wire_holds()
 }
 
-
 test fn lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds() -> Bool {
   provenance_producer_unknown_diff_fail_closed_holds()
 }
-
 
 test fn lens_affected_set_provenance_producer_selectivity_superset_holds() -> Bool {
   provenance_producer_selectivity_superset_holds()
 }
 
-
 test fn lens_affected_set_provenance_producer_selectivity_superset_discriminates_holds() -> Bool {
   provenance_producer_selectivity_superset_discriminates_holds()
 }
-
-// D1b gap-1: diff→dimension classification witnesses (CI-enrolled via affected_set_ci_runner gate rows).
-// Provenance-producer claims: structurally enrolled so discovery (discover_owned_data
-// + owned_data_bool_witness_transport_tsv) projects them into the affected-set claim-run
-// roster directly — replaces the hand-typed AffectedSetNodeFrontierClaimRunRow rows that
-// formerly re-enrolled these by name in affected_set_ci_runner.dag.

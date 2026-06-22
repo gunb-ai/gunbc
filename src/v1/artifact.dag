@@ -1,28 +1,14 @@
-// v2 artifact model -- explicit representation of buildable/deployable units.
-
 module v1.compiler.artifact
 
 import v1.std.core { TextFile, SourceSpan }
 
-// =========================================================================
-// Render target -- which language the emitter produces.
-// =========================================================================
-
 type RenderTarget = Rust | Python | Go | Dag
-
-// =========================================================================
-// Artifact kinds
-// =========================================================================
 
 type ArtifactKind
   = ServiceBinary
   | Library
   | Frontend
   | GeneratedSupport
-
-// =========================================================================
-// Artifact
-// =========================================================================
 
 type Artifact {
   name: String
@@ -31,10 +17,6 @@ type Artifact {
   entry_modules: List<String>
   dependencies: List<String>
 }
-
-// =========================================================================
-// Boundary -- how artifacts communicate
-// =========================================================================
 
 type BoundaryKind
   = DirectCall
@@ -50,18 +32,10 @@ type Boundary {
   contract: String
 }
 
-// =========================================================================
-// Artifact plan -- what the compiler will build
-// =========================================================================
-
 type ArtifactPlan {
   artifacts: List<Artifact>
   boundaries: List<Boundary>
 }
-
-// =========================================================================
-// Explicit partition rules -- authoritative today
-// =========================================================================
 
 type PartitionRule
   = Explicit { artifacts: List<Artifact> }
@@ -73,21 +47,11 @@ fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
   }
 }
 
-// =========================================================================
-// Artifact output -- per-artifact emission result
-// =========================================================================
-
 type ArtifactOutput {
   artifact: Artifact
   files: List<TextFile>
 }
 
-// =========================================================================
-// Default plan -- compatibility wrapper
-// =========================================================================
-
-// Create a default single-artifact plan from the current pipeline state.
-// This is the compatibility wrapper -- current behavior becomes an explicit plan.
 fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> ArtifactPlan {
   plan_artifacts(rule: Explicit { artifacts: [Artifact {
     name: "default",
@@ -98,27 +62,19 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
   }] })
 }
 
-// =========================================================================
-// DAG artifact substrate (post-infer typed graph JSON, --target dag)
-// =========================================================================
-
-// 🟡 needs-more-work — feature:v2-dag-node-content-hash — dissolve-on: v2 Node/content_hash is DagNodeId authority (audit v2-dag-artifact-zip-fold-hang-2026-05-21.md).
 type DagNodeId = String
 
-// 🟡 needs-more-work — feature:v2-dag-typed-inferred-record — dissolve-on: emit_dag_artifact constructs DagInferredRecord instead of inferred JSON strings.
 type DagInferredRecord
   = ResolvedRef { node: DagNodeId }
   | TypeVariableRef { id: String }
   | CompilerErrorRecord { message: String, span: SourceSpan }
 
-// 🟡 needs-more-work — feature:v2-dag-typed-module-ref — dissolve-on: serialize_typed_module returns DagModuleRef (modules[] stops using raw JSON strings).
 type DagModuleRef {
   module: DagNodeId
   items: List<DagNodeId>
   item_registry_keys: List<String>
 }
 
-// 🟡 needs-more-work — feature:v2-dag-typed-diagnostic-record — dissolve-on: typed ErrorNode projection populates DagDiagnosticRecord in DagArtifact.
 type DagDiagnosticRecord {
   severity: String
   message: String
@@ -127,7 +83,6 @@ type DagDiagnosticRecord {
   category: String?
 }
 
-// 🟡 needs-more-work — feature:v2-dag-typed-artifact-emit — dissolve-on: emit_dag_artifact returns DagArtifact (JSON encoder walks carrier, not string concat).
 type DagArtifact {
   version: String
   nodes: Map<DagNodeId, String>
