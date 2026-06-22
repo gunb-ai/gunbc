@@ -925,16 +925,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             println!(
                 "cache purity audit RAN: compared {} entr(ies) warm==cold (0 violations — a divergence \
                  would have failed the floor) · {} deep→recompute(fail-safe, serde 128-level) · {} \
-                 already-cached(skipped, audited at cold write). COLD-run proof-of-execution.",
-                s.compared, s.deep_fail_safe, s.skipped_already_cached
+                 warm-served(audited at cold write). COLD-run proof-of-execution.",
+                s.compared, s.deep_fail_safe, s.warm_served
             );
         } else {
             println!(
-                "cache purity audit SKIPPED: 0 entries written this run ({} already-cached) — an \
-                 all-WARM cache. Sound (each was audited at its cold write; codec-in-key re-keys any \
-                 codec change → re-write → re-audit), but NOT a proof-of-execution: a COLD run (clear \
-                 the resolved-graph cache key) is required to exercise the codec over the corpus.",
-                s.skipped_already_cached
+                "cache purity audit SKIPPED: 0 cold writes this run ({} warm-served) — an all-WARM \
+                 cache. Sound (each was audited at its cold write; codec-in-key re-keys any codec \
+                 change → re-write → re-audit), but NOT a proof-of-execution: a COLD run (clear the \
+                 resolved-graph cache key) is required to exercise the codec over the corpus.",
+                s.warm_served
             );
         }
         println!("::endgroup::");

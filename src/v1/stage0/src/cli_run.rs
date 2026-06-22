@@ -602,6 +602,12 @@ fn resolve_entry_with_parse_cache(
         let subject = subject_digest_for_closure(&sources);
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(hit) => {
+                // Served WARM — this resolve returns the cached bytes without re-auditing (they were
+                // audited at their cold write). Record it (under audit) so an all-warm run reads as
+                // warm-served, NOT as proof-of-execution (DESIGN §5/§6 — see claim_executor's report).
+                if crate::cache_purity_audit::cache_purity_audit_enabled() {
+                    crate::cache_purity_audit::record_audit_warm_served();
+                }
                 return Ok((hit.graph, hit.source_indices));
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
@@ -739,9 +745,10 @@ fn resolve_entry_with_parse_cache(
                     // green floor can SHOW audited-N>0 rather than pass vacuously.
                     crate::cache_purity_audit::record_audit_reach(reach);
                 }
-                // Audited at its first write; codec-in-key re-keys a codec change → re-write → re-audit.
+                // Lost a write race: the bytes another process wrote were audited at THAT cold write
+                // (codec-in-key re-keys a codec change → re-write → re-audit). Counts as warm-served.
                 Ok(CacheWriteOutcome::AlreadyExists) => {
-                    crate::cache_purity_audit::record_audit_skip_already_cached();
+                    crate::cache_purity_audit::record_audit_warm_served();
                 }
                 // A write we cannot complete cannot be proven cached==cold — fail closed under audit.
                 Err(e) => {

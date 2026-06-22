@@ -25,7 +25,9 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use v1_compiler::cache_purity_audit::audit_warm_readback_against_cold;
+use v1_compiler::cache_purity_audit::{
+    audit_warm_readback_against_cold, cache_purity_audit_run_summary,
+};
 use v1_compiler::cache_purity_oracle::{
     audit_warm_equals_cold, AuditedRealization, CachePurityViolation, HiddenInputProbe,
 };
@@ -438,5 +440,62 @@ fn poisoned_diagnostic_offsets_pass_verify_and_verdict_but_fail_byte_audit() {
         "the audit verdict must be a LOUD located §5 error; got: {shouted}"
     );
 
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// === 6. PROOF-OF-EXECUTION: the in-process audit RAN (count > 0), and a warm re-resolve SKIPS =====
+//        (AlreadyExists). This is the §5 "the audit must demonstrably run, not skip-to-green" catch:
+//        a green floor must SHOW audited-N>0, and the warm-skip path must be visibly distinct so an
+//        all-warm cache cannot pass as proof-of-execution. Drives the production write-site counters
+//        (record_audit_reach / record_audit_skip_already_cached) via a real cold→warm resolve.
+
+#[test]
+fn in_process_audit_counts_cold_writes_and_skips_warm_already_cached() {
+    let dir = temp_dir("counts");
+    let (roots, entry) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    // CacheEnvGuard holds CACHE_ENV_MUTEX, so no other test has the cache dir set in this window;
+    // arming the audit flag here cannot leak into a parallel resolve. Counters are process-global +
+    // monotonic, so assert on the DELTA, not absolute values.
+    let _guard = CacheEnvGuard::set(&cache_dir);
+    std::env::set_var("GUNBC_CACHE_PURITY_AUDIT", "1");
+
+    let before = cache_purity_audit_run_summary();
+
+    // COLD: empty cache → Written → audited (Decoded compare OR deep MissOnRead — either way it RAN).
+    let cold_index = build_multi_entry_index(&roots);
+    let _ = resolve_entry_with_index(&cold_index, &entry).expect("cold resolve");
+    let after_cold = cache_purity_audit_run_summary();
+    let cold_ran = (after_cold.compared + after_cold.deep_fail_safe)
+        - (before.compared + before.deep_fail_safe);
+    assert!(
+        cold_ran >= 1,
+        "the cold write MUST be audited (proof-of-execution): compared+deep delta was {cold_ran}"
+    );
+    assert!(
+        after_cold.ran_over_any_entry(),
+        "ran_over_any_entry() must be true after a cold write — else a green floor is vacuous"
+    );
+
+    // WARM: primed key → the resolve returns at the disk-cache lookup HIT (early, before any write),
+    // so it records a warm-served (NOT a re-audit) and does NOT increment compared/deep. This is the
+    // distinction the proof-of-execution rests on: a warm run audits ZERO.
+    let warm_index = build_multi_entry_index(&roots);
+    let _ = resolve_entry_with_index(&warm_index, &entry).expect("warm resolve");
+    let after_warm = cache_purity_audit_run_summary();
+    assert!(
+        after_warm.warm_served - after_cold.warm_served >= 1,
+        "a warm re-resolve MUST record a warm-served (the lookup-hit path), got delta {}",
+        after_warm.warm_served - after_cold.warm_served
+    );
+    assert_eq!(
+        (after_warm.compared + after_warm.deep_fail_safe),
+        (after_cold.compared + after_cold.deep_fail_safe),
+        "a warm hit must NOT re-audit (it returns at the lookup) — compared/deep must be unchanged"
+    );
+
+    std::env::remove_var("GUNBC_CACHE_PURITY_AUDIT");
     let _ = fs::remove_dir_all(&dir);
 }

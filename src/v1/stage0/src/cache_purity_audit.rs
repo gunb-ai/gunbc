@@ -45,9 +45,10 @@ use crate::cache_purity_oracle::CachePurityViolation;
 // prints the totals at end-of-run so the CI log states, by execution, cold-run-audited-N vs warm-skip.
 static AUDIT_COMPARED: AtomicUsize = AtomicUsize::new(0);
 static AUDIT_DEEP_FAIL_SAFE: AtomicUsize = AtomicUsize::new(0);
-static AUDIT_SKIPPED_ALREADY_CACHED: AtomicUsize = AtomicUsize::new(0);
+static AUDIT_WARM_SERVED: AtomicUsize = AtomicUsize::new(0);
 
 /// Record the reach of one Written-then-audited entry (called from the cli_run write-site hook).
+/// A `Written` outcome means this resolve was COLD (the lookup missed) — so the audit RAN.
 pub fn record_audit_reach(reach: DecodeReach) {
     match reach {
         // Written + Decoded: the warm read-back DECODED and was structurally compared to cold == .
@@ -64,9 +65,11 @@ pub fn record_audit_reach(reach: DecodeReach) {
     }
 }
 
-/// Record an `AlreadyExists` write — the entry was audited at its FIRST (cold) write, skipped now.
-pub fn record_audit_skip_already_cached() {
-    AUDIT_SKIPPED_ALREADY_CACHED.fetch_add(1, Ordering::Relaxed);
+/// Record an entry served WARM (the resolve returned at the disk-cache lookup HIT, or lost a write
+/// race → `AlreadyExists`). The bytes were audited at their COLD write; this run did not re-audit
+/// them. A run that is ALL warm-served audited zero — sound, but not proof-of-execution.
+pub fn record_audit_warm_served() {
+    AUDIT_WARM_SERVED.fetch_add(1, Ordering::Relaxed);
 }
 
 /// A snapshot of this process's in-process audit activity (DESIGN §6 measured fact).
@@ -75,8 +78,8 @@ pub struct CachePurityAuditRunSummary {
     pub compared: usize,
     /// Written + MissOnRead: too deep to decode → recompute (fail-safe, codec not exercised).
     pub deep_fail_safe: usize,
-    /// AlreadyExists: warm cache, audited at first write — skipped this run.
-    pub skipped_already_cached: usize,
+    /// Served warm (lookup hit / write-race AlreadyExists): audited at cold write, not re-audited now.
+    pub warm_served: usize,
 }
 
 impl CachePurityAuditRunSummary {
@@ -92,7 +95,7 @@ pub fn cache_purity_audit_run_summary() -> CachePurityAuditRunSummary {
     CachePurityAuditRunSummary {
         compared: AUDIT_COMPARED.load(Ordering::Relaxed),
         deep_fail_safe: AUDIT_DEEP_FAIL_SAFE.load(Ordering::Relaxed),
-        skipped_already_cached: AUDIT_SKIPPED_ALREADY_CACHED.load(Ordering::Relaxed),
+        warm_served: AUDIT_WARM_SERVED.load(Ordering::Relaxed),
     }
 }
 use crate::cli_run::{
