@@ -3,7 +3,7 @@
 // Stable domain model of .gitignore files. Tautological definitions:
 // categories group exclusion patterns with provenance and rationale.
 //
-// Consumers: config/gitignore.dag (data), tools/bootstrap.dag (rendering).
+// Superseded by gunbc.gitignore_authority (IgnoreGroup list) + gunbc.gitignore_emit.
 
 module extdeps.gitignore
 

@@ -1,0 +1,106 @@
+module gunbc.gitignore_authority
+
+import gunbc.gitignore_model {
+  IgnoreGroup, Producer,
+  DerivableProducerKind, CitedProducerKind,
+  CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
+  GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
+  ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
+  AuthSessionTranscript,
+  OperatingSystem, EditorIDE, NodeJS, SecretsConvention, PythonLang,
+  Derivable, Cited,
+  IgnoreRationale, ReproducibleFromSource, EnvironmentSpecific
+}
+
+data gitignore_authority: List<IgnoreGroup> = [
+  IgnoreGroup {
+    producer: Derivable { kind: CargoArtifacts },
+    rationale: ReproducibleFromSource,
+    patterns: ["/target/", "/target-codex/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: CargoCacheLocal },
+    rationale: EnvironmentSpecific,
+    patterns: ["/.cargo-home/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: CodegenSymlink },
+    rationale: ReproducibleFromSource,
+    patterns: ["/bin/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: CoverageReport },
+    rationale: ReproducibleFromSource,
+    patterns: ["tarpaulin-report.html", "tarpaulin-report.json", "cobertura.xml", "lcov.info", "coverage/"]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: EditorIDE, upstream: "github/gitignore/Global/JetBrains+VisualStudioCode+Vim" },
+    rationale: EnvironmentSpecific,
+    patterns: [".idea/", ".vscode/", "*.swp", "*.swo", "*.bak", "*~"]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: OperatingSystem, upstream: "github/gitignore/Global/macOS+Windows" },
+    rationale: EnvironmentSpecific,
+    patterns: [".DS_Store", "Thumbs.db", "tmux-*.log"]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: SecretsConvention, upstream: ".env-files convention (dotenv standard)" },
+    rationale: EnvironmentSpecific,
+    patterns: [".env", ".env.local", ".env.*.local"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: GeneratorStamp },
+    rationale: ReproducibleFromSource,
+    patterns: [".*-stamp"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: WorkflowRuntime },
+    rationale: EnvironmentSpecific,
+    patterns: ["/.gunbc/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: TestgenOutput },
+    rationale: ReproducibleFromSource,
+    patterns: ["src/v1/10_test/generated-tests/src/generated/"]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: NodeJS, upstream: "github/gitignore/Node.gitignore" },
+    rationale: EnvironmentSpecific,
+    patterns: ["node_modules/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: ClaudeCodeSession },
+    rationale: EnvironmentSpecific,
+    patterns: [".claude/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: RegenTempDir },
+    rationale: ReproducibleFromSource,
+    patterns: [".regen-sources/", ".regen-output/", ".regen-generated-source-root/", ".freshness-check/"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: AuthSessionTranscript },
+    rationale: EnvironmentSpecific,
+    patterns: ["out.txt"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: OpenClawArtifact },
+    rationale: EnvironmentSpecific,
+    patterns: ["/.openclaw/", "/AGENTS.md", "/HEARTBEAT.md", "/IDENTITY.md", "/SOUL.md", "/TOOLS.md", "/USER.md", "/WORKBOARD.md", "/scripts/openclaw/", ".v2-inspect", ".v2-inspect-errors.txt"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: GithubCLICache },
+    rationale: EnvironmentSpecific,
+    patterns: [".gh-cache/"]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: PythonLang, upstream: "github/gitignore/Python.gitignore" },
+    rationale: ReproducibleFromSource,
+    patterns: ["__pycache__/", "*.pyc"]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: ClaimMapOutput },
+    rationale: EnvironmentSpecific,
+    patterns: [".claim-map/", "src/v2/compiler/manual/sg2_scratch_probe.dag"]
+  }
+]
