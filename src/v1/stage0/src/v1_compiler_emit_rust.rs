@@ -18392,11 +18392,11 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
         } else {
             // HAND-APPLIED-REGEN-MIRROR-SYNC of src/v1/05_emit_rust.dag (the single
             // authority): compile_error! -> panic! in the dry-run missing-fixture branch.
-            // Applied by hand because regen-fixpoint is temporarily broken (§7 hole, routed
-            // to the lockstep lane snappy-swift-91 / #5325). DISSOLUTION: when regen-fixpoint
-            // is restored, a clean regen reproduces this line from the .dag — delete this
-            // hand-patch; the dissolution check is regen-output == this mirror modulo
-            // HAND-APPLIED-REGEN-MIRROR-SYNC comment blocks.
+            // Applied by hand because regen-fixpoint is temporarily broken (§7 hole).
+            // DISSOLUTION lane: bright-stag's adhoc-1bdd0259-2e3 (re-repair the hole + add a
+            // regen-equals-committed CI drift-gate). When it lands, a clean regen reproduces
+            // this line from the .dag — delete this hand-patch; the dissolution check is
+            // regen-output == this mirror modulo HAND-APPLIED-REGEN-MIRROR-SYNC comment blocks.
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
