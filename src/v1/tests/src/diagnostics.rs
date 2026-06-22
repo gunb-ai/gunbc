@@ -176,7 +176,7 @@ fn unresolved_type_in_field() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "78s — hanging in compile pipeline; triage under PERF track"]
 fn duplicate_module_detected() {
     let a = "module dup\ntype A { x: Int }\n";
     let b = "module dup\ntype B { y: Int }\n";

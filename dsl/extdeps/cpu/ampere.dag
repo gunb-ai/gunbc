@@ -4,6 +4,16 @@ import extdeps.cpu.types { Architecture, CpuModelCatalogRow, CpuSocket, SocketPa
 import extdeps.vendor.ampere { ampere }
 import std.measure { hardware_thread_count, hertz, watt }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Ampere_Altra"
+  }
+}
+
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,

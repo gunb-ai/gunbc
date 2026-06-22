@@ -11,6 +11,15 @@ import extdeps.memory.types {
   dram_generation_number,
   dram_generation_signaling_family,
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/JEDEC_memory_standards"
+  }
+}
 
 data ddr4_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
   generation: dram_generation_ddr4,

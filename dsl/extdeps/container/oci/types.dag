@@ -15,6 +15,16 @@ import extdeps.toolchain.types {
 }
 import std.types { ContentHash, FilePath, NonEmptyStr, Port, SemVer, String }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/spec.md"
+  }
+}
+
 data goarch_amd64_wire: String = "amd64"
 data goarch_arm64_wire: String = "arm64"
 data goarch_386_wire: String = "386"

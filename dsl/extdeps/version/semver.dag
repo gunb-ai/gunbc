@@ -6,6 +6,15 @@ import std.integer { NonNegativeInt }
 import std.list { List }
 import std.nat { nat_compare }
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "semver.org/"
+  }
+}
 
 type SemVerIdentity = VersionIdentity
 
