@@ -1,7 +1,7 @@
 module gunbc.ci_floor_measurement
 
 import std.measure { ByteSize, byte_size }
-import std.types { Int }
+import std.types { Int, List, String }
 import std.realization_measurement {
   ConcurrentMemoryPeakSample,
   concurrent_memory_peak_per_share,
@@ -18,8 +18,21 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
 
-type WholeRunPeakMeasurement
-  = WholeRunPeakMeasured { sample: ConcurrentMemoryPeakSample }
-  | WholeRunPeakUnmeasured
+type JobCgroupPeakMeasurement
+  = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
+  | JobCgroupPeakUnmeasured
 
-data gunbc_ci_whole_run_peak: WholeRunPeakMeasurement = WholeRunPeakUnmeasured
+type CiJobPeak {
+  job: String
+  peak: JobCgroupPeakMeasurement
+}
+
+data gunbc_ci_job_peaks: List<CiJobPeak> = [
+  CiJobPeak { job: "ci", peak: JobCgroupPeakUnmeasured }
+]
+
+type HostFixedOverhead
+  = HostFixedOverheadMeasured { bytes: ByteSize }
+  | HostFixedOverheadUnmeasured
+
+data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadUnmeasured
