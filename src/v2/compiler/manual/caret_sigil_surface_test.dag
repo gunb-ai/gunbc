@@ -1,9 +1,4 @@
-// Scope: witness for E2 ^-sigil surface syntax — `^IDENT` opaque Symbol literal
-//        and `^(Expr)` discriminant sugar (parse-resolved; never bare `^v` for values).
-// Status: claim-run witness (fn () -> Bool).
-
 module v2.test.manual.caret_sigil_surface
-
 
 import v2.std.verification {
   BoolWitness,

@@ -1,61 +1,7 @@
-// std/primitives.dag -- Kernel primitive complexity contracts.
-//
-// Every kernel primitive the v2 runtime provides is declared here with
-// its complexity contract. The Track D cost algebra uses these contracts
-// to reason about runtime bounds.
-//
-// Primitives are built into the evaluator (eval_core.rs, eval_stack.rs)
-// and the runtime shim (v1_runtime_shim.rs). This file is the single
-// authority for their cost semantics. Adding a new primitive requires
-// adding its contract here.
-//
-// Contract format: each primitive is a data value of type PrimitiveContract.
-// The `work` field is a symbolic CostExpr describing total work.
-// The `output_size` field describes the size of the result.
-// The `certainty` field marks whether the bound is proven or amortized.
-// The `carrier_cost` field (ctrl#1533 M-B) declares whether — and how —
-// the cost depends on the persistence kind of the declared value carrier
-// (v2.std.value_carrier).
-//
-// Size variables follow the ROADMAP Track D convention:
-//   n = primary input size (e.g., string length, list length)
-//   m = secondary input size (e.g., pattern length, other list)
-//   k = output or subset size
-
 module std.primitives
-
-// =========================================================================
-// Cost algebra types
-//
-// Certainty marks how tight a bound is. The working cost algebra
-// (CostExpr/SizeExpr) lives in complexity.dag — skeleton types that
-// were here have been deleted to avoid divergence.
-// =========================================================================
 
 type Certainty = Proven | Amortized | Expected | Conservative
 
-// Carrier-cost sensitivity (ctrl#1533 M-B): whether a primitive's work
-// depends on the persistence kind of the M-A value carrier declared in
-// v2.std.value_carrier (Map: hash array mapped trie, List: relaxed radix
-// balanced tree). For sensitive primitives both arms are declared:
-// `ephemeral_work` is the cost when an immutable-value host implements the
-// collection with an Ephemeral carrier (full copy before update — what the
-// v2 interpreter does today; the quadratic-allocation term ctrl#1533
-// phase 0 measured), `persistent_work` the cost under the declared
-// Persistent carrier (what the phase-2 host swap implements). The
-// persistent arms must agree with the CarrierCost data on the M-A carrier
-// declarations (update_work "log32 n" / "log n"); disagreement resolves by
-// reading those declarations. `work`/`output_size` above keep their
-// historical convention: they describe the ownership-aware emitted-code
-// path (move + copy-on-write), which does not share the ephemeral
-// pathology. A claim asserting "fold-built collections are sub-quadratic"
-// resolves against `persistent_work` by execution — this field is the
-// structural gate, not RSS anecdotes.
-// 🟢 terminal — decomposition (DESIGN.md §2) — the arms are
-// presence/absence of carrier-conditional cost structure. Variant-is-data
-// N/A: the payload is meaningless for insensitive primitives, and an
-// empty-string sentinel record would be worse vocabulary (dead fields on
-// 49 contracts). No richer named source; arms mutually exclusive.
 type CarrierCostSensitivity
   = CarrierInsensitive
   | CarrierSensitive { ephemeral_work: String, persistent_work: String }
@@ -69,14 +15,6 @@ type PrimitiveContract {
   notes: String
 }
 
-// =========================================================================
-// String operations
-// =========================================================================
-
-// char_at(s: String, pos: Int) -> String
-// Extract the character at position `pos` as a single-char string.
-// O(pos) in the bootstrap interpreter (UTF-8 char iteration);
-// the emitted Rust impl also iterates via .chars().nth().
 data char_at_contract: PrimitiveContract = {
   name: "char_at",
   work: "pos",
@@ -86,10 +24,6 @@ data char_at_contract: PrimitiveContract = {
   notes: "Linear scan to pos in UTF-8; O(1) if backed by a char array"
 }
 
-// string_length(s: String) -> Int
-// Return the number of characters in a string.
-// O(n) in the bootstrap interpreter (counts chars);
-// O(1) if the runtime caches length.
 data string_length_contract: PrimitiveContract = {
   name: "string_length",
   work: "n",
@@ -99,9 +33,6 @@ data string_length_contract: PrimitiveContract = {
   notes: "O(n) char count in UTF-8; O(1) with cached length"
 }
 
-// substring(s: String, start: Int, end: Int) -> String
-// Extract a substring by character indices [start, end).
-// Cost is proportional to `end` (must iterate to find char boundaries).
 data substring_contract: PrimitiveContract = {
   name: "substring",
   work: "end",
@@ -111,8 +42,6 @@ data substring_contract: PrimitiveContract = {
   notes: "Must iterate chars to find byte boundaries; output allocated"
 }
 
-// string_contains(s: String, pattern: String) -> Bool
-// Check whether a string contains a given substring.
 data string_contains_contract: PrimitiveContract = {
   name: "string_contains",
   work: "n * m",
@@ -122,8 +51,6 @@ data string_contains_contract: PrimitiveContract = {
   notes: "Naive search O(n*m); Rust std uses Two-Way which is O(n+m) typical"
 }
 
-// starts_with(s: String, prefix: String) -> Bool
-// Check whether a string starts with a given prefix.
 data starts_with_contract: PrimitiveContract = {
   name: "starts_with",
   work: "m",
@@ -133,8 +60,6 @@ data starts_with_contract: PrimitiveContract = {
   notes: "Compare first m characters"
 }
 
-// ends_with(s: String, suffix: String) -> Bool
-// Check whether a string ends with a given suffix.
 data ends_with_contract: PrimitiveContract = {
   name: "ends_with",
   work: "m",
@@ -144,8 +69,6 @@ data ends_with_contract: PrimitiveContract = {
   notes: "Compare last m characters"
 }
 
-// concat(a, b) -> same type
-// Concatenate two sequences (strings or lists).
 data concat_contract: PrimitiveContract = {
   name: "concat",
   work: "n + m",
@@ -155,8 +78,6 @@ data concat_contract: PrimitiveContract = {
   notes: "Allocates new sequence of combined length"
 }
 
-// split(s: String, delimiter: String) -> List<String>
-// Split a string by delimiter.
 data split_contract: PrimitiveContract = {
   name: "split",
   work: "n",
@@ -166,8 +87,6 @@ data split_contract: PrimitiveContract = {
   notes: "Single pass over input; k = number of resulting segments"
 }
 
-// repeat(s: String, n: Int) -> String
-// Repeat a string n times.
 data repeat_contract: PrimitiveContract = {
   name: "repeat",
   work: "m * n",
@@ -177,8 +96,6 @@ data repeat_contract: PrimitiveContract = {
   notes: "m = length of string, n = repetition count"
 }
 
-// chars(s: String) -> List<String>
-// Decompose a string into a list of single-character strings.
 data chars_contract: PrimitiveContract = {
   name: "chars",
   work: "n",
@@ -188,8 +105,6 @@ data chars_contract: PrimitiveContract = {
   notes: "One allocation per character"
 }
 
-// to_string(value) -> String
-// Convert any value to its string representation.
 data to_string_contract: PrimitiveContract = {
   name: "to_string",
   work: "n",
@@ -199,8 +114,6 @@ data to_string_contract: PrimitiveContract = {
   notes: "Depends on value structure; n = serialized size"
 }
 
-// parse_int(s: String) -> Int
-// Parse a string as an integer.
 data parse_int_contract: PrimitiveContract = {
   name: "parse_int",
   work: "n",
@@ -210,8 +123,6 @@ data parse_int_contract: PrimitiveContract = {
   notes: "Single pass over digit characters"
 }
 
-// str_eq(a: String, b: String) -> Bool
-// String equality comparison.
 data str_eq_contract: PrimitiveContract = {
   name: "str_eq",
   work: "min(n, m)",
@@ -221,8 +132,6 @@ data str_eq_contract: PrimitiveContract = {
   notes: "Short-circuits on first mismatch or length difference"
 }
 
-// replace_section(s: String, section: String, replacement: String) -> String
-// Replace a section of a string.
 data replace_section_contract: PrimitiveContract = {
   name: "replace_section",
   work: "n",
@@ -232,12 +141,6 @@ data replace_section_contract: PrimitiveContract = {
   notes: "Must scan for section, then rebuild string"
 }
 
-// =========================================================================
-// Unicode operations
-// =========================================================================
-
-// code_point(c: String) -> Int
-// Return the Unicode code point of a character.
 data code_point_contract: PrimitiveContract = {
   name: "code_point",
   work: "1",
@@ -247,8 +150,6 @@ data code_point_contract: PrimitiveContract = {
   notes: "Extract first char's code point"
 }
 
-// from_code_point(cp: Int) -> String
-// Convert a Unicode code point to a single-character string.
 data from_code_point_contract: PrimitiveContract = {
   name: "from_code_point",
   work: "1",
@@ -258,12 +159,6 @@ data from_code_point_contract: PrimitiveContract = {
   notes: "Construct single-char string from code point"
 }
 
-// =========================================================================
-// Scanner operations (v2 tokenizer primitives)
-// =========================================================================
-
-// scan_while(s: String, start: Int, pred: String -> Bool) -> Int
-// Scan while a predicate holds, returning the end position.
 data scan_while_contract: PrimitiveContract = {
   name: "scan_while",
   work: "k",
@@ -273,8 +168,6 @@ data scan_while_contract: PrimitiveContract = {
   notes: "k = number of chars satisfying predicate; pred called per char"
 }
 
-// skip_horizontal_ws(s: String, start: Int) -> Int
-// Skip spaces and tabs from start position.
 data skip_horizontal_ws_contract: PrimitiveContract = {
   name: "skip_horizontal_ws",
   work: "k",
@@ -284,8 +177,6 @@ data skip_horizontal_ws_contract: PrimitiveContract = {
   notes: "k = number of whitespace chars skipped"
 }
 
-// scan_to_eol(s: String, start: Int) -> Int
-// Scan to end of line or end of string.
 data scan_to_eol_contract: PrimitiveContract = {
   name: "scan_to_eol",
   work: "k",
@@ -295,8 +186,6 @@ data scan_to_eol_contract: PrimitiveContract = {
   notes: "k = distance from start to next newline or end"
 }
 
-// scan_string_end(s: String, start: Int) -> Int
-// Scan to end of a string literal, handling escape sequences.
 data scan_string_end_contract: PrimitiveContract = {
   name: "scan_string_end",
   work: "k",
@@ -306,12 +195,6 @@ data scan_string_end_contract: PrimitiveContract = {
   notes: "k = distance from start to closing quote; handles backslash escapes"
 }
 
-// =========================================================================
-// Collection operations -- List
-// =========================================================================
-
-// map(collection: List<T>, f: T -> U) -> List<U>
-// Apply f to each element, producing a new list.
 data map_contract: PrimitiveContract = {
   name: "map",
   work: "n * f_work",
@@ -321,8 +204,6 @@ data map_contract: PrimitiveContract = {
   notes: "n = input length; f_work = cost of applying f to one element"
 }
 
-// filter(collection: List<T>, predicate: T -> Bool) -> List<T>
-// Keep elements satisfying the predicate.
 data filter_contract: PrimitiveContract = {
   name: "filter",
   work: "n * pred_work",
@@ -332,8 +213,6 @@ data filter_contract: PrimitiveContract = {
   notes: "n = input length; k = number of elements passing predicate"
 }
 
-// filter_map(collection: List<T>, f: T -> U?) -> List<U>
-// Map and filter in one pass: keep non-unit results.
 data filter_map_contract: PrimitiveContract = {
   name: "filter_map",
   work: "n * f_work",
@@ -343,8 +222,6 @@ data filter_map_contract: PrimitiveContract = {
   notes: "n = input length; k = number of non-unit results"
 }
 
-// flat_map(collection: List<T>, f: T -> List<U>) -> List<U>
-// Map each element to a list, then flatten.
 data flat_map_contract: PrimitiveContract = {
   name: "flat_map",
   work: "n * f_work",
@@ -354,8 +231,6 @@ data flat_map_contract: PrimitiveContract = {
   notes: "n = input length; total output is sum of per-element outputs"
 }
 
-// fold(collection: List<T>, init: U, f: (U, T) -> U) -> U
-// Left fold over a list.
 data fold_contract: PrimitiveContract = {
   name: "fold",
   work: "n * f_work",
@@ -365,8 +240,6 @@ data fold_contract: PrimitiveContract = {
   notes: "n = input length; accumulator cost depends on f semantics"
 }
 
-// any(collection: List<T>, predicate: T -> Bool) -> Bool
-// Short-circuiting existential quantifier.
 data any_contract: PrimitiveContract = {
   name: "any",
   work: "k * pred_work",
@@ -376,8 +249,6 @@ data any_contract: PrimitiveContract = {
   notes: "k <= n; short-circuits on first true; worst case k = n"
 }
 
-// all(collection: List<T>, predicate: T -> Bool) -> Bool
-// Short-circuiting universal quantifier.
 data all_contract: PrimitiveContract = {
   name: "all",
   work: "k * pred_work",
@@ -387,8 +258,6 @@ data all_contract: PrimitiveContract = {
   notes: "k <= n; short-circuits on first false; worst case k = n"
 }
 
-// contains(collection: List<T>, item: T) -> Bool
-// Linear search for an element.
 data contains_contract: PrimitiveContract = {
   name: "contains",
   work: "n",
@@ -398,8 +267,6 @@ data contains_contract: PrimitiveContract = {
   notes: "Linear scan; short-circuits on match"
 }
 
-// join(collection: List<String>, separator: String) -> String
-// Concatenate list elements with separator.
 data join_contract: PrimitiveContract = {
   name: "join",
   work: "n + total_length",
@@ -409,8 +276,6 @@ data join_contract: PrimitiveContract = {
   notes: "Must convert each element to string and concatenate"
 }
 
-// sort(collection: List<T>, key_fn: T -> Comparable) -> List<T>
-// Sort a list by natural ordering.
 data sort_contract: PrimitiveContract = {
   name: "sort",
   work: "n * log(n)",
@@ -420,8 +285,6 @@ data sort_contract: PrimitiveContract = {
   notes: "Comparison-based sort"
 }
 
-// sort_by(collection: List<T>, key_fn: T -> K) -> List<T>
-// Sort a list by a key function.
 data sort_by_contract: PrimitiveContract = {
   name: "sort_by",
   work: "n * (key_work + log(n))",
@@ -431,8 +294,6 @@ data sort_by_contract: PrimitiveContract = {
   notes: "Computes key for each element, then sorts by key"
 }
 
-// dedup(collection: List<T>) -> List<T>
-// Remove consecutive duplicates.
 data dedup_contract: PrimitiveContract = {
   name: "dedup",
   work: "n * n",
@@ -442,8 +303,6 @@ data dedup_contract: PrimitiveContract = {
   notes: "Current impl checks all prior elements (quadratic); sorted input would be O(n)"
 }
 
-// len(collection: List<T>) -> Int
-// Return the length of a list.
 data len_contract: PrimitiveContract = {
   name: "len",
   work: "1",
@@ -453,8 +312,6 @@ data len_contract: PrimitiveContract = {
   notes: "Vec::len is O(1)"
 }
 
-// count(collection: List<T>) -> Int
-// Alias for len.
 data count_contract: PrimitiveContract = {
   name: "count",
   work: "1",
@@ -464,8 +321,6 @@ data count_contract: PrimitiveContract = {
   notes: "Alias for len; Vec::len is O(1)"
 }
 
-// sum(collection: List<Int>) -> Int
-// Sum all integers in a list.
 data sum_contract: PrimitiveContract = {
   name: "sum",
   work: "n",
@@ -475,8 +330,6 @@ data sum_contract: PrimitiveContract = {
   notes: "Single pass accumulation"
 }
 
-// first(collection: List<T>) -> T?
-// Return the first element, or None if empty.
 data first_contract: PrimitiveContract = {
   name: "first",
   work: "1",
@@ -486,8 +339,6 @@ data first_contract: PrimitiveContract = {
   notes: "Direct index access"
 }
 
-// last(collection: List<T>) -> T?
-// Return the last element, or None if empty.
 data last_contract: PrimitiveContract = {
   name: "last",
   work: "1",
@@ -497,8 +348,6 @@ data last_contract: PrimitiveContract = {
   notes: "Direct index access on Vec"
 }
 
-// get(collection: List<T>, index: Int) -> T?
-// Return the element at index, or None if out of bounds.
 data get_contract: PrimitiveContract = {
   name: "get",
   work: "1",
@@ -508,8 +357,6 @@ data get_contract: PrimitiveContract = {
   notes: "Direct index access on Vec"
 }
 
-// max_by(collection: List<T>, f: T -> Comparable) -> T?
-// Return the maximum element by a key function.
 data max_by_contract: PrimitiveContract = {
   name: "max_by",
   work: "n * f_work",
@@ -519,8 +366,6 @@ data max_by_contract: PrimitiveContract = {
   notes: "Single pass with key computation per element"
 }
 
-// reverse(collection: List<T>) -> List<T>
-// Reverse a list.
 data reverse_contract: PrimitiveContract = {
   name: "reverse",
   work: "n",
@@ -530,8 +375,6 @@ data reverse_contract: PrimitiveContract = {
   notes: "Clone and reverse in place"
 }
 
-// list_push(list: List<T>, item: T) -> List<T>
-// Append a single element to the end of a list.
 data list_push_contract: PrimitiveContract = {
   name: "list_push",
   work: "1",
@@ -541,8 +384,6 @@ data list_push_contract: PrimitiveContract = {
   notes: "O(1) amortized with RcVec; O(n) if Rc has multiple refs (clone)"
 }
 
-// append(collection: List<T>, items: List<T>) -> List<T>
-// Append a list of items to the end of another list.
 data append_contract: PrimitiveContract = {
   name: "append",
   work: "m",
@@ -552,8 +393,6 @@ data append_contract: PrimitiveContract = {
   notes: "Extends base list by m elements"
 }
 
-// skip(collection: List<T>, n: Int) -> List<T>
-// Skip the first n elements.
 data skip_contract: PrimitiveContract = {
   name: "skip",
   work: "n",
@@ -563,8 +402,6 @@ data skip_contract: PrimitiveContract = {
   notes: "Collects remaining elements after skip"
 }
 
-// zip(collection: List<T>, other: List<U>) -> List<{first: T, second: U}>
-// Zip two lists into pairs, truncating to shorter length.
 data zip_contract: PrimitiveContract = {
   name: "zip",
   work: "min(n, m)",
@@ -574,8 +411,6 @@ data zip_contract: PrimitiveContract = {
   notes: "Produces pairs up to shorter list length"
 }
 
-// enumerate(collection: List<T>) -> List<{first: Int, second: T}>
-// Pair each element with its index.
 data enumerate_contract: PrimitiveContract = {
   name: "enumerate",
   work: "n",
@@ -585,12 +420,6 @@ data enumerate_contract: PrimitiveContract = {
   notes: "Wraps each element with its index"
 }
 
-// =========================================================================
-// Collection operations -- Map
-// =========================================================================
-
-// empty_map() -> Map<K, V>
-// Create an empty map.
 data empty_map_contract: PrimitiveContract = {
   name: "empty_map",
   work: "1",
@@ -600,8 +429,6 @@ data empty_map_contract: PrimitiveContract = {
   notes: "Allocates empty HashMap"
 }
 
-// map_insert(m: Map<K, V>, key: K, value: V) -> Map<K, V>
-// Insert a key-value pair.
 data map_insert_contract: PrimitiveContract = {
   name: "map_insert",
   work: "1",
@@ -611,8 +438,6 @@ data map_insert_contract: PrimitiveContract = {
   notes: "O(1) amortized for HashMap; O(n) if Rc clone needed"
 }
 
-// map_get(m: Map<K, V>, key: K) -> V?
-// Look up a key in a map.
 data map_get_contract: PrimitiveContract = {
   name: "map_get",
   work: "1",
@@ -622,8 +447,6 @@ data map_get_contract: PrimitiveContract = {
   notes: "O(1) expected for HashMap; O(n) worst case"
 }
 
-// map_contains_key(m: Map<K, V>, key: K) -> Bool
-// Check whether a map contains a key.
 data map_contains_key_contract: PrimitiveContract = {
   name: "map_contains_key",
   work: "1",
@@ -633,8 +456,6 @@ data map_contains_key_contract: PrimitiveContract = {
   notes: "O(1) expected for HashMap"
 }
 
-// lookup(table: Map<K, V>, key: K) -> V?
-// Look up a key in a map, returning Option.
 data lookup_contract: PrimitiveContract = {
   name: "lookup",
   work: "1",
@@ -644,8 +465,6 @@ data lookup_contract: PrimitiveContract = {
   notes: "O(1) expected for HashMap; wraps result in Some/None"
 }
 
-// map_merge(base: Map<K, V>, overlay: Map<K, V>) -> Map<K, V>
-// Merge two maps; overlay entries overwrite base entries.
 data map_merge_contract: PrimitiveContract = {
   name: "map_merge",
   work: "m",
@@ -655,8 +474,6 @@ data map_merge_contract: PrimitiveContract = {
   notes: "Extends base by m overlay entries; O(n + m) if Rc clone needed"
 }
 
-// map_keys(m: Map<K, V>) -> List<K>
-// Extract all keys from a map.
 data map_keys_contract: PrimitiveContract = {
   name: "map_keys",
   work: "n",
@@ -666,8 +483,6 @@ data map_keys_contract: PrimitiveContract = {
   notes: "Iterates all entries to collect keys"
 }
 
-// map_values(m: Map<K, V>) -> List<V>
-// Extract all values from a map.
 data map_values_contract: PrimitiveContract = {
   name: "map_values",
   work: "n",
@@ -677,8 +492,6 @@ data map_values_contract: PrimitiveContract = {
   notes: "Iterates all entries to collect values"
 }
 
-// index_by(list: List<V>, key_fn: V -> String) -> Map<String, V>
-// Build a map from a list by extracting a string key from each element.
 data index_by_contract: PrimitiveContract = {
   name: "index_by",
   work: "n * key_fn_work",
@@ -688,12 +501,6 @@ data index_by_contract: PrimitiveContract = {
   notes: "One hash insert per element; last writer wins on duplicate keys"
 }
 
-// =========================================================================
-// Record operations
-// =========================================================================
-
-// with(record, updates) -> record
-// Functional record update: produce a new record with fields overwritten.
 data with_contract: PrimitiveContract = {
   name: "with",
   work: "n + m",
@@ -703,12 +510,6 @@ data with_contract: PrimitiveContract = {
   notes: "n = base fields, m = update fields; merges maps"
 }
 
-// =========================================================================
-// I/O operations (Filesystem)
-// =========================================================================
-
-// filesystem_read(path: String) -> FilesystemReadResult
-// Read a file's text content from the filesystem.
 data filesystem_read_contract: PrimitiveContract = {
   name: "filesystem_read",
   work: "n",
@@ -718,12 +519,6 @@ data filesystem_read_contract: PrimitiveContract = {
   notes: "n = file size in bytes; I/O bound, not CPU bound"
 }
 
-// =========================================================================
-// Serialization operations
-// =========================================================================
-
-// to_bytes(value) -> Bytes
-// Serialize a value to bytes.
 data to_bytes_contract: PrimitiveContract = {
   name: "to_bytes",
   work: "n",
@@ -733,8 +528,6 @@ data to_bytes_contract: PrimitiveContract = {
   notes: "n = serialized size; depends on value structure"
 }
 
-// to_json(value) -> Json
-// Serialize a value to JSON.
 data to_json_contract: PrimitiveContract = {
   name: "to_json",
   work: "n",
@@ -744,8 +537,6 @@ data to_json_contract: PrimitiveContract = {
   notes: "n = serialized size; depends on value structure"
 }
 
-// hash(value) -> String
-// Compute a hash of a value.
 data hash_contract: PrimitiveContract = {
   name: "hash",
   work: "n",

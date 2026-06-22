@@ -1,8 +1,3 @@
-// extdeps/container/oci/media_types.dag — OCI Image/Media type constants.
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/media-types.md
-// Version: image-spec v1.1.0 (schemaVersion 2)
-
 module extdeps.container.oci.media_types
 
 import extdeps.container.oci.types {

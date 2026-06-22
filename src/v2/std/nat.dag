@@ -1,7 +1,3 @@
-// src/v2/std/nat.dag
-// Scope: Natural numbers (Part 6 nat rows; external Natural_number anchor out of Lane-B header).
-// Status: T-3 modeled.
-
 module v2.std.nat
 import v2.std.algebra {
   Magma,
@@ -17,7 +13,7 @@ import v2.std.algebra {
 }
 import v2.std.node { Symbol }
 import v2.std.collection { List }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Nat
   = Zero
   | Succ { prev: Nat }
@@ -33,7 +29,7 @@ fn nat_add(a: Nat, b: Nat) -> Nat {
 fn nat_mul(a: Nat, b: Nat) -> Nat {
   nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
   match a {
     Zero => match b {
@@ -46,14 +42,14 @@ fn nat_compare(a: Nat, b: Nat) -> Ordering {
     }
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Zero-variant discriminant projection; forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+
 fn is_zero(n: Nat) -> Bool {
   match n {
     Zero => true
     Succ { prev: _ } => false
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+
 fn nat_lte(a: Nat, b: Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Less => true
@@ -61,7 +57,7 @@ fn nat_lte(a: Nat, b: Nat) -> Bool {
     Greater => false
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+
 fn nat_gte(a: Nat, b: Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Less => false
@@ -85,14 +81,11 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
   }
 }
 
-// scheduling Symbols — T19-VHDR-3332
-// RULING-1: 🟢 pretty-much-done — nominal scheduling symbols
 type NatAlgebraLawObligation {
   algebra: Symbol
   inhabitant: Symbol
   law: Symbol
 }
-
 
 fn nat_declared_algebra_law_obligations() -> List<NatAlgebraLawObligation> {
   [

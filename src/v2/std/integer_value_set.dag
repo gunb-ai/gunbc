@@ -1,9 +1,4 @@
-// src/v2/std/integer_value_set.dag
-// Scope: bounded decidable integer value-set containment leaf for coercion/refinement.
-// Status: integer-only containment surface; general value-set lattice is follow-up.
-
 module v2.std.integer_value_set
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -20,8 +15,6 @@ import v2.std.integer { integer_interval_spec_node_contains }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
 import v2.std.node_query { find_named_child }
 
-
-// 🟡 coproduct dissolution — feature:integer-value-set-coproduct — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: general value-set lattice authority lands and integer-only decode can fold into the shared substrate predicate; forbidden: unclassified long-lived Node/tag carrier.
 type IntegerValueSet
   = IntegerValueSetUnbounded
   | IntegerValueSetInterval { interval: Node }

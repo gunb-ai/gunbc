@@ -1,6 +1,2 @@
-// FIXTURE — planted std-layer module with a forbidden upward import (extdeps.* — the
-// dsl-tree std→extdeps form, DESIGN §3 import-arrow inversion). Read as TEXT by
-// v2.lens.layering_imports.layer_import_facts_live (never module-resolved); the by-execution
-// oracle that the projection + lens flag a std→extdeps edge. DO NOT import this module.
 module v2.test.fixture.layering_scan.std_imports_extdeps_plant
 import extdeps.shell

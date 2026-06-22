@@ -1,9 +1,4 @@
-// src/v2/std/project_to_core_predicate.dag
-// Scope: project modeled nodes to declared ModelCore core axes, dropping surface spelling.
-// Status: find_witness project_to_core predicate leaf.
-
 module v2.std.project_to_core_predicate
-
 
 import v2.std.algebra { list_snoc_item }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }

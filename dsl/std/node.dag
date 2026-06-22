@@ -1,33 +1,3 @@
-// std/node.dag -- Compiler type inductive structure declarations.
-//
-// AUTHORITY: Single source of truth for which compiler types have recursive
-// fields and how those fields are shaped. The complexity analyzer reads these
-// declarations to prove tree-walk functions are O(n) — no pattern-specific
-// tables, no hardcoded accessor lists.
-//
-// BACKGROUND (from ROADMAP CX-NEXT):
-// Node is implemented in Rust (`src/v1/stage0/`) but its recursive structure
-// must be visible to the .dag complexity analyzer. This file declares the
-// structural facts as data — NOT the implementation. The types remain Rust
-// structs; this file tells the analyzer "Node.children is List<Node>".
-//
-// When all compiler types are declared here, classify_field_recursion auto-
-// detects all recursive fields including cross-type references. The kernel
-// seed dissolves, pattern-specific tables (list_child_accessors,
-// function_size_effects, is_child_accessor_in_model) dissolve, and CX-L2
-// proves all tree descent functions without enumeration.
-//
-// DESIGN PRINCIPLE (P1 from cx-design.md):
-// Descent is a TYPE-LEVEL fact. The type definition `children: List<Node>`
-// IS the descent fact. The complexity analyzer should never need to know
-// about specific accessor functions — it reads from the type that certain
-// fields carry recursive sub-structure.
-//
-// RELATIONSHIP TO std/induction.dag:
-// induction.dag defines InductiveField and RecursionShape (the vocabulary).
-// This file USES that vocabulary to declare specific compiler types.
-// induction.dag is the schema; node.dag is the data.
-
 module std.node
 
 import std.induction {
@@ -35,33 +5,8 @@ import std.induction {
   DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion
 }
 
-// =========================================================================
-// Compiler type inductive fields
-// =========================================================================
-//
-// Each entry declares one recursive field position:
-//   type_name:    the type that owns this field
-//   variant_name: "" for records, variant name for sum types
-//   field_name:   the field carrying recursive structure
-//   shape:        how the field wraps the recursive reference
-//   element_type: the recursive type being referenced (same as type_name for
-//                 self-referential, different for cross-type references)
-//
-// Cross-type example: Node.inferred is InferredNode?, not Node?
-//   → element_type = "InferredNode"
-// Self-referential example: Node.children is List<Node>
-//   → element_type = "Node"
-
 data compiler_inductive_fields: List<InductiveField> = [
-  // =========================================================================
-  // Node — the compiler's core recursive data structure
-  // =========================================================================
-  //
-  // Node is a tree: every field below is either List<Node>, Node?, or a
-  // cross-type reference to InferredNode. All tree-walk functions over
-  // Node are O(n) where n = total nodes in the tree.
 
-  // List<Node> fields — structural children
   InductiveField {
     type_name: "Node",
     variant_name: "",
@@ -91,7 +36,6 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "Node"
   },
 
-  // Node? fields — optional structural sub-nodes
   InductiveField {
     type_name: "Node",
     variant_name: "",
@@ -114,7 +58,6 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "Node"
   },
 
-  // Cross-type: Node.inferred is InferredNode?, not Node?
   InductiveField {
     type_name: "Node",
     variant_name: "",
@@ -123,15 +66,6 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "InferredNode"
   },
 
-  // =========================================================================
-  // InferredNode — the type-checking result wrapper
-  // =========================================================================
-  //
-  // InferredNode.Resolved.node references back to Node, completing the
-  // cross-type cycle. Functions that follow inferred → node → children
-  // are still O(n) because InferredNode adds no additional recursive depth.
-
-  // Cross-type back-reference: InferredNode.Resolved.node is Node
   InductiveField {
     type_name: "InferredNode",
     variant_name: "Resolved",
@@ -140,14 +74,6 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "Node"
   },
 
-  // =========================================================================
-  // MatchPattern — pattern matching structure
-  // =========================================================================
-  //
-  // MatchPattern.VariantPattern.field_bindings is List<Node> (the field
-  // binding nodes for destructuring). This makes pattern-matching functions
-  // O(n) in pattern size.
-
   InductiveField {
     type_name: "MatchPattern",
     variant_name: "VariantPattern",
@@ -155,14 +81,6 @@ data compiler_inductive_fields: List<InductiveField> = [
     shape: ListRecursion,
     element_type: "Node"
   },
-
-  // =========================================================================
-  // MethodSemantics — method resolution metadata
-  // =========================================================================
-  //
-  // AlgebraMethodSemantics carries Node fields for method definitions and
-  // fold accumulator types. Functions walking method semantics need these
-  // declared to get O(n) bounds.
 
   InductiveField {
     type_name: "MethodSemantics",
@@ -179,10 +97,6 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "Node"
   },
 
-  // =========================================================================
-  // ServiceMethodSemantics — service operation parameters
-  // =========================================================================
-
   InductiveField {
     type_name: "MethodSemantics",
     variant_name: "ServiceMethodSemantics",
@@ -191,18 +105,7 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "Node"
   },
 
-  // LambdaSemantics removed — lambda param types now live on
-  // enriched child nodes directly (Experiment 1, PR #437).
 ]
-
-// =========================================================================
-// Recursive type set — which types are in the recursive type system
-// =========================================================================
-//
-// This set identifies types that participate in the compiler's recursive
-// type graph. classify_field_recursion uses this to detect cross-type
-// references: if a field's type is in this set, it's a recursive reference
-// even if it's not self-referential.
 
 data compiler_recursive_types: Map<String, Bool> = {
   "Node": true,
@@ -211,7 +114,6 @@ data compiler_recursive_types: Map<String, Bool> = {
   "MethodSemantics": true
 }
 
-// Query: is a type name in the compiler's recursive type set?
 fn is_compiler_recursive_type(name: String) -> Bool {
   match map_get(compiler_recursive_types, name) {
     Present { value: _ } => true

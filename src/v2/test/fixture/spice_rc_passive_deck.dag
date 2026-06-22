@@ -1,8 +1,3 @@
-// src/v2/test/fixture/spice_rc_passive_deck.dag
-// Scope: canonical SpiceNetlist fixture — R in series with C to ground, .op directive.
-// Shared by ngspice (runnable oracle) and Modelica (acausal paradigm-challenger) emitters.
-// Status: P4 SPICE/analog lane fixture authority; import boundary is spice.dag types only.
-
 module v2.test.fixture.spice_rc_passive_deck
 
 import v2.extdeps.formats.spice {
@@ -18,7 +13,6 @@ import v2.extdeps.formats.spice {
   SpiceValue
 }
 
-// Topology: vin --[R1]-- mid --[C1]-- ground; .op for DC operating-point analysis.
 data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
   title: "RC passive series deck",
   body: [

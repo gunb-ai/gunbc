@@ -1,10 +1,3 @@
-// Scope: local lens-unit fixture — hardcoded facts only; not enrolled in CI gate.
-//        Pins the std→extdeps rule (DESIGN §3 import-arrow): a std-layer file importing
-//        extdeps is a violation, while an extdeps-layer file importing extdeps is NOT
-//        (the discriminating negative control — the rule is std-specific, not "any extdeps
-//        import anywhere").
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
-
 module v2.test.layering_imports.lens_unit.std_to_extdeps_fixture
 
 import v2.lens.layering_imports {
@@ -27,7 +20,6 @@ fn detects_std_to_extdeps_import_holds() -> Bool {
   layering_imports_violation_count(facts: std_to_extdeps_fixture_facts) == 1
 }
 
-// Negative control: extdeps importing extdeps is the correct direction → ZERO violations.
 data extdeps_to_extdeps_control_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixExtdeps,

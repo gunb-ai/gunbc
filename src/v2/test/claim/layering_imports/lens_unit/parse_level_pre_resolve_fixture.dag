@@ -1,6 +1,3 @@
-// Scope: local lens-unit fixture — hardcoded facts only; not enrolled in CI gate.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
-
 module v2.test.layering_imports.lens_unit.parse_level_pre_resolve_fixture
 
 import v2.lens.layering_imports {

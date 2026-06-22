@@ -1,8 +1,3 @@
-//! §5 execution witnesses: body_producer closure resolves cleanly AND inference stays fail-closed.
-//! Structural complexity-lens guards are in follow-on #5139 (not this fix-only PR).
-//!
-//! Run: cargo test -p v1-compiler-tests body_producer_infer_perf_witness -- --nocapture
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
@@ -11,8 +6,6 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 
 const ENTRY: &str = "src/v2/compiler/manual/pbp_body_producer_perf_repro.dag";
 
-// Embedded negative control (no on-disk .dag): if/else branch-type mismatch is
-// rejected by inference with a non-empty error diagnostic.
 const WRONG_TYPE_SRC: &str = r#"module v2.test.manual.pbp_body_producer_wrong_type_repro
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }

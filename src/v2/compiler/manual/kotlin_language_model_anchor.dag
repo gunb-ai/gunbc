@@ -1,6 +1,3 @@
-// Consumes: extdeps/languages/kotlin.dag.
-// Status: compile-only anchor.
-
 module v2.test.manual.kotlin_language_model_anchor
 import v2.std.language_model { LanguageModel }
 

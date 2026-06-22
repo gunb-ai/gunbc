@@ -1,5 +1,3 @@
-// Scope: live-tree GREEN — host-backed live roster scan (backfill + machinery policy).
-
 module v2.test.extdeps_external_authority.corpus.live_anchored_modules_clean
 
 import v2.std.logic { Bool }

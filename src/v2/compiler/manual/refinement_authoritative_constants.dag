@@ -1,8 +1,4 @@
-// Scope: std.refinement authoritative-constant discharge regression witnesses.
-
-
 module v2.test.manual.refinement_authoritative_constants
-
 
 import v2.std.refinement {
   make_at_least_minus_one_int_at_authoritative,
@@ -29,7 +25,6 @@ import v2.test.manual.connective_anchors {
   stub_empty_disj
 }
 
-
 fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
   match make_positive_int_at_authoritative(value: 2) {
     Accepted { value: accepted, diagnostics: _ } =>
@@ -42,14 +37,12 @@ fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
   }
 }
 
-
 fn witness_positive_int_authoritative_zero_rejects() -> Bool {
   match make_positive_int_at_authoritative(value: 0) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^positive_int_out_of_range
   }
 }
-
 
 fn witness_non_negative_int_authoritative_minus_one_rejects() -> Bool {
   match make_non_negative_int_at_authoritative(value: -1) {
@@ -58,14 +51,12 @@ fn witness_non_negative_int_authoritative_minus_one_rejects() -> Bool {
   }
 }
 
-
 fn witness_at_least_minus_one_int_authoritative_minus_two_rejects() -> Bool {
   match make_at_least_minus_one_int_at_authoritative(value: -2) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_one_int_out_of_range
   }
 }
-
 
 fn witness_at_least_minus_two_int_authoritative_minus_three_rejects() -> Bool {
   match make_at_least_minus_two_int_at_authoritative(value: -3) {
@@ -74,14 +65,12 @@ fn witness_at_least_minus_two_int_authoritative_minus_three_rejects() -> Bool {
   }
 }
 
-
 fn witness_exact_one_int_authoritative_two_rejects() -> Bool {
   match make_exact_one_int_at_authoritative(value: 2) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^exact_one_int_out_of_range
   }
 }
-
 
 fn refinement_authoritative_claim_input(ok: Bool) -> Node {
   if ok {
@@ -91,7 +80,6 @@ fn refinement_authoritative_claim_input(ok: Bool) -> Node {
   }
 }
 
-
 data claim_positive_int_authoritative_literal_two_accepts: TestClaim = EqualsClaim {
   label: "manual/refinement: positive_int_authoritative_literal(value: 2) matches make_positive_int_at_authoritative",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -99,7 +87,6 @@ data claim_positive_int_authoritative_literal_two_accepts: TestClaim = EqualsCla
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_positive_int_authoritative_zero_rejects: TestClaim = EqualsClaim {
   label: "manual/refinement: authoritative make_positive_int rejects 0",
@@ -109,7 +96,6 @@ data claim_positive_int_authoritative_zero_rejects: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_non_negative_int_authoritative_minus_one_rejects: TestClaim = EqualsClaim {
   label: "manual/refinement: authoritative make_non_negative_int rejects -1",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -117,7 +103,6 @@ data claim_non_negative_int_authoritative_minus_one_rejects: TestClaim = EqualsC
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_at_least_minus_one_int_authoritative_minus_two_rejects: TestClaim = EqualsClaim {
   label: "manual/refinement: authoritative make_at_least_minus_one_int rejects -2",
@@ -127,7 +112,6 @@ data claim_at_least_minus_one_int_authoritative_minus_two_rejects: TestClaim = E
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_at_least_minus_two_int_authoritative_minus_three_rejects: TestClaim = EqualsClaim {
   label: "manual/refinement: authoritative make_at_least_minus_two_int rejects -3",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -135,7 +119,6 @@ data claim_at_least_minus_two_int_authoritative_minus_three_rejects: TestClaim =
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_exact_one_int_authoritative_two_rejects: TestClaim = EqualsClaim {
   label: "manual/refinement: authoritative make_exact_one_int rejects 2",

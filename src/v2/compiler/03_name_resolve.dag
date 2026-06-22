@@ -1,12 +1,5 @@
-// src/v2/compiler/03_name_resolve.dag
-//
-// Scope: Stage 3c — module-root admission for cross-file resolution.
-// Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
-// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
-
 module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
-
 
 import v2.compiler.normalize { NormalizedTree }
 import v2.compiler.resolve {
@@ -71,38 +64,29 @@ import v2.std.qualified_name {
   qualified_name_eq
 }
 
-
-// 🟢 coproduct dissolution — T-28-B admission visibility is a closed alternative: a declared import is either admitted into the subject namespace or rejected as hidden; no third visibility state is modeled.
 type ImportVisibility
   = ImportVisible
   | ImportHidden
-
 
 type Import {
   target: QualifiedName
   visibility: ImportVisibility
 }
 
-
 type ResolutionSubject {
   name: QualifiedName
 }
-
 
 type Admission {
   subject: ResolutionSubject
   imports: FreeMonoid<Import>
 }
 
-
-// 🟢 coproduct dissolution — T-28-B admitted subject pairs authoritative module root with its namespace.
 type AdmittedSubject {
   namespace: Namespace
   subject_root: NormalizedTree
 }
 
-
-// 🟡 gated — feature:T-28-B-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
 type AdmissionState
   = AdmissionAccepted {
       bindings: Map<Symbol, Symbol>,
@@ -110,22 +94,15 @@ type AdmissionState
     }
   | AdmissionRejected { diagnostics: NonEmptyDiagnostics }
 
-
-// 🟢 coproduct dissolution — T-QN-1 Change 2 module-root validate accumulator.
 type ModuleRootValidateState
   = ModuleRootsValid { seen: FreeMonoid<QualifiedName>, diagnostics: Diagnostics }
   | ModuleRootsDuplicate { diagnostics: Diagnostics }
   | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
 
-
-// 🟡 coproduct dissolution — dissolve-on-arrival: PassingCandidateFold<T> generalization (T=QualifiedName; blocked by T=Node hardcode in passing_candidate_fold.dag); T-QN-1 Change 2 module-root name-find accumulator.
 type ModuleRootNameFindState
   = ModuleRootNameNotFound
   | ModuleRootNameFoundOnce
   | ModuleRootNameFoundDuplicate
-
-
-
 
 fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
@@ -135,11 +112,9 @@ fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-
 fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
   diagnostics_singleton(d: resolve_diagnostic(reason: reason))
 }
-
 
 fn admission_initial(base: Namespace) -> AdmissionState {
   AdmissionAccepted {
@@ -147,7 +122,6 @@ fn admission_initial(base: Namespace) -> AdmissionState {
     origins: empty_map()
   }
 }
-
 
 fn admit_export_symbol(
   sym: Symbol,
@@ -158,7 +132,7 @@ fn admit_export_symbol(
     AdmissionRejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
-      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v2.std.collection:27); site: admit_export_symbol origins
+
       match map_get(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
@@ -175,7 +149,6 @@ fn admit_export_symbol(
       }
   }
 }
-
 
 fn module_root_name_find_fold(
   names: FreeMonoid<QualifiedName>,
@@ -198,7 +171,6 @@ fn module_root_name_find_fold(
     }
   )
 }
-
 
 fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   match fold_list(
@@ -260,7 +232,6 @@ fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   }
 }
 
-
 fn module_root_find(
   roots: FreeMonoid<Node>,
   name: QualifiedName
@@ -310,7 +281,6 @@ fn module_root_find(
   }
 }
 
-
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>
@@ -323,13 +293,11 @@ fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   }
 }
 
-
 type AdmitExportsFold {
   origin: QualifiedName
   state: AdmissionState
   at_conj: Bool
 }
-
 
 fn admit_named_export_edge(
   edge: Edge,
@@ -342,7 +310,6 @@ fn admit_named_export_edge(
     Absent => state
   }
 }
-
 
 fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExportsFold> {
   NodeFoldTopDown {
@@ -375,7 +342,6 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
   }
 }
 
-
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
@@ -398,7 +364,6 @@ fn admit_named_exports(
     _ => state
   }
 }
-
 
 fn admit_import_root_find(
   found: Outcome<Node>,
@@ -423,7 +388,6 @@ fn admit_import_root_find(
   }
 }
 
-
 fn admit_import_visible_entry(
   roots: FreeMonoid<Node>,
   import_edge: Import,
@@ -438,7 +402,6 @@ fn admit_import_visible_entry(
     state: state
   )
 }
-
 
 fn admit_import_entry(
   roots: FreeMonoid<Node>,
@@ -481,7 +444,6 @@ fn admit_import_entry(
   }
 }
 
-
 fn admit_imports(
   roots: FreeMonoid<Node>,
   imports: FreeMonoid<Import>,
@@ -506,7 +468,6 @@ fn admit_imports(
   )
 }
 
-
 fn admission_namespace_base(lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: empty_map(),
@@ -514,14 +475,12 @@ fn admission_namespace_base(lm: LanguageModel) -> Namespace {
   }
 }
 
-
 fn subject_module_root_for_name(
   roots: FreeMonoid<Node>,
   name: QualifiedName
 ) -> Outcome<Node> {
   module_root_find(roots: roots, name: name)
 }
-
 
 fn namespace_for_subject(
   lm: LanguageModel,
@@ -584,7 +543,6 @@ fn namespace_for_subject(
   }
 }
 
-
 fn resolve_with_admission_policy(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
@@ -619,12 +577,6 @@ fn resolve_with_admission_policy(
   }
 }
 
-
-// Index-less single-tree resolution: no source-root provenance is supplied, so every import
-// is resolved by module_root_find within the given roots. Cross-tree admission requires the
-// grounded index (resolve_with_admission_grounded), so this path is correct for single-tree
-// compiles; a genuinely cross-tree import to a module absent from `roots` fails closed as an
-// unresolved import.
 fn resolve_with_admission(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,
@@ -639,10 +591,6 @@ fn resolve_with_admission(
   )
 }
 
-
-// Grounded cross-tree resolution: the QualifiedName -> SourceRootRef index and active
-// source-root set are derived from the host-tagged ingest (program_assembly). Cross-tree
-// import edges are admitted on grounded provenance + tree-pair fundamentality (§4/§5).
 fn resolve_with_admission_grounded(
   lm: LanguageModel,
   roots: FreeMonoid<Node>,

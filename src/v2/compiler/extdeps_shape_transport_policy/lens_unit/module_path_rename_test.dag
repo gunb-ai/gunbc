@@ -1,7 +1,3 @@
-// Scope: rename-test witness — module identity is QualifiedName, not filepath nickname.
-// extdeps.cargo_build lives at dsl/extdeps/rust/cargo_build.dag (path ≠ QN spine);
-// resolution is via build_module_index keyed by QN only — no path literal in this file.
-
 module v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename
 
 import v2.lens.extdeps_shape_transport_policy {

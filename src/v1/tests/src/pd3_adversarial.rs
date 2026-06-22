@@ -1,16 +1,3 @@
-//! A3 ADVERSARIAL PD-3 VERIFIER (cool-swift-143) — independent skeptic suite.
-//!
-//! Authored against the bounded direct-call arg check (node_type_compatible,
-//! direct-call ExprCall arm) landed by sleek-wolf-108 / PR #4524. Goal: try to
-//! BREAK the expanded PD-3 gate, not confirm it. Each test states the attack and
-//! the must-hold verdict. A red here is a real finding for Mgr-A.
-//!
-//! Mandated attacks:
-//!   (1) false-accept brand-twin UserId-for-AccountId (brand erased at call site)
-//!   (2) over-reject List-for-FreeMonoid (structural alias must stay transparent)
-//!   (3) over-reject UserId-for-UserId (same brand must pass)
-//!   (4) suite regression (covered by running the full crate)
-
 use v1_compiler::v1_std_core::CompilerDiagnostic;
 
 fn has_type_mismatch(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> bool {
@@ -20,9 +7,6 @@ fn has_type_mismatch(result: &v1_compiler::v1_compiler_compile::PipelineResult) 
         .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. }))
 }
 
-// ── (1) FALSE-ACCEPT brand-twin: harder variants than the basic positive ──
-
-// Twin in 2nd arg position — guards the enumerate/skip index pairing.
 #[test]
 fn adv_brand_twin_in_second_arg_must_reject() {
     let source = r#"
@@ -50,7 +34,6 @@ fn caller(uid: UserId) -> String {
     );
 }
 
-// Twin nested inside a container element — brand must survive recursion.
 #[test]
 fn adv_brand_twin_in_list_element_must_reject() {
     let source = r#"
@@ -78,7 +61,6 @@ fn caller(us: List<UserId>) -> Int {
     );
 }
 
-// Twin where the value flows through a let-binding before the call.
 #[test]
 fn adv_brand_twin_via_let_must_reject() {
     let source = r#"
@@ -107,9 +89,6 @@ fn caller(uid: UserId) -> String {
     );
 }
 
-// ── (2) OVER-REJECT structural alias: List = FreeMonoid transparency ──
-
-// Reverse direction of the implementer's accept test.
 #[test]
 fn adv_alias_freemonoid_for_list_must_accept() {
     let source = r#"
@@ -127,7 +106,6 @@ fn caller(xs: FreeMonoid<Int>) -> Int {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
-// Nested alias: FreeMonoid<List<Int>> for List<List<Int>>.
 #[test]
 fn adv_nested_alias_must_accept() {
     let source = r#"
@@ -145,9 +123,6 @@ fn caller(xs: FreeMonoid<List<Int>>) -> Int {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
-// ── (3) OVER-REJECT same brand: UserId-for-UserId variants ──
-
-// Same brand in 2nd arg slot.
 #[test]
 fn adv_same_brand_second_arg_must_accept() {
     let source = r#"
@@ -170,7 +145,6 @@ fn caller(uid: UserId) -> String {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
-// Same brand nested in container.
 #[test]
 fn adv_same_brand_in_list_must_accept() {
     let source = r#"
@@ -193,7 +167,6 @@ fn caller(us: List<UserId>) -> Int {
     crate::helpers::assert_no_diagnostics(&result);
 }
 
-// Plain (unbranded) matching types must not be perturbed by the new gate.
 #[test]
 fn adv_plain_matching_args_must_accept() {
     let source = r#"

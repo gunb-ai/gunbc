@@ -1,11 +1,4 @@
-// src/v2/std/algebra.dag
-// Scope: algebraic structures and canonical carrier constructions.
-// Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Status: T-2 modeled.
-
-
 module v2.std.algebra
-
 
 import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 type Magma<T> {
@@ -50,7 +43,7 @@ type Field<T> {
   commutative_ring: CommutativeRing<T>
   reciprocal: fn(T) -> T
 }
-// 🟡 needs-more-work — feature:field-reciprocal-partiality-declaration — field.reciprocal is carried as a fail-closed partiality declaration in v2.std.model_core.field_partiality_decl(); this file only exports the algebra carrier and inhabitance Node surface. dissolve-on: model_core wiring consumes the PartialOperationDecl carrier for reciprocal non-zero partiality without introducing an algebra -> model_core import.
+
 type ApproximateField<T> {
   add: fn(T, T) -> T
   zero: T
@@ -72,7 +65,7 @@ type BooleanAlgebra<T> {
   bounded_lattice: BoundedLattice<T>
   complement: fn(T) -> T
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
@@ -83,10 +76,7 @@ type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
 }
-// Left fold: traverse head→tail, thread accumulator forward. Combinator order is `cons(acc, head)`.
-// The naive list-rebuild combinator `fn(acc, h) { Cons { head: h, tail: acc } }` REVERSES input
-// (head is prepended at each step but visited first). Use fold_list_right for order-preserving
-// list-shaped output, or this fold with an explicit reverse pass for the same effect.
+
 fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
@@ -96,16 +86,14 @@ fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
 fn fold_non_empty<T>(head: T, tail: FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
   fold_list(xs: tail, empty: head, cons: cons)
 }
-// Right fold: recurse to tail first, then combine. Combinator order is `snoc(tail_result, head)`.
-// With `fn(acc, h) { Cons { head: h, tail: acc } }` the result PRESERVES input order — head is
-// prepended last, after the tail has been rebuilt. Not tail-recursive; depth is O(|xs|).
+
 fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
-// 🟡 coproduct dissolution — feature: FreeMonoid substrate tail<T> accessor; dissolves when stdlib provides substrate-derived tail projection returning Option<FreeMonoid<T>> directly, eliminating the per-use carrier type.
+
 type ListTailResult<T>
   = TailFound { tail: FreeMonoid<T> }
   | TailAbsent
@@ -116,7 +104,7 @@ fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
     Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
-// 🟢 coproduct dissolution — feature: FreeMonoid substrate head<T> accessor; dissolves when stdlib provides substrate-derived head projection returning Option<T> directly, eliminating the per-use carrier type.
+
 type ListHeadResult<T>
   = HeadFound { value: T }
   | HeadAbsent
@@ -127,7 +115,7 @@ fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
     Cons { head: h, tail: _ } => HeadFound { value: h }
   }
 }
-// Skip the first n elements; n <= 0 is identity; n > length yields Empty.
+
 fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   if n <= 0 {
     xs
@@ -160,18 +148,12 @@ fn fold_list_node<T>(
   )
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-
-
 fn algebra_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-
-// 🟡 needs-more-work — feature:T-2-free-monoid-equirecursive-tail — bind node://adhoc-82b64410-d48 — dissolve-on: std/ gains an equi-recursive type carrier or mu-fixpoint connective that can represent FreeMonoid<T>'s self-referential Cons.tail directly without a fixpoint-marker placeholder
 fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: Node {
@@ -184,7 +166,6 @@ fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
     inhabitant: inhabitant,
   )
 }
-
 
 fn free_monoid_type_node(inhabitant: Node) -> Node {
   Node {
@@ -210,7 +191,6 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -223,7 +203,6 @@ fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
 }
 }
 
-
 fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -234,7 +213,6 @@ fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn ordering_type_node() -> Node {
   Node {
@@ -247,7 +225,6 @@ fn ordering_type_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn magma_type_node(inhabitant: Node) -> Node {
   Node {
@@ -262,7 +239,6 @@ fn magma_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn semigroup_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -272,7 +248,6 @@ fn semigroup_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn monoid_type_node(inhabitant: Node) -> Node {
   Node {
@@ -285,7 +260,6 @@ fn monoid_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn commutative_monoid_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -295,7 +269,6 @@ fn commutative_monoid_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn group_type_node(inhabitant: Node) -> Node {
   Node {
@@ -311,7 +284,6 @@ fn group_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn abelian_group_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -321,7 +293,6 @@ fn abelian_group_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn semiring_type_node(inhabitant: Node) -> Node {
   Node {
@@ -334,7 +305,6 @@ fn semiring_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn commutative_semiring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -344,7 +314,6 @@ fn commutative_semiring_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn ring_type_node(inhabitant: Node) -> Node {
   Node {
@@ -357,7 +326,6 @@ fn ring_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn commutative_ring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -367,7 +335,6 @@ fn commutative_ring_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn ordered_ring_type_node(inhabitant: Node) -> Node {
   Node {
@@ -382,7 +349,6 @@ fn ordered_ring_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn field_type_node(inhabitant: Node) -> Node {
   Node {
@@ -400,7 +366,6 @@ fn field_reciprocal_operation_node() -> Node {
  occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn field_reciprocal_nonzero_precondition_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^field_reciprocal_nonzero_precondition } }, children: [],
@@ -435,7 +400,6 @@ fn approximate_field_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn lattice_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -453,7 +417,6 @@ fn lattice_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn bounded_lattice_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -465,7 +428,6 @@ fn bounded_lattice_type_node(inhabitant: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn boolean_algebra_type_node(inhabitant: Node) -> Node {
   Node {
@@ -484,7 +446,6 @@ fn boolean_algebra_type_node(inhabitant: Node) -> Node {
 }
 }
 
-
 fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -496,14 +457,12 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
 }
 }
 
-
 fn magma_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: magma_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn semigroup_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -512,14 +471,12 @@ fn semigroup_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn monoid_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: monoid_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn commutative_monoid_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -528,14 +485,12 @@ fn commutative_monoid_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn group_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: group_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn abelian_group_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -544,14 +499,12 @@ fn abelian_group_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn semiring_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: semiring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn commutative_semiring_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -560,14 +513,12 @@ fn commutative_semiring_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn ring_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn commutative_ring_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -576,14 +527,12 @@ fn commutative_ring_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn ordered_ring_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: ordered_ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn field_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -592,14 +541,12 @@ fn field_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn approximate_field_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-
 
 fn lattice_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -608,7 +555,6 @@ fn lattice_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn bounded_lattice_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: bounded_lattice_type_node(inhabitant: inhabitant),
@@ -616,22 +562,15 @@ fn bounded_lattice_node(inhabitant: Node) -> Node {
   )
 }
 
-
-// BoundedLattice instance completeness types and field paths (query lives in
-// bounded_lattice_completeness.dag — cycle-breaker for node_query authority).
-// 🟢 coproduct dissolution — CP-AI1-BL-MISSING-WITNESS (MissingMeet/Join/LatticeField distinguish partial-instance gaps).
 type BoundedLatticeMissingWitness
   = MissingMeet
   | MissingJoin
   | MissingLatticeField
 
-
-// 🟢 coproduct dissolution — CP-AI1-BL-INSTANCE-COMPLETENESS (NotBL / Complete / Partial trichotomy).
 type BoundedLatticeInstanceCompleteness
   = NotBoundedLatticeInstance
   | BoundedLatticeComplete
   | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
-
 
 fn boolean_algebra_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
@@ -640,14 +579,13 @@ fn boolean_algebra_node(inhabitant: Node) -> Node {
   )
 }
 
-
 fn free_monoid_node(inhabitant: Node) -> Node {
   algebra_inhabitance_node(
     algebra: free_monoid_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
+
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
@@ -655,8 +593,6 @@ fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   }
 }
 
-
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived non-Empty-variant discriminant projection; forbidden: fold_list laundering.
 fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match is_empty(xs: xs) {
     true => false
@@ -664,11 +600,9 @@ fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
   }
 }
 
-
 fn length<T>(xs: FreeMonoid<T>) -> Int {
   fold_list(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
 }
-
 
 fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
   fold_list(xs: xs, empty: true, cons: fn(acc, item) {
@@ -679,7 +613,6 @@ fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
   })
 }
 
-
 fn any<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, item) {
     match acc {
@@ -688,7 +621,6 @@ fn any<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
     }
   })
 }
-
 
 fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> FreeMonoid<T> {
   fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
@@ -699,11 +631,9 @@ fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> FreeMonoid<T> {
   })
 }
 
-
 fn contains<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Bool {
   any(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
 }
-
 
 fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
   fold_list(xs: xs, empty: 0, cons: fn(count, item) {
@@ -714,11 +644,9 @@ fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
   })
 }
 
-
 fn count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
   count_where(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
 }
-
 
 fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   let state = fold_list(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
@@ -732,23 +660,17 @@ fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   })
   state.unique
 }
-// FreeMonoid concatenation: the canonical monoid operation on lists.
-// Implemented via fold_list_right so head order is preserved.
+
 fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
   fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
     Cons { head: item, tail: acc }
   })
 }
 
-
-// Append a single element at the tail (snoc).
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 
-
-// Bag (multiset) equality: order-insensitive; equal lengths AND per-element
-// occurrence counts match. O(n^2) in the length of xs.
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   if length(xs: xs) != length(xs: ys) {
     false
@@ -759,8 +681,6 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
   }
 }
 
-
-// 🟢 terminal — no richer substrate to dissolve into; this IS the canonical two-list zip-equality.
 fn zip_eq<T>(
   a: FreeMonoid<T>,
   b: FreeMonoid<T>,
@@ -781,8 +701,6 @@ fn zip_eq<T>(
   }
 }
 
-
-// 🟢 terminal — no richer substrate to dissolve into; this IS the canonical prefix-fold primitive.
 fn is_prefix_of<T>(
   prefix: FreeMonoid<T>,
   xs: FreeMonoid<T>,
@@ -799,11 +717,10 @@ fn is_prefix_of<T>(
   }
 }
 
-
 type PointwisePower<T> {
   member: fn(T) -> Bool
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Ordering
   = Less
   | Equal

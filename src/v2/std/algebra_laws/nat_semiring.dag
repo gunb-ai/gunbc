@@ -1,5 +1,3 @@
-// Scope: TestClaim corpus rows for Nat algebra laws generated from std/nat.dag subjects.
-
 module v2.test.algebra_laws.nat_semiring
 
 import v2.std.diagnostic {

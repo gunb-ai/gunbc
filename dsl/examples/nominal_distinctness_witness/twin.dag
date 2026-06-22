@@ -1,20 +1,3 @@
-// Perturbed twin of witness.dag — proves the witness tests the real capability.
-//
-// IDENTICAL to witness.dag EXCEPT the two distinct nominal types A (UserId) and
-// B (AccountId) are COLLAPSED into a SINGLE type (UserId). The same call is now
-// a SAME-TYPE call, so there is nothing for nominal distinctness to reject.
-//
-// EXPECTED VERDICT: ACCEPTED.
-//
-// The witness -> twin pair must FLIP rejected -> accepted. That pass<->fail flip
-// is what makes the witness a discriminating input rather than a vacuous test:
-//   witness.dag  (two distinct types, cross-type call)  -> REJECTED
-//   twin.dag     (one type, same-type call)             -> ACCEPTED
-// If both passed (or both failed) the witness would prove nothing.
-//
-// Sanity check (frontend parse + typecheck only):
-//   gunbc compile --source-root dsl/examples/nominal_distinctness_witness \
-//                 --source-root dsl/std --output-dir /tmp/twin_out --target dag
 module examples.nominal_distinctness_twin
 
 type UserId {
@@ -27,6 +10,5 @@ fn lookup(id: UserId) -> Int {
 
 fn main() -> Int {
   let acct = UserId { raw: 7 }
-  // Same-type call: UserId passed where UserId is expected. Nothing to reject.
   lookup(id: acct)
 }

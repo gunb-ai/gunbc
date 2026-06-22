@@ -1,37 +1,3 @@
-// dsl/test/claim/markdown_roundtrip_test.dag
-//
-// The §5.2 round-trip law as the markdown medium-completeness oracle
-// (DESIGN §4 "one grammar, both directions"; §5.2 (A) `ingest ∘ emit = id`):
-// a markdown INGEST reading the SAME `MarkdownSpellings` rows the emitter writes,
-// proving ingest-of-emit GREEN by execution over the canonical core.
-//
-// Teeth:
-//   1. ROUND-TRIP LAW — ingest(serialize(doc)) == doc for a document exercising
-//      the Lossless core (headings, paragraph, flat unordered/ordered/task lists,
-//      fenced code). This is the §5-of-DESIGN "green by a real consumer with a
-//      discriminating input" bar applied to a medium: the IR is recovered exactly.
-//   2. ROW-SHARED both directions (the medium-as-Node guard, #5496, turned on the
-//      INGEST side) — emit AND ingest under a perturbed row still round-trips:
-//      both directions consult the SAME row, so they shift together. Exercised on
-//      TWO independent rows (unordered bullet "- "->"+ " AND block separator
-//      "\n\n"->"\n---\n") so the claim is not inert against a single non-bullet
-//      row. A spelling forked between emitter and parser would break here.
-//   3. DISCRIMINATING (ingest actually READS the row) — emit with a perturbed row,
-//      ingest with the CANONICAL rows: the round-trip MUST fail (the shifted source
-//      is unreadable by a canonical ingest). If ingest had hard-coded the spelling
-//      instead of reading the row, this would be inert and the witness goes RED —
-//      exactly the medium-as-Node tooth. Checked for the bullet AND the separator.
-//   4. FIDELITY TAG — the recovered core is advertised `Lossless` (DESIGN §5.2 (B)
-//      decidability partition; the frontier residue stays the unclaimed Lossy part).
-//
-// FRONTIER (NOT claimed, §5 honesty): inline markup (emphasis/strong/code/link/
-// image), nested lists, tables and block quotes are the Lossy partition — the
-// emitter is total over them but their source is ambiguous on re-ingest, so the
-// round-trip law is deliberately NOT asserted there (see the ingest's FIDELITY
-// BOUNDARY note). This witness proves the law on the core only.
-//
-// Run: gunbc run --source-root dsl --entry test.claim.markdown_roundtrip --function markdown_roundtrip_keystone_holds --claim-run
-
 module test.claim.markdown_roundtrip
 
 import std.markdown {
@@ -62,7 +28,6 @@ import extdeps.languages.markdown {
 }
 import extdeps.communication.medium { Lossless, Lossy }
 
-// A document built entirely from the Lossless canonical core, plain-text inlines.
 fn roundtrip_core_doc() -> MarkdownDocument {
   MarkdownDocument {
     blocks: [
@@ -98,15 +63,10 @@ fn roundtrip_core_doc() -> MarkdownDocument {
   }
 }
 
-// Tooth 1: the round-trip law over the canonical core.
 fn witness_roundtrip_core() -> Bool {
   ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
 }
 
-// A perturbation of the canonical rows overriding two independent rows: the
-// unordered bullet and the top-level block separator. Every other field stays
-// canonical, so a single varied row is what shifts the source (one builder, no
-// 24-field duplication — §2 DRY).
 fn spellings_override(bullet: String, separator: String) -> MarkdownSpellings {
   MarkdownSpellings {
     heading_marker: commonmark_gfm_spellings.heading_marker,
@@ -144,10 +104,6 @@ fn perturbed_separator_spellings() -> MarkdownSpellings {
   spellings_override(bullet: commonmark_gfm_spellings.unordered_bullet, separator: "\n---\n")
 }
 
-// Tooth 2: emit AND ingest under the SAME perturbed row still round-trips —
-// both directions read the row, so they shift together. Exercised on TWO
-// independent rows (the bullet AND the block separator) so the row-sharing claim
-// is not inert against any single non-bullet row.
 fn witness_roundtrip_under_perturbed_rows() -> Bool {
   let spb = perturbed_bullet_spellings()
   let restored_b = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: spb), sp: spb)
@@ -156,11 +112,6 @@ fn witness_roundtrip_under_perturbed_rows() -> Bool {
   (restored_b == roundtrip_core_doc()) && (restored_s == roundtrip_core_doc())
 }
 
-// Tooth 3: discriminating — emit with a perturbed row, ingest with the CANONICAL
-// rows. The shifted source is unreadable by a canonical ingest, so the round-trip
-// MUST fail. Inert (still equal) == ingest hard-coded the spelling instead of
-// reading the row == RED. Checked for the bullet AND the block separator, so each
-// row is proven genuinely consulted by ingest, not just emitted.
 fn witness_ingest_reads_bullet_row() -> Bool {
   let emitted_b = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
   let emitted_s = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_separator_spellings())
@@ -168,7 +119,6 @@ fn witness_ingest_reads_bullet_row() -> Bool {
     && !(ingest_markdown_source(src: emitted_s) == roundtrip_core_doc())
 }
 
-// Tooth 4: the recovered core is advertised Lossless (the §5.2 (B) partition).
 fn witness_core_advertised_lossless() -> Bool {
   let recovered = ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc()))
   let m = markdown_medium_lossless(doc: recovered)
@@ -178,7 +128,6 @@ fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-// A frontier document: a paragraph carrying inline EMPHASIS (the Lossy partition).
 fn frontier_emphasis_doc() -> MarkdownDocument {
   MarkdownDocument {
     blocks: [
@@ -192,14 +141,6 @@ fn frontier_emphasis_doc() -> MarkdownDocument {
   }
 }
 
-// Tooth 5: the FIDELITY BOUNDARY made EXECUTABLE (§5 "specification-without-
-// execution" guard). The frontier is declared Lossy in comments — this PROVES it
-// by execution: an emphasis-bearing doc does NOT round-trip (emit "see *this*" is
-// re-ingested as literal paragraph text), so the §5.2 round-trip law correctly
-// does NOT hold there. If this ever went green (round-tripped), the Lossless core
-// claim would silently extend into the frontier — and this witness goes RED,
-// catching the overclaim. (The honest cure is to model inline markup, flipping
-// emphasis to Lossless; until then the boundary is enforced here, not asserted.)
 fn witness_frontier_not_roundtripped() -> Bool {
   !(ingest_markdown_source(src: serialize_markdown_source(doc: frontier_emphasis_doc())) == frontier_emphasis_doc())
 }

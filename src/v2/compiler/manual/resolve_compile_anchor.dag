@@ -1,5 +1,3 @@
-// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
-
 module v2.test.manual.resolve_compile_anchor
 
 import v2.compiler.name_resolve {

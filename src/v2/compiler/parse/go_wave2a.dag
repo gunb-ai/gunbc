@@ -1,6 +1,3 @@
-// Scope: B.2.2 symmetry row for Go parse claims in the parse/ wave2a corpus.
-// Status: honest MVP-scoped receipt; broader Go Wave 2 parse coverage remains gated on Go grammar/fact-bundle work.
-
 module v2.test.parse.go_wave2a
 
 import v2.compiler.tokenize { tokenize }

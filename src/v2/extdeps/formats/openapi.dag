@@ -1,12 +1,4 @@
-// src/v2/extdeps/formats/openapi.dag
-// Scope: OpenAPI 3.1.0 document slice; format slice.
-// Status: parse/emit axes (gated on lex/parse/emit pipeline substrate), numeric-lexeme profile (OAS §4.1 openapi semver),
-//         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
-//         document/operation wire-contract facts.
-// Anchor: https://spec.openapis.org/oas/v3.1.0
-
 module v2.extdeps.formats.openapi
-
 
 import v2.extdeps.coordination { ExchangePattern, RequestReply }
 import v2.extdeps.formats.json { JsonDocument, JsonValue }
@@ -27,28 +19,21 @@ import v2.std.network {
   UriReference
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiSpecificationExtensionKey.
 type OpenApiSpecificationExtensionKey
   = OpenApiSpecExtensionOaiReserved { remainder: String }
   | OpenApiSpecExtensionOasReserved { remainder: String }
   | OpenApiSpecExtensionVendor { after_x_hyphen: String }
 
-
 type OpenApiComponentsMapKey {
   name: String,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiOpenapiObjectDeferredKey.
 type OpenApiOpenapiObjectDeferredKey
   = OpenApiOpenapiDeferredServers
   | OpenApiOpenapiDeferredSecurity
   | OpenApiOpenapiDeferredTags
   | OpenApiOpenapiDeferredExternalDocs
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiOperationDeferredKey.
 type OpenApiOperationDeferredKey
   = OpenApiOpDeferredTags
   | OpenApiOpDeferredSummary
@@ -61,8 +46,6 @@ type OpenApiOperationDeferredKey
   | OpenApiOpDeferredServers
   | OpenApiOpDeferredDeprecated
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiPathItemDeferredKey.
 type OpenApiPathItemDeferredKey
   = OpenApiPathDeferredDollarRef
   | OpenApiPathDeferredSummary
@@ -70,8 +53,6 @@ type OpenApiPathItemDeferredKey
   | OpenApiPathDeferredServers
   | OpenApiPathDeferredParameters
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiComponentsDeferredKey.
 type OpenApiComponentsDeferredKey
   = OpenApiComponentsDeferredResponses
   | OpenApiComponentsDeferredParameters
@@ -82,36 +63,27 @@ type OpenApiComponentsDeferredKey
   | OpenApiComponentsDeferredLinks
   | OpenApiComponentsDeferredCallbacks
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiMediaTypeDeferredKey.
 type OpenApiMediaTypeDeferredKey
   = OpenApiMediaDeferredExample
   | OpenApiMediaDeferredExamples
   | OpenApiMediaDeferredEncoding
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeaderDeferredKey.
 type OpenApiHeaderDeferredKey
   = OpenApiHeaderDeferredStyle
   | OpenApiHeaderDeferredExplode
   | OpenApiHeaderDeferredExample
   | OpenApiHeaderDeferredExamples
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkDeferredKey.
 type OpenApiLinkDeferredKey
   = OpenApiLinkDeferredParameters
   | OpenApiLinkDeferredRequestBody
   | OpenApiLinkDeferredServer
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiSchemaOasMemberKey.
 type OpenApiSchemaOasMemberKey
   = OpenApiSchemaOasDiscriminator
   | OpenApiSchemaOasXml
   | OpenApiSchemaOasExternalDocs
   | OpenApiSchemaOasExample
-
 
 type OpenApiSchema {
   core: JsonSchema,
@@ -120,9 +92,6 @@ type OpenApiSchema {
   openapi_schema_deferred_keyword_members: Map<String, JsonValue>,
 }
 
-
-// Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethod.
 type OpenApiAdmittedHttpMethod
   = OpenApiGet
   | OpenApiPut
@@ -146,21 +115,15 @@ fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> HttpMet
   }
 }
 
-
 type OpenApiReferenceObject {
   dollar_ref: String,
   summary: Optional<String>,
   description: Optional<String>,
 }
 
-
-
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkTarget.
 type OpenApiLinkTarget
   = OpenApiLinkTargetOperationId { operation_id: String }
   | OpenApiLinkTargetOperationRef { operation_ref: String }
-
 
 type OpenApiLinkObject {
   target: OpenApiLinkTarget,
@@ -169,12 +132,9 @@ type OpenApiLinkObject {
   link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkOrReference.
 type OpenApiLinkOrReference
   = OpenApiLinkInline { link: OpenApiLinkObject }
   | OpenApiLinkReference { reference: OpenApiReferenceObject }
-
 
 type OpenApiContact {
   name: Optional<String>,
@@ -183,20 +143,16 @@ type OpenApiContact {
   contact_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot.
 type OpenApiLicenseUrlOrIdentifierSlot
   = OpenApiLicenseUrlPresent { url: UriReference }
   | OpenApiLicenseIdentifierPresent { identifier: String }
   | OpenApiLicenseUrlOrIdentifierNeither
-
 
 type OpenApiLicense {
   name: String,
   url_or_identifier: OpenApiLicenseUrlOrIdentifierSlot,
   license_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
-
 
 type OpenApiInfo {
   title: String,
@@ -209,25 +165,20 @@ type OpenApiInfo {
   info_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
 type OpenApiMediaType {
   schema_shape: Optional<OpenApiSchema>,
   media_type_deferred_members: Map<OpenApiMediaTypeDeferredKey, JsonValue>,
   media_type_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
 type OpenApiHeaderContentSingle {
   media_type: String,
   media: OpenApiMediaType,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeaderPayloadSlot.
 type OpenApiHeaderPayloadSlot
   = OpenApiHeaderPayloadSchema { schema: OpenApiSchema }
   | OpenApiHeaderPayloadContent { content: OpenApiHeaderContentSingle }
-
 
 type OpenApiHeaderObject {
   description: Optional<String>,
@@ -238,12 +189,9 @@ type OpenApiHeaderObject {
   header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiHeaderOrReference.
 type OpenApiHeaderOrReference
   = OpenApiHeaderInline { header: OpenApiHeaderObject }
   | OpenApiHeaderReference { reference: OpenApiReferenceObject }
-
 
 type OpenApiResponse {
   description: String,
@@ -253,14 +201,10 @@ type OpenApiResponse {
   extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseOrReference.
 type OpenApiResponseOrReference
   = OpenApiResponseInline { response: OpenApiResponse }
   | OpenApiResponseReference { reference: OpenApiReferenceObject }
 
-
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiStatusDigit.
 type OpenApiStatusDigit
   = OpenApiDigit0
   | OpenApiDigit1
@@ -273,8 +217,6 @@ type OpenApiStatusDigit
   | OpenApiDigit8
   | OpenApiDigit9
 
-
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiStatusHundreds.
 type OpenApiStatusHundreds
   = OpenApiHundreds1
   | OpenApiHundreds2
@@ -282,8 +224,6 @@ type OpenApiStatusHundreds
   | OpenApiHundreds4
   | OpenApiHundreds5
 
-
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiResponseKeyWildcardKind.
 type OpenApiResponseKeyWildcardKind
   = OpenApiWildcard1xx
   | OpenApiWildcard2xx
@@ -291,24 +231,18 @@ type OpenApiResponseKeyWildcardKind
   | OpenApiWildcard4xx
   | OpenApiWildcard5xx
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseKeyNonDefault.
 type OpenApiResponseKeyNonDefault
   = OpenApiResponseKeyExplicitHttpStatus { hundreds: OpenApiStatusHundreds, tens: OpenApiStatusDigit, ones: OpenApiStatusDigit }
   | OpenApiResponseKeyWildcard { kind: OpenApiResponseKeyWildcardKind }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiResponseKey.
 type OpenApiResponseKey
   = OpenApiResponseKeyDefault
   | OpenApiResponseKeyOther { key: OpenApiResponseKeyNonDefault }
-
 
 type OpenApiResponsesPrimaryEntry {
   status_key: OpenApiResponseKeyNonDefault,
   response: OpenApiResponseOrReference,
 }
-
 
 type OpenApiResponses {
   primary_response: OpenApiResponsesPrimaryEntry,
@@ -317,7 +251,6 @@ type OpenApiResponses {
   responses_object_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
 type OpenApiOperation {
   operation_id: Optional<String>,
   responses: OpenApiResponses,
@@ -325,30 +258,24 @@ type OpenApiOperation {
   operation_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
 type OpenApiPathItem {
   routes: Map<OpenApiAdmittedHttpMethod, OpenApiOperation>,
   path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonValue>,
   path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiPathItemOrReference.
 type OpenApiPathItemOrReference
   = OpenApiPathItemInline { path_item: OpenApiPathItem }
   | OpenApiPathItemReference { reference: OpenApiReferenceObject }
-
 
 type OpenApiPathTemplateKey {
   after_slash: String,
 }
 
-
 type OpenApiPaths {
   routes: Map<OpenApiPathTemplateKey, OpenApiPathItem>,
   paths_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
-
 
 type OpenApiComponents {
   schemas: Optional<Map<OpenApiComponentsMapKey, OpenApiSchema>>,
@@ -357,14 +284,11 @@ type OpenApiComponents {
   components_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
 type OpenApiWebhooks {
   routes: Map<String, OpenApiPathItemOrReference>,
   webhooks_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiDocumentRoot.
 type OpenApiDocumentRoot
   = OpenApiDocumentRootPathsPresent {
       paths: OpenApiPaths,
@@ -379,16 +303,12 @@ type OpenApiDocumentRoot
       webhooks: OpenApiWebhooks,
     }
 
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiOpenapiField3_1
 type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 
-
-// 🟡 coproduct dissolution — feature:openapi-json-yaml-parse-emit-selector — consumer:openapi-parse-emit-boundary — dissolve-on-arrival: parse/emit selects JsonDocument or YamlDocument directly from source media type / target artifact kind, eliminating this document-local selector; forbidden: adding a third OpenAPI concrete grammar authority.
 type OpenApiConcreteSyntaxAuthority
   = OpenApiJsonSyntax { json_document: JsonDocument }
   | OpenApiYamlSyntax { yaml_document: YamlDocument }
-
 
 type OpenApiDocument {
   concrete_syntax: OpenApiConcreteSyntaxAuthority,
@@ -400,7 +320,6 @@ type OpenApiDocument {
   root_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
 
-
 type OpenApiOpenapi31MajorMinorFixedWitness {}
 
 type OpenApiOpenapi31PatchNatCarrierWitness {}
@@ -409,7 +328,6 @@ type OpenApiNumericLexemeFacts {
   openapi_field_major_minor_fixed_3_1: OpenApiOpenapi31MajorMinorFixedWitness,
   openapi_field_patch_nat_carrier: OpenApiOpenapi31PatchNatCarrierWitness,
 }
-
 
 type OpenApiPathsRouteKeysUniqueWitness {}
 
@@ -438,7 +356,6 @@ type OpenApiUniqueNameProfileFacts {
   response_links_keys_unique: OpenApiResponseLinksKeysUniqueWitness,
 }
 
-
 type OpenApiHttpStatusCodeBoundedRangeWitness {}
 
 type OpenApiHttpStatusCodeFacts {
@@ -447,7 +364,6 @@ type OpenApiHttpStatusCodeFacts {
   ones: OpenApiStatusDigit,
   bounded_100_to_599: OpenApiHttpStatusCodeBoundedRangeWitness,
 }
-
 
 fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> Nat {
   match digit {
@@ -479,7 +395,6 @@ type OpenApiResponseKeyWildcardBridgeRow {
   low: Nat,
   high: Nat,
 }
-
 
 data openapi_wildcard_bridge_1xx: OpenApiResponseKeyWildcardBridgeRow = {
   kind: OpenApiWildcard1xx,
@@ -527,7 +442,6 @@ fn openapi_http_status_code_value(
   openapi_status_hundreds_value(hundreds: hundreds) + (openapi_status_digit_value(digit: tens) * 10) + openapi_status_digit_value(digit: ones)
 }
 
-
 data openapi_operation_exchange_request_reply: ExchangePattern = RequestReply
 
 type OpenApiOperationWireContractFacts {
@@ -540,10 +454,3 @@ type OpenApiDocumentWireContractFacts {
   paths: Optional<OpenApiPaths>,
   unique_names: OpenApiUniqueNameProfileFacts,
 }
-
-
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
-// 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
-// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_admitted_to_http_method + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
-// 🟡 gated — feature: operation WireContractFacts composition with coordination.dag WireContractFacts + ExchangePattern authority — SL-3229-OPENAPI-WIRECONTRACT-COORDINATION.

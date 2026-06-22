@@ -1,7 +1,3 @@
-// Scope: Wave-5-A — P3 commitment 6 public terminal; empty required-lens list + reject-before-compile gate.
-// Anchor: P3 commitment 6 (DESIGN.md §6 — one fold)
-
-
 module v2.test.manual.validate_then_compile_public_terminal
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -64,7 +60,6 @@ fn claim_symbol_node(s: Symbol) -> Node {
 }
 }
 
-
 fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(
@@ -73,17 +68,13 @@ fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-
 data rejecting_lens: CompileLens = CompileLens { gate: always_reject_lens_gate }
-
 
 fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_accepted(Holds { value: tree.root })
 }
 
-
 data grounding_sanity_lens: CompileLens = CompileLens { gate: grounding_sanity_gate }
-
 
 fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutput>> {
   validate_then_compile(
@@ -93,7 +84,6 @@ fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutpu
   )
 }
 
-
 fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
@@ -101,7 +91,6 @@ fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<CompileOut
     mode: TranslateTo { target: rust_target_model_stub }
   )
 }
-
 
 fn claim_empty_lenses_matches_compile_core_outcome(
   actual: Outcome<Validated<CompileOutput>>
@@ -116,7 +105,6 @@ fn claim_empty_lenses_matches_compile_core_outcome(
   }
 }
 
-
 fn claim_rejecting_lens_is_compile_lens_gate_rejected(
   actual: Outcome<Validated<CompileOutput>>
 ) -> Bool {
@@ -127,7 +115,6 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
   }
 }
 
-
 data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
   label: "manual/wave-5-a: validate_then_compile public terminal module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -136,7 +123,6 @@ data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
   label: "manual/wave-5-a: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -144,7 +130,6 @@ data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
   rhs: claim_validate_then_compile_skips_gate_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 fn claim_validate_then_compile_skips_gate_passes() -> Node {
   if claim_empty_lenses_matches_compile_core_outcome(
@@ -160,7 +145,6 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
   }
 }
 
-
 data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
   label: "manual/wave-5-a: required lens Rejected blocks before compile-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -168,7 +152,6 @@ data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
   rhs: claim_rejecting_lens_blocks_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 fn claim_rejecting_lens_blocks_passes() -> Node {
   if claim_rejecting_lens_is_compile_lens_gate_rejected(

@@ -1,6 +1,3 @@
-// Scope: scheduler runnable-frontier fixture.
-// Status: manual fixture until generated TestClaim execution lands.
-
 module v2.test.manual.scheduler_runnable_frontier
 
 import v2.std.collection { List }
@@ -25,7 +22,6 @@ import v2.workflow.scheduler {
   scheduler_plan_from_dependencies,
   scheduler_step_plan_from_dependencies
 }
-
 
 import v2.std.verification {
   BoolWitness,

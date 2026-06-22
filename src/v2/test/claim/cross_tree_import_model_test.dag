@@ -1,13 +1,3 @@
-// Scope: Route C lens-unit witnesses — cross-tree import model (synthetic facts, no host).
-//
-// GREEN: admitted cross-tree import under valid TreeFundamentalityOrder + layer-direction.
-// RED:   denied cross-tree import — wrong layer direction (std→compiler cross-tree).
-// RED:   fail-closed — FundamentalityUnknown denies any cross-tree edge.
-// RED:   missing root — to_tree not in SourceRootSet → denied.
-// RED:   LessFundamental — to-tree less fundamental → denied.
-//
-// Enrolled in CI via _test.dag naming convention (floor discovery auto-enroll).
-
 module v2.test.claim.cross_tree_import_model
 
 import v2.std.collection { List }
@@ -30,16 +20,10 @@ import v2.std.cross_tree.import_model {
 import v2.std.layer { LayerPrefixCompiler, LayerPrefixStd, LayerPrefixWorkflow }
 import v2.std.logic { Bool }
 
-
-// ── Shared fixtures ────────────────────────────────────────────────────────────
-
-// Both trees in scope (dual-root compilation).
 data both_roots: SourceRootSet = [V2Tree, DslTree]
 
-// Only dsl in scope (single-root; v2 absent).
 data dsl_only_roots: SourceRootSet = [DslTree]
 
-// dsl.std → v2.std.* : same layer ordinal (std=0), order determines admission.
 data dsl_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
   from_tree: DslTree,
   from_layer: LayerPrefixStd,
@@ -49,7 +33,6 @@ data dsl_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
   to_module: "v2.std.algebra"
 }
 
-// dsl.std → v2.compiler.* : layer-direction violated (std cannot import compiler; ordinal 0 < 2).
 data dsl_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
   from_tree: DslTree,
   from_layer: LayerPrefixStd,
@@ -59,7 +42,6 @@ data dsl_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
   to_module: "v2.compiler.tokenize"
 }
 
-// v2.workflow → dsl.std : workflow can import std (ordinal 3 >= 0); valid direction.
 data v2_workflow_to_dsl_std_edge: CrossTreeImport = CrossTreeImport {
   from_tree: V2Tree,
   from_layer: LayerPrefixWorkflow,
@@ -69,10 +51,6 @@ data v2_workflow_to_dsl_std_edge: CrossTreeImport = CrossTreeImport {
   to_module: "dsl.std.types"
 }
 
-
-// ── GREEN witnesses ────────────────────────────────────────────────────────────
-
-// dsl.std → v2.std admitted when V2Tree is MoreFundamental than DslTree.
 fn witness_dsl_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dsl_std_to_v2_std_edge,
@@ -84,7 +62,6 @@ fn witness_dsl_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
   }
 }
 
-// dsl.std → v2.std admitted when trees are CoFundamental (peer std, same ordinal).
 fn witness_dsl_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dsl_std_to_v2_std_edge,
@@ -96,7 +73,6 @@ fn witness_dsl_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
   }
 }
 
-// v2.workflow → dsl.std admitted when DslTree is MoreFundamental than V2Tree.
 fn witness_v2_workflow_to_dsl_std_more_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: v2_workflow_to_dsl_std_edge,
@@ -108,7 +84,6 @@ fn witness_v2_workflow_to_dsl_std_more_fundamental_admitted_holds() -> Bool {
   }
 }
 
-// Closure of two admitted edges admitted end-to-end.
 fn witness_import_closure_all_admitted_holds() -> Bool {
   let closure = [dsl_std_to_v2_std_edge, v2_workflow_to_dsl_std_edge]
   match cross_tree_import_closure_admitted(
@@ -121,10 +96,6 @@ fn witness_import_closure_all_admitted_holds() -> Bool {
   }
 }
 
-
-// ── RED witnesses ─────────────────────────────────────────────────────────────
-
-// dsl.std → v2.compiler: layer-direction violated (std ordinal 0 < compiler ordinal 2).
 fn witness_layer_direction_violated_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dsl_std_to_v2_compiler_edge,
@@ -136,7 +107,6 @@ fn witness_layer_direction_violated_denied_holds() -> Bool {
   }
 }
 
-// FundamentalityUnknown: fail-closed — any cross-tree edge denied.
 fn witness_fundamentality_unknown_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dsl_std_to_v2_std_edge,
@@ -148,7 +118,6 @@ fn witness_fundamentality_unknown_denied_holds() -> Bool {
   }
 }
 
-// Missing root: v2 absent from SourceRootSet → dsl→v2 denied.
 fn witness_missing_root_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dsl_std_to_v2_std_edge,
@@ -160,7 +129,6 @@ fn witness_missing_root_denied_holds() -> Bool {
   }
 }
 
-// LessFundamental: to-tree less fundamental → deny regardless of layer.
 fn witness_less_fundamental_denied_holds() -> Bool {
   match cross_tree_import_admitted(
     edge: dsl_std_to_v2_std_edge,
@@ -172,7 +140,6 @@ fn witness_less_fundamental_denied_holds() -> Bool {
   }
 }
 
-// Closure short-circuits on first denied edge (one bad edge taints the whole closure).
 fn witness_closure_denied_on_bad_edge_holds() -> Bool {
   let closure = [dsl_std_to_v2_std_edge, dsl_std_to_v2_compiler_edge]
   match cross_tree_import_closure_admitted(
@@ -184,9 +151,6 @@ fn witness_closure_denied_on_bad_edge_holds() -> Bool {
     CrossTreeDenied { reason: _ } => true
   }
 }
-
-
-// ── Composite test fn (enrolled by CI floor discovery) ────────────────────────
 
 test fn cross_tree_import_model_witnesses() -> Bool {
   witness_dsl_std_to_v2_std_more_fundamental_admitted_holds()

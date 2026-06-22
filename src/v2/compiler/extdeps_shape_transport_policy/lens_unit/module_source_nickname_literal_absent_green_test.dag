@@ -1,6 +1,3 @@
-// Scope: lens-unit absent-GREEN witness — only exempt non-module literals (no index membership).
-// dissolve-on: ROADMAP Lane 3a SourceRootIngest (#5126).
-
 module v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_green
 
 import v2.lens.extdeps_shape_transport_policy {

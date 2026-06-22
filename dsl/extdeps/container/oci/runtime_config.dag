@@ -1,8 +1,3 @@
-// extdeps/container/oci/runtime_config.dag — OCI Runtime bundle config (runtime-spec config.md).
-//
-// Spec: https://github.com/opencontainers/runtime-spec/blob/main/config.md
-// Version: runtime-spec v1.2.0
-
 module extdeps.container.oci.runtime_config
 
 import extdeps.container.oci.linux {

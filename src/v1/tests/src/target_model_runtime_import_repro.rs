@@ -1,6 +1,3 @@
-//! Repro for generic-instantiation SCALE failure (adhoc-708ea66d-bb3).
-//! Regression fixture: mvp1 claim closure with target_model + v2.std.runtime import compiles clean.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
@@ -37,7 +34,7 @@ fn patch_target_model(content: &str, patch: TargetModelPatch) -> String {
 }
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usize, Vec<String>) {

@@ -1,5 +1,3 @@
-// Status: modeled claim + emit-coupling receipt.
-
 module v2.test.language_model.rust_r3_internal
 
 import v2.lens.leaf_model_verification {

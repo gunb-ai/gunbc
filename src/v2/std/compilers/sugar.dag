@@ -1,11 +1,3 @@
-// src/v2/std/compilers/sugar.dag
-// Scope: surface sugar — sugar-rule lowering to kernel connective + edge discipline.
-// M9 concept-DAG home: std/compilers/ (compiler-pipeline transformation models); imports node.dag for Connective, EdgeDiscipline, edges_conform.
-// Surface atom IDENTITY (^dag_c3_surface_sugar_* prelude) is language-specific extdep;
-// this module owns the TRANSFORMATION model only, keyed by-reference to those atoms.
-// Status: T-8 modeled — data-table authority for surface_atom → SugarLowering.
-// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind gunbc#4766 / LanguageModel — dissolve-on: surface_atom identity lookup owned by LanguageModel carrier; forbidden: parallel Atom identity classifier outside this table + LanguageModel projection.
-
 module v2.std.compilers.sugar
 
 import v2.std.algebra {
@@ -52,8 +44,6 @@ import v2.std.node {
   is_positional
 }
 
-
-// 🟢 TERMINAL — sugar lowering kinds: rewrite to kernel connective + edge discipline, or unwrap single positional child (irreducible transformation arms for surface sugar dissolution).
 type SugarLowering
   = SugarRewriteConnective { connective: Connective, edges: EdgeDiscipline }
   | SugarUnwrapPositionalChild {}
@@ -147,7 +137,6 @@ fn sugar_positional_unwrap_child(children: List<Edge>) -> Node? {
   }
 }
 
-// 🟢 coproduct dissolution — n-ary `|` type-alias RHS: fold parse Conj/pipe chain → kernel Disj.
 fn sugar_named_child_optional(root: Node, name: Symbol) -> Node? {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: _ } => optional_present(value: child)

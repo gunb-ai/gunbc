@@ -1,53 +1,3 @@
-// extdeps/communication/medium.dag — a recorded means of communication (cited).
-//
-// Anchor: https://en.wikipedia.org/wiki/Means_of_communication
-//
-// In the cited "means of communication" framework, a *medium* is the carrier by
-// which a sender conveys an idea to a receiver. The framework sorts means by
-// transfer type — verbal (speech, telephony), written, screen-oriented, and
-// records-transport — and cross-cuts those with natural (speech, gesture: no
-// encode step) vs technical (writing, printing, digital: an explicit
-// encode -> carry -> decode).
-//
-// THIS module models one SPECIFIC means: the *recorded / encoded* medium — an
-// idea encoded into a carried representation `R`, recovered by a decode whose
-// information-preservation is the `fidelity` axis (Lossless | Lossy). That decode
-// round-trip is exactly what distinguishes a technical/recorded medium from a
-// natural one (speech has no Lossless/Lossy decode of a stored `R`). So `Medium<R>`
-// is NOT the framework's universal carrier concept — it is a cited realization of
-// one branch of it. That is why it lives in extdeps and not std (§3: the agnostic
-// concept stays central; a specific cited realization migrates outward, citing its
-// source). The genuinely agnostic carrier (a `Carrier<R>` with no decode/fidelity,
-// which this recorded medium would extend) is not modeled yet — no consumer needs
-// it; mint it in std only when one does, not by re-coining it here.
-//
-// Pure model only — no pipeline fold, no Node/RuntimeValue (dsl/std has neither;
-// this dsl-tree extdeps module stays equally substrate-free so src/v2 can import it
-// cross-tree, exactly as it imports dsl/std).
-//
-// Layer split (§3):
-//   extdeps/communication/medium.dag  — Medium<R> + DecodeFidelity (this file)
-//   dsl/std/encoding.dag              — byte-sequence character interpretation lattice
-//   dsl/std/fidelity.dag              — TransportClass cost/hermetic axis (unrelated)
-//   v2/extdeps/languages/fidelity.dag — per-feature FidelityDisposition<Feature>
-//   v2/std/text.dag                   — Unicode text carriers
-//
-// NAME DISCIPLINE (§3 — SIGNED OFF eager-boar-790 2026-06-18):
-//   Types stay `Medium<R>` + `DecodeFidelity`. `Surface`/`Vehicle` rejected
-//   (collision / non-standard naming). Do NOT use `Carrier` for THIS type
-//   (overloaded: collection backing, text, classification axis, fact-bearing Node —
-//   and reserved above for the future agnostic carrier). Do NOT use bare `Fidelity`
-//   — collides with extdeps FidelityDisposition<Feature> AND dsl/std/fidelity.dag
-//   TransportClass axis. Do not nickname as TextMedium / ByteMedium / StorageMedium
-//   (`product.compute_fabric.StorageMedium` is an unrelated product axis).
-//   Operator retains pre-merge veto.
-//
-// FidelityDisposition compose-up (NOT a re-coin): per-feature
-// `FidelityDisposition<Feature>` rows (v2/extdeps/languages/fidelity.dag) compose
-// UP into medium-level `DecodeFidelity` via a future reduce at the medium-decode
-// boundary. This module owns the reduced medium-axis verdict (Lossless | Lossy);
-// feature-level dispositions remain in extdeps until that reduce lands.
-
 module extdeps.communication.medium
 
 import extdeps.external_authority { ExternalAuthority }
@@ -60,25 +10,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Whether decoding from a medium back to semantic values loses information.
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Two mutually exclusive decode policies. Consumers `match` on the variant — no
-// substrate `is_*` Bool lift (predicate dissolution).
 type DecodeFidelity = Lossless | Lossy
 
-// An idea carried in an external medium.
-//
-// Field ledger (§2 decompress — each field must be genuinely atomic):
-//   carried: R — the represented value in this medium instance. Typed by `<R>` so
-//     text (R=String), verdicts (R=ProbeVerdict), values, binaries, … share one
-//     carrier without a text-flavored `form: String` discriminator (that would be
-//     redundant when R=String and would bias non-text media toward stringly encoding).
-//   fidelity: DecodeFidelity — whether decode from this medium back to semantic
-//     values preserves information for this instance.
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Two atomic axes (carried value + decode policy); no third "kind" field at this layer.
 type Medium<R> {
   carried: R
   fidelity: DecodeFidelity
