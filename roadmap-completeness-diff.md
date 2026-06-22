@@ -1,19 +1,25 @@
-# ROADMAP completeness diff — current main (245 ln) vs emit(authority) (201 ln, ✦-lane held)
+# ROADMAP completeness diff — final main (post-#5545/#5547) vs emit(authority)
 
-Status: **re-transcribed faithfully from current main.** Zero content loss confirmed by token audit:
-every plan-doc path and every PR ref on main is present in the emit; the only *added* refs are the
-C1–C5 corrections (#5470/#5478, #5525/#5527/#5513/#5467, #5491/#5508/#5520, #5481/#5514). The ✦ lane
-is the ONLY missing block — HELD pending #5545 merge (will be transcribed natively from post-#5545 main).
+Status: **re-transcribed faithfully from final main, ✦ lane now included.** Zero content loss confirmed by
+whole-doc audit: every plan-doc path and every PR ref on main is present in the emit (comm -23 = empty both
+directions); the only *added* refs are the C1–C5 corrections (#5470/#5478, #5525/#5527/#5513/#5467,
+#5491/#5508/#5520, #5481/#5514). The ✦ Ergonomics lane is transcribed natively from post-#5545 main into
+`lead_lanes` (normalized ✦-lane content diff = ZERO).
 
 All 5 witnesses green by execution; the effectful gate runs drift-clean on the regenerated file with a
-live red-receipt (perturb the merged set → drift RED).
+live red-receipt (perturb the merged set → drift RED). Merged to newest main; PR MERGEABLE.
 
 ## Classification of every delta
 
-### [held — pending #5545] — the ONLY missing content
-- **✦ Ergonomics LANE** (main L60–88). Model machinery is in place (`lead_lanes: List<RoadmapSection>`,
-  sigil-from-position). Authoring deferred per warm-lark's ordering ruling: transcribe the FINAL
-  post-#5545 bytes natively, not hand-folded from bright-stag's PR description.
+### [intended-correction — placement] — ✦ lane positioned upstream of §0
+- **✦ Ergonomics LANE** transcribed natively into `lead_lanes` (sigil-from-position). main's hand-maintained
+  bytes place it AFTER §0; the emit places it BEFORE §0 (lead lane, right after the preamble) — per
+  bright-stag's "non-ordinal LEAD lane above §0", warm-lark's "lead_lanes render between preamble and
+  sections", and the lane's own "upstream of §0" label. main's after-§0 byte position is the
+  hand-maintenance artifact the inversion corrects. *(flagged to bright-stag for explicit confirm.)*
+- **§5 required-facts pointer** — a recent merge (#5547) added the "dissolve seed hand-patches … emit_rust
+  hand-sync caveat the gate must reproduce: [required facts](docs/plans/regen-verify-gate-required-facts.md)"
+  tail; folded in (byte-exact; #5547's doc makes the pointer resolve).
 
 ### [intended-correction] — the five corrections (and nothing else adds content)
 - **C1** §1: `**Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)` — DerivableLine, box derives `[x]`, refs from binding; placed in the "What's on `.dag` today" group after the width item. *(placement is bright-stag's call — flag.)*
