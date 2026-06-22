@@ -1,8 +1,3 @@
-// Bootstrap hand-maintained: O(N) DAG node collection + provisional identity keys.
-// Semantic source: src/v1/compile.dag (dag_node_*, dag_collect_*). Stage0 codegen
-// extracts shared support into v1_compiler_dag_collect_support; regen_stage0
-// delegates the owned-fold collector here via pub use.
-
 use crate::v1_compiler_dag_collect_support::{
     dag_node_key_collision_error, dag_node_surface_fingerprint, is_synthetic_span, DagCollectAcc,
 };
@@ -13,7 +8,6 @@ use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::{import_is_all, Connective, ExprData, InferredNode, MatchPattern, Node};
 use std::rc::Rc;
 
-// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 fn is_import_slot_node(n: Rc<Node>) -> bool {
     import_is_all(n.clone())
         || ((((n.params.clone().len() as i64) == 0) && (n.ident_span.is_some()))
@@ -21,7 +15,6 @@ fn is_import_slot_node(n: Rc<Node>) -> bool {
             && (*n.expr_data == ExprData::NoExprData))
 }
 
-// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 fn is_module_shell_node(n: Rc<Node>) -> bool {
     n.inferred.is_none()
         && (*n.expr_data == ExprData::NoExprData)
@@ -41,12 +34,10 @@ fn is_module_shell_node(n: Rc<Node>) -> bool {
         }
 }
 
-// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
     match (*node.expr_data).clone() {
         NoExprData => match node.inferred.clone().as_deref().cloned() {
             Some(Resolved { node: _, .. }) => {
-                // Type/import back-links only — never peel nodes that carry structure.
                 node.body.is_none()
                     && node.transport.is_none()
                     && node.children.is_empty()
@@ -75,8 +66,6 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
     let anchor = dag_node_collection_anchor(node);
-    // Synthetic scaffold nodes share a 0..0 span — key by recursive structure so
-    // distinct subtrees do not alias (span-bearing nodes stay span-keyed).
     if is_synthetic_span(&anchor.span) {
         return v1_rt::concat(":0..0:".to_string(), dag_node_fingerprint(anchor.clone()));
     }

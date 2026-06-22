@@ -1,15 +1,3 @@
-//! §6 SCAFFOLD — P3c wet/hermetic equivalence gate (comparator + vacuous roster).
-//!
-//! **Dissolution-on-arrival:** gains real faithfulness teeth when the first
-//! live-transport + published-mock witness lands (wet = live call, hermetic =
-//! published mock). Until then the `lens_mock_totality/*` roster makes no
-//! `eval_service_call` dispatch under either mode, so the roster integration
-//! check is vacuous-by-construction — it cannot observe mock-vs-real divergence.
-//!
-//! **Comparator teeth (unit):** `wet_hermetic_discovery_outcome_divergences`
-//! is tested with synthetic outcome vectors so divergence reporting is RED when
-//! the comparator itself regresses, independent of the roster.
-
 use v1_compiler::cli_run::{
     discover_floor_corpus_rows, is_governed_service_representative_row, run_discovery_corpus,
     wet_hermetic_discovery_outcome_divergences, wet_hermetic_scaffold_roster_entry_prefix,
@@ -145,8 +133,6 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
     );
 }
 
-/// Vacuous-by-construction scaffold: lens_mock_totality witnesses do not
-/// dispatch live service calls under either mode; this only guards roster wiring.
 #[test]
 fn wet_hermetic_scaffold_roster_outcomes_agree() {
     let roots = ci_witness_layer_roots();

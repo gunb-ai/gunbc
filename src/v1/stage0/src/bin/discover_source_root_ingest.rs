@@ -1,20 +1,3 @@
-//! Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
-//!
-//! Host boundary: filesystem walk + per-file read (fail-closed) + expose neutral
-//! `DagSourceReadWitness` facts as a `SourceRootIngest` monoid manifest.
-//!
-//! Usage:
-//!   discover_source_root_ingest --source-root src/v2 \
-//!       [--scan-dir src/v2/test/fixture/program_assembly] \
-//!       [--entry src/v2/compiler/00_compile.dag] \
-//!       [--exclude-subpath host_source_root_ingest_manifest.dag] \
-//!       [--emit-dag-manifest target/v2-source-root-ingest-manifest.dag]
-//!
-//! With `--entry`, only the parse-level transitive import closure of that file is
-//! included (same scope as `gunbc run --claim-run --entry`).
-//!
-//! Exit codes: 0 = success; 1 = discovery failure; 2 = usage error.
-
 #![allow(clippy::disallowed_macros)]
 
 use std::path::PathBuf;

@@ -1,5 +1,3 @@
-//! Parse + resolve receipts for `v2.lens.fact_cardinality`.
-
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_interpreter::{self, Value};
 
