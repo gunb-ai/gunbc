@@ -1,8 +1,3 @@
-// extdeps/diagnostic/ssh.dag — OpenSSH session transport (in-band observe + probe run).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4253
-//
-// PS-0 observe/control boundary for host health workflows.
-
 module extdeps.diagnostic.ssh
 
 import std.types { NonEmptyStr }
@@ -17,12 +12,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// 🟡 dissolved — feature:diagnostic-ssh-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
-// WHICH diagnostic.ssh.Session ops are hermetically realizable, and the fixture store owns the
-// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
-// shapes.
 service diagnostic.ssh.Session {
   operation Exec {
     input { host: NonEmptyStr, command: NonEmptyStr }

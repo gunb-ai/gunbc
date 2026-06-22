@@ -1,22 +1,3 @@
-// extdeps/runtime/api/windows.dag — Windows stable API boundary (cited facts).
-//
-// Scope: Slice-2 inhabitant of std.os.invocation.LibraryApiBoundary — the Win32/NT API is the
-// stable contract; NT syscall numbers are deliberately unstable across Windows builds.
-//
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntreadfile
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntwritefile
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntallocatevirtualmemory
-// Anchor: https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntterminateprocess
-// Anchor: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-system-services
-
 module extdeps.runtime.api.windows
 
 import std.os.invocation {
@@ -80,7 +61,6 @@ data windows_ntdll_boundary: LibraryApiBoundary = {
   exports: windows_ntdll_exports,
 }
 
-// Win32 user-mode stable contract spans kernel32 + ntdll exports (per-entry module names the DLL).
 data windows_11_user_mode_exports: List<ApiEntry> = [
   kernel32_create_file_w,
   kernel32_read_file,
@@ -100,13 +80,10 @@ data windows_11_user_mode_boundary: LibraryApiBoundary = {
   exports: windows_11_user_mode_exports,
 }
 
-// Composite stable surface for Windows 11 — apps bind to kernel32 + ntdll, not raw syscall numbers.
 data windows_11_library_api_surface: StableInvocationSurface = LibraryApiBoundarySurface {
   boundary: windows_11_user_mode_boundary,
 }
 
-// Witnesses: typed+reviewed via `gunbc run --source-root dsl --entry … --function … --claim-run`.
-// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 fn witness_kernel32_create_file_w_exported() -> Bool {
   kernel32_create_file_w.symbol == "CreateFileW"
 }

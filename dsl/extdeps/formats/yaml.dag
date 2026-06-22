@@ -1,18 +1,3 @@
-// extdeps/formats/yaml.dag — YAML 1.2 structural value model + byte-faithful serializer.
-//
-// SCAFFOLD — §3 fork of `src/v2/extdeps/formats/yaml.dag` `YamlValue`: this module is the
-// v1-interpreter / projection substrate (ordered `List<YamlKeyValue>`, `serialize_yaml`,
-// witnessable under `gunbc run`). The v2 copy is ingest/grammar-only (Map-based entries).
-// Dissolution trigger: v2 `YamlMapping.entries` migrates to ordered pairs AND v2 emit/ingest
-// imports this module (or a shared `std/formats/yaml.dag` home) — one YamlValue authority,
-// zero parallel type definitions.
-//
-// v2-clean module (no std.unicode / std.render imports) so witnesses execute under
-// the v1 interpreter. Ordered mapping entries preserve YAML key order (DESIGN §2:
-// std Map is an unordered HAMT — unsuitable for deterministic emit).
-//
-// Anchor: https://yaml.org/spec/1.2.2/
-
 module extdeps.formats.yaml
 
 import std.render_repeat_string_bootstrap { repeat_string }
@@ -43,8 +28,6 @@ type YamlValue
 
 data empty_yaml_values: List<YamlValue> = []
 
-// -- scalar helpers ---------------------------------------------------
-
 fn yaml_string(s: String) -> YamlValue {
   YamlString { value: s }
 }
@@ -69,8 +52,6 @@ fn kv(key: String, value: YamlValue) -> YamlKeyValue {
   YamlKeyValue { key: key, value: value }
 }
 
-// -- indent / layout --------------------------------------------------
-
 fn indent(depth: Int) -> String {
   repeat_string(s: "  ", n: depth)
 }
@@ -83,8 +64,6 @@ fn is_expression(s: String) -> Bool {
   starts_with(s: s, prefix: "${{")
 }
 
-// Plain scalar unless YAML parsing would mis-read the value. Embedded shell quotes,
-// single quotes in hashFiles(), and colons inside ${{ }} are valid plain scalars.
 fn is_reserved_yaml_scalar(s: String) -> Bool {
   (s == "true") ||
     (s == "false") ||
@@ -194,7 +173,6 @@ fn strip_leading_indent(line: String, depth: Int) -> String {
   }
 }
 
-// Block sequence of mappings: `- key: val` on the first entry; sibling keys share item indent.
 fn prefix_block_sequence_mapping(body: String, seq_depth: Int) -> String {
   let item_depth = seq_depth + 1
   let lines = split(s: body, delimiter: "\n")
@@ -280,7 +258,6 @@ fn emit_yaml_value(v: YamlValue, depth: Int) -> String {
   }
 }
 
-// Total serializer: YamlValue → byte-faithful YAML text (trailing newline at EOF).
 fn serialize_yaml(v: YamlValue) -> String {
   emit_yaml_value(v: v, depth: 0)
 }
