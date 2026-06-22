@@ -212,14 +212,13 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 
 // §3 faithful DAG String carrier for v2 Rust self-host (String = FreeMonoid<Char>, Char = Nat).
 // §7: carrier is v2-self-host target only — v1 seed/bootstrap keeps host String.
-fn rust_corpus_includes_v1_compiler(source_indices: Map<String, NewlineIndex>) -> Bool {
-  map_keys(source_indices) |> any(k => contains(k, "/v1/") || contains(k, "src/v1"))
-}
-
-fn rust_emit_faithful_text_carrier(source_indices: Map<String, NewlineIndex>) -> Bool {
-  !rust_corpus_includes_v1_compiler(source_indices: source_indices)
-}
-
+// The corpus-representation choice is now a single corpus-global authority:
+// `rust_corpus_repr` (04_infer.dag) computes RustCorpusRepr ONCE over all modules and
+// threads it as `corpus_repr` to every renderer/emitter (EmitGraphInfo.corpus_repr).
+// The old per-module gates (rust_corpus_includes_v1_compiler / rust_emit_faithful_text_carrier)
+// were deleted: a per-module gate let a dsl module in a v1-bundled crate emit the faithful
+// carrier while its siblings emit host — divergence was WRITABLE (a §5 dual-authority breach).
+// §6-transitional: corpus_repr collapses to HostNative when src/v1 is deleted (seed→zero).
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
   render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Nat>", shared_types: shared_types)
 }
@@ -273,8 +272,8 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
 // target), the algebraic numeric tower (Nat = CommutativeSemiring<Magnitude>,
 // Int = AbelianGroup<GroupCompletion<Nat>>) maps to the host primitive i64 -- the
 // numeric analogue of String -> host String in the seed branch. Gated by the SAME
-// rust_corpus_includes_v1_compiler authority as the text carrier (single lever, no
-// parallel mechanism). The v2-target faithful numeric representation is escalated to
+// corpus-global `corpus_repr` (RustCorpusRepr) authority as the text carrier (single
+// lever, no parallel mechanism). The v2-target faithful numeric representation is escalated to
 // operator + non-blocking, so the faithful branch leaves the algebraic alias intact.
 // The seed numeric ops (nat_compare/nat_max/nat_min) use </>/.clone(), all native to
 // i64, so the alias-RHS override alone clears them and the Nat-as-number consumers
@@ -3742,7 +3741,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let si = scope.type_env.source_indices
   match rust_host_string_seam_fn_emit(name: name) {
     Present { value: seam_fn } =>
-      if rust_emit_faithful_text_carrier(source_indices: si) { seam_fn } else { "" }
+      if emit_info.corpus_repr == FaithfulFreeMonoid { seam_fn } else { "" }
     Absent => {
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
@@ -5221,7 +5220,7 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
           } else {
             concat(ty_name, "::", child_text, " { .. }")
           }
-        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\""), source_indices: scope.type_env.source_indices), ",")
+        concat("        ", pat, " => ", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", child_text, "\""), corpus_repr: emit_info.corpus_repr), ",")
         )
         // Borrow the scrutinee so the arms (which never bind fields) don't move it. Shared types
         // are Rc-wrapped, so deref through the Rc with `&*` to reach `&T`; owned values use `&`.
@@ -5233,9 +5232,9 @@ fn emit_discriminant_call_lowering(value_arg: Node, registry: Map<String, ItemIn
         concat("(match ", scrut_ref, " {\n", arms |> join(separator: "\n"), "\n    })")
       } else {
         // Product/record type: the discriminant is the type's own name (interpreter returns type_name).
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), source_indices: scope.type_env.source_indices)
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), corpus_repr: emit_info.corpus_repr)
       }
-    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), source_indices: scope.type_env.source_indices)
+    Absent => emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", ty_name, "\""), corpus_repr: emit_info.corpus_repr)
   }
 }
 
@@ -5317,7 +5316,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"), source_indices: scope.type_env.source_indices)
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"), corpus_repr: emit_info.corpus_repr)
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -6517,7 +6516,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             let missing = map_keys(fs) |> filter(k => !emit_map_has(m: provided_set, key: k))
             let all_defaultable = missing |> all(fname =>
               let has_zv = match map_get(ftm, fname) {
-                Present { value: ft } => match rust_zero_value(type_name: ft, source_indices: si) { Present { value: _ } => true, Absent => false }
+                Present { value: ft } => match rust_zero_value(type_name: ft, corpus_repr: emit_info.corpus_repr) { Present { value: _ } => true, Absent => false }
                 Absent => false
               }
               has_zv || is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname)
@@ -6529,7 +6528,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 } else {
                   match map_get(ftm, fname) {
                     Present { value: ft } =>
-                      match rust_zero_value(type_name: ft, source_indices: si) {
+                      match rust_zero_value(type_name: ft, corpus_repr: emit_info.corpus_repr) {
                         Present { value: zv } => [concat("    ", emit_ident(name: fname, target: Rust), ": ", zv, ",")]
                         Absent => []
                       }
@@ -6567,11 +6566,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
   }
 }
 
-fn rust_zero_value(type_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+fn rust_zero_value(type_name: String, corpus_repr: RustCorpusRepr) -> String? {
   if type_name == "Int" { Present { value: "0" } }
   else if type_name == "Bool" { Present { value: "false" } }
   else if type_name == "String" {
-    if rust_emit_faithful_text_carrier(source_indices: source_indices) {
+    if corpus_repr == FaithfulFreeMonoid {
       Present { value: "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()" }
     } else {
       Present { value: "\"\".to_string()" }
@@ -6591,11 +6590,11 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
       let l_optional = is_optional_typed_expr(e: left)
       let r_optional = is_optional_typed_expr(e: right)
       if l_optional || r_optional {
-        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, source_indices: scope.type_env.source_indices), ")") }
-        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, source_indices: scope.type_env.source_indices), ")") }
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), ")") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")") }
         concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
       } else {
-        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, source_indices: scope.type_env.source_indices), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, source_indices: scope.type_env.source_indices), ")")
+        concat("(", emit_rust_dag_string_to_host_via_seam(dag_expr: l_str, corpus_repr: emit_info.corpus_repr), " ", op_str, " ", emit_rust_dag_string_to_host_via_seam(dag_expr: r_str, corpus_repr: emit_info.corpus_repr), ")")
       }
     } else {
       concat("(", l_str, " ", op_str, " ", r_str, ")")
@@ -6637,10 +6636,10 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
     |> map(p => p.arg_expr)
     |> filter(a => a != "")
   if args |> count == 0 {
-    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""), source_indices: scope.type_env.source_indices)
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", fmt_str, "\""), corpus_repr: emit_info.corpus_repr)
   } else {
     let args_str = args |> join(separator: ", ")
-    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"), source_indices: scope.type_env.source_indices)
+    emit_rust_host_to_dag_string_via_seam(host_expr: concat("format!(\"", fmt_str, "\", ", args_str, ")"), corpus_repr: emit_info.corpus_repr)
   }
 }
 
@@ -7096,7 +7095,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
                       Absent => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
                     }
                   } else {
-                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), corpus_repr: corpus_repr, source_indices: source_indices)
                   }
                 _ =>
                   concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
@@ -7130,7 +7129,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
   if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env) }
-  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
+  else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, corpus_repr: corpus_repr, source_indices: source_indices) }
   else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
@@ -7140,7 +7139,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_indices: source_indices)
-  let query_line = emit_rest_query_line(transport: transport, source_indices: source_indices)
+  let query_line = emit_rest_query_line(transport: transport, corpus_repr: corpus_repr, source_indices: source_indices)
   let body_line = emit_rest_body_line(transport: transport, source_indices: source_indices)
   let headers = transport_headers(t: transport, source_indices: source_indices)
   let header_lines = headers |> map(h =>
@@ -7269,12 +7268,12 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   }
 }
 
-fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rest_query_line(transport: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   match transport_query(t: transport, source_indices: source_indices) {
     Present { value: q } => {
       let pairs = q.children |> map(fi =>
         concat("(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
-          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices), source_indices: source_indices),
+          emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices), corpus_repr: corpus_repr),
           ")")
       )
       if pairs |> count > 0 {
@@ -7453,12 +7452,12 @@ fn escape_json_pointer_segment(seg: String) -> String {
   seg |> replace("~", "~0") |> replace("/", "~1")
 }
 
-fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: String, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   let escaped_path = from_path |> split("/") |> map(seg => escape_json_pointer_segment(seg: seg)) |> join(separator: "/")
   let pointer = concat("/", escaped_path)
   let rust_type = coerce_primitive_type(target: Rust, dag_name: dag_type_name)
   let accessor = if dag_type_name == "String" {
-    concat(".and_then(|v| v.as_str()).map(|s| ", emit_rust_host_to_dag_string_via_seam(host_expr: "s.to_string()", source_indices: source_indices), ").ok_or(\"missing field: ", from_path, "\")?")
+    concat(".and_then(|v| v.as_str()).map(|s| ", emit_rust_host_to_dag_string_via_seam(host_expr: "s.to_string()", corpus_repr: corpus_repr), ").ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "i64" {
     concat(".and_then(|v| v.as_i64()).ok_or(\"missing field: ", from_path, "\")?")
   } else if rust_type == "f64" {
@@ -7513,7 +7512,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
             Absent => concat("let ", field_name, " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n")
           }
         } else {
-          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), source_indices: source_indices)
+          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn), corpus_repr: corpus_repr, source_indices: source_indices)
         }
       _ =>
         concat("let ", field_name, " = compile_error!(\"unresolved type for output field: ", ch_name, "\");")
@@ -7589,15 +7588,15 @@ fn has_exit_prefix(name: String) -> Bool {
   else { substring(s: name, start: 0, end: 5) == "exit_" }
 }
 
-fn emit_exit_code_handling(op_node: Node, inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_exit_code_handling(op_node: Node, inferred: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   let exit_props = op_node.properties |> filter(p => has_exit_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
   if exit_props |> count == 0 {
     emit_shell_return(inferred: inferred, source_indices: source_indices)
   } else {
     let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "exit_nonzero")
-    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_indices: source_indices))
+    let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, corpus_repr: corpus_repr, source_indices: source_indices))
     let default_arm = if has_nonzero { "" }
-      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", source_indices: source_indices), ") },") }
+      else { concat("\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", corpus_repr: corpus_repr), ") },") }
     concat(
       "let exit_code = output.status.code().unwrap_or(-1);\n",
       "match exit_code {\n",
@@ -7607,7 +7606,7 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node, source_indices: Map<St
   }
 }
 
-fn emit_exit_arm(prop: Node, inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_exit_arm(prop: Node, inferred: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
   let pattern = if code_str == "nonzero" { "_" }
@@ -7616,11 +7615,11 @@ fn emit_exit_arm(prop: Node, inferred: Node, source_indices: Map<String, Newline
   if is_success {
     concat("    ", pattern, " => { ", emit_shell_return(inferred: inferred, source_indices: source_indices), " },")
   } else {
-    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", source_indices: source_indices), ") },")
+    concat("    ", pattern, " => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(", emit_rust_host_to_dag_string_via_seam(host_expr: "stderr", corpus_repr: corpus_repr), ") },")
   }
 }
 
-fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, op_node: Node, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   let argv = transport.children
   let optional_params = op_node.params
     |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
@@ -7633,7 +7632,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   let cmd_line = if argv |> count > 0 {
     match argv |> first {
       Present { value: first_arg } => concat(let_kw, " = std::process::Command::new(",
-        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, source_indices: source_indices), ")")
+        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, corpus_repr: corpus_repr, source_indices: source_indices), ")")
       Absent => concat(let_kw, " = std::process::Command::new(\"",
         emit_ident(name: op_name, target: Rust), "\")")
     }
@@ -7643,7 +7642,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
   let arg_lines = if argv |> count > 1 {
     argv |> skip(1) |> map(arg =>
-      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_indices: source_indices), ")")
+      concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, corpus_repr: corpus_repr, source_indices: source_indices), ")")
     )
   } else { [] }
   let env_entries = transport_env(t: transport, source_indices: source_indices)
@@ -7662,19 +7661,19 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     let write_block = concat("{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(", stdin_var, ".as_bytes())?;\n    }\n}")
     let wait_line = "let output = output.wait_with_output()?;"
     let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, source_indices: source_indices)
+    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, corpus_repr: corpus_repr, source_indices: source_indices)
     let all_lines = concat([cmd_line], arg_lines, env_lines, [wd_line, spawn_line, spawn_exec, write_block, wait_line, check_line, return_line])
     all_lines |> join(separator: "\n")
   } else {
     let output_line = "    .output()?;"
     let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, source_indices: source_indices)
+    let return_line = emit_exit_code_handling(op_node: op_node, inferred: inferred, corpus_repr: corpus_repr, source_indices: source_indices)
     let all_lines = concat([cmd_line], arg_lines, env_lines, [wd_line, output_line, check_line, return_line])
     all_lines |> join(separator: "\n")
   }
 }
 
-fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
@@ -7715,9 +7714,9 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         Absent => false
       }
       if is_opt {
-        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"), source_indices: source_indices)
+        emit_rust_dag_string_to_host_via_seam(dag_expr: concat(var_name, ".as_deref().unwrap_or(\"\")"), corpus_repr: corpus_repr)
       } else {
-        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name, source_indices: source_indices)
+        emit_rust_dag_string_to_host_via_seam(dag_expr: var_name, corpus_repr: corpus_repr)
       }
     }
     _ => emit_simple_expr(expr: arg, target: Rust, source_indices: source_indices)
@@ -7971,7 +7970,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
         ExprRecordLit { parent_enum: _ } =>
           let inserts = value.children |> map(f =>
             let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-            concat("            __m.insert(", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\""), source_indices: scope.type_env.source_indices), ", ", val_str, ");")
+            concat("            __m.insert(", emit_rust_host_to_dag_string_via_seam(host_expr: concat("\"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\""), corpus_repr: emit_info.corpus_repr), ", ", val_str, ");")
           )
           let inserts_str = inserts |> join(separator: "\n")
           concat("            let mut __m = HashMap::new();\n",
