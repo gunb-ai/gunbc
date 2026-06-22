@@ -1,0 +1,134 @@
+module v2.lens.simulated_relationship
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+
+import v2.std.node { Node, Edge }
+import v2.std.algebra { Empty, Cons, is_empty, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+// §2 horizontal-redundancy detector. A "simulated relationship" is a chain of
+// statements/expressions that anti-unify to ONE template over a varying data hole
+// -- i.e. a hand-unrolled fold: the relationship between elements is acted out in
+// control flow instead of declared as data + a catamorphism. Sibling of
+// v2.lens.structural_similarity (which targets duplicate *type declarations*, the
+// §3 nicknaming smell); this targets repetition *inside a body*.
+//
+// Anti-unification is the substrate primitive this needs and the corpus lacks: two
+// Node subtrees either DIVERGE (different operation/shape -- not localizable) or are
+// CONGRUENT with `holes` maximal differing leaf positions (the fold's data slots).
+
+type AntiUnify
+  = Divergent
+  | Congruent { holes: Int }
+
+fn au_combine(a: AntiUnify, b: AntiUnify) -> AntiUnify {
+  match a {
+    Divergent => Divergent
+    Congruent { holes: ha } =>
+      match b {
+        Divergent => Divergent
+        Congruent { holes: hb } => Congruent { holes: ha + hb }
+      }
+  }
+}
+
+// Walk two child-edge lists in lock-step. Differing arity, or a differing edge
+// label, is structural divergence (the shape itself changed, not a value).
+fn zip_holes(xs: List<Edge>, ys: List<Edge>) -> AntiUnify {
+  match xs {
+    Empty =>
+      match ys {
+        Empty => Congruent { holes: 0 }
+        Cons { head: _, tail: _ } => Divergent
+      }
+    Cons { head: hx, tail: tx } =>
+      match ys {
+        Empty => Divergent
+        Cons { head: hy, tail: ty } =>
+          if hx.label == hy.label {
+            au_combine(
+              a: anti_unify(a: hx.target, b: hy.target),
+              b: zip_holes(xs: tx, ys: ty)
+            )
+          } else {
+            Divergent
+          }
+      }
+  }
+}
+
+// Same kind -> recurse into children. Differing kind: two leaves (no children) are
+// one data hole (a value slot); a leaf-vs-tree or two differing operators is a
+// genuine shape divergence, never a hole.
+fn anti_unify(a: Node, b: Node) -> AntiUnify {
+  if a.kind == b.kind {
+    zip_holes(xs: a.children, ys: b.children)
+  } else {
+    if is_empty(xs: a.children) && is_empty(xs: b.children) {
+      Congruent { holes: 1 }
+    } else {
+      Divergent
+    }
+  }
+}
+
+// A chain is a SIMULATED RELATIONSHIP iff every adjacent pair anti-unifies to the
+// SAME small, non-zero hole-count (a stable template with a varying data slot).
+//   < 3 steps   -> not yet a relationship, not flagged.
+//   0 holes      -> pure duplication, a different smell, not this lens.
+//   any Divergent pair -> the operation itself varies (a genuine chain), not flagged.
+fn adjacent_pairs_uniform(steps: List<Node>, expected: Int, max_holes: Int) -> Bool {
+  match steps {
+    Empty => true
+    Cons { head: a, tail: rest } =>
+      match rest {
+        Empty => true
+        Cons { head: b, tail: _ } =>
+          match anti_unify(a: a, b: b) {
+            Divergent => false
+            Congruent { holes: h } =>
+              h == expected
+                && h >= 1
+                && h <= max_holes
+                && adjacent_pairs_uniform(steps: rest, expected: expected, max_holes: max_holes)
+          }
+      }
+  }
+}
+
+fn first_pair(steps: List<Node>) -> AntiUnify {
+  match steps {
+    Empty => Divergent
+    Cons { head: a, tail: rest } =>
+      match rest {
+        Empty => Divergent
+        Cons { head: b, tail: _ } => anti_unify(a: a, b: b)
+      }
+  }
+}
+
+fn chain_is_simulated(steps: List<Node>, max_holes: Int) -> Bool {
+  if length(xs: steps) < 3 {
+    false
+  } else {
+    match first_pair(steps: steps) {
+      Divergent => false
+      Congruent { holes: h0 } =>
+        h0 >= 1
+          && h0 <= max_holes
+          && adjacent_pairs_uniform(steps: steps, expected: h0, max_holes: max_holes)
+    }
+  }
+}
+
+fn chain_is_simulated_canonical(steps: List<Node>) -> Bool {
+  chain_is_simulated(steps: steps, max_holes: 3)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding {
+    grounding_authority: "the parse/resolve walk that projects a body's statement chain into List<Node> (shared with v2.lens.structural_similarity)",
+    dissolve_on: "anti_unify + chain_is_simulated run over live dsl/** statement chains once the parse/resolve walk produces per-body Node-chain facts; until then this is a lens_unit predicate over synthetic Node chains"
+  },
+  rationale: "Anti-unification of statement subtrees is decidable (a wall): a hand-unrolled fold is a chain whose adjacent statements anti-unify to one template over a varying data hole. The undecidable residue (callee-position-only variance, interleaved strides, whether the variance is semantically a list) stays a ratchet, not a wall."
+}
