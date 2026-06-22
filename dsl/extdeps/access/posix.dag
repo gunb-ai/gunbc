@@ -42,15 +42,6 @@ type PosixUser {
   gid: Int
 }
 
-type PosixGroup {
-  name: NonEmptyStr
-  gid: Int
-}
-
-type PosixGroupMembership {
-  user: NonEmptyStr
-  group: NonEmptyStr
-}
 
 data posix_root_uid: Int = 0
 

@@ -32,7 +32,11 @@ fn redfish_privilege_assignment(privilege: RedfishPrivilege, role: RedfishAccoun
 
 data redfish_rbac_policy: RbacPolicy = RbacPolicy {
   users: [],
-  roles: ["Administrator", "Operator", "ReadOnly"],
+  roles: [
+    redfish_account_role_wire(role: AccountRoleAdministrator),
+    redfish_account_role_wire(role: AccountRoleOperator),
+    redfish_account_role_wire(role: AccountRoleReadOnly),
+  ],
   user_assignments: [],
   permission_assignments: [
     redfish_privilege_assignment(privilege: PrivilegeLogin, role: AccountRoleAdministrator),
