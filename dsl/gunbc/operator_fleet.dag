@@ -7,9 +7,9 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
-import std.measure { gibibyte, gibibyte_to_byte_size, hertz }
+import std.measure { gibibyte, gibibyte_to_byte_size, hertz, byte_size_count }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
-import std.types { List }
+import std.types { List, Int }
 import product.compute_fabric {
   ComputeOffer,
   ComputeSupplyFacts,
@@ -23,6 +23,7 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
+  compute_host_ram_bytes_total,
 }
 
 data operator_fleet_cpu: CpuFacts = CpuFacts {
@@ -108,3 +109,9 @@ data srv2_offer: ComputeOffer = ComputeOffer {
 }
 
 data operator_fleet_offers: List<ComputeOffer> = [srv1_offer, srv2_offer]
+
+fn operator_fleet_host_memory_bytes() -> Int {
+  byte_size_count(b: compute_host_ram_bytes_total(host: srv1_host))
+}
+
+data operator_fleet_kernel_pid_max: Int = 4194304
