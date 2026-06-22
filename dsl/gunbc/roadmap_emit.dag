@@ -5,7 +5,7 @@ import std.markdown {
   MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
 }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc,
+  RoadmapNode, RoadmapEdge, Pointer,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
@@ -19,14 +19,15 @@ fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
   item_is_done(item: rn.line, merged: merged)
 }
 
-fn carrier_inlines(carrier: PlanDocCarrier) -> List<MarkdownInline> {
-  match carrier {
-    NoCarrier => []
-    PlanDoc { path } => [
-      TextInline { text: " " },
-      LinkInline { inlines: [TextInline { text: "plan" }], url: path },
-    ]
-  }
+fn pointer_inlines(p: Pointer) -> List<MarkdownInline> {
+  [
+    TextInline { text: " " },
+    LinkInline { inlines: [TextInline { text: p.label }], url: p.path },
+  ]
+}
+
+fn carriers_inlines(carriers: List<Pointer>) -> List<MarkdownInline> {
+  fold(carriers, init: [], f: (acc, p) => concat(acc, pointer_inlines(p: p)))
 }
 
 fn refs_text(prs: List<Int>) -> String {
@@ -55,7 +56,7 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
 fn node_inlines(rn: RoadmapNode) -> List<MarkdownInline> {
   concat(
     line_inlines(line: rn.line),
-    carrier_inlines(carrier: rn.carrier),
+    carriers_inlines(carriers: rn.carriers),
   )
 }
 
