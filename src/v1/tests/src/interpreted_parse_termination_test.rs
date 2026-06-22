@@ -1,8 +1,3 @@
-//! Regression: v2 `parse` / `parse_module` must terminate under the v2 interpreter.
-//!
-//! Bisect authority: `validate_ingest_staging_stage_bisect_test.dag` — termination witnesses plus
-//! `witness_bisect_wave1_parse_module_add_correctness_holds` (binding fidelity + truncated RED).
-
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 

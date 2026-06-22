@@ -1,6 +1,3 @@
-// Scope: COMPREP wave-1 keystone receipt — body producer attaches Behavior sub-DAG on Arrow.body.
-// Status: producer well-formedness + discriminating body-shape witness (operand order flips attachment).
-
 module v2.test.manual.comprep_add_body_producer
 
 import v2.compiler.body_producer {
@@ -78,7 +75,6 @@ fn comprep_produce_add_arrow_accepts() -> Bool {
   }
 }
 
-// Discriminating red: swap operand param refs — body subtree changes, well-formedness holds.
 fn comprep_swapped_operand_body() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },

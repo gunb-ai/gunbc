@@ -1,6 +1,3 @@
-// Scope: QualifiedName identities for coverage_domain_equivalence receipt rows.
-// dissolve-on: ROADMAP Lane 3a SourceRootIngest (#5126).
-
 module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs
 
 import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
@@ -46,4 +43,3 @@ data witness_dead_param_gcp_login_corpus_module: QualifiedName = QnCons { head: 
 data witness_embedded_policy_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^embedded_policy_literal_local, tail: QnEmpty } } } } }
 
 data witness_embedded_policy_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^runtime_local_embedded_policy, tail: QnEmpty } } } } }
-

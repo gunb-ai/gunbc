@@ -1,4 +1,3 @@
-
 module v2.test.generated.testgen_category_wishlist
 
 import v2.lens.testgen {
@@ -76,7 +75,6 @@ data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Nod
   vacuous: vacuous_admits_marker
 }
 
-// Generator anchor: vacuous admits=true stub — refine accepts; pack helper is exhaustive-match only.
 fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
   refined_vacuous_stub_pack(
     base: [stub_empty_conj],

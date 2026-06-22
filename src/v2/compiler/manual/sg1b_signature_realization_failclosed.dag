@@ -1,4 +1,3 @@
-
 module v2.test.manual.sg1b_signature_realization_failclosed
 
 import v2.extdeps.languages.rust { rust_sg2_type_expr_target_model }
@@ -52,7 +51,6 @@ fn sg1b_fc_probe_node() -> Node {
 }
 }
 
-// Boundary-site atom carrying a child — violates the declared nullary shape.
 fn sg1b_fc_boundary_param_with_children() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
@@ -63,7 +61,6 @@ fn sg1b_fc_boundary_param_with_children() -> Node {
 }
 }
 
-// Well-formed nullary boundary-site atom (happy-path sanity).
 fn sg1b_fc_boundary_param_nullary() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
@@ -72,7 +69,6 @@ fn sg1b_fc_boundary_param_nullary() -> Node {
 }
 }
 
-// Catalog node that is not Conj — a present-but-malformed realizations catalog edge.
 fn sg1b_fc_non_conj_catalog() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },

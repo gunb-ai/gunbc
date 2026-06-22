@@ -1,8 +1,4 @@
-// Scope: distinct-node exact-structural zip-fold anchors for find_witness and coercion_fold.
-
-
 module v2.test.manual.find_witness_distinct_node_zip_fold
-
 
 import v2.std.coercion {
   CoercionCandidateSet,

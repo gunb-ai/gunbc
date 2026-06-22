@@ -1,6 +1,3 @@
-// Scope: lens-unit GREEN witness — byte-sync across trees: coexistence yes, divergence no.
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.fact_cardinality.lens_unit.synthetic_unified_green
 
 import v2.lens.fact_cardinality {

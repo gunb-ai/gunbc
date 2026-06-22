@@ -1,6 +1,3 @@
-// Scope: corpus ratchet — coexistence debt must not grow above executed baseline.
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.fact_cardinality.corpus.ratchet_baseline
 
 import v2.lens.fact_cardinality { fact_cardinality_live_coexistence_ratchet_holds }

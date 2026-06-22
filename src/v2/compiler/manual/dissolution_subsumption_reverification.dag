@@ -1,6 +1,3 @@
-// Scope: runnable TestClaim receipt for DissolutionSubsumption MechanicalReverification rows.
-// Status: manual receipt over the canonical Set<DiffId> subsumption carrier.
-
 module v2.test.manual.dissolution_subsumption_reverification
 
 import v2.compiler.eval {

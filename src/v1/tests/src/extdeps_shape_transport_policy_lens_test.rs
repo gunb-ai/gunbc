@@ -1,5 +1,3 @@
-//! Parse + resolve receipts for `v2.lens.extdeps_shape_transport_policy`.
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -344,21 +342,18 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
     );
 
     v1_interpreter::with_active_context(&ctx, || {
-        // Exempt fixture: non-index-member literals -> zero.
         assert_eq!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &green_qn,
             ),
             0
         );
-        // Slice 2 migrated coverage_domain to QualifiedName -> no path nicknames -> zero.
         assert_eq!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &coverage_qn,
             ),
             0
         );
-        // Dedicated RED fixture embeds a real index-member nickname -> goes red.
         assert!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &local_red_qn,

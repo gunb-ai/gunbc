@@ -1,16 +1,3 @@
-// Scope: Lane 2c — value-level callable emission for the fold family + a nested closure argument.
-// Projects an arrow whose body is a positional call `callee(xs, z, fn(acc, h) { acc + h })` to
-// ConcreteSyntaxTokens via the value-expression tier (target_model callable-apply + closure arms,
-// reached through translate_project_transform_in_arrow_scope's non-operator head fallback).
-//
-// A call is a `ComputationNode { behavior: Transform }` whose head atom is a callee reference (not an
-// operator) — the same shape eval treats as a call (05_eval eval_node_is_callee_reference). The third
-// argument is an inline closure `TypeNode { connective: Arrow }` whose body (`acc + h`) is itself a
-// primitive-apply Transform scoped to the closure's own params (nested-closure scoping).
-//
-// Tokens are compared at the ConcreteSyntaxToken tier (content_hash of the token-node list), the same
-// tier as comprep_value_expression_fold_typescript_test — no binding_spellings serialize step.
-
 module v2.test.manual.comprep_fold_call_closure_emit
 
 import v2.compiler.translate { translate_project_transform_in_arrow_scope }
@@ -61,8 +48,6 @@ import v2.std.compilers.target_model {
   value_expr_projection_bundle_node
 }
 
-// ── fixture node builders ──────────────────────────────────────────────────────
-
 fn fold_call_atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
@@ -75,7 +60,6 @@ fn fold_call_positional(target: Node) -> Edge {
   Edge { label: Positional, target: target }
 }
 
-// Arrow domain Conj: one Named edge per param binding (name = binding, target = Int type atom).
 fn fold_call_domain_conj(params: List<Symbol>) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
@@ -86,7 +70,6 @@ fn fold_call_domain_conj(params: List<Symbol>) -> Node {
   )
 }
 
-// Inline closure `fn(acc, h) { acc <op> h }` — Arrow with [domain, codomain, body].
 fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
@@ -122,7 +105,6 @@ fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node 
   )
 }
 
-// Call body `callee(xs, z, closure)` — Transform with a non-operator callee head.
 fn fold_call_body(closure: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
@@ -151,7 +133,6 @@ fn fold_call_arrow(closure: Node) -> Node {
   )
 }
 
-// canonical: closure body is `acc + h`.
 fn fold_call_canonical_arrow() -> Node {
   fold_call_arrow(
     closure: fold_call_closure_arrow(
@@ -161,7 +142,6 @@ fn fold_call_canonical_arrow() -> Node {
   )
 }
 
-// discriminating red: closure operands swapped — body is `h + acc`.
 fn fold_call_swapped_arrow() -> Node {
   fold_call_arrow(
     closure: fold_call_closure_arrow(
@@ -170,8 +150,6 @@ fn fold_call_swapped_arrow() -> Node {
     )
   )
 }
-
-// ── target model (only value_expr_projection + operator_realizations are read here) ──
 
 fn fold_call_operator_catalog() -> Node {
   target_operator_realizations_catalog_node(
@@ -208,8 +186,6 @@ fn fold_call_target_model() -> TargetModel {
   }
 }
 
-// ── emit + expected tokens ─────────────────────────────────────────────────────
-
 fn fold_call_emit_body_tokens(arrow: Node) -> Outcome<List<ConcreteSyntaxToken>> {
   let target = fold_call_target_model()
   bind_outcome(
@@ -235,7 +211,6 @@ fn fold_call_emit_body_tokens(arrow: Node) -> Outcome<List<ConcreteSyntaxToken>>
   )
 }
 
-// `fold_call_callee(xs, z, fn(acc, h) { acc + h })`
 fn fold_call_expected_canonical_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^dag_token_ident, binding: ^fold_call_callee },
@@ -274,15 +249,10 @@ fn fold_call_emit_matches(arrow: Node, expected: List<ConcreteSyntaxToken>) -> B
   }
 }
 
-// ── witnesses ──────────────────────────────────────────────────────────────────
-
-// The fixtures are legitimate substrate (well-formed) — the call/closure are real Transform/Arrow
-// nodes, not ad-hoc projection carriers.
 fn fold_call_fixtures_well_formed() -> Bool {
   well_formed(n: fold_call_canonical_arrow()) && well_formed(n: fold_call_swapped_arrow())
 }
 
-// GREEN: the canonical fold call + nested closure emits exactly the expected token stream.
 fn fold_call_emit_holds() -> Bool {
   fold_call_emit_matches(
     arrow: fold_call_canonical_arrow(),
@@ -290,8 +260,6 @@ fn fold_call_emit_holds() -> Bool {
   )
 }
 
-// RED: swapping the closure operands changes the emitted tokens — the canonical expectation no longer
-// matches the swapped arrow, and the swapped arrow's own emission differs from canonical.
 fn fold_call_swap_discriminates() -> Bool {
   !fold_call_emit_matches(
     arrow: fold_call_swapped_arrow(),

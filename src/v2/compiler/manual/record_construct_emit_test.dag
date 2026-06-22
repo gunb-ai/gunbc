@@ -1,5 +1,3 @@
-// Scope: record construct body emit round-trip (.dag target).
-
 module v2.test.manual.record_construct_emit
 
 import v2.compiler.emit { emit }
