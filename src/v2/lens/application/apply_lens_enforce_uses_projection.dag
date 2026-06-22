@@ -5,11 +5,9 @@ module v2.test.lens_application.apply_lens_enforce_uses_projection
 import v2.lens.application {
   DeclarationId,
   DeclarationScope,
-  DiagnosticSeverity,
   EnforceableLens,
   Lens,
   LensEnforcement,
-  SeverityError,
   apply_lens_enforce
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
@@ -78,8 +76,7 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
     enforceable: projection_test_enforceable,
     section: DeclarationScope { declaration: projection_test_declaration },
     root: projection_test_root,
-    budget: ^projection_budget_ok,
-    diagnostic_severity: SeverityError {}
+    budget: ^projection_budget_ok
   ) {
     Accepted { value: result, diagnostics: _ } =>
       result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol

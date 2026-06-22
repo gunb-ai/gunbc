@@ -111,6 +111,7 @@ import v1.compiler.infer_sigs {
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  RustCorpusRepr, HostNative, FaithfulFreeMonoid,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary, derive_variant_to_enum
@@ -6384,6 +6385,20 @@ fn build_positional_payload_variants(modules: List<TypedModule>, type_summaries:
   )
 }
 
+// Corpus-global Rust representation selector (§2 handler selection). HostNative
+// iff the corpus bundles any v1 seed source (src/v1) — then the whole crate emits
+// the host representation (List→Vec, String, Nat/Int→i64) so the bootstrap seed
+// compiles (§7); otherwise the faithful v2-target FreeMonoid carrier. Computed
+// ONCE here (the single authority on EmitGraphInfo.corpus_repr); every emit site
+// COPIES the field and the type-renderers READ it — never recomputed downstream,
+// which is what makes per-module representation divergence unwritable (§5).
+// §6-transitional: collapses to FaithfulFreeMonoid when src/v1 is deleted.
+fn rust_corpus_repr(modules: List<TypedModule>) -> RustCorpusRepr {
+  let has_seed = modules |> any(m =>
+    map_keys(m.type_env.source_indices) |> any(k => contains(k, "/v1/") || contains(k, "src/v1")))
+  if has_seed { HostNative } else { FaithfulFreeMonoid }
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -6412,7 +6427,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     variant_to_enum: vtoe,
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
-    read_only_params: empty_set()
+    read_only_params: empty_set(),
+    corpus_repr: rust_corpus_repr(modules: modules)
   }
 }
 
