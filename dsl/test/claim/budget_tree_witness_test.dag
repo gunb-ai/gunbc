@@ -1,0 +1,57 @@
+module test.claim.budget_tree_witness
+
+import std.logic { Bool }
+import std.measure { byte_size }
+import product.budget_tree {
+  BudgetNode, BudgetClaim,
+  Guaranteed, BestEffort,
+  Reconciliation, AllSatisfied, Evicted, GuaranteedShortfall,
+  node_conserves, reconcile
+}
+
+fn sample_claims() -> List<BudgetClaim> {
+  [
+    BudgetClaim { holder: "g1", request: byte_size(count: 40), priority: Guaranteed },
+    BudgetClaim { holder: "g2", request: byte_size(count: 40), priority: Guaranteed },
+    BudgetClaim { holder: "b1", request: byte_size(count: 30), priority: BestEffort }
+  ]
+}
+
+fn node_at(cap: Nat) -> BudgetNode {
+  BudgetNode { name: "host", capacity_intent: byte_size(count: cap), claims: sample_claims() }
+}
+
+fn is_all_satisfied(r: Reconciliation) -> Bool {
+  match r { AllSatisfied { realized: x } => true  _ => false }
+}
+
+fn is_evicted(r: Reconciliation) -> Bool {
+  match r { Evicted { kept: k, evicted: e } => true  _ => false }
+}
+
+fn is_guaranteed_shortfall(r: Reconciliation) -> Bool {
+  match r { GuaranteedShortfall { shortfall: s } => true  _ => false }
+}
+
+fn witness_conservation_wall() -> Bool {
+  node_conserves(node: node_at(cap: 120)) && !node_conserves(node: node_at(cap: 100))
+}
+
+fn witness_reconcile_all_satisfied() -> Bool {
+  is_all_satisfied(r: reconcile(node: node_at(cap: 120), actual: byte_size(count: 120)))
+}
+
+fn witness_reconcile_evicts_best_effort() -> Bool {
+  is_evicted(r: reconcile(node: node_at(cap: 120), actual: byte_size(count: 90)))
+}
+
+fn witness_reconcile_guaranteed_shortfall() -> Bool {
+  is_guaranteed_shortfall(r: reconcile(node: node_at(cap: 120), actual: byte_size(count: 50)))
+}
+
+test fn budget_tree_holds() -> Bool {
+  witness_conservation_wall()
+    && witness_reconcile_all_satisfied()
+    && witness_reconcile_evicts_best_effort()
+    && witness_reconcile_guaranteed_shortfall()
+}
