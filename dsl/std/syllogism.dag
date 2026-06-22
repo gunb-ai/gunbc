@@ -55,8 +55,6 @@ import std.graph {
   dfs_finish_order,
   graph_has_multi_node_scc
 }
-import std.logic { Classical, True, False }
-
 // An axiom is LOGICAL (true in every interpretation — part of the logic) or
 // NON-LOGICAL (a proper axiom / postulate — a domain assumption). A1-A3 are
 // NonLogicalAxiom: assumed premises of the gunbc theory, not tautologies.
