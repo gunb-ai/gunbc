@@ -1,7 +1,3 @@
-// SG-COLLECTION-PROJECTION receipt: FreeMonoid<T> projects through the
-// TargetCollectionRealization row, with SG-RC binding ownership applied to
-// element storage.
-
 module v2.test.manual.sg_collection_projection
 
 import v2.compiler.translate {

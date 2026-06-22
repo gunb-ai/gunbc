@@ -1,7 +1,4 @@
-
-
 module v2.test.computation_shapes.branch_dispatch
-
 
 import v2.std.node {
   Atom,
@@ -33,7 +30,6 @@ fn branch_dispatch_leaf(s: Symbol) -> Node {
 }
 }
 
-
 fn branch_dispatch_arm(s: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -44,10 +40,8 @@ fn branch_dispatch_arm(s: Symbol) -> Node {
 }
 }
 
-
 data branch_dispatch_arm_then: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_then_sym)
 data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_else_sym)
-
 
 data branch_dispatch_subject: Node = Node {
   kind: ComputationNode { behavior: Branch },
@@ -58,24 +52,19 @@ data branch_dispatch_subject: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 fn branch_dispatch_pass_node() -> Node {
   branch_dispatch_leaf(s: ^branch_dispatch_pass_sym)
 }
-
 
 fn branch_dispatch_fail_node() -> Node {
   branch_dispatch_leaf(s: ^branch_dispatch_fail_sym)
 }
 
-
 fn branch_dispatch_bool_node(ok: Bool) -> Node {
   if ok { branch_dispatch_pass_node() } else { branch_dispatch_fail_node() }
 }
 
-
 data witness_branch_dispatch_well_formed: Bool = well_formed(n: branch_dispatch_subject)
-
 
 data claim_branch_dispatch_well_formed: TestClaim = CompilesClaim {
   label: "computation_shapes/branch_dispatch: Branch with two Transform arms is well-formed",
@@ -85,7 +74,6 @@ data claim_branch_dispatch_well_formed: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_branch_dispatch_equals_refl: TestClaim = EqualsClaim {
   label: "computation_shapes/branch_dispatch: Equals reflexivity on Branch dispatch subject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -94,10 +82,6 @@ data claim_branch_dispatch_equals_refl: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
-// Independently-constructed structurally-equal node (a separate literal, not the same value
-// twice) — makes the stability check meaningful: a content_hash that was not deterministic
-// across independent builds would fail this, where the old self-compare could not.
 data branch_dispatch_subject_rebuilt: Node = Node {
   kind: ComputationNode { behavior: Branch },
   children: [
@@ -107,7 +91,6 @@ data branch_dispatch_subject_rebuilt: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// Distinct node (arms swapped) — sensitivity: a distinct input must yield a distinct hash.
 data branch_dispatch_subject_arms_swapped: Node = Node {
   kind: ComputationNode { behavior: Branch },
   children: [
@@ -118,7 +101,6 @@ data branch_dispatch_subject_arms_swapped: Node = Node {
 }
 
 data witness_branch_dispatch_content_hash_stable: Bool = (content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject_rebuilt)) && (content_hash(n: branch_dispatch_subject) != content_hash(n: branch_dispatch_subject_arms_swapped))
-
 
 data claim_branch_dispatch_content_hash_stable: TestClaim = CompilesClaim {
   label: "computation_shapes/branch_dispatch: content_hash is stable on Branch dispatch subject",

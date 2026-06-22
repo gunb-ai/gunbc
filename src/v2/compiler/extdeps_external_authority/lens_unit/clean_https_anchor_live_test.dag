@@ -1,5 +1,3 @@
-// Lens-unit GREEN — https external anchor on fixture module.
-
 module v2.test.extdeps_external_authority.lens_unit.clean_https_anchor_live
 
 import v2.lens.extdeps_external_authority {

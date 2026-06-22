@@ -1,18 +1,3 @@
-// src/v2/compiler/discrimination_gate/discrimination_roster.dag
-// Scope: discrimination-gate — fail-closed family gate over a roster of real witness
-//        units (each a List<TestClaim> covering one change). Every row's unit must be
-//        DISCRIMINATING per v2.lens.discrimination (a positive AND a perturbed negative);
-//        empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent);
-//        TWO semantic-red controls must each be REJECTED by the lens — an all-positive unit
-//        (polarity axis) AND a green+red unit over the IDENTICAL input (perturbation axis) —
-//        so neither §5 axis can be stubbed without reddening the gate. The rows REUSE impossible-bug
-//        perturbation pairs — a CompilesClaim over a base input paired with a DiagnosticClaim
-//        over its perturbed falsification — rather than fork synthetic fixtures.
-//        Module is v2.test.discrimination_gate.* (test layer) though the file sits under
-//        compiler/ — a fact's home is its layer, not its directory (DESIGN.md §3). The
-//        dependency edge runs gate → lens ONLY; the lens never imports this roster.
-// Status: filled.
-
 module v2.test.discrimination_gate.discrimination_roster
 
 import v2.lens.discrimination { unit_is_discriminating }
@@ -62,9 +47,6 @@ import v2.test.impossible_bug.unhandled_diagnostic_paths {
   claim_unproven_division_rejected
 }
 
-// Each unit is a real change covered by a discriminating witness: a positive
-// (CompilesClaim over a base input, green by execution) paired with a discriminating
-// negative (DiagnosticClaim over the *perturbed* falsification input, asserted red).
 data unit_suboptimal_complexity: List<TestClaim> = [
   claim_within_structural_bound_passes,
   claim_overcost_against_structural_bound_violates
@@ -80,11 +62,6 @@ data unit_transport_type_drift: List<TestClaim> = [
   claim_target_contract_drift_impossible
 ]
 
-// De-vacuum widening (DESIGN.md §5/§6): three more real impossible-bug change-units, each a
-// positive paired with a PERTURBED discriminating negative (a falsification input distinct from
-// the positive's accepted input). The roster stays a CURATED set, not the whole change-set —
-// the dissolve trigger toward full change-coverage (the .dag structural-reflection wall shared by
-// lens/coverage.dag and lens/testgen.dag) is documented in lens_discrimination_family_eval_test.dag.
 data unit_idempotency_contract: List<TestClaim> = [
   claim_idempotent_inhabitant_passes,
   claim_repeated_append_in_idempotent_position_caught
@@ -111,15 +88,6 @@ fn discrimination_subject_rows() -> List<List<TestClaim>> {
   ]
 }
 
-// The gate guards TWO independent non-vacuity axes, each with its own semantic-red
-// control unit the lens MUST reject — so neither the polarity check nor the perturbation
-// check can be stubbed-out without reddening the gate (DESIGN.md §5 spec-without-execution
-// / §6 coverage-by-illusion; matches the per-axis controls in budget_roster_completeness
-// and optimality_gap_completeness).
-
-// Axis 1 — POLARITY: an all-positive unit (only a green assertion, no discriminating
-// negative) is the §5 spec-without-execution trap. The lens MUST reject it
-// (discrimination_reason_no_discriminating_negative).
 data all_positive_control_unit: List<TestClaim> = [
   claim_within_structural_bound_passes
 ]
@@ -128,13 +96,6 @@ fn negative_control_correctly_rejected() -> Bool {
   !unit_is_discriminating(unit: all_positive_control_unit)
 }
 
-// Axis 2 — PERTURBATION: a unit that DOES pair a green and a red, but over the IDENTICAL
-// input, is not a real discriminator — a negative over the input the positive accepts proves
-// nothing. The lens MUST reject it (discrimination_reason_negative_not_perturbed). Without
-// this control, unit_has_perturbation could be stubbed to always-true and the gate would
-// still pass on the curated roster. The red claim is a synthetic DiagnosticClaim over the
-// SAME `within_bound_input` the green CompilesClaim accepts (cf. the synthetic semantic-red
-// fixtures in sibling gates).
 data non_perturbed_red_over_green_input: TestClaim = DiagnosticClaim {
   label: "non-perturbation control: red asserted over the SAME input the positive accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -158,13 +119,6 @@ fn non_perturbed_control_correctly_rejected() -> Bool {
   !unit_is_discriminating(unit: non_perturbed_control_unit)
 }
 
-// Axis 2 (strong) — the perturbation requirement must hold PER red, not "∃ some input delta
-// in the unit". This 3-claim unit pairs a SECOND green over a different input
-// (flattened_optional_input) with a red that still sits on the FIRST green's accepted input
-// (within_bound_input). The weak `∃ red, ∃ green: input(r) != input(g)` reading would mark it
-// discriminating via the unrelated second green; the correct rule (no red input equals any
-// green input) rejects it. The lens MUST reject it — this control guards against that exact
-// weakening of unit_has_perturbation.
 data mixed_input_non_perturbed_control_unit: List<TestClaim> = [
   claim_within_structural_bound_passes,
   claim_optional_chaining_no_double_unwrap,

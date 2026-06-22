@@ -1,6 +1,3 @@
-// Scope: C3 fail-open audit — divergent-arm Branch through infer @ main (no arm-unification row).
-// Status: execution witness for design-sign gate; mismatch body = kw_true + pick_lit_one + ident.
-
 module v2.test.manual.comprep_branch_infer_fail_open_audit
 
 import v2.compiler.infer { infer }
@@ -26,7 +23,6 @@ fn comprep_branch_infer_fail_open_audit_body() -> Node {
   )
 }
 
-// GREEN when infer REJECTS divergent arms (fail-closed @ main).
 test fn comprep_branch_infer_fail_open_audit_rejects_holds() -> Bool {
   match infer(tree: comprep_branch_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => false
@@ -34,7 +30,6 @@ test fn comprep_branch_infer_fail_open_audit_rejects_holds() -> Bool {
   }
 }
 
-// RED-on-main detector: GREEN when infer silently accepts divergent arms (fail-open).
 fn comprep_branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
   match infer(tree: comprep_branch_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => d == None
@@ -42,7 +37,6 @@ fn comprep_branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
   }
 }
 
-// Main-line control: literal-arm pick body should still infer-accept (not over-reject).
 fn comprep_branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
   match infer(tree: dag_mvp1_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == None

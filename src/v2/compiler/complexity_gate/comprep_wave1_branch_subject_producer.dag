@@ -1,8 +1,3 @@
-// Scope: COMPREP wave-2 M0-B1 — single authority for pick(b) if-then-else subject-producer composition.
-//        tokenize(dag_mvp1_pick_source_text) → parse → normalize → resolve → body_producer.
-// Consumers: comprep_branch_eval_by_execution keystone.
-// Design: docs/design-comprep-m0-branch-mapping.md §4.1 M0-B1.
-
 module v2.test.complexity_gate.comprep_wave1_branch_subject_producer
 
 import v2.compiler.body_producer { produce_mvp1_pick_if_arrow_with_body_from_resolved }
@@ -25,7 +20,6 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus
 import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.compilers.lexing { Token }
 import v2.std.node { Node, Symbol }
-
 
 fn comprep_wave1_branch_parse_root() -> GrammarRoot {
   GrammarRoot {

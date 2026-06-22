@@ -1,13 +1,3 @@
-// Status: EXECUTED Bool witness — comprep bridge resolves MVP1 loop source without error.
-//
-// Discriminating: goes RED if any stage of the tokenize→parse→normalize→resolve chain
-// in comprep_source_resolved_root breaks (bad grammar root, tokenize error, parse failure,
-// normalize or resolve fault). A trivially-passing bridge would let stage regressions hide.
-//
-// Single test function: Accepted on valid source confirms the full four-stage pipeline is live.
-// Grammar-gap note: nested-Cardinality source text is deferred to the Rule-1 follow-up PR
-// where hand-constructed Nodes drive the rewrite-rule witnesses.
-
 module v2.test.complexity_gate.comprep_pipeline_bridge_test
 
 import v2.test.complexity_gate.comprep_pipeline_bridge { comprep_source_resolved_root }
@@ -28,8 +18,6 @@ fn comprep_bridge_test_loop_grammar_root() -> GrammarRoot {
   }
 }
 
-// Full pipeline resolves the MVP1 loop source without fault.
-// Goes RED if tokenize, parse, normalize, or resolve fails for any reason.
 test fn comprep_pipeline_bridge_resolves_loop_source() -> Bool {
   match comprep_source_resolved_root(
     source_text: dag_mvp1_loop_source_text,

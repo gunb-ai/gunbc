@@ -1,7 +1,3 @@
-// Scope: Wave A keystone (E-10) — emit_for_target on Arrow.body Behavior subtree only;
-//   whole COMPREP add-fn stays inferred once; partition API is the consumer.
-// Status: execute-the-carrier via `gunbc run --claim-run`.
-
 module v2.test.manual.program_partition_comprep_body_emit
 
 import v2.compiler.program_partition {
@@ -68,7 +64,6 @@ fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
   }
 }
 
-// Canonical node_subtree_nodes enumeration must be duplicate-free (deduped fold semantics).
 test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free() -> Bool {
   match comprep_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
@@ -83,7 +78,6 @@ test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free()
   }
 }
 
-// facts_closure_fold on body segment under FailClosed must accept (exercises canonical enumeration path).
 test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool {
   match comprep_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
@@ -107,7 +101,6 @@ test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool 
   }
 }
 
-// Body-only partition emit must accept and differ from whole-program emit (proves segment selection).
 test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
   match comprep_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>
@@ -136,7 +129,6 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
   }
 }
 
-// Whole-program segment via emit_for_target must match direct emit (regression guard).
 test fn program_partition_whole_program_emit_matches_direct() -> Bool {
   match comprep_ts_producer_inferred_tree() {
     Accepted { value: program, diagnostics: _ } =>

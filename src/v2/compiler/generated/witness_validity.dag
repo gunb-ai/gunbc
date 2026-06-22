@@ -1,7 +1,4 @@
-// Status: generated rows route through testgen_emit_witness_validity_claim; RoundTripClaim Deferred until eval interpretation-algebra lands.
-
 module v2.test.generated.witness_validity
-
 
 import v2.std.diagnostic { Outcome }
 import v2.std.node { Symbol }
@@ -26,7 +23,6 @@ data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = te
     }
   )
 
-
 data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: property symbol mismatch (invalid witness)",
     source_facts: stub_empty_conj,
@@ -41,7 +37,6 @@ data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> = testgen
     }
   )
 
-
 data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: evidence node mismatch (invalid witness)",
     source_facts: stub_empty_conj,
@@ -55,7 +50,6 @@ data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> = testgen_e
       evidence: stub_empty_disj,
     }
   )
-
 
 data row_witness_validity_rule_not_realized: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: preservation rule not realized",

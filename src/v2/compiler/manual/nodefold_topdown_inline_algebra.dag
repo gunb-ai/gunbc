@@ -1,5 +1,3 @@
-// Repro for dep-graph §4a item (b): inline NodeFoldTopDown algebra struct literal
-// lambdas must bind A=R=MyFold from the algebra type so fold.origin/state/at_conj
 module v2.test.manual.nodefold_topdown_inline_algebra
 
 import v2.std.node {
@@ -37,7 +35,6 @@ fn my_leaf() -> Node {
   }
 }
 
-// Inline algebra — NOT extracted to named top-level fns (contrast fold_node_topdown_mvp.dag).
 fn inline_topdown_algebra() -> NodeFoldTopDown<MyFold, MyFold> {
   NodeFoldTopDown {
     init: fn(n, fold) {

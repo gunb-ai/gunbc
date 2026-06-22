@@ -1,5 +1,3 @@
-// Scope: corpus regression guard — runtime/local has no embedded policy literals post-#5109.
-
 module v2.test.extdeps_shape_transport_policy.corpus.runtime_local_embedded_policy
 
 import v2.lens.extdeps_shape_transport_policy {

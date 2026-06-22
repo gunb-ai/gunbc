@@ -1,6 +1,3 @@
-// Authority (consumer landed): v3 `post_emit_verifier` +
-// `emit_verification_gates_test` + `r1c_e_gates::check_program_fixtures_post_emit_clean_all_targets`.
-
 module v2.test.manual.multi_target_emit_verification_gate
 
 import v2.std.verification {

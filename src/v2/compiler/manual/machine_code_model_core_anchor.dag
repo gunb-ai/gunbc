@@ -1,5 +1,3 @@
-// Status: compile-only anchor.
-
 module v2.test.manual.machine_code_model_core_anchor
 
 import v2.extdeps.languages.machine_code {

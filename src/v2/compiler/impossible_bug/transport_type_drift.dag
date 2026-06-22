@@ -1,9 +1,4 @@
-// Scope: TestClaim — transport/type drift impossible-bug class (R1). Client and server cannot hold different types for the same field — both derive from the same declaration. Drift is impossible by construction.
-// Anchor: enumerable impossible-bug class R1 (DESIGN.md §5 fail-closed) + gate #29 wire-serde-alignment + extdeps/coordination.dag
-
-
 module v2.test.impossible_bug.transport_type_drift
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -34,7 +29,6 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-
 data shared_wire_contract_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -43,7 +37,6 @@ data shared_wire_contract_input: Node = Node {
   ],
   occurrence_id: SyntheticOccurrence
 }
-
 
 data falsification_wire_contract_drift: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -54,7 +47,6 @@ data falsification_wire_contract_drift: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data falsification_target_contract_drift: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -64,7 +56,6 @@ data falsification_target_contract_drift: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
   label: "shared transport declaration compiles client and server sides",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -72,7 +63,6 @@ data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
   expected_value: shared_wire_contract_input,
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
-
 
 data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects target-side parallel authority",
@@ -87,7 +77,6 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
     ),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
-
 
 data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects parallel client server authority",

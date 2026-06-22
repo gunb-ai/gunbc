@@ -1,18 +1,4 @@
-
 module v2.test.manual.emit_directive_bash
-
-// Execution witness for the diagnostic-emission Bash realization (Gap A).
-// emit(EmitDirective, Bash) -> `echo <message> >&2` — the medium-agnostic EmitDirective
-// (v2.std.diagnostic) realized through v2.extdeps.languages.bash, row-driven via the shared
-// grammar machinery (DESIGN.md §4: emit = serialize_target ∘ translate). This witness IS the
-// live by-execution consumer that grounds the intent: PR1 has no production caller yet
-// (build_step migration is Phase 2, witty-wolf GHA-as-Node-gated; see the EmitDirective
-// scaffold marker in diagnostic.dag).
-//
-// Run:
-//   gunbc run --source-root src/v2 \
-//     --entry src/v2/compiler/manual/emit_directive_bash_test.dag \
-//     --function emit_directive_bash_error_emits_echo_stderr_holds --claim-run
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -39,9 +25,6 @@ import v2.std.diagnostic {
 import v2.std.node { Node }
 import v2.std.witness { Violates, Witness }
 
-// Bash emit uses lhs-exact Conj-positional rows; translate's grammar-first short-circuit never
-// consults facts. Fail-closed so any unexpected consultation surfaces as a rejection rather
-// than fabricated data.
 fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
     diagnostic: Diagnostic {
@@ -52,8 +35,6 @@ fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
   }
 }
 
-// Two directives, SAME message, different severity — the Bash transport must render them
-// IDENTICALLY (severity realizes at the GHA layer, Phase 2, not in the bash stream).
 data emit_directive_error_example: EmitDirective = EmitDirective {
   severity: SeverityError,
   message: "build verification failed"
@@ -64,19 +45,14 @@ data emit_directive_warning_example: EmitDirective = EmitDirective {
   message: "build verification failed"
 }
 
-// A distinct message — proves the message word genuinely FLOWS through the realization (not a
-// fabricated/hardcoded literal).
 data emit_directive_other_example: EmitDirective = EmitDirective {
   severity: SeverityError,
   message: "cache corruption"
 }
 
-// Literal byte oracles. This is a *_test module — excluded from the MediumStructureLeak lens by
-// construction — so the expected bash bytes are pinned as literals (the unimpeachable oracle,
-// independent of the realization's own quoting helper).
 data emit_directive_error_expected: String = "'echo' 'build verification failed' >&2"
 data emit_directive_other_expected: String = "'echo' 'cache corruption' >&2"
-// WRONG stream (stdout, no `>&2`) — the diagnostic-leaks-to-stdout bug bytes.
+
 data emit_directive_error_to_stdout_wrong_expected: String = "'echo' 'build verification failed'"
 
 fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
@@ -89,8 +65,6 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   )
 }
 
-// KEYSTONE — emit(EmitDirective{Error}, Bash) produces the canonical `'echo' '<msg>' >&2`.
-// Discriminating: any quoting / word / stream / layout drift changes the bytes -> RED.
 test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool {
   match emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: source, diagnostics: dg } =>
@@ -99,8 +73,6 @@ test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool {
   }
 }
 
-// SEVERITY-INVARIANCE — Error and Warning (same message) render to identical Bash bytes; the
-// Bash transport carries no severity (severity realizes at the GHA layer, Phase 2).
 test fn emit_directive_bash_severity_invariant_holds() -> Bool {
   match emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: se, diagnostics: _ } =>
@@ -112,7 +84,6 @@ test fn emit_directive_bash_severity_invariant_holds() -> Bool {
   }
 }
 
-// MESSAGE FLOWS — a distinct message yields distinct, correct bytes (the word is not fabricated).
 test fn emit_directive_bash_message_flows_holds() -> Bool {
   match emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: s1, diagnostics: _ } =>
@@ -135,9 +106,6 @@ fn emit_directive_bash_emit_to_stdout_wrong(d: EmitDirective) -> Outcome<Medium<
   )
 }
 
-// DISCRIMINATING RED — the wrong-stream model (no `>&2`, diagnostic to stdout) emits the stdout
-// bytes, which DIFFER from the correct `>&2` bytes. Proves the `>&2` redirect is load-bearing:
-// swap the realization to stdout and the keystone above breaks.
 test fn emit_directive_bash_to_stdout_wrong_ne_correct_holds() -> Bool {
   match emit_directive_bash_emit_to_stdout_wrong(d: emit_directive_error_example) {
     Accepted { value: w, diagnostics: _ } =>

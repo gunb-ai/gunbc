@@ -1,9 +1,3 @@
-// Scope: Branch H.7.2 contract visibility claim plus Branch B-min Bmin.4-Bmin.5
-// canonical `.dag` source parse/print law.
-// Status: shape CompilesClaims compile here; by-execution real-source gates live in
-//   emit_ingest_type_decl_round_trip_test.dag (Wave 3c-F non-add type-decl)
-//   emit_ingest_python_same_language_round_trip_test.dag (Wave 3c-F add real-parse promotion).
-
 module v2.test.round_trip.source_authority_contract
 
 import extdeps.communication.medium { Lossless, Medium }

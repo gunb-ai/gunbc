@@ -1,5 +1,3 @@
-// Anchor: design-provenance-span.md §4.5; design-node-identity-channels.md.
-
 module v2.test.provenance.occurrence_id_model
 
 import v2.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
@@ -41,7 +39,6 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, Violates }
-
 
 fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()

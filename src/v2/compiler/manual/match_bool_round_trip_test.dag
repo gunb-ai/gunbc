@@ -1,5 +1,3 @@
-// Scope: Bool match body emit→ingest round-trip (.dag target).
-
 module v2.test.manual.match_bool_round_trip
 
 import v2.compiler.emit { emit }

@@ -1,4 +1,3 @@
-
 module v2.test.manual.test_claim_cache_digest_sensitivity
 
 import v2.compiler.eval {
@@ -250,7 +249,6 @@ fn tcc_cache_byte_offset_pow_8() -> Int {
   int_mul(a: tcc_cache_byte_offset_pow_4(), b: tcc_cache_byte_offset_pow_4())
 }
 
-// 256^byte_offset_cache_digest_max_limbs (9).
 fn tcc_cache_byte_offset_pow_9() -> Int {
   int_mul(a: tcc_cache_byte_offset_pow_8(), b: tcc_cache_byte_limb_base)
 }
@@ -314,12 +312,10 @@ fn tcc_cache_byte_offset_pow_37() -> Int {
   int_mul(a: tcc_cache_byte_offset_pow_36(), b: tcc_cache_byte_limb_base)
 }
 
-// 256^9 - 1 — largest within-ceiling offset (9 base-256 limbs).
 fn tcc_cache_byte_offset_exact_ceiling() -> Int {
   int_add(a: tcc_cache_byte_offset_pow_9(), b: int_negate(a: tcc_cache_int_one))
 }
 
-// 256^9 — first offset that exhausts the limb budget with nonzero remainder.
 fn tcc_cache_byte_offset_over_ceiling() -> Int {
   tcc_cache_byte_offset_pow_9()
 }
@@ -329,7 +325,6 @@ fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Boo
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
 }
 
-// 256^9 + 256 — same post-ceiling quotient as 256^9+1 but distinct low nine limbs.
 fn tcc_cache_byte_offset_same_quotient() -> Int {
   int_add(a: tcc_cache_byte_offset_over_ceiling(), b: tcc_cache_byte_limb_base)
 }
@@ -344,27 +339,23 @@ fn tcc_cache_byte_offset_sign_over_ceiling_digest_differs() -> Bool {
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: 0 - tcc_cache_byte_offset_over_ceiling()))
 }
 
-// Post-ceiling quotient beyond the overflow tail limb budget must not collapse via byte_limb_out_of_range.
 fn tcc_cache_byte_offset_large_overflow_quotient_digest_differs() -> Bool {
   let overflow_quotient = tcc_cache_byte_offset_pow_13()
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: overflow_quotient)) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient)))
 }
 
-// Exhausted-residual band (quotient >= 256^2): must not alias via limb_out_of_range + low byte only.
 fn tcc_cache_byte_offset_exhausted_residual_quotient_digest_differs() -> Bool {
   let overflow_quotient = tcc_cache_byte_offset_pow_19()
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: overflow_quotient)) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: overflow_quotient)))
 }
 
-// Same retained low tail, discarded high quotient differs (256^19 vs 256^20).
 fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_19())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_20()))
 }
 
-// First adjacent-power alias band under fixed four-limb suffix (256^21 vs 256^22) — cache-ineligible path.
 fn tcc_cache_byte_offset_exhausted_residual_adjacent_power_21_22_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_21())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_22()))
@@ -375,13 +366,11 @@ fn tcc_cache_byte_offset_exhausted_residual_21_double_digest_differs() -> Bool {
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_21())))
 }
 
-// Magnitude windows must cover post-ceiling residual ~256^20 band (256^29 vs 2·256^29).
 fn tcc_cache_byte_offset_exhausted_residual_29_double_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_29())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_29())))
 }
 
-// Interim magnitude ceiling through shift 28 (256^37 vs 2·256^37 post-ceiling residual 256^28 band).
 fn tcc_cache_byte_offset_exhausted_residual_37_double_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_37())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_37())))

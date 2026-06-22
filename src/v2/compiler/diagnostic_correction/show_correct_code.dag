@@ -1,8 +1,4 @@
-// Scope: End-to-end TestClaim rows asserting diagnostics carry suggested correction data.
-
-
 module v2.test.diagnostic_correction.show_correct_code
-
 
 import v2.std.diagnostic {
   AmbiguousIntent,
@@ -38,7 +34,6 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-
 fn pair_node(left: Symbol, right: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -50,42 +45,29 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
 }
 }
 
-
 data complexity_correction_input: Node = pair_node(left: ^correction_bad_complexity_symbol, right: ^correction_good_complexity_symbol)
-
 
 data complexity_correction_expected_node: Node = atom_node(s: ^correction_good_complexity_symbol)
 
-
 data falsification_complexity_diagnostic_without_correct_code: Node = complexity_correction_input
-
 
 data transport_correction_input: Node = pair_node(left: ^correction_drift_client_symbol, right: ^correction_drift_server_symbol)
 
-
 data transport_correction_expected_node: Node = atom_node(s: ^correction_shared_contract_symbol)
-
 
 data falsification_transport_diagnostic_without_correct_code: Node = transport_correction_input
 
-
 data falsification_ambiguous_boundary_without_unavailable_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
-
 
 data falsification_textual_whole_file_without_locus: Node = atom_node(s: ^correction_textual_whole_file_subject)
 
-
 data falsification_textual_byte_range_without_locus: Node = atom_node(s: ^correction_textual_byte_range_subject)
-
 
 data falsification_port_diagnostic_without_locus: Node = atom_node(s: ^correction_drift_client_symbol)
 
-
 data falsification_external_contract_without_reason: Node = atom_node(s: ^correction_drift_server_symbol)
 
-
 data falsification_user_boundary_without_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
-
 
 data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticClaim {
   label: "complexity diagnostic suggests structurally correct replacement",
@@ -101,7 +83,6 @@ data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticCl
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
-
 data claim_transport_diagnostic_suggests_shared_contract: TestClaim = DiagnosticClaim {
   label: "transport diagnostic suggests shared declaration replacement",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -115,7 +96,6 @@ data claim_transport_diagnostic_suggests_shared_contract: TestClaim = Diagnostic
     ),
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
-
 
 data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "ambiguous boundary diagnostic carries explicit unavailable correction reason",
@@ -131,7 +111,6 @@ data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim =
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
-
 data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries whole-file locus and suggested correction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -145,7 +124,6 @@ data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticCl
     ),
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
-
 
 data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries byte-range locus and suggested correction",
@@ -161,7 +139,6 @@ data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticCl
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
-
 data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   label: "port diagnostic carries port locus and suggested correction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -176,7 +153,6 @@ data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
-
 data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "external contract diagnostic carries explicit unavailable correction reason",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -190,7 +166,6 @@ data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = 
     ),
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
-
 
 data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "user boundary diagnostic carries explicit unavailable correction reason",
