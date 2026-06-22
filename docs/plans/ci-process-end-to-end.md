@@ -54,23 +54,27 @@ the *fabric* is.
 (`.dag` *describes* it but doesn't operate/enforce it) · 🔴 **OFF-FABRIC** (GitHub-native or hand/host;
 no `.dag`).
 
-| # | Link (push → execute) | Verdict | Authority today / gap |
-|---|------|---------|----------------------|
-| 1 | push branch / open-sync PR | 🔴 | git + GitHub native |
-| 2 | GitHub reads committed `ci.yml` triggers, starts run | 🟢 *file* / 🔴 *act* | file derived+gated; dispatch engine native. **Bootstrap seam**: reads the *committed* file → stale-on-invocation-surface is uncaught |
-| 3 | concurrency group + cancel-in-progress | 🟢 *key* / 🔴 *eval* | key modeled (`ci_workflow_expressions`), **carries the `run_id`-fallback dup bug**; evaluated by GitHub |
-| 3′ | dashboard *also* fires `workflow_dispatch` same SHA | 🔴 | ctrl/dashboard — **the dup source** |
-| 4 | GitHub matches labels & **places the job on a host** | 🟢 *labels* / 🔴 *placement* | labels derived (`runner_spec_from_offer`); **placement is native, demand-blind, first-idle** ← **underutilization root (G1)** |
-| 5 | a runner daemon on srv1/srv2 picks it up | 🔴 (🟡 inventory) | runners/host, registration, on-box labels = **hand-run shell, no repo artifact (G2)**; `operator_fleet` only *describes* the hosts |
-| 6 | the runner's cgroup cap bounds it | 🔴 | `TasksMax`/`MemoryMax` host-set by hand **(G3)**; `.dag` only *reads* it live — adaptive, not authoritative |
-| 7 | steps: isolate toolchain, checkout, setup-rust, cache | 🟢 *list* / 🔴 *tools* | step list derived; bodies shell out to git/rustup/cache |
-| 8 | `cargo build -p v1-compiler` + freshness/exists verify | 🟢 | command + §5 fail-closed guards derived; cargo/sccache external |
-| 9 | `claim_executor … gunbc_ci_floor_batches` | 🔵 | **executor interprets `ci_floor_plan.dag`; batches from dependency edges** — strongest on-fabric link |
-| 10 | read live budget → `memory_aware_spawn_width` → shard | 🔵 *decision* / 🔴 *input* | width logic executes `.dag`, reading off-fabric host state |
-| 11 | affected-set skip over the git-diff frontier | 🔵 | the `.dag` floor already shrinks to affected |
-| 12 | gates: ci.yml-drift, rust fmt/clippy, layering, witness corpus | 🔵 *corpus* / 🔴 *rust* | the witness corpus **is `.dag` executing**; fmt/clippy shell to cargo and have **no affected-set (G5)** |
-| 13 | exit code → GitHub marks the check | 🔴 | GitHub-native |
-| 14 | dashboard reads check + reviews → merge | 🔴 | ctrl/dashboard; merge manual |
+| # | Link (push → execute) | Verdict | Wall (#5427 run) | Authority today / gap |
+|---|------|---------|------|----------------------|
+| 1 | push branch / open-sync PR | 🔴 | — | git + GitHub native |
+| 2 | GitHub reads committed `ci.yml` triggers, starts run | 🟢 *file* / 🔴 *act* | ~0 | file derived+gated; dispatch engine native. **Bootstrap seam**: reads the *committed* file → stale-on-invocation-surface is uncaught |
+| 3 | concurrency group + cancel-in-progress | 🟢 *key* / 🔴 *eval* | ~0 | key modeled (`ci_workflow_expressions`), **carries the `run_id`-fallback dup bug**; evaluated by GitHub |
+| 3′ | dashboard *also* fires `workflow_dispatch` same SHA | 🔴 | — | ctrl/dashboard — **the dup source** |
+| 4 | GitHub matches labels & **places the job on a host** | 🟢 *labels* / 🔴 *placement* | ~0 (queue) | labels derived (`runner_spec_from_offer`); **placement is native, demand-blind, first-idle** ← **underutilization root (G1)** |
+| 5 | a runner daemon on srv1/srv2 picks it up | 🔴 (🟡 inventory) | — | runners/host, registration, on-box labels = **hand-run shell, no repo artifact (G2)**; `operator_fleet` only *describes* the hosts |
+| 6 | the runner's cgroup cap bounds it | 🔴 | — | `TasksMax`/`MemoryMax` host-set by hand **(G3)**; `.dag` only *reads* it live — adaptive, not authoritative |
+| 7 | steps: isolate toolchain, checkout, setup-rust, cache | 🟢 *list* / 🔴 *tools* | **~15s** | step list derived; bodies shell out to git/rustup/cache |
+| 8 | `cargo build -p v1-compiler` + freshness/exists verify | 🟢 | **~1m45s** | command + §5 guards derived; sccache-warm (847/859 hits) at `BUILD_JOBS=1` |
+| 9 | `claim_executor … gunbc_ci_floor_batches` | 🔵 | *(batches ↓)* | **executor interprets `ci_floor_plan.dag`; batches from dependency edges** — strongest on-fabric link |
+| · | ⤷ batch 1 — compile-clean gate | 🔵 | **~22s** | `gunbc compile --target rust` over the whole tree + a RED control |
+| · | ⤷ batch 2 — corpus + rust monolith + 5 gates (width 8) | 🔵/🔴 | **~43m20s** | **87% of the run; one atomic rust node holds it open — see §6** |
+| · | ⤷ batch 3 — source-root-ingest + self-host closure | 🔵 | **~4m29s** | 2 serial (width-1) sub-shells of heavy `gunbc run`s |
+| 10 | read live budget → `memory_aware_spawn_width` → shard | 🔵 *decision* / 🔴 *input* | *(in 9)* | width logic executes `.dag`, reading off-fabric host state; gave `width=8` from a 112 GB live budget |
+| 11 | affected-set skip over the git-diff frontier | 🔵 | *(in 9)* | the `.dag` floor already shrinks to affected (0 skipped here) |
+| 12 | gates: ci.yml-drift, rust fmt/clippy+**run-all**, layering, corpus | 🔵 *corpus* / 🔴 *rust* | *(in batch 2)* | corpus **is `.dag` executing**; the rust gate shells to cargo, **no affected-set (G5)**, and is the tentpole |
+| 13 | exit code → GitHub marks the check | 🔴 | ~0 | GitHub-native |
+| 14 | dashboard reads check + reviews → merge | 🔴 | — | ctrl/dashboard; merge manual |
+| | **total step** | | **49m58s** | one `gunbc ci` step |
 
 ---
 
@@ -128,7 +132,73 @@ box runs CI at **width ~4 [confirm]** while the other host idles.
 
 ---
 
-## 6. What to do now — leverage-ranked, none a tweak
+## 6. Where the 50 minutes goes (measured — #5427 run 27924855136, srv2, width 8)
+
+The whole 50 min is one step (`gunbc ci`, 49m58s). By phase, then one level deeper into what each runs:
+
+| Phase | Wall | What it runs (one level down) |
+|---|---|---|
+| Setup | ~15s | checkout (fetch-depth 0, ~1s) · setup-rust (rustfmt already current, ~10s) · cargo-cache restore |
+| Build `v1-compiler --release` | ~1m45s | `cargo build … --bins` at **`CARGO_BUILD_JOBS=1`**; **sccache warm (847/859 hits)** so fast anyway. Produces the seed bins: `gunbc` · `claim_executor` · `discover_source_root_ingest` |
+| **Batch 1** — compile-clean gate | ~22s | `gunbc compile --target rust` over `dsl`+`src/v2` (whole substrate must compile clean) **+ a RED control** (a deliberately-perturbed compile must fail) |
+| **Batch 2** (width 8, 7 nodes) | **~43m20s** | one *atomic* node dominates — split below |
+| **Batch 3** — ingest + self-host | ~4m29s | 2 **serial** (width-1) sub-shells: ① `discover_source_root_ingest` + 3 program-assembly ingest witnesses (~2m16s) · ② self-host closure + gap4-parse + closure module-count witnesses (~2m13s) |
+| Teardown | ~19s | save cargo cache (tar+zstd, 233 MB) |
+
+**Batch 2, one level down.** The 7 nodes run width-8 parallel but are wildly unbalanced — one *atomic*
+node holds the batch open for 43 min while the rest finish in the first ~7:
+
+| Batch-2 node | Wall | What it runs |
+|---|---|---|
+| discovery corpus (660 `.dag` witnesses) | ~6m (done 02:06) | **resolve 840s + eval 910s = 1750s CPU** ÷ width 8. resolve = re-resolving each witness's import graph **cold (resolve cache OFF)**; eval = interpreting each witness **un-memoized** |
+| 5 lens/gate witnesses (emit-host · layering · resolved-imports · extdeps-authority · ci.yml-drift) | sec–min | each a `gunbc run --claim-run` over one `_test.dag`; finish early, masked |
+| **`rust_monolith_gate`** | **~43m** | `cargo fmt` (~s) · `clippy --all-targets` (~35s, sccache-warm) · **`cargo test -p v1-compiler-tests` = 42m39s** ← the #5427 run-all |
+
+**The tentpole, one more level — `cargo test -p v1-compiler-tests` (42m39s):** *compile* the test crate at
+**`CARGO_BUILD_JOBS=1`** + *run* the ~792 tests. The compile-vs-run split is **not instrumented** — the one
+measurement worth taking before committing a fix (`cargo test --no-run` timing). The *mechanism*, though, is
+already clear (§7).
+
+---
+
+## 7. Why batch 2 is slow — the coherent, whole-pipeline reading
+
+Not "the rust gate is inherently 43 min." It's the same mechanism §1 keeps hitting: **on a 128-core box,
+every heavy phase runs at single-digit parallelism or recomputes cold — because nothing derives the safe
+parallelism from the host.** Seen across the whole pipeline:
+
+- **The rust tentpole compiles at parallelism ~1.** `CARGO_BUILD_JOBS=1` is force-set whenever sccache is
+  active — a **panic-clamp** to dodge the `sccache × codegen-units` pids-cap EAGAIN crash
+  ([compute-envelope-model.md](compute-envelope-model.md) §1). To avoid the *crash* extreme the box is
+  pinned to the *idle* extreme: it compiles the test crate single-threaded on 128 cores. That clamp **is**
+  the crash-or-idle swing, landed on the rust gate.
+- **It is also a single un-sharded node.** The width-8 scheduler shards the `.dag` corpus (1750s CPU → 6m
+  wall) but treats `cargo test -p v1-compiler-tests` as **one opaque node** — no nextest partition, no
+  per-test-group shard — so its cost is *serial wall*, not divided. The scheduler's parallelism never
+  reaches inside it.
+- **The `.dag` corpus is fast only because it's sharded — it still pays cold.** 1750s CPU for 660 witnesses
+  is itself high: resolve runs **cold every run** (dormant resolve cache) and eval is **un-memoized**. Width
+  8 hides it as 6m wall; it is not cheap.
+- **Batch 3 is serial** — two width-1 sub-shells of heavy `gunbc run`s for ~4.5m.
+
+So the whole pipeline tells **one** story: the heaviest work is either clamped to low parallelism (rust
+`jobs=1`, batch-3 serial) or recomputed cold (resolve cache off) — a 128-core machine used at single-digit
+parallelism for its two most expensive phases. That is exactly the **scheduling-inert + caching-dormant**
+gap of §4, on the clock. The levers, none a tweak:
+
+1. **Derive a safe `CARGO_BUILD_JOBS` (>1) from the envelope** (`jobs = f(cores, pids-cap, mem)`) instead of
+   the panic-clamp to 1 — unclamps compile (G3 / compute-envelope).
+2. **Shard the rust node** (nextest partition) so the width-8 scheduler reaches inside it (G5 / §9
+   one-Placement-authority — the rust gate is off the `.dag` scheduler today).
+3. **Enable the resolve cache** — drops the 840s cold resolve under the corpus.
+4. **edge-(b) selection** — run only the affected rust tests, so the run-all isn't paid per-PR at all.
+
+(1)+(2) attack the tentpole's two mechanisms; (3) the corpus; (4) removes the run-all from most PRs. Each
+closes a derive-from-the-host gap — none is "trim a number."
+
+---
+
+## 8. What to do now — leverage-ranked, none a tweak
 
 Ordering principle: **finishes/enables that make utilization fall out of the model come before any new
 scheduler.** Sharding/tiering knobs are excluded — they lower a number once and don't compound (§6).
@@ -151,7 +221,7 @@ shards the rest. The 50 min is a *symptom of placement*.
 
 ---
 
-## 7. The lane's real deliverable — shared abstractions
+## 9. The lane's real deliverable — shared abstractions
 
 Beyond closing the gaps, the lane converges the forks CI exposes (pull each in **as CI flexes it**, §6):
 
@@ -166,7 +236,7 @@ Beyond closing the gaps, the lane converges the forks CI exposes (pull each in *
 
 ---
 
-## 8. Open decisions (operator + bright-stag)
+## 10. Open decisions (operator + bright-stag)
 
 1. **Target ceiling** — "~50 is the unacceptable status quo; get it to **~___**." Decides whether steps
    1–2 suffice or step 3 is load-bearing this window.
