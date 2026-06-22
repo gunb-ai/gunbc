@@ -3,14 +3,12 @@ module gunbc.roadmap_model
 import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift }
 
-type PlanDocCarrier
-  = NoCarrier
-  | PlanDoc { path: String }
+type Pointer { label: String, path: String }
 
 type RoadmapNode {
   node: ProcessNodeId
   line: RoadmapItem
-  carrier: PlanDocCarrier
+  carriers: List<Pointer>
 }
 
 type RoadmapEdge {
@@ -55,15 +53,12 @@ fn is_top_level(edges: List<RoadmapEdge>, node: ProcessNodeId) -> Bool {
   }
 }
 
-fn carrier_resolves(carrier: PlanDocCarrier, existing_docs: List<String>) -> Bool {
-  match carrier {
-    NoCarrier => true
-    PlanDoc { path } => existing_docs |> any(d => d == path)
-  }
+fn pointer_resolves(p: Pointer, existing_docs: List<String>) -> Bool {
+  existing_docs |> any(d => d == p.path)
 }
 
 fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
-  carrier_resolves(carrier: rn.carrier, existing_docs: existing_docs)
+  all(rn.carriers, p => pointer_resolves(p: p, existing_docs: existing_docs))
 }
 
 fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {

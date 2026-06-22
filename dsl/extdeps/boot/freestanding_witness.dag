@@ -59,6 +59,16 @@ import extdeps.formats.elf.types {
 import std.exec_format { EntryPoint }
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
+  }
+}
+
 fn witness_emitted_ehdr_is_et_exec_x86_64() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
   match decode_elf64_ehdr(bytes) {

@@ -1,6 +1,15 @@
 module extdeps.gitignore_render
 
 import extdeps.gitignore { GitignoreCategory, GitignoreFile }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitignore"
+  }
+}
 
 fn render_category_header(cat: GitignoreCategory) -> String {
   match cat.source {

@@ -26,6 +26,16 @@ import std.measure {
 }
 import std.types { Int, List, NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "dmtf.org/standards/redfish"
+  }
+}
+
 fn redfish_memory_summary_from_gib(total_gib: Gibibyte) -> RedfishMemorySummary {
   RedfishMemorySummary { total_memory_bytes: gibibyte_to_byte_size(g: total_gib) }
 }
