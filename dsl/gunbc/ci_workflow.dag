@@ -10,6 +10,9 @@
 module gunbc.ci_workflow
 
 import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
+import gunbc.ci_workflow_expressions {
+  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
+}
 import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
 import gunbc.ci_fleet { gunbc_ci_runner_spec }
 import extdeps.github.actions {
@@ -34,7 +37,9 @@ data ci_workflow: Workflow = {
   ],
   concurrency: Present {
     value: ConcurrencyMappingQueueNotMax {
-      group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+      // GitHub Actions `${{ }}` expressions are typed Nodes in `gunbc.ci_workflow_expressions`
+      // and serialized here (medium-as-Node guard — no inline expression strings in this file).
+      group: ci_concurrency_group(),
       cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
       explicit_single: none
     }
@@ -122,7 +127,7 @@ data ci_workflow: Workflow = {
           ]
         },
         env: Present {
-          value: [kv(key: "HOME", value: yaml_string(s: "${{ runner.temp }}"))]
+          value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
         },
         if_condition: none,
         continue_on_error: none,
@@ -148,21 +153,9 @@ data ci_workflow: Workflow = {
         uses: cache_action,
         with: Present {
           value: [
-            kv(key: "path", value: yaml_string(s: concat(
-              concat(
-                concat(
-                  "${{ runner.temp }}/cargo/registry/index/\n",
-                  "${{ runner.temp }}/cargo/registry/cache/\n"
-                ),
-                concat(
-                  "${{ runner.temp }}/cargo/git/db/\n",
-                  "target/"
-                )
-              ),
-              ""
-            ))),
-            kv(key: "key", value: yaml_string(s: "cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}")),
-            kv(key: "restore-keys", value: yaml_string(s: "cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n"))
+            kv(key: "path", value: yaml_string(s: ci_cache_path())),
+            kv(key: "key", value: yaml_string(s: ci_cache_key())),
+            kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
           ]
         },
         env: none,
