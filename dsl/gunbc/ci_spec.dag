@@ -5,7 +5,7 @@ import gunbc.ci_layer_roots {
   witness_layer_source_flags
 }
 import tools.build_step { BuildArtifact, verifications_script }
-import extdeps.languages.bash.program { ShellWord, Concat, lit, var_ref }
+import extdeps.languages.bash.program { Concat, lit, var_ref }
 
 type Gate
   = RustMonolithGate
@@ -141,16 +141,8 @@ data ci_floor_required_artifacts: List<BuildArtifact> = [
   ci_release_artifact(name: "gunbc")
 ]
 
-fn ci_build_source_roots() -> List<ShellWord> {
-  [
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0")] },
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0_core")] },
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0_emit_core")] }
-  ]
-}
-
 fn ci_floor_build_verify_script() -> String {
-  verifications_script(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
+  verifications_script(produces: ci_floor_required_artifacts)
 }
 
 fn ci_release_build_script() -> String {
