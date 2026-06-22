@@ -24,6 +24,16 @@ import std.cache_interface {
   Org,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/mozilla/sccache/blob/main/docs/Configuration.md"
+  }
+}
+
 data sccache_local_id: CacheInterfaceId = "sccache_local"
 
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
