@@ -1115,6 +1115,21 @@ service github.Gist {
     }
 
     #[test]
+    fn external_authority_shadow_mask_detector_has_teeth() {
+        assert!(
+            external_authority_anchor_shadow_masked_for_module_path(
+                "extdeps.fixture.external_authority_shadow_masked".to_string()
+            ),
+            "the two-tree shadow fixture (anchor in dsl copy, none in index-resolved src/v2 copy) \
+             must read as masked -- proves the detector is not inert"
+        );
+        assert!(
+            external_authority_live_shadow_mask_holds(),
+            "no live extdeps module may carry an anchor only in a non-index-resolved shadow copy"
+        );
+    }
+
+    #[test]
     fn external_authority_clean_https_fixture_projects_https_locator() {
         assert_eq!(
             external_authority_anchor_kind_for_module_path(
