@@ -1,0 +1,161 @@
+// DEMO (scratch — delete freely): the fail-closed `|>` coercion, proven by execution.
+//
+// This is the *desugaring target* of the operator we discussed. The glyph itself (a grammar
+// rule + lowering) is intentionally NOT added here — that's a load-bearing parser change, and
+// our own rule is semantics-first / glyph-last. What this proves is the BEHAVIOR you asked for:
+// fail-closed, never lossy, never a silent path; bad seams are errors you resolve explicitly.
+//
+//   surface (proposed)            desugars to                          result
+//   ------------------            -----------                          ------
+//   3.Gibi |> Bytes               coerce_scale(3, Gibi, One)           Present 3221225472
+//   3.Gibi |> Bytes |> KiB        chain (Optional-threaded)            Present 3145728
+//   3072.Bytes |> KiB             coerce_scale(3072, One, Kibi)        Present 3        (exact)
+//   1500.Bytes |> KiB             coerce_scale(1500, One, Kibi)        Absent           (LOSSY: red seam)
+//   1500.Bytes |> ceilKiB         coerce_scale + explicit decision     2               (lambda resolves it)
+//   5.Kilo |> Kibi                coerce_scale(5, Kilo, Kibi)          Absent           (GAP: cross-base)
+//
+// `|>` not `=>`: `=>` is your match-arm glyph. `|>` is the clean steal — no collision, and
+// familiar from the pipe languages. (Keeping `=>`'s look would mean migrating match to
+// switch/case — a big churn for cosmetics; deferrable, not required for the semantics.)
+module test.claim.coerce_pipe_demo
+
+import std.types { Int }
+import std.logic { Bool }
+import std.measure { Scale, One, Kilo, Mega, Kibi, Mebi, Gibi, Tebi, scale_exponent }
+import std.induction { int_pow_bounded }
+
+// The projection std.measure is missing today (the "enrich the model" move): a Scale's base.
+// IEC binary memory prefixes are base 2; every SI decimal prefix is base 10.
+fn scale_base(s: Scale) -> Int {
+  match s {
+    Kibi => 2
+    Mebi => 2
+    Gibi => 2
+    Tebi => 2
+    _ => 10
+  }
+}
+
+fn is_one(s: Scale) -> Bool {
+  match s {
+    One => true
+    _ => false
+  }
+}
+
+// One is the universal identity (factor 1 in any base) — it adopts the other scale's base.
+// A genuine cross-base pair (Kilo vs Kibi) has NO exact path -> Absent. That is the GAP.
+fn shared_base(from: Scale, to: Scale) -> Int? {
+  if is_one(s: from) {
+    Present { value: scale_base(s: to) }
+  } else if is_one(s: to) {
+    Present { value: scale_base(s: from) }
+  } else if scale_base(s: from) == scale_base(s: to) {
+    Present { value: scale_base(s: from) }
+  } else {
+    none
+  }
+}
+
+// exact integer division or fail closed — the "NEVER LOSSY" guard.
+fn exact_div(v: Int, divisor: Int) -> Int? {
+  if (v / divisor) * divisor == v {
+    Present { value: v / divisor }
+  } else {
+    none
+  }
+}
+
+fn coerce_in_base(v: Int, base: Int, d: Int) -> Int? {
+  if d < 0 {
+    // downscale (to a coarser unit): exact only if it divides evenly
+    match int_pow_bounded(base: base, exp: 0 - d) {
+      Present { value: divisor } => exact_div(v: v, divisor: divisor)
+      Absent => none
+    }
+  } else {
+    // upscale (to a finer unit): always exact (multiply)
+    match int_pow_bounded(base: base, exp: d) {
+      Present { value: factor } => Present { value: v * factor }
+      Absent => none
+    }
+  }
+}
+
+// THE KERNEL: what `v.from |> to` lowers to. Fail-closed; never lossy; never a silent path.
+fn coerce_scale(v: Int, from: Scale, to: Scale) -> Int? {
+  match shared_base(from: from, to: to) {
+    Present { value: base } =>
+      coerce_in_base(v: v, base: base, d: scale_exponent(s: from) - scale_exponent(s: to))
+    Absent => none
+  }
+}
+
+// the `|> <lambda> |>` move: an explicit, NAMED decision that resolves a lossy seam
+// (round up to whole units) — the loss is acknowledged in the code, never hidden.
+fn ceil_div(v: Int, d: Int) -> Int {
+  if (v / d) * d == v { v / d } else { (v / d) + 1 }
+}
+
+// a 2-hop chain `Gibi |> One |> Kibi`, Optional-threaded: short-circuits if any seam is bad.
+fn chain_gibi_to_kibi(v: Int) -> Int? {
+  match coerce_scale(v: v, from: Gibi, to: One) {
+    Present { value: bytes } => coerce_scale(v: bytes, from: One, to: Kibi)
+    Absent => none
+  }
+}
+
+// ---------- witnesses: green by execution ----------
+
+// a |> b  (upscale, always exact): 3 GiB = 3 * 2^30 bytes.
+test fn pipe_gibi_to_bytes_exact() -> Bool {
+  match coerce_scale(v: 3, from: Gibi, to: One) {
+    Present { value: n } => n == 3221225472
+    Absent => false
+  }
+}
+
+// a |> b |> c  (chain, short-circuiting): 3 GiB -> bytes -> KiB.
+test fn pipe_chain_gibi_to_kibi_exact() -> Bool {
+  match chain_gibi_to_kibi(v: 3) {
+    Present { value: n } => n == 3145728
+    Absent => false
+  }
+}
+
+// a |> b  (downscale, exact because it divides): 3072 bytes = 3 KiB.
+test fn pipe_downscale_exact() -> Bool {
+  match coerce_scale(v: 3072, from: One, to: Kibi) {
+    Present { value: n } => n == 3
+    Absent => false
+  }
+}
+
+// a |> b  (same-base SI): 5 Mega = 5000 Kilo.
+test fn pipe_samebase_si_exact() -> Bool {
+  match coerce_scale(v: 5, from: Mega, to: Kilo) {
+    Present { value: n } => n == 5000
+    Absent => false
+  }
+}
+
+// THE FAIL-CLOSED-FUN MOMENT: a lossy downscale is NOT silently truncated — it's Absent.
+test fn pipe_lossy_fails_closed() -> Bool {
+  match coerce_scale(v: 1500, from: One, to: Kibi) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// ...resolved by the explicit `|> <lambda> |>` decision (round up), never a silent fold.
+test fn pipe_lambda_resolves_lossy() -> Bool {
+  ceil_div(v: 1500, d: 1024) == 2
+}
+
+// GAP: cross-base has no exact path -> fail closed (resolve by enriching / an explicit policy).
+test fn pipe_gap_fails_closed() -> Bool {
+  match coerce_scale(v: 5, from: Kilo, to: Kibi) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
