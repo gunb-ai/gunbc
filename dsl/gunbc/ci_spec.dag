@@ -31,8 +31,15 @@ type CiSpec {
   notice_title: String
 }
 
-data gunbc_ci_gates: List<Gate> = [
-  RustMonolithGate,
+// The CI gate set is PARTITIONED by which GHA job runs it (DESIGN §2 — the partition is
+// total and disjoint by construction, so no gate can be silently dropped from CI):
+//   - `gunbc_ci_floor_gates` run inside the floor scheduler (the single "ci" job).
+//   - `gunbc_ci_rust_job_gates` run in their own parallel "rust_tests" GHA job (the long
+//     v1 cargo gate, split out so it no longer serializes with the .dag witness corpus).
+// `gunbc_ci_gates` (the complete roster the coproduct-completeness witnesses check) is the
+// UNION of the two — defined by `concat`, so floor ∪ rust_job == every Gate arm holds by
+// construction, not by a re-listing that could drift from the partition.
+data gunbc_ci_floor_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
   ResolvedImportsGate,
@@ -42,8 +49,14 @@ data gunbc_ci_gates: List<Gate> = [
   SourceRootIngestGate
 ]
 
+data gunbc_ci_rust_job_gates: List<Gate> = [
+  RustMonolithGate
+]
+
+data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
+
 data gunbc_ci_spec: CiSpec = {
-  gates: gunbc_ci_gates,
+  gates: gunbc_ci_floor_gates,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
