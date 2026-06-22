@@ -48,8 +48,8 @@ fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<MarkdownBlock> {
 
 // THE whole-document projection (the ci.yml `project_workflow_to_yaml` analogue, markdown medium):
 // preamble blocks, then each section's blocks in order. A pure fold over the authored authority — the
-// checkbox boxes are rendered from each line's binding against `merged` (derived for CompletesIff,
-// authored for HandChecked), exactly as the per-section projection does.
+// checkbox boxes are rendered from each line's binding against `merged` (derived for a DerivableLine,
+// authored for an AuthoredLine), exactly as the per-section projection does.
 fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> MarkdownDocument {
   MarkdownDocument {
     blocks: fold(doc.sections, init: doc.preamble, f: fn(acc, s) {
