@@ -2,7 +2,7 @@ module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
-  gunbc_ci_spec, CiSpec, Gate,
+  gunbc_ci_gates, CiSpec, Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
   ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate
@@ -34,17 +34,21 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
   }
 }
 
-func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
-  let g0 = run_spec_gate(g: RustMonolithGate)
-  let g1 = if exit_ok(g0) { run_spec_gate(g: EmitHostGate) } else { g0 }
-  let g2 = if exit_ok(g1) { run_spec_gate(g: LayeringImportsGate) } else { g1 }
-  let g3 = if exit_ok(g2) { run_spec_gate(g: ResolvedImportsGate) } else { g2 }
-  let g4 = if exit_ok(g3) { run_spec_gate(g: ExtdepsExternalAuthorityGate) } else { g3 }
-  let g5 = if exit_ok(g4) { run_spec_gate(g: DslCompileCleanGate) } else { g4 }
-  let g6 = if exit_ok(g5) { run_spec_gate(g: GeneratedArtifactDriftGate) } else { g5 }
-  if exit_ok(g6) { run_spec_gate(g: SourceRootIngestGate) } else { g6 }
+// Run a gate list in order, short-circuiting on the first failure (once a gate fails, later gates are not
+// run and that failure propagates). One fold over the gate-list authority — adding/removing a gate is a
+// list edit in ci_spec, never an edit here (DESIGN §2/§3: the sequence is DERIVED from spec.gates, not
+// re-listed by hand).
+fn run_gate_list(gates: List<Gate>) -> ProcessExit {
+  fold(gates, init: ExitSuccess, f: fn(acc, g) {
+    if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
+  })
 }
 
+func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
+  run_gate_list(gates: spec.gates)
+}
+
+// Run ALL CI gates (floor + rust job), the gunbc_ci_gates authority.
 func main() -> ProcessExit {
-  run_ci_gates_sequential(spec: gunbc_ci_spec)
+  run_gate_list(gates: gunbc_ci_gates)
 }
