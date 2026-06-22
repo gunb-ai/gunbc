@@ -3,7 +3,7 @@
 module v1.compiler.coercion
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
-import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
+import std.cast_rules { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
 import std.types { container_template_algebra, canonical_container_names }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,

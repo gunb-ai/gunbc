@@ -5,19 +5,19 @@
 //
 // FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
 //
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// SCHEMA: Type definitions live in std/cast_rules.dag (shared authority).
 // This file instantiates data only — no local type families.
 //
 // Ref: Python Language Reference (docs.python.org/3/reference)
 //      PEP 484 "Type Hints", PEP 557 "Data Classes"
-//      std/algebra.dag, std/coercion.dag
+//      std/algebra.dag, std/cast_rules.dag
 //
 // Consumers:
 //   v2/05_emit_python.dag -- coercion engine reads inhabitants
 
 module extdeps.languages.python.types
 
-import std.coercion {
+import std.cast_rules {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
 

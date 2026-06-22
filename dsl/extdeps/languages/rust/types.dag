@@ -7,13 +7,13 @@
 // an algebra, the compiler REFUSES to emit code for any .dag type that
 // requires that algebra. Missing inhabitant = compile error.
 //
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// SCHEMA: Type definitions live in std/cast_rules.dag (shared authority).
 // This file instantiates data only — no local type families.
 //
 // Ref: The Rust Reference (doc.rust-lang.org/reference)
 //      The Rustonomicon (doc.rust-lang.org/nomicon)
 //      std/algebra.dag (algebraic structure definitions)
-//      std/coercion.dag (shared coercion vocabulary)
+//      std/cast_rules.dag (shared cast/coercion vocabulary)
 //
 // Consumers:
 //   v2/05_emit.dag       -- coercion engine reads inhabitants
@@ -21,7 +21,7 @@
 
 module extdeps.languages.rust.types
 
-import std.coercion {
+import std.cast_rules {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
 

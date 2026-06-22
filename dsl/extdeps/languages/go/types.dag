@@ -6,19 +6,19 @@
 //
 // FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
 //
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// SCHEMA: Type definitions live in std/cast_rules.dag (shared authority).
 // This file instantiates data only — no local type families.
 //
 // Ref: The Go Programming Language Specification (go.dev/ref/spec)
 //      Effective Go (go.dev/doc/effective_go)
-//      std/algebra.dag, std/coercion.dag
+//      std/algebra.dag, std/cast_rules.dag
 //
 // Consumers:
 //   v2/05_emit_go.dag -- coercion engine reads inhabitants
 
 module extdeps.languages.go.types
 
-import std.coercion {
+import std.cast_rules {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
 

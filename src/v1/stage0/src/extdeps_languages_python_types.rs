@@ -2,7 +2,7 @@
 // Source module: extdeps.languages.python.types
 
 use self::PythonTypeKind::*;
-pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
+pub use crate::std_cast_rules::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

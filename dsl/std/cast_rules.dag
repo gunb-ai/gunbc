@@ -1,4 +1,4 @@
-// std/coercion.dag -- Shared coercion vocabulary.
+// std/cast_rules.dag -- Shared cast/coercion schema vocabulary.
 //
 // Single authority for coercion schema types. Per-language files
 // (extdeps/languages/*/types.dag) import these types and instantiate
@@ -19,7 +19,7 @@
 //   v2/05_emit.dag                      -- coercion engine
 //   docs/coercion-design.md             -- design specification
 
-module std.coercion
+module std.cast_rules
 
 // TypeCheckpoint: "this exact .dag type name maps to this target type."
 //

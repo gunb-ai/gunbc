@@ -5,11 +5,11 @@
 // intact: literal_suffix returns Some("") for Dag rather than None,
 // so a missing checkpoint on a real target still emits an error.
 //
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// SCHEMA: Type definitions live in std/cast_rules.dag (shared authority).
 
 module extdeps.languages.dag.types
 
-import std.coercion { TypeCheckpoint }
+import std.cast_rules { TypeCheckpoint }
 
 // Dag type checkpoints: identity mapping (dag_name == target_type).
 // literal_suffix is none for all entries — Dag doesn't add suffixes.

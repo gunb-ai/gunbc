@@ -3,7 +3,7 @@
 module v1.compiler.infer
 
 import std.types { SourceSpan, container_param_name }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type }
+import std.cast_rules { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
   intern, intern_str,
@@ -86,7 +86,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map
 }
-import std.node { compiler_inductive_fields, compiler_recursive_types }
+import std.compiler_inductive_fields { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,

@@ -1,4 +1,4 @@
-// std/node.dag -- Compiler type inductive structure declarations.
+// std/compiler_inductive_fields.dag -- Compiler type inductive structure declarations.
 //
 // AUTHORITY: Single source of truth for which compiler types have recursive
 // fields and how those fields are shaped. The complexity analyzer reads these
@@ -28,7 +28,7 @@
 // This file USES that vocabulary to declare specific compiler types.
 // induction.dag is the schema; node.dag is the data.
 
-module std.node
+module std.compiler_inductive_fields
 
 import std.induction {
   InductiveField, RecursionShape,
