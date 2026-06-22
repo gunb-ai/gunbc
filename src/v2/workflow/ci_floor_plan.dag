@@ -4,7 +4,7 @@ import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate, RoadmapGate,
   SourceRootIngestGate
 }
 import v2.std.algebra { length, list_snoc_item }
@@ -67,6 +67,7 @@ fn gate_node(g: Gate) -> Node {
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
     DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     CiYamlGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_ciyaml } }, children: [] }
+    RoadmapGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_roadmap } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
   }
 }
@@ -80,6 +81,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
     DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes" }
     CiYamlGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "ci_yaml_gate_passes" }
+    RoadmapGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "roadmap_gate_passes" }
     SourceRootIngestGate => RunnableSingleClaim {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes"
@@ -129,6 +131,7 @@ fn gate_is_heavy_resolve(g: Gate) -> Bool {
     ResolvedImportsGate => false
     ExtdepsExternalAuthorityGate => false
     CiYamlGate => false
+    RoadmapGate => false
   }
 }
 
