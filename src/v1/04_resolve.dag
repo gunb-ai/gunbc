@@ -570,19 +570,21 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           //
           // Generic type-alias instantiation: a non-parametric alias whose RHS
-          // is an applied generic (`type QualifiedName = FreeMonoid<Symbol>`)
-          // stores its .inferred target as the un-instantiated use-site node
-          // (`FreeMonoid<Symbol>`, NoConnective with type-arg children but no
-          // structural .inferred). Direct uses instantiate it via the
-          // is_user_generic_use_site branch above; the alias indirection must
-          // do the same one pass so the coproduct (Empty | Cons) is reachable
-          // for variant lookup and exhaustiveness. Without this the alias is a
-          // dead end and consumers hand-roll the coproduct (the FreeMonoid
-          // de-fork keystone).
+          // is an applied generic coproduct (`type QualifiedName =
+          // FreeMonoid<Symbol>`) stores its .inferred target as the
+          // un-instantiated use-site node (`FreeMonoid<Symbol>`, NoConnective
+          // with type-arg children but no structural .inferred). Direct uses
+          // instantiate it via the is_user_generic_use_site branch above; the
+          // alias indirection must do the same one pass so the coproduct
+          // (Empty | Cons) is reachable for variant lookup and exhaustiveness.
+          // Without this the alias is a dead end and consumers hand-roll the
+          // coproduct (the FreeMonoid de-fork keystone). Gated to Disj decls:
+          // record aliases (`Nat = CommutativeSemiring<..>`) must stay the bare
+          // applied node so Optional<alias> Present/Absent synthesis is reached.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Present { value: Resolved { node: target } } =>
-                if target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) {
+                if target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj {
                   resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
                 } else { target }
               _ => resolved

@@ -1455,7 +1455,7 @@ pub fn resolve_node_bounded(
                                                         node: target,
                                                         ..
                                                     }) => {
-                                                        if (((target.connective.clone()
+                                                        if ((((target.connective.clone()
                                                             == Connective::NoConnective)
                                                             && ((target.children.clone().len()
                                                                 as i64)
@@ -1464,6 +1464,13 @@ pub fn resolve_node_bounded(
                                                                 target.clone(),
                                                                 env.clone(),
                                                             ))
+                                                            && (resolve_generic_use_decl(
+                                                                env.clone(),
+                                                                target.clone(),
+                                                            )
+                                                            .connective
+                                                            .clone()
+                                                                == Connective::Disj))
                                                         {
                                                             resolve_node_bounded(
                                                                 target.clone(),
