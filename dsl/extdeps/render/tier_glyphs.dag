@@ -1,8 +1,3 @@
-// extdeps/render/tier_glyphs.dag — Total Tier→glyph product (one field per variant).
-//
-// Each field is a distinct encoding authority (ascii_glyph / unicode_glyph / emoji_glyph).
-// Illegal states (missing/duplicate tier) are unrepresentable.
-
 module extdeps.render.tier_glyphs
 
 import extdeps.render.ascii_glyph { AsciiGlyph, ascii_glyph_text }

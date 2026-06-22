@@ -1,19 +1,3 @@
-// dsl/extdeps/test/mock_corpus.dag
-// Scope: the REST http_pilot layer's PUBLISHED mock corpus as a closed structural fact.
-// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
-//
-// SINGLE authority for WHICH http_pilot operations are hermetically realizable. Read by BOTH the
-// compile-time M2 mock_totality_lens (src/v2/lens/mock_totality.dag) AND the v1 runtime's
-// eval_service_call (the M4 hermetic-realization fold) — one model, not two. The v1 runtime loads
-// the dsl/ tree, so this corpus must live in dsl/ for the runtime to reach the SAME model the lens
-// reads; the v2 mirror (src/v2/extdeps/test/mock_corpus.dag) is dissolved by this PR. The v2
-// lens imports this dsl module directly — cross-tree v2->dsl import is the EXISTING pattern (cf.
-// filesystem / git / shell mock corpora).
-//
-// Rows inhabit std.hermetic_replay.PublishedMockCase. The operation set authority remains
-// dsl/extdeps/test/http_pilot.dag (`service test.HttpPilot`); per-case payloads live in the
-// Phase-2 RecordedFixture store ONLY — rows carry the (operation_key, case_id) structural key.
-
 module extdeps.test.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
@@ -25,13 +9,6 @@ data http_pilot_mock_case_get_post: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-// 🟡 gated — feature:http-pilot-mock-corpus-from-service-decl — bind node://adhoc-3dfa917b-5f9
-// dissolve-on-arrival: project this corpus directly from the `service test.HttpPilot` operation set
-// in dsl/extdeps/test/http_pilot.dag, joined with the Phase-2 RecordedFixture store (the authority
-// for WHICH recorded cases exist per operation), once a v2 lens can read a service decl's operation
-// nodes and the fixture store's keys; this declared list then deletes in the same PR. forbidden: a
-// row carrying a response VALUE — that would fork the payload authority, now owned by the fixture
-// store (§3); rows mirror the (operation_key, case_id) structural key ONLY.
 data http_pilot_published_mock_corpus: List<PublishedMockCase> = [
   http_pilot_mock_case_get_post
 ]

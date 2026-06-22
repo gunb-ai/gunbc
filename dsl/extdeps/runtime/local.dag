@@ -1,5 +1,3 @@
-// extdeps/runtime/local.dag -- local developer runtime facts.
-
 module extdeps.runtime.local
 
 import std.types { NonEmptyStr }

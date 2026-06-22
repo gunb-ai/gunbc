@@ -1,7 +1,3 @@
-// extdeps/cache/catalog_placement.dag — cache catalog placement/eviction arm.
-// Split from IO semantics so AtomicityModel and CacheWriteSemantics variants do not
-// share a module namespace (homonymous WriteThenCommit / WriteThenRename).
-
 module extdeps.cache.catalog_placement
 
 import std.cache_interface {
