@@ -1,13 +1,3 @@
-// MVP-1 of cardinality refinement (docs/plans/cardinality-refinement.md): ground a
-// fixed-width structure with a Length<N> refinement via the EXISTING refine substrate,
-// fail-closed. This is the grounded form of bit.dag's `Byte { bits: List<Bit> }` whose
-// length is "not checked" today — modeled here as `Refined<List<_>>` constrained to length 8,
-// the same shape as v2's NonEmptyList = Refined<List<T>> (refinement_nonempty_list.dag).
-//
-// Scope notes (honest): (a) the element is Int, not Bit — the Length<8> cardinality refinement
-// is element-agnostic, so this is the same mechanism that grounds a real Byte; (b) it lives in
-// v2 because `refine` is v2-only and cross-tree import (dsl bit.dag) is still off; (c) the
-// `where Length<8>` surface SUGAR is P1 (parser) and desugars to exactly this `refine` call.
 module v2.test.claim.byte_cardinality_grounding
 
 import v2.std.refinement { Refined, Validation, refine }
@@ -17,8 +7,6 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
 
-// A Byte is a bit-list refined to EXACTLY 8 elements (the Length<8> cardinality refinement).
-// The "8" lives in exactly one place — this admits predicate — and a non-8 list cannot pass.
 type Byte = Refined<List<Int>>
 
 fn byte_from_bits(bits: List<Int>, at: Locus) -> Outcome<Byte> {
@@ -50,13 +38,10 @@ fn is_rejected(o: Outcome<Byte>) -> Bool {
   }
 }
 
-// 8 bits -> Accepted: a valid Byte.
 test fn byte_grounding_accepts_8_bits() -> Bool {
   is_accepted(o: byte_from_bits(bits: eight_bits(), at: byte_locus()))
 }
 
-// 7 bits -> a typed Rejected: a non-8-bit byte is UNWRITABLE through this constructor.
-// (The discriminating red: if the Length<8> refinement weren't enforced, this would pass.)
 test fn byte_grounding_rejects_7_bits() -> Bool {
   is_rejected(o: byte_from_bits(bits: seven_bits(), at: byte_locus()))
 }

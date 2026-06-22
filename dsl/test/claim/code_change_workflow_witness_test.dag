@@ -1,5 +1,3 @@
-// test/claim/code_change_workflow_witness_test.dag — §5 witnesses for ctrl.code_change_workflow.
-
 module test.claim.code_change_workflow_witness_test
 
 import ctrl.code_change_workflow {

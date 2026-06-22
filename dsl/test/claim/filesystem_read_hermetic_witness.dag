@@ -1,23 +1,7 @@
-// dsl/test/claim/filesystem_read_hermetic_witness.dag
-//
-// §5 discriminating witnesses for the filesystem_read builtin hermetic gate.
-// The builtin routes through modeled Filesystem.Read (not v1_rt::filesystem_read),
-// so hermetic runs honor the same record/replay / fail-closed gate as service ops.
-//
-// Hermetic replay (Phase 2):
-//   claim_batch --source-root . --source-root dsl \
-//     --entry dsl/test/claim/filesystem_read_hermetic_witness.dag \
-//     --function witness_read_via_builtin_roundtrip --record --fixture-store /tmp/fixtures
-//   claim_batch ... --hermetic --fixture-store /tmp/fixtures
-//
-// Fail-closed (no fixture store): hermetic must NOT touch disk — proven by
-// interp_recorded_fixture_test::filesystem_read_hermetic_without_fixture_fails_closed.
-
 module test.claim.filesystem_read_hermetic_witness
 
 import extdeps.filesystem.filesystem_io
 
-// Wet / record-capture: filesystem_read via the Filesystem.Read gate reads real content.
 func witness_read_via_builtin_roundtrip() -> Bool {
   let result = filesystem_read(path: "dsl/std/filesystem.dag")
   return string_contains(result.content, "module std.filesystem")

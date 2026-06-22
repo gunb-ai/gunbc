@@ -1,28 +1,9 @@
-// dsl/test/claim/m4_governed_service_witness.dag
-//
-// PRODUCTION-PATH execution proof for the M4 hermetic-realization fold (eval_service_call in
-// v1_interpreter.rs). DESIGN.md §5: a fold is "done" only with a real consumer green-by-execution
-// PLUS a discriminating input that goes RED when the behavior is wrong — proven on the REAL
-// claim_batch CLI path, not an in-process unit harness that embeds its own corpus.
-//
-// The real Filesystem service is fully published (Read + Write both governed = the right outcome),
-// so it cannot express the fail-closed RED arm. This SYNTHETIC service does: GovernedProbe publishes
-// `Allowed` only, leaving `Forbidden` UNPUBLISHED — yet BOTH ops carry an inline mock_response. So:
-//   * witness_published_realizes      → GREEN: published op realizes via inline mock (gate passes).
-//   * witness_unpublished_fails_closed → RED:  the gate refuses to realize a corpus-governed
-//     service's UNPUBLISHED op EVEN WITH an inline mock present — the published model, not the
-//     inline mock_*, decides realizability (§3 single authority / §5 fail-closed teeth).
-// Driven over the real CLI by interp_recorded_fixture_test (hermetic, NO fixture-store, so the
-// branch falls to the inline-mock path the gate must override). NOT discovery-roster enrolled:
-// the funcs are plain `func`s, asserted by exit-code from the Rust subprocess discriminator (a
-// pure .dag `test fn` cannot assert fail-closed — the InterpError aborts the whole run).
-
 module test.claim.m4_governed_service_witness
 
 import std.hermetic_replay { PublishedMockCase }
 
 service GovernedProbe {
-  // PUBLISHED case (see corpus below): realizes hermetically via its inline mock_response.
+
   operation Allowed {
     input {}
     output { ok: String from "stdout" }
@@ -37,8 +18,6 @@ service GovernedProbe {
     }
   }
 
-  // Deliberately ABSENT from the corpus. Carries an inline mock_response anyway — the gate must
-  // STILL refuse to realize it because GovernedProbe is corpus-governed and this op is unpublished.
   operation Forbidden {
     input {}
     output { ok: String from "stdout" }
@@ -54,9 +33,6 @@ service GovernedProbe {
   }
 }
 
-// SINGLE authority for which GovernedProbe operations are hermetically realizable (rows inhabit
-// std.hermetic_replay.PublishedMockCase; payloads would live in the RecordedFixture store). Only
-// `Allowed` is published; `Forbidden` is intentionally omitted to drive the fail-closed RED arm.
 data m4_probe_case_allowed: PublishedMockCase = PublishedMockCase {
   operation_key: "GovernedProbe.Allowed",
   service: "GovernedProbe",
@@ -68,14 +44,11 @@ data m4_governed_probe_corpus: List<PublishedMockCase> = [
   m4_probe_case_allowed
 ]
 
-// GREEN: published op realizes hermetically (returns the inline mock record).
 func witness_published_realizes() -> Bool {
   let r = GovernedProbe.Allowed()
   return r.ok == "published-realized"
 }
 
-// RED on the real CLI path: GovernedProbe is corpus-governed and Forbidden is unpublished, so the
-// M4 gate fails closed BEFORE the inline-mock fallback — the call never returns a value.
 func witness_unpublished_fails_closed() -> Bool {
   let r = GovernedProbe.Forbidden()
   return r.ok != ""

@@ -1,22 +1,3 @@
-// Floor gate for testgen generated output (docs/plans/testgen-oracle.md §4.1, faces #1+#2).
-//
-// Face #1 (coverage by illusion): every module under src/v2/compiler/generated/ has zero
-// `test fn` and is not `*_test.dag`, so the witness floor discovered+ran NONE of them — the
-// only execution path was the ungated Rust subset. This file surfaces the witnesses the
-// generator ALREADY emits into the floor by naming them in a discovered `*_test.dag`, one
-// `test fn` per generated witness. No new generator logic: each `test fn` is a single
-// reference to the generated authority (single-representation — the generated decl IS the
-// fact, this is only its floor entry point).
-//
-// Face #2 (parallel-representation drift): the generated modules call the live generator
-// (`v2.lens.testgen.testgen_emit_*`) at evaluation time rather than freezing its output, so
-// compiling + running them here makes any generator/generated drift unwritable — a record-shape
-// fork (the 🟡 `NatAlgebraLawObligation ⇄ AlgebraLawSubject` risk) fails the floor as a compile
-// error or a RED witness, the same closure CiYamlGate gives ci.yml.
-//
-// Falsifier: revert/break any generated witness or a generator emit shape it exercises ⇒ the
-// matching `test fn` goes RED in the floor.
-
 module v2.test.claim.generated_conformance_floor
 
 import v2.std.logic { Bool }
@@ -75,8 +56,6 @@ import v2.test.generated.testgen_category_wishlist {
   dispatched_non_tautological_generator_count_is_four
 }
 
-// A generated claim row is well-formed iff the live generator emitted it (Accepted), not a
-// Rejected emit. Discriminating: break the generator's emit and the row flips to Rejected ⇒ RED.
 fn generated_claim_emitted(o: Outcome<TestClaim>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
@@ -84,7 +63,6 @@ fn generated_claim_emitted(o: Outcome<TestClaim>) -> Bool {
   }
 }
 
-// --- AlgebraLawConformance (structural — nat_declared_algebra_law_obligations) ---
 test fn generated_algebra_law_sample_count_holds() -> Bool {
   generated_algebra_law_sample_count_is_three()
 }
@@ -101,10 +79,6 @@ test fn generated_algebra_law_annihilator_emits() -> Bool {
   generated_claim_emitted(o: generated_nat_mul_annihilator_claim)
 }
 
-// --- CoproductExhaustiveness (STRUCTURAL — every declared coproduct, docs/plans/testgen-oracle.md §4.2) ---
-// The roster is derived from enumerate_coproduct_decls × coproduct_arm_keys, not a hand-list. These
-// fail RED if the host enumeration goes empty (vacuous pass guarded by the non-empty roster check) or
-// if any arm of a covered coproduct loses its matching missing-arm witness.
 test fn generated_coproduct_exhaustiveness_is_diagnostic() -> Bool {
   witness_coproduct_exhaustiveness_diagnostic_claim
 }
@@ -121,11 +95,6 @@ test fn generated_coproduct_exhaustiveness_covers_every_coproduct() -> Bool {
   witness_coproduct_exhaustiveness_generator_count
 }
 
-// --- CrossRepresentationEquality (STRADDLE — docs/plans/testgen-oracle.md §4.3) ---
-// SCOPE TIGHT: only the straddles that remain UNSTRUCTURED — Bool over Value::Bool, and the Value::Null
-// sentinel (Optional/Witness) fenced to its own runway. The EqualsClaim is emitted, not executed
-// (grounding is its own runway); these check the emit shape + structural roster coverage, with each
-// modeled coproduct's arm keys recomputed independently to exclude a vacuous pass.
 test fn generated_cross_representation_equality_is_equals() -> Bool {
   witness_cross_representation_equality_is_equals
 }
@@ -142,7 +111,6 @@ test fn generated_cross_representation_equality_covers_optional_null() -> Bool {
   witness_cross_representation_equality_covers_optional_null
 }
 
-// --- RefinementPreservation ---
 test fn generated_refinement_preserves_nonempty_list_base() -> Bool {
   witness_refinement_preserves_nonempty_list_base
 }
@@ -159,7 +127,6 @@ test fn generated_refinement_claim_emits() -> Bool {
   generated_claim_emitted(o: claim_refinement_nonempty_list_base_preserved)
 }
 
-// --- LanguageBehaviorEquivalence ---
 test fn generated_lbe_conj_snapshot_passes() -> Bool {
   witness_lbe_conj_snapshot_pass
 }
@@ -180,7 +147,6 @@ test fn generated_lbe_dag_surface_language_identity() -> Bool {
   witness_dag_surface_language_identity
 }
 
-// --- WitnessValidity (RoundTripClaim — emission Accepted; run Deferred until eval lands) ---
 test fn generated_witness_validity_constraint_satisfaction_emits() -> Bool {
   generated_claim_emitted(o: row_witness_validity_constraint_satisfaction_holds)
 }
@@ -197,7 +163,6 @@ test fn generated_witness_validity_rule_not_realized_emits() -> Bool {
   generated_claim_emitted(o: row_witness_validity_rule_not_realized)
 }
 
-// --- IdempotentOperationConformance ---
 test fn generated_idempotent_label_only_skip_pins_rejection() -> Bool {
   generated_label_only_skip_pins_rejection
 }
@@ -230,7 +195,6 @@ test fn generated_idempotent_run_count_holds() -> Bool {
   generated_idempotent_operation_run_count_is_four()
 }
 
-// --- TestgenCategoryWishlist ---
 test fn generated_wishlist_pending_count_holds() -> Bool {
   pending_non_tautological_generator_count_is_three()
 }

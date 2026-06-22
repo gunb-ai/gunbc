@@ -1,11 +1,3 @@
-// dsl/test/claim/realization_schedule_witness.dag
-//
-// §5 discriminating proof for std.realization schedule lens — executed in the dsl tree.
-// Synthetic RealizationPlan (no v2 ci_floor_plan import): lens GREEN on correct topology,
-// RED when batch-0/1 are swapped (corpus-before-compile).
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_schedule_witnesses --claim-run
-
 module test.claim.realization_schedule_witness
 
 import std.realization_schedule {
@@ -47,7 +39,6 @@ fn synthetic_correct_plan() -> RealizationPlan {
   }
 }
 
-// Discriminating RED: swap batch-0 and batch-1 — compile gate no longer first.
 fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Runnable>> {
   [
     correct.skip(n: 1).first(),

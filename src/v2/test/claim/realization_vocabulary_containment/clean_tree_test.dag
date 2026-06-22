@@ -1,10 +1,3 @@
-// Scope: live clean-tree witness — the realization-vocabulary containment guard, run by
-//        EXECUTION over the real consumer-source tree (the §5 green-by-execution pass, not a
-//        spec-only lens). Every current importer of the bash-AST sidecar is either a
-//        realization-edge module or carried by realization_vocab_exception_roster, so the live
-//        scan over the consumer-source roots must report ZERO leaks. A NEW (unrostered)
-//        non-edge importer added anywhere under these roots makes this go RED.
-
 module v2.test.realization_vocabulary_containment.clean_tree
 
 import v2.lens.realization_vocabulary_containment {

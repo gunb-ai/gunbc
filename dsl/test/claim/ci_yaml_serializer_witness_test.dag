@@ -1,7 +1,3 @@
-// dsl/test/claim/ci_yaml_serializer_witness.dag
-//
-// By-execution witnesses for CI workflow YAML projection + serializer.
-
 module test.claim.ci_yaml_serializer_witness
 
 import extdeps.formats.yaml {
@@ -183,32 +179,13 @@ fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
     string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
 }
 
-// §5 runner-context env scope, as a MODEL WALK over the typed GitHub Actions expression
-// model (extdeps.github.expressions) — NOT a string-grep of the emitted YAML. The medium
-// (GHA `${{ }}` expressions) is a Node from authoring (gunbc.ci_workflow_expressions) through
-// checking (here): the bad state is found by walking ContextAccess nodes in the workflow's
-// expression roster, never by re-parsing emitted text (which misses `${{env.RUNNER_TEMP}}`
-// without spaces — the fragile partial re-ingest DESIGN §4 forbids).
-//
-// Bad state: a runner-provided var (RUNNER_TEMP/OS/ARCH/…) read through the `env` context
-// instead of its `runner.*` home. The `env` context only legitimately covers statically
-// declared vars (CARGO_TERM_COLOR, RUSTFLAGS); `runner.*` is the only valid context for the
-// runner vars, so reading them via `env` ties correctness to runtime step-ordering.
-//
-// Honesty boundary (DESIGN §5 / §0 construction-justification): this is a validation lens,
-// not a construction wall — a faithful model CAN express `env.RUNNER_TEMP` (env context
-// genuinely reads arbitrary vars in GitHub Actions), so the bad state is writable and is
-// caught by the walk rather than made unwritable. Each guard is proven non-vacuous by a red
-// control that perturbs the model and asserts the guard goes RED (discriminating-by-execution).
-
 fn witness_cache_uses_runner_context_not_env() -> Bool {
   template_uses_context(template: ci_cache_path_template, target: Runner) &&
     !template_uses_context(template: ci_cache_path_template, target: Env)
 }
 
 fn witness_cache_runner_env_scope_red_control() -> Bool {
-  // A perturbed cache-path template that reaches the cache dir via the `env` context
-  // (`${{ env.CARGO_HOME }}`) must fail the runner-context guard.
+
   let bad = ExpressionTemplate { segments: [
     Interpolation { expression: ContextAccess { context: Env, path: ["CARGO_HOME"] } },
     LiteralText { text: "/registry/index/" }
@@ -222,7 +199,7 @@ fn witness_no_runner_vars_accessed_via_env_context() -> Bool {
 }
 
 fn witness_no_runner_env_context_red_control() -> Bool {
-  // A roster that DOES read a runner-provided var via the `env` context must trip the walk.
+
   let bad = concat(ci_workflow_expression_templates, [
     ExpressionTemplate { segments: [
       Interpolation { expression: ContextAccess { context: Env, path: ["RUNNER_TEMP"] } }

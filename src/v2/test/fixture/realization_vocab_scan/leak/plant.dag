@@ -1,9 +1,2 @@
-// FIXTURE — a planted NON-edge consumer module that imports the bash-AST sidecar vocabulary
-// (`extdeps.languages.bash.program`). It is NOT a realization-edge module (path is not under
-// extdeps/languages/** nor the emit fold) and is NOT in realization_vocab_exception_roster, so
-// the realization-vocabulary containment guard MUST flag it as a RealizationVocabularyLeak.
-// Read as TEXT by v2.lens.layering_imports.layer_import_facts_live (never module-resolved); the
-// by-execution RED control that the guard actually fires. DO NOT import this module, and DO NOT
-// add this path to the roster.
 module v2.test.fixture.realization_vocab_scan.leak_plant
 import extdeps.languages.bash.program { ShellStmt }
