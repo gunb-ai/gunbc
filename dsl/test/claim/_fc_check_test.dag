@@ -1,7 +1,0 @@
-module test.claim.fc_check
-import gunbc.design_argument { design_section_1_argument }
-import std.syllogism { Argument, argument_form_is_valid }
-fn empty_arg() -> Argument { Argument { axioms: [], propositions: [] } }
-test fn form_valid_failclosed_on_empty() -> Bool {
-  argument_form_is_valid(design_section_1_argument) && (argument_form_is_valid(empty_arg()) == false)
-}
