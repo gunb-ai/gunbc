@@ -146,6 +146,56 @@ file of a rename/collapse together.
 
 ---
 
+## 3b. OPERATOR RULING — grounding-cluster anchor (2026-06-22) — the brief
+
+The operator ruled the FreeMonoid/algebra single authority that category (b) was parked on. **Both
+confirmed:**
+
+1. **Structural authority = the coproduct** `type FreeMonoid<T> = Empty | Cons { head, tail }`
+   (the `src/v2/std/algebra.dag` form). The `dsl/std/algebra.dag` record-of-methods form is
+   **derived from inhabitance** (DESIGN §4 — "ops from inhabitance, no per-type ops"), **not** a second
+   definition. The record surface is a projection over the coproduct, not an authority.
+2. **Grounded-realization wins.** Generalize the **#5428 `RustCorpusRepr` seam**
+   (`HostNative` → `Nat/Int`=`i64`, `List`=`Vec`; `FaithfulFreeMonoid` → coproduct) from List/Nat to
+   **all FreeMonoid carriers**, so `String = FreeMonoid<Char>`, `List<T> = FreeMonoid<T>`,
+   `QualifiedName = FreeMonoid<Symbol>` are **aliases** grounding to native `Vec` in the seed and to the
+   faithful coproduct in pure-v2.
+
+### Two roots, two lanes (do not collide)
+
+- **Root A — grounding (jolly-cat owns, build-now).** The `src/v1/05_emit_rust.dag` emit-seam
+  (`rust_seed_host_container_base`/`rust_named_type_base`/`rust_corpus_repr`) generalized to String/
+  FreeMonoid → host `Vec`. **Emit-layer only — does NOT change `std/algebra.dag` definitions**, so it
+  runs concurrently with Root B without conflict. Kills ~48% of the 16,071 self-host cargo errors
+  (String+List). The carrier-independent tail (import-dedup E0252, closure-Debug) rides here too.
+- **Root B — generic-inference keystone + de-fork (THIS lane).** Phased, in order:
+  1. **Keystone first:** fix v2 generic-alias instantiation so `type X = FreeMonoid<Symbol>` resolves
+     (today it fails *"variant not found in type FreeMonoid"* at the definition site —
+     `src/v2/std/qualified_name.dag`, `catalog.dag` `fold_list`, `ParseTable`). This is load-bearing
+     resolver/infer work (`03_resolve`/`04_infer`) — model-before-implement, escalate before touching
+     under any pre-dating brief.
+  2. **Definition unification:** make the coproduct the single authority in `std/algebra.dag`, delete
+     the dsl record-of-methods *definition* (re-express its surface as inhabitance), introduce the
+     aliases. Only after the keystone lands (so the aliases compile). jolly-cat's Root A emit-seam
+     should already be in by here — coordinate the `algebra.dag` touch.
+  3. **Repoints** (mechanical once 1–2 land): `nat`/`integer`/`float` (numeric tower
+     `Int = GroupCompletion<Nat>`), `logic`, `effects` (operation-axis ⊕ idempotency-axis grounding),
+     `verification` (entangled with #5428 + `Value::Null` — may stay last). Per the #5511 per-concept
+     census above.
+  4. **Dissolve the 🟡 markers:** `qualified_name.dag` (`QnEmpty/QnCons` → `Empty/Cons`,
+     `qualified_name_eq/for_all/singleton` → FreeMonoid ops), `catalog.dag` `fold_list`. The self_gen8
+     3 ignores fold into the def-unification PR — their premise flips from "stays_unemitted" to
+     "expects grounded `List<T>=Vec<T>` emission" (`node://adhoc-9d2bb9c3-e7b`).
+
+### Fences (DESIGN §3/§6, and the #5516 respawn-mandate lesson)
+
+- **v1-coupled `coercion`/`node` renames stay DEFERRED to v1-delete** — category (c). Out of scope for
+  this lane regardless of title.
+- **The emit-seam (Root A) is jolly-cat's** — this lane does not touch `05_emit_rust.dag`.
+- **Stage every file of a rename/collapse together** (the auto-committer atomicity hazard, §3 above).
+
+---
+
 ## 4. Dissolution trigger (DESIGN §6)
 
 Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and
