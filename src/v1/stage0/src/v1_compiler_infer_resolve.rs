@@ -1454,7 +1454,38 @@ pub fn resolve_node_bounded(
                                                     Some(InferredNode::Resolved {
                                                         node: target,
                                                         ..
-                                                    }) => target.clone(),
+                                                    }) => {
+                                                        let target_is_coproduct_use = ((((target
+                                                            .connective
+                                                            .clone()
+                                                            == Connective::NoConnective)
+                                                            && ((target.children.clone().len()
+                                                                as i64)
+                                                                > 0))
+                                                            && is_user_generic_use_site(
+                                                                target.clone(),
+                                                                env.clone(),
+                                                            ))
+                                                            && (resolve_generic_use_decl(
+                                                                env.clone(),
+                                                                target.clone(),
+                                                            )
+                                                            .connective
+                                                            .clone()
+                                                                == Connective::Disj));
+                                                        if target_is_coproduct_use {
+                                                            resolve_node_bounded(
+                                                                target.clone(),
+                                                                env.clone(),
+                                                                module_name.clone(),
+                                                                (depth + 1),
+                                                            )
+                                                            .resolved
+                                                            .clone()
+                                                        } else {
+                                                            target.clone()
+                                                        }
+                                                    }
                                                     _ => resolved.clone(),
                                                 }
                                             } else {
