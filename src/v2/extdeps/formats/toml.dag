@@ -1,29 +1,15 @@
-// src/v2/extdeps/formats/toml.dag
-// Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Status: scaffold — parse/emit, numeric/datetime, table-syntax axes.
-// Anchor: https://toml.io/en/v1.0.0
-
 module v2.extdeps.formats.toml
-
 
 import v2.std.grammar { GrammarSchema }
 import v2.std.datetime { LocalDate, LocalDateTime, LocalTime, OffsetDateTime }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlSign
   = TomlSignAbsent
   | TomlSignPlus
   | TomlSignMinus
 
-
 type TomlUnderscoreSeparatedDigitsProfile {}
 
-
-// TOML integers carry sign only on decimal form; hex/octal/binary forms are
-// unsigned lexical forms. Width and machine representation are deliberately
-// absent because the TOML spec defines syntax, not a target width.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlIntegerLexemeProfile
   = TomlDecimalIntegerLexemeProfile {
       lexeme: String,
@@ -43,8 +29,6 @@ type TomlIntegerLexemeProfile
       underscores: TomlUnderscoreSeparatedDigitsProfile,
     }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlFloatLexemeProfile
   = TomlFiniteFloatLexemeProfile {
       lexeme: String,
@@ -60,37 +44,27 @@ type TomlFloatLexemeProfile
       sign: TomlSign,
     }
 
-
 type TomlIntegerLexeme = TomlIntegerLexemeProfile
-
 
 type TomlFloatLexeme = TomlFloatLexemeProfile
 
-
-// 🟡 coproduct dissolution — feature:v2-temporal-substrate — SL-3229-T4-FORMAT-TOML-DATETIME.
 type TomlDatetimeLexeme
   = TomlOffsetDateTimeLexeme { lexeme: String }
   | TomlLocalDateTimeLexeme { lexeme: String }
   | TomlLocalDateLexeme { lexeme: String }
   | TomlLocalTimeLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution — TOML §Date-Time exposes these four closed user-input profiles.
 type TomlDateTimeValue
   = TomlOffsetDateTimeValue { value: OffsetDateTime }
   | TomlLocalDateTimeValue { value: LocalDateTime }
   | TomlLocalDateValue { value: LocalDate }
   | TomlLocalTimeValue { value: LocalTime }
 
-
 type TomlDottedKeysDefineTablesFact {}
-
 
 type TomlDuplicateKeysRejectedFact {}
 
-
 type TomlDuplicateTablesRejectedFact {}
-
 
 type TomlUniqueNameProfile {
   dotted_keys_define_tables: TomlDottedKeysDefineTablesFact,
@@ -98,45 +72,35 @@ type TomlUniqueNameProfile {
   duplicate_tables_rejected: TomlDuplicateTablesRejectedFact,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlTableHeaderSyntax
   = TomlStandardTable
   | TomlArrayOfTablesElement
-
 
 type TomlTablePath {
   head: String,
   tail: List<String>,
 }
 
-
 type TomlTableHeaderSyntaxProfile {
   syntax: TomlTableHeaderSyntax,
   path: TomlTablePath,
 }
 
-
 type TomlInlineTableClosedFact {}
-
 
 type TomlInlineTableSyntaxProfile {
   closed_inline_scope: TomlInlineTableClosedFact,
 }
-
 
 type TomlTable {
   syntax: TomlTableHeaderSyntaxProfile,
   entries: Map<String, TomlValue>,
 }
 
-
 type TomlRootTable {
   entries: Map<String, TomlValue>,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlValue
   = TomlString { value: String }
   | TomlInt { numeric: TomlIntegerLexeme }
@@ -150,29 +114,18 @@ type TomlValue
     }
   | TomlTableValue { table: TomlTable }
 
-
 type TomlDocument {
   grammar_schema: GrammarSchema,
   root: TomlRootTable,
   unique_names: TomlUniqueNameProfile,
 }
 
-
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
 type TomlParseAxis {
   grammar_schema: GrammarSchema,
   source_text: String,
   unique_names: TomlUniqueNameProfile,
 }
 
-
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
 type TomlEmitAxis {
   document: TomlDocument,
 }
-
-
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
-// 🟡 gated — feature: v2 temporal substrate for RFC 3339 datetime value interpretation (TOML §Date-Time) — SL-3229-T4-FORMAT-TOML-DATETIME.
-// 🟡 gated — feature: TOML inline-table/table construction syntax collapse — SL-3229-TOML-TABLE-SYNTAX.

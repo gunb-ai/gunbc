@@ -1,34 +1,15 @@
-// src/v2/extdeps/typecheckers/pyright.dag
-// Scope: Pyright static type-checker profile — tool identity, version/config policy,
-//   and the per-tool diagnostic-rule namespace consumed by the shared
-//   TargetStaticAnalysisInvocation / TargetStaticAnalysisVerdict carriers
-//   (v2.std.leaf_model_verification). pyright is STATIC EVIDENCE, never CPython
-//   compile and never a substitute for L2 runtime parity.
-// Status: PY-L1-STATIC-STRUCTURAL substrate — Arbiter ruling proud-fox-405 (msg_41813c03).
-// Anchor: https://microsoft.github.io/pyright/#/configuration (typeCheckingMode, rule names);
-//   --outputjson emits `rule` per generalDiagnostics entry (pyright 1.1.410).
-
 module v2.extdeps.typecheckers.pyright
 
 import v2.std.collection { List }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-// Stable tool identity referenced by StaticAnalysisRejected/Advisory.tool_id.
-// TargetStaticAnalysisInvocation.tool_profile_ref uses ^pyright_profile_l1_id below.
-// pyright `typeCheckingMode` — closed set of external-spec keyword values (M4: enum, not
-// string proxy). 🟢 terminal — CP-PYRIGHT-TYPE-CHECKING-MODE-TERMINAL (analysis: PR #4158 review).
 type PyrightTypeCheckingMode
   = PyrightModeOff
   | PyrightModeBasic
   | PyrightModeStandard
   | PyrightModeStrict
 
-// Modeled projection: the pyright config-file `typeCheckingMode` keyword spelling for each
-// PyrightTypeCheckingMode variant. Keyed by the closed enum variant itself (not a String
-// proxy), so the enum and its spelling are one authority. Single authority for the emitted
-// keyword that host invocations write into pyrightconfig.json (single authority; no parallel
-// mode map). The shell runner that formerly consumed this was retired per operator directive #4252.
 type PyrightTypeCheckingModeSpelling {
   mode: PyrightTypeCheckingMode
   keyword: String
@@ -41,8 +22,6 @@ data pyright_type_checking_mode_spellings: List<PyrightTypeCheckingModeSpelling>
   PyrightTypeCheckingModeSpelling { mode: PyrightModeStrict, keyword: "strict" },
 ]
 
-// Version/config policy. The invocation pins a concrete pyright release and
-// target python version so the static-analysis receipt is reproducible.
 type PyrightConfig {
   pyright_version: String
   python_version: String
@@ -55,13 +34,6 @@ data pyright_profile_l1: PyrightConfig = PyrightConfig {
   type_checking_mode: PyrightModeStandard,
 }
 
-// Stable PROFILE identity for the pyright_profile_l1 row — distinct from ^pyright_tool_id
-// (tool identity). TargetStaticAnalysisInvocation.tool_profile_ref references THIS (the
-// concrete per-tool profile/config row), not the bare tool id, so profile selection and
-// tool identity are not conflated.
-// Per-tool diagnostic-rule namespace (NOT a shared cross-tool namespace, per Arbiter
-// ruling). code_id is the Symbol carried in StaticAnalysisRejected/Advisory;
-// rule_name is the literal pyright rule string emitted under --outputjson.
 type PyrightDiagnosticRule {
   code_id: Symbol
   rule_name: String
