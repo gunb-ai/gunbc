@@ -1,5 +1,5 @@
-# gunbc .gitignore — hand-maintained (the gunbc-bootstrap generator was removed in cleanup).
-
+# gunbc .gitignore — generated from dsl/gunbc/gitignore_authority.dag — do not hand-edit.
+#
 # Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers.
 
 # --- Cargo build artifacts (from cargo) ---
@@ -60,7 +60,7 @@ src/v1/10_test/generated-tests/src/generated/
 # Not part of this project
 node_modules/
 
-# --- Claude Code (session state, not project state) ---
+# --- Claude Code session state ---
 .claude/
 
 # --- Stage0 regeneration temp dirs ---
@@ -94,6 +94,6 @@ out.txt
 __pycache__/
 *.pyc
 
-# claim-corpus execution-map output
+# --- claim-corpus execution-map output ---
 .claim-map/
 src/v2/compiler/manual/sg2_scratch_probe.dag
