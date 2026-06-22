@@ -27,12 +27,18 @@ type CiJobPeak {
   peak: JobCgroupPeakMeasurement
 }
 
+// live srv1 cgroup read 2026-06-22, pessimistic max-over-snapshot; refined by the CI measurement emit
+// dissolution trigger: replace with per-job-type peaks once CI emit is wired and green
 data gunbc_ci_job_peaks: List<CiJobPeak> = [
-  CiJobPeak { job: "ci", peak: JobCgroupPeakUnmeasured }
+  CiJobPeak { job: "ci", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
+  CiJobPeak { job: "rust_tests", peak: JobCgroupPeakMeasured { cgroup_peak: byte_size(25769803776) } },
 ]
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize }
   | HostFixedOverheadUnmeasured
 
-data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadUnmeasured
+// 16 GiB: OS + sccache daemon (sibling cgroup outside per-job subtree) + ctrl-session docker
+// + media co-tenancy headroom on srv1 (multi-tenant interim)
+// dissolution trigger: replace with exact per-service cgroup measurements once co-tenancy is modeled
+data gunbc_ci_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured { bytes: byte_size(17179869184) }

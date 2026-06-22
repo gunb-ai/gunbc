@@ -60,8 +60,11 @@ fn huge_overhead() -> HostFixedOverhead {
   HostFixedOverheadMeasured { bytes: byte_size(130000000000) }
 }
 
-fn witness_live_carrier_unmeasured_is_unsound() -> Bool {
-  is_unsound(plan: runner_deployment_plan())
+fn witness_live_carrier_measured_derives_plan() -> Bool {
+  match runner_deployment_plan() {
+    PlanDerived { hosts: _, fleet_concurrent_runs: total } => total >= 1
+    PlanUnsound { reason: _ } => false
+  }
 }
 
 fn witness_measured_mix_derives_capacity() -> Bool {
@@ -108,7 +111,7 @@ fn witness_manifest_drift_red_receipt() -> Bool {
 }
 
 test fn runner_placement_holds() -> Bool {
-  witness_live_carrier_unmeasured_is_unsound()
+  witness_live_carrier_measured_derives_plan()
     && witness_measured_mix_derives_capacity()
     && witness_derived_count_respects_host_budget()
     && witness_over_commit_is_refused()
