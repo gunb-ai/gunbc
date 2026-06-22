@@ -337,3 +337,74 @@ fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> 
     }
   }
 }
+
+// =========================================================================
+// Diagnostic-emission intent (Gap A — emission = ingestion⁻¹ past syntax).
+// Anchor: docs/plans/emission-ingestion-inverse.md §4(A); DESIGN.md §3 (agnostic intent
+// stays central; the per-medium realization migrates outward / dispatch lives in extdeps),
+// §4 (emit = serialize_target ∘ translate — one grammar read backward), §5 (fail-closed).
+//
+// This is the MEDIUM-AGNOSTIC intent to SURFACE a diagnostic — distinct from `Diagnostic`
+// above (the rich compiler finding: reason/locus/correction). `EmitDirective` is what an
+// orchestration consumer actually expresses ("emit an Error-severity diagnostic"), and a
+// per-medium realization renders it the row-driven way (`emit(intent, medium)`), dissolving
+// hand-rolled forward emitters like the dead `render_log_annotation`.
+//
+// 🟡 SCAFFOLD — Bash-medium foundation only. The first realization is Bash
+// (`v2.extdeps.languages.bash` → `echo <message> >&2`), grounded by execution in
+// `v2.test.manual.emit_directive_bash`. The Bash transport is severity-INVARIANT (POSIX
+// `sh` has no severity concept; the stream is the only axis), so `severity` is carried by
+// the intent but realized only by a LATER medium layer.
+// Named dissolution / deferred-payoff markers (Phase 2, witty-wolf GHA-as-Node-gated):
+//   - severity REALIZATION: GitHub-Actions annotation prefix (severity Error → `::error`,
+//     Warning → `::warning`) is the GHA medium layered over the Bash transport; lands with
+//     the GHA-as-Node realization edge, NOT here.
+//   - source LOCUS (file/line for the GHA annotation) is added as `Optional<Locus>` WITH that
+//     GHA realizer (the only consumer that reads it); omitted now per JIT modeling (§6).
+//   - the live consumers (`tools.build_step` ::error, `gunbc.ci_spec` ::warning) migrate onto
+//     `emit(EmitDirective, GHA-over-Bash)` at that composed-arc landing, shrinking the §0
+//     realization-vocab containment roster (the bright-gull MediumStructureLeak dissolve-on).
+//
+// `Notice` is intentionally ABSENT: it has zero live consumers (only the dead
+// `render_log_annotation.AnnotationNotice`), so adding it now would be §5
+// specification-without-execution. Add it the moment a live info-level consumer appears.
+//
+// §3 SINGLE AUTHORITY + KNOWN TWIN (marked, not silent). This is the intended single authority
+// for diagnostic severity. Variants are prefixed (`SeverityError`/`SeverityWarning`), not bare
+// `Error`/`Warning`, to avoid the name-shadowing hazard this module documents (see `extent_eq`
+// note above). Distinct from `std.behavioral.Severity` (Low|Medium|High|Critical) — a different
+// concept (external edge-case risk scale), not a fork.
+//   TWIN: `v2.lens.application.DiagnosticSeverity` (`= SeverityError {}`) is a SECOND, same-named
+//   type — the C-8 lens-enforcement severity where only Error is admitted (fail-closed) steady
+//   state. It is the SAME concept; std is the correct single authority (the layer DAG points
+//   imports toward std, so the lens must ground on THIS type, never the reverse). The lens type
+//   is NOT a plain duplicate: only `SeverityError` is WRITABLE there (no warning-severity lens
+//   enforcement exists), so it is a construction-level REFINEMENT of this 2-variant type, not a
+//   widening. Dissolution trigger: collapse `v2.lens.application`'s severity onto THIS type while
+//   PRESERVING Error-only-by-construction (a refinement — e.g. a narrowed witness/newtype over
+//   `DiagnosticSeverity` — never a silent widening that admits Warning into lens enforcement).
+//   Deferred out of this PR: `v2.lens.application` is §3 load-bearing and the refinement carries
+//   real design tension; tracked as a named emission §3 follow-on work-item.
+type DiagnosticSeverity = SeverityError | SeverityWarning
+
+type EmitDirective {
+  severity: DiagnosticSeverity
+  message: String
+}
+
+fn diagnostic_severity_eq(a: DiagnosticSeverity, b: DiagnosticSeverity) -> Bool {
+  match a {
+    SeverityError => match b {
+      SeverityError => true
+      SeverityWarning => false
+    }
+    SeverityWarning => match b {
+      SeverityError => false
+      SeverityWarning => true
+    }
+  }
+}
+
+fn emit_directive_eq(a: EmitDirective, b: EmitDirective) -> Bool {
+  diagnostic_severity_eq(a: a.severity, b: b.severity) && (a.message == b.message)
+}

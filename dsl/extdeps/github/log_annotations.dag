@@ -36,23 +36,12 @@ fn emit_line_shell(line: String) -> String {
   concat("printf '%s\\n' ", shell_single_quote(s: line))
 }
 
-fn render_log_annotation(annotation: LogAnnotation) -> String {
-  match annotation {
-    AnnotationError { message: m, file: _, line: _, col: _ } =>
-      concat("::error::", m)
-    AnnotationWarning { message: m, file: _, line: _, col: _ } =>
-      concat("::warning::", m)
-    AnnotationNotice { message: m, file: _, line: _, col: _ } =>
-      concat("::notice::", m)
-    AnnotationGroup { title: t } =>
-      concat(annotation_group_prefix, t)
-    AnnotationEndGroup =>
-      annotation_endgroup
-    SetOutput { name: n, value: v } =>
-      concat(annotation_set_output_prefix, n, "::", v)
-    AddMask { value: v } =>
-      concat(annotation_add_mask_prefix, v)
-    StopCommands { token: t } =>
-      concat(annotation_stop_commands_prefix, t)
-  }
-}
+// `render_log_annotation` (a hand-rolled forward emitter — `match` → `concat("::error::", …)`)
+// was DELETED here (Gap A, PR #5505). It was dead (only re-exported via actions.dag, never
+// called), and dissolving dead code into rows would be §5 specification-without-execution
+// (DESIGN.md §5) — so it is removed as a dead scaffold, not migrated. The medium-agnostic
+// emission intent now lives in `v2.std.diagnostic` (`EmitDirective` / `DiagnosticSeverity`);
+// its Bash realization (`emit(EmitDirective, Bash)`) is in `v2.extdeps.languages.bash`. The
+// GitHub-Actions severity realization (`::error`/`::warning` over this annotation model) lands
+// with the GHA-as-Node arc; the `LogAnnotation` type + prefix data below are kept as that
+// model's grounded carrier.
