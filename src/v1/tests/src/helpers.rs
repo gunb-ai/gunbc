@@ -27,6 +27,11 @@ pub fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v1"), ws.join("dsl")]
 }
 
+pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
+    let ws = workspace_root();
+    vec![ws.join("src/v2"), ws.join("dsl")]
+}
+
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
@@ -179,7 +184,7 @@ fn resolve_imports_transitively_with_index(
 ) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue: Vec<(String, String)> = Vec::new();
+    let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
 
     queue.push((entry_path.to_string(), entry_content.to_string()));
 
@@ -187,7 +192,7 @@ fn resolve_imports_transitively_with_index(
         let imports = extract_imports(&content);
         for module_path in imports {
             if seen.contains_key(&module_path) {
-                continue;
+                continue; // already loaded — O(1) check
             }
             if let Some(file_path) = module_index.get(&module_path) {
                 if let Ok(file_content) = std::fs::read_to_string(file_path) {

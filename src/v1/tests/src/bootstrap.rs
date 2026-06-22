@@ -197,7 +197,7 @@ fn stage0_cargo_check() {
 const DIAG_RATCHET: usize = 358;
 
 #[test]
-#[ignore]
+#[ignore = "Requires building stage0 binary (~2 min)"]
 fn strict_compile_diagnostic_count() {
     let stage0_bin = find_or_build_stage0();
 
@@ -221,7 +221,7 @@ fn strict_compile_diagnostic_count() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Requires building stage0 binary (~2 min)"]
 fn stage0_compile_accepts_dag_target() {
     let stage0_bin = find_or_build_stage0();
 
@@ -264,7 +264,7 @@ fn stage0_compile_accepts_dag_target() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Requires building stage0 binary (~2 min)"]
 fn stage0_compile_imports_ephemeral_generated_source_root() {
     let stage0_bin = find_or_build_stage0();
 
@@ -336,7 +336,7 @@ fn main() -> Int { generated_answer() }
 const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 
 #[test]
-#[ignore]
+#[ignore = "Expensive: builds binary + runs full compile + cargo check"]
 fn bootstrap_stage0_to_stage1() {
     let stage0_bin = find_or_build_stage0();
     let ws = crate::helpers::workspace_root();
@@ -422,7 +422,7 @@ fn bootstrap_stage0_to_stage1() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Expensive: builds two binaries + two full compiles"]
 fn bootstrap_fixed_point() {
     let ws = crate::helpers::workspace_root();
     let stage0_bin = find_or_build_stage0();
@@ -483,7 +483,7 @@ fn bootstrap_fixed_point() {
 const PERF_RATCHET_SECONDS: u64 = 150;
 
 #[test]
-#[ignore]
+#[ignore = "Requires building stage0 binary"]
 fn performance_ratchet() {
     let stage0_bin = find_or_build_stage0();
 
@@ -647,7 +647,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 });
 
 #[test]
-#[ignore]
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_full_dsl() {
     ci_timing("ci_full_dsl: start");
     let ws = crate::helpers::workspace_root();
@@ -686,7 +686,7 @@ fn ci_full_dsl() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_diagnostic_ratchet() {
     let pass1 = &*CI_PASS1;
     let diag_count = parse_diagnostic_count(&pass1.stderr);
@@ -703,7 +703,7 @@ fn ci_diagnostic_ratchet() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_performance_ratchet() {
     let pass1 = &*CI_PASS1;
     eprintln!(
@@ -720,7 +720,7 @@ fn ci_performance_ratchet() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
     if let Err(ref diff) = pass1.freshness {
@@ -734,7 +734,7 @@ fn ci_freshness() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_fixed_point() {
     let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
@@ -747,7 +747,7 @@ fn ci_fixed_point() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Expensive: compiles .dag, builds emitted crate, runs cargo test"]
 fn bootstrap_l4_structural() {
     let result = std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
@@ -841,7 +841,6 @@ fn generate_weather_structural_tests() -> String {
 use v1_compiled::examples_weather::Condition::*;
 use std::rc::Rc;
 
-// ── Layer 1: Type witnesses — every type is constructible ───────────
 
 #[test]
 fn witness_temperature() {
@@ -863,7 +862,6 @@ fn witness_forecast() {
     });
 }
 
-// ── Layer 1: Function calls — every function runs without panic ─────
 
 #[test]
 fn call_to_fahrenheit() {
@@ -896,7 +894,6 @@ fn call_freezing_locations_empty() {
     let _result = freezing_locations(Rc::new(vec![]));
 }
 
-// ── Layer 2: Variant coverage — coproduct exhaustiveness ────────────
 
 #[test]
 fn describe_condition_all_variants() {
@@ -906,7 +903,6 @@ fn describe_condition_all_variants() {
     let _ = describe_condition(Rc::new(Snowy { cm_per_hour: 0.0 }));
 }
 
-// ── Layer 3: Non-trivial witnesses + structural oracles ─────────────
 
 #[test]
 fn to_fahrenheit_known_value() {
@@ -948,7 +944,6 @@ fn describe_condition_rainy_branches() {
     assert_ne!(light, heavy, "light and heavy rain should have different descriptions");
 }
 
-// ── Serde roundtrip — serialization correctness ─────────────────────
 
 #[test]
 fn roundtrip_temperature() {

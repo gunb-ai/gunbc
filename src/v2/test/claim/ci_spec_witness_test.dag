@@ -8,10 +8,11 @@ import v2.std.node { Behavior, Symbol }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
-  CiSpec, DiffPolicy, DiffMergeBase, Gate,
-  gunbc_ci_spec, gunbc_ci_gates, ci_release_features,
+  CiSpec, DiffPolicy, DiffMergeBase, Gate, RustMonolithGate,
+  gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
+  ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, git_fetch_script,
-  ci_release_build_script
+  ci_release_build_script, gunbc_ci_rust_job_run
 }
 
 data reflect_gate_type: Symbol = ^Gate
@@ -46,6 +47,23 @@ fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol>
   fold(inhabitants, init: [], f: fn(acc, v) {
     list_snoc_item(xs: acc, item: discriminant(v: v))
   })
+}
+
+fn symbol_in(syms: List<Symbol>, s: Symbol) -> Bool {
+  fold(syms, init: false, f: fn(acc, x) { acc || (x == s) })
+}
+
+fn witness_rust_gate_split_is_real() -> Bool {
+  let rust = discriminant(v: RustMonolithGate)
+  let floor_syms = gate_arm_symbols(gates: gunbc_ci_floor_gates)
+  let rustjob_syms = gate_arm_symbols(gates: gunbc_ci_rust_job_gates)
+  let spec_syms = gate_arm_symbols(gates: gunbc_ci_spec.gates)
+  let rust_job_script = gunbc_ci_rust_job_run()
+  !symbol_in(syms: floor_syms, s: rust) &&
+    symbol_in(syms: rustjob_syms, s: rust) &&
+    bag_eq(xs: spec_syms, ys: floor_syms, eq: symbol_eq) &&
+    string_contains(s: rust_job_script, pattern: "dsl/tools/rust_gates_ci.dag") &&
+    string_contains(s: rust_job_script, pattern: "cargo build -p v1-compiler --release")
 }
 
 fn witness_gate_roster_matches_coproduct_arms() -> Bool {
@@ -153,5 +171,6 @@ test fn ci_spec_witnesses() -> Bool {
     witness_release_build_eagain_cold_retry() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_collapsed_script() &&
-    witness_gate_roster_matches_coproduct_arms()
+    witness_gate_roster_matches_coproduct_arms() &&
+    witness_rust_gate_split_is_real()
 }
