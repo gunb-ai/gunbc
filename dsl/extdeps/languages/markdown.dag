@@ -1,0 +1,353 @@
+// extdeps/languages/markdown.dag — Markdown as an emit medium: a row-driven
+// MarkdownDocument → markdown-SOURCE serializer.
+//
+// 🟡 SCAFFOLD — feature:markdown-source-medium; dissolve-on: the v2 06_translate Markdown
+// TargetModel (src/v2/extdeps/languages/markdown.dag) lands and these spelling ROWS relocate
+// into it as the grammar-inverse `target_model_edge_translation_rules` (they RELOCATE, no
+// rework — same rows, table-driven). Until then this is the near-term v1-seed realization
+// (the §6 displaced-cost path: the ROADMAP inverts BEFORE self-host, plan invert-hand-maintained
+// §7), the byte-for-byte clone of the ci.yml pattern (serialize_yaml ∘ project_workflow_to_yaml).
+//
+// Peer of extdeps/formats/yaml.dag `serialize_yaml`: a byte-faithful structural-value
+// serializer that lands on the gunbc/v1-seed (no std.unicode / std.render imports) so its
+// witnesses execute under the v1 interpreter. The convergent IR authority is std.markdown
+// (MarkdownDocument / MarkdownBlock / MarkdownInline, extended here's window with the GFM
+// task-list / table blocks); this module owns only the SOURCE medium — the inverse direction
+// of std.markdown's IR→HTML fold, over the same single IR (DESIGN §4: one grammar, both ways).
+//
+// ROW DISCIPLINE (the medium-as-Node guard, #5496): every construct→spelling lives in the
+// `MarkdownSpellings` ROW the fold LOOKS UP — `#`, `- `, `- [x] `, `[t](u)`, table pipes,
+// `*`/`**`, fences — never an inline string literal in the fold. Table-driven = reversible =
+// the same rows the future v2 06_translate Markdown target reuses (they RELOCATE, no rework).
+// Line breaks (`\n`) are structural layout, not construct spellings (cf. yaml.dag), so they
+// stay inline. SCOPE: EMIT only (IR→source). The round-trip (source→IR ingest + lex) is the
+// named ① dissolve-on, later, reusing these rows.
+//
+// Anchors: CommonMark 0.31.2 — https://spec.commonmark.org/0.31.2/
+//          GitHub Flavored Markdown 0.29-gfm — https://github.github.com/gfm/
+
+module extdeps.languages.markdown
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.markdown {
+  MarkdownDocument,
+  MarkdownBlock,
+  MarkdownInline,
+  MarkdownListItem,
+  MarkdownTaskItem,
+  MarkdownTableRow,
+  MarkdownTableCell,
+  MarkdownAlignment,
+  HeadingLevel,
+  CheckboxState,
+  HeadingBlock,
+  ParagraphBlock,
+  UnorderedListBlock,
+  OrderedListBlock,
+  CodeBlock,
+  TaskListBlock,
+  TableBlock,
+  BlockquoteBlock,
+  TextInline,
+  EmphasisInline,
+  StrongInline,
+  CodeInline,
+  LinkInline,
+  ImageInline,
+  H1,
+  H2,
+  H3,
+  H4,
+  H5,
+  H6,
+  Checked,
+  Unchecked,
+  AlignNone,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+}
+
+// §3 grounding: the markdown medium cites CommonMark as a structured fact, not a
+// comment. GFM (the task-list / table extensions) extends this base spec — see the
+// per-construct GFM citations on the MarkdownSpellings rows below.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "spec.commonmark.org/0.31.2/"
+  }
+}
+
+// =========================================================================
+// The spelling rows — single authority for every markdown source delimiter.
+// Each field is the literal source spelling of one construct; the fold below
+// looks these up, so a wrong spelling is one row edit (and one RED witness),
+// never a literal buried in the fold.
+// =========================================================================
+
+type MarkdownSpellings {
+  heading_marker: String        // "#"  (repeated per level)        CommonMark §4.2 ATX headings
+  heading_sep: String           // " "  between markers and content
+  unordered_bullet: String      // "- " CommonMark §5.2 list items (GFM canonical dash)
+  ordered_suffix: String        // ". " after the ordinal           CommonMark §5.2
+  task_checked: String          // "[x] " GFM §5.3 task list items
+  task_unchecked: String        // "[ ] "
+  emphasis_delim: String        // "*"  CommonMark §6.2 emphasis (italic)
+  strong_delim: String          // "**" CommonMark §6.2 strong emphasis (bold)
+  code_span_delim: String       // "`"  CommonMark §6.3 code spans
+  code_fence: String            // "```" CommonMark §4.5 fenced code blocks
+  link_text_open: String        // "["  CommonMark §6.5 links
+  link_text_close: String       // "]"
+  link_url_open: String         // "("
+  link_url_close: String        // ")"
+  image_marker: String          // "!"  CommonMark §6.6 images
+  table_pipe: String            // "|"  GFM §4.10 tables
+  table_cell_pad: String        // " "  padding inside a cell
+  table_align_none: String      // "---" GFM §4.10 delimiter-row cell
+  table_align_left: String      // ":--"
+  table_align_center: String    // ":-:"
+  table_align_right: String     // "--:"
+  blockquote_marker: String     // "> " CommonMark §5.1 block quotes
+  list_indent: String           // "  " one nesting level of list indentation
+  block_separator: String       // "\n\n" blank line between top-level blocks
+}
+
+// The CommonMark 0.31.2 + GFM 0.29 canonical spellings — the default medium.
+data commonmark_gfm_spellings: MarkdownSpellings = {
+  heading_marker: "#",
+  heading_sep: " ",
+  unordered_bullet: "- ",
+  ordered_suffix: ". ",
+  task_checked: "[x] ",
+  task_unchecked: "[ ] ",
+  emphasis_delim: "*",
+  strong_delim: "**",
+  code_span_delim: "`",
+  code_fence: "```",
+  link_text_open: "[",
+  link_text_close: "]",
+  link_url_open: "(",
+  link_url_close: ")",
+  image_marker: "!",
+  table_pipe: "|",
+  table_cell_pad: " ",
+  table_align_none: "---",
+  table_align_left: ":--",
+  table_align_center: ":-:",
+  table_align_right: "--:",
+  blockquote_marker: "> ",
+  list_indent: "  ",
+  block_separator: "\n\n",
+}
+
+// =========================================================================
+// Inlines.
+// =========================================================================
+
+// "[text](url)" / "![alt](url)" share this affix shape (the link form).
+fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
+  join(
+    [sp.link_text_open, text, sp.link_text_close, sp.link_url_open, url, sp.link_url_close],
+    ""
+  )
+}
+
+fn md_inline(inline: MarkdownInline, sp: MarkdownSpellings) -> String {
+  match inline {
+    TextInline { text } => text
+    EmphasisInline { inlines } =>
+      join([sp.emphasis_delim, md_inlines(inlines: inlines, sp: sp), sp.emphasis_delim], "")
+    StrongInline { inlines } =>
+      join([sp.strong_delim, md_inlines(inlines: inlines, sp: sp), sp.strong_delim], "")
+    CodeInline { text } =>
+      join([sp.code_span_delim, text, sp.code_span_delim], "")
+    LinkInline { inlines, url } =>
+      md_link_form(text: md_inlines(inlines: inlines, sp: sp), url: url, sp: sp)
+    ImageInline { alt, url } =>
+      join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "")
+  }
+}
+
+fn md_inlines(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> String {
+  fold(inlines, init: "", f: (acc, i) => concat(acc, md_inline(inline: i, sp: sp)))
+}
+
+// =========================================================================
+// Lists (ordered / unordered / GFM task) — depth carries nesting indentation.
+// A list item leads with its first paragraph's inlines on the marker line;
+// any further blocks (nested lists) render indented one level deeper.
+// =========================================================================
+
+fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, depth: Int) -> String {
+  let pad = repeat_string(s: sp.list_indent, n: depth)
+  fold(blocks, init: { idx: 0, out: "" }, f: (acc, b) => {
+    if acc.idx == 0 {
+      let lead = match b {
+        ParagraphBlock { inlines } =>
+          join([pad, marker, md_inlines(inlines: inlines, sp: sp)], "")
+        _ =>
+          join([pad, marker, md_block(block: b, sp: sp)], "")
+      }
+      { idx: 1, out: lead }
+    } else {
+      { idx: acc.idx + 1, out: concat(acc.out, concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))) }
+    }
+  }).out
+}
+
+fn md_unordered(items: List<MarkdownListItem>, sp: MarkdownSpellings, depth: Int) -> String {
+  join(map(items, it => md_item(marker: sp.unordered_bullet, blocks: it.blocks, sp: sp, depth: depth)), "\n")
+}
+
+fn md_ordered(items: List<MarkdownListItem>, sp: MarkdownSpellings, depth: Int) -> String {
+  fold(items, init: { n: 1, out: "" }, f: (acc, it) => {
+    let marker = concat(to_string(acc.n), sp.ordered_suffix)
+    let line = md_item(marker: marker, blocks: it.blocks, sp: sp, depth: depth)
+    {
+      n: acc.n + 1,
+      out: if acc.out == "" { line } else { concat(acc.out, concat("\n", line)) }
+    }
+  }).out
+}
+
+fn md_task_box(state: CheckboxState, sp: MarkdownSpellings) -> String {
+  match state {
+    Checked => sp.task_checked
+    Unchecked => sp.task_unchecked
+  }
+}
+
+fn md_tasklist(items: List<MarkdownTaskItem>, sp: MarkdownSpellings, depth: Int) -> String {
+  join(map(items, it => {
+    let marker = concat(sp.unordered_bullet, md_task_box(state: it.state, sp: sp))
+    md_item(marker: marker, blocks: it.blocks, sp: sp, depth: depth)
+  }), "\n")
+}
+
+// A block nested inside a list item: lists indent one level; any other block renders flat.
+fn md_nested(block: MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String {
+  match block {
+    UnorderedListBlock { items } => md_unordered(items: items, sp: sp, depth: depth)
+    OrderedListBlock { items } => md_ordered(items: items, sp: sp, depth: depth)
+    TaskListBlock { items } => md_tasklist(items: items, sp: sp, depth: depth)
+    _ => md_block(block: block, sp: sp)
+  }
+}
+
+// =========================================================================
+// Tables (GFM §4.10): header row, delimiter row (from alignments), body rows.
+// =========================================================================
+
+fn md_table_cell(cell: MarkdownTableCell, sp: MarkdownSpellings) -> String {
+  md_inlines(inlines: cell.inlines, sp: sp)
+}
+
+// "| a | b |" — open pipe, then each cell padded and pipe-closed.
+fn md_table_row(row: MarkdownTableRow, sp: MarkdownSpellings) -> String {
+  fold(row.cells, init: sp.table_pipe, f: (acc, c) =>
+    join([acc, sp.table_cell_pad, md_table_cell(cell: c, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
+}
+
+fn md_align_cell(a: MarkdownAlignment, sp: MarkdownSpellings) -> String {
+  match a {
+    AlignNone => sp.table_align_none
+    AlignLeft => sp.table_align_left
+    AlignCenter => sp.table_align_center
+    AlignRight => sp.table_align_right
+  }
+}
+
+fn md_table_delim(alignments: List<MarkdownAlignment>, sp: MarkdownSpellings) -> String {
+  fold(alignments, init: sp.table_pipe, f: (acc, a) =>
+    join([acc, sp.table_cell_pad, md_align_cell(a: a, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
+}
+
+fn md_table(
+  header: MarkdownTableRow,
+  alignments: List<MarkdownAlignment>,
+  rows: List<MarkdownTableRow>,
+  sp: MarkdownSpellings
+) -> String {
+  let head = md_table_row(row: header, sp: sp)
+  let delim = md_table_delim(alignments: alignments, sp: sp)
+  let body = join(map(rows, r => md_table_row(row: r, sp: sp)), "\n")
+  if body == "" {
+    join([head, "\n", delim], "")
+  } else {
+    join([head, "\n", delim, "\n", body], "")
+  }
+}
+
+// =========================================================================
+// Block quotes (CommonMark §5.1): prefix every inner line with "> ".
+// =========================================================================
+
+fn md_prefix_lines(text: String, prefix: String) -> String {
+  join(map(split(s: text, delimiter: "\n"), line => concat(prefix, line)), "\n")
+}
+
+fn md_blockquote(blocks: List<MarkdownBlock>, sp: MarkdownSpellings) -> String {
+  let inner = join(map(blocks, b => md_block(block: b, sp: sp)), "\n")
+  md_prefix_lines(text: inner, prefix: sp.blockquote_marker)
+}
+
+// =========================================================================
+// Top-level blocks.
+// =========================================================================
+
+fn heading_level_to_int(level: HeadingLevel) -> Int {
+  match level {
+    H1 => 1
+    H2 => 2
+    H3 => 3
+    H4 => 4
+    H5 => 5
+    H6 => 6
+  }
+}
+
+fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
+  match block {
+    HeadingBlock { level, inlines } =>
+      join([
+        repeat_string(s: sp.heading_marker, n: heading_level_to_int(level: level)),
+        sp.heading_sep,
+        md_inlines(inlines: inlines, sp: sp)
+      ], "")
+    ParagraphBlock { inlines } =>
+      md_inlines(inlines: inlines, sp: sp)
+    UnorderedListBlock { items } =>
+      md_unordered(items: items, sp: sp, depth: 0)
+    OrderedListBlock { items } =>
+      md_ordered(items: items, sp: sp, depth: 0)
+    TaskListBlock { items } =>
+      md_tasklist(items: items, sp: sp, depth: 0)
+    CodeBlock { code } =>
+      // The fenced block: code is expected to carry its own trailing newline
+      // (mirrors std.markdown's CodeBlock convention), so "```\n" + code + "```".
+      join([sp.code_fence, "\n", code, sp.code_fence], "")
+    TableBlock { header, alignments, rows } =>
+      md_table(header: header, alignments: alignments, rows: rows, sp: sp)
+    BlockquoteBlock { blocks } =>
+      md_blockquote(blocks: blocks, sp: sp)
+  }
+}
+
+// =========================================================================
+// Document entry — the medium serializer. Blocks separated by a blank line,
+// one trailing newline at EOF (byte-faithful, peer of serialize_yaml).
+// =========================================================================
+
+fn serialize_markdown_source_with(doc: MarkdownDocument, sp: MarkdownSpellings) -> String {
+  concat(
+    join(map(doc.blocks, b => md_block(block: b, sp: sp)), sp.block_separator),
+    "\n"
+  )
+}
+
+// Total serializer: MarkdownDocument → byte-faithful markdown source (CommonMark + GFM).
+fn serialize_markdown_source(doc: MarkdownDocument) -> String {
+  serialize_markdown_source_with(doc: doc, sp: commonmark_gfm_spellings)
+}
