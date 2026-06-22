@@ -19,10 +19,14 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.normalize { normalize }
+import v2.compiler.normalize { normalize, NormalizedTree }
 import v2.compiler.parse { parse }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
+import v2.std.pipeline { then_outcome }
+import v2.std.compilers.lexing { TokenStream }
+import v2.std.grammar { ParseTree }
+import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.target_carriers { TargetModel }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
@@ -467,49 +471,81 @@ fn compile_source_root_ingest_with_admission(
 }
 
 
-fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: tokenize(
+// --- compile_ingest_staging as a stage fold ------------------------------
+// Each front-end pass is reified as a first-class stage `fn(A) -> Outcome<B>` (closing
+// over the language model / target), and the pipeline is their right-fold under
+// `then_outcome` (Kleisli composition in the Outcome monad). This is behaviourally
+// identical to the former nested `bind_outcome` pyramid — `then_outcome` is `bind_outcome`
+// under a closure, so it preserves both the short-circuit and the diagnostic threading —
+// but the stages are now individually typed and testable, and adding/reordering/wrapping
+// (e.g. for content-addressed caching) a stage is a local edit, not surgery on the nest.
+// Oracle: staging_pipeline_oracle_test (empty stub -> Rejected, unchanged).
+
+fn stage_tokenize(lm: LanguageModel) -> fn(Medium<String>) -> Outcome<TokenStream> {
+  fn(source) {
+    tokenize(
       text: source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
-    ),
-    f: fn(token_stream) {
-      bind_outcome(
-        o: parse(tokens: token_stream, grammar: lm.grammar),
-        f: fn(parse_tree) {
-          bind_outcome(
-            o: normalize(parse_tree: parse_tree),
-            f: fn(normalized) {
-              bind_outcome(
-                o: resolve(tree: normalized, lm: lm),
-                f: fn(resolved) {
-                  bind_outcome(
-                    o: validate_then_compile(
-                      source: resolved,
-                      lenses: [],
-                      mode: TranslateTo { target: target }
-                    ),
-                    f: fn(validated) {
-                      match validated.value {
-                        TranslateResult { source: target_source } =>
-                          outcome_accepted(target_source)
-                        EvalResult { value: _ } =>
-                          outcome_rejected(
-                            compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: ^compile_stage_locus_port)
-                            )
-                          )
-                      }
-                    }
-                  )
-                }
+    )
+  }
+}
+
+
+fn stage_parse(lm: LanguageModel) -> fn(TokenStream) -> Outcome<ParseTree> {
+  fn(token_stream) { parse(tokens: token_stream, grammar: lm.grammar) }
+}
+
+
+fn stage_normalize() -> fn(ParseTree) -> Outcome<NormalizedTree> {
+  fn(parse_tree) { normalize(parse_tree: parse_tree) }
+}
+
+
+fn stage_resolve(lm: LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTree> {
+  fn(normalized) { resolve(tree: normalized, lm: lm) }
+}
+
+
+fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<String>> {
+  fn(resolved) {
+    bind_outcome(
+      o: validate_then_compile(
+        source: resolved,
+        lenses: [],
+        mode: TranslateTo { target: target }
+      ),
+      f: fn(validated) {
+        match validated.value {
+          TranslateResult { source: target_source } =>
+            outcome_accepted(target_source)
+          EvalResult { value: _ } =>
+            outcome_rejected(
+              compile_eval_not_realized_diagnostic(
+                at: port_locus(port: ^compile_stage_locus_port)
               )
-            }
-          )
+            )
         }
+      }
+    )
+  }
+}
+
+
+fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
+  let lm = dag_language_model_wave1()
+  let pipeline = then_outcome(
+      f: stage_tokenize(lm: lm),
+      g: then_outcome(
+        f: stage_parse(lm: lm),
+        g: then_outcome(
+          f: stage_normalize(),
+          g: then_outcome(
+            f: stage_resolve(lm: lm),
+            g: stage_translate(target: target)
+          )
+        )
       )
-    }
-  )
+    )
+  pipeline(source)
 }

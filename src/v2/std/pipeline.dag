@@ -1,0 +1,21 @@
+// v2.std.pipeline — Kleisli composition for the Outcome (railway) monad.
+//
+// `then_outcome(f, g)` composes two fail-closed stages — `f: A -> Outcome<B>` and
+// `g: B -> Outcome<C>` — into one `A -> Outcome<C>`. It short-circuits on the first
+// `Rejected` and threads/accumulates diagnostics, both inherited from `bind_outcome`
+// (this is just `bind_outcome` under a closure, so it cannot weaken the fail-closed
+// contract). A staged transform — e.g. the compiler's tokenize -> parse -> normalize ->
+// resolve -> translate — is the right-fold of its stages under this operator: the stages
+// become first-class, individually-testable values instead of lambdas buried in a
+// nested `bind_outcome` pyramid. (DESIGN §4: the epistemic chain run in one direction;
+// §2: one combinator, every pipeline.)
+module v2.std.pipeline
+
+import v2.std.diagnostic { Outcome, bind_outcome }
+
+fn then_outcome<A, B, C>(
+  f: fn(A) -> Outcome<B>,
+  g: fn(B) -> Outcome<C>
+) -> fn(A) -> Outcome<C> {
+  fn(x) { bind_outcome(o: f(x), f: g) }
+}
