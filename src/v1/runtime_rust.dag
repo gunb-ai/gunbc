@@ -1,13 +1,3 @@
-// v2 runtime template for Rust targets.
-//
-// Defines the Rust source text for the v1_rt runtime shim module.
-// This is the single authority for runtime intrinsic implementations.
-// The v1 V2_RUNTIME_SOURCE const in v1_runtime_shim.rs is bootstrap-only
-// legacy and should not be extended.
-//
-// The emit layer calls rust_runtime_source() and writes the result as
-// src/v1_rt.rs in the emitted crate.
-
 module v1.compiler.runtime_rust
 
 fn rt_header() -> String {

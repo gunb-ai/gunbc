@@ -1,5 +1,3 @@
-// Scope: git diff → edit_locus Node resolver receipts (path-regex bindings).
-
 module v2.test.lens_affected_set.edit_locus_resolver
 
 import extdeps.communication.medium { Lossless, Medium }
@@ -39,7 +37,6 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
-
 
 import v2.std.verification {
   BoolWitness,
@@ -172,7 +169,6 @@ fn edit_locus_occurrence_textual_file_eq(
   }
 }
 
-// 🟡 gated — feature:source-authority-span-lane — bind
 fn edit_locus_source_provenance_producer_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
@@ -193,7 +189,6 @@ fn edit_locus_source_provenance_producer_holds() -> Bool {
   }
 }
 
-// occurrence_id excluded from structural equality (design-node-identity-channels.md).
 fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
@@ -250,7 +245,6 @@ fn edit_locus_root_from_source_locus_holds(
   }
 }
 
-// 🟡 gated — feature:source-authority-span-lane — bind
 fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
   match source_ir_artifact_provenance(
     source_read: edit_locus_source_producer_fixture_source_read
@@ -282,15 +276,8 @@ data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_af
 data edit_locus_source_provenance_affected_set_wire_claim_passes: Bool = edit_locus_source_provenance_affected_set_wire_holds()
 data edit_locus_source_provenance_producer_rejects_malformed_source_claim_passes: Bool = edit_locus_source_provenance_producer_rejects_malformed_source_holds()
 
-// Transport Symbol pin — independent authority for substrate-equivalence field-preservation laws.
 data edit_locus_narrow_resolution_holds_symbol: Symbol = edit_locus_narrow_resolution_holds
 
-// Unified bool-witness claim for the narrow-resolution witness. Single authority
-// for the claim consumed by v2.test.workflow.unified_test_claim_substrate_equivalence
-// and the v2.workflow.glob_discovery type-head perturb fixture (which expects a
-// discovered bool-witness decl named `unified_claim_edit_locus_narrow`). Was a
-// dangling cross-module import until now — declared nowhere despite both consumers
-// importing it (surfaced by the whole-tree resolve, invisible to the dsl-first gate).
 data unified_claim_edit_locus_narrow: UnifiedTestClaim = BoolWitnessClaim {
   witness: BoolWitness {
     entry: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
