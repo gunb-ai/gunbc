@@ -23,6 +23,18 @@
 //
 // v1-interpreter-clean (only language builtins + citation deps), so the witnesses execute under
 // `gunbc run` exactly as `extdeps/formats/yaml.dag` does.
+//
+// 🟡 SCAFFOLD (round-trip slice, #5527) — feature:gha-expr-round-trip; dissolve-on: the v2
+// 06_translate GHA-expression `TargetModel` lands and the `ExpressionSpellings` delimiter ROWS +
+// the v1-seed `ingest_*` relocate into it as the TargetModel `binding_spellings`
+// (`Map<Symbol, String>`) read by the grammar-inverse `target_model_edge_translation_rules` — they
+// RELOCATE, no rework (same rows, table-driven), and the §5.2 round-trip law is then INHERITED from
+// `v2.compiler.source_authority.source_authority_round_trip_with_model` over that TargetModel, not
+// this hand-rolled v1-seed ingest + witness. (Parity with the markdown medium's header dissolve-on,
+// `extdeps/languages/markdown.dag`.) SCOPE of this scaffold: the `ExpressionSpellings` rows and
+// `ingest_expression` / `ingest_template` (the §5.2 round-trip inverse, this slice). The typed
+// `Expression` / `ExpressionTemplate` model, the `serialize_*` emit, and the model-walk guard
+// witnesses are the MERGED medium-as-Node surface (#5499), NOT scaffold.
 
 module extdeps.github.expressions
 
