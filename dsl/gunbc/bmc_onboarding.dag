@@ -3,7 +3,6 @@ module gunbc.bmc_onboarding
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
-import std.logic { Bool }
 import std.types { NonEmptyStr }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, RedfishAccountRole, AccountRoleAdministrator }
 import extdeps.bmc.openbmc { openbmc_factory_login }
@@ -21,13 +20,6 @@ fn bmc_onboarding_next_phase(phase: BmcOnboardingPhase) -> BmcOnboardingPhase? {
     CredentialsRotated => Present { value: OsInstalled }
     OsInstalled => Present { value: FabricJoined }
     FabricJoined => Absent
-  }
-}
-
-fn bmc_onboarding_is_complete(phase: BmcOnboardingPhase) -> Bool {
-  match bmc_onboarding_next_phase(phase: phase) {
-    Absent => true
-    Present { value: _ } => false
   }
 }
 
