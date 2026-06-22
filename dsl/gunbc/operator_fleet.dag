@@ -23,7 +23,6 @@ import product.compute_fabric {
   OwnedMarginalZero,
   PerJobFilesystem,
   Dram,
-  compute_host_ram_bytes_total,
 }
 
 data operator_fleet_cpu: CpuFacts = CpuFacts {
