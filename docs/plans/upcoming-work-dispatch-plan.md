@@ -28,6 +28,8 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 
 ## B. The lanes — next tasks, milestone, verification, wave-transition
 
+**Verification standard (applies to every "verify by execution" below):** a milestone counts only with a **discriminating witness** — an input that goes RED if the grounding is wrong — plus a **non-growing `#[ignore]` roster**. A raw count ("errors drop 48%") is NOT acceptable: it's gameable by suppression or relocation (precedent: the `0331b526ee` fail-open that hid 8 real inference deficits behind a passing scan). Each scoreboard move cites its red-witness. (bright-deer's keystone already meets this — `generic_alias_coproduct_instantiation_test.dag`, red-on-revert.)
+
 ### Lane 1 — Self-host → delete `src/v1` (THE critical path)
 **Why it leads:** terminal goal = emitted compiler builds green, reproduces, covers v1 host effects → delete ~154k Rust lines. Everything else is stability *around* this.
 
@@ -43,8 +45,11 @@ Purpose: one reviewable place for the three of us to converge on *what's running
   7. closure-Debug (~408) — build-now PR
   8. Lane C: TypeScript emit to first-class (beyond `add`)
 
-**Milestone (verify by execution):** HostNative cargo-error count `15,342 → 0` (reported per slice) → real fixed point (`content_hash` stage1==stage2) → **KEYSTONE: `regen_stage0 --verify` in CI** → seed-honesty (DDC) → **TERMINAL: `src/v1` deleted**.
-**Wave transition:** when cargo-green lands → fixed-point + regen-verify wave opens (currently blocked on cargo-green). v1-coupled `coercion`/`node` renames unlock only at v1-delete.
+**Milestone — cargo-green is a CHECKPOINT, the merkle fixed-point is the GATE** (neat-dove's structural correction): cargo-errors→0 proves the emitted Rust *compiles*, NOT that it's *correct* (the "compiles but miscompiles" §5 trap). The terminal gate is the **bit-identical self-emit fixed point** (`self_host.dag` content-hash merkle), and per the self-host model **Stage C** (run the pipeline over its own source = candidate generation) is the real blocker — **not** "scoreboard→0 then delete v1."
+- checkpoint: HostNative cargo-error count `15,342 → 0` (per slice, each move citing its red-witness — see Verification standard below)
+- **GATE: real fixed point** `content_hash` stage1==stage2 (Stage C) → `regen_stage0 --verify` in CI → seed-honesty (DDC) → **TERMINAL: `src/v1` deleted**
+**Open ownership (DECISION C6):** who owns **Stage C / the fixed-point check**? (operator-pending; previously merry-crab-687's comparison substrate). cargo-green has owners (bright-deer/jolly-cat); the merkle gate does NOT yet.
+**Wave transition:** cargo-green checkpoint → Stage C / fixed-point wave opens. v1-coupled `coercion`/`node` renames unlock only at v1-delete.
 
 ### Lane 2 — ROADMAP-as-authority
 **Next:** #5535 merges (warm-lark HOLD clearance) → ROADMAP.md becomes generated from `roadmap_authority.dag`.
@@ -57,7 +62,11 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 - then proud-tern #5559: cross-host placement (srv1/srv2 by measured ResourceEnvelope) — **model + drift-gate only; live-fleet apply FENCED for operator**
 - then sleek-cat #5546: compile-jobs (CARGO_BUILD_JOBS from envelope)
 - quick-ant: §5 diagnosability (gate swallows nextest test-names)
-**Milestone (verify):** PR CI ≤ ~6–22m at full coverage, no OOM, both hosts utilized.
+
+**ONE measurement / THREE consumers** (placement #5559, compile-jobs #5546, within-run width re-check) all gate on #5427 merge + quick-ant's cgroup-peak measurement. The §5 bug it fixes: the existing `[measurement]` line reports `claim_executor` **self-RSS (~11.7GB) as the whole-run peak**, but the true cgroup peak is ~3.4× higher (~39.9GB) because child rustc/sccache PIDs are excluded — keying any divisor on the self-RSS reproduces the OOM. Now structural (sccache-unaccounted → `PlanUnsound`). Both consumers held fail-closed until the real cgroup peak exists post-#5427.
+
+**⚠ BLOCKER (DECISION C7 — operator/ctrl):** the modeling-coherence gate is **head-independently broken on the ctrl side** (`ctrl/plans/lib/reducible.dag` can't resolve `std.reducible` — ctrl harness source-roots exclude gunbc `dsl/std`; + a `plans.coherence` cycle). quick-ant verified it's NOT a gunbc diff (gunbc `std.reducible` is clean; `plans.*`/`coherence.*` are external ctrl). It reds untouched gunbc PRs and, since the coherence gate is merge-blocking but not a GitHub check, **may block #5427's manual merge** — the keystone for this whole triad. Needs an operator/ctrl harness fix (source-root + cycle) or confirmation of how merges proceed past it.
+**Milestone (verify):** PR CI ≤ ~6–22m at full coverage, no OOM, both hosts utilized; divisor keyed on the true cgroup peak.
 **Wave transition:** #5427 merge cascades all three forward at once.
 
 ### Lane 4 — BMC / fabric lifecycle (NEW, operator-requested)
@@ -74,8 +83,14 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 **Milestone (verify):** 3+ distinct emit targets from one node tree; emit each, diff vs hand-authored.
 
 ### Lane 6 — extdeps hygiene (supporting)
-**Next:** lively-wren / calm-crane / deep-cat drain the external-authority anchor allowlist to zero.
+**Next:** lively-wren / calm-crane / deep-cat drain the external-authority anchor allowlist to zero (99 modules anchored, ~5 PRs up).
+**Lane-closing dependency (DECISION C8 — operator):** the allowlist can't reach empty until the operator dispositions **28 mis-homed modules** (std-vs-extdeps): widen the lens for File-self-anchor vs. strict-external. Until ruled, this lane cannot close.
 **Milestone (verify):** allowlist empty; the live-clean-tree lens green on a fresh extdeps module.
+
+### Lane 3b — CI inline-shell de-fork (NEW candidate, transport-fusion debt) — *needs agreement*
+**The fork (neat-dove):** `RunStep.run` is raw concat'd bash across ~26 sites in `ci_workflow.dag`. #5427 modeled a clean `cargo.Build.Nextest` op but **bypasses the model** for the cargo build (`ci_release_build_script` hand-writes it) = a model↔realization fork *in one file*. Plus hardcoded `CARGO_BUILD_JOBS=1/2` (sleek-cat's derive target), a pinned nextest version, and a bash `uname` arch-case (we already model `TargetArchitecture`).
+**Root fix:** `RunStep` carries modeled effects, not a `String`; revive the inline-shell reducibility lens (WIP, not on main). This is the existing transport-fusion-debt family ([containment guard](docs/plans/emission-ingestion-inverse.md) #5445/#5453), finally rooted.
+**Decision (C9):** dispatch as its own lane, or fold into Lane 3 / Lane 7? Sequence after #5427 + #5546 (they touch the same file).
 
 ### Lane 7 — Ergonomics (✦) + fail-closed walls (§0) — *bright-stag owns/enforces*
 **Next:** inert-abstraction lens (keystone — flags defined+self-tested+zero-consumer carriers); non-fold-residue audit (`_=>` over closed coproducts); generic-inference keystone (DONE #5552, the fold-reachability root).
@@ -93,6 +108,10 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 3. **BMC continue-or-hold** — neat-boar is operator-requested; continue the read-only modeling during the pause, or hold it too?
 4. **Fleet-apply fence** — confirm cross-host placement + BMC OS-install + cred-rotate all stage as reviewable diffs with live-apply held for operator.
 5. **Capacity** — ~11 concurrent sessions; is that the right width, or consolidate lanes under fewer managers?
+6. **Stage C / fixed-point owner** — cargo-green has owners; the merkle self-emit gate (the real terminal) does not. Assign one (operator-pending; was merry-crab-687).
+7. **Coherence-gate breakage** — the ctrl-side modeling-coherence gate is head-independently broken and may block #5427's manual merge. Operator/ctrl harness fix (source-root + cycle), or confirm how merges proceed past it. *(Time-sensitive — gates the keystone.)*
+8. **28 mis-homed modules** (std-vs-extdeps) — needed to close the extdeps anchor lane. Widen-lens-for-self-anchor vs strict-external.
+9. **CI inline-shell de-fork** (Lane 3b) — dispatch as its own lane, fold into Lane 3/7, or defer?
 
 ## D. What "agreement" gates
 Until all three sign off: **no new work-items, no fan-out children, no new workers.** In-flight work (Section A) continues; load-bearing edits and destructive/live-fleet steps stay fenced regardless.
