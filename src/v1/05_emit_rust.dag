@@ -1496,7 +1496,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_set(),
     read_only_params_index: ownership.read_only_params_index,
-    read_only_params: empty_set()
+    read_only_params: empty_set(),
+    corpus_repr: base_info.corpus_repr
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -1612,7 +1613,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_set(),
     read_only_params_index: base_info.read_only_params_index,
-    read_only_params: empty_set()
+    read_only_params: empty_set(),
+    corpus_repr: base_info.corpus_repr
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -3060,7 +3062,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       variant_to_enum: emit_info.variant_to_enum,
       owned_bindings: empty_set(),
       read_only_params_index: emit_info.read_only_params_index,
-      read_only_params: fn_read_only
+      read_only_params: fn_read_only,
+      corpus_repr: emit_info.corpus_repr
     }
     // Items with resource uses or service calls are emitted as async workflow functions.
     // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
@@ -5693,7 +5696,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: set_insert(emit_info.owned_bindings, acc_name),
               read_only_params_index: emit_info.read_only_params_index,
-              read_only_params: emit_info.read_only_params
+              read_only_params: emit_info.read_only_params,
+              corpus_repr: emit_info.corpus_repr
             }
           Absent => emit_info
         }
@@ -5716,7 +5720,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: emit_info.owned_bindings,
               read_only_params_index: emit_info.read_only_params_index,
-              read_only_params: emit_info.read_only_params
+              read_only_params: emit_info.read_only_params,
+              corpus_repr: emit_info.corpus_repr
             }
           Absent => emit_info
         }
