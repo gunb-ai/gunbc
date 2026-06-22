@@ -101,11 +101,7 @@ the lane in displaced cost, "move with confidence", not elegance).
 resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority
 (jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)
 
-**What's on `.dag` today (the gap map — detail in the charter §2/§4):**
-- [x] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)
-- [x] **scheduling: width axis** — `memory_aware_spawn_width` consumes the measured envelope (#5444); single-host
-- [ ] **scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)
-- [ ] **caching forked** — sccache live · resolve-cache **dormant** (pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)
+**What's on `.dag` today** (status, not work — the verdict tables live in [charter §2/§4](docs/plans/ci-process-end-to-end.md)): execution ✅ (the floor *is* a fold-walk) · width ✅ (#5444) · placement/materialization 🟡 inert · caching forked (resolve-cache **dormant** = biggest dormant lever). The `[ ]`s below are the work.
 
 **Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
 - [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) ([plan](docs/plans/compute-envelope-model.md))
