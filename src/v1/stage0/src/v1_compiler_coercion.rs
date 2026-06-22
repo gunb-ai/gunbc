@@ -82,8 +82,8 @@ pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) 
         Some(syntax) => {
             let mut __found = false;
             for r in syntax.cast_rules.clone().iter().cloned() {
-                if ((r.from_type.clone().as_str() == source_type.clone().as_str())
-                    && (r.to_type.clone().as_str() == target_type.clone().as_str()))
+                if ((r.from_type.clone() == source_type.clone())
+                    && (r.to_type.clone() == target_type.clone()))
                 {
                     __found = true;
                     break;
@@ -116,7 +116,7 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
     Rc::new({
         let mut __result = Vec::new();
         for cp in target_checkpoints(target).iter().cloned() {
-            if (cp.dag_name.clone().as_str() == dag_name.clone().as_str()) {
+            if (cp.dag_name.clone() == dag_name.clone()) {
                 __result.push(cp);
             }
         }
@@ -154,7 +154,7 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
     Rc::new({
         let mut __result = Vec::new();
         for inh in target_inhabitants(target).iter().cloned() {
-            if (inh.algebra.clone().as_str() == algebra.clone().as_str()) {
+            if (inh.algebra.clone() == algebra.clone()) {
                 __result.push(inh);
             }
         }

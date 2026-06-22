@@ -50,11 +50,7 @@ mod compiler_tests {
                         .unwrap()
                         .to_string_lossy()
                         .to_string();
-                    // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules;
-                    // exclude them so the self_* whole-tree module scans don't try to parse
-                    // them as modules and panic. The only .dag under src/v1/**/tests/ is the
-                    // fixture, so this skips exactly it (#5124 added the fixture; the cargo-test
-                    // CI gate surfaced the panic). No real module lives under a tests/ dir.
+                    // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules.
                     if rel.contains("/tests/") {
                         continue;
                     }

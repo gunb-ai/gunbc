@@ -28,6 +28,8 @@ pub enum Quantity {
     Count,
     Currency,
     Power,
+    Temperature,
+    RotationalSpeed,
     ElectricPotential,
     ElectricCurrent,
     Resistance,
@@ -83,14 +85,29 @@ pub fn scale_exponent(s: Scale) -> i64 {
     }
 }
 
-pub fn memory_scale_factor_bytes(s: Scale) -> Nat {
+pub fn gibibyte_scale_factor_bytes() -> Nat {
+    1073741824
+}
+
+pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
     match s {
-        Scale::One => 1,
-        Scale::Kibi => 1024,
-        Scale::Mebi => 1048576,
-        Scale::Gibi => 1073741824,
-        Scale::Tebi => 1099511627776,
-        _ => 1,
+        Scale::One => Some(1),
+        Scale::Kibi => Some(1024),
+        Scale::Mebi => Some(1048576),
+        Scale::Gibi => Some(gibibyte_scale_factor_bytes()),
+        Scale::Tebi => Some(1099511627776),
+        Scale::Atto => None,
+        Scale::Femto => None,
+        Scale::Pico => None,
+        Scale::Nano => None,
+        Scale::Micro => None,
+        Scale::Milli => None,
+        Scale::Kilo => None,
+        Scale::Mega => None,
+        Scale::Giga => None,
+        Scale::Tera => None,
+        Scale::Peta => None,
+        Scale::Exa => None,
     }
 }
 
@@ -101,6 +118,48 @@ pub struct Measure<Q, S, M> {
 
 pub fn measure_count<Q, S, M>(m: Rc<Measure<Q, S, M>>) -> M {
     m.count.clone()
+}
+
+pub fn measure_scale_fraction_floor<Q, S>(
+    m: Rc<Measure<Q, S, Nat>>,
+    num: Nat,
+    den: Nat,
+) -> Rc<Measure<Q, S, Nat>> {
+    Rc::new(Measure {
+        count: Box::new(if (den.clone() == 0) {
+            den.clone()
+        } else {
+            ((m.count.clone() * num) / den.clone())
+        }),
+    })
+}
+
+pub fn measure_fit_count_floor<Q, S>(
+    capacity: Rc<Measure<Q, S, Nat>>,
+    each: Rc<Measure<Q, S, Nat>>,
+) -> Nat {
+    {
+        let each_count = each.count.clone();
+        if (each_count.clone() == 0) {
+            each_count.clone()
+        } else {
+            (capacity.count.clone() / each_count.clone())
+        }
+    }
+}
+
+pub fn measure_scale_fraction_ceil<Q, S>(
+    m: Rc<Measure<Q, S, Nat>>,
+    num: Nat,
+    den: Nat,
+) -> Rc<Measure<Q, S, Nat>> {
+    Rc::new(Measure {
+        count: Box::new(if (den.clone() == 0) {
+            (m.count.clone() * num)
+        } else {
+            (((m.count.clone() * num) + (den.clone() - 1)) / den.clone())
+        }),
+    })
 }
 
 pub fn time_measure<S>(count: Nat) -> Rc<Measure<Time, S, Nat>> {
@@ -122,7 +181,7 @@ pub fn gibibyte_count(g: Gibibyte) -> Nat {
 }
 
 pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
-    byte_size((gibibyte_count(g) * memory_scale_factor_bytes(Scale::Gibi)))
+    byte_size((gibibyte_count(g) * gibibyte_scale_factor_bytes()))
 }
 
 pub type BitWidth = Rc<Measure<Information, One, Nat>>;
@@ -133,6 +192,10 @@ pub type HardwareThreadCount = Rc<Measure<Count, One, Nat>>;
 
 pub type Watt = Rc<Measure<Power, One, Nat>>;
 
+pub type Celsius = Rc<Measure<Temperature, One, Int>>;
+
+pub type RevolutionsPerMinute = Rc<Measure<RotationalSpeed, One, Nat>>;
+
 pub fn watt(count: Nat) -> Watt {
     Watt { count: count }
 }
@@ -141,9 +204,25 @@ pub fn watt_count(w: Watt) -> Nat {
     compile_error!("field access missing reconcile summary for 'count'")
 }
 
+pub fn celsius(count: i64) -> Celsius {
+    Celsius { count: count }
+}
+
+pub fn celsius_count(c: Celsius) -> i64 {
+    compile_error!("field access missing reconcile summary for 'count'")
+}
+
+pub fn rpm(count: Nat) -> RevolutionsPerMinute {
+    RevolutionsPerMinute { count: count }
+}
+
+pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
+    compile_error!("field access missing reconcile summary for 'count'")
+}
+
 pub type MoneyAmount<S> = Rc<Measure<Currency, S, Nat>>;
 
-pub type MoneyAmountMicro = MoneyAmount;
+pub type MoneyAmountMicro = MoneyAmount<Micro>;
 
 pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
     MoneyAmountMicro { count: count }
@@ -195,6 +274,8 @@ pub struct Frequency;
 pub struct Count;
 pub struct Currency;
 pub struct Power;
+pub struct Temperature;
+pub struct RotationalSpeed;
 pub struct ElectricPotential;
 pub struct ElectricCurrent;
 pub struct Resistance;

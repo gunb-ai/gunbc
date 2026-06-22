@@ -70,7 +70,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             .iter()
             .cloned()
             {
-                if (s.clone().as_str() != "".to_string().as_str()) {
+                if (s.clone() != "".to_string()) {
                     __result.push(s);
                 }
             }
@@ -227,28 +227,28 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                     })
                 }
             };
-            let prefix_tokens = if (prefix.clone().as_str() != "".to_string().as_str()) {
+            let prefix_tokens = if (prefix.clone() != "".to_string()) {
                 Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
                     text: prefix.clone(),
                 })])
             } else {
                 Rc::new(vec![])
             };
-            let param_tokens = if (param_name.clone().as_str() != "".to_string().as_str()) {
+            let param_tokens = if (param_name.clone() != "".to_string()) {
                 Rc::new(vec![Rc::new(UrlPathToken::ParamToken {
                     name: param_name.clone(),
                 })])
             } else {
                 Rc::new(vec![])
             };
-            let suffix_tokens = if (suffix.clone().as_str() != "".to_string().as_str()) {
+            let suffix_tokens = if (suffix.clone() != "".to_string()) {
                 Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
                     text: suffix.clone(),
                 })])
             } else {
                 Rc::new(vec![])
             };
-            if (((param_name.clone().as_str() == "".to_string().as_str())
+            if (((param_name.clone() == "".to_string())
                 || v1_rt::contains(suffix.clone(), "{".to_string()))
                 || v1_rt::contains(suffix.clone(), "}".to_string()))
             {

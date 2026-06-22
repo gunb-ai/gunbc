@@ -192,7 +192,7 @@ pub fn derive_module_imports(
                             ImportTrigger::TypeUsageTrigger { type_name: t, .. } => {
                                 let mut __found = false;
                                 for n in type_names.clone().iter().cloned() {
-                                    if (n.clone().as_str() == t.clone().as_str()) {
+                                    if (n.clone() == t.clone()) {
                                         __found = true;
                                         break;
                                     }
@@ -204,7 +204,7 @@ pub fn derive_module_imports(
                             ImportTrigger::ContainerUsageTrigger { container: c, .. } => {
                                 let mut __found = false;
                                 for n in type_names.clone().iter().cloned() {
-                                    if (n.clone().as_str() == c.clone().as_str()) {
+                                    if (n.clone() == c.clone()) {
                                         __found = true;
                                         break;
                                     }
@@ -228,7 +228,7 @@ pub fn derive_module_imports(
             .iter()
             .cloned()
             {
-                if (path.clone().as_str() != "".to_string().as_str()) {
+                if (path.clone() != "".to_string()) {
                     __result.push(path);
                 }
             }
@@ -512,7 +512,7 @@ pub fn emit_simple_string_interp(
                     .iter()
                     .cloned()
                     {
-                        if (a.clone().as_str() != "".to_string().as_str()) {
+                        if (a.clone() != "".to_string()) {
                             __result.push(a);
                         }
                     }
@@ -652,7 +652,7 @@ pub fn typed_named_arg_matches(
         if (n.clone() == None) {
             false
         } else {
-            (n.clone().unwrap().as_str() == name.as_str())
+            (n.clone().unwrap() == name)
         }
     }
 }
@@ -1187,7 +1187,7 @@ pub fn emit_bin_op_symbol(
 }
 
 pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
-    if (kind.clone().as_str() == "optional".to_string().as_str()) {
+    if (kind.clone() == "optional".to_string()) {
         apply_type_template1(target_optional_template(target.clone()), inner)
     } else {
         match coerce_container_template(target.clone(), kind.clone()) {
@@ -1333,8 +1333,7 @@ pub fn render_node_type(
             {
                 let is_named_type_var = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::TypeVariable { id: var_id, .. }) => {
-                        ((tn.clone().as_str() != "".to_string().as_str())
-                            && (tn.clone().as_str() == var_id.clone().as_str()))
+                        ((tn.clone() != "".to_string()) && (tn.clone() == var_id.clone()))
                     }
                     _ => false,
                 };
@@ -1388,7 +1387,7 @@ pub fn render_node_type(
                         ret_str.clone(),
                     ),
                     None => {
-                        if (ret_str.clone().as_str() == "".to_string().as_str()) {
+                        if (ret_str.clone() == "".to_string()) {
                             {
                                 let void_template = v1_rt::replace(
                                     repr.template.clone(),
@@ -1530,8 +1529,7 @@ pub fn render_node_type(
                         };
                         if has_template {
                             {
-                                let base = if (snake.clone().as_str() == "map".to_string().as_str())
-                                {
+                                let base = if (snake.clone() == "map".to_string()) {
                                     emit_map_type("_".to_string(), "_".to_string(), target.clone())
                                 } else {
                                     emit_container(snake.clone(), "_".to_string(), target.clone())
@@ -1575,8 +1573,8 @@ pub fn render_node_type(
         }
         if ((n.children.clone().len() as i64) == 0) {
             {
-                let bare_is_map = (is_container_type(tn.clone())
-                    && (to_snake(tn.clone()).as_str() == "map".to_string().as_str()));
+                let bare_is_map =
+                    (is_container_type(tn.clone()) && (to_snake(tn.clone()) == "map".to_string()));
                 let bare_is_collection =
                     (is_declared_container_alias_spelling(tn.clone()) && !bare_is_map.clone());
                 let has_container_template = match container_template_algebra(to_snake(tn.clone()))
@@ -1632,7 +1630,7 @@ pub fn render_node_type(
                                     )
                                 }
                             } else {
-                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
+                                if (tn.clone() == tuple_type_name()) {
                                     render_tuple_parts(Rc::new(vec![]), target.clone())
                                 } else {
                                     coerce_primitive_type(target.clone(), tn.clone())
@@ -1726,7 +1724,7 @@ pub fn render_node_type(
             }
             __result
         });
-        if (tn.clone().as_str() == tuple_type_name().as_str()) {
+        if (tn.clone() == tuple_type_name()) {
             {
                 let multi_tuple_str = render_tuple_parts(child_strs.clone(), target.clone());
                 return multi_tuple_str;
@@ -2089,10 +2087,10 @@ pub fn emit_unified_operation_method(
         let op_text = authored_name(env.clone(), op_node.clone());
         let params_str = emit_params_shared(op_node.params.clone(), target.clone(), si.clone());
         let sp = service_self_param(spec.clone());
-        let all_params = if (sp.clone().as_str() == "".to_string().as_str()) {
+        let all_params = if (sp.clone() == "".to_string()) {
             params_str.clone()
         } else {
-            if (params_str.clone().as_str() == "".to_string().as_str()) {
+            if (params_str.clone() == "".to_string()) {
                 sp.clone()
             } else {
                 v1_rt::concat(
@@ -2540,7 +2538,7 @@ pub fn emit_shared_tco_expr(
         let si = frame.scope.clone().type_env.clone().source_indices.clone();
         match (*frame.expr.clone().expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at(frame.expr.clone(), si).as_str() == fn_name.as_str()) {
+                if (expr_call_func_at(frame.expr.clone(), si) == fn_name) {
                     break emit_self_call_reassign(Rc::new(TcoReassignInput {
                         args: frame.expr.clone().children.clone(),
                         scope: frame.scope.clone(),
@@ -3252,7 +3250,7 @@ pub fn emit_unified_tco_match(
                     });
                     let arms_str = arm_strs.join(&"\n".to_string());
                     let bs = language_spec(target.clone()).block_syntax.clone();
-                    if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
+                    if (bs.block_close.clone() == "".to_string()) {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(bs.match_keyword.clone(), scrut_str),
@@ -3594,8 +3592,7 @@ pub fn is_tco_candidate(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str()
-                    == func_name.clone().as_str())
+                (expr_call_func_at(texpr.clone(), source_indices.clone()) == func_name.clone())
             }
             ExprData::ExprReturn => is_tco_candidate(
                 return_value(texpr.clone()),
@@ -3674,9 +3671,7 @@ pub fn suffix_escape_collides_with_reserved_chain(
                 &name,
                 (name_len.clone() - suffix_len.clone()),
                 name_len.clone(),
-            )
-            .as_str()
-                != suffix.clone().as_str())
+            ) != suffix.clone())
             {
                 break false;
             } else {
@@ -3684,7 +3679,7 @@ pub fn suffix_escape_collides_with_reserved_chain(
                 if {
                     let mut __found = false;
                     for r in keywords.clone().iter().cloned() {
-                        if (r.clone().as_str() == base.clone().as_str()) {
+                        if (r.clone() == base.clone()) {
                             __found = true;
                             break;
                         }
@@ -3713,7 +3708,7 @@ pub fn emit_suffix_escape_ident(
         let is_reserved = {
             let mut __found = false;
             for r in keywords.clone().iter().cloned() {
-                if (r.clone().as_str() == converted.clone().as_str()) {
+                if (r.clone() == converted.clone()) {
                     __found = true;
                     break;
                 }
@@ -3746,7 +3741,7 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
         let is_reserved = {
             let mut __found = false;
             for r in spec.reserved_words.clone().keywords.clone().iter().cloned() {
-                if (r.clone().as_str() == converted.clone().as_str()) {
+                if (r.clone() == converted.clone()) {
                     __found = true;
                     break;
                 }
@@ -3789,7 +3784,7 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                 let is_reserved = {
                     let mut __found = false;
                     for r in spec.reserved_words.clone().keywords.clone().iter().cloned() {
-                        if (r.clone().as_str() == result.clone().as_str()) {
+                        if (r.clone() == result.clone()) {
                             __found = true;
                             break;
                         }
@@ -3946,12 +3941,10 @@ pub fn emit_expr_var_shared(
 ) -> String {
     {
         let n = expr_var_name_at(expr, source_indices);
-        if (n.clone().as_str() == "none".to_string().as_str()) {
+        if (n.clone() == "none".to_string()) {
             emit_keyword("null".to_string(), target)
         } else {
-            if ((n.clone().as_str() == "true".to_string().as_str())
-                || (n.clone().as_str() == "false".to_string().as_str()))
-            {
+            if ((n.clone() == "true".to_string()) || (n.clone() == "false".to_string())) {
                 emit_keyword(n.clone(), target)
             } else {
                 emit_ident(n.clone(), target)
@@ -4014,9 +4007,7 @@ pub fn emit_typed_cast_shared(
             }
             _ => "".to_string(),
         };
-        if ((src_ty.clone().as_str() != "".to_string().as_str())
-            && (src_ty.clone().as_str() == ty_str.clone().as_str()))
-        {
+        if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
             expr_str
         } else {
             if can_cast(target.clone(), src_ty.clone(), ty_str.clone()) {
@@ -4800,7 +4791,7 @@ pub fn emit_typed_string_interp_unified(
                     .iter()
                     .cloned()
                     {
-                        if (a.clone().as_str() != "".to_string().as_str()) {
+                        if (a.clone() != "".to_string()) {
                             __result.push(a);
                         }
                     }
@@ -5577,7 +5568,7 @@ pub fn emit_typed_match_unified(
                 __result
             });
             let arms_str = arm_strs.join(&"\n".to_string());
-            if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
+            if (bs.block_close.clone() == "".to_string()) {
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(bs.match_keyword.clone(), scrutinee_str),
@@ -6023,7 +6014,7 @@ pub fn is_tco_identity_passthrough(
     match (*arg_val.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: _, ..
-        } => (expr_var_name_at(arg_val.clone(), si).as_str() == param_name.as_str()),
+        } => (expr_var_name_at(arg_val.clone(), si) == param_name),
         _ => false,
     }
 }
@@ -6105,3 +6096,15 @@ pub fn emit_typed_tco_reassign_shared(
 pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
     v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, String>(), key, value)
 }
+
+pub struct CapServiceEmit;
+pub struct CapAsyncTransport;
+pub struct CapTestGeneration;
+pub struct CapDryRunMode;
+pub struct CapRcOwnership;
+pub struct ExprCatLeaf;
+pub struct ExprCatCompound;
+pub struct ExprCatControlFlow;
+pub struct ExprCatBinding;
+pub struct ExprCatService;
+pub struct ExprCatNone;

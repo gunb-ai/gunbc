@@ -152,11 +152,6 @@ pub fn to_string(value: i64) -> String {
     value.to_string()
 }
 
-/// RFC 3629 UTF-8 decode of a byte vector. Fail-closed on invalid UTF-8.
-pub fn utf8_decode_bytes(bytes: &[u8]) -> Result<String, String> {
-    String::from_utf8(bytes.to_vec()).map_err(|e| format!("invalid UTF-8 in access payload: {e}"))
-}
-
 pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
@@ -510,17 +505,8 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
-/// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`
-/// is the `String` projection of this. Use this directly for arbitrary binary content
-/// (e.g. an executable or serialized payload): routing bytes through `String`/
-/// `from_utf8_lossy` first collapses every invalid UTF-8 sequence to U+FFFD, so distinct
-/// byte sequences would hash equal — a §5 silent-collision fail-open for content-addressing.
-pub fn bytes_identity_hash(bytes: &[u8]) -> Hash {
-    format!("{:016x}", fnv1a64(bytes))
-}
-
 pub fn atom_identity_hash(s: String) -> Hash {
-    bytes_identity_hash(s.as_bytes())
+    format!("{:016x}", fnv1a64(s.as_bytes()))
 }
 
 pub fn hash_combine(a: Hash, b: Hash) -> Hash {

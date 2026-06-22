@@ -453,9 +453,8 @@ pub fn build_field_type_map(
                     false
                 };
                 let key = authored_name_at(source_indices.clone(), child.clone());
-                if (((resolved_name.clone().as_str() != "".to_string().as_str())
-                    && !ft_is_type_var.clone())
-                    && (resolved_name.clone().as_str() != "Dynamic".to_string().as_str()))
+                if (((resolved_name.clone() != "".to_string()) && !ft_is_type_var.clone())
+                    && (resolved_name.clone() != "Dynamic".to_string()))
                 {
                     v1_rt::rc_map_insert(acc.clone(), key.clone(), resolved_name.clone())
                 } else {

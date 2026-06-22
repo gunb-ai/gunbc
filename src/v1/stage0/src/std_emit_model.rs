@@ -2,6 +2,7 @@
 // Source module: std.emit_model
 
 use self::PlaceholderConvention::*;
+pub use crate::std_serialization::DeclarationRef;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -10,8 +11,6 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-pub type DeclarationRef = String;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -37,3 +36,6 @@ pub struct MethodTemplateContract {
     pub wraps_result: bool,
     pub placeholder_convention: PlaceholderConvention,
 }
+
+pub struct IndexedArgs;
+pub struct NamedArg;
