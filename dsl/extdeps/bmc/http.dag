@@ -91,4 +91,40 @@ service redfish.Http {
       nonzero => String "redfish thermal GET failed"
     }
   }
+
+  operation SetAccountPassword {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish account password PATCH failed"
+    }
+  }
+
+  operation SetBootSourceOverride {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish boot source override PATCH failed"
+    }
+  }
+
+  operation ResetSystem {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system reset POST failed"
+    }
+  }
 }
