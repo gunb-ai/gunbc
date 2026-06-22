@@ -17,6 +17,8 @@ import gunbc.ci_floor_measurement {
   HostFixedOverheadUnmeasured,
   gunbc_ci_job_peaks,
   gunbc_ci_host_fixed_overhead,
+  gunbc_ci_concurrent_runs_conservative_high,
+  gunbc_ci_runner_cap_enforced,
 }
 import gunbc.operator_fleet { operator_fleet_offers }
 
@@ -165,15 +167,20 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   )
 }
 
-// Single authority for co-resident run count per host. Downstream lanes (e.g. compile-jobs sizing)
-// derive N from this value: N = floor(host_threads / R) such that R x N x per_rustc_peak <= host_ram.
-// Value is the model-derived enforced cap; the live-fleet apply is operator-FENCED until approved.
-// Dissolution trigger: remove interim note once the runner cap is live and per-job cgroup peaks are
-// refined by the CI measurement emit.
+// Single authority for effective co-resident run count per host. Downstream lanes (e.g.
+// compile-jobs sizing) derive N from this value: N = floor(host_threads / R) and
+// R x N x per_rustc_peak <= host_ram is the joint safety constraint.
+// Returns conservative_high (10) until the operator applies the 3-runner cap (FENCED);
+// premature use of the model-derived 3 while ~7 co-runners are live is unwritable at
+// gunbc_ci_runner_cap_enforced.
 fn gunbc_ci_runners_per_host() -> Int {
-  match runner_deployment_plan() {
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-      fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
-    PlanUnsound { reason: _ } => 0
+  if gunbc_ci_runner_cap_enforced {
+    match runner_deployment_plan() {
+      PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+        fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
+      PlanUnsound { reason: _ } => gunbc_ci_concurrent_runs_conservative_high
+    }
+  } else {
+    gunbc_ci_concurrent_runs_conservative_high
   }
 }

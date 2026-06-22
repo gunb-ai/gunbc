@@ -7,6 +7,7 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan,
   runner_deployment_plan_for,
   host_runner_count,
+  gunbc_ci_runners_per_host,
 }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted }
 import gunbc.ci_floor_measurement {
@@ -16,6 +17,8 @@ import gunbc.ci_floor_measurement {
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadUnmeasured,
+  gunbc_ci_runner_cap_enforced,
+  gunbc_ci_concurrent_runs_conservative_high,
 }
 import gunbc.operator_fleet { operator_fleet_offers, srv1_offer }
 import std.realization_width { memory_effective_budget }
@@ -105,6 +108,11 @@ fn witness_huge_overhead_is_refused() -> Bool {
   is_unsound(plan: runner_deployment_plan_for(job_peaks: fitting_job_mix(), overhead: huge_overhead(), offers: operator_fleet_offers))
 }
 
+fn witness_runners_per_host_fail_closed_pre_cap() -> Bool {
+  !gunbc_ci_runner_cap_enforced
+    && gunbc_ci_runners_per_host() == gunbc_ci_concurrent_runs_conservative_high
+}
+
 fn witness_manifest_drift_red_receipt() -> Bool {
   !runner_deploy_drifted(committed: expected_runner_deploy_manifest())
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
@@ -112,6 +120,7 @@ fn witness_manifest_drift_red_receipt() -> Bool {
 
 test fn runner_placement_holds() -> Bool {
   witness_live_carrier_measured_derives_plan()
+    && witness_runners_per_host_fail_closed_pre_cap()
     && witness_measured_mix_derives_capacity()
     && witness_derived_count_respects_host_budget()
     && witness_over_commit_is_refused()
