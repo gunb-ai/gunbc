@@ -45,9 +45,11 @@ fn block_comment_fails_to_parse() {
 #[test]
 fn slash_slash_inside_string_literal_parses() {
     assert!(
-        try_parse(r#"module v1.test.wall
+        try_parse(
+            r#"module v1.test.wall
 
-fn url() -> String { "https://example.com" }"#),
+fn url() -> String { "https://example.com" }"#
+        ),
         "// inside a string literal must remain valid after the comment wall"
     );
 }
