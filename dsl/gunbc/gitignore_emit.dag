@@ -25,6 +25,12 @@ import gunbc.gitignore_model {
   ClaimMapDir, ScratchProbeFile
 }
 import gunbc.gitignore_authority { gitignore_authority }
+import std.layout {
+  Doc, DocEmpty, DocConcat,
+  LayoutProtocol,
+  doc_concat, doc_line_of, doc_blank,
+  render
+}
 
 fn artifact_pattern(a: IgnoreArtifact) -> String {
   match a {
@@ -139,28 +145,38 @@ fn producer_rationale_line(p: Producer) -> String {
   }
 }
 
-fn render_group(g: IgnoreGroup) -> String {
-  let header = concat(concat("# --- ", producer_display(p: g.producer)), " ---\n")
+data gitignore_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn group_doc(g: IgnoreGroup) -> Doc {
+  let header = doc_line_of(text: concat(concat("# --- ", producer_display(p: g.producer)), " ---"))
   let rationale = producer_rationale_line(p: g.producer)
-  let rat_section = if rationale == "" { "" } else { concat(rationale, "\n") }
-  let patterns_block = fold(g.artifacts, init: "", f: fn(acc, a) { concat(acc, concat(artifact_pattern(a: a), "\n")) })
-  concat(concat(header, rat_section), patterns_block)
+  let rat_doc = if rationale == "" { DocEmpty } else { doc_line_of(text: rationale) }
+  let pattern_docs = map(g.artifacts, a => doc_line_of(text: artifact_pattern(a: a)))
+  doc_concat(parts: append([header, rat_doc], items: pattern_docs))
 }
 
-fn gitignore_file_header() -> String {
-  "# gunbc .gitignore — generated from dsl/gunbc/gitignore_authority.dag — do not hand-edit.\n#\n# Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers.\n\n"
+fn gitignore_header_doc() -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: "# gunbc .gitignore — generated from dsl/gunbc/gitignore_authority.dag — do not hand-edit."),
+    doc_line_of(text: "#"),
+    doc_line_of(text: "# Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers."),
+    doc_blank()
+  ])
 }
 
-fn serialize_gitignore(groups: List<IgnoreGroup>) -> String {
-  let body = fold(groups, init: "", f: fn(acc, g) {
-    let rendered = render_group(g: g)
-    if acc == "" { rendered } else { concat(acc, concat("\n", rendered)) }
-  })
-  concat(gitignore_file_header(), body)
+fn groups_doc(groups: List<IgnoreGroup>) -> Doc {
+  doc_concat(parts: fold(groups, init: [], f: fn(acc, g) {
+    let gd = group_doc(g: g)
+    if count(acc) == 0 { [gd] } else { append(acc, items: [doc_blank(), gd]) }
+  }))
+}
+
+fn project_gitignore_to_doc(groups: List<IgnoreGroup>) -> Doc {
+  doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups)])
 }
 
 fn expected_gitignore() -> String {
-  serialize_gitignore(groups: gitignore_authority)
+  render(doc: project_gitignore_to_doc(groups: gitignore_authority), proto: gitignore_protocol)
 }
 
 fn gitignore_drifted(committed: String) -> Bool {
