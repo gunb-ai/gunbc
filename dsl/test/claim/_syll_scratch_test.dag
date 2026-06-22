@@ -1,0 +1,30 @@
+module test.claim.syll_scratch
+
+import std.syllogism {
+  Axiom, NonLogicalAxiom, Proposition, Argument,
+  argument_has_no_orphan, argument_is_acyclic,
+  argument_axiom_set_is_closed, argument_form_is_valid, argument_is_non_vacuous
+}
+
+fn s1() -> Argument {
+  Argument {
+    axioms: [
+      Axiom { id: "A1", statement: "there is a goal", kind: NonLogicalAxiom },
+      Axiom { id: "A2", statement: "time is the value", kind: NonLogicalAxiom },
+      Axiom { id: "A3", statement: "agreement is temporal", kind: NonLogicalAxiom }
+    ],
+    propositions: [
+      Proposition { id: "s1.mse", statement: "minimal/safe/efficient", premises: ["A1", "A2"] },
+      Proposition { id: "s1.ground", statement: "grounding intersubjective", premises: ["A2", "A3"] },
+      Proposition { id: "s1.physics", statement: "reduce to physics", premises: ["A1", "A2", "s1.ground"] }
+    ]
+  }
+}
+
+test fn scratch_valid() -> Bool {
+  argument_has_no_orphan(s1())
+    && argument_is_acyclic(s1())
+    && argument_axiom_set_is_closed(s1())
+    && argument_form_is_valid(s1())
+    && argument_is_non_vacuous(s1())
+}
