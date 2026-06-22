@@ -56,6 +56,33 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc ([scope](docs/plans/axiom-syllogism-lens.md))
 
+## ✦ Ergonomics LANE — make the fold the path of least resistance *(proposed; slots in the §0–§4 stability band, upstream of §0 — bright-stag to number/place)*
+
+Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a hand-rolled `match` has a
+`_ =>` fail-open escape; a fold over a closed coproduct is total by construction and has none. So the chain
+is **ergonomics → adoption → fail-closed**: when the fold is awkward to reach, people hand-roll, and every
+hand-roll reintroduces a fail-open arm ([model↔realization fork](docs/plans/model-realization-fork.md) is
+the systemic instance — per-site bridges that should be one coercion fold). This lane **stops new residue
+by making folds ergonomic**; §0's fail-open-shape walls **retire the old**. The two together drain the fork.
+Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names the fail-open class or measured
+friction it retires** (displaced cost), never "cleaner."
+
+**◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a
+stage fold) → **▸ inert-abstraction lens (measure the residue)** → fold reachable by default (the combinators
+that stop hand-rolling) → new non-fold residue can't merge (pairs with §0 wall)
+
+**Audit half — measure the friction + the residue (decidable; wall-able):**
+- [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers* (the `cached_stage` pattern: #5512 shipped one — tested green, consumed by nothing). Turns "I noticed code not using it" into a floor measurement; generalizes the inert-lens backstop (#5433) from lenses to all carriers
+- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses
+- [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
+
+**Fix half — make the fold the path of least resistance:**
+- [ ] **generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid
+- [ ] **wire the seams, don't strand them** — an abstraction lands *consumed* (e.g. `cached_stage` wraps `stage_resolve` with a stub lookup → the resolve-cache seam is live, §1/§2), or it's marked a scaffold with a named dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476)
+- [ ] **fold ergonomics in the type system** — fix the inference friction the audit surfaces so the typed-param workaround isn't needed (composes with §0's fail-closed-inference work)
+
+**Pairs with:** §0 (walls retire old residue; this lane stops new) · [model↔realization fork](docs/plans/model-realization-fork.md) (the residue's deepest instance) · §4 testgen (anemia/structure lenses are the same "measure the modeling" move).
+
 ## 1. CI as the substrate integration dogfood (the correctness floor)
 
 A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim.
