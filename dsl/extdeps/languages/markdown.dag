@@ -30,6 +30,7 @@ module extdeps.languages.markdown
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.markdown {
   MarkdownDocument,
@@ -378,8 +379,6 @@ fn serialize_markdown_source(doc: MarkdownDocument) -> String {
 // Dissolve-on for the frontier: an inline tokenizer + indentation/table grammar
 // that recover those constructs, at which point their fidelity flips to Lossless.
 // =========================================================================
-
-import extdeps.communication.medium { Medium, DecodeFidelity, Lossless, Lossy }
 
 // A leading-run strip result: how many copies of a unit prefix were consumed,
 // and the remaining suffix. Reused for ATX heading markers and ordered-list

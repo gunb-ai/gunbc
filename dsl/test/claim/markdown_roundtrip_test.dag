@@ -1,0 +1,165 @@
+// dsl/test/claim/markdown_roundtrip_test.dag
+//
+// The §5.2 round-trip law as the markdown medium-completeness oracle
+// (DESIGN §4 "one grammar, both directions"; §5.2 (A) `ingest ∘ emit = id`):
+// a markdown INGEST reading the SAME `MarkdownSpellings` rows the emitter writes,
+// proving ingest-of-emit GREEN by execution over the canonical core.
+//
+// Teeth:
+//   1. ROUND-TRIP LAW — ingest(serialize(doc)) == doc for a document exercising
+//      the Lossless core (headings, paragraph, flat unordered/ordered/task lists,
+//      fenced code). This is the §5-of-DESIGN "green by a real consumer with a
+//      discriminating input" bar applied to a medium: the IR is recovered exactly.
+//   2. ROW-SHARED both directions (the medium-as-Node guard, #5496, turned on the
+//      INGEST side) — emit AND ingest under a perturbed bullet row ("- " -> "+ ")
+//      still round-trips: both directions consult the SAME row, so they shift
+//      together. A spelling forked between emitter and parser would break here.
+//   3. DISCRIMINATING (ingest actually READS the row) — emit with the perturbed
+//      bullet, ingest with the CANONICAL row: the round-trip MUST fail (the "+ "
+//      lines are unreadable as lists by a "- " ingest, falling back to paragraphs).
+//      If the ingest had hard-coded "- " instead of reading the row, this would be
+//      inert and the witness goes RED — exactly the medium-as-Node tooth.
+//   4. FIDELITY TAG — the recovered core is advertised `Lossless` (DESIGN §5.2 (B)
+//      decidability partition; the frontier residue stays the unclaimed Lossy part).
+//
+// FRONTIER (NOT claimed, §5 honesty): inline markup (emphasis/strong/code/link/
+// image), nested lists, tables and block quotes are the Lossy partition — the
+// emitter is total over them but their source is ambiguous on re-ingest, so the
+// round-trip law is deliberately NOT asserted there (see the ingest's FIDELITY
+// BOUNDARY note). This witness proves the law on the core only.
+//
+// Run: gunbc run --source-root dsl --entry test.claim.markdown_roundtrip --function markdown_roundtrip_keystone_holds --claim-run
+
+module test.claim.markdown_roundtrip
+
+import std.markdown {
+  MarkdownDocument,
+  MarkdownListItem,
+  MarkdownTaskItem,
+  HeadingBlock,
+  ParagraphBlock,
+  UnorderedListBlock,
+  OrderedListBlock,
+  CodeBlock,
+  TaskListBlock,
+  TextInline,
+  H1,
+  H2,
+  Checked,
+  Unchecked,
+}
+import extdeps.languages.markdown {
+  MarkdownSpellings,
+  commonmark_gfm_spellings,
+  serialize_markdown_source,
+  serialize_markdown_source_with,
+  ingest_markdown_source,
+  ingest_markdown_source_with,
+  markdown_medium_lossless,
+}
+import extdeps.communication.medium { Lossless, Lossy }
+
+// A document built entirely from the Lossless canonical core, plain-text inlines.
+fn roundtrip_core_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
+      ParagraphBlock { inlines: [ TextInline { text: "Status of the work." } ] },
+      HeadingBlock { level: H2, inlines: [ TextInline { text: "Tasks" } ] },
+      TaskListBlock {
+        items: [
+          MarkdownTaskItem {
+            state: Checked,
+            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
+          },
+          MarkdownTaskItem {
+            state: Unchecked,
+            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] } ],
+          },
+        ],
+      },
+      UnorderedListBlock {
+        items: [
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "alpha" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "beta" } ] } ] },
+        ],
+      },
+      OrderedListBlock {
+        items: [
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "first" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "second" } ] } ] },
+        ],
+      },
+      CodeBlock { code: "let x = 1;\n" },
+    ],
+  }
+}
+
+// Tooth 1: the round-trip law over the canonical core.
+fn witness_roundtrip_core() -> Bool {
+  ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
+}
+
+// A one-field perturbation of the canonical rows: the unordered bullet "- " -> "+ ".
+fn perturbed_bullet_spellings() -> MarkdownSpellings {
+  MarkdownSpellings {
+    heading_marker: commonmark_gfm_spellings.heading_marker,
+    heading_sep: commonmark_gfm_spellings.heading_sep,
+    unordered_bullet: "+ ",
+    ordered_suffix: commonmark_gfm_spellings.ordered_suffix,
+    task_checked: commonmark_gfm_spellings.task_checked,
+    task_unchecked: commonmark_gfm_spellings.task_unchecked,
+    emphasis_delim: commonmark_gfm_spellings.emphasis_delim,
+    strong_delim: commonmark_gfm_spellings.strong_delim,
+    code_span_delim: commonmark_gfm_spellings.code_span_delim,
+    code_fence: commonmark_gfm_spellings.code_fence,
+    link_text_open: commonmark_gfm_spellings.link_text_open,
+    link_text_close: commonmark_gfm_spellings.link_text_close,
+    link_url_open: commonmark_gfm_spellings.link_url_open,
+    link_url_close: commonmark_gfm_spellings.link_url_close,
+    image_marker: commonmark_gfm_spellings.image_marker,
+    table_pipe: commonmark_gfm_spellings.table_pipe,
+    table_cell_pad: commonmark_gfm_spellings.table_cell_pad,
+    table_align_none: commonmark_gfm_spellings.table_align_none,
+    table_align_left: commonmark_gfm_spellings.table_align_left,
+    table_align_center: commonmark_gfm_spellings.table_align_center,
+    table_align_right: commonmark_gfm_spellings.table_align_right,
+    blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
+    list_indent: commonmark_gfm_spellings.list_indent,
+    block_separator: commonmark_gfm_spellings.block_separator,
+  }
+}
+
+// Tooth 2: emit AND ingest under the SAME perturbed row still round-trips —
+// both directions read the row, so they shift together.
+fn witness_roundtrip_under_perturbed_rows() -> Bool {
+  let sp = perturbed_bullet_spellings()
+  let restored = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: sp), sp: sp)
+  restored == roundtrip_core_doc()
+}
+
+// Tooth 3: discriminating — emit with the perturbed bullet, ingest with the
+// CANONICAL row. The "+ " list lines are unreadable as lists by a "- " ingest,
+// so the round-trip MUST fail. Inert (still equal) == ingest hard-coded "- "
+// instead of reading the row == RED.
+fn witness_ingest_reads_bullet_row() -> Bool {
+  let emitted = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
+  !(ingest_markdown_source(src: emitted) == roundtrip_core_doc())
+}
+
+// Tooth 4: the recovered core is advertised Lossless (the §5.2 (B) partition).
+fn witness_core_advertised_lossless() -> Bool {
+  let recovered = ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc()))
+  let m = markdown_medium_lossless(doc: recovered)
+  match m.fidelity {
+    Lossless => m.carried == roundtrip_core_doc()
+    Lossy => false
+  }
+}
+
+test fn markdown_roundtrip_keystone_holds() -> Bool {
+  witness_roundtrip_core()
+    && witness_roundtrip_under_perturbed_rows()
+    && witness_ingest_reads_bullet_row()
+    && witness_core_advertised_lossless()
+}
