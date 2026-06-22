@@ -1,5 +1,6 @@
 module extdeps.access.posix
 
+import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -33,4 +34,32 @@ type FileOwnership {
 type FilePermissions {
   ownership: FileOwnership
   mode: FileMode
+}
+
+type PosixUser {
+  name: NonEmptyStr
+  uid: Int
+  gid: Int
+}
+
+type PosixGroup {
+  name: NonEmptyStr
+  gid: Int
+}
+
+type PosixGroupMembership {
+  user: NonEmptyStr
+  group: NonEmptyStr
+}
+
+data posix_root_uid: Int = 0
+
+data posix_sudo_group: NonEmptyStr = "sudo"
+
+fn posix_user_is_root(user: PosixUser) -> Bool {
+  user.uid == posix_root_uid
+}
+
+fn posix_membership_in_group(member: PosixGroupMembership, group: NonEmptyStr) -> Bool {
+  member.group == group
 }

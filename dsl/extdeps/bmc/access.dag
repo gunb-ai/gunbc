@@ -1,0 +1,45 @@
+module extdeps.bmc.access
+
+import extdeps.access.rbac { Permission, PermissionAssignment, RbacPolicy }
+import extdeps.bmc.types { RedfishAccountRole, AccountRoleAdministrator, AccountRoleOperator, AccountRoleReadOnly }
+import std.types { NonEmptyStr }
+
+fn redfish_role_name(role: RedfishAccountRole) -> NonEmptyStr {
+  match role {
+    AccountRoleAdministrator => "Administrator"
+    AccountRoleOperator => "Operator"
+    AccountRoleReadOnly => "ReadOnly"
+  }
+}
+
+data redfish_privilege_object: NonEmptyStr = "redfish"
+
+fn redfish_privilege_permission(privilege: NonEmptyStr) -> Permission {
+  Permission { operation: privilege, object: redfish_privilege_object }
+}
+
+fn redfish_privilege_assignment(privilege: NonEmptyStr, role: RedfishAccountRole) -> PermissionAssignment {
+  PermissionAssignment {
+    permission: redfish_privilege_permission(privilege: privilege),
+    role: redfish_role_name(role: role),
+  }
+}
+
+data redfish_rbac_policy: RbacPolicy = RbacPolicy {
+  users: [],
+  roles: ["Administrator", "Operator", "ReadOnly"],
+  user_assignments: [],
+  permission_assignments: [
+    redfish_privilege_assignment(privilege: "Login", role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: "ConfigureManager", role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: "ConfigureUsers", role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: "ConfigureComponents", role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: "ConfigureSelf", role: AccountRoleAdministrator),
+    redfish_privilege_assignment(privilege: "Login", role: AccountRoleOperator),
+    redfish_privilege_assignment(privilege: "ConfigureComponents", role: AccountRoleOperator),
+    redfish_privilege_assignment(privilege: "ConfigureSelf", role: AccountRoleOperator),
+    redfish_privilege_assignment(privilege: "Login", role: AccountRoleReadOnly),
+    redfish_privilege_assignment(privilege: "ConfigureSelf", role: AccountRoleReadOnly),
+  ],
+  role_hierarchy: [],
+}
