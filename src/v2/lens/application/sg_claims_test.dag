@@ -8,11 +8,10 @@ import v2.lens.application {
   DeclarationId,
   DeclarationScope,
   LensEnforce,
-  SeverityError,
   apply_advisory_lens
 }
 import v2.lens.synthesis { decision_tree_synthesis_advisory_lens }
-import v2.std.diagnostic { Accepted, Rejected, node_locus }
+import v2.std.diagnostic { Accepted, Rejected, SeverityError, node_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Path }
 import v2.std.report { Report, SynthesisGapDecisionTree, report_reason_to_diagnostic_reason }
