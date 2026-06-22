@@ -9,7 +9,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.jedec.org"
+    locator: "en.wikipedia.org/wiki/Computer_memory"
   }
 }
 
