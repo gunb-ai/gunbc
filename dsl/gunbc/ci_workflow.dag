@@ -16,9 +16,6 @@ import extdeps.github.actions {
   default_job_timeout_minutes
 }
 
-// The toolchain-setup prelude shared by every CI job (DESIGN §2 — modeled once, reused, so the
-// `ci` job and the split-out `rust_tests` job cannot drift in how they isolate toolchain dirs,
-// check out, install Rust, pin the toolchain, and restore the cargo cache).
 fn ci_prelude_steps() -> List<Step> {
   [
     RunStep {
@@ -122,7 +119,6 @@ fn ci_prelude_steps() -> List<Step> {
   ]
 }
 
-// The floor step: run the .dag witness corpus + the floor gates (everything except the rust gate).
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
@@ -137,14 +133,6 @@ fn ci_floor_step() -> Step {
   }
 }
 
-// Install cargo-nextest (the test backend the rust gate runs — see extdeps.cargo_build.Nextest).
-// The official precompiled binary (https://get.nexte.st) is dropped into the isolated CARGO_HOME
-// bin (set by the prelude's GITHUB_ENV) and that dir is added to PATH so `cargo nextest` resolves
-// in the gate step. Recipe is arch-aware (the fleet is aarch64 → get.nexte.st `linux-arm`),
-// version-pinned (0.9.138, measured-working), `--retry 3`, and idempotent (skips if the cache
-// already carries the binary) — verified by sleek-cat-446. Transport SCAFFOLD — a curl|tar host
-// fetch (§6); dissolve-on: a modeled tool-install effect (parallel to setup_rust_action) when
-// extdeps grows a nextest install action.
 fn ci_nextest_install_step() -> Step {
   RunStep {
     name: Present { value: "Install cargo-nextest" },
@@ -174,9 +162,6 @@ fn ci_nextest_install_step() -> Step {
   }
 }
 
-// The rust gate step: build release `gunbc`, fetch the diff base, run the modeled rust gate
-// (cargo fmt + clippy + nextest) under EAGAIN cold-retry. `.rs`-diff-gated, so a pure-.dag PR
-// no-ops fast (the gunbc build is an sccache cache hit).
 fn ci_rust_gate_step() -> Step {
   RunStep {
     name: Present { value: "v1 rust gate (fmt + clippy + nextest)" },
@@ -191,7 +176,6 @@ fn ci_rust_gate_step() -> Step {
   }
 }
 
-// The .dag witness corpus + floor gates. Parallel with `rust_tests` (no `needs`).
 fn ci_job() -> Job {
   Job {
     id: "ci",
@@ -209,10 +193,6 @@ fn ci_job() -> Job {
   }
 }
 
-// The long v1 cargo gate (fmt/clippy/nextest), split into its own GHA job so it runs on a separate
-// runner in parallel with the `ci` job instead of serializing inside it — the PR's wall-clock
-// becomes max(ci, rust_tests), not their sum (operator request: "separate the v1 tests ... since
-// it's so long"). Parallel with `ci` (no `needs`).
 fn rust_tests_job() -> Job {
   Job {
     id: "rust_tests",

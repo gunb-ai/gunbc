@@ -53,14 +53,6 @@ fn symbol_in(syms: List<Symbol>, s: Symbol) -> Bool {
   fold(syms, init: false, f: fn(acc, x) { acc || (x == s) })
 }
 
-// The rust gate split is REAL, not a rename (DESIGN §5, by construction not validation):
-//   - the floor scheduler runs EXACTLY the floor partition (`gunbc_ci_spec.gates == floor`), and
-//     RustMonolithGate is ABSENT from it — so the floor does not co-run the long rust gate;
-//   - RustMonolithGate is PRESENT in the rust-job partition — so it is not silently dropped from
-//     CI (the union `gunbc_ci_gates` still covers every arm, checked above);
-//   - the rust-job run script actually builds gunbc and invokes the modeled rust gate entry.
-// A regression that re-added rust to the floor (double-run) or dropped it from the rust job
-// (no coverage) flips this RED.
 fn witness_rust_gate_split_is_real() -> Bool {
   let rust = discriminant(v: RustMonolithGate)
   let floor_syms = gate_arm_symbols(gates: gunbc_ci_floor_gates)

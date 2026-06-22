@@ -31,14 +31,6 @@ type CiSpec {
   notice_title: String
 }
 
-// The CI gate set is PARTITIONED by which GHA job runs it (DESIGN §2 — the partition is
-// total and disjoint by construction, so no gate can be silently dropped from CI):
-//   - `gunbc_ci_floor_gates` run inside the floor scheduler (the single "ci" job).
-//   - `gunbc_ci_rust_job_gates` run in their own parallel "rust_tests" GHA job (the long
-//     v1 cargo gate, split out so it no longer serializes with the .dag witness corpus).
-// `gunbc_ci_gates` (the complete roster the coproduct-completeness witnesses check) is the
-// UNION of the two — defined by `concat`, so floor ∪ rust_job == every Gate arm holds by
-// construction, not by a re-listing that could drift from the partition.
 data gunbc_ci_floor_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
@@ -170,15 +162,6 @@ fn ci_release_build_script() -> String {
   )
 }
 
-// The Rust-monolith gate's cargo invocations are no longer hand-typed argv Strings here:
-// `tools.rust_gates_ci.run_gates` calls the MODELED `extdeps.cargo_build` operations
-// (`cargo.Build.Fmt(["--all","--check"])`, `cargo.Build.Clippy(["--all-targets"], ["-D","warnings"])`,
-// `cargo.Build.Test(["-p","v1-compiler-tests"])`) — the cargo shell-transport argv is the single
-// authority (DESIGN §3; the old `ci_rust_gate_{fmt,clippy,test}_command() -> String` were nicknames
-// for cargo's already-modeled interface). Coverage holds by construction (cargo runs
-// all-except-`#[ignore]`d; the `coverage_completeness_lens_test` is the fail-closed residue).
-// The EAGAIN cold-retry wrappers below stay (transport resilience the cargo model cannot yet express)
-// and are applied at the CI workflow step that runs the gate (see gunbc.ci_workflow).
 
 fn claim_executor_bin_shell() -> String {
   "\"$ROOT/target/release/claim_executor\""
@@ -228,13 +211,6 @@ fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_run_script(spec: spec)
 }
 
-// The separate `rust_tests` GHA job (gunbc.ci_workflow) runs the v1 rust gate via `gunbc run`, so
-// the cargo invocation stays the MODELED cargo.Build op (cargo fmt/clippy/nextest — see
-// tools.rust_gates_ci), not a hand-typed String. Source roots come from the single authority
-// `witness_layer_source_flags(witness_layer_roots)`. The whole `gunbc run` is wrapped in the
-// EAGAIN cold-retry (same-shell `_script` variant so $ROOT resolves) — a fleet sccache
-// spawn-failure cold-retries CARGO_BUILD_JOBS=1, and that env is inherited by the gunbc→cargo
-// subprocess, the only resilience the cargo model cannot yet express (env→transport unwired).
 fn gunbc_ci_rust_gate_invoke() -> String {
   ci_cargo_eagain_retry_script(
     command: concat(
@@ -244,9 +220,6 @@ fn gunbc_ci_rust_gate_invoke() -> String {
   )
 }
 
-// rust_tests job step body: build the release `gunbc` (the gate is `.dag` interpreted by it, and
-// the build verifies its artifact exists — fail-closed §5), fetch the diff base (the gate is
-// `.rs`-diff-gated via should_run_gates), then run the modeled rust gate under EAGAIN retry.
 fn gunbc_ci_rust_job_run() -> String {
   concat(
     concat(ci_release_build_script(), "\n"),
