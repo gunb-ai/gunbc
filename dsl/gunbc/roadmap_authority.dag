@@ -193,31 +193,18 @@ fn section_2() -> RoadmapSection {
           derivable(id: "2-f2f3", prs: [5425], title: "F2/F3 `resolved_graph` key derived from declared `inputs_considered`", description: "— construction, not a lens"),
           authored(id: "2-p1", done: false, content: "P1 honest keys by construction — warm==cold purity oracle (#5429)"),
           authored(id: "2-p2", done: false, content: "P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)"),
+          authored(id: "2-hermetic", done: false, content: "hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))"),
           authored(id: "2-p3", done: false, content: "P3 **resolve-cache enable** — cuts ~18% of floor wall; purity proven (616/616); gated on #5429 ← **core ask**"),
           authored(id: "2-p4", done: false, content: "P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold"),
           authored(id: "2-p5", done: false, content: "P5 native `content(T) = content_hash(subgraph)` — gated on B2"),
+          authored(id: "2-blockers", done: false, content: "blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)"),
         ],
         edges: [
           RoadmapEdge { child: nid(s: "2-p1"), parent: nid(s: "2-f2f3") },
           RoadmapEdge { child: nid(s: "2-p2"), parent: nid(s: "2-p1") },
+          RoadmapEdge { child: nid(s: "2-hermetic"), parent: nid(s: "2-p2") },
           RoadmapEdge { child: nid(s: "2-p3"), parent: nid(s: "2-p2") },
         ],
-      ),
-      section_group(
-        label: "hermetic fixtures feed P2",
-        nodes: [
-          derivable_doc(id: "2-m41", prs: [5236], title: "M4.1 universal hermetic corpus governance", description: "", path: "docs/plans/m4-universal-hermetic-corpus.md"),
-          authored_doc(id: "2-m5", done: false, content: "M5 fixture-store onto one Realization kernel", path: "docs/plans/m5-fixture-store-consolidation.md"),
-        ],
-        edges: [],
-      ),
-      section_group(
-        label: "blockers",
-        nodes: [
-          authored(id: "2-b1", done: false, content: "B1 #5295 generic-instantiation (gates cross-shard `Share`)"),
-          authored(id: "2-b2", done: false, content: "B2 cross-tree content-hash (gates P5)"),
-        ],
-        edges: [],
       ),
     ],
   }
