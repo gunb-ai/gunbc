@@ -19,6 +19,16 @@ import std.cache_interface {
   Network,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.buildbuddy.io/docs/remote-cache"
+  }
+}
+
 data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
 
 data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {

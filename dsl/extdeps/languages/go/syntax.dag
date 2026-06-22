@@ -7,6 +7,15 @@ import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "go.dev/ref/spec#Operators"
+  }
+}
 
 data go_item_forms: List<ItemForm> = [
   ItemForm { kind: FuncForm, keyword: "func", has_type_params: false, has_params: true,

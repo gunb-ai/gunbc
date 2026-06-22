@@ -5,6 +5,16 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import std.measure { HardwareThreadCount, Hertz }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Central_processing_unit"
+  }
+}
+
 fn cpu_vendor(cpu: CpuFacts) -> Vendor<Hardware> {
   cpu.catalog.vendor
 }

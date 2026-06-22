@@ -9,6 +9,15 @@ import std.syntax {
   Eq, Ne, Lt, Gt, Le, Ge, And, Or,
   LiteralValue, LitBool
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/"
+  }
+}
 
 data rust_item_forms: List<ItemForm> = [
   ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
