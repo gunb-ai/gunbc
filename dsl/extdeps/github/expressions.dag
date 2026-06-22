@@ -137,48 +137,105 @@ fn function_name(function: ExpressionFunction) -> String {
   }
 }
 
+// -- The delimiter spelling rows (single authority, read in BOTH directions) ---
+//
+// Every structural delimiter byte the serializer produces lives in ONE row the
+// fold looks up, so a wrong delimiter is one row edit (and one RED witness),
+// never a literal buried in the fold. This is what lets the §5.2 round-trip law
+// read the SAME rows backward (the ingest below) — DESIGN §4 one grammar, both
+// directions. The closed name maps (context_name / function_name) are the OTHER
+// authority; ingest reverses those same functions. (The default values are the
+// real GitHub Actions spellings — `${{ … }}`, `.`, `'…'`, `||` — not nicknames.)
+type ExpressionSpellings {
+  path_sep: String       // "."     dotted context property path
+  call_open: String      // "("     function call open
+  call_close: String     // ")"     function call close
+  arg_sep: String        // ", "    between function arguments
+  string_quote: String   // "'"     expression-level string literal delimiter
+  or_op: String          // " || "  logical-or operator
+  interp_open: String    // "${{ "  interpolation open
+  interp_close: String   // " }}"   interpolation close
+}
+
+data default_expression_spellings: ExpressionSpellings = {
+  path_sep: ".",
+  call_open: "(",
+  call_close: ")",
+  arg_sep: ", ",
+  string_quote: "'",
+  or_op: " || ",
+  interp_open: "${{ ",
+  interp_close: " }}",
+}
+
+fn join_path_with(path: List<String>, sp: ExpressionSpellings) -> String {
+  join(path, sp.path_sep)
+}
+
+fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> String {
+  join(map(args, a => serialize_expression_with(expression: a, sp: sp)), sp.arg_sep)
+}
+
+// The expression body (no `${{ }}` delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
+fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) -> String {
+  match expression {
+    ContextAccess { context: c, path: p } =>
+      join([context_name(context: c), join_path_with(path: p, sp: sp)], sp.path_sep)
+    FunctionCall { function: f, args: a } =>
+      join([function_name(function: f), sp.call_open, serialize_args_with(args: a, sp: sp), sp.call_close], "")
+    StringLiteral { value: v } =>
+      join([sp.string_quote, v, sp.string_quote], "")
+    LogicalOr { left: l, right: r } =>
+      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
+  }
+}
+
+// The place the interpolation delimiter bytes are produced (now via the rows).
+fn interpolate_with(expression: Expression, sp: ExpressionSpellings) -> String {
+  join([sp.interp_open, serialize_expression_with(expression: expression, sp: sp), sp.interp_close], "")
+}
+
+fn serialize_segment_with(segment: TemplateSegment, sp: ExpressionSpellings) -> String {
+  match segment {
+    LiteralText { text: t } => t
+    Interpolation { expression: e } => interpolate_with(expression: e, sp: sp)
+  }
+}
+
+fn serialize_template_with(template: ExpressionTemplate, sp: ExpressionSpellings) -> String {
+  fold(template.segments, init: "", f: (acc, segment) =>
+    concat(acc, serialize_segment_with(segment: segment, sp: sp)))
+}
+
+// -- Canonical-spelling entries (the corpus surface; consumers untouched) ------
+// `serialize_expression` / `interpolate` / `serialize_template` keep their
+// signatures, delegating to the `_with` forms over the default GHA spellings.
+
 fn join_path(path: List<String>) -> String {
-  fold(path, init: "", f: (acc, segment) =>
-    if acc == "" { segment } else { concat(concat(acc, "."), segment) })
+  join_path_with(path: path, sp: default_expression_spellings)
 }
 
 fn serialize_args(args: List<Expression>) -> String {
-  fold(args, init: "", f: (acc, arg) => {
-    let part = serialize_expression(expression: arg)
-    if acc == "" { part } else { concat(concat(acc, ", "), part) }
-  })
+  serialize_args_with(args: args, sp: default_expression_spellings)
 }
 
 // The expression body (no delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
 fn serialize_expression(expression: Expression) -> String {
-  match expression {
-    ContextAccess { context: c, path: p } =>
-      concat(concat(context_name(context: c), "."), join_path(path: p))
-    FunctionCall { function: f, args: a } =>
-      concat(concat(function_name(function: f), "("), concat(serialize_args(args: a), ")"))
-    StringLiteral { value: v } =>
-      concat(concat("'", v), "'")
-    LogicalOr { left: l, right: r } =>
-      concat(concat(serialize_expression(expression: l), " || "), serialize_expression(expression: r))
-  }
+  serialize_expression_with(expression: expression, sp: default_expression_spellings)
 }
 
 // The ONLY place the `${{ … }}` delimiter bytes are produced. Every emitted GitHub Actions
 // expression in the corpus routes through here; nothing hand-authors the delimiters.
 fn interpolate(expression: Expression) -> String {
-  concat(concat("${{ ", serialize_expression(expression: expression)), " }}")
+  interpolate_with(expression: expression, sp: default_expression_spellings)
 }
 
 fn serialize_segment(segment: TemplateSegment) -> String {
-  match segment {
-    LiteralText { text: t } => t
-    Interpolation { expression: e } => interpolate(expression: e)
-  }
+  serialize_segment_with(segment: segment, sp: default_expression_spellings)
 }
 
 fn serialize_template(template: ExpressionTemplate) -> String {
-  fold(template.segments, init: "", f: (acc, segment) =>
-    concat(acc, serialize_segment(segment: segment)))
+  serialize_template_with(template: template, sp: default_expression_spellings)
 }
 
 // -- Runner-context grounding -----------------------------------------
