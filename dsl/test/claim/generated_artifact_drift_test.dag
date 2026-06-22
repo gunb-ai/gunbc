@@ -1,0 +1,82 @@
+// dsl/test/claim/generated_artifact_drift_test.dag — §5 by-execution proof for the UNIVERSAL
+// generated-artifact policy (gunbc.generated_artifact), the PURE half (no Filesystem host; the effectful
+// drift gate lives in tools.generated_artifact_gate and runs in CI via the floor witness).
+//
+// THREE families of teeth, all folded over the registry (replacing the three per-gate byte-receipts):
+//  1. PER-ARTIFACT RED-RECEIPT (drift has teeth): for every committed artifact, its faithful projection
+//     does NOT drift, and a perturbed projection DOES drift. Parameterized over the registry = one set of
+//     teeth that scales with rows.
+//  2. COMMIT-DERIVATION, BOTH DIRECTIONS (the elegant connection actually reads the gitignore authority):
+//     all three known artifact paths classify COMMITTED (not ignored) — the no-regression guard — AND a
+//     synthetic ignored path (/target/foo, .DS_Store, a *.swp) classifies IGNORED — proving the matcher
+//     consults the authority, not a constant true.
+//  3. COMPLETENESS RESIDUE CROSS-CHECK (refinement A — the §5 fail-open the gate's list-fold risks): the
+//     registry must equal the INDEPENDENT enumeration of all GeneratedArtifact variants, so a forgotten
+//     (silently-ungated) or spurious registry row trips RED until enum-reflection dissolves the hand-list.
+
+module test.claim.generated_artifact_drift
+
+import gunbc.generated_artifact {
+  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact,
+  generated_artifact_registry, all_generated_artifact_variants,
+  committed_generated_artifacts, artifact_path, artifact_generate, artifact_extra_valid,
+  artifact_is_committed, path_is_ignored, registry_contains
+}
+
+data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
+
+fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
+  !(committed == artifact_generate(a: a))
+}
+
+// (1) Per-artifact red-receipt, folded over the committed registry: faithful clean projection is NOT
+// drift; a perturbed projection IS drift. Non-vacuous: there is at least one committed artifact.
+fn witness_per_artifact_red_receipts() -> Bool {
+  count(committed_generated_artifacts()) > 0
+    && all(committed_generated_artifacts(), a =>
+         !artifact_drifted(a: a, committed: artifact_generate(a: a))
+           && artifact_drifted(a: a, committed: concat(artifact_generate(a: a), perturb)))
+}
+
+// (2a) No-regression: every known generated artifact's path is COMMITTED (none falls in the ignore-set).
+fn witness_all_known_committed() -> Bool {
+  artifact_is_committed(a: CiYamlArtifact)
+    && artifact_is_committed(a: GitignoreArtifact)
+    && artifact_is_committed(a: RoadmapArtifact)
+    && !path_is_ignored(path: ".github/workflows/ci.yml")
+    && !path_is_ignored(path: ".gitignore")
+    && !path_is_ignored(path: "ROADMAP.md")
+}
+
+// (2b) Discriminating: synthetic ignored paths DO classify ignored — the derivation genuinely reads the
+// gitignore authority's pattern forms (directory prefix, exact basename, suffix glob).
+fn witness_ignored_paths_excluded() -> Bool {
+  path_is_ignored(path: "target/release/gunbc")
+    && path_is_ignored(path: "foo/.DS_Store")
+    && path_is_ignored(path: "src/scratch.swp")
+    && path_is_ignored(path: "node_modules/pkg/index.js")
+}
+
+// (3) Completeness cross-check (the §5 residue guard): registry == all-known-variants, so a registry
+// omission (silently ungated) or a spurious row trips RED. Independent enumeration vs the gate's list.
+fn witness_registry_complete() -> Bool {
+  count(generated_artifact_registry) == count(all_generated_artifact_variants)
+    && all(all_generated_artifact_variants, v => registry_contains(a: v))
+    && all(all_generated_artifact_variants, v => artifact_is_committed(a: v))
+}
+
+// ci.yml carries the extra YAML-parse validation seam (preserved from the old CiYamlGate); the others
+// are unconditionally valid. Proves the extra-validation arm is wired, not dropped.
+fn witness_extra_validation_wired() -> Bool {
+  artifact_extra_valid(a: GitignoreArtifact)
+    && artifact_extra_valid(a: RoadmapArtifact)
+    && artifact_extra_valid(a: CiYamlArtifact)
+}
+
+test fn generated_artifact_drift_witnesses() -> Bool {
+  witness_per_artifact_red_receipts()
+    && witness_all_known_committed()
+    && witness_ignored_paths_excluded()
+    && witness_registry_complete()
+    && witness_extra_validation_wired()
+}

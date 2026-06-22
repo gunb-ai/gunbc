@@ -14,9 +14,7 @@ type Gate
   | ResolvedImportsGate
   | ExtdepsExternalAuthorityGate
   | DslCompileCleanGate
-  | CiYamlGate
-  | GitignoreGate
-  | RoadmapGate
+  | GeneratedArtifactDriftGate
   | SourceRootIngestGate
 
 type DiffMode = DiffMergeBase | DiffTwoDot
@@ -39,9 +37,7 @@ data gunbc_ci_floor_gates: List<Gate> = [
   ResolvedImportsGate,
   ExtdepsExternalAuthorityGate,
   DslCompileCleanGate,
-  CiYamlGate,
-  GitignoreGate,
-  RoadmapGate,
+  GeneratedArtifactDriftGate,
   SourceRootIngestGate
 ]
 
