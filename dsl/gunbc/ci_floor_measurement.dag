@@ -17,3 +17,9 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
 }
 
 data gunbc_ci_floor_conservative_fallback_width: Int = 4
+
+type WholeRunPeakMeasurement
+  = WholeRunPeakMeasured { sample: ConcurrentMemoryPeakSample }
+  | WholeRunPeakUnmeasured
+
+data gunbc_ci_whole_run_peak: WholeRunPeakMeasurement = WholeRunPeakUnmeasured

@@ -56,12 +56,15 @@ fn budget_safety_fraction_apply(budget: ByteSize) -> ByteSize {
   measure_scale_fraction_floor(m: budget, num: 4, den: 5)
 }
 
-fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
-  let fits = measure_fit_count_floor(
-    capacity: budget_safety_fraction_apply(budget: memory_budget),
-    each: per_shard_peak
+fn memory_bounded_fit_count(budget: ByteSize, unit_peak: ByteSize) -> Int {
+  measure_fit_count_floor(
+    capacity: budget_safety_fraction_apply(budget: budget),
+    each: unit_peak
   )
-  nat_max(a: fits, b: 1)
+}
+
+fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
+  nat_max(a: memory_bounded_fit_count(budget: memory_budget, unit_peak: per_shard_peak), b: 1)
 }
 
 fn memory_aware_spawn_width(
