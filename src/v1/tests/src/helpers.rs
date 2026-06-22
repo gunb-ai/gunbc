@@ -1,4 +1,3 @@
-
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{
@@ -7,7 +6,6 @@ use v1_compiler::v1_compiler_compile::{
 };
 use v1_compiler::v1_compiler_parse::ParseResult;
 use v1_compiler::v1_std_core::Token;
-
 
 pub fn workspace_root() -> std::path::PathBuf {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -33,7 +31,6 @@ pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
     let ws = workspace_root();
     vec![ws.join("src/v2"), ws.join("dsl")]
 }
-
 
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
@@ -91,7 +88,6 @@ pub fn assert_parses_strict(relative_path: &str) {
         relative_path
     );
 }
-
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -220,7 +216,6 @@ fn resolve_imports_transitively_with_index(
     sources
 }
 
-
 fn analyze_complexity_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
         analyze_complexity: true,
@@ -295,7 +290,6 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
     let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
     v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
 }
-
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
     result

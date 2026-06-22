@@ -1,10 +1,8 @@
-
 use crate::helpers::{compile_multi, diagnostic_messages};
 use std::rc::Rc;
 use v1_compiler::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, CompilerDiagnostic, ErrorNode,
 };
-
 
 fn first_diag(files: &[(&str, &str)]) -> Rc<ErrorNode> {
     let result = compile_multi(files);
@@ -21,7 +19,6 @@ fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {
     let lc = byte_to_line_col(idx, span.start);
     (lc.line, lc.col)
 }
-
 
 #[test]
 fn missing_export_points_at_name() {
@@ -129,7 +126,6 @@ fn multiple_missing_exports_each_have_own_span() {
     );
 }
 
-
 #[test]
 fn unresolved_import_names_module() {
     let bad = "module consumer\nimport nonexistent { Thing }\n";
@@ -153,7 +149,6 @@ fn unresolved_import_names_module() {
         msg
     );
 }
-
 
 #[test]
 fn unresolved_type_in_field() {
@@ -179,7 +174,6 @@ fn unresolved_type_in_field() {
         msg
     );
 }
-
 
 #[test]
 #[ignore = "78s — hanging in compile pipeline; triage under PERF track"]
@@ -207,7 +201,6 @@ fn duplicate_module_detected() {
         msg
     );
 }
-
 
 #[test]
 fn bare_container_type_detected() {
@@ -270,7 +263,6 @@ fn unknown_type_name_no_arity_false_positive() {
     );
 }
 
-
 #[test]
 fn empty_list_wrong_expected_type() {
     let source = "module elist\nfn make_stuff() -> String {\n  []\n}\n";
@@ -324,7 +316,6 @@ fn empty_list_with_type_context_no_false_positive() {
     );
 }
 
-
 #[test]
 fn clean_compile_produces_zero_diagnostics() {
     let source = "module clean\ntype Widget { label: String, count: Int }\n";
@@ -335,4 +326,3 @@ fn clean_compile_produces_zero_diagnostics() {
         diagnostic_messages(&result)
     );
 }
-

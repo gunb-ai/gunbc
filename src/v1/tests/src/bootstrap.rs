@@ -1,6 +1,4 @@
-
 #![allow(clippy::disallowed_macros)]
-
 
 fn build_stage0() -> std::path::PathBuf {
     let build = std::process::Command::new("cargo")
@@ -181,7 +179,6 @@ fn diff_excluding_hand_maintained(
     }
 }
 
-
 #[test]
 fn stage0_cargo_check() {
     let output = std::process::Command::new("cargo")
@@ -196,7 +193,6 @@ fn stage0_cargo_check() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
-
 
 const DIAG_RATCHET: usize = 358;
 
@@ -337,7 +333,6 @@ fn main() -> Int { generated_answer() }
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
-
 const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 
 #[test]
@@ -426,7 +421,6 @@ fn bootstrap_stage0_to_stage1() {
     let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
-
 #[test]
 #[ignore = "Expensive: builds two binaries + two full compiles"]
 fn bootstrap_fixed_point() {
@@ -486,7 +480,6 @@ fn bootstrap_fixed_point() {
     let _ = std::fs::remove_dir_all(&stage2_dir);
 }
 
-
 const PERF_RATCHET_SECONDS: u64 = 150;
 
 #[test]
@@ -518,7 +511,6 @@ fn performance_ratchet() {
 
     let _ = std::fs::remove_dir_all(&out_dir);
 }
-
 
 use std::sync::LazyLock;
 
@@ -753,7 +745,6 @@ fn ci_fixed_point() {
         panic!("stage1 != stage2 — fixed point not reached");
     }
 }
-
 
 #[test]
 #[ignore = "Expensive: compiles .dag, builds emitted crate, runs cargo test"]

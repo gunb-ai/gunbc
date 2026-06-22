@@ -1,4 +1,3 @@
-
 use std::rc::Rc;
 
 use crate::helpers::*;
@@ -87,7 +86,6 @@ fn total_source_text_at_chars_walked(
     }
     take_text_lookup_chars_walked()
 }
-
 
 #[test]
 fn fn_lambda_syntax() {
@@ -203,7 +201,6 @@ fn foo(item: String) -> String {
 }"#;
     assert_parses(source, "typecheck_match_with_itemresult");
 }
-
 
 #[test]
 fn parse_generic_fn() {
@@ -402,7 +399,6 @@ fn unicode_parses_strict() {
     assert_parses_strict("dsl/std/unicode.dag");
 }
 
-
 #[test]
 fn core_parses_strict() {
     assert_parses_strict("src/v1/00_core.dag");
@@ -462,7 +458,6 @@ fn shared_behavioral_parses_strict() {
 fn shared_primitives_parses_strict() {
     assert_parses_strict("dsl/std/primitives.dag");
 }
-
 
 #[test]
 fn tokenizer_non_ascii_performance_regression() {
@@ -530,7 +525,6 @@ fn tokenizer_text_lookup_flat_in_file_size() {
         "tail lookups should be one index op each (flat in file offset)"
     );
 }
-
 
 #[test]
 fn source_text_at_lookup_flat_in_file_size() {
@@ -711,7 +705,6 @@ fn parser_scales_linearly_with_token_count() {
     );
 }
 
-
 #[test]
 fn tokenizer_smoke() {
     let tokens = tokenize("fn add(a: Int) -> Int { a }");
@@ -785,7 +778,6 @@ fn tokenize_produces_correct_kinds() {
         "should contain Ident token"
     );
 }
-
 
 #[test]
 fn parser_e2e() {
@@ -861,7 +853,6 @@ fn gist_transitive_closure_parse() {
         assert_parses_strict(path);
     }
 }
-
 
 #[test]
 fn keyword_as_field_name_allowed() {
