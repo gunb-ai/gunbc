@@ -19,6 +19,11 @@
 // DISSOLUTION TRIGGER: §7 fixpoint convergence with the Route-A emitter self-host
 //   -- when wire-all-emitted-modules -> regen-equals-committed is in reach; a fresh
 //   work-item gets dispatched THEN. (breadcrumb: node://adhoc-80af9ff8-40f)
+// INVARIANCE CAVEAT (quick-seal, verbatim): class-3 host-vs-faithful SELECTION is
+//   representation-invariant on the v1-bundled HOST seed at this tip -- CONTROL B
+//   (gate-isolated revert) builds green, CONTROL A errors are the wire policy
+//   confound not representation; the selection's behavioral discriminating-proof is
+//   OWED by the deferred faithful target, where the selection actually fires.
 //   Full detail: carrier mark in v1_compiler_emit_rust.rs.
 
 use self::SizeExpr::*;
