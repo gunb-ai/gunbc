@@ -5398,27 +5398,6 @@ fn eval_builtin(
         // the full compile/emit fold.
         "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
 
-        // list_push(list, item): append `item` as a SINGLE element (even when it
-        // is itself a list), mirroring the method arm so the free-function form
-        // graph.dag uses (`list_push(order, node)`) resolves too. Without this arm
-        // std/graph.dag's DFS (dfs_finish_order / dfs_collect_component) is dead in
-        // the interpreter, which would force a reachability/SCC re-implementation —
-        // the §3 single-authority fork. Additive; method semantics unchanged.
-        "list_push" => match positional.as_slice() {
-            [l, item] => match free_monoid_to_vec(l) {
-                Some(mut result) => {
-                    let mut counters = ctx.mutation_counters.borrow_mut();
-                    counters.list_push_calls += 1;
-                    counters.list_push_items_copied += result.len() as u64;
-                    drop(counters);
-                    result.push((*item).clone());
-                    Ok(Some(list_value(result)))
-                }
-                None => Ok(None),
-            },
-            _ => Ok(None),
-        },
-
         "concat" => {
             // Variadic string concat (common in .dag code)
             if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
