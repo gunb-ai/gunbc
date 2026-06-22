@@ -112,6 +112,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "coproduct_reflection.rs",
+    "doc_reachability_project.rs",
     "extdeps_shape_transport_policy_project.rs",
     "fact_cardinality_census.rs",
     "import_resolution_project.rs",
