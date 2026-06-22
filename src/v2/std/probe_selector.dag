@@ -49,11 +49,17 @@ type DiagnosticCapabilityFacts {
   interfaces: List<DiagnosticInterfaceKind>
 }
 
-// 🟡 P-PROBE-CF-IMPORT — v2 cannot import dsl/product/compute_fabric (Option<T> vs Optional<T>;
-// std.* namespace collides under dual source-root). Escalation: zesty-swift-79 /
-// work-item adhoc-20b17ff7-932. Repro: dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag
-// Dissolution: diagnostic_capability_from_offer(offer: ComputeOffer) reading
-// offer.supply.execution.isolation; delete HostSupplyProjectionInput on arrival.
+// 🟡 P-PROBE-CF-IMPORT — v2 cannot import dsl/product/compute_fabric.
+// (a) Option<T> vs Optional<T> — RESOLVED (#4887): compute_fabric converted to kernel T? syntax;
+//     dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag passes under dual source-root.
+// (b) FreeMonoid algebra diverged fork — HELD (operator): dsl/std/algebra.dag:390 defines
+//     FreeMonoid<T> as a record typeclass (mathematical law carrier); src/v2/std/algebra.dag:76
+//     defines FreeMonoid<T> as a coproduct (Empty | Cons initial-algebra list). Under dual
+//     source-root both are in scope; the v1 interpreter loses Empty/Cons resolution in v2 modules.
+//     This is part of the algebra grounding cluster held for the operator's single-authority
+//     unification design — not a tactical rename (213 v2 importers). HostSupplyProjectionInput
+//     dissolution (→ diagnostic_capability_from_offer reading offer.supply.execution.isolation)
+//     is blocked on (b).
 type HostSupplyProjectionInput {
   identity: String
   isolation_is_vm: Bool
