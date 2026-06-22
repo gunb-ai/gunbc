@@ -30,7 +30,7 @@ fn producer_display(p: Producer) -> String {
     Cited { kind: EditorIDE, upstream: _ } => "Editor/IDE state (from editor)"
     Cited { kind: NodeJS, upstream: _ } => "Node.js (from npm)"
     Cited { kind: SecretsConvention, upstream: _ } => "Secrets and local config (from secrets)"
-    Cited { kind: PythonLang, upstream: _ } => "Python bytecode (local script runs)"
+    Cited { kind: PythonLang, upstream: _ } => "Python (local dev-only scripts; never committed to the .dag/.rs substrate)"
   }
 }
 

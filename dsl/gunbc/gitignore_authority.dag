@@ -95,8 +95,8 @@ data gitignore_authority: List<IgnoreGroup> = [
   },
   IgnoreGroup {
     producer: Cited { kind: PythonLang, upstream: "github/gitignore/Python.gitignore" },
-    rationale: ReproducibleFromSource,
-    patterns: ["__pycache__/", "*.pyc"]
+    rationale: EnvironmentSpecific,
+    patterns: ["*.py", "__pycache__/", "*.pyc"]
   },
   IgnoreGroup {
     producer: Derivable { kind: ClaimMapOutput },
