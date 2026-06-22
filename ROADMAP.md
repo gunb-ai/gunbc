@@ -45,6 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **cross-tree import activation** (§5) — LANDED (#5473); the §0↔§5 escalate item is now closed
 - [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — a new concept; parked
 - [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction
+- [ ] **cardinality refinement** — illegal cardinalities (wrong length · empty · overflow) unwritable by construction; the *decidable* refinement axis (linear arithmetic over counts), fold-propagated. MVP-1 (`Byte` via `Length<8>`) + P4 (fold homomorphism · uint8 overflow → typed `Rejected`) proven (#5512); P1 (`where` lowering) / P2 (construction-enforced) behind this lane; P5 (phantom-width reflection) substrate-blocked. → [plan](docs/plans/cardinality-refinement.md) · [P1](docs/plans/p1-where-clause-lowering.md)
 
 **Meta — lock down the reasoning (§7 recursion):**
 
