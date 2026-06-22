@@ -21,7 +21,7 @@
 
 module extdeps.languages.rust.types
 
-import std.coercion {
+import std.cast_rules {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
 

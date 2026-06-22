@@ -9,7 +9,7 @@
 
 module extdeps.languages.dag.types
 
-import std.coercion { TypeCheckpoint }
+import std.cast_rules { TypeCheckpoint }
 
 // Dag type checkpoints: identity mapping (dag_name == target_type).
 // literal_suffix is none for all entries — Dag doesn't add suffixes.

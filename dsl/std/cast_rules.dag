@@ -1,13 +1,17 @@
-// std/coercion.dag -- TYPE REPRESENTATION vocabulary.
+// std/cast_rules.dag -- Type representation and casting vocabulary.
 //
-// Single authority for coercion schema types. Per-language files
-// (extdeps/languages/*/types.dag) import these types and instantiate
-// data. This prevents schema drift across language targets.
+// Single authority for target-language type mapping and cast syntax rules.
+// Per-language files (extdeps/languages/*/types.dag) import these types
+// and instantiate data. This prevents schema drift across language targets.
 //
-// DISAMBIGUATION: This module defines TYPE REPRESENTATION (how .dag types render in
-// target languages). It is distinct from src/v2/std/coercion_fold.dag, which implements
-// the COERCION FOLDING ALGORITHM (witness-based type selection via find_witness).
-// See coercion_fold.dag for the complementary vocabulary.
+// DISAMBIGUATION (§3 single authority, DESIGN §4): This module defines
+// TARGET-LANGUAGE REPRESENTATION and CAST RULES (how .dag types and casts
+// render in target languages). It is distinct from src/v2/std/coercion.dag,
+// which implements COERCION (the homomorphism check via find_witness that
+// determines whether one type can inhabit another). Both concern cross-type
+// relationships but at different semantic levels:
+// - std.cast_rules: "how do I represent this .dag type in Rust/Python/Go?"
+// - v2.std.coercion: "can this type be coerced to another type?"
 //
 // IDENTITY NOTE (M4/Lane 1):
 // dag_name and algebra fields are currently String-keyed. This is the
@@ -24,7 +28,7 @@
 //   v2/05_emit.dag                      -- coercion engine
 //   docs/coercion-design.md             -- design specification
 
-module std.coercion
+module std.cast_rules
 
 // TypeCheckpoint: "this exact .dag type name maps to this target type."
 //

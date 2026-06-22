@@ -17,7 +17,7 @@
 
 module extdeps.languages.python.types
 
-import std.coercion {
+import std.cast_rules {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
 
