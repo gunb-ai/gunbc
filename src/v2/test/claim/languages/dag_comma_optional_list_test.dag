@@ -1,16 +1,3 @@
-// Scope: unit witnesses for the v2 dag LanguageModel comma-list combinator
-//   (dag_grammar_comma_list_expr) — gap 2 of the N_v2 self-host front-end. v2 had
-//   FORKED from the v1 single authority (parse_field_list_acc in
-//   src/v1/stage0/src/v1_compiler_parse.rs), which separates list items on a comma OR
-//   bare juxtaposition (comma OPTIONAL; newlines are whitespace). v2's mandatory comma
-//   left every newline-separated multi-field record/type body unparseable
-//   (parse_g0_tokens_remain). The fix relaxes the inter-item comma to optional.
-// Anchor: DESIGN.md §3 (dissolve the fork — mirror the v1 authority) + §5/§7
-//   (green-by-execution consumers). UNIT-level (no host manifest, caret-independent).
-// Discriminating control: a malformed field (missing colon) must STILL Reject — proves
-//   the relaxation did not become a permissive catch-all that accepts bare idents as
-//   fields. An over-relaxed grammar would wrongly Accept it.
-
 module v2.test.languages.dag_comma_optional_list
 
 import v2.compiler.tokenize { tokenize }
@@ -31,32 +18,22 @@ fn parses(src: String) -> Bool {
   }
 }
 
-// POSITIVE — newline-separated (comma-less) multi-field record type now parses. This
-// is the exact shape that blocked sr_00_compile (type Validated { value \n ... }).
 test fn comma_optional_two_newline_fields_accepts_holds() -> Bool {
   parses(src: "module m.t\ntype Foo {\n  a: Int\n  b: Int\n}\n")
 }
 
-// POSITIVE — a newline-separated record payload on a coproduct variant parses (the
-// only v2 variant-payload form; v1 also optional-commas it).
 test fn comma_optional_record_payload_newline_accepts_holds() -> Bool {
   parses(src: "module m.t\ntype X = Foo {\n  a: Int\n  b: Int\n}\n")
 }
 
-// REGRESSION (superset) — comma-separated lists still parse after the relaxation.
 test fn comma_optional_comma_separated_still_accepts_holds() -> Bool {
   parses(src: "module m.t\ntype Foo {\n  a: Int,\n  b: Int\n}\n")
 }
 
-// REGRESSION — a single-field record (always parsed) still parses.
 test fn comma_optional_one_field_still_accepts_holds() -> Bool {
   parses(src: "module m.t\ntype Foo {\n  a: Int\n}\n")
 }
 
-// DISCRIMINATING NO-FAIL-OPEN CONTROL — a field missing its colon (`b` with no
-// `: Type`) must STILL Reject. The relaxation made the inter-item COMMA optional, not
-// the field SHAPE permissive; a catch-all that accepted bare idents as fields would
-// wrongly Accept this. (Mirrors v1: parse_field requires `ident : type`.)
 test fn comma_optional_missing_colon_field_rejects_control_holds() -> Bool {
   match parses(src: "module m.t\ntype Foo {\n  a: Int\n  b\n}\n") {
     true => false

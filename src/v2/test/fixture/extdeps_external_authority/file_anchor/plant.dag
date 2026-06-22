@@ -1,5 +1,3 @@
-// RED perturb — file: anchor on a non-machinery module (must be external http(s)).
-
 module extdeps.fixture.external_authority_file_anchor
 
 import extdeps.external_authority { ExternalAuthority }

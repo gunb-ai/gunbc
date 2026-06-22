@@ -1,7 +1,3 @@
-// dsl/test/claim/compute_fabric_resource_witness_test.dag
-//
-// By-execution witnesses for thread-count + memory feasibility in satisfies().
-
 module test.claim.compute_fabric_resource_witness
 
 import product.compute_fabric {
@@ -20,10 +16,6 @@ test fn compute_fabric_resource_feasibility_holds() -> Bool {
     && witness_resource_offer_admits_feasible_demand()
 }
 
-// §1-C: the per-run demand ResourceEnvelope is DERIVED (width from the cores ∧ memory fold) and
-// fail-closed — a planted high-demand shard shrinks the derived width so the projected memory stays
-// under budget, while a memory-blind width over-commits the SAME budget (the RED control, run through
-// the same shared fit predicate). The floor never OOMs by construction, not by a post-hoc check.
 test fn ci_floor_run_demand_envelope_model_holds() -> Bool {
   witness_run_demand_envelope_fits_budget()
     && witness_high_demand_shrinks_envelope_and_fits()

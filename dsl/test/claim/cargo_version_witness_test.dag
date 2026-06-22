@@ -1,10 +1,3 @@
-// test/claim/cargo_version_witness_test.dag — by-execution witness for Cargo SemVer carriers.
-//
-// DESIGN §5 green-by-execution: `CargoPackageVersion` and `CargoVersionRequirement`
-// are not spec-without-execution — this witness folds render helpers and the stage0
-// default over discriminating inputs. Reverting either field to bare `String` or
-// dropping the branded requirement carrier breaks the typed data rows below.
-
 module test.claim.cargo_version
 
 import extdeps.cargo {
@@ -75,7 +68,6 @@ fn w_min_cargo_version_grounded() -> Bool {
 
 fn dep_requirement_one() -> CargoVersionRequirement { "1" }
 
-// DISCRIMINATING: tool floor carrier must not unify with dependency requirement.
 fn w_tool_floor_distinct_from_dep_requirement() -> Bool {
   min_cargo_version != dep_requirement_one()
 }

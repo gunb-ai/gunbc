@@ -1,6 +1,3 @@
-// test/claim/operator_fleet_network_witness_test.dag — by-execution witness (DESIGN §5)
-// for measured operator fleet network topology + reachability policy.
-
 module test.claim.operator_fleet_network
 
 import std.logic { Bool }

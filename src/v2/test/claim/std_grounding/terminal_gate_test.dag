@@ -1,9 +1,4 @@
-//   RuntimeVerdicts authoritative (true); AuthoringTimeVerdictSurface fails closed (false).
-// Mutation-proven: making the AuthoringTimeVerdictSurface arm return true collapses the second
-// conjunct -> RED.
-
 module v2.test.std_grounding.terminal_gate
-
 
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -29,8 +24,6 @@ import v2.std.grounding {
 }
 import v2.extdeps.languages.rust { rust_mvp1_target_model }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -39,7 +32,6 @@ import v2.std.verification {
 fn terminal_gate_empty_bytes() -> List<Byte> {
   []
 }
-
 
 fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTargetTestClaimReceipt {
   PerTargetTestClaimReceipt {
@@ -60,7 +52,6 @@ fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTarget
     verdict_tally: verdict_tally_empty
   }
 }
-
 
 test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> Bool {
   host_verdict_surface_runtime_authoritative(receipt: terminal_gate_receipt(status: RuntimeVerdicts))

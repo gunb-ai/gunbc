@@ -1,11 +1,3 @@
-// §5 discriminating fixture: two independent nodes A/B in ONE file; witness W's
-// evaluation closure references A only (via claim_on_a). Node-precise skip must
-// RUN W when a diff hunk overlaps A's span and SKIP W when the hunk overlaps B's
-// node span only (B is not in W's closure — file-level skip would still run W).
-// Transitive row: witness T references conj-wrapped helper whose subtree contains C.
-// DISSOLUTION TRIGGER: host path→node bootstrap replaced by
-// affected_set_reading_from_git_diff_provenance whole-tree producer (Lane 3a ingest).
-
 module v2.test.fixture.floor_skip.node_precise_discriminator
 
 import v2.std.node { Atom, Conj, Edge, Node, Positional, TypeNode, SyntheticOccurrence }
@@ -38,11 +30,6 @@ data floor_disc_node_c: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// Orphan: a node in the SAME file that NO claim references. Editing its span produces a
-// node-precise frontier that touches nothing, so every witness in the entry skips — the
-// sound proof that the skip is NODE-level, not file-level (a file-level skip would re-run
-// on any edit to this file). The intra-witness A/B variant was unsound: a witness whose
-// body names another node genuinely depends on it (its result can flip), so §5 must run it.
 data floor_disc_orphan_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^floor_disc_orphan_symbol } },
   children: [],

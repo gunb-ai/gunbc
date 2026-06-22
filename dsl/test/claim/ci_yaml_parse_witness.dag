@@ -1,12 +1,3 @@
-// dsl/test/claim/ci_yaml_parse_witness.dag
-//
-// By-execution YAML parse witness for generated ci.yml (DESIGN §5 — not typecheck illusion).
-//
-// Run (host effect — returns ProcessExit, not Bool):
-//   PATH must include actionlint or python3-yaml; gate uses the same check.
-//   gunbc run --source-root dsl --entry dsl/test/claim/ci_yaml_parse_witness.dag \
-//     --function ci_yaml_parse_witness
-
 module test.claim.ci_yaml_parse_witness
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
