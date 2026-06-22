@@ -14,11 +14,20 @@
 // (the realization-loop staged-ahead carriers) — the same ratchet-during-migration → wall-when-empty
 // shape as #5433 and the doc-graph reachability wall (doc_reachability_project.rs).
 //
-// DEFINITION (the conservative, decidable, robust one — chosen to never false-red main):
-//   A carrier is inert iff its NAME (as a whole identifier token) appears in NO non-test `.dag`
-//   file other than its own declaring file. Comments count as a consumer (conservative). This is
-//   the strongest, lowest-false-positive reading of "defined + self-tested + zero real consumer":
-//   a carrier mentioned literally nowhere outside its declaration and its own test.
+// DEFINITION — the COVERAGE-BY-ILLUSION class exactly (bright-stag's deliverable 1 wording: "defined
+// + self-tested + ZERO real consumer"):
+//   A carrier is inert iff (a) it is DECLARED in a non-test file, (b) it is SELF-TESTED — its NAME
+//   (as a whole identifier token) appears in at least one `*_test.dag` file, and (c) it has ZERO
+//   real consumer — its name appears in NO non-test `.dag` file other than its own declaring file.
+//
+//   The (b) self-tested gate is what makes this a clean keystone rather than "every unused type":
+//   the corpus is full of carriers modeled ahead of their consumer (extdeps API surfaces, the
+//   realization loop) — those are the project's deliberate model-first discipline and are NOT
+//   coverage-by-illusion. A carrier someone bothered to write a TEST for but nothing consumes is the
+//   precise §5 trap: it LOOKS covered (a green test) yet drives no production behavior. Comments are
+//   stripped before tokenizing, so a real consumer means a code reference, never prose (a code use is
+//   never inside a comment → the self-tested+unconsumed verdict cannot false-flag a genuinely-used
+//   carrier).
 //
 // This is host-fed today (no whole-corpus reference enumeration exists in `.dag` — see
 // docs/plans/inert-layer-lens.md §3 Tier 2). DISSOLUTION TRIGGER: when `.dag` gains compile-graph /
@@ -40,17 +49,20 @@ use std::path::{Path, PathBuf};
 // dissolve-on per entry is tracked in docs/plans/inert-layer-lens.md §2 (the realization-loop
 // cache-plan / work-demand / sharding / receipt-digest arms).
 const INERT_CARRIER_ROSTER: &[&str] = &[
-    // --- realization-loop: the cache-plan arm (dissolve-on: cache planner wired to a live source)
-    "CacheLayerPlan",
-    // --- realization-loop: the work-demand / sharding arm (dissolve-on: scheduler emits WorkDemand)
-    "WorkDemand",
-    "ParallelismShape",
-    "IndependentShards",
-    "PartitionedReduce",
-    "Partitioner",
-    "SymbolicCost",
-    // --- realization-loop: the materialization arm (dissolve-on: realization emits Materialization)
-    "Materialization",
+    // SEEDED FROM THE LIVE CENSUS 2026-06-22 (re-derive with the live_tree gate below). Each is a
+    // self-tested type carrier whose name appears in exactly its single declaring file plus a
+    // `*_test.dag` — DESIGN §5 coverage-by-illusion (a green test, no production consumer).
+    // dissolve-on per entry: wire the real consumer, then DELETE the entry (the stale-roster ratchet
+    // reds the floor until you do). A NEW self-tested-but-unconsumed carrier not listed here reds.
+    "AccessPolicy",          // dsl/std/rbac.dag — RBAC policy model; no authz consumer wired yet.
+    "CargoDependency",       // dsl/extdeps/rust/cargo.dag — Cargo manifest dep row; emit/ingest unwired.
+    "CargoPackage",          // dsl/extdeps/rust/cargo.dag — Cargo manifest package row; unwired.
+    "FilePermissions",       // dsl/std/* — POSIX/mode permission carrier; no filesystem consumer.
+    "FloorWitnessRow",       // src/v2/workflow/affected_set_floor_runner.dag — runner row; self-only.
+    "GitCliReportedVersion", // dsl/extdeps/* — git --version parse target; no version consumer wired.
+    "RbacPolicy",            // dsl/std/rbac.dag — RBAC policy aggregate; no authz consumer wired.
+    "ReactHookSite",         // src/v2/extdeps/frameworks/react.dag — React hook-site model; unwired.
+    "SecretValue",           // dsl/std/types.dag — secret-string carrier; no redaction consumer wired.
 ];
 
 fn workspace_root() -> PathBuf {
@@ -110,22 +122,61 @@ fn strip_line_comment(line: &str) -> &str {
     line.split("//").next().unwrap_or(line)
 }
 
-/// Extract top-level `type NAME` carrier declarations from a file's content. Carriers are the type
-/// abstractions (coproducts + records + aliases); `data`/`fn`/`service` are values/behavior, out of
-/// scope for this keystone.
-fn type_carrier_decls(content: &str) -> Vec<String> {
+/// Extract top-level `type NAME` carrier declarations with their full declaration BLOCK text.
+/// Carriers are the type abstractions (coproducts + records + aliases); `data`/`fn`/`service` are
+/// values/behavior, out of scope for this keystone. The block runs from the `type` line until the
+/// next top-level item (matching the corpus's brace-depth convention, as in fact_cardinality_census).
+/// Returning the block lets the consumer count distinguish a carrier's OWN self-references (the
+/// declaration, recursive arms) from a real USE elsewhere — including a use by another fn in the same
+/// declaring file (a lens-local fact type IS consumed by its lens fn; only a use outside the type
+/// block counts).
+const ITEM_KEYWORDS: [&str; 8] = [
+    "data ", "fn ", "func ", "type ", "service ", "const ", "pattern ", "resource ",
+];
+
+fn brace_delta(line: &str) -> i32 {
+    let c = strip_line_comment(line);
+    c.matches('{').count() as i32 - c.matches('}').count() as i32
+}
+
+fn type_carrier_blocks(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
     let mut out = Vec::new();
-    for raw in content.lines() {
-        let line = raw.trim_start();
-        if let Some(rest) = line.strip_prefix("type ") {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                out.push(name);
-            }
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        let Some(rest) = trimmed.strip_prefix("type ") else {
+            i += 1;
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
         }
+        let mut block = String::new();
+        block.push_str(lines[i]);
+        block.push('\n');
+        let mut depth = brace_delta(lines[i]);
+        i += 1;
+        while i < lines.len() {
+            let nt = lines[i].trim_start();
+            if depth <= 0 {
+                // At depth 0 the block continues only across a `=`/`|` sum continuation; anything
+                // else (next item, blank line, prose) ends it.
+                if !(nt.starts_with('|') || nt.starts_with('=')) {
+                    break;
+                }
+            }
+            block.push_str(lines[i]);
+            block.push('\n');
+            depth += brace_delta(lines[i]);
+            i += 1;
+        }
+        out.push((name, block));
     }
     out
 }
@@ -149,71 +200,94 @@ fn identifier_tokens(line: &str) -> Vec<String> {
     out
 }
 
+/// Count whole-identifier occurrences of `name` in `text` (comments stripped).
+fn count_token(text: &str, name: &str) -> i64 {
+    let mut n = 0i64;
+    for raw in text.lines() {
+        for tok in identifier_tokens(strip_line_comment(raw)) {
+            if tok == name {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
 struct InertCarrierReport {
-    /// All declared carriers (name -> declaring file), declared in non-test files.
+    /// All declared type carriers (name -> declaring file), declared in non-test files.
     declared: BTreeMap<String, String>,
-    /// Inert carrier names (zero non-self, non-test consumer file mentions), sorted.
+    /// Inert carrier names (self-tested ∧ zero use outside their own declaration block), sorted.
     inert: Vec<String>,
 }
 
-fn build_report() -> InertCarrierReport {
-    let files = corpus_dag_files();
-
-    // 1. Declaration universe: type carriers declared in non-test files.
-    //    Name -> the (first) declaring file. Collision across files is handled in step 3 (a name
-    //    declared twice is conservatively treated as cross-referenced → not inert).
+/// The census core, over an explicit `(rel_path, content)` corpus — so the live `build_report` and
+/// the synthetic discrimination controls run the SAME predicate (DESIGN §5: prove by execution, not
+/// by a re-implementation that could drift from production).
+fn compute_report(files: &[(String, String)]) -> InertCarrierReport {
+    // 1. Declaration universe + each carrier's OWN self-reference count (occurrences inside its
+    //    declaration block — the `type` line, recursive arms — which are not uses).
     let mut declared: BTreeMap<String, String> = BTreeMap::new();
     let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
-    for (rel, content) in &files {
+    let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
+    for (rel, content) in files {
         if is_test_dag(rel) {
             continue;
         }
-        for name in type_carrier_decls(content) {
+        for (name, block) in type_carrier_blocks(content) {
             declared.entry(name.clone()).or_insert_with(|| rel.clone());
-            *decl_count.entry(name).or_insert(0) += 1;
+            *decl_count.entry(name.clone()).or_insert(0) += 1;
+            *self_block_refs.entry(name.clone()).or_insert(0) += count_token(&block, &name);
         }
     }
 
-    // 2. Mention map: for each carrier name, the set of NON-TEST files that mention it (as a whole
-    //    identifier token). Only carrier names are tracked (cheap + exact).
+    // 2. Total occurrences across non-test files (real-consumer candidates), and self-tested set.
     let names: BTreeSet<String> = declared.keys().cloned().collect();
-    let mut mentions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for (rel, content) in &files {
-        if is_test_dag(rel) {
-            continue; // a carrier referenced ONLY in tests is inert (self-tested, no real consumer).
-        }
-        let mut seen_here: BTreeSet<String> = BTreeSet::new();
+    let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
+    let mut self_tested: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in files {
+        let mut local: BTreeMap<String, i64> = BTreeMap::new();
         for raw in content.lines() {
             for tok in identifier_tokens(strip_line_comment(raw)) {
                 if names.contains(&tok) {
-                    seen_here.insert(tok);
+                    *local.entry(tok).or_insert(0) += 1;
                 }
             }
         }
-        for tok in seen_here {
-            mentions.entry(tok).or_default().insert(rel.clone());
+        if is_test_dag(rel) {
+            for (k, _) in local {
+                self_tested.insert(k);
+            }
+        } else {
+            for (k, v) in local {
+                *nontest_occ.entry(k).or_insert(0) += v;
+            }
         }
     }
 
-    // 3. Inert = declared carrier whose only mentioning non-test file is its own declaring file, and
-    //    whose name is declared exactly once (a doubly-declared name cross-references itself → not
-    //    flagged, the conservative direction).
+    // 3. Inert = declared exactly once (a doubly-declared name cross-references itself → not flagged,
+    //    the conservative direction) ∧ self-tested ∧ used by ZERO non-test code outside its own
+    //    declaration block. `external_uses = total non-test occurrences − own-block self-references`.
     let mut inert: Vec<String> = Vec::new();
-    for (name, declfile) in &declared {
+    for name in declared.keys() {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
         }
-        let consumer_files: BTreeSet<&String> = mentions
-            .get(name)
-            .map(|s| s.iter().filter(|f| *f != declfile).collect())
-            .unwrap_or_default();
-        if consumer_files.is_empty() {
+        if !self_tested.contains(name) {
+            continue; // not self-tested → merely-unused (model-first), not coverage-by-illusion.
+        }
+        let total = nontest_occ.get(name).copied().unwrap_or(0);
+        let own = self_block_refs.get(name).copied().unwrap_or(0);
+        if total - own <= 0 {
             inert.push(name.clone());
         }
     }
     inert.sort();
     inert.dedup();
     InertCarrierReport { declared, inert }
+}
+
+fn build_report() -> InertCarrierReport {
+    compute_report(&corpus_dag_files())
 }
 
 /// Count of all carriers the census judges inert (defined + zero real consumer). Includes rostered
@@ -256,10 +330,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn type_carrier_decls_extracts_names() {
+    fn type_carrier_blocks_extracts_names_and_bodies() {
         let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
-        let names = type_carrier_decls(c);
+        let blocks = type_carrier_blocks(c);
+        let names: Vec<&String> = blocks.iter().map(|(n, _)| n).collect();
         assert_eq!(names, vec!["Connective", "WorkDemand"]);
+        // The WorkDemand block must include its `}` line but stop before `fn f`.
+        let wd = &blocks.iter().find(|(n, _)| n == "WorkDemand").unwrap().1;
+        assert!(wd.contains("field: Int") && wd.contains('}'));
+        assert!(!wd.contains("fn f"));
     }
 
     #[test]
@@ -271,83 +350,39 @@ mod tests {
         assert!(toks.contains(&"field".to_string()));
     }
 
-    // The DISCRIMINATING controls (DESIGN §5: green-by-execution, RED on a real defect). A pure
-    // function over a synthetic corpus so the discrimination is proven without the live tree.
+    // The DISCRIMINATING controls (DESIGN §5: green-by-execution, RED on a real defect). They run
+    // the PRODUCTION predicate (`compute_report`) over a synthetic in-memory corpus, so the
+    // discrimination is proven on the same code main ships.
     fn report_of(files: &[(&str, &str)]) -> Vec<String> {
-        // Re-implement the build_report core over an in-memory corpus (the live build_report reads
-        // the filesystem; this exercises the SAME inert predicate over controlled inputs).
         let owned: Vec<(String, String)> = files
             .iter()
             .map(|(p, c)| (p.to_string(), c.to_string()))
             .collect();
-        let mut declared: BTreeMap<String, String> = BTreeMap::new();
-        let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
-        for (rel, content) in &owned {
-            if is_test_dag(rel) {
-                continue;
-            }
-            for name in type_carrier_decls(content) {
-                declared.entry(name.clone()).or_insert_with(|| rel.clone());
-                *decl_count.entry(name).or_insert(0) += 1;
-            }
-        }
-        let names: BTreeSet<String> = declared.keys().cloned().collect();
-        let mut mentions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (rel, content) in &owned {
-            if is_test_dag(rel) {
-                continue;
-            }
-            let mut seen: BTreeSet<String> = BTreeSet::new();
-            for raw in content.lines() {
-                for tok in identifier_tokens(strip_line_comment(raw)) {
-                    if names.contains(&tok) {
-                        seen.insert(tok);
-                    }
-                }
-            }
-            for tok in seen {
-                mentions.entry(tok).or_default().insert(rel.clone());
-            }
-        }
-        let mut inert = Vec::new();
-        for (name, declfile) in &declared {
-            if decl_count.get(name).copied().unwrap_or(0) != 1 {
-                continue;
-            }
-            let consumers: BTreeSet<&String> = mentions
-                .get(name)
-                .map(|s| s.iter().filter(|f| *f != declfile).collect())
-                .unwrap_or_default();
-            if consumers.is_empty() {
-                inert.push(name.clone());
-            }
-        }
-        inert.sort();
-        inert
+        compute_report(&owned).inert
     }
 
     #[test]
-    fn red_control_zero_consumer_carrier_is_inert() {
-        // A carrier defined + self-tested but mentioned in NO other non-test file → inert (RED: the
-        // lens fires).
+    fn red_control_self_tested_zero_consumer_carrier_is_inert() {
+        // A carrier defined + SELF-TESTED but mentioned in NO other non-test file → inert (RED: the
+        // lens fires). This is coverage-by-illusion: a green test, no production consumer.
         let inert = report_of(&[
             ("a.dag", "module a\ntype Lonely { x: Int }\n"),
             ("a_test.dag", "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n"),
         ]);
         assert!(
             inert.contains(&"Lonely".to_string()),
-            "a carrier mentioned only in its decl + its own test must be flagged inert; got {inert:?}"
+            "a self-tested carrier with no real consumer must be flagged inert; got {inert:?}"
         );
     }
 
     #[test]
     fn green_control_carrier_with_real_consumer_is_not_inert() {
         // Same carrier, now mentioned in a second non-test file → NOT inert (GREEN: the lens stays
-        // silent). This is the discrimination: the only difference is a real consumer.
+        // silent). The ONLY difference from the RED control is a real consumer — the discrimination.
         let inert = report_of(&[
             ("a.dag", "module a\ntype Used { x: Int }\n"),
             ("b.dag", "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n"),
-            ("a_test.dag", "module t\nfn t() -> Bool { true }\n"),
+            ("a_test.dag", "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n"),
         ]);
         assert!(
             !inert.contains(&"Used".to_string()),
@@ -356,14 +391,46 @@ mod tests {
     }
 
     #[test]
-    fn comment_mention_counts_as_consumer_conservative() {
-        // A bare mention in another file's COMMENT counts as a consumer (the safe direction — never
-        // false-red main on a carrier someone references in prose).
+    fn green_control_same_file_consumer_is_not_inert() {
+        // A lens-local fact type: declared AND consumed by a fn in the SAME file (outside its type
+        // block), plus self-tested. It is genuinely load-bearing (the lens reads it) → NOT inert.
+        // This is the discrimination the use-outside-block rule buys over a declaring-file exclusion.
+        let inert = report_of(&[
+            (
+                "lens.dag",
+                "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
+            ),
+            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
+        ]);
+        assert!(
+            !inert.contains(&"LocalFact".to_string()),
+            "a carrier consumed by a fn in its own file is NOT inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_untested_unused_carrier_is_not_flagged() {
+        // A carrier with NEITHER a test NOR a consumer is merely-unused (model-first staging), NOT
+        // coverage-by-illusion. The self-tested gate excludes it — this keeps the wall off the
+        // project's deliberate ahead-of-consumer modeling (extdeps surfaces, the realization loop).
+        let inert = report_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+        assert!(
+            !inert.contains(&"Staged".to_string()),
+            "an untested unused carrier must NOT be flagged (it is model-first, not illusion); got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn comment_reference_is_not_a_real_consumer() {
+        // A mention only in another file's COMMENT is not a code consumer (comments are stripped),
+        // so a self-tested carrier referenced elsewhere only in prose is still inert. A code use can
+        // never live in a comment, so this never false-flags a genuinely-used carrier.
         let inert = report_of(&[
             ("a.dag", "module a\ntype Noted { x: Int }\n"),
             ("b.dag", "module b\n// Noted is described here\nfn f() -> Int { 1 }\n"),
+            ("a_test.dag", "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n"),
         ]);
-        assert!(!inert.contains(&"Noted".to_string()));
+        assert!(inert.contains(&"Noted".to_string()));
     }
 
     #[test]
