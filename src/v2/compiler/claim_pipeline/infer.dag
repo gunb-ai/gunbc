@@ -1,8 +1,4 @@
-// Note: normalize→resolve→infer on void C3 sugar is deferred until constraint solve aligns with
-//   wave-1 void ResolvedTree shape (manual/infer_ground_add_mvp.dag owns the worked fixture).
-
 module v2.test.claim_pipeline.infer
-
 
 import v2.compiler.infer { infer }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -31,7 +27,6 @@ fn spine_infer_accepts_mvp_resolved_tree() -> Bool {
   }
 }
 
-
 fn spine_infer_bool_atom(b: Bool) -> Node {
   match b {
     true =>
@@ -49,7 +44,6 @@ fn spine_infer_bool_atom(b: Bool) -> Node {
   }
 }
 
-
 data claim_pipeline_infer_module_compiles: TestClaim = CompilesClaim {
   label: "claim_pipeline/infer: v2.compiler.infer stage module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -57,7 +51,6 @@ data claim_pipeline_infer_module_compiles: TestClaim = CompilesClaim {
   expected_value: spine_infer_module_subject,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_pipeline_infer_accepts_mvp_resolved_tree: TestClaim = EqualsClaim {
   label: "claim_pipeline/infer: infer accepts MVP add-shaped ResolvedTree (T-9 worked fixture)",

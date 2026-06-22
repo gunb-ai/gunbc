@@ -1,6 +1,3 @@
-// Scope: corpus witness — LanguageSpec rows have real external consumers.
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.languages_consumer_census.corpus.rust_spec_external_consumer
 
 import v2.lens.languages_consumer_census { languages_consumer_census_live_has_external_consumer }

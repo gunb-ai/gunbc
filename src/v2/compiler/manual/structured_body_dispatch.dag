@@ -1,12 +1,3 @@
-// Scope: by-execution receipt for the structured-Behavior dispatch surface in
-// compiler/03_body_producer.dag (body_producer_dispatch_structured_body /
-// produce_arrow_with_structured_body) — slice (ii) of the normalize-to-dispatch dissolution
-// (node://adhoc-87678e9b-420). Proves the ONE surface validates an already-structured Behavior
-// body keyed on the Behavior coproduct (Transform call AND Branch control-flow, not add-special-
-// cased), refuses a non-Behavior residual parse node, and — the subsumption witness — produces
-// output byte-identical to the existing add flat-index table's target Arrow.
-// Status: unit-tier by-execution TestClaim (no pipeline; reuses dag.dag MVP1 fixtures).
-
 module v2.test.manual.structured_body_dispatch
 
 import v2.std.node {
@@ -53,7 +44,6 @@ fn structured_body_bool_node(pass: Bool) -> Node {
   }
 }
 
-// A residual (non-Behavior) parse node — the malformed-normalize case the surface must refuse.
 fn structured_body_non_behavior_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: ^structured_body_residual } },
@@ -61,8 +51,6 @@ fn structured_body_non_behavior_node() -> Node {
   )
 }
 
-// The pick (if) body is a Branch Behavior; extract it from the fully-attached pick fixture so the
-// surface is exercised on a control-flow variant, not just the add Transform call.
 fn structured_body_pick_branch_body() -> Node {
   match find_arrow_body_child(root: dag_mvp1_pick_arrow_with_body_fixture) {
     Accepted { value: body, diagnostics: _ } => body
@@ -70,7 +58,6 @@ fn structured_body_pick_branch_body() -> Node {
   }
 }
 
-// The add (x+y) body is a Transform call: Transform[+, x, y] — callee-ref child[0].
 fn structured_body_dispatch_accepts_transform_call() -> Bool {
   match body_producer_dispatch_structured_body(body: dag_mvp1_add_binary_body_node()) {
     Accepted { value: validated, diagnostics: _ } => validated == dag_mvp1_add_binary_body_node()
@@ -93,8 +80,6 @@ fn structured_body_dispatch_rejects_non_behavior() -> Bool {
   }
 }
 
-// Subsumption witness: producing add from the signature + structured body yields exactly the
-// Arrow the existing add flat-index table targets (dag_mvp1_add_arrow_with_body_node).
 fn structured_body_produce_subsumes_add_table() -> Bool {
   match produce_arrow_with_structured_body(
     signature: dag_mvp1_add_arrow_signature_node(),

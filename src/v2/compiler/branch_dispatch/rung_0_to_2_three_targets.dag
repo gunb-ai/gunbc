@@ -1,7 +1,4 @@
-
-
 module v2.test.branch_dispatch.rung_0_to_2_three_targets
-
 
 import v2.std.collection { List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -26,7 +23,6 @@ data phase4_branch_dispatch_rung_subject: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 fn phase4_branch_dispatch_rung_compiles_claim(label: String) -> TestClaim {
   CompilesClaim {
     label: label,
@@ -36,7 +32,6 @@ fn phase4_branch_dispatch_rung_compiles_claim(label: String) -> TestClaim {
     classification: TestClassification { tier: Tier1, layer: Integration }
   }
 }
-
 
 data claim_phase4_branch_dispatch_rung0_dag_parse: TestClaim = phase4_branch_dispatch_rung_compiles_claim(
   label: "fixture=phase4/branch_dispatch rung=0 target=dag predicate=R0-dag-parse"
@@ -54,11 +49,9 @@ data claim_phase4_branch_dispatch_rung0_go_parse: TestClaim = phase4_branch_disp
   label: "fixture=phase4/branch_dispatch rung=0 target=go predicate=R0-go-parse"
 )
 
-
 data claim_phase4_branch_dispatch_rung1_rust_typecheck: TestClaim = phase4_branch_dispatch_rung_compiles_claim(
   label: "fixture=phase4/branch_dispatch rung=1 target=rust predicate=R1-rust-typecheck"
 )
-
 
 data claim_phase4_branch_dispatch_rung2_rust_compile: TestClaim = phase4_branch_dispatch_rung_compiles_claim(
   label: "fixture=phase4/branch_dispatch rung=2 target=rust predicate=R2-rust-compile"
@@ -72,7 +65,6 @@ data claim_phase4_branch_dispatch_rung2_go_compile: TestClaim = phase4_branch_di
   label: "fixture=phase4/branch_dispatch rung=2 target=go predicate=R2-go-compile"
 )
 
-
 data phase4_branch_dispatch_rung_0_to_2_roster: List<TestClaim> = [
   claim_phase4_branch_dispatch_rung0_dag_parse,
   claim_phase4_branch_dispatch_rung0_rust_parse,
@@ -84,12 +76,10 @@ data phase4_branch_dispatch_rung_0_to_2_roster: List<TestClaim> = [
   claim_phase4_branch_dispatch_rung2_go_compile
 ]
 
-
 data phase4_branch_dispatch_fixture_claim_roster: List<TestClaim> = [
   claim_branch_dispatch_well_formed,
   claim_branch_dispatch_equals_refl,
   claim_branch_dispatch_content_hash_stable
 ]
-
 
 data phase4_branch_dispatch_rung_gate_canonical_subject: Node = branch_dispatch_subject

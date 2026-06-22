@@ -1,6 +1,3 @@
-// Scope: Wave-2-A dependency recomputation fixture.
-// Status: manual fixture until generated TestClaim execution lands.
-
 module v2.test.manual.dependency_recompute_plan
 
 import v2.std.change {

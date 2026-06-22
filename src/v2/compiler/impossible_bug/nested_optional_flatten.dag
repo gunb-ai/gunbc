@@ -1,9 +1,4 @@
-// Scope: TestClaim — nested-optional flatten impossible-bug class (R2+). Option<Option<T>> accessor patterns that require hand-unwrapping in normal languages are impossible by construction in v2 via cardinality refinement.
-// Anchor: enumerable impossible-bug class R2+ (DESIGN.md §5 — fail-closed) + std/cardinality.dag
-
-
 module v2.test.impossible_bug.nested_optional_flatten
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -34,9 +29,7 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-
 data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
-
 
 data falsification_nested_optional: Node = Node {
   kind: TypeNode { connective: Cardinality },
@@ -55,7 +48,6 @@ data falsification_nested_optional: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data falsification_optional_double_unwrap: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
@@ -64,7 +56,6 @@ data falsification_optional_double_unwrap: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
   label: "optional cardinality refinement keeps accessor surface single-layer",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -72,7 +63,6 @@ data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
   expected_value: flattened_optional_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
-
 
 data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
   label: "optional accessor surface rejects double unwrap shape",
@@ -87,7 +77,6 @@ data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
     ),
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
-
 
 data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
   label: "nested optional cardinality collapses to one refinement",

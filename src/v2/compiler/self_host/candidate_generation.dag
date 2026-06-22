@@ -1,12 +1,3 @@
-// src/v2/compiler/self_host/candidate_generation.dag
-// Scope: Route B — candidate-generation entry for self-host Stage B/C (§7-CLEAN path).
-//   Drives assemble_program_from_ingest → infer → translate (06_translate) and captures the
-//   emitted Node BEFORE serialize_target — the missing piece self_host_fixed_point_validate needs.
-// Status: generate_stage_candidate_from_ingest is live; comparison substrate (emitted Node vs
-//   emitted Rust bytes) is operator-pending — this module captures the Node (content_hash world).
-// Anchor: sibling to self_host.dag (single authority for fixed-point relation); NOT in self_host.dag
-//   until operator reviews the function shape (merry-crab-687 brief).
-
 module v2.compiler.self_host.candidate_generation
 
 import v2.compiler.infer { infer }
@@ -23,13 +14,10 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node }
 
-
 type StageEmissionCandidate {
   emitted: Node
 }
 
-
-// PRIMARY ENTRY — SourceRootIngest → resolved program → infer → translate; Node captured pre-serialize.
 fn generate_stage_candidate_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
@@ -56,8 +44,6 @@ fn generate_stage_candidate_from_ingest(
   )
 }
 
-
-// Thin wrapper when the resolved Node is already assembled (fixture / unit slices).
 fn generate_translate_self_emit_candidate(
   resolved_module: Node,
   dag_target: TargetModel

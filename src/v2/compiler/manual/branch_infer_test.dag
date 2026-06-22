@@ -1,6 +1,3 @@
-// Scope: Q-B2 — 04_infer Branch row discriminating claims (Bool cond + arm unification).
-// Status: infer half — docs/design-comprep-m0-branch-mapping.md §12.11.
-
 module v2.test.manual.branch_infer
 
 import v2.compiler.infer {
@@ -164,8 +161,6 @@ test fn branch_infer_keystone_holds() -> Bool {
     && branch_infer_cond_not_bool_red_holds()
 }
 
-// Negative witness: preservation_rule grounding is still rejected by the admission gate
-// outside the infer_node_facts → solve_constraints bridge remapper.
 fn branch_infer_constraint_satisfaction_grounding_rejected() -> CanonicalGrounding {
   CanonicalGrounding {
     node: branch_infer_atom(s: ^branch_infer_constraint_satisfaction_node),

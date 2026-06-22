@@ -1,5 +1,3 @@
-// Scope: TestClaim rows for Kotlin Wave 2a lex/grammar behavior beyond MVP-1.
-
 module v2.test.parse.kotlin_wave2a
 
 import v2.std.grammar { ParseTree }

@@ -1,5 +1,3 @@
-// Scope: TestClaim rows for Lean Wave 2a lex/grammar behavior (GrammarSchemaProbeBinding migration).
-
 module v2.test.parse.lean_wave2a
 
 import v2.std.grammar { ParseTree }

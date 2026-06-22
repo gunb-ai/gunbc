@@ -1,5 +1,3 @@
-// Scope: lens-unit RED witness — runtime/local data row embeds a shell policy literal.
-
 module v2.test.extdeps_shape_transport_policy.lens_unit.embedded_policy_literal_local
 
 import v2.lens.extdeps_shape_transport_policy {

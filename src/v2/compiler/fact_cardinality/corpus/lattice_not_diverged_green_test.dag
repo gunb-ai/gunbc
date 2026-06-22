@@ -1,6 +1,3 @@
-// Scope: corpus witness — Lattice bodies match across trees (divergence green control).
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.fact_cardinality.corpus.lattice_not_diverged_green
 
 import v2.lens.fact_cardinality { fact_cardinality_live_cross_tree_is_diverged_fork }
