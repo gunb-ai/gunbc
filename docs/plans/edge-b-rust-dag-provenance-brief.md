@@ -32,6 +32,24 @@ which is why this is the §1 *coverage keystone*, not a cost follow-up.
 FIRE-when-consumed and SKIP-when-unaffected are the single fact read in opposite directions —
 that unification is the moat (one carrier, three consumers).
 
+## The asymmetry that decides what the build buys (construction, not validation)
+
+The two directions have **asymmetric robustness to an incomplete declaration**, and this is the
+construction-vs-validation lesson made concrete:
+
+- **Affordability (skip-unaffected) is fail-SAFE to over-declaration.** Declare too much → you just
+  run more → never unsound. Robust to a sloppy/partial closure.
+- **Coverage (fire-on-change) is fail-OPEN to UNDER-declaration.** If a test reads `.dag` A and B but
+  its closure declares only A, a change to B does NOT fire the gate → the exact `.dag`→rust fail-open
+  we are closing, silently re-introduced as **declaration drift**. The coverage wall is only as sound
+  as the declaration is COMPLETE: **closure ⊇ actual-.dag-reads**.
+
+Consequence: the coverage wall's soundness lives entirely in the *completeness* of the closure, which
+means a **hand-authored closure is the §3/§5 fork** — for the coverage consumer it silently re-opens
+the hole. So the closure MUST be structurally derived (drift-proof); any hand-authored interim must be
+marked **NON-SOUND** (delivers affordability only, not the coverage wall). The "shared blocker" below
+is therefore not the tail of the work — it is *where the soundness lives*.
+
 ## Bounded core
 
 1. **Declare rust-test → consumed-.dag-paths on the EXISTING `NodeArtifactProvenance` /
@@ -44,19 +62,25 @@ that unification is the moat (one carrier, three consumers).
 3. **Fail-closed default AT THE CONSUMER:** a rust test with no declared closure → *must-run*,
    never skip. Absent provenance = run. This keeps the soundness direction safe while declarations
    are added incrementally.
-4. **Completeness-lens gated:** a lens asserts every rust test has a closure declaration (or sits
-   on an explicit must-run list), so a new undeclared test can neither silently fall into the
-   always-run bucket (eroding the affordability win) nor be silently skipped.
+4. **Completeness-lens gated — on CORRECTNESS, not presence.** A lens that merely asserts "every
+   rust test HAS a closure declaration" checks *presence*, which is exactly the §5 trap: it is
+   satisfiable by editing the declaration while the realization diverges (the faked-cache-key /
+   dead-field pattern). The lens must check **closure ⊇ actual-.dag-reads** — otherwise a partial or
+   stale declaration passes the lens AND leaks coverage. Presence-only is not enough; correctness
+   (the superset relation) is the soundness condition.
 
-## Shared blocker (testgen-reflection)
+## Shared blocker (testgen-reflection) — this IS the soundness, not optional polish
 
-The `.dag`-closure must be DISCOVERED structurally, not hand-listed (hand-listing is the §3/§5
-fork that rots). The reflection infra exists *partially* — `v2.std.node_query` + `dependency_lens`
-+ the `affected_set` node-frontier (compile-time, structural over Node/DependencyView). The missing
-piece: rust tests reach `.dag` through *opaque host paths* (`ws.join`/`filesystem_read`), so the
-closure isn't visible to the Node-tree lens. Surfacing each rust test's `.dag` reads as a declared,
-lens-visible dependency is the shared blocker all three consumers wait on — the hard part and the
-multi-day driver.
+Per the asymmetry above: the `.dag`-closure must be DISCOVERED structurally, not hand-listed
+(hand-listing is the §3/§5 fork that rots, and for the coverage consumer it *silently re-opens the
+hole*). The reflection infra exists *partially* — `v2.std.node_query` + `dependency_lens` + the
+`affected_set` node-frontier (compile-time, structural over Node/DependencyView). The missing piece:
+rust tests reach `.dag` through *opaque host paths* (`ws.join`/`filesystem_read`), so the closure
+isn't visible to the Node-tree lens. Surfacing each rust test's `.dag` reads as a declared,
+lens-visible dependency is the shared blocker all three consumers wait on — and because the coverage
+wall is only sound when `closure ⊇ actual-reads`, this structural discovery is the **load-bearing
+core**, not the tail. It is the hard part and the multi-day driver precisely because it is where the
+soundness is bought.
 
 ## First vertical slice (smallest end-to-end, green-by-execution)
 
@@ -67,6 +91,12 @@ multi-day driver.
 - Prove by execution with a discriminating control: a diff to a `.dag` IN the closure FIRES the
   gate; a diff to a `.dag` OUTSIDE the closure does NOT. Green = both directions observed.
 - This proves the structural fact end-to-end on one test before any corpus fan-out.
+- **State explicitly which the slice proves.** For the slice to prove the *coverage direction
+  soundly*, `coproduct_reflection_conformance_test`'s closure must be **structurally derived** (so a
+  newly-added `.dag` read is captured automatically). If slice-1 hand-lists the closure as an interim,
+  it proves the *wiring* (fire/skip plumbing) but NOT the *wall* (drift-proof completeness) — and must
+  be labelled accordingly. The keystone's value is the wall, so the slice should target the derived
+  closure, not the hand-listed one.
 
 ## Honest estimate
 
