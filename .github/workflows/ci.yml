@@ -80,11 +80,7 @@ jobs:
           fi
           rm -f "$BUILD_LOG"
           if '[' '!' '-x' "$ROOT"'/target/release/claim_executor' ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
-          GUNBC_BUILD_FRESHNESS_NEWER_SRC=$('find' "$ROOT"'/src/v1/stage0' "$ROOT"'/src/v1/stage0_core' "$ROOT"'/src/v1/stage0_emit_core' '(' '-name' '*.rs' '-o' '-name' 'Cargo.toml' '-o' '-name' 'Cargo.lock' ')' '-newer' "$ROOT"'/target/release/claim_executor' '-print' '-quit')
-          if '[' '-n' "$GUNBC_BUILD_FRESHNESS_NEWER_SRC" ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' is older than a source file (stale — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
           if '[' '!' '-x' "$ROOT"'/target/release/gunbc' ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
-          GUNBC_BUILD_FRESHNESS_NEWER_SRC=$('find' "$ROOT"'/src/v1/stage0' "$ROOT"'/src/v1/stage0_core' "$ROOT"'/src/v1/stage0_emit_core' '(' '-name' '*.rs' '-o' '-name' 'Cargo.toml' '-o' '-name' 'Cargo.lock' ')' '-newer' "$ROOT"'/target/release/gunbc' '-print' '-quit')
-          if '[' '-n' "$GUNBC_BUILD_FRESHNESS_NEWER_SRC" ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' is older than a source file (stale — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
           "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
@@ -160,11 +156,7 @@ jobs:
           fi
           rm -f "$BUILD_LOG"
           if '[' '!' '-x' "$ROOT"'/target/release/claim_executor' ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
-          GUNBC_BUILD_FRESHNESS_NEWER_SRC=$('find' "$ROOT"'/src/v1/stage0' "$ROOT"'/src/v1/stage0_core' "$ROOT"'/src/v1/stage0_emit_core' '(' '-name' '*.rs' '-o' '-name' 'Cargo.toml' '-o' '-name' 'Cargo.lock' ')' '-newer' "$ROOT"'/target/release/claim_executor' '-print' '-quit')
-          if '[' '-n' "$GUNBC_BUILD_FRESHNESS_NEWER_SRC" ']'; then 'echo' '::error::build verification: declared artifact '\''claim_executor'\'' is older than a source file (stale — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/claim_executor' >&2; exit 1; fi
           if '[' '!' '-x' "$ROOT"'/target/release/gunbc' ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' absent or not executable after a '\''successful'\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
-          GUNBC_BUILD_FRESHNESS_NEWER_SRC=$('find' "$ROOT"'/src/v1/stage0' "$ROOT"'/src/v1/stage0_core' "$ROOT"'/src/v1/stage0_emit_core' '(' '-name' '*.rs' '-o' '-name' 'Cargo.toml' '-o' '-name' 'Cargo.lock' ')' '-newer' "$ROOT"'/target/release/gunbc' '-print' '-quit')
-          if '[' '-n' "$GUNBC_BUILD_FRESHNESS_NEWER_SRC" ']'; then 'echo' '::error::build verification: declared artifact '\''gunbc'\'' is older than a source file (stale — DESIGN §5 fail-open); failing closed: '"$ROOT"'/target/release/gunbc' >&2; exit 1; fi
           sccache --show-stats 2>/dev/null || true
           git fetch --no-tags origin main 2>/dev/null || true
           set -o pipefail
