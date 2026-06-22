@@ -1,5 +1,15 @@
 module extdeps.cron
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
+  }
+}
+
 service cron.Tab {
   operation List {
     input {}

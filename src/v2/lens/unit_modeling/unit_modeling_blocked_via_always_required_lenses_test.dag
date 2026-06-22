@@ -1,12 +1,3 @@
-// Scope: REGISTRATION witness (FAIL arm) — proves unit_modeling_lens is wired into
-//        always_required_lenses() (the roster validate_then_compile runs fail-closed).
-//        A fact-bearing carrier (so fact_density ACCEPTS it — not a hollow alias) whose
-//        `ram_bytes` field is a bare kernel `Int` leaf is REJECTED by the roster with the
-//        unit-modeling diagnostic. Because fact_density passes and the rejection reason is
-//        `^unit_modeling_flat_scalar_unit_leaf_fixable`, this discriminates that
-//        unit_modeling specifically ran (not fact_density) — i.e. the registration is live.
-//        Pairs with modeled_unit_field_admitted_via_always_required_lenses.dag (PASS arm).
-
 module v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses
 
 import v2.compiler.compile {
@@ -41,16 +32,12 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
-// Field target resolved to the bare kernel `Int` binding — the flat-scalar unit leaf.
 data unit_ar_int_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-// Fact-bundle carrier (Conj + Named field) -> fact_density ACCEPTS (not a hollow alias);
-// the `ram_bytes` field is a bare Int leaf -> unit_modeling REJECTS. Same node shape as
-// flat_scalar_unit_leaf_flagged.dag, lifted through the always-required roster.
 data unit_ar_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [

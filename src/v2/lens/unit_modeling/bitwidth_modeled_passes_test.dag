@@ -1,11 +1,3 @@
-// Scope: B1 unit-modeling lens — PASS/clean witness for the Information/BitWidth
-//        token. The SAME `pointer_width` field attached to the BitWidth carrier
-//        (Measure<Information,One>, measure.dag:192) — NOT a bare `Int` leaf —
-//        MUST pass (gate Accepted). Pairs with bitwidth_flat_scalar_flagged.dag;
-//        identical field name, only the leaf type differs, so the lens
-//        discriminates on the resolved type for the width tokens too. Also guards
-//        against conflating BitWidth (Information) with ByteSize (Memory).
-
 module v2.test.lens_unit_modeling.bitwidth_modeled_passes
 
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -31,9 +23,6 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-// Target resolves to the BitWidth carrier (Measure<Information,One>), not the
-// bare kernel Int — so `edge_field_type_name` returns `^BitWidth`, the field is
-// correctly modeled, and it is not a violation.
 data bitwidth_carrier_target: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^BitWidth } },
   children: [],

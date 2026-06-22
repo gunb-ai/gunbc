@@ -1,6 +1,4 @@
-
 module examples.weather
-
 
 type Temperature {
   celsius: Float
@@ -18,7 +16,6 @@ type Forecast {
   low: Temperature
   condition: Condition
 }
-
 
 fn to_fahrenheit(temp: Temperature) -> Float {
   temp.celsius * 1.8 + 32.0

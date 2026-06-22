@@ -2,6 +2,16 @@ module extdeps.cargo_version
 
 import extdeps.version.semver { SemVerIdentity, SemVerConstraint }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/manifest.html"
+  }
+}
+
 type CargoPackageVersion = SemVerIdentity
 
 type CargoVersionRequirement = SemVerConstraint

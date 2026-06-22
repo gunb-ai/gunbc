@@ -1,4 +1,3 @@
-
 module examples.cost_estimate
 
 import std.float { Float }

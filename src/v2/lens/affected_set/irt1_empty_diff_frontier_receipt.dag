@@ -1,5 +1,3 @@
-// Scope: IRT-1 leaf — empty accumulator yields empty frontier.
-
 module v2.test.lens_affected_set.irt1_empty_diff_frontier_receipt
 
 import v2.lens.affected_set {

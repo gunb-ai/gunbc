@@ -1,5 +1,3 @@
-
-
 module v2.test.lens_effect.effect_depends_on
 
 import v2.compiler.infer { InferredFacts, InferredTree }

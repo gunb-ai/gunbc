@@ -20,6 +20,16 @@ import std.cache_interface {
   Org,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/overrides.html"
+  }
+}
+
 data rustup_toolchain_store_id: CacheInterfaceId = "rustup_toolchain_store"
 
 data rustup_toolchain_store_facts: CacheInterfaceCatalogFacts = {

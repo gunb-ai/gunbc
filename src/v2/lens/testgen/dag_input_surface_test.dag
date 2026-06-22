@@ -1,5 +1,3 @@
-// Status: activated — structural EqualsClaim + witness receipts prove scheduled/bootstrap .dag LBE input surface.
-
 module v2.test.lens_testgen.dag_input_surface
 
 import v2.lens.testgen {

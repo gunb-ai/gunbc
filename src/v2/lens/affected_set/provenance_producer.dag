@@ -1,7 +1,3 @@
-// Scope: D1b-PR2 — whole-ingest NodeArtifactProvenance producer + git-diff→reading wire.
-// Status: by-execution receipts for node_artifact_provenance_from_source_root; selectivity
-//   superset on the provenance→edit_locus→affected_set_reading path.
-
 module v2.test.lens_affected_set.provenance_producer
 
 import extdeps.communication.medium { Lossless, Medium }
@@ -39,7 +35,6 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
-
 data provenance_producer_path_fixture: RepoPath = "src/v2/lens/affected_set/source_producer_fixture.dag"
 data provenance_producer_path_mid: RepoPath = "src/v2/lens/affected_set.dag"
 data provenance_producer_path_root: RepoPath = "src/v2/lens/affected_set_examples.dag"
@@ -47,7 +42,7 @@ data provenance_producer_path_unknown: RepoPath = "src/v2/lens/unknown_path.dag"
 
 data provenance_producer_fixture_source: Medium<String> = Medium { carried: dag_mvp1_source_text, fidelity: Lossless }
 data provenance_producer_malformed_source: Medium<String> = Medium { carried: "fn add(x:Int, y:Int) -> Int { x + ", fidelity: Lossless }
-// Valid wave-1 module surface — outside mvp1 fn-only parse coverage (fn-surface under-read axis).
+
 data provenance_producer_module_surface_source: Medium<String> = Medium { carried: "module edit.locus\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
 data provenance_producer_fixture_artifact: Artifact = Artifact {
   kind: SourceFile,

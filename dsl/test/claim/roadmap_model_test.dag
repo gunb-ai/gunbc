@@ -6,11 +6,11 @@ import gunbc.roadmap_status {
   DriftVerdict, Drifted, Clean, Underivable,
 }
 import gunbc.roadmap_model {
-  PlanDocCarrier, NoCarrier, PlanDoc,
+  Pointer,
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
   roadmap_parent, is_top_level,
-  carrier_resolves, node_carrier_clean,
+  node_carrier_clean,
   node_status_drift,
 }
 
@@ -49,37 +49,37 @@ data existing_docs: List<String> = [
   "DESIGN.md",
 ]
 
-fn node_with_carrier(c: PlanDocCarrier) -> RoadmapNode {
+fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
   RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
-    carrier: c,
+    carriers: cs,
   }
 }
 
 fn witness_resolving_carrier_clean() -> Bool {
   node_carrier_clean(
-    rn: node_with_carrier(c: PlanDoc { path: "docs/plans/invert-hand-maintained.md" }),
+    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }]),
     existing_docs: existing_docs,
   )
 }
 
 fn witness_dangling_carrier_caught() -> Bool {
   !node_carrier_clean(
-    rn: node_with_carrier(c: PlanDoc { path: "docs/plans/does-not-exist.md" }),
+    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/does-not-exist.md" }]),
     existing_docs: existing_docs,
   )
 }
 
 fn witness_no_carrier_clean() -> Bool {
-  node_carrier_clean(rn: node_with_carrier(c: NoCarrier), existing_docs: existing_docs)
+  node_carrier_clean(rn: node_with_carriers(cs: []), existing_docs: existing_docs)
 }
 
 fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
-    carrier: NoCarrier,
+    carriers: [],
   }
   verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
 }
@@ -88,7 +88,7 @@ fn witness_node_authored_underivable() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
-    carrier: NoCarrier,
+    carriers: [],
   }
   verdict_is_underivable(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
 }

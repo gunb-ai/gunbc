@@ -87,14 +87,47 @@ only the trivial half of the authority — the **PR↔line binding** — not the
 | artifact | authority | status |
 | --- | --- | --- |
 | `ci.yml` | `CiFloorSpec` | **inverted** — emitted + drift-gated (the template / proof) |
+| **`ROADMAP.md`** | `roadmap_authority` (work DAG + merged-set) | **inverted (#5535)** — emitted projection; box DERIVED (line.prs ⊆ committed merged-set), drift-gated |
+| **`.gitignore`** | `gitignore_authority` (IgnoreRule: pattern/producer/rationale) | **inverted (#5549)** — emitted + drift-gated; two-tier derivable-vs-cited-external producer boundary |
 | stage0 seed | the `.dag` compiler | **inverting** — self-hosting (§5/§7), Route-A last mile |
-| **`ROADMAP.md`** | the work DAG | **flagship to invert next** — nearly pure structure + status + pointers |
+| **`.githooks/pre-push`** | the gate-logic model (`fmt`-check) | **next candidate** — a hand-bash gate is *forked gate-logic* (§3); the standout invertible artifact left |
+| `Cargo.toml` workspace members | `v1.compiler.workspace_members` | **partial** — regen_stage0 emits the members region; rest authored |
 | doc indexes / cross-links | the doc graph | inverts *with* ROADMAP (the reachability index emits) |
 | plan docs (prose) | authored | **partial** — frame / index / status / pointers generate; the *reasoning prose* stays authored |
 | `DESIGN.md` | authored axioms | **mostly authored** — but its `e.g.` receipts can be *generated + verified* (§7: the doc's own claims become witnesses) |
+| `rust-toolchain.toml` / `clippy.toml` / `.gitattributes` | authored config | **do NOT invert** — purity-trap; each is the *sole in-repo authority* for its fact (no upstream `.dag` model exists to derive from), so a generator would *mint* the second representation it claims to remove. `rust-toolchain.toml`'s own header already declares this with a §3 note. |
 
-"Invert everything hand-maintained" is therefore a *spectrum*, not a flip: structured artifacts fully
-invert; prose artifacts invert their **frame** and fence their **body**.
+"Invert everything hand-maintained" is therefore a *spectrum*, not a flip: structured artifacts whose
+authority *already lives in the substrate* fully invert; prose artifacts invert their **frame** and fence
+their **body**; and **sole-authority config files do not invert at all** — inverting them would be the
+purity-trap (§6), minting a derivation where none exists. The test: an artifact is invertible iff its
+content is *already determined* by a `.dag` authority — if the file IS the authority, generating it is a
+second representation, not a removal of one.
+
+### 4.1 The gate unification — three drift gates → one universal policy
+
+Once three artifacts (`ci.yml` / `ROADMAP.md` / `.gitignore`) each carried a structurally-identical
+drift gate (read committed file → byte-compare to emit → fail-closed), the gates themselves became the
+N×M fork: "a generated committed artifact that must match its emission" is **one** concept (§2 — one
+kernel, N handlers). So they unify into **one universal generated-artifact policy** answering three
+questions per artifact (operator's framing, 2026-06-22):
+
+1. **Generate?** — membership in a closed `GeneratedArtifact` enum + registry; per-artifact `artifact_path`
+   / `artifact_generate` *dispatch arms* (the realization fold, not stored thunks). New artifact = one
+   variant + two arms in **one** module, auto-gated — no new Gate variant or wiring.
+2. **Commit?** — **derived, not declared**: `committed = generated ∧ ¬ignored`, reading the ignore side
+   from `gitignore_authority` (the elegant unification — the `.gitignore` model now *answers* the
+   meta-repo commit question). Fail-closed toward committed-and-gated (uncertain match → committed → still
+   gated; a read of an absent ignored file goes loud-RED, never a silent drop).
+3. **Drift?** — one universal gate folds the *committed* subset (per-artifact red-receipt + `extra_valid`
+   dispatch preserving ci.yml's YAML-parse check); `main_wet` regenerates all committed artifacts in one
+   pass.
+
+Open §5 residue carried by the unification: the enum-vs-registry-list completeness is a fail-open without
+seed enum-reflection (a forgotten registry entry silently ungates a new artifact); mitigated by a
+no-regression witness asserting registry == expected committed set, dissolution-trigger =
+reflection-derives-the-list post-self-host. (Dispatched to `gentle-ibex-384`, model-checkpoint-approved
+2026-06-22.)
 
 ## 5. The fidelity boundary (where it can't fully invert — and that's honest)
 
