@@ -137,7 +137,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanResult {
 }
 
 fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int) -> TokenizerState {
-  let s = skip_spaces_and_comments(source: source, pos: pos, fuel: fuel)
+  let s = skip_spaces(source: source, pos: pos)
   if s.pos >= source_len(source: source) {
     return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
   }
@@ -380,7 +380,7 @@ fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
   prefix |> append(items: value)
 }
 
-fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos {
+fn skip_spaces(source: SourceRef, pos: TokPos) -> TokPos {
   let p = source_skip_ws(source: source, start: pos.pos)
   TokPos { pos: p, interp_depth: pos.interp_depth }
 }

@@ -245,7 +245,7 @@ pub fn tokenize_loop(
     mut fuel: i64,
 ) -> Rc<TokenizerState> {
     loop {
-        let s = skip_spaces_and_comments(source.clone(), pos, fuel.clone());
+        let s = skip_spaces(source.clone(), pos);
         if (s.pos.clone() >= source_len(source.clone())) {
             return Rc::new(TokenizerState {
                 pos: s.pos.clone(),
@@ -891,11 +891,7 @@ pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
     }
 }
 
-pub fn skip_spaces_and_comments(
-    mut source: Rc<SourceRef>,
-    mut pos: Rc<TokPos>,
-    mut fuel: i64,
-) -> Rc<TokPos> {
+pub fn skip_spaces(mut source: Rc<SourceRef>, mut pos: Rc<TokPos>) -> Rc<TokPos> {
     let p = source_skip_ws(source.clone(), pos.pos.clone());
     Rc::new(TokPos {
         pos: p.clone(),

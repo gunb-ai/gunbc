@@ -5848,7 +5848,7 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
 
-fn dag_round_trip_normalization_declared() -> Bool {
+fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
   dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed } &&
   dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
@@ -5858,7 +5858,7 @@ fn dag_round_trip_wave1_authorities_ready() -> Bool {
   let lm = dag_language_model_wave1_modeled()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
-  dag_round_trip_normalization_declared()
+  dag_round_trip_trivia_fidelity_resolved()
 }
 
 fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
