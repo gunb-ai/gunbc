@@ -727,6 +727,24 @@ pub fn derived_extdeps_modules_value(
     list_value(items)
 }
 
+/// The frozen backfill-pending roster ENTRIES (the `.txt` lines), as `List<QualifiedName>` —
+/// the single authority a `.dag` reverse-soundness witness validates against the INDEPENDENT
+/// live extdeps-module enumeration (`derived_extdeps_modules_value`). A `.txt` entry whose
+/// module is no longer live is a STALE excuse (§5 fail-open: it would silently re-excuse a
+/// future re-added-unanchored module at that path). Sorted for a deterministic projection.
+pub fn backfill_pending_entries_value(
+    ctx: &crate::v1_interpreter::InterpContext,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::list_value;
+    let mut paths: Vec<String> = backfill_pending_module_paths().iter().cloned().collect();
+    paths.sort();
+    let items: Vec<_> = paths
+        .iter()
+        .map(|p| qualified_name_value_from_module_path(ctx, p))
+        .collect();
+    list_value(items)
+}
+
 fn backfill_pending_module_paths() -> &'static std::collections::HashSet<String> {
     use std::collections::HashSet;
     use std::sync::OnceLock;
