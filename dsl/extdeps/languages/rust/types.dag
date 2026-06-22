@@ -3,6 +3,15 @@ module extdeps.languages.rust.types
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/types.html"
+  }
+}
 
 data rust_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "i64",    default_expr: "0",              is_copy: true,  literal_suffix: none },

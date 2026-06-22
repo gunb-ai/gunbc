@@ -5,6 +5,16 @@ import extdeps.bmc.redfish { bmc_ground_host_observations }
 import std.measure { ByteSize, Watt, HardwareThreadCount }
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Baseboard_management_controller"
+  }
+}
+
 fn bmc_observed_processor_model(obs: BmcGroundedHostObservations) -> NonEmptyStr {
   obs.processor_model
 }

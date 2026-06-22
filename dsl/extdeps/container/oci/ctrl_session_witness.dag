@@ -80,6 +80,16 @@ import extdeps.container.oci.types { Aarch64, Armv7, Architecture }
 import extdeps.toolchain.types { Linux }
 import std.types { Bool, ContentHash }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
+  }
+}
+
 data ctrl_session_config_digest: ContentHash = "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986"
 
 data ctrl_session_config_size: Int = 34025

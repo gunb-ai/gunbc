@@ -1,0 +1,168 @@
+module gunbc.gitignore_emit
+
+import gunbc.gitignore_model {
+  Producer, IgnoreGroup, IgnoreArtifact,
+  CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
+  GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
+  ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
+  AuthSessionTranscript, PythonLocalDevScript,
+  JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
+  MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
+  Derivable, Cited,
+  CargoTargetDir, CargoTargetCodexDir, LocalCargoHome, CodegenBinSymlink,
+  TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir,
+  JetBrainsProjectDir, VSCodeWorkspaceDir,
+  VimSwapFile, VimSwapFileAlt, EmacsBackupFile, GenericBackupFile,
+  MacOSFinderMetadata, WindowsThumbnailCache, TmuxLogFile,
+  DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard,
+  GeneratorStampFile, GunbcWorkflowDir, TestgenOutputDir, NodeModulesDir,
+  ClaudeSessionDir, RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir,
+  FreshnessCheckDir, AuthTranscriptFile,
+  OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
+  OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
+  OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
+  PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
+  ClaimMapDir, ScratchProbeFile
+}
+import gunbc.gitignore_authority { gitignore_authority }
+
+fn artifact_pattern(a: IgnoreArtifact) -> String {
+  match a {
+    CargoTargetDir => "/target/"
+    CargoTargetCodexDir => "/target-codex/"
+    LocalCargoHome => "/.cargo-home/"
+    CodegenBinSymlink => "/bin/"
+    TarpaulinHtmlReport => "tarpaulin-report.html"
+    TarpaulinJsonReport => "tarpaulin-report.json"
+    CoberturaReport => "cobertura.xml"
+    LcovReport => "lcov.info"
+    CoverageOutputDir => "coverage/"
+    JetBrainsProjectDir => ".idea/"
+    VSCodeWorkspaceDir => ".vscode/"
+    VimSwapFile => "*.swp"
+    VimSwapFileAlt => "*.swo"
+    EmacsBackupFile => "*~"
+    GenericBackupFile => "*.bak"
+    MacOSFinderMetadata => ".DS_Store"
+    WindowsThumbnailCache => "Thumbs.db"
+    TmuxLogFile => "tmux-*.log"
+    DotEnvFile => ".env"
+    DotEnvLocalFile => ".env.local"
+    DotEnvLocalWildcard => ".env.*.local"
+    GeneratorStampFile => ".*-stamp"
+    GunbcWorkflowDir => "/.gunbc/"
+    TestgenOutputDir => "src/v1/10_test/generated-tests/src/generated/"
+    NodeModulesDir => "node_modules/"
+    ClaudeSessionDir => ".claude/"
+    RegenSourcesDir => ".regen-sources/"
+    RegenOutputDir => ".regen-output/"
+    RegenGeneratedSourceRootDir => ".regen-generated-source-root/"
+    FreshnessCheckDir => ".freshness-check/"
+    AuthTranscriptFile => "out.txt"
+    OpenClawControlDir => "/.openclaw/"
+    OpenClawAgentsFile => "/AGENTS.md"
+    OpenClawHeartbeatFile => "/HEARTBEAT.md"
+    OpenClawIdentityFile => "/IDENTITY.md"
+    OpenClawSoulFile => "/SOUL.md"
+    OpenClawToolsFile => "/TOOLS.md"
+    OpenClawUserFile => "/USER.md"
+    OpenClawWorkboardFile => "/WORKBOARD.md"
+    OpenClawScriptsDir => "/scripts/openclaw/"
+    V2InspectFile => ".v2-inspect"
+    V2InspectErrorsFile => ".v2-inspect-errors.txt"
+    GithubCLICacheDir => ".gh-cache/"
+    PythonLocalDevScriptFile => "*.py"
+    PythonBytecodeCacheDir => "__pycache__/"
+    PythonCompiledBytecode => "*.pyc"
+    ClaimMapDir => ".claim-map/"
+    ScratchProbeFile => "src/v2/compiler/manual/sg2_scratch_probe.dag"
+  }
+}
+
+fn producer_display(p: Producer) -> String {
+  match p {
+    Derivable { kind: CargoArtifacts } => "Cargo build artifacts (from cargo)"
+    Derivable { kind: CargoCacheLocal } => "Cargo cache (local CARGO_HOME) (from tool/rust)"
+    Derivable { kind: CodegenSymlink } => "Codegen bin symlink (from codegen)"
+    Derivable { kind: CoverageReport } => "Coverage reports (from cargo-tarpaulin)"
+    Derivable { kind: GeneratorStamp } => "Generator stamp files (from generators)"
+    Derivable { kind: WorkflowRuntime } => "Workflow runtime state (from workflow)"
+    Derivable { kind: TestgenOutput } => "testgen outputs (from testgen)"
+    Derivable { kind: RegenTempDir } => "Stage0 regeneration temp dirs"
+    Derivable { kind: ClaudeCodeSession } => "Claude Code session state"
+    Derivable { kind: ClaimMapOutput } => "claim-corpus execution-map output"
+    Derivable { kind: OpenClawArtifact } => "OpenClaw workspace artifacts"
+    Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
+    Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
+    Derivable { kind: PythonLocalDevScript } => "Python local dev scripts"
+    Cited { kind: JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
+    Cited { kind: VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
+    Cited { kind: VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
+    Cited { kind: EmacsEditor, upstream: u } => concat("Emacs backup convention [cited: ", concat(u, "]"))
+    Cited { kind: GenericEditorBackup, upstream: u } => concat("Generic editor backup files [cited: ", concat(u, "]"))
+    Cited { kind: MacOSFinder, upstream: u } => concat("macOS Finder metadata [cited: ", concat(u, "]"))
+    Cited { kind: WindowsExplorer, upstream: u } => concat("Windows Explorer cache [cited: ", concat(u, "]"))
+    Cited { kind: Tmux, upstream: u } => concat("tmux terminal multiplexer logs [cited: ", concat(u, "]"))
+    Cited { kind: NodeJS, upstream: u } => concat("Node.js [cited: ", concat(u, "]"))
+    Cited { kind: SecretsConvention, upstream: u } => concat("Secrets and local config [cited: ", concat(u, "]"))
+    Cited { kind: CPythonInterpreter, upstream: u } => concat("CPython bytecode cache (PEP 3147) [cited: ", concat(u, "]"))
+  }
+}
+
+fn producer_rationale_line(p: Producer) -> String {
+  match p {
+    Derivable { kind: CargoArtifacts } => "# Reproducible from source via cargo build"
+    Derivable { kind: CargoCacheLocal } => "# Local Cargo cache may include git checkouts; not project state"
+    Derivable { kind: CodegenSymlink } => "# Symlink to target/release created by codegen"
+    Derivable { kind: CoverageReport } => "# Generated, often large, reproducible"
+    Derivable { kind: GeneratorStamp } => "# Producer-centric model stamps"
+    Derivable { kind: WorkflowRuntime } => "# Local execution ledger and config; not source-of-truth"
+    Derivable { kind: TestgenOutput } => "# Generated by testgen; not source-of-truth"
+    Derivable { kind: RegenTempDir } => ""
+    Derivable { kind: ClaudeCodeSession } => ""
+    Derivable { kind: ClaimMapOutput } => ""
+    Derivable { kind: OpenClawArtifact } => "# The OpenClaw control plane lives in ~/ctrl, not in this repo"
+    Derivable { kind: GithubCLICache } => ""
+    Derivable { kind: AuthSessionTranscript } => "# Should never be committed; may contain OAuth URLs or session state"
+    Derivable { kind: PythonLocalDevScript } => "# Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
+    Cited { kind: JetBrainsIDE, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: VSCodeIDE, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: VimEditor, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: EmacsEditor, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: GenericEditorBackup, upstream: _ } => "# Per-developer configuration, not project state"
+    Cited { kind: MacOSFinder, upstream: _ } => "# OS-generated, not project state"
+    Cited { kind: WindowsExplorer, upstream: _ } => "# OS-generated, not project state"
+    Cited { kind: Tmux, upstream: _ } => "# Session log; not project state"
+    Cited { kind: NodeJS, upstream: _ } => "# Not part of this project"
+    Cited { kind: SecretsConvention, upstream: _ } => "# Environment-specific, may contain secrets"
+    Cited { kind: CPythonInterpreter, upstream: _ } => ""
+  }
+}
+
+fn render_group(g: IgnoreGroup) -> String {
+  let header = concat(concat("# --- ", producer_display(p: g.producer)), " ---\n")
+  let rationale = producer_rationale_line(p: g.producer)
+  let rat_section = if rationale == "" { "" } else { concat(rationale, "\n") }
+  let patterns_block = fold(g.artifacts, init: "", f: fn(acc, a) { concat(acc, concat(artifact_pattern(a: a), "\n")) })
+  concat(concat(header, rat_section), patterns_block)
+}
+
+fn gitignore_file_header() -> String {
+  "# gunbc .gitignore — generated from dsl/gunbc/gitignore_authority.dag — do not hand-edit.\n#\n# Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers.\n\n"
+}
+
+fn serialize_gitignore(groups: List<IgnoreGroup>) -> String {
+  let body = fold(groups, init: "", f: fn(acc, g) {
+    let rendered = render_group(g: g)
+    if acc == "" { rendered } else { concat(acc, concat("\n", rendered)) }
+  })
+  concat(gitignore_file_header(), body)
+}
+
+fn expected_gitignore() -> String {
+  serialize_gitignore(groups: gitignore_authority)
+}
+
+fn gitignore_drifted(committed: String) -> Bool {
+  !(committed == expected_gitignore())
+}

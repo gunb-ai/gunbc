@@ -28,6 +28,16 @@ import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent, byte_at_in_bounds }
 import std.exec_format { EntryPoint }
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
+  }
+}
+
 data pixel_writer_payload_digest_label: NonEmptyStr = "freestanding-elf64-slice-0.5"
 
 data freestanding_load_vaddr: Int = 4194304

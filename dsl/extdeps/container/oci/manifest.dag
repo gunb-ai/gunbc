@@ -15,6 +15,16 @@ import extdeps.container.oci.media_types {
 import extdeps.container.oci.types { OciMediaType }
 import std.types { Bool }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
+  }
+}
+
 type ImageManifest {
   schemaVersion: Int
   mediaType: OciMediaType
