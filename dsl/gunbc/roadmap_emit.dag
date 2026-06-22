@@ -29,10 +29,6 @@ fn carrier_inlines(carrier: PlanDocCarrier) -> List<MarkdownInline> {
   }
 }
 
-// The `(#ref)` annotation, EMITTED FROM THE BINDING (plan TASK-2 emit-refs-from-binding, §3 single
-// authority): a DerivableLine's `prs` is the one source of both the derived box AND its rendered refs,
-// so the `(#5445/#5453)` annotation is generated here, never hand-kept in prose. An empty binding emits
-// no annotation. Mentions keep their refs in AuthoredLine prose (no binding to emit from).
 fn refs_text(prs: List<Int>) -> String {
   fold(prs, init: "", f: (acc, p) =>
     if acc == "" { concat("#", to_string(p)) } else { concat(acc, concat("/#", to_string(p))) })
@@ -40,16 +36,11 @@ fn refs_text(prs: List<Int>) -> String {
 fn refs_inlines(prs: List<Int>) -> List<MarkdownInline> {
   if count(prs) == 0 { [] } else { [TextInline { text: concat(" (", concat(refs_text(prs: prs), ")")) }] }
 }
-// The fenced prose tail of a DerivableLine (verbatim, refs-free — the refs emit from `prs` above). A
-// leading space separates it from the title/refs; empty renders nothing.
+
 fn desc_inlines(description: String) -> List<MarkdownInline> {
   if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
 }
 
-// Render the line body by arm (the fold's payoff): a DerivableLine is a BOLD title (emit applies the
-// markup) + its `(#ref)` annotation derived from `prs` + an optional fenced description tail; an
-// AuthoredLine is its `content` String emitted VERBATIM as a single text inline (the §5 DecodeFidelity
-// fence — any bold/refs/links live in the String, so opaque prose round-trips byte-exact).
 fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
   match line {
     DerivableLine { prs, title, description } =>
@@ -94,12 +85,6 @@ fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapE
   task_item_with(done: node_is_done(rn: rn, merged: merged), blocks: blocks)
 }
 
-// === The section projection ==================================================
-
-// One checkbox sub-group's blocks: an optional `**{label}:**` heading-paragraph (the UNIFORM frame the
-// projection owns — §3 single authority, see roadmap_model.SectionGroup) followed by a task list of its
-// top-level nodes (each nesting its children as the indentation = dependency forest). An empty label
-// emits the bare list with no preceding label paragraph.
 fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
   let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
   let list = TaskListBlock { items: tops |> map(n => task_item_for(rn: n, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())) }
@@ -113,8 +98,6 @@ fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
   }
 }
 
-// One section element's blocks: authored prose emitted VERBATIM as a single-TextInline paragraph (the
-// §5 fence — markup inside the String passes through untouched), or a checkbox sub-group.
 fn element_blocks(e: SectionElement, merged: List<Int>) -> List<MarkdownBlock> {
   match e {
     Prose { prose } => [ParagraphBlock { inlines: [TextInline { text: prose.content }] }]
@@ -122,9 +105,6 @@ fn element_blocks(e: SectionElement, merged: List<Int>) -> List<MarkdownBlock> {
   }
 }
 
-// One ROADMAP section: an H2 heading + its ordered element sequence (intro prose, the `◆ Milestones`
-// spine, then one-or-more labelled checkbox sub-groups — interleaved IN DOCUMENT ORDER). A pure fold
-// over `elements` preserving order; the whole-document projection maps this over sections.
 fn project_roadmap_section(title: String, elements: List<SectionElement>, merged: List<Int>) -> MarkdownDocument {
   MarkdownDocument {
     blocks: fold(elements,
