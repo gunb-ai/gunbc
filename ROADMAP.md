@@ -70,7 +70,7 @@ Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names 
 friction it retires** (displaced cost), never "cleaner."
 
 **◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a
-stage fold) → **▸ measure the residue (inert-abstraction lens) + fix the root (generic inference)** → fold
+stage fold) → **generic inference fixed ✓ (#5552, in queue)** + measure the residue (inert-abstraction lens) → fold
 reachable *by default* → new non-fold residue can't merge (pairs with §0 wall)
 
 **Audit half — measure the friction + the residue (decidable; wall-able):**
@@ -79,7 +79,7 @@ reachable *by default* → new non-fold residue can't merge (pairs with §0 wall
 - [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
 
 **Fix half — make the fold the path of least resistance:**
-- [ ] **generic-inference fix** *(fix keystone — #1, start here)* — the root that makes the fold reachable *by default*, not just reachable; collapses a fan-out of hand-rolls (`qualified_name` trio · `ParseTable` · `cached_stage` indirection) and is the prereq for §0's realization-grounding (~120 `Value` bridges become a fold, not a 131-site grind). Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3)
+- [ ] **generic-inference fix** *(fix keystone — #1)* — **▸ #5552 (keystone green-by-execution + red-on-revert witness, in merge queue):** `= FreeMonoid<Symbol>` now resolves. The hand-roll collapse (`qualified_name` trio · `ParseTable`) + §0's realization-grounding (~120 `Value` bridges) follow in de-fork phase 2. Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3, [de-fork brief](docs/plans/dsl-v2-defork-audit.md))
 - [ ] **generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid
 - [ ] **wire the seams, don't strand them** — an abstraction lands *consumed* or scaffold-marked with a dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476). Worked example (the full arc): `cached_stage` seeded inert (#5512) → caught by the keystone lens → wired with a `Miss`-stub wrapping `stage_resolve`. **Boundary:** this lane owns only that the seam *lands consumed-or-marked*; **§1/§2 own *enabling* the resolve-cache** (the realization work) — one home each.
 
