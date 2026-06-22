@@ -44,6 +44,7 @@ import std.measure {
   byte_size_count,
   hardware_thread_count,
   hardware_thread_count_value,
+  measure_scale_fraction_ceil,
   hertz,
   watt,
 }
@@ -80,7 +81,7 @@ import extdeps.toolchain.types {
 }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
-import std.realization_width { bounded_host_spawn_width, int_min }
+import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width, int_min }
 
 // 🟡 forward — v2.std.witness / v2.std.diagnostic at harness (P-CF-WITNESS).
 // Kept intentionally distinct from the kernel `Witness<T>` container.
@@ -550,6 +551,92 @@ type WorkDemand {
   parallelism: ParallelismShape
   data_locality: List<ArtifactLocalityRequirement>
   effects: List<EffectBoundary>
+}
+
+// --- §1.2b per-run demand envelope (DERIVED, fail-closed) ────────────────────
+// The DEMAND a parallel run imposes, expressed as a ResourceEnvelope — the SAME §1.2 carrier
+// placement already consumes (no parallel mint, §3). A run of `width` shards, each peaking at the
+// MEASURED per-shard RSS, demands `width` threads and a concurrent memory peak of width × peak.
+// This is the bounded, predictable per-run memory model cross-run bin-packing rides on
+// (compute-envelope-model.md §3): one authority for "how much this run needs", DERIVED from the
+// live budget + the measured peak, never a hand-set guess. Placement is operator/infra-owned and
+// out of scope here; this slice produces the demand MODEL it will consume, proven by execution.
+
+// Projected concurrent peak of `width` shards each peaking at `per_shard_peak`: width × peak.
+// Lifted via the DEMAND op (measure_scale_fraction_ceil, num=width den=1) — exact at den=1, and the
+// fail-closed CEIL direction (§5 round-toward-pessimism): a run's projected memory must NEVER be
+// under-estimated, or placement over-packs the host ⇒ OOM. Stays in the ByteSize domain — the
+// dimension never detaches (no unwrap→multiply→rewrap round-trip; the §3 ① wall the lifted measure
+// algebra dissolves). Reuses the #5478 ceil op, no forked magnitude math.
+fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
+  measure_scale_fraction_ceil(m: per_shard_peak, num: hardware_thread_count_value(width), den: 1)
+}
+
+// Build the per-run demand ResourceEnvelope from a DERIVED width + the measured per-shard peak.
+// cpu.min_threads = the run's width; memory.min_bytes = the projected concurrent peak. gpu/storage/
+// network are absent — a CI-floor discovery run is a CPU+memory shape only. Reuses ResourceEnvelope
+// (the §1.2 demand carrier), so the existing satisfies()/placement machinery consumes it unchanged.
+fn parallel_run_demand_envelope(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ResourceEnvelope {
+  ResourceEnvelope {
+    cpu: Present { value: CpuRequirement { min_threads: width, architecture: none } },
+    gpu: none,
+    memory: Present {
+      value: MemoryRequirement {
+        min_bytes: projected_concurrent_peak(width: width, per_shard_peak: per_shard_peak)
+      }
+    },
+    storage: none,
+    network: none,
+  }
+}
+
+// THE per-run demand model: live host memory budget + the measured per-shard peak in, a bounded
+// demand envelope out. Width is DERIVED (std.realization_width.memory_aware_spawn_width — the
+// cores ∧ memory fold), so the envelope's memory demand is ⌊0.8·budget⌋-bounded BY CONSTRUCTION:
+// width × per_shard_peak ≤ 0.8·budget < budget, the floor that never OOMs (DESIGN §5). A 0-byte
+// budget (host could not read one) falls back to the conservative committed width — fail-closed
+// narrow, never a fabricated wide demand.
+fn parallel_run_demand_envelope_from_budget(
+  shard_count: Int,
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_shard_peak: ByteSize,
+  conservative_fallback_width: Int
+) -> ResourceEnvelope {
+  parallel_run_demand_envelope(
+    width: memory_aware_spawn_width(
+      shard_count: shard_count,
+      hardware_threads: hardware_threads,
+      memory_budget: memory_budget,
+      per_shard_peak: per_shard_peak,
+      conservative_fallback_width: conservative_fallback_width
+    ),
+    per_shard_peak: per_shard_peak
+  )
+}
+
+// Projected memory demand of an envelope (Absent → a zero-byte demand, the degenerate no-memory case).
+fn demand_envelope_memory(envelope: ResourceEnvelope) -> ByteSize {
+  match envelope.memory {
+    Absent => byte_size(0)
+    Present { value: req } => req.min_bytes
+  }
+}
+
+// Thread (width) demand of an envelope (Absent → 0). Lets a witness assert the derived width dropped.
+fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> Nat {
+  match envelope.cpu {
+    Absent => 0
+    Present { value: req } => hardware_thread_count_value(req.min_threads)
+  }
+}
+
+// THE shared fit predicate: does this run's projected memory demand fit under a budget? Reuses the
+// single fit authority (memory_bytes_honor_demand — budget is supply, the envelope is demand), so the
+// GREEN path (derived width) and the RED control (memory-blind width) run through the SAME comparison
+// — the control has real teeth only because it is not a re-implemented inequality (DESIGN §5).
+fn demand_envelope_fits_budget(envelope: ResourceEnvelope, budget: ByteSize) -> Bool {
+  memory_bytes_honor_demand(supply: budget, demand: demand_envelope_memory(envelope: envelope))
 }
 
 // --- §1.3 parallelism + budget -----------------------------------------------
