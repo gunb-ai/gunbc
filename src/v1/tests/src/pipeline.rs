@@ -7991,7 +7991,7 @@ fn scoped_closure_fixture_scalar_receipt_matches_live_discovery() {
     .expect("load compiler entry closure");
     assert_eq!(
         closure.len(),
-        59,
+        65,
         "update compiler_closure_scoped_module_count in compiler_closure_scope_receipt.dag"
     );
 }

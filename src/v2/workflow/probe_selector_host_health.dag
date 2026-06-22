@@ -1,6 +1,3 @@
-// src/v2/workflow/probe_selector_host_health.dag
-// WF-HOST-HEALTH — burn-in domain call site over probe_select kernel.
-
 module v2.workflow.probe_selector_host_health
 
 import v2.std.collection { List }
@@ -19,7 +16,6 @@ import v2.std.probe_selector {
   temporal_aggregator_drainable
 }
 
-// signal → enumerate_available → observe → prior → select → run → sharpen → classify
 fn wf_host_health_enumerate_available(
   supply: HostSupplyProjectionInput
 ) -> DiagnosticCapabilityFacts {

@@ -1,14 +1,3 @@
-// Status: discovered fail-closed witness for the subsumption (dissolution) lens (DESIGN.md §6
-// inert-lens hygiene: every lens is a discovered fail-closed witness or deleted). Exercises the
-// lens's two canonical DissolutionSubsumption rows directly and asserts each is a verifiable
-// dissolution: its verification is a MechanicalReverification (a test-claim re-runs it, not an
-// un-grounded ProducerStageDerivation) AND it actually subsumes its declared leaf fixes. Flipping a
-// row's verification arm or dropping a subsumed leaf fix => RED.
-//
-// Note: the run_test_claim receipt over these rows lives in the manual lane
-// (v2.test.manual.dissolution_subsumption_reverification); this structural witness is the
-// floor-discovered guarantee the lens carrier stays grounded.
-
 module v2.test.workflow.lens_subsumption_family_eval
 
 import v2.std.logic { Bool }

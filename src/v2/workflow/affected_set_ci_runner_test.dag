@@ -1,6 +1,3 @@
-// Status: node-frontier selection claim-run witnesses (affected-set-3a); `test fn`
-// rows below are discovered by `claim_batch --roster-from-discovery`.
-
 module v2.test.workflow.affected_set_ci_runner
 
 import v2.lens.affected_set {
@@ -284,7 +281,6 @@ test fn ci_runner_inner_frontier_holds() -> Bool {
     ) != 0
 }
 
-// discovered==roster: selection output must equal explicit frontier discovery (not hand-roster laundering).
 fn ci_runner_selected_matches_frontier_discovered(
   roster: List<TestClaim>,
   rerun: RerunNodeSet,

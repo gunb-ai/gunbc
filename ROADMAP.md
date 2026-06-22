@@ -45,6 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **cross-tree import activation** (§5) — LANDED (#5473); the §0↔§5 escalate item is now closed
 - [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — a new concept; parked
 - [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction
+- [ ] **cardinality refinement** — illegal cardinalities (wrong length · empty · overflow) unwritable by construction; the *decidable* refinement axis (linear arithmetic over counts), fold-propagated. MVP-1 (`Byte` via `Length<8>`) + P4 (fold homomorphism · uint8 overflow → typed `Rejected`) proven (#5512); P1 (`where` lowering) / P2 (construction-enforced) behind this lane; P5 (phantom-width reflection) substrate-blocked. → [plan](docs/plans/cardinality-refinement.md) · [P1](docs/plans/p1-where-clause-lowering.md)
 
 **Meta — lock down the reasoning (§7 recursion):**
 
@@ -56,22 +57,82 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc ([scope](docs/plans/axiom-syllogism-lens.md))
 
-## 1. CI under control (the correctness floor)
+## ✦ Ergonomics LANE — make the fold the path of least resistance *(proposed; slots in the §0–§4 stability band, upstream of §0 — bright-stag to number/place)*
+
+Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a hand-rolled `match` has a
+`_ =>` fail-open escape; a fold over a closed coproduct is total by construction and has none. So the chain
+is **ergonomics → adoption → fail-closed**: when the fold is awkward to reach, people hand-roll, and every
+hand-roll reintroduces a fail-open arm ([model↔realization fork](docs/plans/model-realization-fork.md) is
+the systemic instance — per-site bridges that should be one coercion fold). This lane **stops new residue
+by making folds ergonomic**; §0's fail-open-shape walls **retire the old**. The two together drain the fork.
+Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names the fail-open class or measured
+friction it retires** (displaced cost), never "cleaner."
+
+**◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a
+stage fold) → **▸ inert-abstraction lens (measure the residue)** → fold reachable by default (the combinators
+that stop hand-rolling) → new non-fold residue can't merge (pairs with §0 wall)
+
+**Audit half — measure the friction + the residue (decidable; wall-able):**
+- [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers*; generalizes the inert-lens backstop (#5433) from lenses to all carriers. **First RED witness = `Placement` / `Materialization` / `RealizationObjective`** (charter §4: "modeled + witness-passing, no non-test consumer") — a genuinely-inert carrier the lens *fires* on day one, so the lens isn't itself inert (its own §6 guardrail). (`cached_stage` is the *resolved* case — now wired, see Fix half — so it's the worked example, not the witness.)
+- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses
+- [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
+
+**Fix half — make the fold the path of least resistance:**
+- [ ] **generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid
+- [ ] **wire the seams, don't strand them** — an abstraction lands *consumed* or scaffold-marked with a dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476). Worked example (the full arc): `cached_stage` seeded inert (#5512) → caught by the keystone lens → wired with a `Miss`-stub wrapping `stage_resolve`. **Boundary:** this lane owns only that the seam *lands consumed-or-marked*; **§1/§2 own *enabling* the resolve-cache** (the realization work) — one home each.
+- [ ] **fold ergonomics in the type system** — fix the inference friction the audit surfaces so the typed-param workaround isn't needed (composes with §0's fail-closed-inference work)
+
+**Own runway — down-ranked (the lane's §6 guardrail applied to its own scope):**
+- [ ] **ban source comments** (`.dag` + `.rs`) — *separate runway, sequenced BELOW the fold items.* Orthogonal to folds (it's documentation-hygiene), load-bearing (grammar `02_parse`/`syntax`), and the item most likely to swallow the lane. Displaced cost: reviewer reads multiples of the real diff (a comment-heavy `.dag` fn is ~10% code) + LOC inflation; that's the pain, not "cleaner." Construction arc: model the live-state survivors → migrate → **delete the rest aggressively** (git is the backup) → **parser refuses free `//`** (§5, lands LAST). *(calm-seal-13: pilot CI-gate files → fan out → wall; deletion has no modeling-blocker — no gate text-scans comment bodies)*
+
+**Pairs with:** §0 (walls retire old residue; this lane stops new) · [model↔realization fork](docs/plans/model-realization-fork.md) (the residue's deepest instance) · §4 testgen (anemia/structure lenses are the same "measure the modeling" move).
+
+## 1. CI as the substrate integration dogfood (the correctness floor)
 
 A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim.
-(Compute fabric lives here: the substrate CI runs on; selling it as infra is downstream.)
+CI is also the one workload that flexes *every* substrate layer at once (execution · scheduling · caching ·
+secrets/effects · emission), so it is the forcing function that turns each modeled-but-inert abstraction
+load-bearing. **Deliverable = shared abstractions proven by CI consuming them** (one Materialization kernel ·
+one Placement authority · one secrets model); faster CI falls *out* of that, it is not the goal (§6 — price
+the lane in displaced cost, "move with confidence", not elegance).
+→ [charter: causal-chain gap analysis](docs/plans/ci-process-end-to-end.md) — what's on `.dag` today vs not, push→execute.
 
-**◆ Milestones:** opt-3 per-PR ✓ (#5456) → **▸ NOW — floor never OOMs (memory-aware width)** → floor runs the affected-set → every host knob from one measured `ResourceEnvelope`
+**◆ Milestones:** execution-as-DAG ✓ (the floor *is* a bounded forward graph walk) · width on `.dag` ✓ (#5444)
+→ **▸ NOW — host-operation on `.dag` (placement · runner deployment · caps are hand-managed, off-fabric)** →
+resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority
+(jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)
 
-- [x] privacy (compute fabric)
-- [ ] **floor runs the right things** — cadence = two axes: SELECTION (by *what changed*) vs SCHEDULING (by cost); cost never drives selection ([plan](docs/plans/ci-selection-vs-scheduling.md))
+**What's on `.dag` today (the gap map — detail in the charter §2/§4):**
+- [x] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)
+- [x] **scheduling: width axis** — `memory_aware_spawn_width` consumes the measured envelope (#5444); single-host
+- [ ] **scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)
+- [ ] **caching forked** — sccache live · resolve-cache **dormant** (pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)
+
+**Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
+- [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) ([plan](docs/plans/compute-envelope-model.md))
+- [ ] **G2 runner deployment** — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
+- [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile-gate so a hand-edit reds
+- [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
+
+**Adjacent gaps (smaller, outside the host band):**
+- [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM ([decision record](docs/plans/ci-merge-freshness.md))
+- [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one) ([plan](docs/plans/ci-selection-vs-scheduling.md))
+- [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection ([plan](docs/plans/ci-selection-vs-scheduling.md))
   - [x] opt-level=3 restores Pop-A to per-PR — #5456 merged
   - [ ] per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)
   - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*
-- [ ] **floor runs reliably & affordably** — memory-aware scheduling (spawn_width is memory-blind → OOM as the corpus grows) + kill sccache false-greens
 - [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open ([force-check plan](docs/plans/compile-clean-forcecheck.md)) *(quick-ant-298)*
+- [ ] **kill sccache false-greens** — exit-0-no-binary; build-verify asserts artifact exists + fresh (partly landed in `ci.yml`)
+
+**Shared abstractions (the lane's real deliverable — §6: pull in as CI flexes them, not by taxonomy):**
+- [ ] **one Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)
+- [ ] **one Placement authority** — jobs (GitHub) · threads (`spawn_width`) · sessions (ctrl `plans.capacity`) are 3 forks of "put work on a host"
+- [ ] **shared secrets/effects** — BMC · tokens · sccache-auth modeled once (when the fork is the pain)
+
+**Downstream / parked:**
+- [x] privacy (compute fabric)
 - [ ] repo model (internal repo) on compute fabric
-- [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
+- [ ] **gunbhub** — own the Git/CI engine (closes G6, the irreducible GitHub boundary); not pressing
 - [ ] *(downstream)* compute fabric as a sellable infra piece
 
 ## 2. Minimal work — caching by realization (fail-closed)

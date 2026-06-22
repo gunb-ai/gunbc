@@ -1,6 +1,3 @@
-// src/v2/workflow/probe_selector_affected_tests.dag
-// WF-AFFECTED-TESTS — CI domain call site over ONE probe_select kernel.
-
 module v2.workflow.probe_selector_affected_tests
 
 import v2.std.algebra { count_equal, length }

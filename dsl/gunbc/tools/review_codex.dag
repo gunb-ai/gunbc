@@ -1,21 +1,3 @@
-// gunbc/tools/review_codex.dag -- Codex CLI PR review workflow.
-//
-// Replaces ctrl/scripts/review-agent (900-line bash script) with a
-// .dag specification. Uses Codex CLI as the LLM backend (gpt-5.4,
-// included in OpenAI subscription — no per-token cost).
-//
-// Auth model:
-//   GITHUB_TOKEN  — env var, used for GitHub API (list PRs, post reviews)
-//   OPENAI_API_KEY — env var, used by codex CLI internally
-//
-// Both are read from environment via std.credentials.EnvVar.
-// The .dag model declares the dependency; the emitter generates
-// the acquisition code.
-//
-// Entrypoints:
-//   review_cycle(owner, repo)       — scan + review all open PRs
-//   review_pr(owner, repo, number)  — review a single PR (idempotent)
-
 module gunbc.tools.review_codex
 
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
@@ -25,8 +7,6 @@ import std.types { CommitSha }
 import extdeps.llm.cli
 import extdeps.shell
 import std.credentials { CredentialSource, EnvVar }
-
-// ── Configuration ─────────────────────────────────────────────
 
 data default_model: String = "gpt-5.4"
 data default_reasoning_effort: String = "xhigh"
@@ -41,14 +21,8 @@ data cron_tag: String = "review-agent"
 data owner: String = "gunb-ai"
 data repo: String = "gunbc"
 
-// Auth sources — declared, not hardcoded. The emitter reads these
-// from environment at runtime.
 data github_auth: CredentialSource = EnvVar { name: "GITHUB_TOKEN" }
 data openai_auth: CredentialSource = EnvVar { name: "OPENAI_API_KEY" }
-
-// ── Review prompt ─────────────────────────────────────────────
-// The prompt template. References DESIGN.md and std/ files by path — the
-// codex CLI reads them from the working directory (the repo checkout).
 
 data review_instructions: String = "You are a reviewer for the gunbc project (a DAG compiler).
 
@@ -112,8 +86,6 @@ dsl/std/algebra.dag — Semiring, Lattice, Monoid, FreeMonoid, etc.
 dsl/std/termination.dag — DescentEvidence, RankingDimension
 dsl/std/types.dag — kernel types, container types"
 
-// ── Pure functions ────────────────────────────────────────────
-
 fn has_review_at_sha(reviews: List<PullReview>, sha: CommitSha) -> Bool {
   any(reviews, r => r.commit_id == sha && contains(r.body, "INVARIANTS"))
 }
@@ -141,9 +113,6 @@ fn format_review_header(
   "<!-- [codex-review] sha:{sha} -->\n`{backend}` · `{model}` · `{sha}`\n\n{body}"
 }
 
-// ── Review a single PR ────────────────────────────────────────
-// Idempotent: checks ListReviews before posting.
-
 func review_pr(
   pr_owner: String = owner,
   pr_repo: String = repo,
@@ -152,7 +121,6 @@ func review_pr(
   reasoning_effort: String = default_reasoning_effort
 ) -> { reviewed: Bool } {
 
-  // Step 1: Get PR metadata
   pr = github.Pulls.Get(
     auth_token: github_auth,
     owner: pr_owner,
@@ -160,7 +128,6 @@ func review_pr(
     pull_number: pr_number
   )
 
-  // Step 2: Dedup — check if already reviewed at this SHA
   existing = github.Pulls.ListReviews(
     auth_token: github_auth,
     owner: pr_owner,
@@ -169,7 +136,6 @@ func review_pr(
   )
   already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
 
-  // Step 3: Fetch prior line comments for dedup + resolution
   prior_comments_raw = github.Pulls.ListComments(
     auth_token: github_auth,
     owner: pr_owner,
@@ -177,7 +143,6 @@ func review_pr(
     issue_number: pr_number
   )
 
-  // Step 4: Build prompt (codex will fetch the diff itself via gh CLI)
   prompt = build_prompt(
     pr_title: pr.pr.title,
     pr_number: pr_number,
@@ -186,7 +151,6 @@ func review_pr(
     prior_comments: "none"
   )
 
-  // Step 5: Invoke Codex CLI
   llm_result = llm.Codex.Review(
     prompt: prompt,
     cwd: "/Users/briansrls/gunbc",
@@ -194,7 +158,6 @@ func review_pr(
     reasoning_effort: reasoning_effort
   )
 
-  // Step 6: Format and post review
   review_body = format_review_header(
     backend: "codex",
     model: model,
@@ -215,15 +178,11 @@ func review_pr(
   return { reviewed: true }
 }
 
-// ── Review cycle ──────────────────────────────────────────────
-// Scans all open PRs and reviews each. Self-registers cron.
-
 func review_cycle(
   cycle_owner: String = owner,
   cycle_repo: String = repo
 ) -> { reviewed_count: Int } {
 
-  // Upsert cron — idempotent, converges on every run (tag protocol in cron_tag)
   upsert_tagged_cron_tab(
     tag: cron_tag,
     schedule: render_cron_schedule(cron_schedule),
@@ -231,7 +190,6 @@ func review_cycle(
     log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
   )
 
-  // List open PRs
   open_prs = github.Pulls.List(
     auth_token: github_auth,
     owner: cycle_owner,
@@ -239,7 +197,6 @@ func review_cycle(
     state: Open
   )
 
-  // Review each (review_pr handles dedup internally)
   results = for pr in open_prs.pulls {
     review_pr(
       pr_owner: cycle_owner,

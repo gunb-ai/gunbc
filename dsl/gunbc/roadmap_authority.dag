@@ -1,0 +1,302 @@
+module gunbc.roadmap_authority
+
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc,
+  SectionElement, section_prose, section_group,
+}
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
+import ctrl.process_algebra { ProcessNodeId }
+import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
+
+fn nid(s: String) -> ProcessNodeId { s }
+
+fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carrier: NoCarrier }
+}
+
+fn authored_doc(id: String, done: Bool, content: String, path: String) -> RoadmapNode {
+  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carrier: PlanDoc { path: path } }
+}
+
+fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carrier: NoCarrier }
+}
+fn derivable_doc(id: String, prs: List<Int>, title: String, description: String, path: String) -> RoadmapNode {
+  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carrier: PlanDoc { path: path } }
+}
+
+fn preamble() -> List<MarkdownBlock> {
+  [
+    HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
+    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for *why*. This is the **shape of the work** — a scannable, dependency-ordered checklist. **Checkboxes are authoritative for progress**; detail lives in the linked plan docs. A task's real state is its branch/PR." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Legend: `[x]` done · `[ ]` todo · **indentation = depends on the item it sits under**." }] },
+    ParagraphBlock { inlines: [TextInline { text: "**Priority order, top = now.** Bands: **stability / correctness** (§0–§4) → **expansion** (§5–§7) → **shelved** (§8)." }] },
+  ]
+}
+
+fn section_0() -> RoadmapSection {
+  RoadmapSection {
+    title: "0. Fail-closed lock-down LANE — BLOCKS expansion into products",
+    elements: [
+      section_prose(content: "Cache flakes, un-wired lenses, complexity violations = one problem: modeled, not made *impossible to write*. Fix = correctness by construction, not validation ([DESIGN §5](DESIGN.md))."),
+      section_prose(content: "This window = a few days of STABILITY — shrink the fail-open surface, don't \"lock\" it. The deepest root (`Value::Null` overload, ~131 sites) stays OPEN until its own runway ([fork plan](docs/plans/model-realization-fork.md) §3)."),
+      section_prose(content: "**◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*"),
+      section_group(
+        label: "Audits (done)",
+        nodes: [
+          authored(id: "0-audit-wiring", done: true, content: "**lens/gate wiring** — most analytical lenses inert (authored, no discovered gate)"),
+          authored(id: "0-audit-failopen", done: true, content: "**fail-open code** — cache lossy-digest · under-keyed memos · `unwrap_or_default` infer"),
+          authored_doc(id: "0-audit-fork", done: true, content: "**model↔realization fork — ROOT CONFIRMED** — one seam (~13 bridges); sub-roots = numeric tower + `Value::Null`", path: "docs/plans/model-realization-fork.md"),
+          authored_doc(id: "0-audit-remaining", done: false, content: "remaining: coercion/equality straddles · inference fail-open · cache-purity · CI-coverage-completeness", path: "docs/plans/fail-closed-lockdown.md"),
+        ],
+        edges: [],
+      ),
+      section_group(
+        label: "In-scope this window",
+        nodes: [
+
+          derivable_doc(id: "0-numeric-tower", prs: [5428], title: "numeric-tower grounding", description: "— `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus", path: "docs/plans/model-realization-fork.md"),
+          authored(id: "0-cache-trustworthy", done: false, content: "**cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now"),
+          authored_doc(id: "0-rust-gate", done: false, content: "**rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427)", path: "docs/plans/ci-selection-vs-scheduling.md"),
+          authored(id: "0-promote-lenses", done: false, content: "**promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection *(silent-wren-739)*"),
+
+          derivable_doc(id: "0-realization-vocab", prs: [5445, 5453], title: "realization-vocabulary containment guard", description: "— target-AST importable only at the realization edge (fail-closed, shrinking-roster)", path: "docs/plans/emission-ingestion-inverse.md"),
+          authored(id: "0-stage0-census", done: false, content: "**stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*"),
+        ],
+        edges: [],
+      ),
+      section_group(
+        label: "Fenced OUT (after stability)",
+        nodes: [
+          authored(id: "0-value-null", done: false, content: "**split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; own runway"),
+          authored(id: "0-selfhost-purity", done: false, content: "**self-host purity gate** — a §5 deliverable, not §0 (avoids the §0↔§5 cycle)"),
+
+          derivable(id: "0-cross-tree", prs: [5473], title: "cross-tree import activation (§5)", description: "— LANDED; the §0↔§5 escalate item is now closed"),
+          authored_doc(id: "0-disposition", done: false, content: "**`Disposition` carrier** — a new concept; parked", path: "docs/plans/disposition-carrier.md"),
+          authored(id: "0-complexity-residue", done: false, content: "complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction"),
+        ],
+        edges: [],
+      ),
+      section_group(
+        label: "Meta — lock down the reasoning (§7 recursion)",
+        nodes: [
+
+          derivable(id: "0-inert-hygiene", prs: [5433], title: "inert-lens hygiene backstop", description: "— every `lens/*.dag` wired or deleted; runs over the corpus"),
+          authored_doc(id: "0-reachability", done: false, content: "**reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs", path: "docs/plans/inert-layer-lens.md"),
+          authored_doc(id: "0-gate-hygiene", done: false, content: "**gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land *(quick-ant-298)*", path: "docs/plans/emission-ingestion-inverse.md"),
+
+          derivable_doc(id: "0-construction-rule", prs: [5476], title: "construction-justification rule", description: "(authoring-time) — justify why a class can't be construction before adding a lens *(silent-wren-739)*", path: "docs/plans/construction-justification-rule.md"),
+          authored_doc(id: "0-expressibility", done: false, content: "**expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating", path: "docs/plans/expressibility-frontier.md"),
+          authored_doc(id: "0-skipped-modeling", done: false, content: "**confront the skipped modeling decisions** — the `🟡` comment backlog", path: "docs/plans/disposition-carrier.md"),
+          authored(id: "0-axiom-lens", done: false, content: "**axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc"),
+        ],
+        edges: [],
+      ),
+    ],
+  }
+}
+
+fn section_1() -> RoadmapSection {
+  RoadmapSection {
+    title: "1. CI under control (the correctness floor)",
+    elements: [
+      section_prose(content: "A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim. (Compute fabric lives here: the substrate CI runs on; selling it as infra is downstream.)"),
+      section_prose(content: "**◆ Milestones:** opt-3 per-PR ✓ (#5456) → **▸ NOW — floor never OOMs (memory-aware width)** → floor runs the affected-set → every host knob from one measured `ResourceEnvelope`"),
+      section_group(
+        label: "",
+        nodes: [
+          authored(id: "1-privacy", done: true, content: "privacy (compute fabric)"),
+
+          derivable_doc(id: "1-measure-foundation", prs: [5470, 5478], title: "Section 1 spawn-width foundation — std.measure expressibility", description: "— the FLOOR family (measure_scale_fraction_floor + measure_fit_count_floor) and the demand-CEIL family completing the ceil-not-equal-floor money-pair landed, dissolving the measure unwrap→raw-arith→rewrap §3 fork. Authority: the expressibility-frontier spec #5467", path: "docs/plans/expressibility-frontier.md"),
+          authored_doc(id: "1-floor-right-things", done: false, content: "**floor runs the right things** — cadence = two axes: SELECTION (by *what changed*) vs SCHEDULING (by cost); cost never drives selection", path: "docs/plans/ci-selection-vs-scheduling.md"),
+
+          derivable(id: "1-opt3", prs: [5456], title: "opt-level=3 restores Pop-A to per-PR", description: "— merged"),
+          authored(id: "1-per-pr-shrink", done: false, content: "per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)"),
+          authored(id: "1-nightly", done: false, content: "nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*"),
+          authored(id: "1-floor-reliably", done: false, content: "**floor runs reliably & affordably** — memory-aware scheduling (spawn_width is memory-blind → OOM as the corpus grows) + kill sccache false-greens"),
+          authored_doc(id: "1-builtin-registry", done: false, content: "**tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open *(quick-ant-298)*", path: "docs/plans/compile-clean-forcecheck.md"),
+          authored(id: "1-repo-model", done: false, content: "repo model (internal repo) on compute fabric"),
+          authored_doc(id: "1-ci-compute-fabric", done: false, content: "**CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing", path: "docs/plans/compute-envelope-model.md"),
+          authored(id: "1-sellable", done: false, content: "*(downstream)* compute fabric as a sellable infra piece"),
+        ],
+        edges: [
+          RoadmapEdge { child: nid(s: "1-opt3"), parent: nid(s: "1-floor-right-things") },
+          RoadmapEdge { child: nid(s: "1-per-pr-shrink"), parent: nid(s: "1-floor-right-things") },
+          RoadmapEdge { child: nid(s: "1-nightly"), parent: nid(s: "1-floor-right-things") },
+        ],
+      ),
+    ],
+  }
+}
+
+fn section_2() -> RoadmapSection {
+  RoadmapSection {
+    title: "2. Minimal work — caching by realization (fail-closed)",
+    elements: [
+      section_prose(content: "Gate: uncached non-redundant work is an ERROR, not \"slow\". The cache-key-from-inputs construction is the §0 \"cache trustworthy\" item. → [plan](docs/plans/realization-measurement-loop.md)"),
+      section_prose(content: "**◆ Milestones:** key-by-construction ✓ (#5425) → **▸ warm==cold purity proven (616/616, #5429)** → resolve-cache ON — ~18% floor cut *(core ask)* → native `content(T)` *(gated B2)*"),
+      section_group(
+        label: "",
+        nodes: [
+          derivable(id: "2-f1", prs: [5421], title: "F1 scheduler gives heavy nodes budgeted width", description: ""),
+          derivable(id: "2-f2f3", prs: [5425], title: "F2/F3 `resolved_graph` key derived from declared `inputs_considered`", description: "— construction, not a lens"),
+          authored(id: "2-p4", done: false, content: "P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold"),
+          authored(id: "2-p5", done: false, content: "P5 native `content(T) = content_hash(subgraph)` — gated on B2"),
+          authored(id: "2-blockers", done: false, content: "blockers: B1 #5295 generic-instantiation (gates cross-shard `Share`) · B2 cross-tree content-hash (gates P5)"),
+        ],
+        edges: [],
+      ),
+    ],
+  }
+}
+
+fn section_3() -> RoadmapSection {
+  RoadmapSection {
+    title: "3. Complexity budget gate (stability — validation)",
+    elements: [
+      section_prose(content: "Operator decision (2026-06-21): budget-gate validation is the in-window tool; the algorithmic-cost *rewrite construction* is expansion, relocated to §5. Detection is total by construction (cost.dag U2); the gate's reach is a subject-production limit (fn-body reflection), not a detection one."),
+      section_prose(content: "**◆ Milestones:** budget-gate non-toothless ✓ (#5437) → complexity gates the whole codebase *(gated on §5 fn-body reflection)*"),
+      section_group(
+        label: "",
+        nodes: [
+          authored(id: "3-complexity-lens", done: true, content: "complexity lens total over the kernel (cost.dag U2); the gate runs a curated subject roster"),
+
+          derivable(id: "3-cost-lens", prs: [5437], title: "cost-lens zero-absorption fix — budgets non-toothless", description: ""),
+          authored(id: "3-synthesis-advisory", done: false, content: "synthesis stays advisory (by Rice, optimality is a ratchet not a wall — DESIGN §5)"),
+        ],
+        edges: [],
+      ),
+      section_prose(content: "→ rewrite-catalog construction design preserved + relocated to §5 ([plan](docs/plans/algebraic-rewrite-optimization.md))"),
+    ],
+  }
+}
+
+fn section_4() -> RoadmapSection {
+  RoadmapSection {
+    title: "4. Testgen as the bug-class oracle (coverage by construction)",
+    elements: [
+      section_prose(content: "Prevent the next class, not the last instance: generate witnesses from declared structure. → [audit + method](docs/plans/testgen-oracle.md)"),
+      section_prose(content: "**◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → anemia lens? *(parked, likely advisory)*"),
+      section_group(
+        label: "",
+        nodes: [
+          derivable(id: "4-gate-output", prs: [5434], title: "gate the generated output", description: "— floor-discover `generated/` (or regen==committed drift gate)"),
+          derivable(id: "4-coproduct-exhaust", prs: [5441], title: "CoproductExhaustiveness made structural", description: "— over every declared coproduct, not a hand-roster"),
+          derivable(id: "4-cross-rep", prs: [5449], title: "cross-representation-equality category", description: "— straddle witness per coproduct × native realization"),
+          derivable_doc(id: "4-oracle-method", prs: [5471], title: "the oracle method (retro)", description: "— bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls", path: "docs/plans/testgen-oracle.md"),
+          derivable(id: "4-affected-set", prs: [5430], title: "affected-set = the completeness half", description: "— model the full repo-process universe"),
+        ],
+        edges: [],
+      ),
+    ],
+  }
+}
+
+fn section_5() -> RoadmapSection {
+  RoadmapSection {
+    title: "5. Self-host v2 → delete `src/v1` (expansion)",
+    elements: [
+      section_prose(content: "Anchor (do not flip-flop): `.dag` = truth; purely self-hosting (v2 emits its own seed, no stage0 hand-edits); emit Rust + TypeScript; then shrink the seed to zero. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dsl-v2-defork-audit.md)"),
+
+      section_prose(content: "**◆ Milestones (critical path):** front-end ✓ · emit-rust well-typed ✓ · de-fork Step 1 ✓ (#5473) · class-3 corpus-coherence + cargo-green seed ✓ (#5481) → **▸ NOW: emitted crate cargo-builds green** → std forks collapsed → real fixed point → **KEYSTONE: `regen --verify` in CI** → seed-honesty → **TERMINAL: `src/v1` deleted** *(§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable)*"),
+      section_group(
+        label: "",
+        nodes: [
+          authored(id: "5-rewrite", done: false, content: "rewrite suboptimal patterns to the cheaper equivalent (`O(n²)→O(n)` …) — published finite catalog, bulletproof where it fires"),
+          authored(id: "5-unknown-dissolve", done: false, content: "`Unknown` dissolved over time as an anemic atom (reuse the `Disposition` carrier)"),
+          authored(id: "5-on-logn", done: false, content: "`O(n^x)→O(n log n)` substitution as per-idiom rules (open: cleaner shared framing?)"),
+          authored(id: "5-frontend", done: true, content: "front-end (parse / resolve / infer) over the whole tree"),
+          authored(id: "5-emit-rust", done: true, content: "emit whole tree `--target rust` (well-typed under CI gate)"),
+          authored(id: "5-defork", done: false, content: "de-fork dsl ↔ v2 (one std authority, no historical forks)"),
+
+          derivable(id: "5-defork-step1", prs: [5473], title: "turn on cross-tree import — Step 1 LANDED", description: "— PR-B (collapse forks) next *(nimble-koi-625)*"),
+          authored(id: "5-cargo-green", done: false, content: "emitted crate `cargo build`s green (Route-A last mile)"),
+          authored(id: "5-cargo-fixpoint", done: false, content: "real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes) → wire `regen_stage0 --verify` lockstep gate into CI (keystone) → collapse `src/v1` → pinned v2-emitted seed (terminal, not a big-bang `rm`)"),
+        ],
+        edges: [
+          RoadmapEdge { child: nid(s: "5-defork-step1"), parent: nid(s: "5-defork") },
+          RoadmapEdge { child: nid(s: "5-cargo-fixpoint"), parent: nid(s: "5-cargo-green") },
+        ],
+      ),
+    ],
+  }
+}
+
+fn section_6() -> RoadmapSection {
+  RoadmapSection {
+    title: "6. idea → idea compiler (expansion — stop anchoring on code)",
+    elements: [
+      section_prose(content: "A program is a canonical `Node` (the *idea*); ingest / emit / eval across many media via one grammar read both directions (§2 N+M). → [plan](docs/plans/idea-machine.md)"),
+      section_prose(content: "**◆ Milestones:** medium axis ✓ → language axis: English ingest round-trip → cross-media first-class (JSON/react/diagram) → invert hand-maintained: ROADMAP emitted + drift-gated"),
+      section_group(
+        label: "",
+        nodes: [
+          authored(id: "6-medium-axis", done: true, content: "**medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult\{value: Medium<Node>\}`"),
+
+          derivable_doc(id: "6-roundtrip-law", prs: [5525, 5527], title: "round-trip law (ingest∘emit = id, DecodeFidelity-bounded)", description: "— established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2", path: "docs/plans/emission-ingestion-inverse.md"),
+          authored(id: "6-language-axis", done: false, content: "**language axis** — 15+ targets wave-1; English emit proven"),
+          authored(id: "6-cross-media", done: false, content: "**cross-media targets beyond syntax** — JSON / react / diagram as first-class media (not stringified)"),
+          authored_doc(id: "6-emit-ingest-extended", done: false, content: "**emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows", path: "docs/plans/emission-ingestion-inverse.md"),
+          authored(id: "6-fidelity-composeup", done: false, content: "`FidelityDisposition` compose-up → medium-level `DecodeFidelity`"),
+          authored(id: "6-eval-generalize", done: false, content: "eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)"),
+          authored_doc(id: "6-invert", done: false, content: "**invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern)", path: "docs/plans/invert-hand-maintained.md"),
+
+          derivable_doc(id: "6-invert-status", prs: [5491, 5508, 5520], title: "PR→checkbox status + section-emit + projection layer", description: "— box derived from an explicit *completes-iff-PR* binding (not mere mention), drift-gated; slice-1 status derivation + slice-2 section-emit + step-3a whole-document projection landed; #5513 medium-as-Node operative as the acceptance test", path: "docs/plans/invert-hand-maintained.md"),
+
+          authored(id: "6-english-closure", done: false, content: "English vocabulary closure → fail-closed English ingest (today's catch-all is fail-open; also §0)"),
+          authored(id: "6-english-roundtrip", done: false, content: "English ingest round-trip (only emit proven today)"),
+        ],
+        edges: [
+          RoadmapEdge { child: nid(s: "6-english-closure"), parent: nid(s: "6-language-axis") },
+          RoadmapEdge { child: nid(s: "6-english-roundtrip"), parent: nid(s: "6-language-axis") },
+          RoadmapEdge { child: nid(s: "6-invert-status"), parent: nid(s: "6-invert") },
+        ],
+      ),
+    ],
+  }
+}
+
+fn section_7() -> RoadmapSection {
+  RoadmapSection {
+    title: "7. HTML / React rendering (expansion — the \"website\" sellable piece)",
+    elements: [
+      section_prose(content: "Depends on §6 — react/html is a first-class medium (idea-machine.md §3/§4), downstream of §6's cross-media item."),
+      section_prose(content: "**◆ Milestones:** react/html page stands up (real page) → in the demo beside the TS emit"),
+      section_group(
+        label: "",
+        nodes: [
+          authored(id: "7-react-standup", done: false, content: "react/html rendering stands up (real page, not fixture)"),
+          authored(id: "7-demo", done: false, content: "add to the demo alongside the TypeScript emit (website + language, dogfoodable)"),
+        ],
+        edges: [],
+      ),
+    ],
+  }
+}
+
+fn section_8() -> RoadmapSection {
+  RoadmapSection {
+    title: "8. Session dashboard on `.dag` (SHELVED)",
+    elements: [
+      section_prose(content: "Product/infra tooling — shelved during the stability window (no `.dag`-correctness leverage right now)."),
+      section_group(
+        label: "",
+        nodes: [
+          authored(id: "8-pipeline", done: false, content: "idea → PR pipeline *(deferred)*"),
+        ],
+        edges: [],
+      ),
+    ],
+  }
+}
+
+fn roadmap_authority() -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: preamble(),
+    sections: [
+      section_0(), section_1(), section_2(), section_3(),
+      section_4(), section_5(), section_6(), section_7(), section_8(),
+    ],
+  }
+}

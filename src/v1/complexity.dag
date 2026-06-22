@@ -166,7 +166,12 @@ type CostInternTable {
   summaries: Map<String, ComplexitySummary>
 }
 
-fn empty_intern_table() -> CostInternTable {
+// Distinct concept from v1.std.core.empty_intern_table (the string InternTable
+// constructor): this builds the complexity-summary CostInternTable. The names
+// must not collide — §3 single authority — so this module-local helper is named
+// for the type it constructs. (The full compile→emit closure pulls in BOTH
+// modules, so a shared `empty_intern_table` name was a real cross-module fork.)
+fn empty_cost_intern_table() -> CostInternTable {
   CostInternTable { summaries: empty_map() }
 }
 
@@ -5091,7 +5096,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   // evict its CostExpr tree — the working set is bounded by the maximum
   // frontier width of the call graph, not the total function count.
   let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
-    table: empty_intern_table(),
+    table: empty_cost_intern_table(),
     classes: empty_map(),
     violations: [],
     fan_in: fan_in,
