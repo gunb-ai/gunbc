@@ -7106,7 +7106,12 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
       Absent => concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")")
     }
   } else {
-    concat(log_line, "\ncompile_error!(\"no mock data available for dry-run operation: ", op_name, "\")")
+    // Missing dry-run fixture is a RUNTIME condition (is_dry_run() && no mock
+    // data), not a compile-time one — emitting compile_error! here gated a
+    // runtime state at compile time (§5 category error), making the whole
+    // emitted crate fail to build whenever any service op lacks a fixture.
+    // Fail closed at runtime instead: a loud panic on the unprovisioned path.
+    concat(log_line, "\npanic!(\"no mock data available for dry-run operation: ", op_name, "\")")
   }
 }
 
