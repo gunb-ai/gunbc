@@ -166,3 +166,15 @@ fn expected_gitignore() -> String {
 fn gitignore_drifted(committed: String) -> Bool {
   !(committed == expected_gitignore())
 }
+
+// The ignore-set as a flat pattern list — the COMMIT-side authority the generated-artifact registry
+// reads to derive `committed = generated AND NOT ignored` (gunbc.generated_artifact). Reuses the same
+// gitignore_authority rows and artifact_pattern producer the file emit already folds over (no second
+// authority for "what we ignore").
+fn group_patterns(g: IgnoreGroup) -> List<String> {
+  fold(g.artifacts, init: [], f: fn(acc, a) { concat(acc, [artifact_pattern(a: a)]) })
+}
+
+fn ignore_patterns() -> List<String> {
+  fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+}
