@@ -1,8 +1,3 @@
-// gunbc/workflow_yaml_project.dag — structural inverse: Workflow → YamlValue.
-//
-// `emit_yaml = serialize_yaml ∘ project_workflow_to_yaml` (DESIGN §4 one grammar,
-// both directions). Key renames mirror GitHub Actions YAML surface syntax.
-
 module gunbc.workflow_yaml_project
 
 import extdeps.formats.yaml {

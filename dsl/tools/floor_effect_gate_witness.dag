@@ -1,13 +1,3 @@
-// tools/floor_effect_gate_witness.dag — nullary Bool adapters for the effectful
-// CI gates, so the dependency-ordered scheduler (claim_executor) can run each gate
-// as a plan node (`RunnableSingleClaim` is nullary — one `(entry, function)`).
-//
-// REUSE, not re-coin (DESIGN §2/§3): the Gate→effect mapping stays the single
-// authority `tools.ci_gates.run_spec_gate` (itself driven by `gunbc_ci_spec.gates`).
-// Each adapter just pins one closed `Gate` variant and maps its ProcessExit to the
-// Bool the scheduler's per-node verdict needs. These are `func` (effectful) — the
-// host runs them in Wet mode so the transports fire.
-
 module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {

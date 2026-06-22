@@ -1,13 +1,3 @@
-// tools/ci_gates.dag — composed effectful CI gates (one resolve, one process).
-//
-// Gate list authority: `gunbc_ci_spec.gates` (not a parallel hardcoded sequence).
-// Production CI runs gates individually via floor_effect_gate_witness adapters;
-// this module remains for direct invocation.
-//
-// dissolve-on: v1 interpreter terminates effectful `fold` over ProcessExit (same
-// class as #5138 floor batch-2 loop). Until then, `main` sequences gates manually
-// (short-circuit on first failure) instead of `fold(spec.gates, …)`.
-
 module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -46,7 +36,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
   }
 }
 
-// Sequential short-circuit — order mirrors `gunbc_ci_spec.gates` until dissolve-on.
 func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
   let g0 = run_spec_gate(g: RustMonolithGate)
   let g1 = if exit_ok(g0) { run_spec_gate(g: EmitHostGate) } else { g0 }

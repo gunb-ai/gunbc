@@ -1,5 +1,3 @@
-// tools/extdeps_external_authority_transport.dag — host transport for external-authority gate.
-
 module tools.extdeps_external_authority_transport
 
 import extdeps.shell

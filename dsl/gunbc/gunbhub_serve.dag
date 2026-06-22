@@ -1,14 +1,3 @@
-// gunbc/gunbhub_serve.dag — gunbhub M2 served render surface.
-//
-// Consumer-owned ServedStaticRouteTable for the shared http-serve host
-// (quick-crane L2). Bodies are serialize_fragment output strings, composed
-// and XSS-checked at table-build time (not per-request). Host binds,
-// serves GET, returns status_on_hit+body or 404 — gunbhub supplies only the table.
-//
-// Placement: gunbc-owned product surface (ctrl README §Conventions).
-// HTTP wire facts stay in extdeps.http.server; page composition and
-// request→response binding live here.
-
 module gunbc.gunbhub_serve
 
 import std.types { HttpMethod, HttpStatus, GET }
@@ -45,8 +34,6 @@ import extdeps.http.server {
   ServedStaticRouteTable,
 }
 
-// --- Request / response carriers (dispatch witness) ------------------------
-
 type GunbhubServeRequest {
   method: HttpMethod
   path: String
@@ -57,23 +44,17 @@ type GunbhubHttpResponse {
   body: String
 }
 
-// 🟢 TERMINAL — closed serve outcome for the M2 literal-route surface.
-// Extension trigger (M3): forge-backed NotFound when object lookup fails.
 type GunbhubServeResult
   = Served { response: GunbhubHttpResponse }
   | RenderRejectedBeforeServe { reason: String }
   | RouteNotFound
   | MethodNotAllowed
 
-// 🟢 TERMINAL — React consumer page source (M2 browse route).
 type GunbhubPageSource = ReactPage { node: MarkupNode }
 
-// 🟢 TERMINAL — closed render outcome for per-request page-source serve path.
 type GunbhubRenderResult
   = RenderedHtml { html: String }
   | RenderRejected { reason: String }
-
-// --- Browse page (R1 structural compose; M3 replaces hardcoded entries) ----
 
 fn gunbhub_browse_entry(name: String) -> MarkupNode {
   ElementNode {
@@ -112,7 +93,6 @@ fn gunbhub_browse_page() -> MarkupNode {
   }
 }
 
-// Hostile fixture — javascript: href must be rejected before any response body.
 fn gunbhub_hostile_page() -> MarkupNode {
   ElementNode {
     tag: "a",
@@ -121,8 +101,6 @@ fn gunbhub_hostile_page() -> MarkupNode {
   }
 }
 
-// README doc view — M1 placeholder: react-composed body until std.markdown
-// consumer merges; swap body builder when M1 lands (table shape unchanged).
 fn gunbhub_readme_page() -> MarkupNode {
   ElementNode {
     tag: "article",
@@ -146,7 +124,6 @@ fn gunbhub_readme_page() -> MarkupNode {
   }
 }
 
-// 🟢 TERMINAL — closed compose outcome for static-table body serialization.
 type GunbhubComposeResult
   = ComposedOk { html: String }
   | ComposeRejected { reason: String }
@@ -171,7 +148,6 @@ fn gunbhub_browse_path_template() -> PathTemplate {
   }
 }
 
-// BEST-GUESS encoding (sync with quick-crane-803): single-segment /{repo-path}.
 fn gunbhub_repo_path_template() -> PathTemplate {
   PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
 }
@@ -235,8 +211,6 @@ fn path_matches_template(template: PathTemplate, path: String) -> Bool {
   st.ok && st.seg_idx == count(xs: segs)
 }
 
-// --- Render through canonical consumers ------------------------------------
-
 fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
   match source {
     ReactPage { node } =>
@@ -260,8 +234,6 @@ fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
     RenderRejected { reason: r } => RenderRejectedBeforeServe { reason: r }
   }
 }
-
-// --- Route table + host static serve table -----------------------------------
 
 type GunbhubRouteRow {
   route: HttpServerRoute
@@ -307,8 +279,6 @@ fn gunbhub_route_table() -> List<GunbhubRouteRow> {
   ]
 }
 
-// ServedStaticRouteTable the shared host consumes. Bodies serialized at compose time.
-// ComposeRejected rows are OMITTED (fail-closed: host 404s, not empty 200).
 fn gunbhub_served_static_route_table() -> ServedStaticRouteTable {
   let routes = fold(
     xs: gunbhub_route_table(),
@@ -393,8 +363,6 @@ fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {
     RouteNotFound
   }
 }
-
-// --- route → handler binding (consumer-owned; host attaches at deploy) -----
 
 fn gunbhub_node_route_bindings() -> List<NodeHttpServerRouteBinding> {
   map(

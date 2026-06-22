@@ -1,8 +1,3 @@
-// gunbc/ci_yaml_emit.dag — composed CI workflow YAML projection.
-//
-// `runs-on:` is derived from `gunbc_ci_fleet_offer` via `runner_spec_from_offer`
-// (Phase 3a seam) — see gunbc.ci_fleet + gunbc.runner_spec_from_offer.
-
 module gunbc.ci_yaml_emit
 
 import extdeps.formats.yaml { serialize_yaml }
@@ -13,7 +8,6 @@ fn expected_ci_yml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: ci_workflow))
 }
 
-// Drift check shared by the gate and discriminating witnesses (committed == projection).
 fn ci_yml_drifted(committed: String) -> Bool {
   !(committed == expected_ci_yml())
 }

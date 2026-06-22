@@ -1,8 +1,3 @@
-// tools/extdeps_external_authority_gate.dag — extdeps external-authority anchor gate.
-//
-// Runs uri + live projection + RED perturb witnesses; fail-closed on CI floor
-// (ExtdepsExternalAuthorityGate enrolled in gunbc_ci_spec).
-
 module tools.extdeps_external_authority_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
