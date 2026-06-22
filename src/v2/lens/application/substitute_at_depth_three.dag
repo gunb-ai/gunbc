@@ -1,5 +1,3 @@
-// Status: compile-only ratchet for D1 ancestor threading order (depth > 2).
-
 module v2.test.lens_application.substitute_at_depth_three
 
 import v2.lens.application { substitute_at }

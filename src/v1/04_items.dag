@@ -1,5 +1,3 @@
-// Item analysis -- classifies module items and builds item metadata.
-
 module v1.compiler.infer_items
 
 import std.types { SourceSpan }
@@ -27,10 +25,6 @@ import v1.compiler.infer_sigs {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo
 }
-
-// =========================================================================
-// Types
-// =========================================================================
 
 type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
 
@@ -65,10 +59,6 @@ type ResolvedGraph {
   diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
 }
-
-// =========================================================================
-// Functions
-// =========================================================================
 
 fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if inferred == none { [] }

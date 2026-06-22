@@ -1,4 +1,3 @@
-
 module v2.test.lens_application.rejecting_lens_blocks_before_compile
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }

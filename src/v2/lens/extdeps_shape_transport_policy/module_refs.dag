@@ -1,6 +1,3 @@
-// Scope: canonical QualifiedName module identities for extdeps_shape_transport_policy witnesses.
-// Single authority — module path from `module` declarations, not filepath nicknames.
-
 module v2.lens.extdeps_shape_transport_policy.module_refs
 
 import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }

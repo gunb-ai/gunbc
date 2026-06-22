@@ -1,4 +1,3 @@
-
 module v2.test.lens_affected_set.verified_by_in_frontier
 
 import v2.lens.affected_set { dependency_in_lens_frontier }

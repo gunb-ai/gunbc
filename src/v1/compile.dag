@@ -1,5 +1,3 @@
-// v2 compiler pipeline -- the full .dag-to-files transform.
-
 module v1.compiler.compile
 
 import v1.std.core {
@@ -41,10 +39,6 @@ import std.termination {
 import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 type SourceFile {
   path: String
   content: String
@@ -76,10 +70,6 @@ type FrontendPrepared {
   tokens: List<Token>
   newline_index: NewlineIndex
 }
-
-// =========================================================================
-// Function extraction for pipeline analyses
-// =========================================================================
 
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   typed.modules
@@ -123,22 +113,6 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
   )
 }
 
-// =========================================================================
-// Complexity analysis (opt-in; v2 emission gate unchanged)
-//
-// When enabled, classify_recursion_pattern / build_complexity_report can
-// surface ComplexityUnknown for non-descending self-calls (fn spin(n: n)).
-//
-// v2 does NOT fail-closed on those diagnostics today — emission gates on
-// typed_diags only (see type_errors filter below); main.rs and dag run
-// carve out ComplexityUnknown (00_core.dag is_interpreter_blocking_diagnostic,
-// cx-design.md C6). Tier-1 CX enforcement is v3 Pure Bootstrap scope.
-//
-// Default-off skips build_complexity_report (~356s full-src compile) because
-// the report is not consumed by emission. Callers that need the report or
-// CX diagnostics pass CompilePipelineOptions { analyze_complexity: true }.
-// =========================================================================
-
 type CompilePipelineOptions {
   analyze_complexity: Bool
 }
@@ -158,10 +132,6 @@ fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
     make_error_node(diagnostic: ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
   )
 }
-
-// =========================================================================
-// Diagnostic collection
-// =========================================================================
 
 fn empty_artifact_plan() -> ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
@@ -195,11 +165,6 @@ fn json_optional_string(value: String?) -> String {
   }
 }
 
-// -------------------------------------------------------------------------
-// DAG artifact v0.2.0: collect each Node once, emit NodeId ($ref) elsewhere.
-// See v1.compiler.artifact { DagArtifact, DagNodeId } and audit doc.
-// -------------------------------------------------------------------------
-
 type DagCollectAcc {
   seen: Map<String, String>
   order: List<Node>
@@ -212,8 +177,6 @@ type DagCollectPending {
   fp: String
 }
 
-// Provisional location key until v2 content_hash (see DagNodeId 🟡 gate). Collection
-// fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
 fn dag_node_key(node: Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
   concat(
@@ -224,18 +187,12 @@ fn dag_node_key(node: Node) -> String {
     })
 }
 
-// Resolved on expression nodes is ordinary type inference (ExprVar, calls, etc.).
-// Only NoExprData identity shells (type/import back-links) share the declaration anchor.
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
-// dissolve-on: DagNode exposes a modeled identity-shell fact (or anchor walk is structurally
-// total on shells) so collection does not match expr_data × InferredNode here;
-// forbidden: permanent cross-pass is_* over Node storage shape outside canonical query surface.
 fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
   match node.expr_data {
     NoExprData =>
       match node.inferred {
         Present { value: Resolved { node: _ } } =>
-          // Type/import back-links only — never peel nodes that carry structure.
+
           node.body == none && node.transport == none
             && (node.children |> count) == 0 && (node.params |> count) == 0
         _ => false
@@ -441,7 +398,7 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
           collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
         }
       } else {
-        // Authored span: provisional key may alias; first canonical record wins until v2 content_hash.
+
         acc
       }
     Absent => {
@@ -462,9 +419,6 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   }
 }
 
-// Import statements (module.params) are not collected: module shell skips param walk,
-// imports serialize inline via imports[] (string names), and ref validation skips
-// module-shell params + import-statement children (T-37).
 fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollectAcc {
   let acc = dag_collect_insert(node: module.module, acc: acc)
   module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
@@ -485,7 +439,6 @@ fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
   typed.modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
 
-// Only called after dag_emit_ref_errors passes (fail-closed preflight).
 fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Present { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
@@ -550,9 +503,6 @@ fn field_value_shape_name(value: FieldValueShape) -> String {
     OptionalValue => "OptionalValue"
   }
 }
-
-// (P5.3: severity_name and error_category_name deleted -- severity and category
-//  are now strings stored in diagnostic Node properties, not enum variants.)
 
 fn var_binding_kind_name(value: VarBindingKind) -> String {
   match value {
@@ -981,24 +931,17 @@ fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_t
     "}")
 }
 
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
-// Shape-filter on module shell (all params are import slots); not a semantic Module tag.
 fn is_module_shell_node(n: Node) -> Bool {
   n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
     && n.transport == none && n.uses |> count == 0
     && n.params |> all(p => is_import_slot_node(p: p))
 }
 
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
 fn is_import_slot_node(n: Node) -> Bool {
   import_is_all(n: n) || (
     n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
 }
 
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
-// Shape-filter for import statements (import_is_all OR specific-import name children),
-// NOT a general semantic discriminator — safe here because callers gate on traversal
-// context (dag_emit_check_node_refs on collected order nodes; module.params slots).
 fn is_import_statement_node(n: Node) -> Bool {
   import_is_all(n: n) || (
     (n.children |> count) > 0 && n.body == none && n.expr_data == NoExprData
@@ -1184,10 +1127,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   }
 }
 
-// =========================================================================
-// Full pipeline
-// =========================================================================
-
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
   let frontend = front_end_sources(sources: sources)
   CompileResult { files: [], diagnostics: frontend.diagnostics }
@@ -1224,9 +1163,6 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   )
 }
 
-// Discovery-corpus merged resolve: same pipeline as `compile_to_resolved`, but
-// advisory-demoted typecheck diagnostics do not nil the typed graph (SCAFFOLD in
-// `00_core.dag`; consumed by `discover_owned_data_decls`).
 fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
   compile_to_resolved_with_options_gated(
     sources: sources,

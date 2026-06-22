@@ -1,12 +1,7 @@
-// v2 type environment -- structural type bindings and lookup.
 module v1.compiler.infer_env
 
 import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
-
-// =========================================================================
-// Types
-// =========================================================================
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -22,10 +17,6 @@ type TypeBinding {
   resolved: Node
   provenance: SubValueRelation
 }
-
-// =========================================================================
-// Environment operations
-// =========================================================================
 
 fn is_recursive_type(env: TypeEnv, ident: Int) -> Bool {
   match map_get(env.recursive_type_set, ident) {

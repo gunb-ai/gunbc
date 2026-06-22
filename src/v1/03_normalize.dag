@@ -1,14 +1,3 @@
-// v2 normalization pass -- structural graph rewrite between resolve and infer.
-//
-// P3.7: arity bridge deleted. Arity enforcement via hardcoded
-// parameterized_type_arity is removed. Arity is now structural:
-// type declarations carry params, and generic substitution in
-// resolve_node_bounded checks declaration params at resolution time.
-//
-// The normalizer validates structural invariants that should hold
-// after resolve and before infer:
-//   - No bare container types (List, Map, Set, etc. with 0 type parameters)
-
 module v1.compiler.normalize
 
 import v1.std.core {
@@ -21,18 +10,10 @@ import v1.std.core {
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
 import std.types { container_expected_arity }
 
-// =========================================================================
-// Output types
-// =========================================================================
-
 type NormalizeResult {
   graph: ModuleGraph
   diagnostics: List<ErrorNode>
 }
-
-// =========================================================================
-// Bare container detection
-// =========================================================================
 
 fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
@@ -73,10 +54,6 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
   let prop_diags = flat_map(n.properties, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))
   flat_map([self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags], d => d)
 }
-
-// =========================================================================
-// Normalization entry point
-// =========================================================================
 
 fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
   let diags = flat_map(graph.modules, m => {

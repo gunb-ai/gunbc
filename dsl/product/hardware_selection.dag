@@ -1,4 +1,3 @@
-
 module product.hardware_selection
 
 import std.types { Int, NonEmptyStr, Bool, List }
@@ -206,7 +205,6 @@ fn config_axes(cfg: SystemConfig) -> HardwareAxes {
 fn config_is_realizable(cfg: SystemConfig) -> Bool {
   dram_module_is_realizable(module: cfg.memory.module, jedec: cfg.memory.jedec)
 }
-
 
 fn bandwidth_count(bw: Bandwidth) -> Int {
   measure_count(m: bw)
