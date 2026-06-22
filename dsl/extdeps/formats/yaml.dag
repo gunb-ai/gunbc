@@ -179,7 +179,7 @@ fn entry_doc(entry: YamlKeyValue) -> Doc {
       }
     YamlString { value: s } =>
       if string_contains(s: s, pattern: "\n") {
-        multiline_entry_doc(key: key, s: s)
+        multiline_block_doc(prefix: concat(key, ": "), s: s)
       } else {
         doc_line_of(text: concat(concat(key, ": "), emit_inline_scalar_text(s: s)))
       }
@@ -195,6 +195,12 @@ fn block_sequence_element_doc(e: YamlValue) -> Doc {
   match e {
     YamlMapping { entries: ents } =>
       doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: mapping_body_doc(entries: ents))])
+    YamlString { value: s } =>
+      if string_contains(s: s, pattern: "\n") {
+        multiline_block_doc(prefix: "- ", s: s)
+      } else {
+        doc_line_of(text: concat("- ", emit_inline_scalar_text(s: s)))
+      }
     _ => doc_line_of(text: concat("- ", emit_scalar(v: e)))
   }
 }
@@ -211,6 +217,12 @@ fn project_yaml_to_doc(v: YamlValue) -> Doc {
         doc_line_of(text: emit_flow_sequence(elements: els))
       } else {
         block_sequence_doc(elements: els)
+      }
+    YamlString { value: s } =>
+      if string_contains(s: s, pattern: "\n") {
+        multiline_block_doc(prefix: "", s: s)
+      } else {
+        doc_line_of(text: emit_inline_scalar_text(s: s))
       }
     _ => doc_line_of(text: emit_scalar(v: v))
   }
