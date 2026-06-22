@@ -2,6 +2,16 @@ module extdeps.audit.cloudevents
 
 import std.types { NonEmptyStr, Timestamp }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md"
+  }
+}
+
 type CloudEventId = NonEmptyStr where brand("CloudEventId")
 type CloudEventSource = NonEmptyStr where brand("CloudEventSource")
 type CloudEventSpecVersion = NonEmptyStr where brand("CloudEventSpecVersion")

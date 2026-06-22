@@ -8,6 +8,16 @@ import extdeps.boot.freestanding_payload {
 }
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.kernel.org/doc/html/latest/arch/x86/boot.html"
+  }
+}
+
 type LinuxX86BootImage {
   kernel_digest: NonEmptyStr,
   cmdline: List<String>,

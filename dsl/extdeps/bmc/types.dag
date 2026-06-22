@@ -11,6 +11,16 @@ import std.measure {
 }
 import std.types { NonEmptyStr, Int, List }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
 type RedfishPowerState = On | Off | PoweringOn | PoweringOff
 
 type RedfishProcessorSummary {
