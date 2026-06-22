@@ -36,7 +36,7 @@ import v2.compiler.infer {
   algebra_ref_is_grounded,
   canonical_grounding_for_node
 }
-import v2.std.coercion {
+import v2.std.coercion_fold {
   CoercionCandidateSet,
   CoercionResult,
   coercion_candidate_set_from_declared_inhabitants,

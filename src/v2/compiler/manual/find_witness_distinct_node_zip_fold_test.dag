@@ -4,7 +4,7 @@
 module v2.test.manual.find_witness_distinct_node_zip_fold
 
 
-import v2.std.coercion {
+import v2.std.coercion_fold {
   CoercionCandidateSet,
   Exact,
   Identity,

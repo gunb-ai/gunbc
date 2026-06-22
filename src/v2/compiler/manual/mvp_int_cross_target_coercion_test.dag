@@ -14,7 +14,7 @@ import v2.extdeps.coercion_widening {
   coercion_fold_mvp_python_int_to_rust_i32_narrowing,
   coercion_fold_mvp_rust_i32_to_python_int_widening
 }
-import v2.std.coercion {
+import v2.std.coercion_fold {
   CoercionQuality,
   CoercionResult,
   Exact,

@@ -1,8 +1,13 @@
-// std/coercion.dag -- Shared coercion vocabulary.
+// std/coercion.dag -- TYPE REPRESENTATION vocabulary.
 //
 // Single authority for coercion schema types. Per-language files
 // (extdeps/languages/*/types.dag) import these types and instantiate
 // data. This prevents schema drift across language targets.
+//
+// DISAMBIGUATION: This module defines TYPE REPRESENTATION (how .dag types render in
+// target languages). It is distinct from src/v2/std/coercion_fold.dag, which implements
+// the COERCION FOLDING ALGORITHM (witness-based type selection via find_witness).
+// See coercion_fold.dag for the complementary vocabulary.
 //
 // IDENTITY NOTE (M4/Lane 1):
 // dag_name and algebra fields are currently String-keyed. This is the

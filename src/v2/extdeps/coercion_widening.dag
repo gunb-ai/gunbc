@@ -9,7 +9,7 @@ module v2.extdeps.coercion_widening
 
 import v2.extdeps.languages.python { python_int_inhabitant_node }
 import v2.extdeps.languages.rust { rust_inhabitant_i32_node }
-import v2.std.coercion {
+import v2.std.coercion_fold {
   CoercionCandidateSet,
   CoercionResult,
   coercion_fold_refinement_widening

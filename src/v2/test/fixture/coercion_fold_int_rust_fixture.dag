@@ -7,7 +7,7 @@ module v2.test.coercion_fold_int_rust_fixture
 
 
 import v2.extdeps.languages.rust { rust_inhabitant_i32_node }
-import v2.std.coercion {
+import v2.std.coercion_fold {
   CoercionCandidateSet,
   CoercionResult,
   coercion_fold

@@ -1,10 +1,16 @@
-// src/v2/std/coercion.dag
+// src/v2/std/coercion_fold.dag
 // Scope: target coercion fold via find_witness + TargetSelection (T-9/T-10 wrapper).
 // Anchor: gunbc#4760.
 // Status: W-T-10 — coercion_fold lifts FindWitnessResult → CoercionResult via find_witness.
+//
+// DISAMBIGUATION: This module implements coercion FOLDING (witness-based type selection).
+// It is distinct from dsl/std/coercion.dag, which defines TYPE REPRESENTATION
+// (TypeCheckpoint, InhabitantDecl, CallableRepr — how .dag types render in target languages).
+// Both modules concern coercion, but at different semantic levels:
+// - dsl/std/coercion: "what does this type look like in Rust/Python/Go?"
+// - v2.std.coercion_fold: "can this type be coerced to another type, and how?"
 
-
-module v2.std.coercion
+module v2.std.coercion_fold
 
 
 import v2.std.algebra { Empty, list_append, list_snoc_item }

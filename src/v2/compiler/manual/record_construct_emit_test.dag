@@ -27,7 +27,7 @@ import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v2.std.coercion { CoercionQuality, Exact, Identity, Widened }
+import v2.std.coercion_fold { CoercionQuality, Exact, Identity, Widened }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

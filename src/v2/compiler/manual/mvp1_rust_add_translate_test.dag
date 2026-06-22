@@ -52,7 +52,7 @@ import v2.test.manual.infer_ground_add_mvp {
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.collection { Map, empty_map }
-import v2.std.coercion {
+import v2.std.coercion_fold {
   CoercionQuality,
   Exact,
   Identity,
