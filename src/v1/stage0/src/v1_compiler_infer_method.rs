@@ -319,6 +319,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "medium_structure_leak_facts".to_string(),
+            list_of_type_variable("medium_structure_leak_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "fact_cardinality_cross_tree_coexistence_count".to_string(),
             int_type(),
         );
