@@ -1,10 +1,3 @@
-// v2 compiler test harness template for Rust stage0.
-//
-// Defines the Rust source text for the compiler_tests module.
-// This is the single authority for the stage0 test harness.
-// The emit layer calls compiler_tests_source() and writes the result
-// as src/compiler_tests.rs in the emitted crate.
-
 module v1.compiler.compiler_tests_rust
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
