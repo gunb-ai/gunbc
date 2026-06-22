@@ -27,7 +27,7 @@
 
 module gunbc.roadmap_authority
 
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc,
   SectionElement, section_prose, section_group,
@@ -35,6 +35,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import ctrl.process_algebra { ProcessNodeId }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
+import extdeps.languages.markdown { serialize_markdown_source }
 
 // === Node constructors (terse line authoring) ===============================
 
