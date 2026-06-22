@@ -535,17 +535,18 @@ fn sccache_server_cgroup_rel() -> Option<String> {
         if !name.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
-        if fs::read_to_string(p.join("comm")).unwrap_or_default().trim() != "sccache" {
+        if fs::read_to_string(p.join("comm"))
+            .unwrap_or_default()
+            .trim()
+            != "sccache"
+        {
             continue;
         }
-        if let Some(rel) = fs::read_to_string(p.join("cgroup"))
-            .ok()
-            .and_then(|cg| {
-                cg.lines()
-                    .find_map(|l| l.strip_prefix("0::"))
-                    .map(|s| s.trim().to_string())
-            })
-        {
+        if let Some(rel) = fs::read_to_string(p.join("cgroup")).ok().and_then(|cg| {
+            cg.lines()
+                .find_map(|l| l.strip_prefix("0::"))
+                .map(|s| s.trim().to_string())
+        }) {
             return Some(rel);
         }
     }
