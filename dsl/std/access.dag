@@ -1,39 +1,9 @@
-// std/access.dag -- the access-control abstraction, DERIVED from extdeps/access (not re-coined).
-//
-// The commonality of the systems modeled in extdeps/access (zanzibar, aws_iam, posix, rbac) and
-// the vendor IAMs (cloud/gcp/iam, github): every one answers the same question — may this SUBJECT
-// perform this ACTION on this OBJECT? The decision procedure differs per system, so this is the
-// agnostic query/decision shape — DESIGN §4 Realization (one interface, N system handlers) — NOT
-// any single system's mechanism. Validated by test/claim/access_validation_test.dag, which maps each
-// extdeps system into this shape; if a system can't be expressed, this abstraction is wrong.
-//
-// Derivation receipt (what they share, and where the shape STRAINS):
-//   * An attribute-carrying Subject / Action / Object triple — fits POSIX (DAC), RBAC, Zanzibar
-//     (ReBAC), GitHub, AND AWS IAM (ABAC) once S/A/O carry their attributes (see RESOLVED below).
-//     The generic params are meant to be instantiated with RICH types (a subject with its claims,
-//     an action with its parameters), not bare ids.
-//   * Decision = Permit | Deny, combined Deny-wins (AWS IAM explicit-deny-overrides; the
-//     conservative / fail-closed meet — DESIGN §5).
-//   * Subject indirection (roles / usersets / owner-classes / group membership) is each system's
-//     `decide` internals, not part of the shared shape.
-//   * RESOLVED (was "ABAC needs a context dimension"): AWS IAM Conditions do NOT need a new opaque
-//     dimension — they DECOMPOSE. Most condition keys are attribute-carrying S/A/O (s3:prefix → an
-//     ACTION parameter; principal/resource tags → subject/object attributes); the environmental
-//     remainder grounds in frameworks we already have (aws:SourceIp internal-CIDR → the request's
-//     NetworkLocality; aws:CurrentTime → Timestamp). So `decide` reads grounded S/A/O fields, never
-//     an opaque context map — the generics suffice and this core is UNCHANGED. Validated by
-//     test.claim.access_iam_validation (an aws:SourceIp + s3:prefix + MFA statement decided entirely
-//     from grounded fields, with no context type). "Context" as a `C` dimension was itself a nickname.
-//   * STRAIN: Zanzibar fuses action + subject-grouping into one `relation` — it maps, but the
-//     action and the grouping key are the same string.
-
 module std.access
 
 type AccessDecision
   = Permit
   | Deny
 
-// Conservative combine: Deny wins (AWS IAM explicit-deny-overrides; the fail-closed meet, §5).
 fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
   match a {
     Deny => Deny
@@ -41,15 +11,12 @@ fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
   }
 }
 
-// The universal access query.
 type AccessRequest<S, A, O> {
   subject: S
   action: A
   object: O
 }
 
-// A system inhabits the abstraction by providing a `decide`. The data witnesses in
-// test/claim/access_validation_test.dag (posix_access_policy, rbac_access_policy, …) are the validation.
 type AccessPolicy<S, A, O> {
   decide: fn(AccessRequest<S, A, O>) -> AccessDecision
 }

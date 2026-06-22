@@ -1,10 +1,4 @@
-// src/v2/std/model_core.dag
-// Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Status: T-33 modeled.
-
-
 module v2.std.model_core
-
 
 import v2.std.collection { List, Map }
 import v2.std.diagnostic {
@@ -32,9 +26,6 @@ import v2.std.logic {
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.witness { Holds, Violates, Witness }
 
-
-// 🟢 terminal — closed model_core primitive fact-axis vocabulary.
-// G.0 keys `PerLanguageFactBundleKey.fact_axis` here; target_model catalog axes widen in G.1.
 type ModelCorePrimitiveFactAxis
   = ModelCoreFactAxisWidth {}
   | ModelCoreFactAxisSignedness {}
@@ -43,12 +34,10 @@ type ModelCorePrimitiveFactAxis
   | ModelCoreFactAxisSurfaceSpelling {}
   | ModelCoreFactAxisOverflowDisposition {}
 
-// 🟡 predicate-dissolution interim — feature:model-core-primitive-fact-axis-role-classification — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: derive axis-role predicates from shared projection receipts and the closed fact-axis coproduct; forbidden: untracked parallel role-classifier predicates.
 fn model_core_primitive_fact_axis_is_surface(axis: Symbol) -> Bool {
   axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {})
 }
 
-// 🟡 predicate-dissolution interim — feature:model-core-primitive-fact-axis-role-classification — bound task: node://adhoc-248e4e6c-3da — dissolve-on-arrival: derive axis-role predicates from shared projection receipts and the closed fact-axis coproduct; forbidden: untracked parallel role-classifier predicates.
 fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
   (axis == discriminant(v: ModelCoreFactAxisEncoding {}))
     || (axis == discriminant(v: ModelCoreFactAxisWidth {}))
@@ -57,14 +46,10 @@ fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
     || (axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}))
 }
 
-
 type PrimitiveFactBundle {
   substrate_carrier: Node
   spec_facts: Map<Symbol, Node>
 }
-
-
-
 
 fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
   Diagnostic {
@@ -74,41 +59,33 @@ fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
   }
 }
 
-
 type AlgebraInhabitanceDecl {
   algebra: Node
   inhabitant: Node
   witness: Node
 }
 
-
 type AlgebraLawObligation {
   inhabitance_witness: Node
   law: Node
 }
 
-
 type ResourceAccess {
   resource: Node
 }
 
-
 type EffectSignature {
   signature: Node
 }
-
 
 type PrimitiveOperationRef {
   operation: Node
   effect_signature: EffectSignature
 }
 
-
-// 🟡 needs-more-work — feature:model-core-effect-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) binds EffectSemanticsDecl.operations when first PrimitiveOperationRef carries non-trivial effect (bind gunbc#4764)
 type EffectSemanticsDecl {
   operations: List<PrimitiveOperationRef>
 }
-
 
 type PartialOperationDecl {
   operation: Node
@@ -116,18 +93,13 @@ type PartialOperationDecl {
   discharge: PartialityDischarge
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type PartialityDischarge
   = FailClosedAtBoundary { reason: Symbol }
   | RefinementHonoring { validation: Node }
 
-
-// 🟡 needs-more-work — feature:model-core-partiality-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) populates PartialitySemanticsDecl.operations per operator partiality substrate (bind gunbc#4764)
 type PartialitySemanticsDecl {
   operations: List<PartialOperationDecl>
 }
-
 
 fn field_partiality_decl() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
@@ -141,7 +113,6 @@ fn field_partiality_decl() -> PartialitySemanticsDecl {
   }
 }
 
-
 type ModelCore {
   primitives: List<PrimitiveFactBundle>
   inhabitance: List<AlgebraInhabitanceDecl>
@@ -150,14 +121,11 @@ type ModelCore {
   partiality: PartialitySemanticsDecl
 }
 
-
-// 🟡 needs-more-work — feature:model-core-law-expression-carrier — scaffold:T-33-wave2 · the law-kind symbols below are bounded schedule keys for BooleanAlgebra law obligations; the law Node also carries the structural algebra Node and inhabitance witness. dissolve-on: std/algebra exports typed law/equation Nodes for BooleanAlgebra laws, replacing these kind atoms with structural law expressions.
 type ModelCoreWave1BoolLawKey
   = ModelCoreWave1BoolBoundedLatticeIdentities
   | ModelCoreWave1BoolDistributivity
   | ModelCoreWave1BoolComplementInvolution
   | ModelCoreWave1BoolComplementBounds
-
 
 fn model_core_wave1_atom(id: Symbol) -> Node {
   Node {
@@ -166,7 +134,6 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
   if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
@@ -180,7 +147,6 @@ fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) ->
   }
 }
 
-
 fn model_core_wave1_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
@@ -189,7 +155,6 @@ fn model_core_wave1_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, No
   }
 }
 
-
 fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: bool_primitive_facts_node(facts: bool_primitive_facts),
@@ -197,16 +162,13 @@ fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
   }
 }
 
-
 fn model_core_wave1_bool_inhabitance_witness() -> Node {
   bool_boolean_algebra_node()
 }
 
-
 fn model_core_wave1_bool_algebra_node() -> Node {
   bool_boolean_algebra_type_node()
 }
-
 
 fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
   let witness = model_core_wave1_bool_inhabitance_witness()
@@ -216,7 +178,6 @@ fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
     witness: witness
   }
 }
-
 
 fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
   Node {
@@ -239,14 +200,12 @@ fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
 }
 }
 
-
 fn model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolLawKey) -> AlgebraLawObligation {
   AlgebraLawObligation {
     inhabitance_witness: model_core_wave1_bool_inhabitance_witness(),
     law: model_core_wave1_law_node(key: key)
   }
 }
-
 
 fn wave1_model_core() -> ModelCore {
   ModelCore {
@@ -267,16 +226,13 @@ fn wave1_model_core() -> ModelCore {
   }
 }
 
-
 fn wave1_void() -> ModelCore {
   wave1_model_core()
 }
 
-
 type PrimitiveBundleSubstrateHead
   = PrimitiveBundleSubstrateHeadMissing
   | PrimitiveBundleSubstrateHeadFound { substrate: Node }
-
 
 fn model_core_empty_conj_node() -> Node {
   Node {
@@ -286,17 +242,12 @@ fn model_core_empty_conj_node() -> Node {
   }
 }
 
-
 fn primitive_fact_bundle_substrate(bundle: PrimitiveFactBundle) -> Node {
   match bundle {
     PrimitiveFactBundle { substrate_carrier: substrate, spec_facts: _ } => substrate
   }
 }
 
-
-// 🟡 gated — feature:model-core-node-projection — consumer:v2.std.language_model.language_model_to_node —
-// dissolve-on: ModelCore core edge projects primitives/inhabitance/laws/effects/partiality as named Conj facts;
-// forbidden: lossy head-only primitive substrate projection without this gate (facts-flow-forward, DESIGN.md §3).
 fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>) -> Node {
   match fold_list(
     xs: bundles,
@@ -315,7 +266,6 @@ fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>)
     PrimitiveBundleSubstrateHeadMissing => model_core_empty_conj_node()
   }
 }
-
 
 fn model_core_first_primitive_substrate(core: ModelCore) -> Node {
   primitive_fact_bundle_list_head_substrate(bundles: core.primitives)

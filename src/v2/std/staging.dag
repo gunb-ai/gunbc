@@ -1,18 +1,3 @@
-// v2.std.staging — Kleisli composition + stage caching for the Outcome (railway) monad.
-// (Named `staging`, not `pipeline`: `pipeline` is a reserved item keyword — dag_keyword_set in
-// extdeps/languages/dag/syntax.dag — so a module path segment `pipeline` parses inside `import`
-// but cannot round-trip as the `^pipeline` qualified-name port-literal the source-root-ingest
-// manifest emits.)
-//
-// `then_outcome(f, g)` composes two fail-closed stages — `f: A -> Outcome<B>` and
-// `g: B -> Outcome<C>` — into one `A -> Outcome<C>`. It short-circuits on the first
-// `Rejected` and threads/accumulates diagnostics, both inherited from `bind_outcome`
-// (this is `bind_outcome` under a closure, so it cannot weaken the fail-closed contract).
-// A staged transform — e.g. the compiler's tokenize -> parse -> normalize -> resolve ->
-// translate — is the right-fold of its stages under this operator: the stages become
-// first-class, individually-typed values instead of lambdas buried in a nested
-// `bind_outcome` pyramid. (DESIGN §4: one epistemic chain run in a direction; §2: one
-// combinator, every pipeline.)
 module v2.std.staging
 
 import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
@@ -24,26 +9,10 @@ fn then_outcome<A, B, C>(
   fn(x) { bind_outcome(o: f(x), f: g) }
 }
 
-// --- stage caching --------------------------------------------------------
-//
-// A probe of a stage's cache over its input: `Hit` carries the memoized result; `Miss`
-// means run the stage. A domain coproduct (deliberately NOT `Optional`/`Witness` — the
-// kernel conflates a generically-returned `Optional<B>` with `Witness`, the model<->realization
-// fork surfacing in the type system) so the cache's intent is explicit and unambiguous.
 type CacheProbe<B>
   = Miss
   | Hit { value: B }
 
-// `cached_stage(lookup, stage)` wraps a stage with a content-keyed `lookup` (supplied by the
-// host realization layer): a HIT returns the cached result and the stage is NOT run; a MISS
-// runs it. This is the PURE half — the HIT/MISS decision — sound because a stage is a pure
-// function of its input (DESIGN §2 Realization: content-addressed pure-spec). Transparent
-// cross-call persistence and the content-hashing of the key are the host realization carrier
-// (the fail-closed lockdown's cache-key-on-raw-bytes + warm==cold-oracle work). Reifying
-// stages as values (`then_outcome`) is exactly what makes wrapping one with caching local.
-// Match the probe through a TYPED parameter (like then_outcome routes through bind_outcome):
-// a direct inline `match lookup(x)` mis-infers the generic fn-param result as kernel `Witness`,
-// but passing it into `probe: CacheProbe<B>` pins the type.
 fn resolve_probe<A, B>(
   probe: CacheProbe<B>,
   stage: fn(A) -> Outcome<B>,

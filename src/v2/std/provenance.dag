@@ -1,9 +1,3 @@
-// src/v2/std/provenance.dag
-// Scope: source-text provenance substrate (T-8 / PROV A-pivot).
-// Status: Phase 1+2 landed — on-tree Node.span dissolved (#4604 revert); off-tree SpanIndex
-//   (OccurrenceId → OriginEvent) carrier + record/lookup/merge substrate
-//   (design-provenance-span.md §4.5).
-
 module v2.std.provenance
 
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
@@ -22,8 +16,6 @@ import v2.std.node { Node, OccurrenceId, Symbol }
 import v2.std.occurrence_id { occurrence_id_eq }
 import v2.std.witness { Holds, Violates, Witness }
 
-// --- A-pivot off-tree provenance (design-provenance-span.md §4.5) ---
-
 type OriginEvent
   = FromSource { locus: Locus }
   | DerivedBy { producer: Symbol, from: List<OccurrenceId> }
@@ -38,7 +30,6 @@ type SpanIndexEntry {
   event: OriginEvent
 }
 
-// List-backed index — linear lookup/merge (design-provenance-span.md §4.4 wave-1 scale).
 type SpanIndex {
   entries: FreeMonoid<SpanIndexEntry>
 }
@@ -55,7 +46,6 @@ fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> 
     )
   }
 }
-
 
 fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -101,13 +91,11 @@ fn span_index_merge_entries(
   )
 }
 
-// Wave-2: compose memoized parse-cell indices (left wins on id collision).
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   SpanIndex {
     entries: span_index_merge_entries(base: base.entries, incoming: incoming.entries)
   }
 }
-
 
 fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -134,7 +122,6 @@ fn span_index_resolve_textual_locus_from_ids(
   )
 }
 
-// Walk DerivedBy/GeneratedBy chains to the source-text frontier (design-provenance-span.md §4.4).
 fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witness<Locus> {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>

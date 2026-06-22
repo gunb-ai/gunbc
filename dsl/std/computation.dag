@@ -1,100 +1,3 @@
-// std/computation.dag -- Computational lowering: syntax to bounded primitives.
-//
-// Every computation in .dag lowers to one of the three iteration primitives
-// defined in iteration.dag: fold, descend, repeat. This file defines the
-// LOWERING TABLE that maps frontend syntax patterns to those primitives.
-//
-// This is the "behavioral algebra" — paralleling algebra.dag for types.
-// algebra.dag says "Int inhabits OrderedRing, therefore add/mul/compare exist."
-// computation.dag says "self(child) inhabits Descend, therefore it terminates."
-//
-// DESIGN PRINCIPLE:
-// No pattern is rejected. Every computation has a finite bound. The
-// compiler always succeeds in lowering; the question is not "does this
-// terminate?" but "what is its bound?" The lowering table is exhaustive
-// and every call pattern has a bound.
-//
-// BOUNDED TRUTH:
-//
-//   In a system built on Bit/Word64, there is no infinity.
-//   True is a Bit (Classical), not a philosophical statement.
-//   The largest representable value is 2^63 - 1 = 9,223,372,036,854,775,807.
-//
-//   while(true)      = repeat(max_int, ...)     -- 292 years at 1ns/iter
-//   loop { ... }     = repeat(max_int, ...)     -- same
-//   self(same_arg)   = repeat(max_int, ...)     -- same
-//
-//   The developer writes "forever." The compiler sees "bounded." The cost
-//   algebra reports the bound honestly. This is not approximation — it is
-//   the correct answer in a finite system.
-//
-// RELATIONSHIP TO OTHER FILES:
-//
-//   iteration.dag   — declares the three primitives (what)
-//   termination.dag — proves termination via ranking functions (why)
-//   computation.dag — maps syntax to primitives (how) ← THIS FILE
-//   algebra.dag     — maps types to algebraic structures (parallel design)
-//   primitives.dag  — cost contracts per builtin operation
-//
-// CONCEPT DAG LAYERS (complete inventory):
-//
-//   Layer -1: Constructors    — Product, Coproduct, Terminal
-//             (constructors.dag)
-//
-//   Layer  0: Logic + Bit     — Classical(True|False), Bit, Byte, Word64
-//             (logic.dag, bit.dag)
-//
-//   Layer  1: Algebra         — Magma → Semigroup → Monoid → Ring → Field
-//             (algebra.dag)     BooleanAlgebra, FreeMonoid, PartialFunction
-//                               AlgebraProfile templates for type enrichment
-//
-//   Layer  2: Kernel types    — Int = OrderedRing<Word64>
-//             (types.dag,       Float = Field<Word64>
-//              integer.dag,     String = FreeMonoid<Char>
-//              float.dag,       Bool = BooleanAlgebra<Classical>
-//              string_type.dag)
-//
-//   Layer  3: Containers      — List<T> = FreeMonoid<T>
-//             (containers.dag,  Set<A> = BooleanAlgebra<A>
-//              stack.dag)       Map<K,V> = PartialFunction<K,V>
-//                               Stack<T> = recursive cons list
-//
-//   Layer  4: Iteration       — fold (bounded by |collection|)
-//             (iteration.dag)   descend (bounded by |tree|)
-//                               repeat (bounded by N)
-//                               repeat_until (bounded by min(N, k))
-//
-//   Layer  5: Computation     — CallPattern → IterationPrimitive lowering
-//             (THIS FILE)       SizeBound: what bounds the computation
-//                               ComputationProfile: enrichment for expressions
-//
-//   Layer  6: Termination     — DescentEvidence lattice
-//             (termination.dag) RankingDimension (what decreases)
-//                               TerminationProof (lexicographic composition)
-//
-//   Layer  7: Cost            — CostExpr, SizeExpr (symbolic cost terms)
-//             (primitives.dag)  PrimitiveContract (cost per builtin)
-//
-// THE SYSTEM UNDERSTANDS:
-//
-//   1. Node/DAG                              (structural carrier)
-//   2. Product/Coproduct                     (structural connectives)
-//   3. Bit                                   (truth value, finite)
-//   4. Ring/Field/BooleanAlgebra/FreeMonoid   (value algebra)
-//   5. fold/descend/repeat                   (iteration — THE bottleneck)
-//
-//   Everything else is sugar. A developer writes while/for/self/+/-/list.map
-//   and the compiler lowers it all to the above. If it can't lower, it
-//   would reject — but the bounded truth principle means it always can.
-//
-// CLOSURE PROPERTY:
-//
-//   Composition of bounded computations is bounded.
-//   fold inside descend: O(|tree| * max_collection_per_node)
-//   repeat inside fold: O(|collection| * N)
-//   descend inside descend: O(|outer_tree| * max_inner_tree_per_node)
-//   The cost is the product of bounds — possibly enormous, but finite.
-
 module std.computation
 
 import std.iteration { }
@@ -112,146 +15,47 @@ import std.algebra {
   kernel_algebra_profile
 }
 
-// =========================================================================
-// Size bounds: what limits a computation
-//
-// Every computation is bounded by a SizeBound. This is the finite quantity
-// that the iteration primitive counts down toward zero.
-//
-// SizeBound is a FLAT enum — not recursive. Each variant names the source
-// of the bound. The actual numeric value is determined at compile time
-// (for constants/Forever) or tracked symbolically (for parameters/collections).
-// =========================================================================
-//
-// 🟡 MIXED coproduct — size-bound source for lowering. Dissolution: `param` / `witness` /
-// `element` string bridges on collection-like bounds → structural size-parameter refs when
-// reflected params exist; `Forever` stays a terminal finite-bound atom.
-// `ParserStreamSize` / `WorklistDrainSize` keep parser-advance vs worklist-drain distinct from
-// generic `CollectionSize` (P2 facts-flow-forward). `ExplicitCount*` uses Peano for strictly
-// positive repeat counts and a zero tag so negative literals are not representable (P2 / P4).
-
 type SizeBound
-  = CollectionSize { param: String }   // |list|, |set|, |map.keys| — finite by Layer 3
-  | ParserStreamSize { witness: String } // parser advance: token-stream / state param name
-  | WorklistDrainSize { element: String }  // worklist drain: set / element param name
-  | TreeSize { param: String }         // |node.descendants| — finite by DAG acyclicity
-  | ArithmeticParam { param: String }  // function parameter n — finite by Word64
-  | ExplicitCountZero                  // repeat / bound literal 0 (no negative inhabitant)
-  | ExplicitCountPositive { steps: PositiveDescentAmount }  // repeat k, k ≥ 1 structurally
-  | Forever                            // the largest representable bound
+  = CollectionSize { param: String }
+  | ParserStreamSize { witness: String }
+  | WorklistDrainSize { element: String }
+  | TreeSize { param: String }
+  | ArithmeticParam { param: String }
+  | ExplicitCountZero
+  | ExplicitCountPositive { steps: PositiveDescentAmount }
+  | Forever
 
-// Constructor for TreeSize bound — avoids name collision when importing
-// into modules that already have a TreeSize variant from another type.
 fn tree_size_bound(param: String) -> SizeBound {
   TreeSize { param: param }
 }
 
-// =========================================================================
-// Forever: the bound on truth
-//
-// In a Bit/Word64 system, "always" is a finite concept. Forever is the
-// largest iteration bound the system can represent — currently 2^63 - 1,
-// but the exact value is a machine-level detail, not a language concept.
-//
-// What matters: Forever is a NAMED, FIRST-CLASS bound with clear semantics.
-// It is not "infinity approximated." It is the honest answer to "how long
-// does while(true) run?" in a finite system.
-//
-//   At 1 iteration per nanosecond:     ~292 years
-//   At 1 iteration per millisecond:    ~292 million years
-//   At 1 iteration per second:         ~292 billion years (21x age of universe)
-//
-// The developer writes "forever." The cost algebra says "Forever."
-// The emitter renders it as the target's max integer. All three are
-// correct descriptions of the same program.
-//
-// Forever is to iteration what True is to logic — the top element.
-// True = "this holds." Forever = "this keeps going." Both are bounded
-// by the same machine: Word64.
-// =========================================================================
-
-// =========================================================================
-// Call patterns: how the compiler classifies recursive calls
-//
-// When the compiler encounters a self-call (or mutual recursion), it
-// classifies the call pattern to determine which iteration primitive
-// the function lowers to.
-//
-// This classification is EXHAUSTIVE — every possible call pattern maps
-// to exactly one iteration primitive. There is no "unknown" or "rejected"
-// category.
-//
-// Shrink / arithmetic descent amounts use structural witnesses from
-// std.termination (`PositiveDescentAmount`, `ProportionalDivisor`) so
-// non-positive skip amounts and invalid divide steps are not representable.
-// =========================================================================
-
-// 🟡 MIXED coproduct — exhaustive call-shape classifier feeding `lower_call_pattern`. Dissolution:
-// replace `String` accessor / witness / element slots with structural refs; Peano shrink payloads
-// stay terminal (shared with `std.termination`).
 type CallPattern
-  = ChildAccessorCall { accessor: String }    // self(node.left) — structural child
-  | CollectionShrinkCall { amount: PositiveDescentAmount, collection: String }  // skip + sized collection param
-  | ArithmeticSubtractCall { steps: PositiveDescentAmount, ring_param: String }  // ring measure name (from proof / evidence)
-  | ArithmeticDivideCall { divisor: ProportionalDivisor, ring_param: String }    // divide step + ring measure name
-  | ParserAdvanceCall { witness: String }     // self(state after advance); witness is the token-stream / state param name
-  | WorklistDrainCall { element: String }     // self(set |> remove(x)); element is the set / cardinality param name
-  | FoldBodyCall { outer_collection: String } // fold-body bound; IR supplies the outer iterable param (see complexity.dag)
-  | SameArgumentCall                          // self(same_arg) — "forever" bound
+  = ChildAccessorCall { accessor: String }
+  | CollectionShrinkCall { amount: PositiveDescentAmount, collection: String }
+  | ArithmeticSubtractCall { steps: PositiveDescentAmount, ring_param: String }
+  | ArithmeticDivideCall { divisor: ProportionalDivisor, ring_param: String }
+  | ParserAdvanceCall { witness: String }
+  | WorklistDrainCall { element: String }
+  | FoldBodyCall { outer_collection: String }
+  | SameArgumentCall
 
-// =========================================================================
-// The lowering table: CallPattern → IterationPrimitive × SizeBound
-//
-// This is the complete, exhaustive mapping. Every CallPattern has exactly
-// one target primitive and one bound. The compiler applies this table
-// mechanically — no heuristics, no case-by-case analysis.
-//
-//   | CallPattern             | Lowers to      | Bound                |
-//   |--------------------------|----------------|----------------------|
-//   | ChildAccessorCall        | descend        | TreeSize             |
-//   | CollectionShrinkCall     | fold           | CollectionSize       |
-//   | ArithmeticSubtractCall   | repeat         | ArithmeticParam      |
-//   | ArithmeticDivideCall     | repeat         | ArithmeticParam      |
-//   | ParserAdvanceCall        | fold           | ParserStreamSize(witness)|
-//   | WorklistDrainCall        | fold           | WorklistDrainSize(element)|
-//   | FoldBodyCall             | (already fold) | (inherited)          |
-//   | SameArgumentCall         | repeat         | Forever               |
-//
-// Note: SameArgumentCall → repeat(Forever) is the bounded truth principle.
-// The compiler never rejects a call pattern. It always finds a bound.
-// =========================================================================
-
-// ShrinkFactor — rate of decrease per recursive step. Distinguishes
-// O(n) from O(log n). Moved here from induction.dag to avoid circular
-// dependency (induction imports computation; LoweringTarget needs ShrinkFactor).
-//
-// 🟢 TERMINAL coproduct — shrink-rate witnesses aligned with `std.termination`. Dissolution: none
-// (`UnitShrink` tag-only; `ConstantShrink` / `ProportionalShrink` already structural).
 type ShrinkFactor
   = UnitShrink
   | ConstantShrink { steps: PositiveDescentAmount }
   | ProportionalShrink { divisor: ProportionalDivisor }
 
-// 🟡 MIXED record — product of the coproduct carriers above (not a coproduct itself).
-// Dissolution inherits from `SizeBound` / `CallPattern` / optional `ShrinkFactor` String bridges.
 type LoweringTarget {
   primitive: IterationPrimitive
   bound: SizeBound
-  evidence: DescentEvidence   // Strict for descent/shrink calls; NonIncreasing for fold body and same-argument
-  factor: ShrinkFactor?       // rate of decrease — preserved from SubValueRelation for tighter bounds
+  evidence: DescentEvidence
+  factor: ShrinkFactor?
 }
 
-// 🟢 TERMINAL coproduct — `Fold` | `Descend` | `Repeat` lowering enum (Lane E-C). Dissolution:
-// none (kept in lockstep with `std.iteration` primitives).
 type IterationPrimitive
   = Fold
   | Descend
   | Repeat
 
-// `lower_call_pattern` forwards **CallPattern-carried** `String` slots into the matching
-// `SizeBound` (`ParserStreamSize` / `WorklistDrainSize` keep parser vs worklist identity).
-// No fabricated `"n"` / `"collection"` placeholders. Dissolution: structural size-parameter refs
-// when reflected params land (E-P / modeling).
 fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
@@ -299,11 +103,6 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   }
 }
 
-// Extract the parameter name from a SizeBound, or none for constant bounds.
-// Named bounds (TreeSize, CollectionSize, ParserStreamSize, WorklistDrainSize, ArithmeticParam)
-// carry a string label that varies with input — these produce O(n)-class costs.
-// Constant bounds (ExplicitCount, Forever) are fixed values — they produce
-// O(1)-class costs because the iteration count doesn't depend on input size.
 fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
     TreeSize { param: p }       => Present { value: p }
@@ -317,9 +116,6 @@ fn size_bound_param(bound: SizeBound) -> String? {
   }
 }
 
-// Is this bound a constant (iteration count doesn't depend on input)?
-// Forever and ExplicitCount are constants — the machine can only iterate
-// a fixed number of times regardless of input size.
 fn is_constant_bound(bound: SizeBound) -> Bool {
   match bound {
     ExplicitCountZero => true
@@ -329,11 +125,6 @@ fn is_constant_bound(bound: SizeBound) -> Bool {
   }
 }
 
-// Get the constant value for a constant bound.
-// `ExplicitCountZero` / `ExplicitCountPositive` project through `positive_descent_count` for k≥1.
-// Forever returns the signed-64 iteration cap (same as repeat(max_int); see std.iteration).
-// Non-constant bounds return `none` so callers cannot confuse “not constant” with a literal 0.
-// Signed `Int` top iterate count (`i64::MAX`); matches `repeat(max_int)` cap.
 fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 fn constant_bound_value(bound: SizeBound) -> Int? {
@@ -345,69 +136,10 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
   }
 }
 
-// =========================================================================
-// Computation profile: enrichment for expression patterns
-//
-// Parallels AlgebraProfile in algebra.dag. Just as kernel_algebra_profile
-// maps type names to algebraic structures (Int → OrderedRing), a
-// computation profile maps expression patterns to iteration primitives.
-//
-// The algebra profile says: "this type HAS these operations."
-// The computation profile says: "this expression TERMINATES via this primitive."
-//
-// FUTURE: when the compiler wires computation profiles, the complexity
-// analyzer replaces its ad-hoc classify_* functions with a single lookup
-// into this table. The termination proof becomes:
-//   1. Classify call pattern → CallPattern
-//   2. Look up lowering → LoweringTarget
-//   3. Compose evidence into TerminationProof
-//   4. Validate proof (is_valid_proof from termination.dag)
-// =========================================================================
-
-// =========================================================================
-// Cost composition from lowering targets
-//
-// Once a function's lowering is determined, its cost follows directly:
-//
-//   Fold with CollectionSize(c)       → O(|c| * per_element_cost)
-//   Descend with TreeSize(t)          → O(|t| * per_node_cost)
-//   Repeat with ArithmeticParam(n)    → O(n * per_step_cost)
-//   Repeat with ExplicitCountPositive(k) / ExplicitCountZero → O(k * per_step_cost)
-//   Repeat with Forever                → O(2^63 * per_step_cost)
-//
-// Nested computations multiply bounds:
-//   fold(list, fn(acc, x) { descend(tree, ...) })
-//   → O(|list| * |tree| * per_node_cost)
-//
-// This replaces the ad-hoc CostExpr recursive type in complexity.dag.
-// A cost IS a product of bounds from the lowering table — not an
-// arbitrary symbolic expression tree.
-// =========================================================================
-
-// =========================================================================
-// Type-directed iteration dimension: algebra profile → bound kind
-//
-// Every algebraic type has a natural iteration dimension — the structural
-// quantity that bounds recursion through values of that type.
-//
-//   FreeMonoid (List, String) → CollectionFold  (bounded by |collection|)
-//   OrderedRing (Int, Float)  → ArithmeticRepeat (bounded by value magnitude)
-//   BooleanAlgebra (Set)      → CollectionFold  (bounded by |set|)
-//   PartialFunction (Map)     → CollectionFold  (bounded by |keys|)
-//   Node (compiler tree)      → TreeDescent     (bounded by |tree|)
-//
-// The complexity analyzer reads this mapping to determine which dimension
-// to try when proving termination — instead of brute-force trying all
-// dimensions for every parameter.
-// =========================================================================
-
-// 🟢 TERMINAL coproduct — E-C dissolution receipt: tags which iteration dimension
-// applies for a kernel `AlgebraProfile` (same routing as `algebra_profile_to_dimension`);
-// complements `IterationPrimitive` (what lowers) with which bound kind analyses use.
 type IterationDimension
-  = TreeDescent       // child accessor descent → check_child: true
-  | CollectionFold    // collection shrink     → check_list: true
-  | ArithmeticRepeat  // arithmetic descent    → check_child/list: false
+  = TreeDescent
+  | CollectionFold
+  | ArithmeticRepeat
 
 fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
   match profile {
@@ -421,10 +153,6 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
   }
 }
 
-// Look up the natural iteration dimension for a type by name.
-// Checks kernel_algebra_profile (algebra.dag) for algebraic types,
-// special-cases "Node" (the compiler's recursive tree type).
-// Returns none for unknown/user-defined types.
 fn type_iteration_dimension(type_name: String) -> IterationDimension? {
   if type_name == "Node" { Present { value: TreeDescent } }
   else {

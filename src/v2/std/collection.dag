@@ -1,15 +1,4 @@
-// src/v2/std/collection.dag
-// Scope: container carriers grounded in algebraic constructions.
-// Status: T-3 modeled.
-// Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// AI-3: non_empty removed (duplicate of v2.std.algebra.non_empty).
-// AI-PR: list_append, list_snoc_item moved to v2.std.algebra (canonical authority).
-//   collection.dag imports diagnostic.dag; diagnostic.dag needs list_append — circular
-//   if both lived in collection. Callers must import from v2.std.algebra.
-
-
 module v2.std.collection
-
 
 import v2.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
 import v2.std.diagnostic {
@@ -23,8 +12,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
-// 🟢 coproduct dissolution — M6-Optional-generic.
-// Anchor: initial algebra of F(X) = 1 + T; Haskell Maybe / Rust Option / ML option.
+
 type Optional<T>
   = Absent
   | Present { value: T }
@@ -47,34 +35,26 @@ fn optional_absent_unwrap_diagnostic() -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature:optional-present-witness — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate projects Optional<T> Present arm to Witness<T>; forbidden: returning a synthetic payload on Absent (fail-open unwrap).
+
 fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
   match opt {
     Present { value: v } => Holds { value: v }
     Absent => Violates { diagnostic: optional_absent_unwrap_diagnostic() }
   }
 }
-// 🟡 bootstrap-limitation interim — feature:B-LIST-FREEMONOID-1 — owner:substrate dissolutions
-// (ctrl#1476 B1) — bind v1_interpreter `expect_list`/`free_monoid_to_vec` chokepoint —
-// dissolve-on-arrival: unified runtime representation so list ops need no per-site bridge;
-// forbidden: direct `Value::List` consumption bypassing `expect_list` / `free_monoid_to_vec`.
-// known asymmetry (B1 interim): `Value::Str` list operands stay atomic; Cons/Empty string
-// encodings still flatten via the chokepoint until representation unifies.
+
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
-// 🟡 bootstrap-limitation interim — feature:B-MAP-LOOKUP-OPTION-C-1 — Map=PartialFunction lookup alias honored
-// per-operation via v2 `raw_map_lookup` dual-dispatch chokepoint (ctrl#1476 B6 Option-C); dissolve-on-arrival:
-// unified runtime representation so lookup ops need no per-site bridge; forbidden: direct
-// `Value::Map` key-probe bypassing `raw_map_lookup`.
+
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
-// Composite struct keys (e.g. { position: Int, production: Symbol }) use structural == in map_insert lookup.
+
 type IndexedLookup<T> {
   index: Int
   value: Witness<T>
 }
-// 🟢 coproduct dissolution — generic list index lookup for Optional projection (M6 sibling to list_nth Witness path).
+
 type ListAtLookup<T>
   = ListAtMissing { remaining: Int }
   | ListAtFound { value: T }
@@ -103,10 +83,6 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   }
 }
 
-
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
-// dissolve-on: bootstrap Witness<V> dispatch at Map.lookup (substrate Witness above); forbidden:
-// ad hoc map_get outside v2.std.collection.
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   match m.lookup(key) {
     Holds { value: v } => outcome_accepted(value: Present { value: v })
@@ -157,7 +133,7 @@ fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
     ListAtMissing { remaining: _ } => optional_absent()
   }
 }
-// 🟡 needs-more-work — feature:finite-set-uniqueness-witness — dissolve-on: std/algebra derived unique: Witness<Holds> projection; FiniteSet binds structural unique field
+
 type FiniteSet<T> {
   head: T
   tail: List<T>

@@ -1,13 +1,4 @@
-// src/v2/std/datetime.dag
-// Scope: RFC 3339 clock-calendar instant facts for format-layer consumers.
-// Anchor: https://datatracker.ietf.org/doc/html/rfc3339
-// Anchor: https://www.iers.org/SharedDocs/News/EN/BulletinC.html
-// Anchor: https://maia.usno.navy.mil/products/leap-second
-// Anchor: https://en.wikipedia.org/wiki/Gregorian_calendar
-// Status: 🟢 T-3 modeled.
-
 module v2.std.datetime
-
 
 import v2.std.diagnostic { Locus, Outcome, bind_outcome, outcome_accepted }
 import v2.std.algebra { fold_list }
@@ -16,69 +7,54 @@ import v2.std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.refinement { Refined, Validation, refine, refined_base }
 
-
 type Year {
   value: Refined<Nat>
 }
-
 
 type MonthOrdinal {
   value: Refined<Nat>
 }
 
-
 type DayOrdinal {
   value: Refined<Nat>
 }
-
 
 type HourOfDay {
   value: Refined<Nat>
 }
 
-
 type MinuteOfHour {
   value: Refined<Nat>
 }
-
 
 type SecondOfMinute {
   value: Refined<Nat>
 }
 
-
 type SecfracDigit {
   value: Refined<Nat>
 }
-
 
 type SecfracDigits {
   first: SecfracDigit
   rest: List<SecfracDigit>
 }
 
-
-// 🟢 coproduct dissolution — RFC 3339 secfrac is present or absent at the user-input boundary.
 type Subsecond
   = NoSubsecond
   | FractionalSecond { digits: SecfracDigits }
 
-
-// 🟢 coproduct dissolution — RFC 3339 numeric UTC offsets are explicitly signed.
 type TzOffsetSign
   = TzOffsetPlus
   | TzOffsetMinus
-
 
 type TzOffsetHour {
   value: Refined<Nat>
 }
 
-
 type TzOffsetMinute {
   value: Refined<Nat>
 }
-
 
 type NumericTzOffset {
   sign: TzOffsetSign
@@ -86,12 +62,9 @@ type NumericTzOffset {
   minute: TzOffsetMinute
 }
 
-
-// 🟢 coproduct dissolution — RFC 3339 time-offset grammar is "Z" or signed numeric offset.
 type TzOffset
   = UtcZ
   | SignedOffset { offset: NumericTzOffset }
-
 
 type CalendarDateFields {
   year: Year
@@ -99,16 +72,13 @@ type CalendarDateFields {
   day: DayOrdinal
 }
 
-
 type CalendarDateValidity {
   refined: Refined<CalendarDateFields>
 }
 
-
 type CalendarDate {
   validity: CalendarDateValidity
 }
-
 
 type ClockTimeFields {
   hour: HourOfDay
@@ -117,38 +87,31 @@ type ClockTimeFields {
   subsecond: Subsecond
 }
 
-
 type ClockTimeValidity {
   refined: Refined<ClockTimeFields>
 }
-
 
 type ClockTime {
   validity: ClockTimeValidity
 }
 
-
 type LocalDate {
   date: CalendarDate
 }
 
-
 type LocalTime {
   time: ClockTime
 }
-
 
 type LocalDateTime {
   date: CalendarDate
   time: ClockTime
 }
 
-
 type OrdinaryInstantFields {
   utc_date: CalendarDate
   utc_time: ClockTime
 }
-
 
 type LeapSecondAnnouncement {
   utc_date: CalendarDate
@@ -156,26 +119,21 @@ type LeapSecondAnnouncement {
   utc_minute: MinuteOfHour
 }
 
-
 type LeapSecondInsertionOccurrenceFields {
   announcement: LeapSecondAnnouncement
 }
-
 
 type LeapSecondInsertionOccurrenceValidity {
   refined: Refined<LeapSecondInsertionOccurrenceFields>
 }
 
-
 type LeapSecondInsertionOccurrence {
   validity: LeapSecondInsertionOccurrenceValidity
 }
 
-
 type LeapSecondAuthoritySource {
   authority: Symbol
 }
-
 
 type LeapSecondInsertionDate {
   year: Nat
@@ -183,19 +141,16 @@ type LeapSecondInsertionDate {
   day: Nat
 }
 
-
 type LeapSecondInsertionTable {
   source: LeapSecondAuthoritySource
   dates: List<LeapSecondInsertionDate>
 }
-
 
 type LeapSecondInstantFields {
   occurrence: LeapSecondInsertionOccurrence
   second: SecondOfMinute
   subsecond: Subsecond
 }
-
 
 type LeapSecondOffsetDateTimeFields {
   occurrence: LeapSecondInsertionOccurrence
@@ -207,29 +162,22 @@ type LeapSecondOffsetDateTimeFields {
   offset: TzOffset
 }
 
-
 type OrdinaryInstantValidity {
   refined: Refined<OrdinaryInstantFields>
 }
-
 
 type LeapSecondInstantValidity {
   refined: Refined<LeapSecondInstantFields>
 }
 
-
 type LeapSecondOffsetDateTimeValidity {
   refined: Refined<LeapSecondOffsetDateTimeFields>
 }
 
-
-// 🟢 coproduct dissolution — RFC 3339 separates ordinary instants from announced leap-second instants.
 type Instant
   = OrdinaryInstant { validity: OrdinaryInstantValidity }
   | LeapSecondInstant { validity: LeapSecondInstantValidity }
 
-
-// 🟢 coproduct dissolution — RFC 3339 offset date-times either carry a canonical ordinary instant plus offset spelling or a leap-second offset spelling plus canonical UTC announcement.
 type OffsetDateTime
   = OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity, offset: TzOffset }
   | LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity }
@@ -266,51 +214,41 @@ data positive_utc_leap_second_insertions: LeapSecondInsertionTable = LeapSecondI
   ]
 }
 
-
 fn year_value(year: Year) -> Nat {
   refined_base(r: year.value)
 }
-
 
 fn month_value(month: MonthOrdinal) -> Nat {
   refined_base(r: month.value)
 }
 
-
 fn day_value(day: DayOrdinal) -> Nat {
   refined_base(r: day.value)
 }
-
 
 fn second_value(second: SecondOfMinute) -> Nat {
   refined_base(r: second.value)
 }
 
-
 fn minute_value(minute: MinuteOfHour) -> Nat {
   refined_base(r: minute.value)
 }
-
 
 fn hour_value(hour: HourOfDay) -> Nat {
   refined_base(r: hour.value)
 }
 
-
 fn tz_offset_hour_value(hour: TzOffsetHour) -> Nat {
   refined_base(r: hour.value)
 }
-
 
 fn tz_offset_minute_value(minute: TzOffsetMinute) -> Nat {
   refined_base(r: minute.value)
 }
 
-
 fn secfrac_digit_value(digit: SecfracDigit) -> Nat {
   refined_base(r: digit.value)
 }
-
 
 fn leap_second_insertion_date(year: Nat, month: Nat, day: Nat) -> LeapSecondInsertionDate {
   LeapSecondInsertionDate {
@@ -320,72 +258,58 @@ fn leap_second_insertion_date(year: Nat, month: Nat, day: Nat) -> LeapSecondInse
   }
 }
 
-
 fn year_admits(value: Nat) -> Bool {
   value <= 9999
 }
-
 
 fn month_admits(value: Nat) -> Bool {
   (value >= 1) && (value <= 12)
 }
 
-
 fn day_admits(value: Nat) -> Bool {
   (value >= 1) && (value <= 31)
 }
-
 
 fn hour_admits(value: Nat) -> Bool {
   value <= 23
 }
 
-
 fn minute_admits(value: Nat) -> Bool {
   value <= 59
 }
-
 
 fn second_admits(value: Nat) -> Bool {
   value <= 60
 }
 
-
 fn secfrac_digit_admits(value: Nat) -> Bool {
   value <= 9
 }
-
 
 fn tz_offset_hour_admits(value: Nat) -> Bool {
   value <= 23
 }
 
-
 fn tz_offset_minute_admits(value: Nat) -> Bool {
   value <= 59
 }
-
 
 fn divisible_by_4(value: Nat) -> Bool {
   (value % 4) == 0
 }
 
-
 fn divisible_by_100(value: Nat) -> Bool {
   (value % 100) == 0
 }
-
 
 fn divisible_by_400(value: Nat) -> Bool {
   (value % 400) == 0
 }
 
-
 fn leap_year(value: Nat) -> Bool {
   divisible_by_4(value: value)
     && (!divisible_by_100(value: value) || divisible_by_400(value: value))
 }
-
 
 fn calendar_date_admits(fields: CalendarDateFields) -> Bool {
   let year = year_value(year: fields.year)
@@ -412,23 +336,19 @@ fn calendar_date_admits(fields: CalendarDateFields) -> Bool {
   }
 }
 
-
 fn calendar_date_fields(date: CalendarDate) -> CalendarDateFields {
   refined_base(r: date.validity.refined)
 }
 
-
 fn clock_time_fields(time: ClockTime) -> ClockTimeFields {
   refined_base(r: time.validity.refined)
 }
-
 
 fn leap_second_insertion_date_matches(fields: CalendarDateFields, date: LeapSecondInsertionDate) -> Bool {
   (year_value(year: fields.year) == date.year)
     && (month_value(month: fields.month) == date.month)
     && (day_value(day: fields.day) == date.day)
 }
-
 
 fn leap_second_announced_insertion_date(fields: CalendarDateFields) -> Bool {
   fold_list(
@@ -440,13 +360,11 @@ fn leap_second_announced_insertion_date(fields: CalendarDateFields) -> Bool {
   )
 }
 
-
 fn same_calendar_date(left: CalendarDateFields, right: CalendarDateFields) -> Bool {
   (year_value(year: left.year) == year_value(year: right.year))
     && (month_value(month: left.month) == month_value(month: right.month))
     && (day_value(day: left.day) == day_value(day: right.day))
 }
-
 
 fn leap_second_next_day(utc: CalendarDateFields, local: CalendarDateFields) -> Bool {
   let utc_year = year_value(year: utc.year)
@@ -476,7 +394,6 @@ fn leap_second_next_day(utc: CalendarDateFields, local: CalendarDateFields) -> B
   }
 }
 
-
 fn leap_second_announcement_admits(announcement: LeapSecondAnnouncement) -> Bool {
   let fields = calendar_date_fields(date: announcement.utc_date)
   let hour = hour_value(hour: announcement.utc_hour)
@@ -484,32 +401,26 @@ fn leap_second_announcement_admits(announcement: LeapSecondAnnouncement) -> Bool
   (hour == 23) && (minute == 59) && leap_second_announced_insertion_date(fields: fields)
 }
 
-
 fn leap_second_insertion_occurrence_admits(fields: LeapSecondInsertionOccurrenceFields) -> Bool {
   leap_second_announcement_admits(announcement: fields.announcement)
 }
 
-
 fn leap_second_insertion_occurrence_fields(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondInsertionOccurrenceFields {
   refined_base(r: occurrence.validity.refined)
 }
-
 
 fn leap_second_insertion_occurrence_announcement(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondAnnouncement {
   let fields = leap_second_insertion_occurrence_fields(occurrence: occurrence)
   fields.announcement
 }
 
-
 fn minute_of_day(hour: Nat, minute: Nat) -> Nat {
   (hour * 60) + minute
 }
 
-
 fn tz_offset_minutes(offset: NumericTzOffset) -> Nat {
   (tz_offset_hour_value(hour: offset.hour) * 60) + tz_offset_minute_value(minute: offset.minute)
 }
-
 
 fn leap_second_local_matches_utc(announcement: LeapSecondAnnouncement, fields: LeapSecondOffsetDateTimeFields) -> Bool {
   let utc_date = calendar_date_fields(date: announcement.utc_date)
@@ -541,25 +452,21 @@ fn leap_second_local_matches_utc(announcement: LeapSecondAnnouncement, fields: L
   }
 }
 
-
 fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
   let time = clock_time_fields(time: fields.utc_time)
   let second = second_value(second: time.second)
   second <= 59
 }
 
-
 fn clock_time_fields_admits(fields: ClockTimeFields) -> Bool {
   let second = second_value(second: fields.second)
   second <= 59
 }
 
-
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
   second == 60
 }
-
 
 fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) -> Bool {
   let second = second_value(second: fields.second)
@@ -568,96 +475,80 @@ fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) ->
     && leap_second_local_matches_utc(announcement: announcement, fields: fields)
 }
 
-
 data year_validation: Validation<Nat> = Validation {
   reason: ^year_out_of_range,
   admits: year_admits
 }
-
 
 data month_validation: Validation<Nat> = Validation {
   reason: ^month_out_of_range,
   admits: month_admits
 }
 
-
 data day_validation: Validation<Nat> = Validation {
   reason: ^day_out_of_range,
   admits: day_admits
 }
-
 
 data hour_validation: Validation<Nat> = Validation {
   reason: ^hour_out_of_range,
   admits: hour_admits
 }
 
-
 data minute_validation: Validation<Nat> = Validation {
   reason: ^minute_out_of_range,
   admits: minute_admits
 }
-
 
 data second_validation: Validation<Nat> = Validation {
   reason: ^second_out_of_range,
   admits: second_admits
 }
 
-
 data secfrac_digit_validation: Validation<Nat> = Validation {
   reason: ^secfrac_digit_out_of_range,
   admits: secfrac_digit_admits
 }
-
 
 data tz_offset_hour_validation: Validation<Nat> = Validation {
   reason: ^tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
 }
 
-
 data tz_offset_minute_validation: Validation<Nat> = Validation {
   reason: ^tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
 }
-
 
 data calendar_date_validation: Validation<CalendarDateFields> = Validation {
   reason: ^calendar_date_invalid,
   admits: calendar_date_admits
 }
 
-
 data clock_time_validation: Validation<ClockTimeFields> = Validation {
   reason: ^clock_time_fields_invalid,
   admits: clock_time_fields_admits
 }
-
 
 data leap_second_insertion_occurrence_validation: Validation<LeapSecondInsertionOccurrenceFields> = Validation {
   reason: ^leap_second_insertion_occurrence_invalid,
   admits: leap_second_insertion_occurrence_admits
 }
 
-
 data ordinary_instant_validation: Validation<OrdinaryInstantFields> = Validation {
   reason: ^ordinary_instant_invalid,
   admits: ordinary_instant_admits
 }
-
 
 data leap_second_instant_validation: Validation<LeapSecondInstantFields> = Validation {
   reason: ^leap_second_instant_invalid,
   admits: leap_second_instant_admits
 }
 
-
 data leap_second_offset_datetime_validation: Validation<LeapSecondOffsetDateTimeFields> = Validation {
   reason: ^leap_second_offset_datetime_invalid,
   admits: leap_second_offset_datetime_admits
 }
-
 
 fn make_year(value: Nat, at: Locus) -> Outcome<Year> {
   bind_outcome(o: refine(base: value, by: year_validation, at: at), f: fn(refined) {
@@ -665,13 +556,11 @@ fn make_year(value: Nat, at: Locus) -> Outcome<Year> {
   })
 }
 
-
 fn make_month_ordinal(value: Nat, at: Locus) -> Outcome<MonthOrdinal> {
   bind_outcome(o: refine(base: value, by: month_validation, at: at), f: fn(refined) {
     outcome_accepted(value: MonthOrdinal { value: refined })
   })
 }
-
 
 fn make_day_ordinal(value: Nat, at: Locus) -> Outcome<DayOrdinal> {
   bind_outcome(o: refine(base: value, by: day_validation, at: at), f: fn(refined) {
@@ -679,13 +568,11 @@ fn make_day_ordinal(value: Nat, at: Locus) -> Outcome<DayOrdinal> {
   })
 }
 
-
 fn make_hour_of_day(value: Nat, at: Locus) -> Outcome<HourOfDay> {
   bind_outcome(o: refine(base: value, by: hour_validation, at: at), f: fn(refined) {
     outcome_accepted(value: HourOfDay { value: refined })
   })
 }
-
 
 fn make_minute_of_hour(value: Nat, at: Locus) -> Outcome<MinuteOfHour> {
   bind_outcome(o: refine(base: value, by: minute_validation, at: at), f: fn(refined) {
@@ -693,13 +580,11 @@ fn make_minute_of_hour(value: Nat, at: Locus) -> Outcome<MinuteOfHour> {
   })
 }
 
-
 fn make_second_of_minute(value: Nat, at: Locus) -> Outcome<SecondOfMinute> {
   bind_outcome(o: refine(base: value, by: second_validation, at: at), f: fn(refined) {
     outcome_accepted(value: SecondOfMinute { value: refined })
   })
 }
-
 
 fn make_secfrac_digit(value: Nat, at: Locus) -> Outcome<SecfracDigit> {
   bind_outcome(o: refine(base: value, by: secfrac_digit_validation, at: at), f: fn(refined) {
@@ -707,11 +592,9 @@ fn make_secfrac_digit(value: Nat, at: Locus) -> Outcome<SecfracDigit> {
   })
 }
 
-
 fn make_subsecond(digits: SecfracDigits) -> Subsecond {
   FractionalSecond { digits: digits }
 }
-
 
 fn make_tz_offset_hour(value: Nat, at: Locus) -> Outcome<TzOffsetHour> {
   bind_outcome(o: refine(base: value, by: tz_offset_hour_validation, at: at), f: fn(refined) {
@@ -719,13 +602,11 @@ fn make_tz_offset_hour(value: Nat, at: Locus) -> Outcome<TzOffsetHour> {
   })
 }
 
-
 fn make_tz_offset_minute(value: Nat, at: Locus) -> Outcome<TzOffsetMinute> {
   bind_outcome(o: refine(base: value, by: tz_offset_minute_validation, at: at), f: fn(refined) {
     outcome_accepted(value: TzOffsetMinute { value: refined })
   })
 }
-
 
 fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<CalendarDate> {
   bind_outcome(o: refine(base: fields, by: calendar_date_validation, at: at), f: fn(refined) {
@@ -733,13 +614,11 @@ fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<Calendar
   })
 }
 
-
 fn make_clock_time(fields: ClockTimeFields, at: Locus) -> Outcome<ClockTime> {
   bind_outcome(o: refine(base: fields, by: clock_time_validation, at: at), f: fn(refined) {
     outcome_accepted(value: ClockTime { validity: ClockTimeValidity { refined: refined } })
   })
 }
-
 
 fn make_leap_second_insertion_occurrence(
   fields: LeapSecondInsertionOccurrenceFields,
@@ -750,13 +629,11 @@ fn make_leap_second_insertion_occurrence(
   })
 }
 
-
 fn make_ordinary_instant(fields: OrdinaryInstantFields, at: Locus) -> Outcome<Instant> {
   bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
     outcome_accepted(value: OrdinaryInstant { validity: OrdinaryInstantValidity { refined: refined } })
   })
 }
-
 
 fn make_leap_second_instant(fields: LeapSecondInstantFields, at: Locus) -> Outcome<Instant> {
   bind_outcome(o: refine(base: fields, by: leap_second_instant_validation, at: at), f: fn(refined) {
@@ -764,13 +641,11 @@ fn make_leap_second_instant(fields: LeapSecondInstantFields, at: Locus) -> Outco
   })
 }
 
-
 fn make_ordinary_offset_datetime(fields: OrdinaryInstantFields, offset: TzOffset, at: Locus) -> Outcome<OffsetDateTime> {
   bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
     outcome_accepted(value: OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity { refined: refined }, offset: offset })
   })
 }
-
 
 fn make_leap_second_offset_datetime(
   fields: LeapSecondOffsetDateTimeFields,

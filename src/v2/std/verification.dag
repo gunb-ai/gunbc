@@ -1,9 +1,4 @@
-// src/v2/std/verification.dag
-// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey; consolidation #4553 Phase 1 — BoolWitness + UnifiedTestClaim registration coproduct.
-// Status: T-3 modeled; substrate extension or file split = operator STOP.
-
 module v2.std.verification
-
 
 import v2.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
 import v2.std.collection { List }
@@ -29,9 +24,6 @@ import v2.std.diagnostic {
   diagnostics_singleton
 }
 
-
-
-
 fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^test_claim_expected_outcome_undeclared,
@@ -39,7 +31,6 @@ fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
 
 fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -49,36 +40,25 @@ fn unified_test_claim_bool_witness_absent_diagnostic() -> Diagnostic {
   }
 }
 
-
-// RULING-1: pretty-much-done — closed TestClaim tier set.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type TestgenTier
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = Tier1
   | Tier2
   | Tier3
 
-
-// RULING-1: pretty-much-done — closed TestClaim layer set.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type TestgenLayer
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = Unit
   | Integration
   | Boundary
 
-
-// RULING-1: pretty-much-done — TestClaim tier/layer coordinate.
 type TestClassification {
   tier: TestgenTier
   layer: TestgenLayer
 }
 
-
-// RULING-1: pretty-much-done — closed impossible-bug class set.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type ImpossibleBugClass
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = SuboptimalComplexity
   | IdempotencyContract
   | TransportTypeDrift
@@ -86,9 +66,6 @@ type ImpossibleBugClass
   | UnenumeratedEffects
   | UnhandledDiagnosticPaths
 
-
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct-arm compile-time lens / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind gunbc#4759 — dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct-arm compile-time lens in std/verification.dag; delete this mirror.
-// forbidden: parallel hand-enumerated ImpossibleBugClass universes outside std/verification.dag.
 fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
   [
     SuboptimalComplexity,
@@ -100,12 +77,6 @@ fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
   ]
 }
 
-
-// Canonical Diagnostic.reason symbols for impossible-bug TestClaim rows (fail-closed impossible-bug classes, DESIGN.md §5).
-
-
-
-
 fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^impossible_bug_diagnostic_reason_unmapped,
@@ -114,9 +85,6 @@ fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
   }
 }
 
-
-// 🟡 gated — feature:impossible-bug-reason-projection — bind gunbc#4759
-// dissolve-on-arrival: TestClaim/DiagnosticClaim carries ImpossibleBugClass directly in verification.dag; delete this reason→class bridge.
 fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
   if reason == ^impossible_bug_reason_suboptimal_complexity ||
     reason == ^impossible_bug_reason_suboptimal_inhabitance {
@@ -145,12 +113,8 @@ fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<Imposs
   }
 }
 
-
-// RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
-// 🟡 coproduct dissolution — LB-P4-3212.
 type ManualAnchorKey
-// 🟡 coproduct dissolution — LB-P4-3212
-// RULING-1: 🟢 pretty-much-done
+
   = ManualTcConjEmpty
   | ManualTcDisjEmpty
   | ManualTcArrowTwoConj
@@ -174,13 +138,6 @@ type ManualAnchorKey
   | ManualRefinementNonEmptyListBase
   | ManualAnchorAbsent
 
-
-// The closed roster of TestClaim assertion variants — the projection of a TestClaim VALUE to its
-// variant tag (test_claim_coproduct_variant) and a Generator's claim kind (Generator.kind). This is
-// a legitimately closed enum over TestClaim's OWN arms; it is NOT (any longer) the
-// coproduct-exhaustiveness anchor's payload — that anchor went structural over EVERY declared
-// coproduct (GeneratedCoproductExhaustiveness below), so the §4759 "mirror TestClaim arms" 🟡 is
-// dissolved (docs/plans/testgen-oracle.md §4.2).
 type TestClaimCoproductVariant
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
@@ -188,38 +145,17 @@ type TestClaimCoproductVariant
   | TestClaimStructuralEqualsClaimVariant
   | TestClaimRoundTripClaimVariant
 
-
-// Structural coproduct-exhaustiveness anchor (docs/plans/testgen-oracle.md §4.2): identifies one
-// missing-arm witness by the declared coproduct's authored type name and the omitted arm's key —
-// both Symbols read off the Node tree (v2.std.node_query.coproduct_arm_keys), NOT a hand-roster of
-// TestClaim variants. Adding an arm to ANY coproduct extends the generated roster by construction;
-// removing one shrinks it (the discriminating RED).
-//
-// GeneratedCrossRepresentationEquality (docs/plans/testgen-oracle.md §4.3): identifies one
-// cross-representation-equality straddle witness by the MODELED coproduct's authored type name and
-// the NATIVE realization it straddles (the symbol naming the runtime Value form). The modeled side
-// is structural (its arms are read off the Node tree); the native-realization side is the curated
-// half — there is no Node-tree reflection for "this coproduct is realized as Value::Bool", so the
-// straddle SET stays a tight roster (Bool over Value::Bool, Optional/Witness over Value::Null) per
-// the operator/planning steer: ONLY the straddles that remain UNSTRUCTURED. The numeric tower is
-// GROUNDED (#5428) and deliberately excluded; the Value::Null sentinel is fenced to its own runway.
 type GeneratedAnchorKey
   = GeneratedCoproductExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
   | GeneratedCrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
 
-
-// RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
-// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: gunbc#4759; follow-up: delete this union when generated TestClaim corpora use a type that does not share anchor with manual rows.
 type ClaimAnchorKey
-// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: gunbc#4759
+
   = ManualClaimAnchor { manual_anchor: ManualAnchorKey }
   | GeneratedClaimAnchor { generated_anchor: GeneratedAnchorKey }
 
-
-// RULING-1: pretty-much-done — assertion shape is the variant tag.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type TestClaim
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = CompilesClaim {
       label: String
       anchor: ClaimAnchorKey
@@ -241,13 +177,7 @@ type TestClaim
       rhs: Node
       classification: TestClassification
     }
-  // StructuralEqualsClaim — `lhs` and `rhs` are compared **structurally** (admitted
-  // well-formed, then node-equality), NOT runtime-evaluated. EqualsClaim is *reductive*
-  // (lhs reduces under the interpretation to rhs — e.g. add(2,3) == 5); a structural
-  // *receipt* comparison (two type/receipt nodes that should be identical) is a distinct
-  // intent and gets a distinct variant so the harness cannot confuse the two — see
-  // `gunbc-planning/v2-testclaim-route-through-v2-not-v3-2026-06-05.md` §6.3. Same fields as
-  // EqualsClaim; the discrimination is the variant tag, evaluated by `run_test_claim`.
+
   | StructuralEqualsClaim {
       label: String
       anchor: ClaimAnchorKey
@@ -262,7 +192,6 @@ type TestClaim
       classification: TestClassification
     }
 
-
 fn test_claim_input(c: TestClaim) -> Node {
   match c {
     CompilesClaim { input: n, label: _, anchor: _, expected_value: _, classification: _ } => n
@@ -273,8 +202,6 @@ fn test_claim_input(c: TestClaim) -> Node {
   }
 }
 
-
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: testclaim-coproduct-lens — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → label projection with canonical common-field / coproduct-arm compile-time lens once TestClaim coproduct-arm lens is available; forbidden: permanent hand-rolled TestClaim arm projection outside the compile-time lens primitive.
 fn test_claim_label(c: TestClaim) -> String {
   match c {
     CompilesClaim { label: l, anchor: _, input: _, expected_value: _, classification: _ } => l
@@ -285,8 +212,6 @@ fn test_claim_label(c: TestClaim) -> String {
   }
 }
 
-
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: testclaim-coproduct-lens — bound task: gunbc#4759 — dissolve-on-arrival: replace this hand-enumerated TestClaim → TestClaimCoproductVariant projection with canonical coproduct-arm compile-time lens once TestClaim coproduct-arm lens is available; forbidden: permanent hand-rolled TestClaim arm projection outside the compile-time lens primitive.
 fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
   match c {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
@@ -302,7 +227,6 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
   }
 }
 
-
 fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   match at {
     NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
@@ -311,7 +235,6 @@ fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   }
 }
 
-
 fn correction_evaluation_nodes(c: Correction) -> List<Node> {
   match c {
     Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
@@ -319,14 +242,12 @@ fn correction_evaluation_nodes(c: Correction) -> List<Node> {
   }
 }
 
-
 fn diagnostic_evaluation_nodes(d: Diagnostic) -> List<Node> {
   list_append(
     left: locus_evaluation_nodes(at: d.at),
     right: correction_evaluation_nodes(c: d.correction)
   )
 }
-
 
 fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
   fold_list(
@@ -338,7 +259,6 @@ fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
   )
 }
 
-
 fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> {
   list_append(
     left: diagnostic_evaluation_nodes(d: d.head),
@@ -346,8 +266,6 @@ fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> 
   )
 }
 
-
-// All Nodes whose mutation invalidates claim evaluation (IRT-4 / CI rerun frontier).
 fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   match c {
     EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
@@ -366,7 +284,6 @@ fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   }
 }
 
-
 fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
   any(
     xs: node_subtree_nodes(root: root),
@@ -374,8 +291,6 @@ fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
   )
 }
 
-
-// Consume affected-set rerun nodes directly: frontier root equality or frontier node inside evaluation tree.
 fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
   any(
     xs: frontier,
@@ -385,7 +300,6 @@ fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) ->
   )
 }
 
-
 fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Node>) -> Bool {
   any(
     xs: test_claim_evaluation_nodes(c: c),
@@ -393,8 +307,6 @@ fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Nod
   )
 }
 
-
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v2.workflow.affected_set_selection ci_select_from_rerun_nodes (relocated from the deleted v2.workflow.ci by PR #4543; lands with the affected-set gate at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: delete when workflow/affected_set_selection.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
 fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
   match c {
     DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
@@ -435,8 +347,6 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
   }
 }
 
-// Projects declared expected outcomes only. RoundTripClaim has no expected-outcome field;
-// eval authority (05_eval.dag) decides Pass/Fail via dag_round_trip_wave1_authorities_ready — do not synthesize an Outcome<Node> here.
 fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
     CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>
@@ -466,48 +376,28 @@ fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   }
 }
 
-
-// Consolidation #4553 Phase 1 — Bool-witness registration descriptor (ctrl#1490 / test-claim-consolidation-design §3).
-// P2: descriptor fields only — execution output lives on run-receipt types in Phase 2 eval module.
-// RULING-1: pretty-much-done — nullary fn () -> Bool witness identity at registration boundary.
-// 🟢 coproduct dissolution — consolidation #4553 Phase 1 terminal registration descriptor.
 type BoolWitness {
   entry: String
   function: Symbol
 }
 
-
-// Node-corpus transport mode on `UnifiedTestClaim.NodeCorpus` — not a separate runner.
-// RULING-1: pretty-much-done — closed NodeCorpus transport modes (design §3.4).
-// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
 type TestClaimTransportMode
-// 🟢 coproduct dissolution — consolidation #4553 Phase 1
+
   = EvalOnly
   | EmitVsEval { target: TargetModel }
 
-
-// Structural modality tag for unified dispatch — keys off the coproduct arm, not string heuristics.
-// RULING-1: pretty-much-done — closed modality tag for unified dispatch (design §3.1).
-// 🟢 coproduct dissolution — consolidation #4553 Phase 1.
 type UnifiedTestClaimModality
-// 🟢 coproduct dissolution — consolidation #4553 Phase 1
+
   = UnifiedNodeCorpusModality
   | UnifiedBoolWitnessModality
 
-
-// Unified registration coproduct (both modalities, one authority).
-// `NodeCorpus` carries `claim` + `transport` at std layer; `TestClaimEvalSubject` binds at the
-// eval boundary in Phase 2 runner migration (std cannot import `v2.compiler.eval`).
-// RULING-1: needs-more-work — NodeCorpus lacks TestClaimEvalSubject until Phase 2 runner migration.
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 binds subject at eval boundary; dissolve-on: NodeCorpus.subject lands when unified runner migrates.
 type UnifiedTestClaim
-// 🟡 coproduct dissolution — consolidation #4553 Phase 2 runner migration
+
   = NodeCorpus {
       claim: TestClaim
       transport: TestClaimTransportMode
     }
   | BoolWitnessClaim { witness: BoolWitness }
-
 
 fn unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality {
   match c {
@@ -516,13 +406,10 @@ fn unified_test_claim_modality(c: UnifiedTestClaim) -> UnifiedTestClaimModality 
   }
 }
 
-
 fn bool_witness_descriptor(w: BoolWitness) -> UnifiedTestClaim {
   BoolWitnessClaim { witness: w }
 }
 
-
-// Arm-specific projection — Rejected on NodeCorpus (no fabricated empty String/Symbol).
 fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> {
   match c {
     BoolWitnessClaim { witness: w } =>
@@ -533,7 +420,6 @@ fn unified_test_claim_bool_witness(c: UnifiedTestClaim) -> Outcome<BoolWitness> 
       }
   }
 }
-
 
 fn bool_witness_matches_entry_function(
   w: BoolWitness,
