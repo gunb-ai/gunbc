@@ -48,19 +48,19 @@ data medium_syntax_markers: List<MediumMarkers> = [
 ]
 
 data emitted_medium_emit_fns: List<String> = [
-  "expected_ci_yml",            
-  "ci_yml_drifted",             
-  "serialize_yaml",             
-  "serialize_bash",             
-  "serialize_expression",       
-  "interpolate",                
-  "serialize_template",         
-  "gunbc_ci_workflow_run",      
-  "gunbc_ci_run_script",        
-  "scheduler_invoke",           
-  "git_fetch_script",           
-  "ci_release_build_script",    
-  "witness_layer_source_flags"  
+  "expected_ci_yml",
+  "ci_yml_drifted",
+  "serialize_yaml",
+  "serialize_bash",
+  "serialize_expression",
+  "interpolate",
+  "serialize_template",
+  "gunbc_ci_workflow_run",
+  "gunbc_ci_run_script",
+  "scheduler_invoke",
+  "git_fetch_script",
+  "ci_release_build_script",
+  "witness_layer_source_flags"
 ]
 
 data emitted_medium_string_ops: List<String> = [
@@ -114,12 +114,12 @@ data medium_check_side_scan_roots: List<String> = [
 
 data medium_structure_exception_roster: List<String> = [
 
-  "dsl/gunbc/ci_workflow.dag",          
-  "dsl/extdeps/formats/yaml.dag",       
+  "dsl/gunbc/ci_workflow.dag",
+  "dsl/extdeps/formats/yaml.dag",
 
-  "dsl/test/claim/ci_yaml_serializer_witness_test.dag",  
-  "dsl/test/claim/ci_runner_seam_witness_test.dag",      
-  "src/v2/test/claim/ci_spec_witness_test.dag"           
+  "dsl/test/claim/ci_yaml_serializer_witness_test.dag",
+  "dsl/test/claim/ci_runner_seam_witness_test.dag",
+  "src/v2/test/claim/ci_spec_witness_test.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {
