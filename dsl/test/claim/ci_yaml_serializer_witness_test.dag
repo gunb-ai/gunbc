@@ -179,6 +179,43 @@ fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
     string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
 }
 
+// §5 runner-context env scope: the generated ci.yml must use the runner context
+// (${{ runner.temp }}) for toolchain cache paths, not the env context
+// (${{ env.CARGO_HOME }}) whose value is only set at runtime via $GITHUB_ENV.
+// Using env context would tie correctness to step-ordering rather than the model.
+//
+// Extracted helpers let the red controls reuse the same predicate, proving each
+// guard is non-vacuous (DESIGN §5 discriminating-by-execution bar).
+
+fn runner_env_scope_ok(yaml: String) -> Bool {
+  string_contains(s: yaml, pattern: "${{ runner.temp }}/cargo/registry/index/") &&
+    !string_contains(s: yaml, pattern: "${{ env.CARGO_HOME }}")
+}
+
+fn no_runner_env_context_vars(yaml: String) -> Bool {
+  !string_contains(s: yaml, pattern: "${{ env.RUNNER_TEMP }}") &&
+    !string_contains(s: yaml, pattern: "${{ env.RUNNER_OS }}") &&
+    !string_contains(s: yaml, pattern: "${{ env.RUNNER_ARCH }}")
+}
+
+fn witness_cache_uses_runner_temp_not_env_cargo_home() -> Bool {
+  runner_env_scope_ok(yaml: expected_ci_yml())
+}
+
+fn witness_cache_runner_env_scope_red_control() -> Bool {
+  let bad = "path: ${{ env.CARGO_HOME }}/registry/index/"
+  !runner_env_scope_ok(yaml: bad)
+}
+
+fn witness_no_runner_env_vars_accessed_via_env_context() -> Bool {
+  no_runner_env_context_vars(yaml: expected_ci_yml())
+}
+
+fn witness_no_runner_env_context_red_control() -> Bool {
+  let bad = concat(expected_ci_yml(), "\n  path: ${{ env.RUNNER_TEMP }}/cargo")
+  !no_runner_env_context_vars(yaml: bad)
+}
+
 test fn ci_yaml_serializer_keystone_holds() -> Bool {
   witness_fetch_depth_is_int_not_string() &&
     witness_rustflags_empty_string_quoted() &&
@@ -194,5 +231,9 @@ test fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_cache_path_not_flat_multiline_sibling() &&
     witness_restore_keys_content_deeper_than_key() &&
     witness_sccache_wired_when_fleet_daemon_up() &&
-    witness_gunbc_ci_step_projects_run_script_markers()
+    witness_gunbc_ci_step_projects_run_script_markers() &&
+    witness_cache_uses_runner_temp_not_env_cargo_home() &&
+    witness_cache_runner_env_scope_red_control() &&
+    witness_no_runner_env_vars_accessed_via_env_context() &&
+    witness_no_runner_env_context_red_control()
 }
