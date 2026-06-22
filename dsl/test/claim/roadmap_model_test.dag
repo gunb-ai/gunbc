@@ -16,7 +16,7 @@ module test.claim.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_status {
-  RoadmapStatusEntry, Todo, Done, CompletesIff, HandChecked,
+  RoadmapStatusEntry, CompletesIff, HandChecked,
   DriftVerdict, Drifted, Clean, Underivable,
 }
 import gunbc.roadmap_model {
@@ -71,7 +71,7 @@ data existing_docs: List<String> = [
 fn node_with_carrier(c: PlanDocCarrier) -> RoadmapNode {
   RoadmapNode {
     node: child_node,
-    line: RoadmapStatusEntry { title: "PR→checkbox status", claimed: Todo, binding: HandChecked },
+    line: RoadmapStatusEntry { title: "PR→checkbox status", claimed_done: false, binding: HandChecked },
     carrier: c,
   }
 }
@@ -102,7 +102,7 @@ fn witness_no_carrier_clean() -> Bool {
 fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
-    line: RoadmapStatusEntry { title: "stale", claimed: Todo, binding: CompletesIff { prs: [5491] } },
+    line: RoadmapStatusEntry { title: "stale", claimed_done: false, binding: CompletesIff { prs: [5491] } },
     carrier: NoCarrier,
   }
   verdict_is_drifted(v: node_status_drift(rn: rn, merged: [5491]))
@@ -111,7 +111,7 @@ fn witness_node_status_drifts() -> Bool {
 fn witness_node_handchecked_underivable() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
-    line: RoadmapStatusEntry { title: "partial evidence", claimed: Todo, binding: HandChecked },
+    line: RoadmapStatusEntry { title: "partial evidence", claimed_done: false, binding: HandChecked },
     carrier: NoCarrier,
   }
   verdict_is_underivable(v: node_status_drift(rn: rn, merged: [5491]))
