@@ -896,29 +896,11 @@ pub fn skip_spaces_and_comments(
     mut pos: Rc<TokPos>,
     mut fuel: i64,
 ) -> Rc<TokPos> {
-    loop {
-        let p = source_skip_ws(source.clone(), pos.pos.clone());
-        if ((((p.clone() + 1) < source_len(source.clone()))
-            && (source_code_point(source.clone(), p.clone()) == 47))
-            && (source_code_point(source.clone(), (p.clone() + 1)) == 47))
-        {
-            {
-                let eol = source_scan_to_eol(source.clone(), p.clone());
-                return skip_spaces_and_comments(
-                    source.clone(),
-                    Rc::new(TokPos {
-                        pos: eol,
-                        interp_depth: pos.interp_depth.clone(),
-                    }),
-                    (fuel - 1),
-                );
-            }
-        }
-        break Rc::new(TokPos {
-            pos: p.clone(),
-            interp_depth: pos.interp_depth.clone(),
-        });
-    }
+    let p = source_skip_ws(source.clone(), pos.pos.clone());
+    Rc::new(TokPos {
+        pos: p.clone(),
+        interp_depth: pos.interp_depth.clone(),
+    })
 }
 
 pub fn is_digit(ch: i64) -> bool {
