@@ -497,28 +497,125 @@ fn binding_cap_cgroup_dir() -> Option<std::path::PathBuf> {
     best.map(|(_, d)| d)
 }
 
-/// Whole-tree memory high-water + live pid count at the binding-cap ancestor cgroup. cgroup v2
-/// `memory.peak`/`pids.current` are HIERARCHICAL (account for all descendant cgroups), and child
-/// rustc/sccache fork-inherit the executor's cgroup, so reading at the budget-binding ancestor
-/// captures every PID the budget governs — the SOUND placement divisor input, unlike SELF-RSS
-/// `VmHWM` which omits children. Returns `(memory.peak bytes, pids.current, cgroup rel path)`.
-/// `None` if no binding ancestor or `memory.peak` is unreadable (kernels < 5.19).
-fn cgroup_peak_pids_at_binding_ancestor() -> Option<(u64, u64, String)> {
-    let dir = binding_cap_cgroup_dir()?;
-    let peak = fs::read_to_string(dir.join("memory.peak"))
+/// The process's own deepest (leaf) cgroup from `/proc/self/cgroup`. On the ephemeral GitHub
+/// runners this is `actions-runner@srv1-NN.service` — fresh per job — so its hierarchical cgroup-v2
+/// `memory.peak` isolates ONE job's whole-tree footprint. We read the peak HERE, not at a shared
+/// parent slice, so the placement divisor is per-job and not an aggregate over co-resident runners
+/// (measured 2026-06-22: the runner units run `MemoryMax=infinity`, so there is NO binding numeric
+/// cap and `binding_cap_cgroup_dir` returns `None` on the real fleet; the leaf is always present).
+fn leaf_cgroup_dir() -> Option<std::path::PathBuf> {
+    let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
+    let rel = self_cg
+        .lines()
+        .find_map(|l| l.strip_prefix("0::"))
+        .map(|p| p.trim().trim_start_matches('/').to_string())?;
+    Some(Path::new("/sys/fs/cgroup").join(rel))
+}
+
+/// Total physical RAM in bytes (`/proc/meminfo` `MemTotal`, kB→bytes) — the EFFECTIVE memory budget
+/// when the cgroup is uncapped, which is the real CI fleet (runner units `MemoryMax=infinity`, so
+/// the OOM bound is physical RAM, not a cgroup `memory.max`).
+fn mem_total_bytes() -> Option<u64> {
+    let s = fs::read_to_string("/proc/meminfo").ok()?;
+    let line = s.lines().find(|l| l.starts_with("MemTotal"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
+/// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
+/// a consumer (placement divisor, compile-jobs derive) can parse usage AND budget from one emitted
+/// line without re-walking. `cap_bytes` is the tightest numeric `memory.max` on the leaf→root walk
+/// (`None` = uncapped / RAM-bound); `host_ram` is the physical-RAM budget that binds when uncapped;
+/// `sccache_under_leaf` classifies the sccache server's cgroup as a descendant (already counted in
+/// `leaf_peak`) vs a sibling (must be subtracted as `host_fixed_overhead`) — the "accounted exactly
+/// once" decision, read from paths rather than guessed.
+struct CgroupMeasurement {
+    leaf_peak: u64,
+    leaf_rel: String,
+    cap_bytes: Option<u64>,
+    host_ram: Option<u64>,
+    pids_current: u64,
+    pids_max: String,
+    sccache_rel: Option<String>,
+    sccache_under_leaf: bool,
+}
+
+fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
+    let leaf = leaf_cgroup_dir()?;
+    let leaf_peak = fs::read_to_string(leaf.join("memory.peak"))
         .ok()?
         .trim()
         .parse::<u64>()
         .ok()?;
-    let pids = fs::read_to_string(dir.join("pids.current"))
+    let leaf_rel = leaf
+        .strip_prefix("/sys/fs/cgroup")
+        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
+        .unwrap_or_else(|_| leaf.to_string_lossy().into_owned());
+    let cap_bytes = binding_cap_cgroup_dir()
+        .and_then(|d| fs::read_to_string(d.join("memory.max")).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    let pids_current = fs::read_to_string(leaf.join("pids.current"))
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok())
         .unwrap_or(0);
-    let rel = dir
-        .strip_prefix("/sys/fs/cgroup")
-        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
-        .unwrap_or_else(|_| dir.to_string_lossy().into_owned());
-    Some((peak, pids, rel))
+    let pids_max = fs::read_to_string(leaf.join("pids.max"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let sccache_rel = sccache_server_cgroup_rel();
+    // Descendant iff sccache's cgroup path is under the leaf. When the leaf IS the cgroup root
+    // (`leaf_r` empty — e.g. a single-cgroup container), everything is a descendant. On the real
+    // fleet the leaf is the runner-service cgroup and sccache lives in a sibling service cgroup, so
+    // this is correctly `false` (subtract). Misclassifying as sibling would only over-subtract,
+    // which is the fail-closed direction, but we classify exactly here.
+    let leaf_r = leaf_rel.trim_start_matches('/').to_string();
+    let sccache_under_leaf = sccache_rel
+        .as_deref()
+        .map(|r| leaf_r.is_empty() || r.trim_start_matches('/').starts_with(&leaf_r))
+        .unwrap_or(false);
+    Some(CgroupMeasurement {
+        leaf_peak,
+        leaf_rel,
+        cap_bytes,
+        host_ram: mem_total_bytes(),
+        pids_current,
+        pids_max,
+        sccache_rel,
+        sccache_under_leaf,
+    })
+}
+
+/// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
+/// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
+/// identically-shaped line. `context` distinguishes the call site.
+fn emit_cgroup_measurement(context: &str) {
+    match cgroup_job_measurement() {
+        Some(m) => {
+            let cap = match m.cap_bytes {
+                Some(b) => format!("{b} bytes"),
+                None => "uncapped(RAM-bound)".to_string(),
+            };
+            let host_ram = m
+                .host_ram
+                .map(|b| format!("{b} bytes"))
+                .unwrap_or_else(|| "unknown".to_string());
+            let sccache = match (&m.sccache_rel, m.sccache_under_leaf) {
+                (Some(r), true) => format!("{r} (descendant: counted in memory.peak)"),
+                (Some(r), false) => format!("{r} (sibling: subtract as host_fixed_overhead)"),
+                (None, _) => "not-found (treat as fixed host overhead)".to_string(),
+            };
+            eprintln!(
+                "[measurement] cgroup peak: {peak} bytes (memory.peak @ {rel}) memory.max={cap} host_ram={host_ram} pids.current={pc} pids.max={pm} sccache-server-cgroup={sccache} context={context}",
+                peak = m.leaf_peak,
+                rel = m.leaf_rel,
+                pc = m.pids_current,
+                pm = m.pids_max
+            );
+        }
+        None => eprintln!(
+            "[measurement] cgroup peak: unavailable (no leaf cgroup or memory.peak unreadable; kernel < 5.19?) context={context}"
+        ),
+    }
 }
 
 /// Best-effort cgroup-v2 relative path of the sccache SERVER daemon (a `sccache` comm), scanned
@@ -796,6 +893,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut plan_function = "bre_claim_batches".to_string();
     let mut notice_title: Option<String> = None;
     let mut perturb_check = false;
+    let mut measure_cgroup_peak = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -817,12 +915,23 @@ fn run() -> Result<ExitCode, ExitCode> {
                 notice_title = Some(require_value(&args, i, "--notice-title")?);
             }
             "--perturb-check" => perturb_check = true,
+            "--measure-cgroup-peak" => measure_cgroup_peak = true,
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
             }
         }
         i += 1;
+    }
+
+    // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
+    // after its gate to emit ITS leaf cgroup peak (a separate ephemeral runner cgroup from the `ci`
+    // job's), reusing the same single-authority walk/emit. Short-circuits before the plan-arg
+    // requirements so it needs no `--source-root`/`--plan-entry`.
+    if measure_cgroup_peak {
+        let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
+        emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
+        return Ok(ExitCode::SUCCESS);
     }
 
     if source_roots.is_empty() {
@@ -887,23 +996,11 @@ fn run() -> Result<ExitCode, ExitCode> {
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),
     }
-    // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input. SELF-RSS above
-    // (VmHWM) excludes child rustc/sccache PIDs; cgroup v2 `memory.peak` at the binding-cap
-    // ancestor is hierarchical and captures them. Paired with the sccache-server cgroup path so
-    // the "accounted exactly once" classification (inside-subtree vs sibling host overhead) is a
-    // read of these two paths, not a brittle in-process prefix check. Runtime-harmless read-only.
-    match cgroup_peak_pids_at_binding_ancestor() {
-        Some((peak, pids, anc_rel)) => {
-            let sccache = sccache_server_cgroup_rel()
-                .unwrap_or_else(|| "not-found (treat as fixed host overhead)".to_string());
-            eprintln!(
-                "[measurement] floor cgroup peak: {peak} bytes (memory.peak @ {anc_rel}) pids.current={pids} at spawn_width={spawn_width}; sccache-server cgroup: {sccache}"
-            );
-        }
-        None => eprintln!(
-            "[measurement] floor cgroup peak: unavailable (no binding-cap cgroup or memory.peak) at spawn_width={spawn_width}"
-        ),
-    }
+    // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
+    // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
+    // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
+    // report an identically-shaped line. Runtime-harmless read-only.
+    emit_cgroup_measurement(&format!("floor spawn_width={spawn_width}"));
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
