@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
 
+use v1_compiler::cache_purity_audit::{cache_purity_audit_enabled, cache_purity_audit_run_summary};
 use v1_compiler::cli_run::{
     make_eval_context, read_host_memory_budget_bytes, resolve_entry_graph, run_claim,
     run_discovery_corpus_with_options, run_value, ClaimOutcome, DiscoveryCorpusOptions,
@@ -911,6 +912,34 @@ fn run() -> Result<ExitCode, ExitCode> {
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),
     }
+
+    // Cache-purity audit proof-of-execution (DESIGN §5/§6): when armed
+    // (GUNBC_CACHE_PURITY_AUDIT=1), SURFACE how many entries the in-process warm==cold piggyback
+    // actually audited this run — so a green floor SHOWS audited-N>0 rather than passing vacuously.
+    // An all-warm cache audits zero (sound: each was audited at its cold write; codec-in-key re-keys
+    // a codec change) but that is NOT proof-of-execution, so the line names cold-run vs warm-skip.
+    if cache_purity_audit_enabled() {
+        let s = cache_purity_audit_run_summary();
+        println!("::group::cache purity audit (in-process warm==cold, this run)");
+        if s.ran_over_any_entry() {
+            println!(
+                "cache purity audit RAN: compared {} entr(ies) warm==cold (0 violations — a divergence \
+                 would have failed the floor) · {} deep→recompute(fail-safe, serde 128-level) · {} \
+                 already-cached(skipped, audited at cold write). COLD-run proof-of-execution.",
+                s.compared, s.deep_fail_safe, s.skipped_already_cached
+            );
+        } else {
+            println!(
+                "cache purity audit SKIPPED: 0 entries written this run ({} already-cached) — an \
+                 all-WARM cache. Sound (each was audited at its cold write; codec-in-key re-keys any \
+                 codec change → re-write → re-audit), but NOT a proof-of-execution: a COLD run (clear \
+                 the resolved-graph cache key) is required to exercise the codec over the corpus.",
+                s.skipped_already_cached
+            );
+        }
+        println!("::endgroup::");
+    }
+
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {

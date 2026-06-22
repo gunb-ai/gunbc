@@ -32,8 +32,69 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::cache_purity_oracle::CachePurityViolation;
+
+// ── In-process audit run counters (observability: the audit must demonstrably RUN) ───────────────
+// DESIGN §5/§6 "no silent caps": a green floor must be able to SHOW it audited >0 entries, never
+// pass vacuously. The AlreadyExists-skip path means an all-WARM cache audits ZERO — sound (those
+// bytes were audited at their cold write; codec-in-key re-keys any codec change) but indistinguishable
+// from a fabricated green unless the counts are surfaced. These process-global atomics aggregate
+// every cache-write audit across the discovery corpus's in-process shard threads; `claim_executor`
+// prints the totals at end-of-run so the CI log states, by execution, cold-run-audited-N vs warm-skip.
+static AUDIT_COMPARED: AtomicUsize = AtomicUsize::new(0);
+static AUDIT_DEEP_FAIL_SAFE: AtomicUsize = AtomicUsize::new(0);
+static AUDIT_SKIPPED_ALREADY_CACHED: AtomicUsize = AtomicUsize::new(0);
+
+/// Record the reach of one Written-then-audited entry (called from the cli_run write-site hook).
+pub fn record_audit_reach(reach: DecodeReach) {
+    match reach {
+        // Written + Decoded: the warm read-back DECODED and was structurally compared to cold == .
+        DecodeReach::Decoded => {
+            AUDIT_COMPARED.fetch_add(1, Ordering::Relaxed);
+        }
+        // Written + MissOnRead: too DEEP to decode → production recomputes (FAIL-SAFE, not lossy).
+        DecodeReach::MissOnRead => {
+            AUDIT_DEEP_FAIL_SAFE.fetch_add(1, Ordering::Relaxed);
+        }
+        // Rejected/Skipped do not arise on the Written path (Rejected is fail-closed Err; Skipped is
+        // the standalone corpus tool's no-load case).
+        DecodeReach::Rejected | DecodeReach::Skipped => {}
+    }
+}
+
+/// Record an `AlreadyExists` write — the entry was audited at its FIRST (cold) write, skipped now.
+pub fn record_audit_skip_already_cached() {
+    AUDIT_SKIPPED_ALREADY_CACHED.fetch_add(1, Ordering::Relaxed);
+}
+
+/// A snapshot of this process's in-process audit activity (DESIGN §6 measured fact).
+pub struct CachePurityAuditRunSummary {
+    /// Written + Decoded: entries whose warm read-back was actually compared warm==cold.
+    pub compared: usize,
+    /// Written + MissOnRead: too deep to decode → recompute (fail-safe, codec not exercised).
+    pub deep_fail_safe: usize,
+    /// AlreadyExists: warm cache, audited at first write — skipped this run.
+    pub skipped_already_cached: usize,
+}
+
+impl CachePurityAuditRunSummary {
+    /// Did the audit actually EXERCISE the codec this run (a cold/partly-cold cache)? `false` ⟹ an
+    /// all-warm cache that audited zero — sound but NOT a valid proof-of-execution for a ready-flip.
+    pub fn ran_over_any_entry(&self) -> bool {
+        self.compared + self.deep_fail_safe > 0
+    }
+}
+
+/// Read the process-global audit counters (for `claim_executor`'s end-of-run report).
+pub fn cache_purity_audit_run_summary() -> CachePurityAuditRunSummary {
+    CachePurityAuditRunSummary {
+        compared: AUDIT_COMPARED.load(Ordering::Relaxed),
+        deep_fail_safe: AUDIT_DEEP_FAIL_SAFE.load(Ordering::Relaxed),
+        skipped_already_cached: AUDIT_SKIPPED_ALREADY_CACHED.load(Ordering::Relaxed),
+    }
+}
 use crate::cli_run::{
     build_multi_entry_index, discover_floor_corpus_rows, load_sources_for_entry,
     resolve_entry_with_index, MultiEntryIndex,

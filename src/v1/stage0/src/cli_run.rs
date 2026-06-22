@@ -728,16 +728,21 @@ fn resolve_entry_with_parse_cache(
         if crate::cache_purity_audit::cache_purity_audit_enabled() {
             match &outcome {
                 Ok(CacheWriteOutcome::Written) => {
-                    crate::cache_purity_audit::audit_warm_readback_against_cold(
+                    let reach = crate::cache_purity_audit::audit_warm_readback_against_cold(
                         &cache_root,
                         &subject,
                         &typed,
                         source_indices.as_ref(),
                         entry_file,
                     )?;
+                    // Observability (DESIGN §6): record that the audit RAN over this entry, so a
+                    // green floor can SHOW audited-N>0 rather than pass vacuously.
+                    crate::cache_purity_audit::record_audit_reach(reach);
                 }
                 // Audited at its first write; codec-in-key re-keys a codec change → re-write → re-audit.
-                Ok(CacheWriteOutcome::AlreadyExists) => {}
+                Ok(CacheWriteOutcome::AlreadyExists) => {
+                    crate::cache_purity_audit::record_audit_skip_already_cached();
+                }
                 // A write we cannot complete cannot be proven cached==cold — fail closed under audit.
                 Err(e) => {
                     return Err(format!(
