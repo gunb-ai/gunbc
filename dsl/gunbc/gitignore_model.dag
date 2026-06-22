@@ -26,16 +26,7 @@ type Producer
   = Derivable { kind: DerivableProducerKind }
   | Cited { kind: CitedProducerKind, upstream: String }
 
-type IgnoreRationale = ReproducibleFromSource | EnvironmentSpecific
-
-type IgnoreRule {
-  pattern: String
-  producer: Producer
-  rationale: IgnoreRationale
-}
-
 type IgnoreGroup {
   producer: Producer
-  rationale: IgnoreRationale
   patterns: List<String>
 }

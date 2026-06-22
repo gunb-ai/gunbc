@@ -8,29 +8,24 @@ import gunbc.gitignore_model {
   ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
   AuthSessionTranscript,
   OperatingSystem, EditorIDE, NodeJS, SecretsConvention, PythonLang,
-  Derivable, Cited,
-  IgnoreRationale, ReproducibleFromSource, EnvironmentSpecific
+  Derivable, Cited
 }
 
 data gitignore_authority: List<IgnoreGroup> = [
   IgnoreGroup {
     producer: Derivable { kind: CargoArtifacts },
-    rationale: ReproducibleFromSource,
     patterns: ["/target/", "/target-codex/"]
   },
   IgnoreGroup {
     producer: Derivable { kind: CargoCacheLocal },
-    rationale: EnvironmentSpecific,
     patterns: ["/.cargo-home/"]
   },
   IgnoreGroup {
     producer: Derivable { kind: CodegenSymlink },
-    rationale: ReproducibleFromSource,
     patterns: ["/bin/"]
   },
   IgnoreGroup {
     producer: Derivable { kind: CoverageReport },
-    rationale: ReproducibleFromSource,
     patterns: ["tarpaulin-report.html", "tarpaulin-report.json", "cobertura.xml", "lcov.info", "coverage/"]
   },
   IgnoreGroup {
