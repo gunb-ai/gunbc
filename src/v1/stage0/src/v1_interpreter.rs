@@ -2667,9 +2667,26 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let func_name = expr_call_func_at(node.clone(), ctx.si());
     let arg_nodes = &node.children;
 
-    // Evaluate arguments
+    // SCAFFOLD (B-prime interim, marked per bright-stag D2 ruling 2026-06-22) —
+    // skip synthesized phantom TYPE-argument children. When resolve/infer
+    // monomorphizes a generic call (e.g. `empty_map()` whose result type is
+    // `Map<K, V>`), it attaches the type parameters as extra call children carrying
+    // kernel spans (`<kernel:K>`) and NO value child. A value argument always wraps
+    // its value (`arg_value` reads `children.first()`), so a zero-child arg node is
+    // never a value arg — it is a phantom type arg the untyped interpreter ignores.
+    // Filtering (rather than erroring in `arg_value`) is strictly more permissive: a
+    // zero-child node could not be evaluated as a value anyway.
+    //
+    // CLASSIFICATION: this is a SEPARATE type-erasure concern (phantom zero-child
+    // type-arg from `Map<K,V>` / generic-call monomorphization), NOT D2a
+    // (literals-as-Records / `eval_record_lit`). The two roots must not be conflated.
+    // DISSOLUTION TRIGGER: when the resolve→interp handoff carries type arguments in
+    // a dedicated node slot instead of mixing them into call value-arg children (so
+    // the interpreter never sees a phantom type-arg as a call child), this filter is
+    // unnecessary and is deleted. Until then it is a COUNTED GAP, not coverage.
     let args: Vec<(Option<String>, Value)> = arg_nodes
         .iter()
+        .filter(|arg_node| !arg_node.children.is_empty())
         .map(|arg_node| {
             let name = arg_name_at(arg_node.clone(), ctx.si());
             let val = eval_expr(&arg_value(arg_node.clone()), env, ctx)?;
@@ -3651,9 +3668,16 @@ fn eval_algebra_method(
                 .iter()
                 .enumerate()
                 .map(|(i, v)| {
+                    // Single authority: dsl/std/primitives.dag enumerate_contract
+                    // declares `enumerate -> List<{first: Int, second: T}>` and
+                    // the emit realization (languages.dag) maps `.first`→`.0`,
+                    // `.second`→`.1` over a native tuple. The interpreter Pair
+                    // must carry the SAME field names so `pair.first`/`pair.second`
+                    // (the form every .dag consumer uses) resolve; the prior
+                    // `index`/`value` names were a realization fork.
                     let mut fields = HashMap::new();
-                    fields.insert(ctx.sym("index"), Value::Int(i as i64));
-                    fields.insert(ctx.sym("value"), v.clone());
+                    fields.insert(ctx.sym("first"), Value::Int(i as i64));
+                    fields.insert(ctx.sym("second"), v.clone());
                     Value::Record {
                         type_name: ctx.sym("Pair"),
                         fields: Rc::new(fields),
