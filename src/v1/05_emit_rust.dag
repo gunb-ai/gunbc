@@ -280,8 +280,8 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
 // i64, so the alias-RHS override alone clears them and the Nat-as-number consumers
 // (E0277/E0369). DISSOLUTION: remove when the numeric tower gains a faithful
 // host-realization seam mirroring the text carrier (emit_rust_host_to_dag_string_via_seam).
-fn rust_seed_host_numeric_alias(name: String, source_indices: Map<String, NewlineIndex>) -> String? {
-  if (name == "Nat" || name == "Int") && rust_corpus_includes_v1_compiler(source_indices: source_indices) {
+fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> String? {
+  if (name == "Nat" || name == "Int") && corpus_repr == HostNative {
     Present { value: "i64" }
   } else {
     none
@@ -295,18 +295,18 @@ fn rust_seed_host_numeric_alias(name: String, source_indices: Map<String, Newlin
 // Carrier-specific (List only) and GUARDED — does NOT touch the general
 // preserve-nominal alias-RHS policy for non-container nominals (FreeMonoid/Box) or
 // the v2-TARGET faithful FreeMonoid representation. List ops stay Vec-based.
-fn rust_seed_host_container_base(name: String, source_indices: Map<String, NewlineIndex>) -> String? {
-  if name == "List" && rust_corpus_includes_v1_compiler(source_indices: source_indices) {
+fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
+  if name == "List" && corpus_repr == HostNative {
     Present { value: "Vec" }
   } else {
     none
   }
 }
 
-fn rust_named_type_base(name: String, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
-  } else if name == "String" && rust_emit_faithful_text_carrier(source_indices: source_indices) {
+  } else if name == "String" && corpus_repr == FaithfulFreeMonoid {
     "FreeMonoid<Nat>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
