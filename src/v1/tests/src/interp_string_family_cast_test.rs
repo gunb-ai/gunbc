@@ -1,9 +1,3 @@
-//! Regression: v1 interpreter must treat String→String-family alias casts as identity.
-//!
-//! Targets whose underlying base resolves to String (nominal_opaque / where / brand)
-//! share the Str runtime carrier. eval_cast walks each target's alias chain to decide
-//! identity vs fail-closed, mirroring emit's shared-checkpoint elision.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};

@@ -1,6 +1,3 @@
-//! Ignored perf harness: per-module typecheck breakdown for body_producer closure.
-//! Run: cargo test -p v1-compiler-tests profile_body_producer_per_module_typecheck -- --ignored --nocapture
-
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;

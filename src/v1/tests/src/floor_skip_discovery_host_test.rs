@@ -1,9 +1,3 @@
-//! §5 execution receipts for Phase 1.5a REDO floor skip host transport (`cli_run`).
-//!
-//! Proves skip-disabled path runs, skip-enabled with empty/non-applicable diff runs all,
-//! git diff observation failure fail-closes to running witnesses, and node-precise skip
-//! skips untouched explicit-roster witnesses when the branch diff does not touch them.
-
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -12,8 +6,6 @@ use v1_compiler::cli_run::{
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
-/// Serializes tests that mutate the process-global `GUNBC_CI_DIFF_*` env so `cargo test`'s
-/// default multi-threaded harness cannot let one test's injected diff leak into another.
 static DIFF_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn workspace_root() -> PathBuf {
@@ -163,8 +155,6 @@ fn fixture_line(text: &str, needle: &str) -> i64 {
         .unwrap_or_else(|| panic!("discriminator fixture missing line containing `{needle}`"))
 }
 
-/// Run the node-precise floor skip over a single deterministic injected unified diff
-/// (`git diff -U0` shape) touching exactly `line` of `rel_path`.
 fn run_injected_diff_roster(
     rel_path: &str,
     line: i64,
@@ -183,20 +173,6 @@ fn run_injected_diff_roster(
     .expect("node-precise skip path must not error (FreeMonoid decode root fix)")
 }
 
-/// §5 node-level (not file-level) discriminator by execution — the acceptance bar. In ONE
-/// fixture file, editing a node the witness's claim references RUNS it; editing an ORPHAN
-/// node (referenced by no claim), same file, SKIPS it. A file-level skip can never produce
-/// the orphan skip — only true node precision can.
-///
-/// (The earlier intra-witness A/B variant was unsound and is dropped: a witness whose body
-/// names another node genuinely depends on it — its Bool result can flip if that node's
-/// identity changes — so §5 fail-closed must RUN it, not skip it. Discrimination is sound
-/// only between a referenced node and a node referenced by nothing.)
-///
-/// This also proves the FreeMonoid decode root fix by execution: the skip decision walks
-/// `eval_data_item_value` / `eval_data_initializer_values` over the fixture's `List<Node>`
-/// initializers, which decode only under `with_active_context`; without the fix the path
-/// errors and the `.expect` in `run_injected_diff_roster` panics.
 #[test]
 fn node_precise_referenced_runs_orphan_skips_by_execution() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -211,7 +187,6 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
         "floor_disc_witness_transitive_holds".to_string(),
     )];
 
-    // Edit node C (the transitive witness's claim references it through helper_conj) → RUN.
     let c_line = fixture_line(&text, "^floor_disc_node_c_symbol");
     let run = run_injected_diff_roster(rel, c_line, &roster);
     assert_eq!(run.total, 1);
@@ -226,7 +201,6 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
         "editing a referenced node must RUN the witness"
     );
 
-    // Edit the orphan node (no claim references it), SAME file → SKIP.
     let orphan_line = fixture_line(&text, "^floor_disc_orphan_symbol");
     let skip = run_injected_diff_roster(rel, orphan_line, &roster);
     assert_eq!(skip.total, 1);
@@ -245,7 +219,6 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
     );
 }
 
-/// Transitive closure soundness: edit inner node C; conj-wrapped witness must RUN.
 #[test]
 fn node_precise_transitive_c_edit_runs_conj_witness() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -278,10 +251,6 @@ fn node_precise_transitive_c_edit_runs_conj_witness() {
     assert_eq!(summary.passed, 1);
 }
 
-/// §5 finding-1 receipt (cursor/composer-2.5): editing a witness `test fn`'s OWN body forces
-/// that witness to run even though no `data` node it reads changed; editing a DIFFERENT
-/// witness's body does not (per-function precision, not file-level). Exercises
-/// `edited_test_fns` — the hole the A/B `data`-line fixtures never touched.
 #[test]
 fn node_precise_test_fn_body_edit_runs_only_that_witness() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -293,7 +262,6 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
     let entry = abs.to_string_lossy().into_owned();
     let roster = vec![(entry.clone(), "floor_disc_witness_a_only_holds".to_string())];
 
-    // Edit witness A's OWN body → witness A runs (no `data` node it reads changed).
     let a_fn_line = fixture_line(&text, "test fn floor_disc_witness_a_only_holds");
     let a = run_injected_diff_roster(rel, a_fn_line, &roster);
     assert_eq!(a.total, 1);
@@ -311,7 +279,6 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
         "editing witness A's own body must RUN it (finding 1)"
     );
 
-    // Edit a DIFFERENT witness's body → witness A skips (per-function, not file-level run-all).
     let b_fn_line = fixture_line(&text, "test fn floor_disc_witness_b_only_holds");
     let b = run_injected_diff_roster(rel, b_fn_line, &roster);
     assert_eq!(b.total, 1);
@@ -330,22 +297,6 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
     );
 }
 
-/// §3 cache-impurity regression — the #5295 CI break. The node-frontier analysis resolves the
-/// changed `.dag` files to locate which of their declarations moved. `resolve_entry_with_index`
-/// warms the index's interior-mutable parse / intern / typed-module caches, so resolving the
-/// frontier over the *corpus's own* index pre-seeds it — and under the known v2
-/// generic-instantiation bootstrap limitation, resolving `ci_floor_plan.dag` first caches
-/// `FreeMonoid<T>` WITHOUT its `Empty`/`Cons` variants, after which every corpus entry whose
-/// closure reuses `node_query.dag` fails to resolve (`undefined variable 'Empty'`). The full floor
-/// pass went red on exactly this; the explicit-roster host tests stayed green only because their
-/// injected diffs never named a poisoning file. `collect_frontier_seeds` now resolves over a
-/// throwaway index, so the read-only analysis cannot perturb the corpus it decides over.
-///
-/// Discriminating input (a proven poisoner × a `node_query` consumer): a diff on
-/// `ci_floor_plan.dag` with `budget_roster_completeness_test.dag` in the roster. `run_discovery_rows`
-/// resolves every entry *before* the skip decision, so without the fix the budget_roster resolve
-/// returns Err and the harness `.expect` panics; with it the resolve is clean and — because
-/// budget_roster does not reference the edited `ci_floor_plan` node — the witness skips.
 #[test]
 fn frontier_warmup_does_not_poison_corpus_resolution() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -354,9 +305,7 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
     let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
     let poisoner_abs = ws.join(poisoner_rel);
     let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
-    // Anchor the hunk on a `data` decl so the seed stays precise (a plain-`fn` edit would
-    // fail-closed to run-all) — the frontier resolves the whole file regardless, so it is the
-    // resolution, not the seed outcome, that poisons a shared index.
+
     let data_line = fixture_line(&text, "data floor_corpus_node");
     let budget = ws
         .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")
@@ -367,7 +316,6 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
         "complexity_budget_roster_family_gate_holds".to_string(),
     )];
 
-    // `.expect` inside the harness fires if the corpus resolve returns Err (the pre-fix poison).
     let summary = run_injected_diff_roster(poisoner_rel, data_line, &roster);
     assert_eq!(summary.total, 1);
     assert!(

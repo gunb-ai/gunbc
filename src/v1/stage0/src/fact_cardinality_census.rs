@@ -1,18 +1,3 @@
-//! Cross-tree named-declaration census for `v2.lens.fact_cardinality`.
-//!
-//! **SCAFFOLD (DESIGN.md §7)** — bootstrap text-scan census only. Shrink target: delete
-//! this module when Node-tree decl projection + substrate `content_hash` own the census
-//! in `v2.lens.fact_cardinality` (dissolve-on named in that lens header).
-//!
-//! Host-reads `dsl/` and `src/v2/` without cross-resolve: each `.dag` file is scanned
-//! for column-0 `type` / `data` / `fn` items, normalized body text is hashed, and
-//! `{rel_path_within_tree}:{decl_name}` keys present in BOTH trees are coexistence debt
-//! (§3 dual-authority regardless of hash). Keys with >1 distinct hash across trees are
-//! additionally diverged forks (drift signal).
-//!
-//! 🟡 bridge-boundary — `tree: String` here is host transport only (`"dsl"` / `"v2"`);
-//! modeled facts use `FactCardinalityTree = Dsl | V2` in the lens.
-
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};

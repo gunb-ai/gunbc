@@ -1,10 +1,3 @@
-//! R-reflect Phase 2a/2b — dissolving bridges (substrate-native target).
-//!
-//! - `resolve_type_node`: compiler Disj type item → substrate `Node` Value (dissolves when v2
-//!   gains compile-graph access).
-//! - `syntactic_coproduct_arm_keys` / `syntactic_coproduct_arm_pairs`: Path-3 raw-source scan
-//!   over in-memory compile source.
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -165,7 +158,6 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
     }
 }
 
-/// Unit / nullary payload carrier: empty Conj TypeNode (positive distinct from unresolved).
 fn unit_type_node(ctx: &InterpContext) -> Value {
     node_record(
         ctx,
@@ -236,7 +228,6 @@ fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> Interp
     ))
 }
 
-/// Marshal a resolved closed-coproduct (Disj) type item to substrate `Node` with Named arm edges.
 pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
@@ -272,7 +263,6 @@ pub struct CoproductArmSurface {
     pub payload_type_name: String,
 }
 
-/// Path 3: grammar-level arm labels from `type Name = Arm | Arm | ...` in source text.
 pub fn syntactic_coproduct_arm_labels(
     ctx: &InterpContext,
     file: &str,
@@ -282,7 +272,6 @@ pub fn syntactic_coproduct_arm_labels(
     extract_type_sum_arm_labels(&content, type_name).map_err(|msg| InterpError::TypeError { msg })
 }
 
-/// Path 3 fidelity: (label, payload-type-name) pairs from raw source.
 pub fn syntactic_coproduct_arm_pairs(
     ctx: &InterpContext,
     file: &str,
@@ -451,32 +440,6 @@ pub fn eval_resolve_type_node(
     marshal_disj_type_item(ctx, item)
 }
 
-// ---------------------------------------------------------------------------
-// v2.std.concept_index — host-fed SOURCE for a WHOLE-CORPUS LENS (same family as
-// v2.lens.layering_imports / v2.lens.resolved_imports), NOT a freestanding "enumeration bridge".
-// This is the family's fact-source half: it returns `ConceptDecl` facts (cf. layering_imports'
-// host `layer_import_facts`), and the LENS proper is the pure .dag folds in v2.std.concept_index.
-// Where resolve_type_node materializes ONE decl BY NAME (Disj only), concept_decl_facts_live
-// materializes EVERY declared TypeItem across the compiled corpus as a `ConceptDecl`
-// { qualified_name, name, node } — the SAME substrate currency (a Node), just plural and
-// any-connective. It does NO index-contract shaping: ConceptStruct / FieldRef are projected
-// from `node` entirely in .dag (v2.std.concept_index) via the existing public node_query readers
-// (coproduct_arm_list_from_node / coproduct_arm_payload_pair_from_arm, which fold Conj records
-// and Disj coproducts into (field, type) pairs identically). This keeps the index contract
-// single-authority in the model. This is a COMPILE-TIME host scan (runtime reflection is the
-// banned thing — this is in-bounds), irreducible only because v2 has no corpus-as-node handle yet:
-// it dissolves INTO a lens over the corpus-node, converging onto apply_lens over that Node when v2
-// self-host gains compile-graph access (tracked: gunbc#5364). Same unmet trigger as sibling
-// resolve_type_node. NOTE:
-// gunbc#4863 is this bridge's ORIGIN PR (R-reflect Phase-2a, where resolve_type_node + this file
-// were introduced) — it is NOT the dissolve trigger; recorded as provenance only.
-// ---------------------------------------------------------------------------
-
-/// Logical (import-path) module-qualified name: the dotted module path followed by the concept's
-/// leaf name, with the bootstrap `v2.` source-tree prefix stripped so names match the logical
-/// import namespace the consumer uses — e.g. module `v2.std.node` + `Connective` ->
-/// "std.node.Connective" (NOT "v2.std.node.Connective"). The downstream consumer contract
-/// (plans.namespace_index) keys homonym/synonym detection on these logical paths.
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
     let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
     if logical.is_empty() {
@@ -486,15 +449,6 @@ fn logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
-/// Materialize a declared type item as a substrate `Node` Value — the same currency
-/// resolve_type_node returns, generalized to any connective by reusing the SAME internal marshal
-/// helpers (no change to resolve_type_node's public contract):
-///   - Disj (coproduct) -> marshal_disj_type_item (Named arm edges, payload sub-nodes).
-///   - Conj (record)    -> marshal_variant_arm_target (Named field edges -> field-type atoms;
-///                          empty record -> unit Conj node).
-///   - other (alias/atom/arrow) -> unit Conj node (no named-edge field substrate; the .dag
-///                          readers fold it to an empty field list — honest, not fabricated).
-/// All FieldRef/ConceptStruct shaping happens in .dag over this node, NOT here.
 fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
     match item.connective {
         Connective::Disj => marshal_disj_type_item(ctx, item),
@@ -515,8 +469,7 @@ pub fn eval_concept_decl_facts_live(
             if name.is_empty() {
                 continue;
             }
-            // Per-module registry: the item's module is unambiguous here (no cross-module
-            // name collision, unlike the global registry).
+
             let info = module
                 .item_registry
                 .get(&name)
@@ -580,7 +533,6 @@ pub fn eval_syntactic_coproduct_arm_pairs(
     Ok(crate::v1_interpreter::list_value(items))
 }
 
-/// Extract (label, payload-type-name) pairs from a marshaled Disj node (debug / drift probe).
 pub fn arm_payload_pairs_from_marshaled_node(
     ctx: &InterpContext,
     node: &Value,
@@ -736,7 +688,6 @@ fn payload_type_name_from_target_node(ctx: &InterpContext, target: &Value) -> In
     }
 }
 
-/// Extract Named arm labels from a marshaled substrate Node Value (test / drift probe).
 pub fn arm_labels_from_marshaled_node(
     ctx: &InterpContext,
     node: &Value,
@@ -787,7 +738,6 @@ pub fn arm_labels_from_marshaled_node(
     Ok(labels)
 }
 
-/// Mechanism-drift probe: drop the last Named arm edge from a marshaled Disj node.
 pub fn eval_resolve_type_node_with_dropped_last_arm(
     ctx: &InterpContext,
     type_name: &str,
@@ -863,16 +813,6 @@ fn nullary_coproduct_variant_value(
     }
 }
 
-// dissolve-on-arrival: generic Symbol->inhabitant / direct compile-graph construction in .dag
-// replaces this intercept (snappy Q2 fallback (a); same discipline as resolve_type_node).
-//
-// D1-ref vs D2-construct safety (snappy design-sign): D1 REFERENCES arm targets that already
-// exist in the resolved graph — a reference suffices; constructing there would be the B3
-// fabrication surface. D2 produces inhabitant VALUES that do NOT pre-exist, so construction is
-// unavoidable. Fabrication-safe via: (1) labels from resolved-graph variant children only,
-// (2) fail-closed Rejected on ANY payload arm, (3) dissolve-mark above, (4) set-completeness
-// witness — fabricated/extra/dropped inhabitants break both-directions bag_eq against the
-// already-signed coproduct_arm_keys(T) (see coproduct_reflection_conformance_test.dag).
 pub fn eval_coproduct_nullary_inhabitants(
     ctx: &InterpContext,
     args: &[(Option<String>, Value)],
@@ -960,7 +900,7 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let syntactic = extract_type_sum_arm_pairs(&source, "Connective").expect("syntactic pairs");
-        // Spot-check Atom + nullary arm shapes expected by D4 pair witness.
+
         assert_eq!(syntactic[0].payload_type_name, "{ identity: Symbol }");
         assert_eq!(syntactic[1].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
     }
@@ -990,8 +930,7 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
-        // node.dag gained the `Match` behavior arm; this reflection test was stale (rust gate fires only
-        // on .rs touches, so it stayed hidden). Reflecting node.dag's actual arms.
+
         assert_eq!(
             arms,
             vec!["Value", "Transform", "Branch", "Loop", "Bind", "Match"]

@@ -1,12 +1,3 @@
-//! Regression: repeat_string semantics (P0-A).
-//!
-//! Uses `std.render_repeat_string_bootstrap` — the P2 bootstrap slice of
-//! `dsl/std/render.dag` — not the full `std.render` import chain. Full render
-//! pulls `std.unicode`, whose `char_in_class` uses v3 `fn ... = expr` surface
-//! syntax that the v2 parser does not accept (`expected LBrace, found Eq`).
-//! That is intentional v3 modeling (unicode.dag PATH X comment), not a broken
-//! unicode.dag; v2 interpreter tests must use the bootstrap slice.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
