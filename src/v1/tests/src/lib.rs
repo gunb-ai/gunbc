@@ -1,8 +1,3 @@
-//! Integration tests for the v2 self-hosted compiler.
-//!
-//! Tests call stage0 functions directly — no v1 interpreter, no Value wrapping.
-//! Stage0 is a Rust crate generated from .dag source files by the v1 emitter.
-
 #![allow(
     clippy::disallowed_macros,
     clippy::absurd_extreme_comparisons,

@@ -1,6 +1,3 @@
-// Scope: T6 (a)-fold vetting — project Arrow.body → TargetValueExpression → ConcreteSyntaxToken
-//   at the 06_value_expression delegate (no 06_translate bodied dispatch).
-
 module v2.test.manual.comprep_value_expression_fold_typescript
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }

@@ -1,9 +1,3 @@
-// dsl/test/claim/bash_serializer_witness.dag
-//
-// By-execution witnesses for the structured shell-program serializer
-// (extdeps.languages.bash.program). Mirrors ci_yaml_serializer_witness:
-// a golden Holds + a discriminating perturbation that goes RED.
-
 module test.claim.bash_serializer_witness
 
 import extdeps.languages.bash.program {
@@ -13,7 +7,6 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, single_quote, serialize_bash
 }
 
-// A small, real-shaped program: OUT=$(mktemp -d); rm -rf "$OUT".
 fn prog_mktemp_rm() -> ShellProgram {
   ShellProgram {
     set_e: true,
@@ -24,19 +17,15 @@ fn prog_mktemp_rm() -> ShellProgram {
   }
 }
 
-// Golden: exact bytes. set -e prefix, single-quoted literals, $(...) substitution, "$VAR" expansion.
 fn witness_serialize_golden() -> Bool {
   serialize_bash(p: prog_mktemp_rm()) ==
     "set -e\nOUT=$('mktemp' '-d')\n'rm' '-rf' \"$OUT\"\n"
 }
 
-// Single-quote escaping is total: an embedded ' becomes the canonical '\'' sequence.
 fn witness_single_quote_escapes_embedded_quote() -> Bool {
   single_quote(s: "a'b") == "'a'\\''b'"
 }
 
-// A literal carrying shell metacharacters is neutralized: the whole thing stays one
-// single-quoted word, so the shell never expands $(...) or `...` inside it.
 fn witness_metachars_are_quoted() -> Bool {
   serialize_bash(p: ShellProgram {
     set_e: false,
@@ -44,8 +33,6 @@ fn witness_metachars_are_quoted() -> Bool {
   }) == "'echo' '$(rm -rf /)'\n"
 }
 
-// Discriminating: a program WITHOUT the OUT assignment and WITHOUT set -e serializes to
-// strictly different bytes. A serializer that ignored its input would fail this.
 fn witness_discriminates_on_input() -> Bool {
   let a = serialize_bash(p: prog_mktemp_rm())
   let b = serialize_bash(p: ShellProgram {
@@ -55,7 +42,6 @@ fn witness_discriminates_on_input() -> Bool {
   a != b
 }
 
-// VarRef stays double-quoted (word-splitting safe), Lit stays single-quoted (no expansion).
 fn witness_varref_vs_lit_quoting() -> Bool {
   let out = serialize_bash(p: ShellProgram {
     set_e: false,

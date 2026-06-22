@@ -1,5 +1,3 @@
-// Status: structural receipts — per-use-site reference_layer drives type + value emit together.
-
 module v2.test.manual.sg_rc_layering
 
 import v2.compiler.translate {
@@ -183,7 +181,6 @@ fn sg_rc_outcome_inner_sg2_args_preserved() -> Bool {
     sg_rc_expected_rc_outcome_node
 }
 
-// F1 — dual-boundary: Rc vs owned moves type text together (no mixed Rc<T> / T).
 fn sg_rc_f1_rc_type_text() -> String {
   sg_rc_serialized_type_text(emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc))
 }
@@ -203,7 +200,6 @@ fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
   }
 }
 
-// F1 value half — Rc wrap vs owned inner moves together with type text (§4 / §6).
 fn sg_rc_f1_value_dual_boundary_holds() -> Bool {
   let inner = sg_rc_diagnostics_identity_value()
   let tokens = rust_reference_layer_tokens()
@@ -233,7 +229,6 @@ fn sg_rc_f1_dual_boundary_holds() -> Bool {
     && sg_rc_f1_value_dual_boundary_holds()
 }
 
-// P-RC-CONSUMER — default fold path uses OwnershipAtBindingProjection rows (not lookup miss passthrough).
 fn sg_rc_binding_projection_fold_shell() -> Node {
   match translate_coerced_shell(
     coerced: target_carrier_diagnostics_node(),
@@ -249,7 +244,6 @@ fn sg_rc_binding_projection_fold_holds() -> Bool {
     sg_rc_expected_rc_diagnostics
 }
 
-// F2 — cross-site: return Rc, parameter owned for same carrier.
 fn sg_rc_f2_return_shell() -> Node {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_diagnostics_node(),
@@ -311,7 +305,6 @@ fn sg_rc_f2_cross_site_holds() -> Bool {
     && sg_rc_f2_param_value_holds()
 }
 
-// P0 Node — return Rc, parameter owned (catalog band: Node vs Rc<Node>).
 fn sg_rc_f2_node_return_shell() -> Node {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_node_node(),
@@ -339,7 +332,6 @@ fn sg_rc_f2_node_cross_site_holds() -> Bool {
     && sg_rc_serialized_type_text(emitted: sg_rc_f2_node_param_shell()) == sg_rc_expected_owned_node
 }
 
-// F3 — new carrier ProbeHeap via row only (no translate name branch).
 fn sg_rc_f3_probe_heap_return_shell() -> Node {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_probe_heap_node(),
@@ -356,7 +348,6 @@ fn sg_rc_f3_new_carrier_holds() -> Bool {
     sg_rc_expected_rc_probe_heap
 }
 
-// Negative: SG-RC-ready bundle with no row for (carrier, use_site) must fail closed (not passthrough Owned).
 fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_probe_heap_node(),
@@ -368,7 +359,6 @@ fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
   }
 }
 
-// F4 — Box layer at struct-field site for Node carrier.
 fn sg_rc_f4_box_node_shell() -> Node {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_node_node(),
@@ -384,7 +374,6 @@ fn sg_rc_f4_box_layer_holds() -> Bool {
   sg_rc_serialized_type_text(emitted: sg_rc_f4_box_node_shell()) == sg_rc_expected_box_node
 }
 
-// F6 — bidirectional read: emitted wire decodes to authored reference_layer.
 fn sg_rc_f6_round_trip_rc() -> Bool {
   match target_reference_layer_probe_from_emitted_type(
     emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerRc),
@@ -407,7 +396,6 @@ test fn sg_rc_f6_round_trip_owned() -> Bool {
   }
 }
 
-// Value path coupling — translate/catalog consumer preserves full TargetValueExpression (P3).
 test fn sg_rc_value_rc_wrap_tagged() -> Bool {
   let inner = sg_rc_diagnostics_identity_value()
   let tokens = rust_reference_layer_tokens()

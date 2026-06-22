@@ -1,0 +1,52 @@
+module v2.test.claim.cardinality_fold_propagation
+
+import v2.std.refinement { Refined, Validation, refine }
+import v2.std.algebra { length, list_append, fold_list, FreeMonoid }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
+
+fn fold_locus() -> Locus { port_locus(port: ^cardinality_fold_propagation) }
+
+test fn cardinality_is_a_fold_homomorphism() -> Bool {
+  let a = [1, 2, 3]
+  let b = [4, 5]
+  length(xs: list_append(left: a, right: b)) == (length(xs: a) + length(xs: b))
+}
+
+fn byte_value_max() -> Int { 255 }
+
+fn within_byte(n: Int) -> Bool {
+  (0 <= n) && (n <= byte_value_max())
+}
+
+fn refine_byte(n: Int, at: Locus) -> Outcome<Refined<Int>> {
+  refine(
+    base: n,
+    by: Validation { reason: ^byte_value_overflow, admits: fn(v) { within_byte(n: v) } },
+    at: at
+  )
+}
+
+fn byte_sum(values: FreeMonoid<Int>) -> Int {
+  fold_list(xs: values, empty: 0, cons: fn(acc, v) { acc + v })
+}
+
+fn checked_byte_sum(values: FreeMonoid<Int>, at: Locus) -> Outcome<Refined<Int>> {
+  refine_byte(n: byte_sum(values: values), at: at)
+}
+
+fn is_accepted(o: Outcome<Refined<Int>>) -> Bool {
+  match o { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+}
+fn is_rejected(o: Outcome<Refined<Int>>) -> Bool {
+  match o { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: _ } => true }
+}
+
+test fn fold_within_bound_accepts() -> Bool {
+  is_accepted(o: checked_byte_sum(values: [100, 50, 50], at: fold_locus()))
+}
+
+test fn fold_overflow_rejects() -> Bool {
+  is_rejected(o: checked_byte_sum(values: [100, 100, 100], at: fold_locus()))
+}

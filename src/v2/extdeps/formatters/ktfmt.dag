@@ -1,10 +1,4 @@
-// src/v2/extdeps/formatters/ktfmt.dag
-// Scope: ktfmt configuration model — option space grounded in ktfmt latest README/options and CLI help.
-// Status: T-4.16 scaffold — full documented ktfmt option surface.
-// Anchor: https://github.com/facebook/ktfmt#options
-
 module v2.extdeps.formatters.ktfmt
-
 
 import v2.std.diagnostic { Locus, Outcome }
 import v2.std.node { Symbol }
@@ -15,30 +9,22 @@ import v2.std.refinement {
 }
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type KtfmtStyle
   = KtfmtMetaStyle
   | KtfmtGoogleStyle
   | KtfmtKotlinlangStyle
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type KtfmtTrailingCommaManagementStrategy
   = KtfmtTrailingCommaNone
   | KtfmtTrailingCommaOnlyAdd
   | KtfmtTrailingCommaComplete
 
-
 type KtfmtPositiveInt = PositiveInt
-
 
 fn make_ktfmt_positive_int(value: Int, at: Locus) -> Outcome<KtfmtPositiveInt> {
   make_positive_int(value: value, at: at)
 }
 
-
-// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: KtfmtConfigValidation witness checks editorconfig precedence ij_kotlin_indent_size > indent_size > tab_width and ij_kotlin_continuation_indent_size > ij_continuation_indent_size; forbidden: ad-hoc cross-field guards outside validation substrate.
 type KtfmtConfig {
   style: KtfmtStyle
   max_width: Outcome<KtfmtPositiveInt>
@@ -62,7 +48,6 @@ type KtfmtConfig {
   editorconfig_ij_kotlin_continuation_indent_size: Outcome<KtfmtPositiveInt>
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
 }
-
 
 data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   style: KtfmtMetaStyle,
@@ -88,9 +73,7 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
 }
 
-
 type KtfmtConfigPatch = ConfigPatchRecord<KtfmtConfig>
-
 
 fn ktfmt_layer(base: KtfmtConfig, patch: KtfmtConfigPatch) -> KtfmtConfig {
   config_patch_layer(base: base, patch: patch)

@@ -1,6 +1,3 @@
-// Scope: bisect validate_ingest_staging hang — stop after resolve / infer / lens.
-// Status: diagnostic + §5 witnesses (`*_test.dag` — claim_batch discovery requires the suffix).
-
 module v2.test.manual.validate_ingest_staging_stage_bisect
 
 import extdeps.communication.medium { Lossless, Medium }
@@ -255,8 +252,6 @@ fn bisect_wave1_parse_module_truncated_rejects() -> Bool {
   }
 }
 
-// §5 discriminating witness: wave-1 parse_module on fn-add module accepts + resolves; truncated RED rejects.
-// Binding-fidelity discrimination (param_x/param_y not collapsed): parse_binding_fidelity_test.dag.
 test fn witness_bisect_wave1_parse_module_add_correctness_holds() -> Bool {
   bisect_wave1_parse_module_add_parse_accepts()
     && bisect_wave1_parse_module_add_resolve_accepts()

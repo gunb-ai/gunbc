@@ -1,7 +1,4 @@
-
-
 module v2.test.nat_semiring.rung_0_to_2_three_targets
-
 
 import v2.std.collection { List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -15,8 +12,7 @@ import v2.std.verification {
   CompilesClaim,
   manual_claim_anchor
 }
-// If nat_semiring.dag is renamed or its claim_nat_* exports change, this import breaks,
-// preventing silent drift between gate matrix and fixture.
+
 import v2.test.algebra_laws.nat_semiring {
   claim_nat_add_left_identity,
   claim_nat_add_right_identity,
@@ -27,15 +23,11 @@ import v2.test.algebra_laws.nat_semiring {
   nat_add_left_identity_input
 }
 
-
-// Fixture roster anchor: rung × target labels encode (fixture=phase1/nat_semiring, rung, target)
-// per ladder rung specs §2.4 verdict reporting shape and §2.5 worker brief triple.
 data phase1_nat_semiring_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-
 
 fn phase1_rung_compiles_claim(label: String) -> TestClaim {
   CompilesClaim {
@@ -46,9 +38,6 @@ fn phase1_rung_compiles_claim(label: String) -> TestClaim {
     classification: TestClassification { tier: Tier1, layer: Integration }
   }
 }
-
-
-// §2.1 Rung 0 — parses in target. Predicate ids R0-dag-parse / R0-rust-parse / R0-python-parse / R0-go-parse.
 
 data claim_phase1_nat_semiring_rung0_dag_parse: TestClaim = phase1_rung_compiles_claim(
   label: "fixture=phase1/nat_semiring rung=0 target=dag predicate=R0-dag-parse"
@@ -66,14 +55,9 @@ data claim_phase1_nat_semiring_rung0_go_parse: TestClaim = phase1_rung_compiles_
   label: "fixture=phase1/nat_semiring rung=0 target=go predicate=R0-go-parse"
 )
 
-
-// §2.2 Rung 1 — type-checks in Rust. Predicate id R1-rust-typecheck. Not sufficient for v2 close.
-
 data claim_phase1_nat_semiring_rung1_rust_typecheck: TestClaim = phase1_rung_compiles_claim(
   label: "fixture=phase1/nat_semiring rung=1 target=rust predicate=R1-rust-typecheck"
 )
-
-
 
 data claim_phase1_nat_semiring_rung2_rust_compile: TestClaim = phase1_rung_compiles_claim(
   label: "fixture=phase1/nat_semiring rung=2 target=rust predicate=R2-rust-compile"
@@ -87,11 +71,6 @@ data claim_phase1_nat_semiring_rung2_go_compile: TestClaim = phase1_rung_compile
   label: "fixture=phase1/nat_semiring rung=2 target=go predicate=R2-go-compile"
 )
 
-
-// §2.5 Named roster — fixture-scoped List<TestClaim> for gate selection and CI matrix iteration.
-// Pattern: a fixture-scoped named roster (formerly demonstrated by the deleted
-// src/v2/workflow/affected_set_ci_runner_test.dag ci_runner_fixture_roster).
-
 data phase1_nat_semiring_rung_0_to_2_roster: List<TestClaim> = [
   claim_phase1_nat_semiring_rung0_dag_parse,
   claim_phase1_nat_semiring_rung0_rust_parse,
@@ -103,14 +82,6 @@ data phase1_nat_semiring_rung_0_to_2_roster: List<TestClaim> = [
   claim_phase1_nat_semiring_rung2_go_compile
 ]
 
-
-// Go L1 compiler-slice receipt authority: v2.test.nat_semiring.rung_l1_go_compiler_slice
-// (not duplicated here — mirrors python L1 in rung_l1_python_runtime.dag only).
-
-
-// Fixture re-export: the law claims from algebra_laws/nat_semiring remain the authoritative
-// subject matter; the rung gate composes them by reference, not by copy. This roster names
-
 data phase1_nat_semiring_fixture_law_roster: List<TestClaim> = [
   claim_nat_add_left_identity,
   claim_nat_add_right_identity,
@@ -119,10 +90,5 @@ data phase1_nat_semiring_fixture_law_roster: List<TestClaim> = [
   claim_nat_mul_annihilator,
   claim_nat_mul_associativity
 ]
-
-
-// Sentinel reference: keep nat_add_left_identity_input live as the canonical fixture
-// law-subject node referenced by R2 multi-target compile predicates (host transport reads
-// the same module path; this binding makes the substrate dependency explicit).
 
 data phase1_nat_semiring_rung_gate_canonical_subject: Node = nat_add_left_identity_input

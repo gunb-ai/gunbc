@@ -1,12 +1,3 @@
-// dsl/std/list.dag — `dag run --source-root dsl` facade for `List<T>`.
-//
-// This module is the surviving list-algebra authority under the dsl tree. It
-// aliases `List<T>` through `FreeMonoid<T>` in `dsl/std/types.dag` so
-// `import std.list { List }` resolves under `--source-root dsl`.
-//
-// **🟡 Scaffold — dissolution trigger:** delete when `List<T>` is consumed
-// directly through `FreeMonoid<T>` and this facade alias is no longer needed.
-
 module std.list
 
 import std.types { List }

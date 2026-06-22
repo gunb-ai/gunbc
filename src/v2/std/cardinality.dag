@@ -1,9 +1,3 @@
-// src/v2/std/cardinality.dag
-// Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
-// Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
-
-
 module v2.std.cardinality
 
 import v2.std.collection { List }
@@ -41,13 +35,13 @@ import v2.std.node {
   name_occurrences
 }
 import v2.std.witness { Holds, Violates, Witness }
-// 🟢 coproduct dissolution
+
 type Never
 type Unit
 type NonZeroNat {
   prev: Nat
 }
-// 🟢 coproduct dissolution — CP-3229-NAT-LE-WITNESS.
+
 type NatLeWitness
   = LeqZero { upper: Nat }
   | LeqSucc { inner: NatLeWitness }
@@ -110,7 +104,7 @@ fn positive_nat_le_witness_well_formed(w: PositiveNatLeWitness) -> Bool {
 fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
   positive_nat_le_witness_well_formed(w: b.le)
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type DescentEvidence
   = Strict
   | NonIncreasing
@@ -122,15 +116,11 @@ type TerminationProof {
   non_increasing: List<RankingDimension>
   strict: RankingDimension
 }
-// 🟡 gated — coproduct-dissolution interim — feature: loop-bound-interval-parent — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent for measure + descent evidence (v3 substrate direction); forbidden: terminal LoopBound coproduct duplicating measure per arm.
-// LoopBound records the iteration-measure witness for Loop computation nodes.
-// `measure` is the single authoritative bound node via substrate `loop_bound_edge`;
-// `termination` is the descent-proof coordinate (Holds/Violates), not a coproduct arm.
+
 type LoopBound {
   measure: Node
   termination: Witness<TerminationProof>
 }
-
 
 fn loop_bound_measure(bound: LoopBound) -> Node {
   bound.measure
@@ -168,7 +158,6 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: cardinality-loop-bound-measure-witness — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent owns Loop measure witness minting; forbidden: hand-rolled EdgeLabel walks outside std.node loop_bound_measure_target.
 fn loop_measure_node(n: Node) -> Witness<Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {
@@ -191,12 +180,10 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
   }
 }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Multiplicity
   = Bounded
   | RequiresTerminationProof
   | ProvenTermination { proof: TerminationProof }
-
 
 fn structural_node_size_dimension() -> RankingDimension {
   RankingDimension { measured: ^cardinality_structural_node_size }

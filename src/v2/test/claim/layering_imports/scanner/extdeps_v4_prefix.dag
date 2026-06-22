@@ -1,7 +1,3 @@
-// Scope: scanner-execution receipt — the live import projection must flag a planted
-//        extdeps-layer v2.compiler.* prefix import (committed fixture, read by execution).
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
-
 module v2.test.layering_imports.scanner.extdeps_v4_prefix
 
 import v2.lens.layering_imports {

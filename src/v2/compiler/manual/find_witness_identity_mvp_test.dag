@@ -1,8 +1,4 @@
-// Scope: Wave-4-A identity-MVP behavior anchors for find_witness / verify_witness / coercion_fold.
-
-
 module v2.test.manual.find_witness_identity_mvp
-
 
 import v2.std.coercion {
   CoercionCandidateSet,

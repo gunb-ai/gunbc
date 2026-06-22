@@ -1,9 +1,3 @@
-// extdeps/formats/elf/primitives.dag — ELF specification atoms (Slice 1: ELF-64 + Linux x86-64 subset).
-//
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.reloc.html
-// Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (EM_X86_64)
-
 module extdeps.formats.elf.primitives
 
 import std.exec_format { ExecutableFormat, Elf }
@@ -18,7 +12,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// 🟢 terminal — gABI ELFMAG0..ELFMAG3 are irreducible identification bytes.
 type ElfMagicByte = Mag0 | Mag1 | Mag2 | Mag3
 
 data elf_mag0: Int = 127
@@ -26,21 +19,18 @@ data elf_mag1: Int = 69
 data elf_mag2: Int = 76
 data elf_mag3: Int = 70
 
-// gABI §ELF Header e_ident[EI_CLASS]
 type ElfClass = ElfClassNone | ElfClass32 | ElfClass64
 
 data elf_class_none: Int = 0
 data elf_class_32: Int = 1
 data elf_class_64: Int = 2
 
-// gABI §ELF Header e_ident[EI_DATA]
 type ElfDataEncoding = ElfDataNone | ElfData2Lsb | ElfData2Msb
 
 data elf_data_none: Int = 0
 data elf_data_2lsb: Int = 1
 data elf_data_2msb: Int = 2
 
-// gABI §ELF Header e_type — Slice 1: ET_EXEC only (static hello witness).
 type ElfFileType = EtNone | EtRel | EtExec | EtDyn | EtCore
 
 data et_none: Int = 0
@@ -49,27 +39,22 @@ data et_exec: Int = 2
 data et_dyn: Int = 3
 data et_core: Int = 4
 
-// gABI §ELF Header e_machine — Slice 1: EM_X86_64 only.
 type ElfMachine = EmNone | EmX86_64
 
 data em_none: Int = 0
 data em_x86_64: Int = 62
 
-// gABI §Program Header p_type — Slice 1: PT_LOAD only.
 type ElfSegmentType = PtNull | PtLoad
 
 data pt_null: Int = 0
 data pt_load: Int = 1
 
-// gABI §Program Header p_flags
 data pf_x: Int = 1
 data pf_w: Int = 2
 data pf_r: Int = 4
 
-// gABI §ELF Header field sizes (ELF-64).
 data elf64_ehdr_size: Int = 64
 data elf64_phdr_size: Int = 56
 data elf64_shdr_size: Int = 64
 
-// Cited ELF format row inhabiting std.exec_format.ExecutableFormat.
 data linux_x86_64_elf_format: ExecutableFormat = ExecutableFormat { family: Elf }

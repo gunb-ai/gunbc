@@ -1,7 +1,4 @@
-// Scope: phase1/nat_semiring rung 6 — post-emit semiring law preservation (F4).
-
 module v2.test.nat_semiring.rung_6
-
 
 import v2.compiler.eval { TestClaimRun }
 import v2.std.node { Node }
@@ -29,7 +26,6 @@ import v2.test.rung_5_6_common {
   rung56_emit_vs_eval_run
 }
 
-
 fn rung6_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
   EqualsClaim {
     label: label,
@@ -40,74 +36,50 @@ fn rung6_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
   }
 }
 
-
 data claim_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=rust law=add-left-identity predicate=R6-rust-emit-law-equals-eval", law_input: nat_add_left_identity_input)
-
 
 data claim_phase1_nat_semiring_rung6_rust_add_right_identity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=rust law=add-right-identity predicate=R6-rust-emit-law-equals-eval", law_input: nat_add_right_identity_input)
 
-
 data claim_phase1_nat_semiring_rung6_rust_add_associativity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=rust law=add-associativity predicate=R6-rust-emit-law-equals-eval", law_input: nat_add_associativity_input)
-
 
 data claim_phase1_nat_semiring_rung6_python_add_left_identity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=python law=add-left-identity predicate=R6-python-emit-law-equals-eval", law_input: nat_add_left_identity_input)
 
-
 data claim_phase1_nat_semiring_rung6_python_add_right_identity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=python law=add-right-identity predicate=R6-python-emit-law-equals-eval", law_input: nat_add_right_identity_input)
-
 
 data claim_phase1_nat_semiring_rung6_python_add_associativity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=python law=add-associativity predicate=R6-python-emit-law-equals-eval", law_input: nat_add_associativity_input)
 
-
 data run_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval, fixture_subject: nat_add_left_identity_input, target: rung34_emit_host_rust_target_model)
-
 
 data run_phase1_nat_semiring_rung6_rust_add_right_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_rust_add_right_identity_emit_equals_eval, fixture_subject: nat_add_right_identity_input, target: rung34_emit_host_rust_target_model)
 
-
 data run_phase1_nat_semiring_rung6_rust_add_associativity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_rust_add_associativity_emit_equals_eval, fixture_subject: nat_add_associativity_input, target: rung34_emit_host_rust_target_model)
-
 
 data run_phase1_nat_semiring_rung6_python_add_left_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_python_add_left_identity_emit_equals_eval, fixture_subject: nat_add_left_identity_input, target: rung56_emit_host_python_target_model)
 
-
 data run_phase1_nat_semiring_rung6_python_add_right_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_python_add_right_identity_emit_equals_eval, fixture_subject: nat_add_right_identity_input, target: rung56_emit_host_python_target_model)
-
 
 data run_phase1_nat_semiring_rung6_python_add_associativity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_python_add_associativity_emit_equals_eval, fixture_subject: nat_add_associativity_input, target: rung56_emit_host_python_target_model)
 
-
 data claim_phase1_nat_semiring_rung6_rust_mul_left_identity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=rust law=mul-left-identity predicate=R6-rust-emit-law-equals-eval", law_input: nat_mul_left_identity_input)
-
 
 data claim_phase1_nat_semiring_rung6_rust_mul_associativity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=rust law=mul-associativity predicate=R6-rust-emit-law-equals-eval", law_input: nat_mul_associativity_input)
 
-
 data claim_phase1_nat_semiring_rung6_rust_mul_annihilator_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=rust law=mul-annihilator predicate=R6-rust-emit-law-equals-eval", law_input: nat_mul_annihilator_input)
-
 
 data claim_phase1_nat_semiring_rung6_python_mul_left_identity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=python law=mul-left-identity predicate=R6-python-emit-law-equals-eval", law_input: nat_mul_left_identity_input)
 
-
 data claim_phase1_nat_semiring_rung6_python_mul_associativity_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=python law=mul-associativity predicate=R6-python-emit-law-equals-eval", law_input: nat_mul_associativity_input)
-
 
 data claim_phase1_nat_semiring_rung6_python_mul_annihilator_emit_equals_eval: TestClaim = rung6_emit_law_equals_claim(label: "fixture=phase1/nat_semiring rung=6 target=python law=mul-annihilator predicate=R6-python-emit-law-equals-eval", law_input: nat_mul_annihilator_input)
 
-
 data run_phase1_nat_semiring_rung6_rust_mul_left_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_rust_mul_left_identity_emit_equals_eval, fixture_subject: nat_mul_left_identity_input, target: rung34_emit_host_rust_target_model)
-
 
 data run_phase1_nat_semiring_rung6_rust_mul_associativity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_rust_mul_associativity_emit_equals_eval, fixture_subject: nat_mul_associativity_input, target: rung34_emit_host_rust_target_model)
 
-
 data run_phase1_nat_semiring_rung6_rust_mul_annihilator_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_rust_mul_annihilator_emit_equals_eval, fixture_subject: nat_mul_annihilator_input, target: rung34_emit_host_rust_target_model)
-
 
 data run_phase1_nat_semiring_rung6_python_mul_left_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_python_mul_left_identity_emit_equals_eval, fixture_subject: nat_mul_left_identity_input, target: rung56_emit_host_python_target_model)
 
-
 data run_phase1_nat_semiring_rung6_python_mul_associativity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_python_mul_associativity_emit_equals_eval, fixture_subject: nat_mul_associativity_input, target: rung56_emit_host_python_target_model)
-
 
 data run_phase1_nat_semiring_rung6_python_mul_annihilator_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rung6_python_mul_annihilator_emit_equals_eval, fixture_subject: nat_mul_annihilator_input, target: rung56_emit_host_python_target_model)

@@ -1,9 +1,3 @@
-// gunbc/workflow/types.dag -- Gunbc workflow domain model.
-//
-// These types are intentionally not part of std/: they model this repo's
-// workflow, review, approval, runtime, and audit domain rather than a
-// provider-neutral standard library surface.
-
 module gunbc.workflow.types
 
 import std.types {
@@ -16,8 +10,6 @@ import std.types {
   Url
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
-
-// --- Review model ------------------------------------------------------
 
 type ArtifactKind = Design | Review | Plan | CiReport
 type AuthorSource = Llm | Human
@@ -40,8 +32,6 @@ type MergedReviewOutput {
   output: Json
   summary: String
 }
-
-// --- Issue lifecycle ---------------------------------------------------
 
 type IssueLifecycleStage
   = Idea
@@ -126,8 +116,6 @@ type PipelineArtifact {
   url: Url?
 }
 
-// --- Workflow state ----------------------------------------------------
-
 type IssueState = Open | Closed
 
 type BindingStatus
@@ -192,8 +180,6 @@ type StageOutcome {
   updated_at: Timestamp
 }
 
-// --- Artifacts ---------------------------------------------------------
-
 type ArtifactType
   = DesignArtifact
   | DesignReviewArtifact
@@ -229,8 +215,6 @@ type ArtifactMarker {
   created_at: Timestamp
 }
 
-// --- Signals -----------------------------------------------------------
-
 type SignalType
   = IntentSubmitted { intent_id: NonEmptyStr, intent_version: Int }
   | WorkReady { issue_id: NonEmptyStr, stage: IssueLifecycleStage, stage_epoch: Int }
@@ -248,8 +232,6 @@ type Signal {
   produced_at: Timestamp
   consumed_at: Timestamp?
 }
-
-// --- Runtime / credentials / audit ------------------------------------
 
 type RuntimeProfile
   = LocalCoLocated

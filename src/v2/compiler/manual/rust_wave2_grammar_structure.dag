@@ -1,6 +1,3 @@
-// Scope: Wave-2a Rust grammar structural receipt — key Rust Reference productions are registered.
-// Status: manual structural TestClaim input for wave-2a grammar contracts.
-
 module v2.test.manual.rust_wave2_grammar_structure
 import v2.std.language_model { LanguageModel }
 

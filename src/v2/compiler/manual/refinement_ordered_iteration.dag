@@ -1,8 +1,4 @@
-// Scope: behavior receipt for refine_ordered_iteration — ordered classifier accepts; unordered classifier rejects with naming_the_leak.
-
-
 module v2.test.manual.refinement_ordered_iteration
-
 
 import v2.std.refinement {
   IterationClassifier,
@@ -40,16 +36,13 @@ fn ordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
   IterationClassifier { classify: fn(_) { StructurallyOrdered } }
 }
 
-
 fn unordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
   IterationClassifier { classify: fn(_) { StructurallyUnordered } }
 }
 
-
 fn test_locus() -> Locus {
   Textual { file: ^refinement_ordered_iteration_test_file, extent: WholeFile }
 }
-
 
 fn witness_ordered_classifier_accepts() -> Bool {
   match refine_ordered_iteration(
@@ -62,11 +55,9 @@ fn witness_ordered_classifier_accepts() -> Bool {
   }
 }
 
-
 fn claim_ordered_classifier_accepts_input(ok: Bool) -> Node {
   if ok { stub_empty_conj } else { stub_empty_disj }
 }
-
 
 data claim_refine_ordered_iteration_accepts_on_ordered_classifier: TestClaim = EqualsClaim {
   label: "manual/refinement: refine_ordered_iteration accepts when the classifier reports StructurallyOrdered",
@@ -75,7 +66,6 @@ data claim_refine_ordered_iteration_accepts_on_ordered_classifier: TestClaim = E
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit },
 }
-
 
 fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
   match refine_ordered_iteration(
@@ -88,11 +78,9 @@ fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
   }
 }
 
-
 fn claim_unordered_classifier_rejects_input(ok: Bool) -> Node {
   if ok { stub_empty_conj } else { stub_empty_disj }
 }
-
 
 data claim_refine_ordered_iteration_rejects_unordered_with_naming_the_leak: TestClaim = EqualsClaim {
   label: "manual/refinement: refine_ordered_iteration rejects with naming_the_leak when the classifier reports StructurallyUnordered",

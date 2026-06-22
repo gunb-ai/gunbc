@@ -1,7 +1,3 @@
-// Scope: English emit-target receipt — emit(add) renders the canonical controlled-English
-// Anchor: §3 emit-breadth MoA — a new target is data rows through the same fold; operator
-//   design steer — rigid legalese grammar, round-trip is the acceptance.
-
 module v2.test.manual.english_emit_add
 
 import v2.compiler.emit { emit }
@@ -167,7 +163,6 @@ fn anchor_english_emit_add_accepts() -> Outcome<Medium<String>> {
 
 data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add_accepts()
 
-// Execution witness — emit(add) must produce the canonical controlled-English prose.
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
     Accepted { value: source, diagnostics: d } =>
@@ -176,7 +171,6 @@ test fn english_emit_add_prose_holds() -> Bool {
   }
 }
 
-// emit(add) must match the grammar-inverse serialize (shared 06_translate path).
 fn english_emit_add_matches_serialize_holds() -> Bool {
   match target_serialize_source_from_model(
     target: english_emit_add_target_model,
@@ -202,8 +196,6 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
   }
 }
 
-// Ingest direction: tokenize the EMITTED prose with the unchanged wave-2a English lex,
-// parse as the six-sentence paragraph (sentences = unchanged wave-2a productions).
 fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<ParseTree> {
   match tokenize(
     text: source.carried,
@@ -216,8 +208,6 @@ fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<ParseTree> {
   }
 }
 
-// The parse wraps the matched production's emitted node under the production-identity
-// projection edge; structural identity holds when that node is the emitted add-fn root.
 fn english_emit_add_identity_edge_matches(e: Edge, expected: Node) -> Bool {
   match e.label {
     Named { name: n } =>
@@ -236,7 +226,6 @@ fn english_emit_add_parse_identity_matches(root: Node, expected: Node) -> Bool {
   )
 }
 
-// Round trip: emit(add) -> tokenize -> parse -> recovered node == emitted root.
 fn english_emit_add_ingest_round_trip_holds() -> Bool {
   match english_emit_add_receipt {
     Rejected { diagnostics: _ } => false
@@ -252,7 +241,6 @@ fn english_emit_add_ingest_round_trip_holds() -> Bool {
   }
 }
 
-// Combined acceptance: exact licensed prose + grammar-inverse + emit->ingest identity.
 test fn english_emit_add_emit_ingest_round_trip_holds() -> Bool {
   english_emit_add_prose_holds()
     && english_emit_add_matches_serialize_holds()

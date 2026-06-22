@@ -1,8 +1,4 @@
-// Status: manual receipt; consumer-site infer rejection — not emit compile_error! stubs.
-
-
 module v2.test.manual.infer_bounded_lattice_completeness_anchor
-
 
 import v2.compiler.infer {
   InferredTree,
@@ -42,7 +38,6 @@ fn anchor_atom_node(s: Symbol) -> Node {
 }
 }
 
-
 fn anchor_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -51,11 +46,9 @@ fn anchor_fn_node() -> Node {
 }
 }
 
-
 fn anchor_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
-
 
 fn anchor_complete_lattice_node() -> Node {
   Node {
@@ -68,7 +61,6 @@ fn anchor_complete_lattice_node() -> Node {
 }
 }
 
-
 fn anchor_lattice_missing_meet_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -78,7 +70,6 @@ fn anchor_lattice_missing_meet_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 data anchor_complete_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -90,7 +81,6 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data anchor_partial_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -101,7 +91,6 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data anchor_partial_missing_lattice_field_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -110,7 +99,6 @@ data anchor_partial_missing_lattice_field_instance: Node = Node {
   ],
   occurrence_id: SyntheticOccurrence
 }
-
 
 data anchor_consumer_of_partial: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -123,7 +111,6 @@ data anchor_consumer_of_partial: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data anchor_module_with_partial_only: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -134,7 +121,6 @@ data anchor_module_with_partial_only: Node = Node {
   ],
   occurrence_id: SyntheticOccurrence
 }
-
 
 data anchor_module_with_partial_and_consumer: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -151,44 +137,36 @@ data anchor_module_with_partial_and_consumer: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data anchor_non_bl_node_is_not_complete_variant: Bool = match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: ^anchor_top_sym)) {
   NotBoundedLatticeInstance => true
   BoundedLatticeComplete => false
   BoundedLatticePartial { missing: _ } => false
 }
 
-
 data anchor_complete_bounded_lattice_completeness_ok: Bool = match bounded_lattice_instance_completeness(instance: anchor_complete_bounded_lattice_instance) {
   BoundedLatticeComplete => true
   _ => false
 }
-
 
 data anchor_partial_bounded_lattice_missing_meet: Bool = match bounded_lattice_instance_completeness(instance: anchor_partial_bounded_lattice_instance) {
   BoundedLatticePartial { missing: MissingMeet } => true
   _ => false
 }
 
-
 data anchor_partial_missing_lattice_field: Bool = match bounded_lattice_instance_completeness(instance: anchor_partial_missing_lattice_field_instance) {
   BoundedLatticePartial { missing: MissingLatticeField } => true
   _ => false
 }
 
-
 data anchor_bounded_lattice_completeness_classifies_instances: Bool = anchor_complete_bounded_lattice_completeness_ok && anchor_partial_bounded_lattice_missing_meet && anchor_partial_missing_lattice_field
-
 
 data anchor_partials_collected_from_module: Bool = length(
   xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_and_consumer)
 ) == 1
 
-
 data anchor_partials_collected_from_partial_only_module: Bool = length(
   xs: partial_bounded_lattice_instances_in_tree(tree: anchor_module_with_partial_only)
 ) == 1
-
 
 data anchor_module_partial_only_consumer_gate_accepts: Bool = match infer_bounded_lattice_consumer_gate(
   consumer: anchor_module_with_partial_only,
@@ -198,21 +176,16 @@ data anchor_module_partial_only_consumer_gate_accepts: Bool = match infer_bounde
   Rejected { diagnostics: _ } => false
 }
 
-
 data anchor_instance_gate_rejects_partial: Outcome<Node> = infer_bounded_lattice_instance_gate(instance: anchor_partial_bounded_lattice_instance)
 
-
 data anchor_instance_gate_accepts_complete: Outcome<Node> = infer_bounded_lattice_instance_gate(instance: anchor_complete_bounded_lattice_instance)
-
 
 data anchor_consumer_gate_rejects_partial_reference: Outcome<Node> = infer_bounded_lattice_consumer_gate(
   consumer: anchor_consumer_of_partial,
   partials: [anchor_partial_bounded_lattice_instance]
 )
 
-
 data anchor_infer_rejects_consumer_tree: Outcome<InferredTree> = infer(tree: anchor_module_with_partial_and_consumer)
-
 
 fn anchor_infer_consumer_tree_is_rejected() -> Bool {
   match anchor_infer_rejects_consumer_tree {
@@ -220,7 +193,6 @@ fn anchor_infer_consumer_tree_is_rejected() -> Bool {
     _ => false
   }
 }
-
 
 data anchor_infer_consumer_tree_rejects: Bool = anchor_infer_consumer_tree_is_rejected()
 fn sg6_pass_node() -> Node {
@@ -231,7 +203,6 @@ fn sg6_pass_node() -> Node {
 }
 }
 
-
 fn sg6_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg6_fail_sym } },
@@ -239,7 +210,6 @@ fn sg6_fail_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn sg6_claim_input(ok: Bool) -> Node {
   if ok {
@@ -249,13 +219,11 @@ fn sg6_claim_input(ok: Bool) -> Node {
   }
 }
 
-
 fn sg6_missing_meet_consumer_infer_rejects() -> Bool {
   anchor_infer_consumer_tree_rejects
     && anchor_partial_bounded_lattice_missing_meet
     && anchor_bounded_lattice_completeness_classifies_instances
 }
-
 
 data claim_sg6_bounded_lattice_missing_meet_infer_rejects: TestClaim = CompilesClaim {
   label: "manual/sg6: BoundedLattice missing meet rejects at infer consumer (not emit stub)",

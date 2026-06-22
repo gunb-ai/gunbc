@@ -1,6 +1,3 @@
-// Scope: Compile anchors for C++ scalar groundedness marks.
-// Status: compile-only groundedness testcase.
-
 module v2.test.manual.cpp_scalar_grounding_anchor
 
 import v2.extdeps.cpp_abi {

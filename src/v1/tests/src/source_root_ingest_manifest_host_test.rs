@@ -1,9 +1,3 @@
-//! Host transport receipts for discover_source_root_ingest manifest emission.
-//!
-//! These helpers back `discover_source_root_ingest` and the closure manifest overlay;
-//! kept as Rust unit tests because admission parsing and artifact-id minting are host
-//! bootstrap transport (dissolves when v2 owns ingest-side admission projection).
-
 use std::fs;
 use std::path::PathBuf;
 

@@ -1,5 +1,3 @@
-// Scope: field access body emit round-trip (.dag target).
-
 module v2.test.manual.field_access_emit
 
 import v2.compiler.emit { emit }

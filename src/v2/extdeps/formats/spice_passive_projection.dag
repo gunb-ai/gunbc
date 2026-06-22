@@ -1,7 +1,3 @@
-// Scope: spice Component → std.timeseries_signal passive topology projection (§3 dispatch).
-// Anchor: https://ngspice.sourceforge.io/docs/ngspice-manual.pdf — SPICE3 passive R/L/C
-//         element netlist lines (Resistor/Capacitor/Inductor arms) modeled in v2.extdeps.formats.spice Component.
-
 module v2.extdeps.formats.spice_passive_projection
 
 import v2.std.collection { Optional, Absent, Present }

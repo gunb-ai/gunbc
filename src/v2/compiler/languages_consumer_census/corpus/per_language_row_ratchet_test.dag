@@ -1,6 +1,3 @@
-// Scope: corpus ratchet — per-language duplicate rows (71 - 7 formats) must not grow.
-// Status: DRAFT-until-signed -- load-bearing witness receipts.
-
 module v2.test.languages_consumer_census.corpus.per_language_row_ratchet
 
 import v2.lens.languages_consumer_census { languages_consumer_census_live_per_language_row_ratchet_holds }

@@ -1,5 +1,3 @@
-// Scope: corpus regression GUARD — Node-tree projection over extdeps.cloud.gcp.gcp Login op.
-
 module v2.test.extdeps_shape_transport_policy.corpus.gcp_login_dead_param
 
 import v2.lens.extdeps_shape_transport_policy {

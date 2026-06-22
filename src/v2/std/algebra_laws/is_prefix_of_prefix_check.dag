@@ -1,8 +1,4 @@
-// Scope: TestClaim corpus for is_prefix_of structural prefix check.
-
-
 module v2.test.algebra_laws.is_prefix_of_prefix_check
-
 
 import v2.std.algebra { Cons, Empty, FreeMonoid, is_prefix_of }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -21,7 +17,6 @@ fn sym_a() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Empty } }
 fn sym_b() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_b, tail: Empty } }
 fn sym_ab() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Cons { head: ^prefix_sym_b, tail: Empty } } }
 
-
 fn prefix_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
@@ -36,27 +31,21 @@ fn prefix_claim_input(ok: Bool) -> Node {
   if ok { prefix_pass_node() } else { prefix_fail_node() }
 }
 
-
 data witness_prefix_empty_of_any: Bool = is_prefix_of(prefix: sym_empty(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
-
 
 data witness_prefix_equal_lists: Bool = is_prefix_of(prefix: sym_a(), xs: sym_a(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
 
-
 data witness_prefix_proper_prefix: Bool = is_prefix_of(prefix: sym_a(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) })
-
 
 data witness_prefix_non_matching: Bool = match is_prefix_of(prefix: sym_b(), xs: sym_ab(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }
 
-
 data witness_prefix_longer_than_xs: Bool = match is_prefix_of(prefix: sym_ab(), xs: sym_a(), eq: fn(x, y) { prefix_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }
-
 
 data claim_is_prefix_of_empty_prefix_true: TestClaim = CompilesClaim {
   label: "algebra/is_prefix_of: empty prefix is a prefix of any list",
@@ -66,7 +55,6 @@ data claim_is_prefix_of_empty_prefix_true: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_is_prefix_of_equal_lists_true: TestClaim = CompilesClaim {
   label: "algebra/is_prefix_of: equal list is a prefix of itself",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -74,7 +62,6 @@ data claim_is_prefix_of_equal_lists_true: TestClaim = CompilesClaim {
   expected_value: prefix_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_is_prefix_of_proper_prefix_true: TestClaim = CompilesClaim {
   label: "algebra/is_prefix_of: proper prefix matches shorter prefix against longer list",
@@ -84,7 +71,6 @@ data claim_is_prefix_of_proper_prefix_true: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_is_prefix_of_non_matching_false: TestClaim = CompilesClaim {
   label: "algebra/is_prefix_of: non-matching head element is not a prefix",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -92,7 +78,6 @@ data claim_is_prefix_of_non_matching_false: TestClaim = CompilesClaim {
   expected_value: prefix_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_is_prefix_of_longer_than_xs_false: TestClaim = CompilesClaim {
   label: "algebra/is_prefix_of: prefix longer than list is not a prefix",

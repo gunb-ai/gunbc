@@ -1,26 +1,6 @@
-// dsl/extdeps/cloud/gcp/mock_corpus.dag
-// Scope: the GCP cloud layer's PUBLISHED mock corpus as a closed, declared structural fact.
-// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
-//
-// SINGLE authority for WHICH gcloud.Auth / oauth2.Google / shell.GCloud / gcp.IAM /
-// gcp.ResourceManager / gcp.SecretManager / gcp.STS / github.OIDC / gcp.Metadata operations
-// are hermetically realizable. Read by BOTH the compile-time M2 mock_totality_lens
-// (src/v2/lens/mock_totality.dag, via the per-layer witness) AND the v1 runtime's
-// eval_service_call (the M4 hermetic-realization fold) — one model, not two. The v1 runtime
-// loads the dsl/ tree via the M4.1 whole-tree corpus load (#5236), so no per-service
-// co-location import is required. Modeled on the M4.0 filesystem pilot
-// (dsl/extdeps/filesystem/mock_corpus.dag, #5188).
-//
-// Rows inhabit std.hermetic_replay.PublishedMockCase (all 4 fields: service, operation,
-// operation_key, case_id). The operation set authority remains the respective service decls in
-// dsl/extdeps/cloud/gcp/{gcp,iam,secret_manager,sts}.dag; per-case payloads live in the
-// Phase-2 RecordedFixture store ONLY — rows carry the (operation_key, case_id) structural key.
-
 module extdeps.cloud.gcp.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
-
-// -- gcloud.Auth ---------------------------------------------------
 
 data gcloud_auth_mock_case_login: PublishedMockCase = PublishedMockCase {
   operation_key: "gcloud.Auth.Login",
@@ -36,16 +16,12 @@ data gcloud_auth_mock_case_read_adc: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-// -- oauth2.Google -------------------------------------------------
-
 data oauth2_google_mock_case_refresh: PublishedMockCase = PublishedMockCase {
   operation_key: "oauth2.Google.Refresh",
   service: "oauth2.Google",
   operation: "Refresh",
   case_id: 0
 }
-
-// -- shell.GCloud --------------------------------------------------
 
 data shell_gcloud_mock_case_auth_print_access_token: PublishedMockCase = PublishedMockCase {
   operation_key: "shell.GCloud.AuthPrintAccessToken",
@@ -54,16 +30,12 @@ data shell_gcloud_mock_case_auth_print_access_token: PublishedMockCase = Publish
   case_id: 0
 }
 
-// -- gcp.IAM -------------------------------------------------------
-
 data gcp_iam_mock_case_generate_access_token: PublishedMockCase = PublishedMockCase {
   operation_key: "gcp.IAM.GenerateAccessToken",
   service: "gcp.IAM",
   operation: "GenerateAccessToken",
   case_id: 0
 }
-
-// -- gcp.ResourceManager -------------------------------------------
 
 data gcp_resource_manager_mock_case_get_iam_policy: PublishedMockCase = PublishedMockCase {
   operation_key: "gcp.ResourceManager.GetIamPolicy",
@@ -78,8 +50,6 @@ data gcp_resource_manager_mock_case_set_iam_policy: PublishedMockCase = Publishe
   operation: "SetIamPolicy",
   case_id: 0
 }
-
-// -- gcp.SecretManager ---------------------------------------------
 
 data gcp_secret_manager_mock_case_access_version: PublishedMockCase = PublishedMockCase {
   operation_key: "gcp.SecretManager.AccessVersion",
@@ -102,16 +72,12 @@ data gcp_secret_manager_mock_case_add_version: PublishedMockCase = PublishedMock
   case_id: 0
 }
 
-// -- gcp.STS -------------------------------------------------------
-
 data gcp_sts_mock_case_exchange: PublishedMockCase = PublishedMockCase {
   operation_key: "gcp.STS.Exchange",
   service: "gcp.STS",
   operation: "Exchange",
   case_id: 0
 }
-
-// -- github.OIDC ---------------------------------------------------
 
 data github_oidc_mock_case_get_token: PublishedMockCase = PublishedMockCase {
   operation_key: "github.OIDC.GetToken",
@@ -120,8 +86,6 @@ data github_oidc_mock_case_get_token: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-// -- gcp.Metadata --------------------------------------------------
-
 data gcp_metadata_mock_case_get_identity_token: PublishedMockCase = PublishedMockCase {
   operation_key: "gcp.Metadata.GetIdentityToken",
   service: "gcp.Metadata",
@@ -129,15 +93,6 @@ data gcp_metadata_mock_case_get_identity_token: PublishedMockCase = PublishedMoc
   case_id: 0
 }
 
-// 🟡 gated — feature:gcp-cloud-mock-corpus-from-service-decl — bind node://adhoc-743f3949-b3b
-// dissolve-on-arrival: project this corpus directly from the service operation sets in
-// dsl/extdeps/cloud/gcp/{gcp,iam,secret_manager,sts}.dag (the SINGLE authority for WHICH
-// operations exist), joined with the Phase-2 RecordedFixture store (the authority for WHICH
-// recorded cases exist per operation), once a v2 lens can read a service decl's operation nodes
-// and the fixture store's keys; this declared list then deletes in the same PR. forbidden: a row
-// carrying a response VALUE — that would fork the payload authority, now owned by the fixture
-// store (§3); rows mirror the (operation_key, case_id) structural key ONLY, and grow when a
-// published operation/case is added upstream.
 data gcp_published_mock_corpus: List<PublishedMockCase> = [
   gcloud_auth_mock_case_login,
   gcloud_auth_mock_case_read_adc,

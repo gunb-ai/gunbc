@@ -1,18 +1,3 @@
-// src/v2/test/lens_mock_totality/filesystem_mock_totality_test.dag
-// Scope: §5 PROOF that v2.lens.mock_totality GATES by execution over the filesystem layer's
-//        published mock corpus — GREEN when the consumer is total, RED when a member is omitted.
-// Status: discoverable `test fn` witness — the CI floor gates it via
-//         `claim_batch --roster-from-discovery` (whole src/v2 scanned for `test fn` in
-//         `*_test.dag`). This is the live consumer that dissolves the §6 zero-consumer illusion
-//         for the coverage missing-set machinery (`missing_coverage` / `Coverage<C>`).
-//
-// The two witnesses are a discriminating pair (DESIGN.md §5: a real consumer GREEN by execution
-// PLUS a discriminating input that goes RED when the behaviour is wrong):
-//   - the REAL consumer handles every published case  → lens Accepts  → `..._is_total_holds`.
-//   - a consumer with `Read` deliberately OMITTED      → lens Rejects → `..._omitted_member_is_red`.
-// The second is the teeth: it goes GREEN only because the lens FAIL-CLOSES on the unhandled
-// member — a vacuous lens that always accepted would flip it RED.
-
 module v2.test.lens_mock_totality.filesystem_mock_totality
 
 import v2.lens.mock_totality { mock_unhandled_rejection }
@@ -22,10 +7,7 @@ import v2.test.lens_mock_totality.witness_template {
   omit_consumer_handles,
   outcome_accepted_p
 }
-// Single authority for the filesystem mock corpus now lives in the dsl/ tree
-// (dsl/extdeps/filesystem/mock_corpus.dag) so the v1 runtime reads the SAME model
-// this lens does (M4 hermetic-realization fold). Cross-tree v2->dsl import is the
-// existing pattern (cf. std.realization / std.types).
+
 import extdeps.filesystem.mock_corpus {
   PublishedMockCase,
   filesystem_published_mock_corpus
@@ -35,16 +17,12 @@ import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-// The materialized mock value. A Symbol tag is enough to prove materialization RAN impl-blind;
-// response payloads live in the Phase-2 RecordedFixture store (§3), not in the corpus row.
 type MaterializedFilesystemMock {
   tag: Symbol
 }
 
 data filesystem_red_omit_keys: List<String> = ["Filesystem.Read"]
 
-// The REAL consumer: materializes ANY published filesystem case impl-blind, keyed on the
-// operation_key; fail-closes (the canonical `mock_unhandled_rejection`) for an unpublished op.
 fn materialize_filesystem_mock(case: PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
   if case.operation_key == "Filesystem.Write" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })

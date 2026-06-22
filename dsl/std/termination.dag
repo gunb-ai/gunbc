@@ -1,82 +1,12 @@
-// std/termination.dag -- Well-founded descent and termination proofs.
-//
-// Every recursive function in .dag must terminate. This file models
-// the mathematical structures that PROVE termination — well-founded
-// orderings, ranking functions, and descent evidence.
-//
-// EXTERNAL AUTHORITY:
-//   - Well-founded relations: set theory (Zermelo 1904, von Neumann 1929)
-//   - Ranking functions for termination: Floyd (1967), Turing (1949)
-//   - Size-change termination: Lee, Jones, Ben-Amram (2001)
-//   - Lexicographic orderings: Dershowitz, Manna (1979)
-//   - Multiset orderings: Dershowitz, Manna (1979)
-//
-// RELATIONSHIP TO std/iteration.dag:
-//   iteration.dag defines the three bounded primitives (fold, descend,
-//   repeat). This file defines the PROOF THEORY that lets the compiler
-//   verify recursive syntax lowers to those primitives. The primitives
-//   are the "what." This file is the "why it terminates."
-//
-// RELATIONSHIP TO std/algebra.dag:
-//   algebra.dag defines Ordering = Less | Equal | Greater and
-//   OrderedRing with compare(). This file uses Ordering as the
-//   evidence type for descent steps. The well-founded ordering on
-//   natural numbers IS the OrderedRing ordering restricted to
-//   non-negative values.
-//
-// DESIGN PRINCIPLE: The complexity analyzer should be a CHECKER of
-// termination proofs, not a DISCOVERER. The proof structure is
-// modeled here as objective facts. The analyzer constructs candidate
-// proofs by examining code, then validates them against this model.
-// If no valid proof can be constructed, the function is rejected.
-
 module std.termination
 
 import std.algebra { BoundedLattice, Ordering }
-// NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
-// primitives). Cannot re-export here (circular: termination → graph →
-// termination). Consumers import from std.graph directly.
-
-// =========================================================================
-// Descent evidence: what happens to a ranking dimension at one call edge
-// =========================================================================
-
-// At each call edge in a recursive function (or SCC cycle), the
-// ranking dimension either:
-//   - Strictly decreases (Strict): the callee receives a provably
-//     smaller value. Examples: skip(1) on a list, child accessor on
-//     a Node, n-1 on an integer.
-//   - Stays the same (NonIncreasing): the callee receives the same
-//     value or a value no larger. Examples: passing a parameter
-//     unchanged, passing state through a helper that doesn't advance.
-//   - Is unknown (DescentUnknown): the analyzer cannot determine the
-//     relationship. Fail-closed: treated as potentially non-decreasing.
-//
-// These correspond to Ordering values:
-//   Strict         → Less    (value strictly decreases)
-//   NonIncreasing  → Equal   (value stays the same — may decrease but not proven)
-//   DescentUnknown → Greater (conservatively treated as potentially increasing)
-
-// DescentEvidence inhabits BoundedLattice<DescentEvidence>
-//
-// The lattice ordering is a total order: DescentUnknown < NonIncreasing < Strict
-//   top    = Strict         (best evidence — value provably decreases)
-//   bottom = DescentUnknown (no evidence — fail-closed)
-//   meet   = min            (conservative: worst of two branches)
-//   join   = max            (optimistic: best of two branches)
-//
-// This is the single authority for merging descent evidence across
-// control flow (if/match branches, multiple call sites). All lifted
-// forms (Optional, Map pointwise, fold-over-list) compose through
-// the generic lifters in std/algebra.dag.
 
 type DescentEvidence
-  = Strict           // value provably decreases (Less)
-  | NonIncreasing    // value does not increase (Equal or Less)
-  | DescentUnknown   // cannot determine (fail-closed: Greater)
+  = Strict
+  | NonIncreasing
+  | DescentUnknown
 
-// Numeric rank for the lattice ordering. Higher = stronger evidence.
-// Used by generic lifters (min_by, max_by) that compare via projection.
 fn evidence_rank(e: DescentEvidence) -> Int {
   match e {
     Strict => 2
@@ -85,9 +15,6 @@ fn evidence_rank(e: DescentEvidence) -> Int {
   }
 }
 
-// DescentEvidence inhabits BoundedLattice:
-//   top = Strict, bottom = DescentUnknown
-// Conservative meet: keep only evidence proven on every branch.
 fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
     Strict => match b {
@@ -104,7 +31,6 @@ fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> Desc
   }
 }
 
-// Optimistic join: keep the strongest evidence seen on any branch.
 fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
     DescentUnknown => b
@@ -123,16 +49,6 @@ data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = {
   bottom: DescentUnknown
 }
 
-
-// Fail closed: strict descent cannot be fabricated from non-increase without
-// a separate structural witness.
-//
-// 🟡 P5 BRIDGE. The name reads like unary promotion; the body only preserves
-// `Strict` / `NonIncreasing` and maps other positions to `DescentUnknown` — no
-// `Strict` from weaker evidence. `v1.compiler.complexity` routes parser progress
-// through `strict_after_parser_witness` and no longer imports this symbol; dissolution:
-// rename here to `evidence_passthrough_preserving_strict` (and update bootstrap / v3 mirrors)
-// once the remaining lattice parity call sites are migrated.
 fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
@@ -141,11 +57,6 @@ fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   }
 }
 
-// =========================================================================
-// Lifted lattice operations (concrete instances of algebra.dag patterns)
-// =========================================================================
-
-// optional_meet for DescentEvidence: None is identity (top).
 fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
   match a {
     Absent => b
@@ -157,7 +68,6 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
   }
 }
 
-// map_merge_at for DescentEvidence: pointwise meet keyed by String.
 fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
   match map_get(base, key) {
     Present { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
@@ -165,56 +75,17 @@ fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_va
   }
 }
 
-// =========================================================================
-// Ranking dimensions: what can be measured for descent
-// =========================================================================
-
-// A ranking dimension identifies WHAT is decreasing across a recursive
-// call. Each dimension corresponds to a well-founded set:
-//
-//   TreeSize    — the number of nodes in a subtree (ℕ, well-founded by <)
-//   ListLength  — the length of a list (ℕ, well-founded by <)
-//   ArithmeticValue — an integer parameter (ℕ, well-founded by <)
-//   TokenPosition — position in a finite token stream (ℕ, bounded by |tokens|)
-//   SetCardinality — size of a finite set (ℕ, well-founded by <)
-//
-// All of these map to natural numbers with the standard ordering.
-// The well-foundedness of ℕ under < is the fundamental fact that
-// makes all termination proofs work.
-
-// Bootstrap constraint: `param` is a function parameter name (String).
-// .dag does not yet have first-class param references. When it does,
-// param should become a structural reference into the function's param list.
 type RankingDimension
-  = TreeSize { param: String }           // |subtree| via child accessor
-  | ListLength { param: String }         // |list| via skip/tail
-  | ArithmeticValue { param: String }    // integer via n-1, n/2
-  | TokenPosition { param: String }      // parser state.position
-  | SetCardinality { param: String }     // |set| via remove
+  = TreeSize { param: String }
+  | ListLength { param: String }
+  | ArithmeticValue { param: String }
+  | TokenPosition { param: String }
+  | SetCardinality { param: String }
 
-// 🟢 TERMINAL at descent-witness scope. Raw `Int` cannot carry shrink
-// evidence because zero and negative values are not descent witnesses.
-// This structural positive number makes invalid proof amounts unrepresentable.
-//
-// Ratchet (P4 / modeling): self-recursive Peano-style sums here extend the substrate
-// recursive-type set beyond `Node`; dissolution is deferred until E-P routes literal
-// bridges through shared numeric refinements (see `ROADMAP.md` P4 — Peano witness ratchet).
-//
-// Design note (api-review / E-P): `std.types` already declares `PositiveInt`
-// (`Int where range(min: 1)`) and similar refinements. A future dissolution is
-// to route literal bridges through that **shared numeric refinement authority**
-// (plus an explicit M9 cap) once E-P lowers refinements uniformly for all
-// consumers. Today the Peano sum stays the single structural witness shared with
-// `std.computation` / `std.induction` and the v2 emitter; literal materialization
-// is fail-closed and capped in `positive_descent_amount_from_positive_int`.
 type PositiveDescentAmount
   = OneStep
   | AdditionalStep { previous: PositiveDescentAmount }
 
-// Peano depth as `Int` (Lane E-T / E-C). Declared in `std.termination` (not
-// `std.computation`) so downstream modules (e.g. staged `v3.std.algebra`) can
-// count Peano witnesses without importing `std.computation`, which would
-// create a bootstrap SCC with `std.algebra`.
 fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   match steps {
     OneStep => 1
@@ -222,14 +93,6 @@ fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
   }
 }
 
-// 🟢 TERMINAL at descent-witness scope. Structural divisor ≥ 2 (Peano from
-// `DivideByTwo`); mirrors `std.computation` divide-call patterns without
-// importing `std.computation` (that module depends on this file).
-//
-// Same E-P dissolution story as `PositiveDescentAmount`: bounded `Int where
-// range(min: 2, max: …)` (or a branded divisor refinement) is the target once
-// refinements are first-class end-to-end; `proportional_divisor_from_int_at_least_two`
-// is the capped `Int` bridge meanwhile.
 type ProportionalDivisor
   = DivideByTwo
   | StrictlyLarger { inner: ProportionalDivisor }
@@ -241,19 +104,8 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
   }
 }
 
-// M9 / P2 — **single numeric authority** for literal-sized Peano witness depth (and any
-// `Int` bridge that must stay numerically aligned with these witnesses, e.g. E-I exponent gates
-// in `std.induction::bounded_int_pow_exponent`). Do not re-litigate this constant in other modules.
-// Dissolution: E-P routes literal bridges through shared refinement caps (`std.types` / kernel
-// refinements) and retires this explicit `Int` cap (see ROADMAP P4 — Peano witness ratchet).
 fn peano_literal_materialization_cap() -> Int { 256 }
 
-// Validated bridges for analyzer literal sites (e.g. `skip(k)`, `n / d`).
-// `none` when `k` is not a positive witness — callers must fail closed.
-// M9 / P4: refuse witness depths above `peano_literal_materialization_cap()` so literal-sized
-// `Int` inputs cannot force deep recursive materialization (infer + std share this cap; fail closed).
-// The .dag definition is stack-recursive O(k) in witness depth; the Rust mirror is
-// iterative with the same cap — future unbounded-Int producers should cap or bound k upstream.
 fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   if k <= 0 { none }
   else {
@@ -270,7 +122,6 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
   }
 }
 
-// `none` when k < 2 — proportional division needs divisor ≥ 2 structurally.
 fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   if k < 2 { none }
   else {
@@ -287,157 +138,21 @@ fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
   }
 }
 
-// =========================================================================
-// Descent sources: HOW descent is witnessed at a call site
-// =========================================================================
-
-// A descent source is the concrete code pattern that provides descent
-// evidence for a ranking dimension. These are the objective facts that
-// the analyzer recognizes:
-//
-// Each source is grounded in a structural property of the IR:
-//   - ChildAccessor: the ChildRole model in 00_core.dag declares
-//     which functions project into Node.children. Calling self on
-//     an accessor result is provably smaller (subtree < tree).
-//   - ListShrink: skip(n) for n >= 1 produces a shorter list.
-//     Grounded in List algebra (|skip(n, l)| = max(0, |l| - n)).
-//   - ArithmeticSubtractDescent: subtract k for k >= 1 (structural witness).
-//   - ArithmeticDivideDescent: divide by d for d >= 2 (structural divisor).
-//     Grounded in OrderedRing (subtract decreases; proportional division too).
-//   - ParserAdvance: advance/expect/eat move position forward.
-//     Grounded in ParserState contract (position is monotonic).
-//   - SetRemoval: removing an element from a finite set.
-//     Grounded in BooleanAlgebra (|remove(s, x)| < |s| when x ∈ s).
-
-// Bootstrap constraint: accessor/op/witness/element are function or operator
-// names (String). In the current .dag type system, the name IS the structural
-// identity. When .dag supports function references, these should become structural.
 type DescentSource
-  = ChildAccessor { accessor: String }         // e.g., "binop_left"
-  | ListShrink { amount: PositiveDescentAmount } // skip(amount), amount >= 1
+  = ChildAccessor { accessor: String }
+  | ListShrink { amount: PositiveDescentAmount }
   | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
   | ArithmeticDivideDescent { divisor: ProportionalDivisor }
-  | ParserAdvance { witness: String }          // "advance", "expect", "eat"
-  | SetRemoval { element: String }             // set remove in work-list drain
-  | FoldIteration                              // body of fold — bounded by |collection|
-
-// =========================================================================
-// Termination proof: a ranking over dimensions
-// =========================================================================
-
-// A termination proof for a recursive function (or SCC) is a
-// lexicographic ordering over ranking dimensions, together with
-// evidence that the ordering decreases across every recursive path.
-//
-// LEXICOGRAPHIC ORDERING:
-//   Given dimensions (d1, d2, ..., dn), a call is "descending" if:
-//   - d1 is Strict, OR
-//   - d1 is NonIncreasing AND d2 is Strict, OR
-//   - d1 is NonIncreasing AND d2 is NonIncreasing AND d3 is Strict, OR
-//   - ...
-//
-//   In other words: the first dimension that changes must decrease.
-//   Higher dimensions must not increase.
-//
-// SINGLE-FUNCTION EXAMPLE:
-//   fn walk(remaining: List<Node>) -> Result {
-//     match remaining |> first {
-//       None => done
-//       Some { value: stmt } =>
-//         process(stmt)
-//         walk(remaining: remaining |> skip(1))  // ListLength Strict
-//     }
-//   }
-//   Proof: [ListLength("remaining")]
-//   Edge walk→walk: [Strict]  ✓
-//
-// SCC EXAMPLE (emit_rust_block_stmts):
-//   Proof: [TreeSize("texpr"), ListLength("remaining")]
-//
-//   Edge emit_block_stmts→emit_typed_expr:
-//     TreeSize: NonIncreasing (stmt is a child of the block)
-//     ListLength: N/A (different function, different param)
-//
-//   Edge emit_typed_expr→...→emit_block_stmts (through nested block):
-//     TreeSize: Strict (nested block's children are a subtree)
-//     ListLength: N/A (new list, unrelated)
-//
-//   Edge emit_block_stmts→emit_block_stmts (self-call):
-//     TreeSize: NonIncreasing (same tree level)
-//     ListLength: Strict (skip(1))
-//
-//   Every cycle has at least one Strict edge. ✓
-//
-// WORK-LIST EXAMPLE (kahn_drain):
-//   Proof: [SetCardinality("unvisited")]
-//   Each iteration removes processed nodes from the work set.
-//   New nodes added to queue are from the unvisited set (finite).
-//   Edge kahn_drain→kahn_drain: SetCardinality Strict
-//   (total unvisited strictly decreases each iteration) ✓
+  | ParserAdvance { witness: String }
+  | SetRemoval { element: String }
+  | FoldIteration
 
 type TerminationProof {
   dimensions: List<RankingDimension>
 }
 
-// An edge in the proof: what happens to each dimension at one call.
-// Bootstrap constraint: caller/callee are function names (String).
-// When .dag supports function references, these should become structural.
 type ProofEdge {
   caller: String
   callee: String
-  evidence: List<DescentEvidence>   // one per dimension, same order
+  evidence: List<DescentEvidence>
 }
-
-// Verify a termination proof: every cycle must have lexicographic descent.
-// Implementation lives in std.graph (which imports ProofEdge from here).
-// Declared here for conceptual ownership; re-exported via std.graph.
-// See std.graph.is_valid_proof for the algorithm.
-
-// =========================================================================
-// Cost composition from iteration primitives
-// =========================================================================
-
-// Once a function's termination proof is established, its cost is
-// determined by the iteration primitive it lowers to:
-//
-//   fold(collection, f)     → CostSum(|collection|, cost(f))
-//   descend(tree, f)        → CostSum(|tree|, cost(f))
-//   repeat(N, f)            → CostMul(N, cost(f))
-//   arithmetic descent(n/b) → Master theorem application
-//
-// The TerminationProof's ranking dimensions directly determine
-// which primitive applies:
-//
-//   TreeSize dimension       → descend
-//   ListLength dimension     → fold
-//   ArithmeticValue dimension → repeat (or Master theorem for divide)
-//   TokenPosition dimension  → fold (over tokens)
-//   SetCardinality dimension → fold (over set elements)
-//
-// For lexicographic proofs with multiple dimensions, the cost is
-// the PRODUCT of the dimensions' contributions:
-//   [TreeSize, ListLength] → descend(tree, f: fold(stmts, g))
-//   Cost: O(|tree| × max_stmts_per_node × per_stmt_cost)
-
-// =========================================================================
-// Relationship to current complexity.dag types
-// =========================================================================
-
-// This model replaces or grounds the following ad-hoc types:
-//
-// | Current (complexity.dag)  | Grounded in (this file)        |
-// |---------------------------|--------------------------------|
-// | ProgressKind              | DescentEvidence                |
-// | ParserProgressEdge        | ProofEdge                      |
-// | RecursionPattern          | TerminationProof + cost rule   |
-// | "arithmetic descent"      | ArithmeticValue dimension      |
-// | "container-child descent" | TreeSize + ChildAccessor       |
-// | "parser progress"         | TokenPosition + ParserAdvance  |
-// | "list shrinkage"          | ListLength + ListShrink        |
-// | (missing: work-list)      | SetCardinality + SetRemoval    |
-// | (missing: lexicographic)  | TerminationProof.dimensions    |
-//
-// Migration: complexity.dag adopts these types. The ad-hoc classify_*
-// functions become proof CONSTRUCTORS that build TerminationProof
-// values. The proof CHECKER (is_valid_proof) is universal — one
-// function, not five heuristics.

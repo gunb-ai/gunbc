@@ -1,5 +1,3 @@
-// Scope: POSIX process numeric refinement regression witnesses.
-
 module v2.test.manual.process_numeric_refinements
 
 import v2.extdeps.posix {

@@ -1,14 +1,3 @@
-//! ctrl#1533 phase 2 — persistent-carrier swap probes.
-//!
-//! The v2.std.value_carrier sharing/identity laws have executable witnesses
-//! in src/v2/std/grounding/value_carrier_laws_test.dag; those run at
-//! small n. These probes cover what the witnesses cannot: collection sizes
-//! past the carriers' inline-chunk thresholds (so HAMT/RRB tree nodes are
-//! actually exercised), prior-version validity after derived updates (the
-//! Driscoll et al. persistence property — the failure class a carrier swap
-//! can introduce is in-place mutation observed through a shared handle), and
-//! reference-identity non-observability checked from the host side.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
@@ -16,8 +5,6 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::resolve_imports_transitively;
 
-/// Past im-rc's 64-element inline chunks, so both carriers run their tree
-/// (non-inline) code paths.
 const SCALE: usize = 500;
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
@@ -50,8 +37,6 @@ fn int_literal_list(range: impl Iterator<Item = usize>) -> String {
     range.map(|i| i.to_string()).collect::<Vec<_>>().join(", ")
 }
 
-/// Map equality is insert-order independent past the inline-chunk threshold:
-/// the same entry set fold-built ascending and descending yields equal maps.
 #[test]
 fn map_equality_insert_order_independent_at_scale() {
     let up = int_literal_list(1..=SCALE);
@@ -68,8 +53,6 @@ fn order_independent() -> Bool {{
     run_bool(&src, "order_independent");
 }
 
-/// Overwrite is last-write-wins independent of scale: re-inserting every key
-/// with a new value equals building the final entry set directly.
 #[test]
 fn map_overwrite_path_independent_at_scale() {
     let keys = int_literal_list(1..=SCALE);
@@ -86,10 +69,6 @@ fn overwrite_wins() -> Bool {{
     run_bool(&src, "overwrite_wins");
 }
 
-/// Persistence (Driscoll et al. 1989): a derived version leaves the prior
-/// version valid. `extended`/`updated` are derived FROM `base`; `base` must
-/// still equal an independently built structural twin afterwards. An
-/// in-place-mutation bug through a shared carrier handle fails this.
 #[test]
 fn prior_versions_survive_derived_updates_at_scale() {
     let nums = int_literal_list(1..=SCALE);
@@ -110,9 +89,6 @@ fn prior_versions_valid() -> Bool {{
     run_bool(&src, "prior_versions_valid");
 }
 
-/// Reference identity is not observable through equality (M-C law 1 stays
-/// one-way): two separately evaluated runs build pointer-distinct values
-/// that compare equal from the host side.
 #[test]
 fn equality_does_not_depend_on_reference_identity() {
     let nums = int_literal_list(1..=SCALE);

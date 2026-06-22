@@ -1,6 +1,3 @@
-// Scope: E-10 execution receipts for PassingCandidateFold dissolution of
-// target_operator_realization_catalog_lookup in std/compilers/target_model.dag.
-
 module v2.test.manual.target_model_operator_lookup_dissolution
 
 import v2.extdeps.languages.typescript { ts_add_operator_realization_row }

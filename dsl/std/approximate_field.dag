@@ -1,9 +1,3 @@
-// dsl/std/approximate_field.dag — `gunbc run --source-root dsl` module for
-// `ApproximateField<F>` and approximate-arithmetic policy terminals.
-//
-// This file is the surviving authority for `std.approximate_field`; dsl sources import it
-// directly (notably `dsl/std/float.dag` → `type Real = ApproximateField<FieldOfFractions<Int>>`).
-
 module std.approximate_field
 
 import std.algebra { Field }

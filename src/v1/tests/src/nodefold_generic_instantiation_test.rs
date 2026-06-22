@@ -1,6 +1,3 @@
-//! v2 R2 generic instantiation — items (b) NodeFold A,R binding and (c) chained field access.
-//! dep-graph-2026-06-12 §4a / tidy-stag-172.
-
 use std::rc::Rc;
 use std::sync::OnceLock;
 

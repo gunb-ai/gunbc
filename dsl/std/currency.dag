@@ -1,77 +1,11 @@
-// std/currency.dag -- ISO 4217 currency identity + minor-unit authority.
-//
-// `CurrencyCode` is the ISO 4217 *alphabetic code* enum -- the stable
-// identity of a currency. The richer per-currency data (minor-unit
-// exponent, numeric code, display name) is a cited projection keyed by
-// the code, not structure the tag dissolves into. This is the same layering
-// as the OS distribution identity enum at `dsl/std/os/types.dag`
-// ("enum tag is stable id; catalog row is cited authority").
-//
-// Authority anchors (cited by rule-text quote; bare line-number cites prohibited):
-//   - spec-primitive disposition: a type modeling a spec primitive carries a
-//     🔴/🟡/🟢 disposition and names its cited external authority. ISO 4217 is
-//     that authority here.
-//   - coproduct decomposition (DESIGN.md §2 decompress→map→reduce):
-//     "🟢 terminal -- the variants are irreducible distinctions at the
-//     user-input boundary (literals, keywords, source locations); no richer
-//     structure can be named."
-//   - construction over ratchets: "Don't build ... ahead of
-//     consumer demand." -> variants are enrolled per consumer demand, not
-//     pre-populated to the full ISO 4217 register.
-//
-// External authority (spec primitive):
-//   ISO 4217:2015 "Codes for the representation of currencies" -- the
-//   alphabetic code register and per-currency minor-unit (exponent) table.
-//   The *domain* is closed against ISO 4217 (no ad-hoc currencies); the
-//   enrolled *variants* grow as consumers denominate in them.
-
 module std.currency
 
 import std.types { Int }
 
-// --- CurrencyCode: ISO 4217 alphabetic code (stable currency identity) ----
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 TERMINAL (spec primitive)
-// Each variant is an ISO 4217 alphabetic code -- an irreducible identity at
-// the financial-spec boundary. Dissolution patterns considered and rejected
-// (recorded for PR review):
-//   - "dissolve into a CurrencyCatalogRow record (numeric code, name,
-//     minor-unit exponent, ...)": rejected -- the row is data *keyed by*
-//     the code, not richer structure the tag reduces to. The code is the
-//     key; the row is a projection. Same disposition as the OS distribution
-//     identity enum (`std/os/types.dag`). The only currently-demanded
-//     projection is the minor-unit exponent (`currency_minor_unit_exponent`
-//     below); a full catalog row is deferred until a consumer needs it
-//     (construction over ratchets — no carrier ahead of consumer demand).
-//
-// CLOSED DOMAIN / EXTENSION RULE: the domain is closed against ISO 4217 --
-// no ad-hoc currencies. Variants are enrolled per consumer demand only.
-// Adding a code requires (a) a real consumer denominating in it and
-// (b) its ISO 4217 minor-unit exponent in `currency_minor_unit_exponent`
-// (construction over ratchets — no variant ahead of consumer demand).
-// Eur is the live compute-supply consumer (Hetzner cost quotes); Usd is the
-// ISO 4217 reference numeraire, exercised by the money-carrier claim-run.
 type CurrencyCode =
-    Eur     // ISO 4217 "EUR" -- euro (minor unit: cent, 10^-2)
-  | Usd     // ISO 4217 "USD" -- US dollar (minor unit: cent, 10^-2)
+    Eur
+  | Usd
 
-// --- currency_minor_unit_exponent: ISO 4217 minor-unit authority ----------
-//
-// Structural projection from a `CurrencyCode` to its ISO 4217 minor-unit
-// exponent: the number of decimal places between the major unit (e.g. euro)
-// and the minor unit (e.g. cent). This is the single cited authority any
-// consumer binds against rather than re-encoding the per-currency table at
-// the call site (single-source-of-truth, cf. `scale_exponent` in
-// `std/measure.dag`).
-//
-// The exponent is NON-NEGATIVE (minor units subdivide the major unit), so
-// EUR/USD = 2 (cents), and a zero-minor-unit currency (e.g. JPY) would be 0.
-// The value is the count of minor-unit decimal places, NOT an SI `Scale`:
-// ISO minor units (10^-2 cents) are not an SI decimal scale value (no
-// `Centi` in `Scale`), so currency minor-unit semantics live here, never
-// forced onto the dimensional `Scale` axis.
-//
-// Total over all enrolled `CurrencyCode` inhabitants.
 fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
   match c {
     Eur => 2

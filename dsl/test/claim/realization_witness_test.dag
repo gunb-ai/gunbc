@@ -1,8 +1,3 @@
-// dsl/test/claim/realization_witness.dag — by-execution witnesses for std.realization.
-//
-// GREEN: independence fail-closed (Unknown ≠ Independent); Read+Read independent.
-// Run: gunbc run --source-root dsl --entry <this> --function realization_witnesses --claim-run
-
 module test.claim.realization_witness
 
 import std.effects {
