@@ -1,0 +1,59 @@
+module v2.test.claim.algebra.generic_alias_coproduct_instantiation
+
+// Durable witness for the generic type-alias instantiation keystone
+// (docs/plans/fold-ergonomics.md Root B / dissolve-on
+// feature:free-monoid-entry-generic-inference). A NON-parametric alias whose
+// RHS is an applied generic coproduct — `type SymbolPath = FreeMonoid<Symbol>`
+// — must expand transparently to its underlying coproduct (Empty | Cons) so
+// the FreeMonoid variants are reachable for construction, pattern matching, and
+// exhaustiveness through the alias name. Before the fix this failed with
+// "variant 'Cons'/'Empty' not found in type 'SymbolPath'", forcing consumers
+// (qualified_name, ParseTable) to hand-roll a parallel coproduct + eq/for_all.
+//
+// RED-on-revert: reverting the alias-instantiation fix makes this module fail
+// to typecheck (the variants stop resolving), so the witness is a wall, not a
+// passive assertion.
+
+import v2.std.algebra { Cons, Empty, FreeMonoid, length }
+import v2.std.node { Symbol }
+
+type SymbolPath = FreeMonoid<Symbol>
+
+fn symbol_path_of_three() -> SymbolPath {
+  Cons { head: ^a, tail: Cons { head: ^b, tail: Cons { head: ^c, tail: Empty } } }
+}
+
+// Construction of the bare-field variant `Empty` through the alias.
+fn empty_symbol_path() -> SymbolPath {
+  Empty
+}
+
+// Pattern matching the coproduct variants through the alias, with recursion
+// re-binding the tail at the alias type.
+fn symbol_path_len(path: SymbolPath) -> Int {
+  match path {
+    Empty => 0
+    Cons { head: _, tail: rest } => 1 + symbol_path_len(path: rest)
+  }
+}
+
+fn first_symbol(path: SymbolPath) -> Symbol? {
+  match path {
+    Empty => none
+    Cons { head: h, tail: _ } => Present { value: h }
+  }
+}
+
+test fn generic_alias_coproduct_resolves() -> Bool {
+  // hand-written recursive length over the alias
+  symbol_path_len(path: symbol_path_of_three()) == 3
+    // empty variant constructs and matches
+    && symbol_path_len(path: empty_symbol_path()) == 0
+    // generic `length` from std.algebra works on the alias-typed value too
+    && length(xs: symbol_path_of_three()) == 3
+    // variant field binding through the alias
+    && match first_symbol(path: symbol_path_of_three()) {
+         Present { value: s } => s == ^a
+         Absent => false
+       }
+}
