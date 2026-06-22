@@ -374,10 +374,21 @@ fn serialize_markdown_source(doc: MarkdownDocument) -> String {
 // total over them but their source is ambiguous on re-ingest (e.g. `*x*` could
 // be text or emphasis), so this ingest reads them as literal paragraph text and
 // the round-trip law is NOT claimed there. That residue is tagged `Lossy`
-// (see `markdown_decode_fidelity_core` below) rather than fabricated — §5
+// (see `markdown_medium_lossless` below) rather than fabricated — §5
 // fail-closed: a lossy decode is marked, never silently advertised exact.
 // Dissolve-on for the frontier: an inline tokenizer + indentation/table grammar
 // that recover those constructs, at which point their fidelity flips to Lossless.
+//
+// ROW-SHARING LEDGER (honest, per the §5 "inert lens" guard — claim only what
+// is exercised). The rows consulted in BOTH directions over the core, each
+// perturbation-discriminable: `heading_marker`, `heading_sep`, `unordered_bullet`,
+// `ordered_suffix`, `task_checked`, `task_unchecked`, `code_fence`,
+// `block_separator`. The remaining rows are NOT row-shared by this ingest because
+// the constructs they spell are the frontier above: `emphasis_delim`/`strong_delim`/
+// `code_span_delim`/`link_*`/`image_marker` (inline markup), `table_*` (tables),
+// `blockquote_marker` (block quotes), and `list_indent` (nested-list indentation —
+// flat core lists emit at depth 0 with empty indent, so the row is absent from both
+// directions in-core). They become row-shared when the frontier dissolves.
 // =========================================================================
 
 // A leading-run strip result: how many copies of a unit prefix were consumed,

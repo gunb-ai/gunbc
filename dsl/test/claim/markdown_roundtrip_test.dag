@@ -11,14 +11,16 @@
 //      fenced code). This is the §5-of-DESIGN "green by a real consumer with a
 //      discriminating input" bar applied to a medium: the IR is recovered exactly.
 //   2. ROW-SHARED both directions (the medium-as-Node guard, #5496, turned on the
-//      INGEST side) — emit AND ingest under a perturbed bullet row ("- " -> "+ ")
-//      still round-trips: both directions consult the SAME row, so they shift
-//      together. A spelling forked between emitter and parser would break here.
-//   3. DISCRIMINATING (ingest actually READS the row) — emit with the perturbed
-//      bullet, ingest with the CANONICAL row: the round-trip MUST fail (the "+ "
-//      lines are unreadable as lists by a "- " ingest, falling back to paragraphs).
-//      If the ingest had hard-coded "- " instead of reading the row, this would be
-//      inert and the witness goes RED — exactly the medium-as-Node tooth.
+//      INGEST side) — emit AND ingest under a perturbed row still round-trips:
+//      both directions consult the SAME row, so they shift together. Exercised on
+//      TWO independent rows (unordered bullet "- "->"+ " AND block separator
+//      "\n\n"->"\n---\n") so the claim is not inert against a single non-bullet
+//      row. A spelling forked between emitter and parser would break here.
+//   3. DISCRIMINATING (ingest actually READS the row) — emit with a perturbed row,
+//      ingest with the CANONICAL rows: the round-trip MUST fail (the shifted source
+//      is unreadable by a canonical ingest). If ingest had hard-coded the spelling
+//      instead of reading the row, this would be inert and the witness goes RED —
+//      exactly the medium-as-Node tooth. Checked for the bullet AND the separator.
 //   4. FIDELITY TAG — the recovered core is advertised `Lossless` (DESIGN §5.2 (B)
 //      decidability partition; the frontier residue stays the unclaimed Lossy part).
 //
@@ -43,6 +45,7 @@ import std.markdown {
   CodeBlock,
   TaskListBlock,
   TextInline,
+  EmphasisInline,
   H1,
   H2,
   Checked,
@@ -100,12 +103,15 @@ fn witness_roundtrip_core() -> Bool {
   ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
 }
 
-// A one-field perturbation of the canonical rows: the unordered bullet "- " -> "+ ".
-fn perturbed_bullet_spellings() -> MarkdownSpellings {
+// A perturbation of the canonical rows overriding two independent rows: the
+// unordered bullet and the top-level block separator. Every other field stays
+// canonical, so a single varied row is what shifts the source (one builder, no
+// 24-field duplication — §2 DRY).
+fn spellings_override(bullet: String, separator: String) -> MarkdownSpellings {
   MarkdownSpellings {
     heading_marker: commonmark_gfm_spellings.heading_marker,
     heading_sep: commonmark_gfm_spellings.heading_sep,
-    unordered_bullet: "+ ",
+    unordered_bullet: bullet,
     ordered_suffix: commonmark_gfm_spellings.ordered_suffix,
     task_checked: commonmark_gfm_spellings.task_checked,
     task_unchecked: commonmark_gfm_spellings.task_unchecked,
@@ -126,25 +132,40 @@ fn perturbed_bullet_spellings() -> MarkdownSpellings {
     table_align_right: commonmark_gfm_spellings.table_align_right,
     blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
     list_indent: commonmark_gfm_spellings.list_indent,
-    block_separator: commonmark_gfm_spellings.block_separator,
+    block_separator: separator,
   }
 }
 
-// Tooth 2: emit AND ingest under the SAME perturbed row still round-trips —
-// both directions read the row, so they shift together.
-fn witness_roundtrip_under_perturbed_rows() -> Bool {
-  let sp = perturbed_bullet_spellings()
-  let restored = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: sp), sp: sp)
-  restored == roundtrip_core_doc()
+fn perturbed_bullet_spellings() -> MarkdownSpellings {
+  spellings_override(bullet: "+ ", separator: commonmark_gfm_spellings.block_separator)
 }
 
-// Tooth 3: discriminating — emit with the perturbed bullet, ingest with the
-// CANONICAL row. The "+ " list lines are unreadable as lists by a "- " ingest,
-// so the round-trip MUST fail. Inert (still equal) == ingest hard-coded "- "
-// instead of reading the row == RED.
+fn perturbed_separator_spellings() -> MarkdownSpellings {
+  spellings_override(bullet: commonmark_gfm_spellings.unordered_bullet, separator: "\n---\n")
+}
+
+// Tooth 2: emit AND ingest under the SAME perturbed row still round-trips —
+// both directions read the row, so they shift together. Exercised on TWO
+// independent rows (the bullet AND the block separator) so the row-sharing claim
+// is not inert against any single non-bullet row.
+fn witness_roundtrip_under_perturbed_rows() -> Bool {
+  let spb = perturbed_bullet_spellings()
+  let restored_b = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: spb), sp: spb)
+  let sps = perturbed_separator_spellings()
+  let restored_s = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: sps), sp: sps)
+  (restored_b == roundtrip_core_doc()) && (restored_s == roundtrip_core_doc())
+}
+
+// Tooth 3: discriminating — emit with a perturbed row, ingest with the CANONICAL
+// rows. The shifted source is unreadable by a canonical ingest, so the round-trip
+// MUST fail. Inert (still equal) == ingest hard-coded the spelling instead of
+// reading the row == RED. Checked for the bullet AND the block separator, so each
+// row is proven genuinely consulted by ingest, not just emitted.
 fn witness_ingest_reads_bullet_row() -> Bool {
-  let emitted = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
-  !(ingest_markdown_source(src: emitted) == roundtrip_core_doc())
+  let emitted_b = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
+  let emitted_s = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_separator_spellings())
+  !(ingest_markdown_source(src: emitted_b) == roundtrip_core_doc())
+    && !(ingest_markdown_source(src: emitted_s) == roundtrip_core_doc())
 }
 
 // Tooth 4: the recovered core is advertised Lossless (the §5.2 (B) partition).
@@ -157,9 +178,36 @@ fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
+// A frontier document: a paragraph carrying inline EMPHASIS (the Lossy partition).
+fn frontier_emphasis_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      ParagraphBlock {
+        inlines: [
+          TextInline { text: "see " },
+          EmphasisInline { inlines: [ TextInline { text: "this" } ] },
+        ],
+      },
+    ],
+  }
+}
+
+// Tooth 5: the FIDELITY BOUNDARY made EXECUTABLE (§5 "specification-without-
+// execution" guard). The frontier is declared Lossy in comments — this PROVES it
+// by execution: an emphasis-bearing doc does NOT round-trip (emit "see *this*" is
+// re-ingested as literal paragraph text), so the §5.2 round-trip law correctly
+// does NOT hold there. If this ever went green (round-tripped), the Lossless core
+// claim would silently extend into the frontier — and this witness goes RED,
+// catching the overclaim. (The honest cure is to model inline markup, flipping
+// emphasis to Lossless; until then the boundary is enforced here, not asserted.)
+fn witness_frontier_not_roundtripped() -> Bool {
+  !(ingest_markdown_source(src: serialize_markdown_source(doc: frontier_emphasis_doc())) == frontier_emphasis_doc())
+}
+
 test fn markdown_roundtrip_keystone_holds() -> Bool {
   witness_roundtrip_core()
     && witness_roundtrip_under_perturbed_rows()
     && witness_ingest_reads_bullet_row()
     && witness_core_advertised_lossless()
+    && witness_frontier_not_roundtripped()
 }
