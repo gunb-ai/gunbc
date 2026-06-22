@@ -63,6 +63,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dsl/std/termination.dag::promote_to_strict",
     "dsl/tools/ci_gates.dag::exit_ok",
     "dsl/tools/ci_yaml_gate.dag::exit_ok",
+    "dsl/tools/gitignore_gate.dag::exit_ok",
     "dsl/tools/roadmap_gate.dag::exit_ok",
     "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
     "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
