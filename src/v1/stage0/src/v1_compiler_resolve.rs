@@ -490,7 +490,7 @@ pub fn adjacency_add_edge(
 }
 
 pub fn topo_sort_key(name: String) -> String {
-    if (name.clone() == "std.types".to_string()) {
+    if (name.clone().as_str() == "std.types".to_string().as_str()) {
         "".to_string()
     } else {
         name.clone()
@@ -509,37 +509,41 @@ pub fn topological_sort(
             }
             __result
         });
+        // Set of names actually present in this resolve set — an import of a
+        // module NOT in the set (unresolved / external) carries no intra-set
+        // ordering constraint, so it must not contribute an edge or in-degree
+        // term (mirrors v1.compiler.resolve topological_sort in
+        // src/v1/03_resolve.dag).
         let module_name_set = module_names.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v1_rt::rc_map_insert(acc, name.clone(), true)
-            },
+            |acc: Rc<HashMap<String, bool>>, name: String| v1_rt::rc_map_insert(acc, name, true),
         );
+        // §5 fail-closed (truthful diagnostic): count only in-set import edges.
+        // If in-degree counted unresolved imports (whose adjacency edge is keyed
+        // by a name never dequeued), a module blocked solely on a missing import
+        // would never reach in-degree 0 and the leftover set would be reported
+        // as a FALSE circular dependency — a fabricated wrong answer masking the
+        // real unresolved-import error. Filtering both sides keeps adjacency and
+        // in-degree consistent so only genuine cycles surface.
         let explicit_edges = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.extend(
                     (*Rc::new({
                         let mut __result = Vec::new();
-                        for imp in Rc::new({
-                            let mut __result = Vec::new();
-                            for imp in module_imports(m.clone()).iter().cloned() {
-                                if v1_rt::map_has(
-                                    &module_name_set,
-                                    authored_name_at(source_indices.clone(), imp.clone()),
-                                ) {
-                                    __result.push(imp);
-                                }
+                        for imp in module_imports(m.clone()).iter().cloned() {
+                            if v1_rt::map_has(
+                                &module_name_set,
+                                authored_name_at(source_indices.clone(), imp.clone()),
+                            ) {
+                                __result.push(Rc::new(DepEdge {
+                                    from_module: authored_name_at(
+                                        source_indices.clone(),
+                                        imp.clone(),
+                                    ),
+                                    to_module: authored_name_at(source_indices.clone(), m.clone()),
+                                }));
                             }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push(Rc::new(DepEdge {
-                                from_module: authored_name_at(source_indices.clone(), imp.clone()),
-                                to_module: authored_name_at(source_indices.clone(), m.clone()),
-                            }));
                         }
                         __result
                     }))
@@ -549,6 +553,9 @@ pub fn topological_sort(
             }
             __result
         });
+        // §3 single-authority: ordering is import-driven only — the std.types
+        // implicit-parent bootstrap bridge was removed (mirrors
+        // v1.compiler.resolve topological_sort in src/v1/03_resolve.dag).
         let adjacency = explicit_edges.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
@@ -559,23 +566,17 @@ pub fn topological_sort(
             v1_rt::rc_empty_map::<String, i64>(),
             |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
-                v1_rt::rc_map_insert(
-                    acc,
-                    m_name.clone(),
-                    (Rc::new({
-                        let mut __result = Vec::new();
-                        for imp in module_imports(m.clone()).iter().cloned() {
-                            if v1_rt::map_has(
-                                &module_name_set,
-                                authored_name_at(source_indices.clone(), imp.clone()),
-                            ) {
-                                __result.push(imp);
-                            }
-                        }
-                        __result
+                let in_set_import_count = module_imports(m.clone())
+                    .iter()
+                    .cloned()
+                    .filter(|imp| {
+                        v1_rt::map_has(
+                            &module_name_set,
+                            authored_name_at(source_indices.clone(), imp.clone()),
+                        )
                     })
-                    .len() as i64),
-                )
+                    .count() as i64;
+                v1_rt::rc_map_insert(acc, m_name.clone(), in_set_import_count)
             },
         );
         let initial_queue = Rc::new({

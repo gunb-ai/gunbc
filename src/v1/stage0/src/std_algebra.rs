@@ -55,12 +55,6 @@ pub struct AbelianGroup<T> {
     pub inverse: Rc<dyn Fn(T) -> T>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GroupCompletion<M>(pub std::marker::PhantomData<M>);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FieldOfFractions<R>(pub std::marker::PhantomData<R>);
-
 #[derive(Clone)]
 pub struct Semiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
@@ -284,13 +278,13 @@ pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
             let mut __m = HashMap::new();
-            __m.insert("Int", AlgebraProfile::OrderedRingProfile);
-            __m.insert("Float", AlgebraProfile::ApproximateFieldProfile);
-            __m.insert("Bool", AlgebraProfile::BooleanAlgebraProfile);
-            __m.insert("String", AlgebraProfile::FreeMonoidScalarProfile);
-            __m.insert("List", AlgebraProfile::FreeMonoidCollectionProfile);
-            __m.insert("Set", AlgebraProfile::BooleanAlgebraCollectionProfile);
-            __m.insert("Map", AlgebraProfile::PartialFunctionProfile);
+            __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
+            __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
+            __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
+            __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
+            __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
+            __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
+            __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
             Rc::new(__m)
         };
     }
@@ -1422,21 +1416,3 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
     }
 }
-
-pub struct Less;
-pub struct Equal;
-pub struct Greater;
-pub struct OrderedRingProfile;
-pub struct ApproximateFieldProfile;
-pub struct BooleanAlgebraProfile;
-pub struct BooleanAlgebraCollectionProfile;
-pub struct FreeMonoidScalarProfile;
-pub struct FreeMonoidCollectionProfile;
-pub struct PartialFunctionProfile;
-pub struct ShrinkEffect;
-pub struct ProjectionEffect;
-pub struct IdentityEffect;
-pub struct ShapeConstant;
-pub struct ShapeLinearScan;
-pub struct ShapeIterateBody;
-pub struct ShapeSortBody;

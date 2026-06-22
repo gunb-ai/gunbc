@@ -22,14 +22,14 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("String", true);
-            __m.insert("Int", true);
-            __m.insert("Bool", true);
-            __m.insert("Float", true);
-            __m.insert("Secret", true);
-            __m.insert("Json", true);
-            __m.insert("Unit", true);
-            __m.insert("Bytes", true);
+            __m.insert("String".to_string(), true);
+            __m.insert("Int".to_string(), true);
+            __m.insert("Bool".to_string(), true);
+            __m.insert("Float".to_string(), true);
+            __m.insert("Secret".to_string(), true);
+            __m.insert("Json".to_string(), true);
+            __m.insert("Unit".to_string(), true);
+            __m.insert("Bytes".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -47,10 +47,10 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, i64>> = {
             let mut __m = HashMap::new();
-            __m.insert("List", 1);
-            __m.insert("Set", 1);
-            __m.insert("Map", 2);
-            __m.insert("Witness", 1);
+            __m.insert("List".to_string(), 1);
+            __m.insert("Set".to_string(), 1);
+            __m.insert("Map".to_string(), 2);
+            __m.insert("Witness".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -69,7 +69,7 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
-    if (kind_name.clone() == "Witness".to_string()) {
+    if (kind_name.clone().as_str() == "Witness".to_string().as_str()) {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
@@ -123,7 +123,7 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
-            __m.insert("List", true);
+            __m.insert("List".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -138,18 +138,18 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("List", "FreeMonoid".to_string());
-            __m.insert("list", "FreeMonoid".to_string());
-            __m.insert("Set", "BooleanAlgebra".to_string());
-            __m.insert("set", "BooleanAlgebra".to_string());
-            __m.insert("Map", "PartialFunction".to_string());
-            __m.insert("map", "PartialFunction".to_string());
-            __m.insert("FreeMonoid", "FreeMonoid".to_string());
-            __m.insert("free_monoid", "FreeMonoid".to_string());
-            __m.insert("BooleanAlgebra", "BooleanAlgebra".to_string());
-            __m.insert("boolean_algebra", "BooleanAlgebra".to_string());
-            __m.insert("PartialFunction", "PartialFunction".to_string());
-            __m.insert("partial_function", "PartialFunction".to_string());
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
+            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
+            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
@@ -160,12 +160,12 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("List", "FreeMonoid".to_string());
-            __m.insert("list", "FreeMonoid".to_string());
-            __m.insert("Set", "BooleanAlgebra".to_string());
-            __m.insert("set", "BooleanAlgebra".to_string());
-            __m.insert("Map", "PartialFunction".to_string());
-            __m.insert("map", "PartialFunction".to_string());
+            __m.insert("List".to_string(), "FreeMonoid".to_string());
+            __m.insert("list".to_string(), "FreeMonoid".to_string());
+            __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("set".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("map".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
@@ -201,17 +201,11 @@ pub enum Bool {
     False,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Json(pub std::marker::PhantomData<()>);
+pub type Json = serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Bytes(pub std::marker::PhantomData<()>);
+pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
-
-pub fn list_length<T>(items: Rc<List<T>>) -> i64 {
-    items.iter().cloned().fold(0, |acc: i64, _: T| (acc + 1))
-}
 
 pub type CommitSha = String;
 
@@ -474,7 +468,7 @@ pub struct Document {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentFile {
+pub struct TextFile {
     pub path: String,
     pub document: Rc<Document>,
 }
@@ -538,28 +532,3 @@ pub struct DocSource {
     pub path: FilePath,
     pub kind: DocSourceKind,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReferenceModel<T>(pub std::marker::PhantomData<T>);
-
-pub struct True;
-pub struct False;
-pub struct Pure;
-pub struct Transport;
-pub struct SubDag;
-pub struct Env;
-pub struct Template;
-pub struct Generated;
-pub struct Static;
-pub struct Xs;
-pub struct S;
-pub struct M;
-pub struct L;
-pub struct Xl;
-pub struct GET;
-pub struct POST;
-pub struct PUT;
-pub struct PATCH;
-pub struct DELETE;
-pub struct HEAD;
-pub struct OPTIONS;

@@ -132,7 +132,8 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (authored_name_at(source_indices.clone(), n.clone()) == "Set".to_string()))
+        && (authored_name_at(source_indices.clone(), n.clone()).as_str()
+            == "Set".to_string().as_str()))
 }
 
 pub fn canonical_template_name(
@@ -159,7 +160,7 @@ pub fn structural_carrier_template_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if (n.name.clone() != "".to_string()) {
+    if (n.name.clone().as_str() != "".to_string().as_str()) {
         canonical_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
@@ -1095,7 +1096,9 @@ pub fn unify_template(
                 }
                 ContainerSource::Named { name: n, .. } => n.clone(),
             };
-            if (authored_name_at(source_indices.clone(), concrete.clone()) != expected_name) {
+            if (authored_name_at(source_indices.clone(), concrete.clone()).as_str()
+                != expected_name.as_str())
+            {
                 subst.clone()
             } else {
                 match concrete.children.clone().first().cloned() {
@@ -1658,8 +1661,8 @@ pub fn node_type_shape(
                         (((((rt.connective.clone() == Connective::NoConnective)
                             && ((rt.children.clone().len() as i64) == 0))
                             && (rt.ident_span.clone() != None))
-                            && (authored_name_at(source_indices.clone(), rt.clone())
-                                != "None".to_string()))
+                            && (authored_name_at(source_indices.clone(), rt.clone()).as_str()
+                                != "None".to_string().as_str()))
                             && (is_kernel_type(authored_name_at(
                                 source_indices.clone(),
                                 rt.clone(),
@@ -1806,7 +1809,9 @@ pub fn node_type_compatible(
                             node_is_element_collection(right.clone(), source_indices.clone());
                         if (left_is_container && right_is_container) {
                             if (canonical_template_name(left.clone(), source_indices.clone())
-                                != canonical_template_name(right.clone(), source_indices.clone()))
+                                .as_str()
+                                != canonical_template_name(right.clone(), source_indices.clone())
+                                    .as_str())
                             {
                                 break false;
                             } else {
@@ -1845,16 +1850,18 @@ pub fn node_type_compatible(
                             if (((((canonical_template_name(
                                 left.clone(),
                                 source_indices.clone(),
-                            ) == canonical_template_name(
-                                right.clone(),
-                                source_indices.clone(),
-                            )) && (authored_name_at(
-                                source_indices.clone(),
-                                left.clone(),
-                            ) != authored_name_at(
-                                source_indices.clone(),
-                                right.clone(),
-                            ))) && ((left.children.clone().len() as i64) == 1))
+                            )
+                            .as_str()
+                                == canonical_template_name(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                )
+                                .as_str())
+                                && (authored_name_at(source_indices.clone(), left.clone())
+                                    .as_str()
+                                    != authored_name_at(source_indices.clone(), right.clone())
+                                        .as_str()))
+                                && ((left.children.clone().len() as i64) == 1))
                                 && ((right.children.clone().len() as i64) == 1))
                                 && (is_declared_container_alias_spelling(authored_name_at(
                                     source_indices.clone(),
@@ -1917,10 +1924,13 @@ pub fn node_type_compatible(
                                         break (authored_name_at(
                                             source_indices.clone(),
                                             left.clone(),
-                                        ) == authored_name_at(
-                                            source_indices.clone(),
-                                            right.clone(),
-                                        ));
+                                        )
+                                        .as_str()
+                                            == authored_name_at(
+                                                source_indices.clone(),
+                                                right.clone(),
+                                            )
+                                            .as_str());
                                     }
                                 }
                             }
@@ -1964,7 +1974,8 @@ pub fn prefer_specific_type(
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
         let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let same_kind = if (left_is_container.clone() && right_is_container) {
-            (left_norm_name == authored_name_at(source_indices.clone(), right.clone()))
+            (left_norm_name.as_str()
+                == authored_name_at(source_indices.clone(), right.clone()).as_str())
         } else {
             if (left_is_optional.clone() && right_is_optional) {
                 true
@@ -2065,10 +2076,10 @@ pub fn node_type_equals_core(
         let left_name = authored_name_at(source_indices.clone(), left.clone());
         let right_name = authored_name_at(source_indices.clone(), right.clone());
         if (left_leaf.clone() && right_leaf.clone()) {
-            (left_name == right_name)
+            (left_name.as_str() == right_name.as_str())
         } else {
             if (left_struct.clone() && right_struct.clone()) {
-                if (left_name != right_name) {
+                if (left_name.as_str() != right_name.as_str()) {
                     false
                 } else {
                     if ((left.connective.clone() == Connective::Conj)
@@ -2119,10 +2130,10 @@ pub fn node_type_equals_core(
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    (left_name == right_name)
+                    (left_name.as_str() == right_name.as_str())
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        (left_name == right_name)
+                        (left_name.as_str() == right_name.as_str())
                     } else {
                         {
                             let left_is_container =
@@ -2130,7 +2141,7 @@ pub fn node_type_equals_core(
                             let right_is_container =
                                 node_is_element_collection(right.clone(), source_indices.clone());
                             if (left_is_container && right_is_container) {
-                                if (left_name != right_name) {
+                                if (left_name.as_str() != right_name.as_str()) {
                                     false
                                 } else {
                                     match left.children.clone().first().cloned() {
@@ -2327,8 +2338,8 @@ pub fn node_type_deps(
                     (((((rt.connective.clone() == Connective::NoConnective)
                         && ((rt.children.clone().len() as i64) == 0))
                         && (rt.ident_span.clone() != None))
-                        && (authored_name_at(source_indices.clone(), rt.clone())
-                            != "None".to_string()))
+                        && (authored_name_at(source_indices.clone(), rt.clone()).as_str()
+                            != "None".to_string().as_str()))
                         && (is_kernel_type(authored_name_at(source_indices.clone(), rt.clone()))
                             == false))
                 }
@@ -2400,7 +2411,7 @@ pub fn node_type_deps(
                         }
                     } else {
                         if ((is_kernel_type(n_name.clone())
-                            || (n_name.clone() == "None".to_string()))
+                            || (n_name.clone().as_str() == "None".to_string().as_str()))
                             || (n.ident_span.clone() == None))
                         {
                             Rc::new(vec![])
@@ -2461,7 +2472,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
         if is_optional {
             with_required_cardinality(n.clone())
         } else {
-            if ((n.name.clone() == "Optional".to_string())
+            if ((n.name.clone().as_str() == "Optional".to_string().as_str())
                 && ((n.children.clone().len() as i64) == 1))
             {
                 match n.children.clone().first().cloned() {
@@ -2672,7 +2683,8 @@ pub fn for_each_element_type_node(
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
-                    && (authored_name_at(source_indices, normed.clone()) == "String".to_string()))
+                    && (authored_name_at(source_indices, normed.clone()).as_str()
+                        == "String".to_string().as_str()))
                 {
                     string_type()
                 } else {

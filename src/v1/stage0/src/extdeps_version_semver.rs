@@ -71,13 +71,13 @@ pub fn semver_compare_identifiers(
     mut b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
     loop {
-        if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
+        if ((v1_rt::length(a.clone()) == 0) && (v1_rt::length(b.clone()) == 0)) {
             break Ordering::Equal;
         } else {
-            if ((a.clone().len() as i64) == 0) {
+            if (v1_rt::length(a.clone()) == 0) {
                 break Ordering::Less;
             } else {
-                if ((b.clone().len() as i64) == 0) {
+                if (v1_rt::length(b.clone()) == 0) {
                     break Ordering::Greater;
                 } else {
                     match semver_compare_identifier(
@@ -107,13 +107,13 @@ pub fn semver_compare_pre_release(
     a: Rc<Vec<Rc<SemVerIdentifier>>>,
     b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
-    if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
+    if ((v1_rt::length(a.clone()) == 0) && (v1_rt::length(b.clone()) == 0)) {
         Ordering::Equal
     } else {
-        if ((a.clone().len() as i64) == 0) {
+        if (v1_rt::length(a.clone()) == 0) {
             Ordering::Greater
         } else {
-            if ((b.clone().len() as i64) == 0) {
+            if (v1_rt::length(b.clone()) == 0) {
                 Ordering::Less
             } else {
                 semver_compare_identifiers(a.clone(), b.clone())
@@ -141,14 +141,16 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
     }
 }
 
-pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
+pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> Rc<FreeMonoid<Nat>> {
     match (*id).clone() {
-        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
+        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => {
+            crate::v2_std_text::host_string_text_from_rust_host(format!("{}", v.clone()))
+        }
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
 }
 
-pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
+pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> Rc<FreeMonoid<Nat>> {
     Rc::new({
         let mut __result = Vec::new();
         for id in ids.iter().cloned() {
@@ -159,19 +161,26 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     .join(&".".to_string())
 }
 
-pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
+pub fn semver_version_label(v: Rc<SemVerVersion>) -> Rc<FreeMonoid<Nat>> {
     {
         let core = v1_rt::concat(
-            (v.major.clone()).to_string(),
+            crate::v2_std_text::host_string_text_from_rust_host((v.major.clone()).to_string()),
             v1_rt::concat(
                 ".".to_string(),
                 v1_rt::concat(
-                    (v.minor.clone()).to_string(),
-                    v1_rt::concat(".".to_string(), (v.patch.clone()).to_string()),
+                    crate::v2_std_text::host_string_text_from_rust_host(
+                        (v.minor.clone()).to_string(),
+                    ),
+                    v1_rt::concat(
+                        ".".to_string(),
+                        crate::v2_std_text::host_string_text_from_rust_host(
+                            (v.patch.clone()).to_string(),
+                        ),
+                    ),
                 ),
             ),
         );
-        let with_pre = if ((v.pre_release.clone().len() as i64) == 0) {
+        let with_pre = if (v1_rt::length(v.pre_release.clone()) == 0) {
             core
         } else {
             v1_rt::concat(
@@ -182,7 +191,7 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
                 ),
             )
         };
-        if ((v.build.clone().len() as i64) == 0) {
+        if (v1_rt::length(v.build.clone()) == 0) {
             with_pre
         } else {
             v1_rt::concat(

@@ -33,18 +33,18 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, TokenShape>> = {
             let mut __m = HashMap::new();
-            __m.insert("(", TokenShape::ShLParen);
-            __m.insert(")", TokenShape::ShRParen);
-            __m.insert("[", TokenShape::ShLBracket);
-            __m.insert("]", TokenShape::ShRBracket);
-            __m.insert(":", TokenShape::ShColon);
-            __m.insert(",", TokenShape::ShComma);
-            __m.insert(".", TokenShape::ShDot);
-            __m.insert("+", TokenShape::ShPlus);
-            __m.insert("*", TokenShape::ShStar);
-            __m.insert("%", TokenShape::ShPercent);
-            __m.insert("/", TokenShape::ShSlash);
-            __m.insert("^", TokenShape::ShCaret);
+            __m.insert("(".to_string(), TokenShape::ShLParen);
+            __m.insert(")".to_string(), TokenShape::ShRParen);
+            __m.insert("[".to_string(), TokenShape::ShLBracket);
+            __m.insert("]".to_string(), TokenShape::ShRBracket);
+            __m.insert(":".to_string(), TokenShape::ShColon);
+            __m.insert(",".to_string(), TokenShape::ShComma);
+            __m.insert(".".to_string(), TokenShape::ShDot);
+            __m.insert("+".to_string(), TokenShape::ShPlus);
+            __m.insert("*".to_string(), TokenShape::ShStar);
+            __m.insert("%".to_string(), TokenShape::ShPercent);
+            __m.insert("/".to_string(), TokenShape::ShSlash);
+            __m.insert("^".to_string(), TokenShape::ShCaret);
             Rc::new(__m)
         };
     }
@@ -735,13 +735,13 @@ pub fn scan_string_body(
             });
         } else {
             let ch = source_char(source.clone(), pos.clone());
-            if (ch.clone() == "\"".to_string()) {
+            if (ch.clone().as_str() == "\"".to_string().as_str()) {
                 break Rc::new(StringScanResult::ClosedString {
                     content: acc.join(&"".to_string()),
                     end_pos: pos.clone(),
                 });
             } else {
-                if (ch.clone() == "\\".to_string()) {
+                if (ch.clone().as_str() == "\\".to_string().as_str()) {
                     if ((pos.clone() + 1) < source_len(source.clone())) {
                         let escaped = source_char(source.clone(), (pos.clone() + 1));
                         {
@@ -762,7 +762,7 @@ pub fn scan_string_body(
                         });
                     }
                 } else {
-                    if (ch.clone() == "{".to_string()) {
+                    if (ch.clone().as_str() == "{".to_string().as_str()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
                                 content: acc.join(&"".to_string()),
@@ -814,26 +814,26 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
             break acc.join(&"".to_string());
         } else {
             let ch = v1_rt::char_at(&source, pos.clone());
-            if ((ch.clone() == "\\".to_string())
+            if ((ch.clone().as_str() == "\\".to_string().as_str())
                 && ((pos.clone() + 1) < v1_rt::string_length(&source)))
             {
                 let next = v1_rt::char_at(&source, (pos.clone() + 1));
-                let resolved = if (next.clone() == "\"".to_string()) {
+                let resolved = if (next.clone().as_str() == "\"".to_string().as_str()) {
                     "\"".to_string()
                 } else {
-                    if (next.clone() == "\\".to_string()) {
+                    if (next.clone().as_str() == "\\".to_string().as_str()) {
                         "\\".to_string()
                     } else {
-                        if (next.clone() == "n".to_string()) {
+                        if (next.clone().as_str() == "n".to_string().as_str()) {
                             "\n".to_string()
                         } else {
-                            if (next.clone() == "t".to_string()) {
+                            if (next.clone().as_str() == "t".to_string().as_str()) {
                                 "\t".to_string()
                             } else {
-                                if (next.clone() == "{".to_string()) {
+                                if (next.clone().as_str() == "{".to_string().as_str()) {
                                     "{".to_string()
                                 } else {
-                                    if (next.clone() == "}".to_string()) {
+                                    if (next.clone().as_str() == "}".to_string().as_str()) {
                                         "}".to_string()
                                     } else {
                                         v1_rt::concat("\\".to_string(), next.clone())

@@ -156,39 +156,3 @@ pub struct SyntaxSpec {
     pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
     pub keyword_set: Rc<HashMap<String, bool>>,
 }
-
-pub struct Add;
-pub struct Sub;
-pub struct Mul;
-pub struct Div;
-pub struct Mod;
-pub struct Eq;
-pub struct Ne;
-pub struct Lt;
-pub struct Gt;
-pub struct Le;
-pub struct Ge;
-pub struct And;
-pub struct Or;
-pub struct NullCoalesce;
-pub struct ExprBody;
-pub struct BlockBody;
-pub struct TypeBody;
-pub struct ValueBody;
-pub struct NoBody;
-pub struct ServiceBody;
-pub struct ResourceBody;
-pub struct FuncForm;
-pub struct StructForm;
-pub struct EnumForm;
-pub struct TypeAliasForm;
-pub struct ModuleForm;
-pub struct OtherForm;
-pub struct AlgAdd;
-pub struct AlgMul;
-pub struct AlgReciprocal;
-pub struct AlgQuotient;
-pub struct AlgRemainder;
-pub struct AlgCompare;
-pub struct AlgMeet;
-pub struct AlgJoin;

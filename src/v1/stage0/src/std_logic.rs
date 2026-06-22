@@ -40,6 +40,3 @@ pub fn classical_or(a: Classical, b: Classical) -> Classical {
         Classical::False => b,
     }
 }
-
-pub struct True;
-pub struct False;

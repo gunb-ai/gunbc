@@ -84,11 +84,11 @@ pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
 }
 
 pub fn inductive_field_eq(a: Rc<InductiveField>, b: Rc<InductiveField>) -> bool {
-    (((((a.type_name.clone() == b.type_name.clone())
-        && (a.variant_name.clone() == b.variant_name.clone()))
-        && (a.field_name.clone() == b.field_name.clone()))
+    (((((a.type_name.clone().as_str() == b.type_name.clone().as_str())
+        && (a.variant_name.clone().as_str() == b.variant_name.clone().as_str()))
+        && (a.field_name.clone().as_str() == b.field_name.clone().as_str()))
         && recursion_shape_eq(a.shape.clone(), b.shape.clone()))
-        && (a.element_type.clone() == b.element_type.clone()))
+        && (a.element_type.clone().as_str() == b.element_type.clone().as_str()))
 }
 
 pub fn inductive_field_to_dimension(
@@ -193,7 +193,10 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
                 param: pb,
                 factor: fac_b,
                 ..
-            } => ((pa.clone() == pb.clone()) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
+            } => {
+                ((pa.clone().as_str() == pb.clone().as_str())
+                    && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
+            }
             _ => false,
         },
         SubValueRelation::PreservedValue => match (*b).clone() {
@@ -1099,9 +1102,3 @@ pub fn bellman_ford_bound() -> Rc<CostBound> {
 pub fn floyd_warshall_bound() -> Rc<CostBound> {
     cost_poly("V".to_string(), 3)
 }
-
-pub struct DirectRecursion;
-pub struct ListRecursion;
-pub struct OptionalRecursion;
-pub struct SetRecursion;
-pub struct MapValueRecursion;

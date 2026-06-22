@@ -314,12 +314,14 @@ pub fn walk_expr(
             }
             ExprData::ExprCall { .. } => {
                 let fname = expr_call_func_at(texpr.clone(), si.clone());
-                if (fname == "fold".to_string()) {
+                if (fname.as_str() == "fold".to_string().as_str()) {
                     {
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
+                                if (authored_name_at(si.clone(), a.clone()).as_str()
+                                    == "init".to_string().as_str())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -352,7 +354,9 @@ pub fn walk_expr(
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
+                                if (authored_name_at(si.clone(), a.clone()).as_str()
+                                    != "init".to_string().as_str())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -378,13 +382,15 @@ pub fn walk_expr(
                 let recv = method_receiver(texpr.clone());
                 let mc_args = method_arg_nodes(texpr.clone());
                 let mname = expr_method_name_at(texpr.clone(), si.clone());
-                if (mname == "fold".to_string()) {
+                if (mname.as_str() == "fold".to_string().as_str()) {
                     {
                         let recv_accum = walk_expr(accum, recv, false, si.clone());
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
+                                if (authored_name_at(si.clone(), a.clone()).as_str()
+                                    == "init".to_string().as_str())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -417,7 +423,9 @@ pub fn walk_expr(
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
+                                if (authored_name_at(si.clone(), a.clone()).as_str()
+                                    != "init".to_string().as_str())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -923,7 +931,9 @@ pub fn summarize_fold_acc_uses(
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => {
-                if (expr_var_name_at(node.clone(), si.clone()) == acc_name.clone()) {
+                if (expr_var_name_at(node.clone(), si.clone()).as_str()
+                    == acc_name.clone().as_str())
+                {
                     if inside_nested.clone() {
                         Rc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
@@ -946,7 +956,10 @@ pub fn summarize_fold_acc_uses(
                 let is_direct = match (*base.expr_data.clone()).clone() {
                     ExprData::ExprVar {
                         binding_kind: _, ..
-                    } => (expr_var_name_at(base.clone(), si.clone()) == acc_name.clone()),
+                    } => {
+                        (expr_var_name_at(base.clone(), si.clone()).as_str()
+                            == acc_name.clone().as_str())
+                    }
                     _ => false,
                 };
                 if is_direct {
@@ -1072,7 +1085,7 @@ pub fn fold_body_constructs_acc_struct(
             let terminal = fold_terminal_expr(body);
             match (*terminal.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    (authored_name_at(si, terminal.clone()) == acc_type_name)
+                    (authored_name_at(si, terminal.clone()).as_str() == acc_type_name.as_str())
                 }
                 _ => false,
             }
@@ -1165,7 +1178,8 @@ pub fn analyze_single_fold(
             acc_param_name.clone(),
             si.clone(),
         );
-        let eligible = ((cond_required && (acc_type_name.clone() != "".to_string()))
+        let eligible = ((cond_required
+            && (acc_type_name.clone().as_str() != "".to_string().as_str()))
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
         Rc::new(FoldAccUnwrapProof {
             site_key: (method_call.span.clone().start.clone()).to_string(),
@@ -1232,8 +1246,3 @@ pub fn analyze_ownership(
         })
     }
 }
-
-pub struct Consumed;
-pub struct Read;
-pub struct Threaded;
-pub struct Projected;

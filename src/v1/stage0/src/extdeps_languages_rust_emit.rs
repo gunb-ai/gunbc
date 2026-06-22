@@ -15,13 +15,13 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true", "true".to_string());
-            __m.insert("false", "false".to_string());
-            __m.insert("null", "None".to_string());
-            __m.insert("and", "&&".to_string());
-            __m.insert("or", "||".to_string());
-            __m.insert("not", "!".to_string());
-            __m.insert("div", "/".to_string());
+            __m.insert("true".to_string(), "true".to_string());
+            __m.insert("false".to_string(), "false".to_string());
+            __m.insert("null".to_string(), "None".to_string());
+            __m.insert("and".to_string(), "&&".to_string());
+            __m.insert("or".to_string(), "||".to_string());
+            __m.insert("not".to_string(), "!".to_string());
+            __m.insert("div".to_string(), "/".to_string());
             Rc::new(__m)
         };
     }
@@ -32,13 +32,13 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list", "Vec<{0}>".to_string());
-            __m.insert("set", "std::collections::BTreeSet<{0}>".to_string());
-            __m.insert("optional", "Option<{0}>".to_string());
-            __m.insert("map", "HashMap<{0}, {1}>".to_string());
-            __m.insert("free_monoid", "Vec<{0}>".to_string());
-            __m.insert("partial_function", "HashMap<{0}, {1}>".to_string());
-            __m.insert("boolean_algebra", "bool".to_string());
+            __m.insert("list".to_string(), "Vec<{0}>".to_string());
+            __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+            __m.insert("optional".to_string(), "Option<{0}>".to_string());
+            __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
+            __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
+            __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
+            __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };
     }
@@ -497,7 +497,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     Rc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
-            if (f.name.clone() != f.bridge_name.clone()) {
+            if (f.name.clone().as_str() != f.bridge_name.clone().as_str()) {
                 __result.push(f);
             }
         }

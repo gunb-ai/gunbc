@@ -15,13 +15,13 @@ pub fn go_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("true", "true".to_string());
-            __m.insert("false", "false".to_string());
-            __m.insert("null", "nil".to_string());
-            __m.insert("and", "&&".to_string());
-            __m.insert("or", "||".to_string());
-            __m.insert("not", "!".to_string());
-            __m.insert("div", "/".to_string());
+            __m.insert("true".to_string(), "true".to_string());
+            __m.insert("false".to_string(), "false".to_string());
+            __m.insert("null".to_string(), "nil".to_string());
+            __m.insert("and".to_string(), "&&".to_string());
+            __m.insert("or".to_string(), "||".to_string());
+            __m.insert("not".to_string(), "!".to_string());
+            __m.insert("div".to_string(), "/".to_string());
             Rc::new(__m)
         };
     }
@@ -32,13 +32,13 @@ pub fn go_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
-            __m.insert("list", "[]{0}".to_string());
-            __m.insert("set", "map[{0}]struct{}".to_string());
-            __m.insert("optional", "*{0}".to_string());
-            __m.insert("map", "map[{0}]{1}".to_string());
-            __m.insert("free_monoid", "[]{0}".to_string());
-            __m.insert("partial_function", "map[{0}]{1}".to_string());
-            __m.insert("boolean_algebra", "bool".to_string());
+            __m.insert("list".to_string(), "[]{0}".to_string());
+            __m.insert("set".to_string(), "map[{0}]struct{}".to_string());
+            __m.insert("optional".to_string(), "*{0}".to_string());
+            __m.insert("map".to_string(), "map[{0}]{1}".to_string());
+            __m.insert("free_monoid".to_string(), "[]{0}".to_string());
+            __m.insert("partial_function".to_string(), "map[{0}]{1}".to_string());
+            __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };
     }

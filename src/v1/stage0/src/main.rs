@@ -43,7 +43,17 @@ enum Commands {
         /// Target language: rust, python, go, dag, or + separated set such as rust+dag
         #[arg(long, default_value = "rust")]
         target: String,
+        /// Multi-root index policy: `strict` (default) panics on any cross-root duplicate;
+        /// `primary-precedence` keeps the first root authoritative and fills only absent paths
+        /// from later dependency-pool roots (opt-in for dual-root dsl compile-clean gate).
+        /// TRANSITIONAL: dissolve-on extdeps.shell de-fork (S2) — single module_path row;
+        /// then remove this knob and rely on strict-only (receipt: dependency_pool_index tests
+        /// for primary-precedence deleted, dsl_compile_clean witness suite green at strict).
+        #[arg(long = "dependency-pool-index", default_value = "strict")]
+        dependency_pool_index: String,
     },
+    /// Run repo CI from CiSpec (delegates to dsl/tools/gunbc_ci.dag)
+    Ci,
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -110,28 +120,97 @@ fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-/// Build module index: scan all source roots, map module_path -> file_path.
-/// Fail-closed: panics on missing roots, unreadable files, and duplicate module paths.
-fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::PathBuf> {
-    let mut index = HashMap::new();
-    for root in source_roots {
-        let root_path = std::path::Path::new(root);
-        if !root_path.exists() {
-            panic!("source root does not exist: {}", root);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DependencyPoolIndex {
+    Strict,
+    PrimaryPrecedence,
+}
+
+fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {
+    match value {
+        "strict" => DependencyPoolIndex::Strict,
+        "primary-precedence" => DependencyPoolIndex::PrimaryPrecedence,
+        other => {
+            eprintln!(
+                "unknown --dependency-pool-index: {} (expected strict | primary-precedence)",
+                other
+            );
+            std::process::exit(1);
         }
-        let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-            if let Some(module_path) = extract_module_path(&content) {
-                if let Some(existing) = index.get(&module_path) {
-                    panic!(
-                        "duplicate module path '{}': declared in both {:?} and {:?}",
-                        module_path, existing, path
-                    );
+    }
+}
+
+fn insert_module_path(
+    index: &mut HashMap<String, std::path::PathBuf>,
+    module_path: String,
+    path: std::path::PathBuf,
+    within_root: &mut HashMap<String, std::path::PathBuf>,
+) {
+    if let Some(existing) = within_root.get(&module_path) {
+        panic!(
+            "duplicate module path '{}' within source root: declared in both {:?} and {:?}",
+            module_path, existing, path
+        );
+    }
+    within_root.insert(module_path.clone(), path.clone());
+    index.insert(module_path, path);
+}
+
+/// Index one source root. `pool_fill_only`: only insert paths absent from `index` (pool roots).
+fn index_source_root(
+    root: &str,
+    index: &mut HashMap<String, std::path::PathBuf>,
+    pool_fill_only: bool,
+) {
+    let root_path = std::path::Path::new(root);
+    if !root_path.exists() {
+        panic!("source root does not exist: {}", root);
+    }
+    let mut dag_files = Vec::new();
+    collect_dag_files(root_path, &mut dag_files);
+    let mut within_root = HashMap::new();
+    for path in dag_files {
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+        if let Some(module_path) = extract_module_path(&content) {
+            if pool_fill_only {
+                if index.contains_key(&module_path) {
+                    continue;
                 }
-                index.insert(module_path, path);
+                insert_module_path(index, module_path, path, &mut within_root);
+            } else if let Some(existing) = index.get(&module_path) {
+                panic!(
+                    "duplicate module path '{}': declared in both {:?} and {:?}",
+                    module_path, existing, path
+                );
+            } else {
+                insert_module_path(index, module_path, path, &mut within_root);
+            }
+        }
+    }
+}
+
+/// Build module index: scan source roots, map module_path -> file_path.
+/// Fail-closed: panics on missing roots, unreadable files, and within-root duplicates.
+/// Cross-root policy is opt-in via `pool_index` (default `Strict` preserves legacy behavior).
+fn build_module_index(
+    source_roots: &[String],
+    pool_index: DependencyPoolIndex,
+) -> HashMap<String, std::path::PathBuf> {
+    let mut index = HashMap::new();
+    if source_roots.is_empty() {
+        return index;
+    }
+    match pool_index {
+        DependencyPoolIndex::Strict => {
+            for root in source_roots {
+                index_source_root(root, &mut index, false);
+            }
+        }
+        DependencyPoolIndex::PrimaryPrecedence => {
+            index_source_root(&source_roots[0], &mut index, false);
+            for root in &source_roots[1..] {
+                index_source_root(root, &mut index, true);
             }
         }
     }
@@ -247,12 +326,14 @@ fn main() {
             source_dir,
             output_dir,
             target,
+            dependency_pool_index,
         } => {
             let render_targets = parse_render_targets(&target);
+            let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
             let sources = if !source_roots.is_empty() {
                 // FF-9: Import-driven resolution from source roots
-                let index = build_module_index(&source_roots);
+                let index = build_module_index(&source_roots, pool_index);
                 eprintln!(
                     "indexed {} modules from {} source roots",
                     index.len(),
@@ -382,6 +463,10 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+
+        Commands::Ci {} => {
+            cli_run::handle_ci();
         }
 
         Commands::Run {

@@ -70,16 +70,16 @@ pub struct RealizationObjective {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleWitnessEntry {
-    pub entry: String,
-    pub function: String,
+    pub entry: Rc<FreeMonoid<Nat>>,
+    pub function: Rc<FreeMonoid<Nat>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Runnable {
     RunnableSingleClaim {
-        entry: String,
-        function: String,
+        entry: Rc<FreeMonoid<Nat>>,
+        function: Rc<FreeMonoid<Nat>>,
     },
     RunnableDiscoveryBatch {
         source_roots: Rc<Vec<String>>,
@@ -99,19 +99,24 @@ pub struct RealizationPlan<S> {
     pub total: Rc<CostAccount<S>>,
 }
 
-pub fn runnable_step_label(r: Rc<Runnable>) -> String {
+pub fn runnable_step_label(r: Rc<Runnable>) -> Rc<FreeMonoid<Nat>> {
     match (*r).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
     }
 }
 
-pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
+pub fn schedule_batch_contains_label(
+    batch: Rc<Vec<Rc<Runnable>>>,
+    target: Rc<FreeMonoid<Nat>>,
+) -> bool {
     batch
         .iter()
         .cloned()
         .fold(false, |acc: bool, r: Rc<Runnable>| {
-            (acc || (runnable_step_label(r.clone()) == target.clone()))
+            (acc || (crate::v2_std_text::host_string_text_to_rust_host(runnable_step_label(
+                r.clone(),
+            )) == crate::v2_std_text::host_string_text_to_rust_host(target.clone())))
         })
 }
 
@@ -119,12 +124,12 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
 #[serde(tag = "_variant")]
 pub enum ScheduleLensViolation {
     EmptySchedule,
-    CompileGateNotFirst { expected: String },
+    CompileGateNotFirst { expected: Rc<FreeMonoid<Nat>> },
     CorpusBeforeCompile,
     SingleBatchOnly,
 }
 impl ScheduleLensViolation {
-    pub fn expected(&self) -> String {
+    pub fn expected(&self) -> Rc<FreeMonoid<Nat>> {
         match self {
             ScheduleLensViolation::EmptySchedule => panic!("no expected on unit variant"),
             ScheduleLensViolation::CompileGateNotFirst {
@@ -136,18 +141,18 @@ impl ScheduleLensViolation {
     }
 }
 
-pub fn schedule_lens_module() -> String {
+pub fn schedule_lens_module() -> Rc<FreeMonoid<Nat>> {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: Rc<FreeMonoid<Nat>> = {
             "std.realization_schedule".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<FreeMonoid<Nat>>| c.clone())
 }
 
 pub fn schedule_lens_violation_diagnostic(
     kind: Rc<ScheduleLensViolation>,
-    compile_gate_fn: String,
+    compile_gate_fn: Rc<FreeMonoid<Nat>>,
 ) -> Rc<LensVerdictDiagnostic> {
     {
         let at = Rc::new(LensVerdictLocus::ModuleWholeFile {
@@ -178,9 +183,9 @@ pub fn schedule_lens_violation_diagnostic(
 
 pub fn schedule_lens_verdict_for_ci_floor<S>(
     plan: Rc<RealizationPlan<S>>,
-    compile_gate_fn: String,
+    compile_gate_fn: Rc<FreeMonoid<Nat>>,
 ) -> Rc<LensVerdict> {
-    if (plan.schedule.clone().count() == 0) {
+    if (plan.schedule.clone().length() == 0) {
         Rc::new(LensVerdict::Violation {
             diagnostic: schedule_lens_violation_diagnostic(
                 Rc::new(ScheduleLensViolation::EmptySchedule),
@@ -188,7 +193,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
             ),
         })
     } else {
-        if (plan.schedule.clone().count() < 2) {
+        if (plan.schedule.clone().length() < 2) {
             Rc::new(LensVerdict::Violation {
                 diagnostic: schedule_lens_violation_diagnostic(
                     Rc::new(ScheduleLensViolation::SingleBatchOnly),
@@ -198,7 +203,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
         } else {
             {
                 let batch0 = plan.schedule.clone().first();
-                if (batch0.clone().count() != 1) {
+                if (batch0.clone().length() != 1) {
                     Rc::new(LensVerdict::Violation {
                         diagnostic: schedule_lens_violation_diagnostic(
                             Rc::new(ScheduleLensViolation::CompileGateNotFirst {
@@ -231,7 +236,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
                         } else {
                             {
                                 let batch1 = plan.schedule.clone().skip(1).first();
-                                if (batch1.count() < 2) {
+                                if (batch1.length() < 2) {
                                     Rc::new(LensVerdict::Violation {
                                         diagnostic: schedule_lens_violation_diagnostic(
                                             Rc::new(ScheduleLensViolation::SingleBatchOnly),
@@ -254,19 +259,22 @@ pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
-    (left.schedule.clone().count() == right.schedule.clone().count())
+    (left.schedule.clone().length() == right.schedule.clone().length())
 }
 
 pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
-    ((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+    ((crate::v2_std_text::host_string_text_to_rust_host(a.entry.clone())
+        == crate::v2_std_text::host_string_text_to_rust_host(b.entry.clone()))
+        && (crate::v2_std_text::host_string_text_to_rust_host(a.function.clone())
+            == crate::v2_std_text::host_string_text_to_rust_host(b.function.clone())))
 }
 
 pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
     loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
+        if (v1_rt::length(left.clone()) != v1_rt::length(right.clone())) {
             break false;
         } else {
-            if ((left.clone().len() as i64) == 0) {
+            if (v1_rt::length(left.clone()) == 0) {
                 break true;
             } else {
                 if (left.clone().first().cloned().as_deref()
@@ -294,10 +302,10 @@ pub fn schedule_witness_entry_list_eq(
     mut right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
 ) -> bool {
     loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
+        if (v1_rt::length(left.clone()) != v1_rt::length(right.clone())) {
             break false;
         } else {
-            if ((left.clone().len() as i64) == 0) {
+            if (v1_rt::length(left.clone()) == 0) {
                 break true;
             } else {
                 if !schedule_witness_entry_eq(
@@ -332,7 +340,12 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 entry: re,
                 function: rf,
                 ..
-            } => ((le.clone() == re.clone()) && (lf.clone() == rf.clone())),
+            } => {
+                ((crate::v2_std_text::host_string_text_to_rust_host(le.clone())
+                    == crate::v2_std_text::host_string_text_to_rust_host(re.clone()))
+                    && (crate::v2_std_text::host_string_text_to_rust_host(lf.clone())
+                        == crate::v2_std_text::host_string_text_to_rust_host(rf.clone())))
+            }
             Runnable::RunnableDiscoveryBatch { .. } => false,
         },
         Runnable::RunnableDiscoveryBatch {
@@ -364,10 +377,10 @@ pub fn runnable_batch_eq(
     mut right: Rc<Vec<Rc<Runnable>>>,
 ) -> bool {
     loop {
-        if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
+        if (v1_rt::length(left.clone()) != v1_rt::length(right.clone())) {
             break false;
         } else {
-            if ((left.clone().len() as i64) == 0) {
+            if (v1_rt::length(left.clone()) == 0) {
                 break true;
             } else {
                 if !runnable_eq(
@@ -393,10 +406,10 @@ pub fn runnable_batch_eq(
 
 pub fn schedule_eq(mut left: Schedule, mut right: Schedule) -> bool {
     loop {
-        if (left.clone().count() != right.clone().count()) {
+        if (left.clone().length() != right.clone().length()) {
             break false;
         } else {
-            if (left.clone().count() == 0) {
+            if (left.clone().length() == 0) {
                 break true;
             } else {
                 if !runnable_batch_eq(left.clone().first(), right.clone().first()) {
