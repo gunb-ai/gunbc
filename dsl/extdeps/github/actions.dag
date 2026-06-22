@@ -22,8 +22,7 @@ import extdeps.github.log_annotations {
   annotation_error_prefix, annotation_warning_prefix, annotation_notice_prefix,
   annotation_group_prefix, annotation_endgroup,
   annotation_set_output_prefix, annotation_add_mask_prefix,
-  annotation_stop_commands_prefix,
-  render_log_annotation
+  annotation_stop_commands_prefix
 }
 import extdeps.formats.yaml { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit }

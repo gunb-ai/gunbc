@@ -24,6 +24,8 @@ mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
+mod cache_purity_oracle_test;
+#[cfg(test)]
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod cron_tag_test;
@@ -81,6 +83,8 @@ mod list_free_monoid_chokepoint_test;
 mod map_lookup_dual_dispatch_test;
 #[cfg(test)]
 mod measure_field_access_test;
+#[cfg(test)]
+mod module_authority_resolution_test;
 #[cfg(test)]
 mod money_carrier_cost_witness_test;
 #[cfg(test)]

@@ -1,0 +1,70 @@
+// Scope: canonical QualifiedName identities for extdeps_external_authority witnesses.
+
+module v2.lens.extdeps_external_authority.module_refs
+
+import v2.std.collection { List }
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+
+data extdeps_uri_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^uri, tail: QnEmpty }
+}
+
+data extdeps_external_authority_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons { head: ^external_authority, tail: QnEmpty }
+}
+
+data extdeps_fixture_missing_anchor_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_missing, tail: QnEmpty }
+  }
+}
+
+data extdeps_fixture_bogus_scheme_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_bogus_scheme, tail: QnEmpty }
+  }
+}
+
+data extdeps_fixture_clean_https_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_clean_https, tail: QnEmpty }
+  }
+}
+
+data extdeps_fixture_clean_https_no_anchor_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_clean_https_no_anchor, tail: QnEmpty }
+  }
+}
+
+data extdeps_fixture_file_anchor_module: QualifiedName = QnCons {
+  head: ^extdeps,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_file_anchor, tail: QnEmpty }
+  }
+}
+
+// Anchor-machinery modules: RFC/header-grounded (uri) or self-anchoring (external_authority).
+data extdeps_external_authority_anchor_machinery_exempt_modules: List<QualifiedName> = [
+  extdeps_uri_module,
+  extdeps_external_authority_module
+]
+
+// RED perturb fixtures excluded from live clean-tree roster (would false-RED the gate).
+data extdeps_external_authority_clean_tree_roster_exclusions: List<QualifiedName> = [
+  extdeps_fixture_bogus_scheme_module,
+  extdeps_fixture_missing_anchor_module,
+  extdeps_fixture_clean_https_no_anchor_module,
+  extdeps_fixture_file_anchor_module
+]

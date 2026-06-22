@@ -135,7 +135,22 @@ safety axis made concrete. This code is digital: a wrong answer is a **loud erro
 a bridge collapses, it does not warn. Every path succeeds fully or
 fails with a typed, located diagnostic; no fabricated plausible output (a bounded "forever" ≠ an
 "unknown" error). Relax toward application-layer leniency only under protest, and lean to infra so
-others can build on your work. The deepest trap is **specification-without-execution**: a typecheck and
+others can build on your work. Stronger than *catching* a wrong state is making it **unwritable** —
+**correctness by construction, not validation.** A check that re-states a constraint the model already
+carries is a *second representation* of it (§2/§3): so prefer a single authority from which the
+realization is *derived* — the bad state cannot be written — over a check that flags it after the fact,
+which concedes the bad state *is* writable. The tell that a check was validation standing where
+construction was available: it can be satisfied by editing the *declaration* while the realization still
+lies (a key-completeness check went green when the spec was edited while the realizer kept faking the
+cache key). Reserve post-hoc checks for the genuinely **unstructurable** residue (§6 complexity /
+necessity — you cannot structurally forbid an *unnecessary* loop). Construction makes a class unwritable
+only when membership is **decidable**, so every class is one of three: a *wall now* (decidable and
+grounded — nicknaming, dead scaffolds, effect leaks); a *wall after grounding* (decidable but waiting on
+its single authority — the cross-representation `==` straddle is one only once `Int = GroupCompletion<Nat>`
+grounds it); or a *ratchet forever* (undecidable — optimality, by Rice, never reaches "never"). The word
+**"never" is the trap**: it lets a ratchet masquerade as a wall, so check decidability before claiming
+one — the undecidable residue is the §6 lens, honestly and permanently. The deepest trap is
+**specification-without-execution**: a typecheck and
 a `.contains()` grep are *not* consumers — "done" means a real consumer **green by execution** plus a
 discriminating input that goes *red* when the behavior is wrong. (For the LLM agent: fluent,
 type-checking, grep-passing output is precisely the artifact that looks finished without running. Treat
@@ -154,10 +169,19 @@ your own output as unverified until a consumer runs it green.)
   don't anchor on one KPI (you'll hit it at a cost) or on pure taste. Map the cause→effect across
   sections; a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step).
   Root-cause to the language layer and fix related systems *together* — a local subsystem patch is the
-  forked-logic trap.
-- **Enforce with lenses,** not grep: a lens is a pure reader over the same `Node` tree, storing
-  nothing, so a new analysis costs zero substrate edits. Beware the tier where the machinery exists but
-  nothing gates on it — coverage by illusion.
+  forked-logic trap. **Denominate the benefit:** the deliverable is a *displaced cost* (§1's time — a
+  pain someone pays to remove); the lens/substrate is the *mechanism* (the moat), not the product. A
+  lens — or any construction wall — is on-dial exactly insofar as it is the cheapest path to such a pain.
+  Priced in elegance instead, the work is self-referential and unbounded (the purity trap — the economic
+  twin of "never" in §5; an extensible substrate's infinite improvability dissolving its own bound).
+- **Enforce with lenses,** not grep — but **construction first** (§5): a lens is *validation* (it
+  concedes the bad state is writable), so make the class unwritable by single authority where you can and
+  reserve the lens for the unstructurable residue. As a residue mechanism it earns its keep: a pure
+  reader over the same `Node` tree, storing nothing, so a new analysis costs zero substrate edits. Beware
+  the tier where the machinery exists but nothing gates on it — coverage by illusion; an inert lens is
+  itself a lie, so an **executable** hygiene check must keep every lens either wired (a discovered
+  fail-closed witness) or deleted — that backstop runs over the corpus and is *not* superseded by the
+  authoring-time construction-justification judgment, which layers on top of it.
 - *e.g.* one catamorphism `fold_node` is reused by all 7 v2 stages; #4699 dissolved `06_translate` 4,912→3,973 lines (`_go` accumulators 35→0); a 6-line `merge_envs` root fix cut reconcile from 81% of the pipeline to 6% (~2× self-compile) — the symptom recurs wherever the root is unfixed (v2 still hand-rolls `ParseTable` because the Realization carrier is staged, not inhabited).
 
 ## 7. Self-hosting (the principles applied to the compiler itself)
@@ -167,6 +191,17 @@ written in itself, self-emits to a bit-identical fixed point (the `.dag` graph i
 one realization, a seed that shrinks to zero), and its tests are data. Its ontology dissolves into
 `std/` — no dual representation at the compiler/user boundary. This is the recursion: every principle
 above governs the system that implements them, and this document.
+
+The recursion's payoff is that **language design itself opens up.** It is normally locked — not by lack
+of will but by cost: a new check means owning a *compiler fork*, and a new language means an *adoption*
+problem. Both are dissolved here at once: a wall is a **row** (§2, no fork), and because the substrate is
+medium-agnostic — one grammar read in both directions over many media (§4) — that row applies *on top of
+an existing language* (no adoption). So language design collapses (compiler-fork × language) → (row +
+medium): a domain's bug-class can be made extinct in Rust or TypeScript without forking their compilers.
+It is sound exactly where ingest is `Lossless` and **fail-closed** where it is not (the `DecodeFidelity`
+boundary, §4) — "any language, with a typed honesty boundary about where the wall holds," not a vibe.
+This is §1's *reduce convention to necessity* at the meta-level, and the place the purity trap bites
+hardest: bounded by §5 ("never" = decidability) and §6 (priced in displaced cost, not elegance).
 
 ---
 
@@ -201,8 +236,12 @@ still a violation) · internal review finds missing tests, external review finds
   `Optional/Witness` over `Value::Null` — the latter resists a blanket guard because `Value::Null` is
   the overloaded `None`/`Absent`/miss sentinel and `present == None` (131 sites) is a *legitimate* `false`,
   so it needs grounding, not an error arm; (b) the root fix (§1/§2/§7) — ground each primitive into its
-  realization (numeric tower first, `Int = GroupCompletion<Nat>` still bottoming in Peano `Nat`), which
-  dissolves the straddle and makes the guard dead code. (operator: `==` fail-closed, 2026-06-20)
+  realization. **Numeric tower: GROUNDED** (#5428, 2026-06-21) — Nat construction-side grounded
+  (`Zero → Int(0)`, `Succ{prev:Int(k)} → Int(k+1)`); native form == modeled form; `eval_binop`
+  `CrossRepresentationEquality` guard is dead-in-corpus for numerics, kept as fail-closed backstop until
+  the `Value::Null` split lands (guard removal bundled with that work, fenced out of this window).
+  **Remaining:** `Value::Null` split — Optional/Witness/miss into own carriers (~131 sites; the deeper
+  root, its own runway). (operator: `==` fail-closed, 2026-06-20)
 - the remaining deleted-`docs/` references in `.dag` comments — provenance / `bind:` pointers into the bankrupted `docs/` tree (e.g. `docs/planning/*`, `design-*.md`) — fold into the dep-graph reform, not a blind repoint. (The named-corpus ledger marks — `Practice N`, and `INVARIANTS` / `THESIS` / `MODELING` / `RELEASE_TODO` / … citations — were swept: dropped, or re-homed to DESIGN.md §-anchors.)
 
 ## Building & checks

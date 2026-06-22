@@ -175,10 +175,13 @@ type ManualAnchorKey
   | ManualAnchorAbsent
 
 
-// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until compile-time lens can project from TestClaim directly.
-// 🟡 coproduct dissolution — feature:testclaim-coproduct-lens; bound task: gunbc#4759; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
+// The closed roster of TestClaim assertion variants — the projection of a TestClaim VALUE to its
+// variant tag (test_claim_coproduct_variant) and a Generator's claim kind (Generator.kind). This is
+// a legitimately closed enum over TestClaim's OWN arms; it is NOT (any longer) the
+// coproduct-exhaustiveness anchor's payload — that anchor went structural over EVERY declared
+// coproduct (GeneratedCoproductExhaustiveness below), so the §4759 "mirror TestClaim arms" 🟡 is
+// dissolved (docs/plans/testgen-oracle.md §4.2).
 type TestClaimCoproductVariant
-// 🟡 coproduct dissolution — feature:testclaim-coproduct-lens; bound task: gunbc#4759
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
   | TestClaimEqualsClaimVariant
@@ -186,8 +189,23 @@ type TestClaimCoproductVariant
   | TestClaimRoundTripClaimVariant
 
 
+// Structural coproduct-exhaustiveness anchor (docs/plans/testgen-oracle.md §4.2): identifies one
+// missing-arm witness by the declared coproduct's authored type name and the omitted arm's key —
+// both Symbols read off the Node tree (v2.std.node_query.coproduct_arm_keys), NOT a hand-roster of
+// TestClaim variants. Adding an arm to ANY coproduct extends the generated roster by construction;
+// removing one shrinks it (the discriminating RED).
+//
+// GeneratedCrossRepresentationEquality (docs/plans/testgen-oracle.md §4.3): identifies one
+// cross-representation-equality straddle witness by the MODELED coproduct's authored type name and
+// the NATIVE realization it straddles (the symbol naming the runtime Value form). The modeled side
+// is structural (its arms are read off the Node tree); the native-realization side is the curated
+// half — there is no Node-tree reflection for "this coproduct is realized as Value::Bool", so the
+// straddle SET stays a tight roster (Bool over Value::Bool, Optional/Witness over Value::Null) per
+// the operator/planning steer: ONLY the straddles that remain UNSTRUCTURED. The numeric tower is
+// GROUNDED (#5428) and deliberately excluded; the Value::Null sentinel is fenced to its own runway.
 type GeneratedAnchorKey
-  = GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
+  = GeneratedCoproductExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
+  | GeneratedCrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
 
 
 // RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.

@@ -358,6 +358,49 @@ fn parse_table_empty() -> ParseTable {
   }
 }
 
+// --- ParseTable content-key (realize SUBJECT) — DESIGN-FIRST model, node adhoc-822f5c65-e9c P2 ---
+//
+// The positional cell key ParsePositionKey {position, production} is unique only WITHIN one table;
+// the table itself is scoped by grammar_digest × token_stream_digest. The realize kernel
+// (std.cache_interface, ROADMAP §2 P2 "one door") keys EVERY cache on a single content-addressed
+// SUBJECT, so a parse-memo cell's subject must fold BOTH the table scope and the cell coordinate
+// into one content hash (the "ParseTableSubject" the parse_table_memo.dag evidence row names):
+//   subject = grammar_digest ⊕ token_stream_digest ⊕ position ⊕ production
+// reusing v2.std.node combine_hash / byte_limb_hash_peano_digest / atom_identity_hash — NO fresh
+// hashing authority (§2/§3 single authority). Distinct (grammar, token-stream, position, production)
+// derive distinct subjects; identical inputs derive an identical subject (deterministic) — that IS
+// the content-addressing property a realize subject requires (proven by execution in
+// parse/parse_table_content_key_test.dag).
+//
+// CONSUMER + DEFERRAL (honestly-marked deferred-consumer model — a DEFINED consumer + a NAMED
+// trigger, so NOT a declared-but-dead fork). The SOLE consumer is the DEFERRED std-kernel handler
+// binding; there is deliberately NO premature v2-local rewire, because the v1 host is the real
+// memo authority:
+//  - The v1 host (try_parse_table_memo_dispatch / parse_table_memo_scope_and_key) is the SOLE parse-
+//    memo authority — the .dag table.entries map is VESTIGIAL (parse_table_insert's result is
+//    discarded; the same empty-entries table is threaded). So routing the .dag lookup/insert through
+//    this subject WITHOUT changing the host is cosmetic (feeds the discarded map = §5
+//    spec-without-execution), and changing the host to key by this content hash NOW would (a) trade
+//    the host's collision-FREE structural (grammar, token, position, production) tuple for content-hash
+//    collision risk on a load-bearing memo (§5 fail-open), and (b) re-derive this fold in Rust (more
+//    §3 host duplication) — for ZERO benefit before the de-fork. So we do not do it early.
+//  - DEFERRED std-kernel HANDLER binding — named dissolution trigger = the dsl→v2 cross-tree de-fork
+//    (no v2.std.cache_interface exists today; 02_parse is `module v2.compiler.parse`, the realize
+//    kernel lives in `dsl/std/cache_interface`). When that import lands, the host re-key and the
+//    kernel binding (ArtifactIdentity<ParseExprResult> / realize_route) arrive as ONE step and THIS
+//    subject becomes the realize key — that single step is the consumer. Explicitly NOT gated on
+//    #5429 (that gates only the separate resolved_graph handler). Until then the ArtifactKindId stays
+//    the Symbol mirror (parse_table_artifact_kind above).
+fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
+  combine_hash(
+    a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
+    b: combine_hash(
+      a: byte_limb_hash_peano_digest(limb: key.position),
+      b: atom_identity_hash(s: key.production)
+    )
+  )
+}
+
 fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
   length(xs: all_tokens) - length(xs: tokens)
 }

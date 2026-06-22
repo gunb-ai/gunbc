@@ -245,6 +245,24 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     .find(|(k, _)| resolve_sym(**k) == "head")
                     .and_then(|(_, v)| match v {
                         Value::Str(s) => Some(s.clone()),
+                        Value::Variant {
+                            variant_name,
+                            fields: sym_fields,
+                            ..
+                        } => {
+                            let variant = resolve_sym(*variant_name);
+                            if variant == "Symbol" || variant == "Atom" {
+                                sym_fields
+                                    .iter()
+                                    .find(|(k, _)| resolve_sym(**k) == "identity")
+                                    .and_then(|(_, v)| match v {
+                                        Value::Str(s) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                            } else {
+                                None
+                            }
+                        }
                         _ => None,
                     })
                     .unwrap_or_else(|| {
@@ -1770,6 +1788,16 @@ fn eval_var(
 
     // Variant constructor (unit variant, no fields)
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+        // Numeric-tower grounding (DESIGN §1/§2/§7, model↔realization fork): the
+        // Peano base constructor `Zero` is *realized* as the native `Value::Int(0)`
+        // — the construction-side inverse of the `Int → Zero/Succ` read bridge in
+        // `match_pattern` (keyed the same way, on the variant name). Grounding
+        // construction makes the native form equal the modeled form, so a `Nat`
+        // never materializes as a `Zero`/`Succ` `Variant` and the
+        // cross-representation `==` straddle never arises (its guard is dead code).
+        if name == "Zero" {
+            return Ok(Value::Int(0));
+        }
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
             variant_name: ctx.sym(&name),
@@ -3115,6 +3143,22 @@ fn eval_record_lit(
     }
 
     if let Some(pe) = parent_enum {
+        // Numeric-tower grounding (DESIGN §1/§2/§7): the Peano successor
+        // `Succ { prev: n }` is realized as `Value::Int(n + 1)` whenever its
+        // predecessor already grounds to a native non-negative Int — the
+        // construction-side inverse of the `Int → Succ { prev: Int(n - 1) }` read
+        // bridge. Field evaluation above is bottom-up, so an inner `Zero`/`Succ`
+        // is already grounded before this outer one builds, and a `Nat` value is
+        // never represented as a coproduct `Variant`. (A non-Int `prev` — never a
+        // well-typed `Nat` — falls through to the `Variant` below, where the
+        // straddle guard remains the fail-closed backstop.)
+        if type_name == "Succ" {
+            if let Some(Value::Int(p)) = fields.get(&ctx.sym("prev")) {
+                if *p >= 0 {
+                    return Ok(Value::Int(p + 1));
+                }
+            }
+        }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(&type_name),
@@ -5657,6 +5701,45 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
+        "medium_structure_leak_facts" => {
+            // `markers` arrives as a COMPUTED list (the per-medium table flattened in `.dag`), so
+            // use the FreeMonoid-tolerant coercion for every arg.
+            let emit_roots =
+                expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
+            let check_roots =
+                expect_str_list_flex(positional.get(1).copied(), "medium_structure_leak_facts")?;
+            let markers =
+                expect_str_list_flex(positional.get(2).copied(), "medium_structure_leak_facts")?;
+            let emit_fns =
+                expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
+            let string_ops =
+                expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
+            let facts = crate::medium_structure_project::medium_structure_leak_facts(
+                &emit_roots,
+                &check_roots,
+                &markers,
+                &emit_fns,
+                &string_ops,
+            );
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let face = Value::Variant {
+                    type_name: ctx.sym("MediumLeakFace"),
+                    variant_name: ctx.sym(f.face),
+                    fields: Rc::new(HashMap::new()),
+                };
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                fields.insert(ctx.sym("face"), face);
+                fields.insert(ctx.sym("detail"), Value::Str(f.detail));
+                items.push(Value::Record {
+                    type_name: ctx.sym("MediumStructureLeakFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
             crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
@@ -5929,6 +6012,117 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "extdeps_external_authority_anchor_kind_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_anchor_kind_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_anchor_kind_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_external_authority_scheme_identity_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_scheme_identity_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_scheme_identity_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_external_authority_locator_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg:
+                    "extdeps_external_authority_locator_for_qualified_name requires a QualifiedName"
+                        .to_string(),
+            })?;
+            Ok(Some(Value::Str(
+                crate::extdeps_shape_transport_policy_project::external_authority_locator_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+
+        "extdeps_derived_extdeps_modules" => {
+            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
+                    .to_string(),
+            })?;
+            Ok(Some(
+                crate::extdeps_shape_transport_policy_project::derived_extdeps_modules_value(ctx),
+            ))
+        }
+
+        "extdeps_external_authority_backfill_entries" => {
+            let ctx = active_ctx().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_backfill_entries requires an active interpreter context"
+                    .to_string(),
+            })?;
+            Ok(Some(
+                crate::extdeps_shape_transport_policy_project::backfill_pending_entries_value(ctx),
+            ))
+        }
+
+        "extdeps_external_authority_is_backfill_pending_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_backfill_pending_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_backfill_pending_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_is_machinery_exempt_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_machinery_exempt_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_machinery_exempt_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name" => {
+            let module = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name requires a QualifiedName"
+                    .to_string(),
+            })?;
+            Ok(Some(Value::Bool(
+                crate::extdeps_shape_transport_policy_project::is_clean_tree_roster_excluded_for_qualified_name(
+                    module,
+                ),
+            )))
+        }
+        "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_clean_tree_holds(),
+        ))),
+        "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
+            crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
+        ))),
+
+        // Doc-graph reachability-completeness wall (docs/plans/inert-layer-lens.md §8) — the doc
+        // substrate of the one reachability rule the #5433 inert-lens backstop runs over the lens
+        // substrate. Host-fed live-tree census (no list-dir host effect exists yet — Tier-2 folds
+        // into pure `.dag` on gunbc#5364).
+        "doc_graph_orphan_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_orphan_count(),
+        ))),
+        "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_dangling_link_count(),
+        ))),
+        "doc_graph_doc_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_doc_count(),
+        ))),
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
@@ -6449,6 +6643,42 @@ fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<Strin
             msg: format!("{} requires a List<String> argument", context),
         }),
     }
+}
+
+/// Like `expect_str_list`, but also accepts a FreeMonoid `Cons`/`Empty` chain — a COMPUTED
+/// string list (e.g. a single-authority `.dag` table flattened via `fold_list`/`list_append`),
+/// not only a native `Value::List`. Reuses the same list-bridge the list builtins use.
+fn expect_str_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<String>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<String> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<String> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        match item {
+            Value::Str(s) => out.push(s),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<String>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {

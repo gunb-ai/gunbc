@@ -46,13 +46,38 @@ type MarkdownInline
 
 type MarkdownListItem { blocks: List<MarkdownBlock> }
 
-// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark block shapes.
+// 🟢 TERMINAL coproduct at markdown-consumer scope — GFM task-list checkbox state
+// (GFM spec §5.3 "Task list items (extension)"). A list item carries exactly two box
+// states and markdown has no third, so a closed 2-variant sum — NOT Optional<Bool>,
+// which would route a literal-built null through the Value::Null straddle.
+type CheckboxState = Checked | Unchecked
+
+// A GFM task-list item: its checkbox state plus the same recursive block content as an
+// ordinary list item (nested lists ride MarkdownBlock, one vocabulary not two — §3).
+type MarkdownTaskItem { state: CheckboxState, blocks: List<MarkdownBlock> }
+
+// 🟢 TERMINAL coproduct — GFM table column alignment, read off the delimiter row
+// (GFM spec §4.10 "Tables (extension)": `---` none, `:--` left, `:-:` center, `--:` right).
+type MarkdownAlignment = AlignNone | AlignLeft | AlignCenter | AlignRight
+
+type MarkdownTableCell { inlines: List<MarkdownInline> }
+type MarkdownTableRow { cells: List<MarkdownTableCell> }
+
+// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark block shapes, plus the
+// GFM extensions (task lists §5.3, tables §4.10) and CommonMark block quotes (§5.1).
 type MarkdownBlock
   = HeadingBlock { level: HeadingLevel, inlines: List<MarkdownInline> }
   | ParagraphBlock { inlines: List<MarkdownInline> }
   | UnorderedListBlock { items: List<MarkdownListItem> }
   | OrderedListBlock { items: List<MarkdownListItem> }
   | CodeBlock { code: String }
+  | TaskListBlock { items: List<MarkdownTaskItem> }
+  | TableBlock {
+      header: MarkdownTableRow,
+      alignments: List<MarkdownAlignment>,
+      rows: List<MarkdownTableRow>,
+    }
+  | BlockquoteBlock { blocks: List<MarkdownBlock> }
 
 type MarkdownDocument { blocks: List<MarkdownBlock> }
 
@@ -102,6 +127,26 @@ fn find_first_rejected_url_in_blocks(blocks: List<MarkdownBlock>) -> RejectedUrl
   )
 }
 
+fn find_first_rejected_url_in_cells(cells: List<MarkdownTableCell>) -> RejectedUrlScheme? {
+  fold(cells,
+    init: Absent,
+    f: (acc, cell) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_inlines(inlines: cell.inlines)
+    }
+  )
+}
+
+fn find_first_rejected_url_in_rows(rows: List<MarkdownTableRow>) -> RejectedUrlScheme? {
+  fold(rows,
+    init: Absent,
+    f: (acc, row) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => find_first_rejected_url_in_cells(cells: row.cells)
+    }
+  )
+}
+
 fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
   match block {
     CodeBlock { code: _ } => Absent
@@ -125,6 +170,21 @@ fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? 
           Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
         }
       )
+    TaskListBlock { items } =>
+      fold(items,
+        init: Absent,
+        f: (acc, item) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
+        }
+      )
+    TableBlock { header, alignments: _, rows } =>
+      match find_first_rejected_url_in_cells(cells: header.cells) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_rows(rows: rows)
+      }
+    BlockquoteBlock { blocks } =>
+      find_first_rejected_url_in_blocks(blocks: blocks)
   }
 }
 
@@ -202,6 +262,43 @@ fn markdown_list_item_to_fragment(item: MarkdownListItem) -> Fragment {
   }
 }
 
+// GFM renders a task item as a list item led by a disabled checkbox; this HTML
+// projection surfaces the box state as a leading text token (the markdown-source
+// emitter, not this fold, is the authority for the `- [x]` spelling).
+fn checkbox_label(state: CheckboxState) -> String {
+  match state {
+    Checked => "[x] "
+    Unchecked => "[ ] "
+  }
+}
+
+fn markdown_task_item_to_fragment(item: MarkdownTaskItem) -> Fragment {
+  Element {
+    tag: "li",
+    attributes: [],
+    children: concat(
+      [ TextNode { content: checkbox_label(state: item.state) } ],
+      markdown_blocks_to_fragments(blocks: item.blocks)
+    ),
+  }
+}
+
+fn markdown_table_cell_to_fragment(cell: MarkdownTableCell, tag: String) -> Fragment {
+  Element {
+    tag: tag,
+    attributes: [],
+    children: markdown_inlines_to_fragments(inlines: cell.inlines),
+  }
+}
+
+fn markdown_table_row_to_fragment(row: MarkdownTableRow, cell_tag: String) -> Fragment {
+  Element {
+    tag: "tr",
+    attributes: [],
+    children: map(row.cells, c => markdown_table_cell_to_fragment(cell: c, tag: cell_tag)),
+  }
+}
+
 fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
   match block {
     HeadingBlock { level, inlines } =>
@@ -239,6 +336,35 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
         tag: "ol",
         attributes: [],
         children: map(items, i => markdown_list_item_to_fragment(item: i)),
+      }
+    TaskListBlock { items } =>
+      Element {
+        tag: "ul",
+        attributes: [],
+        children: map(items, i => markdown_task_item_to_fragment(item: i)),
+      }
+    TableBlock { header, alignments: _, rows } =>
+      Element {
+        tag: "table",
+        attributes: [],
+        children: [
+          Element {
+            tag: "thead",
+            attributes: [],
+            children: [ markdown_table_row_to_fragment(row: header, cell_tag: "th") ],
+          },
+          Element {
+            tag: "tbody",
+            attributes: [],
+            children: map(rows, r => markdown_table_row_to_fragment(row: r, cell_tag: "td")),
+          },
+        ],
+      }
+    BlockquoteBlock { blocks } =>
+      Element {
+        tag: "blockquote",
+        attributes: [],
+        children: markdown_blocks_to_fragments(blocks: blocks),
       }
   }
 }

@@ -71,6 +71,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_to_node
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.diagnostic { EmitDirective }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Atom,
@@ -1451,5 +1452,115 @@ fn bash_or_else_with_redir_target_model() -> TargetModel {
     tokens: bash_or_else_with_redir_concrete_tokens(),
     source_text: bash_or_else_with_redir_source_text,
     lex: bash_or_else_with_redir_lex()
+  )
+}
+
+// =========================================================================
+// Gap A — diagnostic-emission Bash realization: emit(EmitDirective, Bash) → `echo <msg> >&2`.
+//
+// The Bash-medium realization of the medium-agnostic `EmitDirective` (v2.std.diagnostic).
+// POSIX `sh` has no severity concept, so this transport reads ONLY `message` and is
+// severity-INVARIANT; the severity → `::error`/`::warning` annotation is the GitHub-Actions
+// layer (Phase 2, witty-wolf GHA-as-Node-gated), NOT here. Row-driven through the shared
+// grammar machinery (DESIGN.md §4: emit = serialize_target ∘ translate, one grammar read
+// backward) — NOT a hand-rolled forward emitter. Grounded by execution in
+// `v2.test.manual.emit_directive_bash`.
+//
+// `>&2` (StdoutToStderr) is a new fixed redirect token absorbed here (bash-arc parked). The
+// message is one POSIX single-quoted word (^bash_token_lit_spaced bound slot), so an embedded
+// `'` rides the same `'\''` escape as every other bound lit.
+// =========================================================================
+
+fn emit_directive_bash_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_word_echo },
+    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message },
+    FixedToken { token_class: ^bash_token_redir_stdout_to_stderr }
+  ]
+}
+
+data emit_directive_bash_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: emit_directive_bash_concrete_tokens()
+)
+
+// Byte-identity authority — `'echo' '<msg>' >&2`, message single-quoted-with-leading-space via
+// the SAME `bash_single_quote_spaced` the emit-time transform applies (single quoting authority,
+// so authority text and emitted output cannot drift).
+fn emit_directive_bash_source_text(d: EmitDirective) -> String {
+  concat("'echo'", concat(bash_single_quote_spaced(spelling: d.message), " >&2"))
+}
+
+fn emit_directive_bash_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "'echo'", class: ^bash_token_word_echo),
+    span(text: " >&2",   class: ^bash_token_redir_stdout_to_stderr)
+  ]))
+}
+
+fn emit_directive_bash_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_emit_directive_echo_stderr,
+    lhs: ^bash_production_emit_directive_echo_stderr,
+    tokens: emit_directive_bash_concrete_tokens(),
+    emitted: emit_directive_bash_emitted_command
+  )
+}
+
+// One bound slot — the directive's runtime message word.
+fn emit_directive_bash_message_spellings(d: EmitDirective) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^emit_directive_message, d.message)
+}
+
+fn emit_directive_bash_target_model(d: EmitDirective) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: emit_directive_bash_translation_rules_node(),
+    source_literal: ^bash_emit_directive_echo_stderr_source_literal,
+    production_name: ^bash_production_emit_directive_echo_stderr,
+    tokens: emit_directive_bash_concrete_tokens(),
+    source_text: emit_directive_bash_source_text(d: d),
+    lex: emit_directive_bash_lex(),
+    binding_spellings: emit_directive_bash_message_spellings(d: d)
+  )
+}
+
+// Discriminating (Gap A) — a diagnostic emitted to STDOUT (no `>&2`) is the WRONG stream; this
+// proves the `>&2` redirect in the correct realization is load-bearing, not fabricated. The
+// SAME `emit_directive_bash_emitted_command` intent through this model yields `'echo' '<msg>'`
+// (no redirect) — exercised RED in the witness against the correct `>&2` bytes.
+fn emit_directive_bash_to_stdout_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_word_echo },
+    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^emit_directive_message }
+  ]
+}
+
+fn emit_directive_bash_to_stdout_wrong_source_text(d: EmitDirective) -> String {
+  concat("'echo'", bash_single_quote_spaced(spelling: d.message))
+}
+
+fn emit_directive_bash_to_stdout_wrong_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "'echo'", class: ^bash_token_word_echo)
+  ]))
+}
+
+fn emit_directive_bash_to_stdout_wrong_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_emit_directive_echo_stdout_wrong,
+    lhs: ^bash_production_emit_directive_echo_stdout_wrong,
+    tokens: emit_directive_bash_to_stdout_wrong_concrete_tokens(),
+    emitted: emit_directive_bash_emitted_command
+  )
+}
+
+fn emit_directive_bash_to_stdout_wrong_target_model(d: EmitDirective) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: emit_directive_bash_to_stdout_wrong_translation_rules_node(),
+    source_literal: ^bash_emit_directive_echo_stdout_wrong_source_literal,
+    production_name: ^bash_production_emit_directive_echo_stdout_wrong,
+    tokens: emit_directive_bash_to_stdout_wrong_concrete_tokens(),
+    source_text: emit_directive_bash_to_stdout_wrong_source_text(d: d),
+    lex: emit_directive_bash_to_stdout_wrong_lex(),
+    binding_spellings: emit_directive_bash_message_spellings(d: d)
   )
 }

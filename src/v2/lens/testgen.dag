@@ -1,8 +1,13 @@
 // src/v2/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Status: Manual-anchor + LBE + witness-validity + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v2.std.effects / v2.std.verification); new TestgenConcept arms = operator STOP.
+// Status: Manual-anchor + LBE + witness-validity + idempotent-operation + coproduct-exhaustiveness + cross-representation-equality testgen (subjects: v2.std.effects / v2.std.verification); new TestgenConcept arms = operator STOP.
+// docs/plans/testgen-oracle.md §4.3 — the CrossRepresentationEquality arm was added under the §4.3
+// dispatch (operator/planning steer), SCOPE TIGHT: only the straddles that remain UNSTRUCTURED
+// (Bool over Value::Bool; Optional/Witness over Value::Null, fenced to its own runway). The numeric
+// tower is GROUNDED (#5428) and excluded.
 
 module v2.lens.testgen
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 import v2.std.collection { List }
 import v2.std.algebra {
@@ -100,8 +105,6 @@ import v2.std.verification {
   TestClaimCoproductVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
-  TestClaimStructuralEqualsClaimVariant,
-  TestClaimRoundTripClaimVariant,
   ManualAnchorAbsent,
   ManualAnchorKey,
   ManualClaimAnchor,
@@ -109,6 +112,7 @@ import v2.std.verification {
   ManualLbeDisjDagSurface,
   ManualLbeTransformDagSurface,
   GeneratedAnchorKey,
+  GeneratedCrossRepresentationEquality,
   ManualRefinementNonEmptyListBase,
   ManualNatAddAssociativity,
   ManualNatAddLeftIdentity,
@@ -182,6 +186,16 @@ import v2.std.artifact {
   GeneratorProvenance,
   test_claim_generated_artifact
 }
+// docs/plans/testgen-oracle.md §4.2 — CoproductExhaustiveness is STRUCTURAL: the roster of
+// missing-arm witnesses is derived from every declared coproduct (concept_index) and that
+// coproduct's own arm keys read off its Node (node_query), not a hand-list of TestClaim variants.
+import v2.std.concept_index {
+  ConceptDecl,
+  enumerate_coproduct_decls
+}
+import v2.std.node_query {
+  coproduct_arm_key_list_from_node
+}
 
 // 🟢 coproduct dissolution — LB-P4-3212.
 type TypeConstructionSubject
@@ -230,7 +244,13 @@ type TestgenConcept
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms) until LBE = L6 form×language coproduct shape ruled.
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness { omitted_variant: TestClaimCoproductVariant }
+  | DiagnosticExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
+  // docs/plans/testgen-oracle.md §4.3 — cross-representation-equality straddle: the MODELED
+  // coproduct (`modeled_coproduct`, structural — a real declared Disj) and the NATIVE Value form it
+  // straddles (`native_realization`, the curated half). The witness is the EqualsClaim that the
+  // modeled form reconciles with its native realization (the grounding TARGET); it is emitted, not
+  // executed — grounding each straddle is its own runway (the §5 wall-after-grounding class).
+  | CrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -312,21 +332,40 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   }
 }
 
-// F.2-P1: derive identity from a generated coproduct-exhaustiveness variant (one id per omitted arm).
-fn generator_id_for_coproduct_variant(v: TestClaimCoproductVariant) -> GeneratorId {
-  match v {
-    TestClaimCompilesClaimVariant => ^gen_id_coproduct_compiles
-    TestClaimDiagnosticClaimVariant => ^gen_id_coproduct_diagnostic
-    TestClaimEqualsClaimVariant => ^gen_id_coproduct_equals
-    TestClaimStructuralEqualsClaimVariant => ^gen_id_coproduct_structural_equals
-    TestClaimRoundTripClaimVariant => ^gen_id_coproduct_roundtrip
-  }
+// F.2-P1: derive identity from a generated coproduct-exhaustiveness anchor — one id per
+// (coproduct type × omitted arm). DERIVED from the two structural symbols (single authority —
+// no literal table that could drift from the declared arms), so distinct (type, arm) pairs get
+// distinct GeneratorIds. The same derivation is used when stamping a generator's provenance, so
+// generator_carries_provenance round-trips (anchor → id == provenance.generator_id).
+fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratorId {
+  concat(
+    "gen_id_coproduct_exhaustiveness::",
+    concat(coproduct_type, concat("::", omitted_variant))
+  )
+}
+
+// docs/plans/testgen-oracle.md §4.3: one id per (modeled coproduct × native realization) straddle.
+// DERIVED from the two symbols (single authority — no literal table), so distinct straddle subjects
+// get distinct GeneratorIds and the provenance round-trips (anchor → id == provenance.generator_id).
+fn generator_id_for_cross_representation_straddle(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> GeneratorId {
+  concat(
+    "gen_id_cross_representation_equality::",
+    concat(modeled_coproduct, concat("::", native_realization))
+  )
 }
 
 fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
   match key {
-    GeneratedCoproductExhaustiveness { omitted_variant } =>
-      generator_id_for_coproduct_variant(v: omitted_variant)
+    GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant } =>
+      generator_id_for_coproduct_arm(coproduct_type: coproduct_type, omitted_variant: omitted_variant)
+    GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization } =>
+      generator_id_for_cross_representation_straddle(
+        modeled_coproduct: modeled_coproduct,
+        native_realization: native_realization
+      )
   }
 }
 
@@ -445,7 +484,6 @@ data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect
 data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
 data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
 data idempotent_label_create_if_absent: String = "generated/idempotent_operation: CreateIfAbsentEffect f(f(x)) == f(x)"
-data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
     language: ^dag_language_model_surface_id,
@@ -1534,7 +1572,13 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
           d: testgen_non_algebra_law_scheduled_slot_diagnostic()
         )
       }
-    DiagnosticExhaustiveness { omitted_variant: _ } =>
+    DiagnosticExhaustiveness { coproduct_type: _, omitted_variant: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    CrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: testgen_non_algebra_law_scheduled_slot_diagnostic()
@@ -1611,53 +1655,73 @@ fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> 
   )
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
+// Structural coproduct-exhaustiveness anchor (docs/plans/testgen-oracle.md §4.2): one anchor per
+// (declared coproduct type × one of its omitted arms), both carried as the authored Symbols read
+// off the Node tree. No hand-roster of TestClaim variants survives.
+fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { coproduct_type: coproduct_type, omitted_variant: omitted_variant }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_compiles() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant }
-}
-
-fn coproduct_exhaustiveness_subject_testclaim_equals() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant }
-}
-
-fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey {
-  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
-}
-
-fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
+fn coproduct_exhaustiveness_anchor_coproduct_type(anchor: GeneratedAnchorKey) -> Symbol {
   match anchor {
-    GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
+    GeneratedCoproductExhaustiveness { coproduct_type, omitted_variant: _ } => coproduct_type
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
   }
 }
 
-fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> Node {
+fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant } => omitted_variant
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } => ^coproduct_exhaustiveness_anchor_not_exhaustiveness
+  }
+}
+
+// The omitted arm, as a leaf TypeNode tagged by the arm's authored key. The key is already the
+// Symbol read off the coproduct's arm edge (coproduct_arm_keys), so no discriminant projection is
+// needed — the structural arm name IS the node identity.
+fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: discriminant(v: variant) }
+      connective: Atom { identity: omitted_variant }
     },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
+// The synthetic match-input witness: a node tagged by the coproduct's authored type name carrying
+// the single omitted-arm coordinate. A match over `coproduct_type` that drops `omitted_variant` is
+// non-exhaustive and must be rejected (coproduct_exhaustiveness_diagnostic).
 fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: ^coproduct_exhaustiveness_testclaim_variant }
+      connective: Atom { identity: coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor) }
     },
     children: [
       Edge {
         label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
-          variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
+          omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )
       }
     ],
     occurrence_id: SyntheticOccurrence
 }
+}
+
+// Per-claim label naming the covered coproduct type and omitted arm (was a single shared TestClaim
+// literal). Distinguishable so a structural roster of N claims reads back which arm each pins.
+fn coproduct_exhaustiveness_label(anchor: GeneratedAnchorKey) -> String {
+  concat(
+    "generated/diagnostic-exhaustiveness: coproduct ",
+    concat(
+      coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor),
+      concat(
+        " missing arm ",
+        concat(coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor), " rejects")
+      )
+    )
+  )
 }
 
 fn coproduct_exhaustiveness_diagnostic(
@@ -1676,7 +1740,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   let input = coproduct_exhaustiveness_input(anchor: anchor)
   Accepted {
     value: DiagnosticClaim {
-      label: coproduct_exhaustiveness_label,
+      label: coproduct_exhaustiveness_label(anchor: anchor),
       anchor: generated_claim_anchor(anchor: anchor),
       input: input,
       expected_rejection: diagnostics_singleton(
@@ -1688,48 +1752,188 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   }
 }
 
+// One generator for a single (coproduct type × omitted arm). Provenance id is DERIVED from the
+// same anchor (generator_id_for_generated_anchor), so generator_carries_provenance round-trips.
+fn coproduct_exhaustiveness_generator(
+  coproduct_type: Symbol,
+  omitted_variant: Symbol
+) -> Generator<TestgenConcept> {
+  let anchor = coproduct_exhaustiveness_anchor(
+    coproduct_type: coproduct_type,
+    omitted_variant: omitted_variant
+  )
+  Generator {
+    kind: TestClaimDiagnosticClaimVariant,
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    anchor: generated_claim_anchor(anchor: anchor),
+    slot: DiagnosticExhaustiveness {
+      coproduct_type: coproduct_type,
+      omitted_variant: omitted_variant,
+    },
+    provenance: generator_provenance(id: generator_id_for_generated_anchor(key: anchor)),
+    profile_metadata: default_generator_profile(),
+  }
+}
+
+// All generators for one declared coproduct: one missing-arm witness per arm, with arm keys read
+// directly off the decl's own materialized Node (no re-resolve by name — single walk, collision-free).
+fn coproduct_exhaustiveness_generators_for_decl(
+  decl: ConceptDecl
+) -> List<Generator<TestgenConcept>> {
+  fold(
+    coproduct_arm_key_list_from_node(node: decl.node),
+    init: Empty,
+    f: fn(acc, arm) {
+      list_snoc_item(
+        xs: acc,
+        item: coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
+      )
+    }
+  )
+}
+
+// STRUCTURAL roster: every declared coproduct in the compiled corpus contributes one missing-arm
+// witness per declared arm. Adding an arm to ANY coproduct extends this roster by construction;
+// removing one shrinks it (the discriminating RED, docs/plans/testgen-oracle.md §4.2). Replaces the
+// former hand-anchored 4-variant TestClaim roster.
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
+  fold(
+    enumerate_coproduct_decls(),
+    init: Empty,
+    f: fn(acc, decl) {
+      list_append(
+        left: acc,
+        right: coproduct_exhaustiveness_generators_for_decl(decl: decl)
+      )
+    }
+  )
+}
+
+// === Cross-representation-equality straddle (docs/plans/testgen-oracle.md §4.3) ===========
+// A modeled coproduct (e.g. Bool = True | False) is *realized* as a native runtime Value (e.g.
+// Value::Bool). When a modeled constructor builds a `Variant` while the native form is a scalar
+// `Value`, comparing the two straddles the model↔realization boundary — the §5 fail-open root the
+// numeric tower already GROUNDED (#5428). This category COVERS the *class*: for each straddle that
+// remains UNSTRUCTURED it emits the EqualsClaim that the modeled form reconciles with its native
+// realization (the grounding target). SCOPE TIGHT (operator/planning steer): ONLY Bool over
+// Value::Bool and the Value::Null sentinel (Optional/Witness), the latter fenced to its own runway —
+// `Value::Null` is the overloaded None/Absent/miss sentinel, so `present == None` is a *legitimate*
+// false and grounding it (not a blanket error arm) is separate, deeper work.
+//
+// The MODELED side is structural — `modeled_coproduct` is a real declared Disj whose arms are read
+// off the Node tree (the floor recomputes coproduct_arm_keys to exclude a vacuous pass). The
+// NATIVE-realization side is the curated half: there is no Node-tree reflection for "this coproduct
+// is realized as Value::Bool", so the straddle SET stays a tight roster, not an enumeration.
+data cross_repr_native_value_bool: Symbol = ^native_value_bool
+data cross_repr_native_value_null: Symbol = ^native_value_null
+
+fn cross_representation_equality_anchor(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> GeneratedAnchorKey {
+  GeneratedCrossRepresentationEquality {
+    modeled_coproduct: modeled_coproduct,
+    native_realization: native_realization
+  }
+}
+
+fn cross_representation_anchor_modeled_coproduct(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCrossRepresentationEquality { modeled_coproduct, native_realization: _ } => modeled_coproduct
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
+  }
+}
+
+fn cross_representation_anchor_native_realization(anchor: GeneratedAnchorKey) -> Symbol {
+  match anchor {
+    GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization } => native_realization
+    GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } => ^cross_representation_anchor_not_straddle
+  }
+}
+
+// A leaf TypeNode tagged by a representation's authored symbol (the modeled type name on the lhs,
+// the native Value form on the rhs). The straddle witness compares these two representation nodes.
+fn cross_representation_representation_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn cross_representation_equality_label(anchor: GeneratedAnchorKey) -> String {
+  concat(
+    "generated/cross-representation-equality: modeled ",
+    concat(
+      cross_representation_anchor_modeled_coproduct(anchor: anchor),
+      concat(
+        " reconciles with native ",
+        cross_representation_anchor_native_realization(anchor: anchor)
+      )
+    )
+  )
+}
+
+// The straddle witness: an EqualsClaim that the modeled form (lhs, tagged by the coproduct type)
+// reduces to its native realization (rhs). Emitted, NOT executed in the floor — grounding each
+// straddle so the equality actually holds is its own runway; this category covers the *class* by
+// generating the witness from the model.
+fn testgen_emit_cross_representation_equality_claim(
+  anchor: GeneratedAnchorKey
+) -> Outcome<TestClaim> {
+  Accepted {
+    value: EqualsClaim {
+      label: cross_representation_equality_label(anchor: anchor),
+      anchor: generated_claim_anchor(anchor: anchor),
+      lhs: cross_representation_representation_node(
+        identity: cross_representation_anchor_modeled_coproduct(anchor: anchor)
+      ),
+      rhs: cross_representation_representation_node(
+        identity: cross_representation_anchor_native_realization(anchor: anchor)
+      ),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+    },
+    diagnostics: None,
+  }
+}
+
+// One generator for a single (modeled coproduct × native realization) straddle. Provenance id is
+// DERIVED from the same anchor, so generator_carries_provenance round-trips.
+fn cross_representation_equality_generator(
+  modeled_coproduct: Symbol,
+  native_realization: Symbol
+) -> Generator<TestgenConcept> {
+  let anchor = cross_representation_equality_anchor(
+    modeled_coproduct: modeled_coproduct,
+    native_realization: native_realization
+  )
+  Generator {
+    kind: TestClaimEqualsClaimVariant,
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    anchor: generated_claim_anchor(anchor: anchor),
+    slot: CrossRepresentationEquality {
+      modeled_coproduct: modeled_coproduct,
+      native_realization: native_realization,
+    },
+    provenance: generator_provenance(id: generator_id_for_generated_anchor(key: anchor)),
+    profile_metadata: default_generator_profile(),
+  }
+}
+
+// CURATED roster: the straddles that remain UNSTRUCTURED. Bool over Value::Bool, and the Value::Null
+// sentinel (Optional/Witness) fenced to its own runway. The numeric tower is GROUNDED (#5428) and
+// deliberately ABSENT. Each modeled coproduct is a real declared Disj (the floor recomputes its arm
+// keys to exclude a vacuous symbol — the structural tie).
+fn testgen_scheduled_cross_representation_equality_generators() -> List<Generator<TestgenConcept>> {
   [
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimCompilesClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimDiagnosticClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_equals()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimEqualsClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
-    Generator {
-      kind: TestClaimDiagnosticClaimVariant,
-      classification: TestClassification { tier: Tier1, layer: Unit },
-      anchor: generated_claim_anchor(
-        anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
-      ),
-      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
-      provenance: generator_provenance(id: generator_id_for_coproduct_variant(v: TestClaimRoundTripClaimVariant)),
-      profile_metadata: default_generator_profile(),
-    },
+    cross_representation_equality_generator(
+      modeled_coproduct: ^Bool,
+      native_realization: cross_repr_native_value_bool
+    ),
+    cross_representation_equality_generator(
+      modeled_coproduct: ^Optional,
+      native_realization: cross_repr_native_value_null
+    ),
   ]
 }
 
@@ -1761,12 +1965,13 @@ fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>
 }
 
 // F.2-P1 close criterion: every scheduled generator carries consistent provenance +
-// profile metadata. Covers ALL four scheduled producers — the two direct-List schedulers
-// (LBE + coproduct-exhaustiveness) and the two Outcome-returning schedulers
-// (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
+// profile metadata. Covers ALL five scheduled producers — the three direct-List schedulers
+// (LBE + coproduct-exhaustiveness + cross-representation-equality) and the two Outcome-returning
+// schedulers (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
 fn scheduled_generators_carry_provenance() -> Bool {
   all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
     && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
+    && all_generators_carry_provenance(gens: testgen_scheduled_cross_representation_equality_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_refinement_preservation_generators())
     && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
 }
@@ -1776,7 +1981,10 @@ fn scheduled_generators_carry_provenance() -> Bool {
 fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
   list_append(
     left: testgen_scheduled_language_behavior_generators(),
-    right: testgen_scheduled_coproduct_exhaustiveness_generators()
+    right: list_append(
+      left: testgen_scheduled_coproduct_exhaustiveness_generators(),
+      right: testgen_scheduled_cross_representation_equality_generators()
+    )
   )
 }
 
@@ -2025,9 +2233,14 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: v } } =>
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: v } } =>
       Accepted {
-        value: DiagnosticExhaustiveness { omitted_variant: v },
+        value: DiagnosticExhaustiveness { coproduct_type: ct, omitted_variant: v },
+        diagnostics: None,
+      }
+    GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
+      Accepted {
+        value: CrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
@@ -2078,4 +2291,13 @@ fn bootstrap_claim_generator_for_manual_anchor(
           }
     }
   }
+}
+
+// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
+// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever {
+    undecidable_because: "complete discriminating test generation is undecidable -- there is no construction that emits a test set guaranteed to catch every wrong behavior"
+  },
+  rationale: "Test generation is honest residue: a manual-anchor plus filesystem-backed shadow driver, never a complete construction; a new TestgenConcept arm is an operator STOP."
 }

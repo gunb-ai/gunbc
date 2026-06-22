@@ -22,6 +22,16 @@ import std.measure {
 }
 import std.types { NonEmptyStr }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/cloud/servers/overview"
+  }
+}
+
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 type HetznerCloudServerCatalogRow {

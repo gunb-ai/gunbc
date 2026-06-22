@@ -11823,29 +11823,11 @@ pub fn build_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
-        let imports_std_types = {
-            let mut __found = false;
-            for imp in module.resolved_imports.clone().iter().cloned() {
-                if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
+        // §3 single-authority: no implicit std.types base-injection. Resolution
+        // flows through each module's explicit import graph only (mirrors
+        // v1.compiler.infer build_type_env in src/v1/04_infer.dag).
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
-        let std_types_parent_env = if ((module_name_str.clone().as_str()
-            != "std.types".to_string().as_str())
-            && (imports_std_types == false))
-        {
-            match v1_rt::map_get(&parent_index, "std.types".to_string()) {
-                Some(typed_std) => Rc::new(vec![typed_std.type_env.clone()]),
-                None => Rc::new(vec![]),
-            }
-        } else {
-            Rc::new(vec![])
-        };
-        let imported_parent_envs = Rc::new({
+        let parent_envs = Rc::new({
             let mut __result = Vec::new();
             for imp in module.resolved_imports.clone().iter().cloned() {
                 __result.extend(
@@ -11859,10 +11841,8 @@ pub fn build_type_env(
             }
             __result
         });
-        let parent_envs = v1_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
-        let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
-            std_import_bindings,
+            collect_parent_bindings_filtered(Rc::new(vec![])),
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
@@ -12440,29 +12420,9 @@ pub fn build_type_env_unresolved(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
-        let imports_std_types = {
-            let mut __found = false;
-            for imp in module.resolved_imports.clone().iter().cloned() {
-                if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
-        let std_types_parent_env = if ((module_name_str.as_str()
-            != "std.types".to_string().as_str())
-            && (imports_std_types == false))
-        {
-            match v1_rt::map_get(&parent_index, "std.types".to_string()) {
-                Some(typed_std) => Rc::new(vec![typed_std.type_env.clone()]),
-                None => Rc::new(vec![]),
-            }
-        } else {
-            Rc::new(vec![])
-        };
-        let imported_parent_envs = Rc::new({
+        // §3 single-authority: no implicit std.types base-injection (mirrors
+        // build_type_env_unresolved in src/v1/04_infer.dag).
+        let parent_envs = Rc::new({
             let mut __result = Vec::new();
             for imp in module.resolved_imports.clone().iter().cloned() {
                 __result.extend(
@@ -12476,10 +12436,8 @@ pub fn build_type_env_unresolved(
             }
             __result
         });
-        let parent_envs = v1_rt::concat(std_types_parent_env.clone(), imported_parent_envs);
-        let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
-            std_import_bindings,
+            collect_parent_bindings_filtered(Rc::new(vec![])),
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),

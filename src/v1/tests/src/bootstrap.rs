@@ -306,7 +306,7 @@ const DIAG_RATCHET: usize = 358;
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
 fn strict_compile_diagnostic_count() {
-    let stage0_bin = build_stage0();
+    let stage0_bin = find_or_build_stage0();
 
     let out_dir = std::env::temp_dir().join("v2-diag-output");
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -330,7 +330,7 @@ fn strict_compile_diagnostic_count() {
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
 fn stage0_compile_accepts_dag_target() {
-    let stage0_bin = build_stage0();
+    let stage0_bin = find_or_build_stage0();
 
     let source_dir = std::env::temp_dir().join("v2-dag-target-src");
     let _ = std::fs::remove_dir_all(&source_dir);
@@ -373,7 +373,7 @@ fn stage0_compile_accepts_dag_target() {
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
 fn stage0_compile_imports_ephemeral_generated_source_root() {
-    let stage0_bin = build_stage0();
+    let stage0_bin = find_or_build_stage0();
 
     let entry_root = temp_dir("ephemeral-entry-root");
     let generated_root = temp_dir("ephemeral-generated-root");
@@ -482,7 +482,7 @@ const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check
 fn bootstrap_stage0_to_stage1() {
-    let stage0_bin = build_stage0();
+    let stage0_bin = find_or_build_stage0();
     let ws = crate::helpers::workspace_root();
 
     // Run stage0 to compile stage1
@@ -578,7 +578,7 @@ fn bootstrap_stage0_to_stage1() {
 #[ignore] // Expensive: builds two binaries + two full compiles
 fn bootstrap_fixed_point() {
     let ws = crate::helpers::workspace_root();
-    let stage0_bin = build_stage0();
+    let stage0_bin = find_or_build_stage0();
 
     // Stage0 -> stage1
     let stage1_dir = std::env::temp_dir().join("v2-fp-stage1");
@@ -658,7 +658,7 @@ const PERF_RATCHET_SECONDS: u64 = 150;
 #[test]
 #[ignore] // Requires building stage0 binary
 fn performance_ratchet() {
-    let stage0_bin = build_stage0();
+    let stage0_bin = find_or_build_stage0();
 
     let out_dir = std::env::temp_dir().join("v2-perf-output");
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -741,19 +741,26 @@ struct Pass2Output {
     output_dir: std::path::PathBuf,
 }
 
+/// Resolve the stage0 binary path without building. Respects CARGO_TARGET_DIR.
+fn prebuilt_stage0_path() -> std::path::PathBuf {
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| crate::helpers::workspace_root().join("target"));
+    target_dir.join("release/gunbc")
+}
+
 /// Find the stage0 binary without rebuilding. On CI, the Build Compiler
 /// step already ran `cargo build -p v1-compiler --release`. Rebuilding
 /// here would waste ~2 min due to fingerprint invalidation from earlier
 /// cargo commands (clippy, test). Falls back to build_stage0() if the
 /// binary doesn't exist (local dev).
 fn find_or_build_stage0() -> std::path::PathBuf {
-    let ws = crate::helpers::workspace_root();
-    let bin = ws.join("target/release/gunbc");
+    let bin = prebuilt_stage0_path();
     if bin.exists() {
-        ci_timing("PASS1: stage0 binary found (skipping rebuild)");
+        ci_timing("stage0 binary found (skipping rebuild)");
         bin
     } else {
-        ci_timing("PASS1: stage0 binary not found, building");
+        ci_timing("stage0 binary not found, building");
         build_stage0()
     }
 }
