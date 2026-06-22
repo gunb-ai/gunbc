@@ -10,9 +10,9 @@
 //   the dsl serializer fold — at which point `project_roadmap_to_markdown` emits v2 Nodes and this
 //   composition retires, exactly as `serialize_yaml`/`ci_yaml_emit` will.
 //
-// The checkbox cell is where the DONE-authority decision lands (plan §6.1): a CompletesIff line's box
-// is DERIVED from the merged-PR set (the inversion — generated, not hand-toggled); a HandChecked
-// line's box is the AUTHORED one (honest un-derivable residue). So the generated ROADMAP cannot carry
+// The checkbox cell is where the DONE-authority decision lands (plan §6.1): a DerivableLine's box
+// is DERIVED from the merged-PR set (the inversion — generated, not hand-toggled); an AuthoredLine's
+// box is the AUTHORED one (honest un-derivable residue). So the generated ROADMAP cannot carry
 // a stale checkbox on a PR-bound line.
 
 module gunbc.roadmap_emit
@@ -29,7 +29,9 @@ import gunbc.roadmap_model {
 // checkbox-state type in the project is std.markdown's GFM glyph `CheckboxState = Checked | Unchecked`;
 // this module maps the Bool onto that glyph in `task_item_with` below. The completion concept (Bool,
 // roadmap_status) and the render-glyph concept (std.markdown.CheckboxState) stay distinct (§3).
-import gunbc.roadmap_status { entry_is_done }
+// `RoadmapItem` is the closed line sum (DerivableLine | AuthoredLine) — emit dispatches the inline
+// rendering on its arm (derived title vs verbatim authored content).
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, item_is_done }
 import ctrl.process_algebra { ProcessNodeId }
 
 // Bounded nesting depth — the roadmap forest is shallow (sections → items → sub-items). Explicit fuel
@@ -40,13 +42,13 @@ fn roadmap_max_depth() -> Int { 8 }
 // === The checkbox cell — DONE-authority (plan §6.1) ==========================
 
 // Whether a line's box SHOULD read done — the DONE-authority decision (plan §6.1), delegated whole to
-// `roadmap_status.entry_is_done` (CompletesIff → derived from the merged set; HandChecked → authored).
+// `roadmap_status.item_is_done` (DerivableLine → derived from the merged set; AuthoredLine → authored).
 // Kept as a Bool so the markdown glyph lands in `MarkdownTaskItem.state` field position below.
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
-  entry_is_done(entry: rn.line, merged: merged)
+  item_is_done(item: rn.line, merged: merged)
 }
 
-// === Inline content — bold title + optional plan-doc link ====================
+// === Inline content — line arm + optional plan-doc link ======================
 
 fn carrier_inlines(carrier: PlanDocCarrier) -> List<MarkdownInline> {
   match carrier {
@@ -58,9 +60,30 @@ fn carrier_inlines(carrier: PlanDocCarrier) -> List<MarkdownInline> {
   }
 }
 
+// Render the line body by arm (the fold's payoff): a DerivableLine is a BOLD title (emit applies the
+// markup) plus an optional fenced description tail; an AuthoredLine is its `content` String emitted
+// VERBATIM as a single text inline (the §5 DecodeFidelity fence — any bold/refs/links live in the
+// String, so opaque prose round-trips byte-exact). The `(#ref)` annotation from `prs` is deferred to
+// the emit-refs increment; this increment renders the structural title + carrier only.
+fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
+  match line {
+    DerivableLine { prs: _, title, description } =>
+      if description == "" {
+        [StrongInline { inlines: [TextInline { text: title }] }]
+      } else {
+        [
+          StrongInline { inlines: [TextInline { text: title }] },
+          TextInline { text: " " },
+          TextInline { text: description },
+        ]
+      }
+    AuthoredLine { done: _, content } => [TextInline { text: content }]
+  }
+}
+
 fn node_inlines(rn: RoadmapNode) -> List<MarkdownInline> {
   concat(
-    [StrongInline { inlines: [TextInline { text: rn.line.title }] }],
+    line_inlines(line: rn.line),
     carrier_inlines(carrier: rn.carrier),
   )
 }
@@ -89,8 +112,8 @@ fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
 }
 
 // Map a roadmap node to a task item, nesting its children one indent level (fuel-bounded, §4). The
-// status box is the DONE-authority decision (plan §6.1): CompletesIff → derived from the merged set,
-// HandChecked → authored.
+// status box is the DONE-authority decision (plan §6.1): DerivableLine → derived from the merged set,
+// AuthoredLine → authored.
 fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
   let para = ParagraphBlock { inlines: node_inlines(rn: rn) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
