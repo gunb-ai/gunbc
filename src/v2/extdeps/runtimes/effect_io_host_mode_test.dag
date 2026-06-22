@@ -1,15 +1,3 @@
-// src/v2/extdeps/runtimes/effect_io_host_mode_test.dag
-//
-// M5 step 4 (node://adhoc-7e32be31-47c): executing witnesses that the host effect door is gated on
-// ExecutionMode (v2.std.execution_mode, the honest transient mirror of v1's authority):
-//   - Hermetic (dry-run) replays the content-addressed fixture store, fail-closed on miss, NO live I/O;
-//   - Wet does NOT replay — it routes to the live host door (deferred) even when the fixture HAS the
-//     resource (the discriminating control: RED if the mode gate is bypassed);
-//   - Hermetic writes are fail-closed (no live mutation).
-//
-// The fixture is populated through the SAME content-addressed key path (effect_io_pure_apply_write
-// over a value-derived locator), so the hermetic read-back hit is real, not a constant-pin coincidence.
-
 module v2.test.runtimes.effect_io_host_mode
 
 import v2.extdeps.runtimes.v2_effect_io_host {
@@ -41,8 +29,6 @@ import v2.std.runtime {
 }
 import v2.std.witness { Holds, Violates }
 
-// --- representable resources + a distinguishable payload (RuntimePrimitive always reifies) --------
-
 fn mode_resource_arg(bytes: List<Byte>) -> RuntimeValue {
   RuntimePrimitive {
     value: RuntimePrimitiveValue {
@@ -60,12 +46,10 @@ fn mode_resource_b() -> RuntimeValue {
   mode_resource_arg(bytes: [Byte { bits: [true] }])
 }
 
-// Distinct from both resources so a hermetic hit can assert it read back the recorded payload.
 fn mode_payload() -> RuntimeValue {
   mode_resource_arg(bytes: [Byte { bits: [true] }, Byte { bits: [false] }])
 }
 
-// HTTP fixture with resource_a's payload recorded at its content-addressed key.
 fn mode_populated_http_fixture() -> EffectIoFixtureStore {
   let store0 = effect_io_pure_empty_fixture_store(backend: HttpResourceBackend)
   match effect_io_pure_locator_from_args(backend: HttpResourceBackend, args: [mode_resource_a()]) {
@@ -80,9 +64,6 @@ fn mode_host_read(runtime: V4EffectIoHostRuntime, arg: RuntimeValue) -> Outcome<
   effect_io_pure_invoke_handler(handler: handler, request: effect_io_pure_read_request(args: [arg]))
 }
 
-// --- witnesses ------------------------------------------------------------------------------------
-
-// HERMETIC HIT: a hermetic (dry-run) host read replays the content-addressed fixture value — no live I/O.
 test fn effect_io_host_hermetic_replay_hit_holds() -> Bool {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
@@ -95,7 +76,6 @@ test fn effect_io_host_hermetic_replay_hit_holds() -> Bool {
   }
 }
 
-// HERMETIC MISS: a hermetic read of an un-recorded resource fails closed — never fabricates a value.
 test fn effect_io_host_hermetic_miss_fail_closed_holds() -> Bool {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
@@ -108,9 +88,6 @@ test fn effect_io_host_hermetic_miss_fail_closed_holds() -> Bool {
   }
 }
 
-// DISCRIMINATING: Wet does NOT replay the fixture even though it HAS resource_a — it routes to the
-// live host door (deferred). RED if the mode gate is bypassed (Wet replaying would yield Accepted).
-// Paired with the hermetic-hit witness, this is the §5 proof the mode actually gates the door.
 test fn effect_io_host_wet_does_not_replay_holds() -> Bool {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
@@ -123,7 +100,6 @@ test fn effect_io_host_wet_does_not_replay_holds() -> Bool {
   }
 }
 
-// HERMETIC WRITE: dry-run performs no live mutation — a write fails closed.
 test fn effect_io_host_hermetic_write_fail_closed_holds() -> Bool {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,

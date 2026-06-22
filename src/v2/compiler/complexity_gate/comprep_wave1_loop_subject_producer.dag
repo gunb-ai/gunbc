@@ -1,7 +1,3 @@
-// Scope: COMPREP wave-2 M0-Loop — single authority for loop subject-producer composition.
-//        tokenize(dag_mvp1_loop_source_text) → parse → normalize → resolve → body_producer.
-// Consumers: comprep_loop_eval_by_execution keystone.
-
 module v2.test.complexity_gate.comprep_wave1_loop_subject_producer
 
 import v2.compiler.body_producer { produce_mvp1_loop_arrow_with_body_from_resolved }
@@ -24,7 +20,6 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus
 import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.compilers.lexing { Token }
 import v2.std.node { Node, Symbol }
-
 
 fn comprep_wave1_loop_parse_root() -> GrammarRoot {
   GrammarRoot {

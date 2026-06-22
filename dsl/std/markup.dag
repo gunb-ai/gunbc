@@ -1,68 +1,19 @@
-// std/markup.dag -- Fragment IR: a format-agnostic structured-markup element
-// tree plus ONE convergent fold-to-text serializer with context-correct escaping.
-//
-// Reintroduces the Fragment model deleted at std/render.dag:284 (it was removed
-// as a zero-consumer dead model). The consumer is now gunbhub markup emit:
-//   * gunbhub HtmlNode  (#4927) reduces to this Fragment IR,
-//   * React ReactElement (#4934) reduces to this SAME Fragment IR,
-// and BOTH are serialized by the SINGLE `serialize_fragment` fold below
-// (cost-of-change = 1: one serializer, not one-per-target).
-//
-// Why a standalone module and not std/render.dag itself: render.dag transitively
-// imports std.unicode, whose `fn f() -> T = expr` surface the v2 interpreter does
-// not parse, so nothing importing render.dag is by-execution-witnessable. This
-// module imports only the v2-clean string/char substrate so the serializer can be
-// proven by execution (see dsl/test/claim/markup_serializer_witness_test.dag).
-//
-// PURITY: the serializer is a pure fold over the element tree. Markup is built by
-// folding children and concatenating tag/attribute/child text -- never by string
-// templating. Per-leaf escaping uses the `replace` substring primitive.
-
 module std.markup
 
 import std.string_type { String }
 
-// ===================================================================
-// Escaping contexts
-// ===================================================================
-//
-// The dangerous-character set depends on WHERE a run of text lands in the
-// output. Three positions, three disciplines, ONE serializer that dispatches
-// on the context:
-//
-//   TextContext      element text node      -- & < > are structural
-//   AttributeContext double-quoted value    -- additionally " closes the value
-//   UrlContext       href/src-style value   -- structural chars percent-encoded
-//
 type EscapeContext = TextContext | AttributeContext | UrlContext
 
-// ===================================================================
-// Fragment IR
-// ===================================================================
-//
-// Attribute: a name plus a value rendered under `ctx`'s escaping discipline.
-// (href/src carry UrlContext; ordinary attributes carry AttributeContext.)
 type Attribute {
   name: String
   ctx: EscapeContext
   value: String
 }
 
-// Fragment: the convergent markup IR.
-//   Element  an open/close tag with attributes and child fragments
-//   TextNode an escaped text leaf (escaped in TextContext)
-//   RawNode  a pre-trusted leaf emitted verbatim (no escaping)
 type Fragment
   = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
   | TextNode { content: String }
   | RawNode { content: String }
-
-// ===================================================================
-// Context-correct escaping (and its inverse, for the round-trip proof)
-// ===================================================================
-//
-// `&` is escaped FIRST so the entities introduced by later passes are not
-// themselves re-escaped; the inverse decodes `&amp;` LAST for the same reason.
 
 fn escape_text(s: String) -> String {
   replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
@@ -80,17 +31,6 @@ fn unescape_attribute(s: String) -> String {
   replace(replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
 }
 
-// SECURITY SCOPE: escape_url performs CHARACTER-escaping ONLY (neutralizes &,
-// double-quote, space, < for safe embedding in a quoted URL attribute). It does
-// NOT validate or allowlist the URL SCHEME -- javascript:/data: pass through
-// intact. Emitting an UNTRUSTED URL through escape_url alone is an XSS vector.
-// URL-scheme allowlisting is the CONSUMER's responsibility: scheme-allowlist any
-// user-controlled URL BEFORE escape_url.
-//
-// Implementation note: `%` is encoded FIRST (-> %25) so a literal `%NN` is
-// distinguished from the percent-escapes introduced here, keeping the encoding
-// invertible (unescape_url decodes %25 LAST); without it a literal "%3C" would
-// wrongly round-trip to "<".
 fn escape_url(s: String) -> String {
   replace(replace(replace(replace(replace(s, "%", "%25"), "&", "&amp;"), "\"", "%22"), " ", "%20"), "<", "%3C")
 }
@@ -99,7 +39,6 @@ fn unescape_url(s: String) -> String {
   replace(replace(replace(replace(replace(s, "%22", "\""), "%20", " "), "%3C", "<"), "&amp;", "&"), "%25", "%")
 }
 
-// ONE dispatch point: context selects the escaping discipline.
 fn escape_in(ctx: EscapeContext, s: String) -> String {
   match ctx {
     TextContext => escape_text(s)
@@ -108,7 +47,6 @@ fn escape_in(ctx: EscapeContext, s: String) -> String {
   }
 }
 
-// Inverse dispatch -- used only by the round-trip witnesses.
 fn unescape_in(ctx: EscapeContext, s: String) -> String {
   match ctx {
     TextContext => unescape_text(s)
@@ -116,10 +54,6 @@ fn unescape_in(ctx: EscapeContext, s: String) -> String {
     UrlContext => unescape_url(s)
   }
 }
-
-// ===================================================================
-// The serializer -- ONE fold over the Fragment IR
-// ===================================================================
 
 fn serialize_attribute(a: Attribute) -> String {
   concat(concat(concat(concat(" ", a.name), "=\""), escape_in(a.ctx, a.value)), "\"")
@@ -129,8 +63,6 @@ fn serialize_attributes(attrs: List<Attribute>) -> String {
   fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute(a)))
 }
 
-// serialize_fragment: format-agnostic element-tree fold-to-text. Recurses
-// through children via `fold`; escapes leaves per context.
 fn serialize_fragment(frag: Fragment) -> String {
   match frag {
     TextNode { content: c } => escape_text(c)
@@ -146,22 +78,6 @@ fn serialize_fragment(frag: Fragment) -> String {
   }
 }
 
-// ===================================================================
-// Consumer-facing markup IR (String tags) + the ONE href/src XSS gate
-// ===================================================================
-//
-// gunbhub's HtmlNode (#4927) and React's ReactMarkupNode (#4934) were
-// byte-identical forks of THIS element tree, AND each re-minted the href/src
-// scheme gate -- divergently (react's old allowlist rejected `HTTPS://` that
-// `validate_href` accepts: a real drift bug). This is the SINGLE authority for
-// both; std.html_markup / std.react_markup are now thin result-type wrappers
-// that import the surface below, and std.markdown reuses `validate_href` over
-// its own (genuinely distinct) inline/block tree.
-//
-// MarkupNode is the format-agnostic consumer IR that reduces to Fragment via
-// the adapter below; the per-leaf escaping still flows through the one
-// serialize_fragment fold.
-
 type MarkupAttr {
   name: String
   value: String
@@ -170,17 +86,6 @@ type MarkupAttr {
 type MarkupNode
   = ElementNode { tag: String, attrs: List<MarkupAttr>, children: List<MarkupNode> }
   | TextNode { text: String }
-
-// --- href/src scheme allowlist (the single XSS gate) ------------------------
-//
-// Positive allowlist, fail-closed: only http/https/mailto/relative pass;
-// everything else -- javascript:/data:/vbscript:/protocol-relative -- is
-// rejected BEFORE escape_url runs (escape_url CHARACTER-escapes only; see the
-// SECURITY SCOPE note above -- it does NOT neutralize a dangerous scheme).
-//
-// Mixed-case scheme spellings (JaVaScRiPt:) bypass the DangerousScheme reason
-// CLASSIFICATION (no String.to_lower in v2) but the positive allowlist still
-// fail-closes them as SchemeNotAllowlisted -- safer than enumerating casings.
 
 type RejectedUrlScheme
   = DangerousScheme { scheme: DangerousUrlScheme }
@@ -254,9 +159,6 @@ fn attr_is_url_attr(name: String) -> Bool {
   name == "href" || name == "src"
 }
 
-// The first rejected href/src in the tree, carrying the offending URL so a
-// consumer can surface it in a diagnostic. Absent when the whole tree is
-// allowlisted. (markdown.dag walks its own inline/block tree the same way.)
 type RejectedUrl {
   url: String
   reason: RejectedUrlScheme
@@ -297,8 +199,6 @@ fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
   }
 }
 
-// --- MarkupNode -> Fragment adapter + serialize -----------------------------
-
 fn markup_attr_escape_context(name: String) -> EscapeContext {
   if attr_is_url_attr(name: name) {
     UrlContext
@@ -328,13 +228,10 @@ fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
   }
 }
 
-// Unchecked serialize -- the caller must have validated the tree (or it is a
-// known-safe fixture). Checked consumers gate on find_first_rejected_url first.
 fn serialize_markup_node(node: MarkupNode) -> String {
   serialize_fragment(frag: markup_node_to_fragment(node: node))
 }
 
-// Serialize-or-reject result — ONE authority for html/markdown consumers.
 type MarkupSerializeResult
   = Serialized { html: String }
   | Rejected { reason: String }

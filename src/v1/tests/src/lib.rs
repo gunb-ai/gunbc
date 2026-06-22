@@ -1,8 +1,3 @@
-//! Integration tests for the v2 self-hosted compiler.
-//!
-//! Tests call stage0 functions directly — no v1 interpreter, no Value wrapping.
-//! Stage0 is a Rust crate generated from .dag source files by the v1 emitter.
-
 #![allow(
     clippy::disallowed_macros,
     clippy::absurd_extreme_comparisons,
@@ -18,8 +13,6 @@ mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
 #[cfg(test)]
-mod body_producer_infer_profile_test;
-#[cfg(test)]
 mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
@@ -27,6 +20,8 @@ mod bug_sentinel_ratchet;
 mod cache_purity_oracle_test;
 #[cfg(test)]
 mod coproduct_reflection_conformance_test;
+#[cfg(test)]
+mod coverage_completeness_lens_test;
 #[cfg(test)]
 mod cron_tag_test;
 #[cfg(test)]
@@ -111,6 +106,8 @@ mod render_repeat_test;
 mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
+#[cfg(test)]
+mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
 mod source_audit;
 #[cfg(test)]

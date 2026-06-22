@@ -1,21 +1,5 @@
-// dsl/test/claim/wet_hermetic_equivalence_witness_test.dag
-//
-// 🟡 SCAFFOLD (§6) — P3c wet/hermetic equivalence roster pin + comparator wiring.
-// Dissolution-on-arrival: gains real teeth when the first live-transport +
-// published-mock witness lands (wet = live call, hermetic = published mock);
-// until then the lens_mock_totality roster contains no eval_service_call
-// dispatcher and the by-execution roster check is vacuous-by-construction.
-//
-// Enrolled Rust consumers (CI via gunbc.ci_spec.ci_rust_gate_test_command):
-//   * wet_hermetic_comparator_* — comparator unit teeth (Pass vs Fail divergence)
-//   * wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority — prefix drift RED
-//   * wet_hermetic_scaffold_roster_outcomes_agree — roster run (structural green only)
-
 module test.claim.wet_hermetic_equivalence_witness
 
-// Single authority (§3): Rust `wet_hermetic_scaffold_roster_entry_prefix` reads this
-// data binding; do not duplicate the path in hand-Rust substring filters.
-// Pin: one `test fn` per extdeps published-mock layer (18 witnesses today).
 data wet_hermetic_equivalence_representative_prefix: String = "src/v2/test/lens_mock_totality/"
 
 test fn wet_hermetic_equivalence_roster_authority_is_pinned() -> Bool {

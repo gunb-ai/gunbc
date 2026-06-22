@@ -1,6 +1,3 @@
-// Scope: fold_source behavior anchors — init/is_done/step algebra contract.
-// Status: §1.8 standalone non-resolve fixture.
-
 module v2.test.manual.fold_source_mvp
 
 import v2.std.algebra { Cons, Empty }

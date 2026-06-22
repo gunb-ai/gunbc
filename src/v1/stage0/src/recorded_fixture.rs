@@ -1,14 +1,3 @@
-// recorded_fixture.rs — Hermetic record/replay fixture store for service operations.
-//
-// Phase 2 hermetic rollout: fixtures are keyed by (operation, content_hash(inputs)).
-// `--record` captures wet dispatch results; `--hermetic --fixture-store` replays them.
-// Staleness is fail-closed: expired fixtures, input_hash mismatch, or stored inputs !=
-// current inputs all return loud typed diagnostics — never a stale or collided value.
-//
-// 🟡 gated — feature:fixture-input-hash-v2-content-hash — bind Phase-2-hermetic —
-// dissolve-on-arrival: v2.std.node content_hash over reified operation-input Nodes;
-// interim uses structural value_hash + hash_combine at the v1 interpreter boundary.
-
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -22,15 +11,12 @@ use crate::v1_interpreter::{InterpContext, Value};
 use crate::v1_rt;
 use crate::v1_std_core::{authored_name_at, param_node_name_at, Node};
 
-/// Default freshness window for replay: fixtures older than this are stale (fail-closed).
 pub const FIXTURE_FRESHNESS_SECS: u64 = 30 * 24 * 60 * 60;
 
-/// On-disk fixture row: one wet-captured service response keyed by input_hash.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordedFixture {
     pub operation: String,
     pub input_hash: String,
-    /// Faithful serialized operation inputs — verified on lookup (collision safety).
     pub inputs: serde_json::Value,
     pub response: serde_json::Value,
     pub recorded_at: u64,
@@ -162,7 +148,6 @@ impl fmt::Display for FixtureError {
 
 impl std::error::Error for FixtureError {}
 
-/// Append-only-on-record directory store: `{root}/{operation_slug}/{input_hash}.json`.
 #[derive(Debug, Clone)]
 pub struct RecordedFixtureStore {
     root: PathBuf,
@@ -295,7 +280,6 @@ impl RecordedFixtureStore {
     }
 }
 
-/// Faithful JSON snapshot of bound service-operation inputs (param declaration order).
 pub fn service_inputs_fixture_json(
     op_node: &Rc<Node>,
     param_env: &crate::v1_interpreter::Env,
@@ -315,9 +299,6 @@ pub fn service_inputs_fixture_json(
     Ok(serde_json::Value::Array(rows))
 }
 
-/// Structural input_hash of a service operation's bound inputs (param order).
-/// Interim v1-boundary hash (value_hash limbs + hash_combine); dissolve-on-arrival:
-/// v2.std.node content_hash over reified operation-input Nodes.
 pub fn content_hash_service_inputs(
     op_node: &Rc<Node>,
     param_env: &crate::v1_interpreter::Env,
@@ -541,7 +522,6 @@ pub fn value_from_fixture_json(
     }
 }
 
-/// Resolve the return type name for an operation (for fixture round-trip checks).
 pub fn operation_result_type_name(op_node: &Rc<Node>, ctx: &InterpContext) -> String {
     match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => {

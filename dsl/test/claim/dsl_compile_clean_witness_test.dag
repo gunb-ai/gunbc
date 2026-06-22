@@ -1,12 +1,3 @@
-// dsl/test/claim/dsl_compile_clean_witness.dag — by-execution +/- witness for dsl compile-clean.
-//
-// GREEN: run_clean_tree_compile() — gunbc compile over live dsl/ (+ src/v2 pools) exits 0.
-// GREEN: run_cross_tree_import_green_receipt() — planted dsl→v2 import resolves and compiles.
-// GREEN: run_dsl_shell_primary_precedence_receipt() — dsl extdeps.shell (shell.Env) wins over v2 overlay.
-// RED:    run_perturb_optional_skew_red_receipt() — planted Some/None skew fails compile.
-//
-// Run: gunbc run --source-root dsl --entry <this> --function dsl_compile_clean_witnesses --claim-run
-
 module test.claim.dsl_compile_clean_witness
 
 import tools.dsl_compile_clean_transport {

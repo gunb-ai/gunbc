@@ -1,12 +1,15 @@
-// extdeps/git/gitignore_render.dag -- Gitignore rendering functions.
-//
-// Rendering fns extracted from extdeps/git/gitignore.dag to separate
-// domain model from serialization (same pattern as markdown.dag +
-// markdown_render.dag).
-
 module extdeps.gitignore_render
 
 import extdeps.gitignore { GitignoreCategory, GitignoreFile }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitignore"
+  }
+}
 
 fn render_category_header(cat: GitignoreCategory) -> String {
   match cat.source {

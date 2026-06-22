@@ -1,8 +1,3 @@
-// extdeps/llm/openai_rest.dag — OpenAI Chat Completions / Responses REST transport.
-//
-// Protocol types and wire contracts live in `openai.dag` (`module extdeps.llm.openai`).
-// This file binds the REST handler only (DESIGN.md §3: one shape, N realization handlers).
-
 module extdeps.llm.openai_rest
 
 import extdeps.llm.openai {
@@ -12,20 +7,24 @@ import extdeps.llm.openai {
   OpenAiFinishReason
 }
 import extdeps.llm.openai_errors { OpenAiErrorShape }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 🟡 dissolved — feature:llm-openai-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
-// llm.OpenAI ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "platform.openai.com/docs/api-reference/introduction"
+  }
+}
+
 service llm.OpenAI {
   config {
     endpoint: "https://api.openai.com"
     auth: Bearer
     auth_input: api_key
-    // OpenAI API rate limits: varies by tier (500-3500 RPM), use conservative default
+
     rate_limit: { requests: 500, per: minute, scope: chat }
-    // Retry on rate limit and server errors with exponential backoff
+
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 

@@ -1,8 +1,4 @@
-// Scope: §1.8 parity-by-execution witness for fold_lex_pattern<LexMatchThunk> algebra (C6).
-// Exercises all 11 LexPattern variants via lex_try_rule; covers C1-C4 fail-safe arms directly.
-
 module v2.test.tokenize.lex_match_thunk_claims
-
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
@@ -35,9 +31,6 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-
-// Char codes: 'a'=97 'b'=98 'c'=99 '1'=49 '2'=50 '3'=51 'f'=102 'n'=110 ' '=32 '/'=47 '*'=42
-
 data str_a: String = Cons { head: 97, tail: Empty }
 data str_b: String = Cons { head: 98, tail: Empty }
 data str_ab: String = Cons { head: 97, tail: Cons { head: 98, tail: Empty } }
@@ -51,14 +44,13 @@ data str_fn_space: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons
 data str_fna: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 97, tail: Empty } } }
 data str_slash_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Empty } }
 data str_star_slash: String = Cons { head: 42, tail: Cons { head: 47, tail: Empty } }
-// "/**/" — open "/*" immediately followed by close "*/"
+
 data str_block_comment: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: Empty } } } }
-// "/***/" — open "/*", then '*','*','/' where '*' is not BlockCommentTextChar and "**/" ≠ "*/"
+
 data str_block_comment_extra_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: Empty } } } } }
 
-
 test fn lex_match_thunk_claims_holds() -> Bool {
-  // r1: EmptyPattern — always accepts; lexeme empty, remaining unchanged.
+
   let r1 = match lex_try_rule(
     rule: TriviaRule { pattern: EmptyPattern },
     source: str_abc
@@ -68,7 +60,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
   }
 
-  // r2: LiteralPattern — accept on prefix match; reject on mismatch.
   let r2_accept = match lex_try_rule(
     rule: TriviaRule { pattern: LiteralPattern { text: str_ab } },
     source: str_abc
@@ -87,8 +78,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r2 = r2_accept && r2_reject
 
-  // r3: KeywordPattern C1 — boundary fail-safe: accept when boundary is non-ident-continue;
-  // reject when IdentContinueChar follows ("fna" → reject because 'a'=97 is IdentContinueChar).
   let r3_accept = match lex_try_rule(
     rule: TriviaRule { pattern: KeywordPattern { text: str_fn } },
     source: str_fn_space
@@ -107,7 +96,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r3 = r3_accept && r3_reject
 
-  // r4: CharPattern — accept on matching char; reject on mismatch.
   let r4_accept = match lex_try_rule(
     rule: TriviaRule { pattern: CharPattern { char: 97 } },
     source: str_abc
@@ -126,7 +114,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r4 = r4_accept && r4_reject
 
-  // r5: CharClassPattern — accept on class member; reject on non-member.
   let r5_accept = match lex_try_rule(
     rule: TriviaRule { pattern: CharClassPattern { class: DigitChar } },
     source: str_123
@@ -145,7 +132,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r5 = r5_accept && r5_reject
 
-  // r6: SequencePattern — C5 partial-fail: right rejects → whole sequence rejects.
   let r6_accept = match lex_try_rule(
     rule: TriviaRule { pattern: SequencePattern {
       left: CharPattern { char: 97 },
@@ -170,7 +156,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r6 = r6_accept && r6_reject
 
-  // r7: ChoicePattern — C5 nested backtrack: left rejects → right accepted.
   let r7_left_wins = match lex_try_rule(
     rule: TriviaRule { pattern: ChoicePattern {
       left: CharPattern { char: 97 },
@@ -206,7 +191,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r7 = r7_left_wins && r7_right_wins && r7_both_reject
 
-  // r8: OptionalPattern — zero match succeeds (empty lexeme, remaining unchanged).
   let r8_match = match lex_try_rule(
     rule: TriviaRule { pattern: OptionalPattern { element: CharPattern { char: 97 } } },
     source: str_abc
@@ -225,8 +209,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r8 = r8_match && r8_no_match
 
-  // r9: RepeatPattern — C3 zero-width guard: repeat(optional('a')) on "b" terminates without loop.
-  // optional('a') returns empty lexeme on 'b'; guard detects is_empty(consumed) and sets done:true.
   let r9_multi = match lex_try_rule(
     rule: TriviaRule { pattern: RepeatPattern { element: CharPattern { char: 97 } } },
     source: str_aab
@@ -245,7 +227,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r9 = r9_multi && r9_zero_width_guard
 
-  // r10: OneOrMorePattern C2 — ≥1 required; zero matches → reject.
   let r10_accept = match lex_try_rule(
     rule: TriviaRule { pattern: OneOrMorePattern { element: CharPattern { char: 97 } } },
     source: str_aab
@@ -264,10 +245,6 @@ test fn lex_match_thunk_claims_holds() -> Bool {
   }
   let r10 = r10_accept && r10_reject
 
-  // r11: DelimitedPattern C4 — try-close-FIRST shared-star proof.
-  // "/**/" accepts: after open "/*", remaining="*/"; close "*/" tried FIRST → matches immediately.
-  // "/***/": remaining="**/"; close "*/" on "**/" = '*'='*' then '*'≠'/' → reject;
-  //   body BlockCommentTextChar on '*' = c==42 → c!=42 false → reject; done+failed → LexRuleNoMatch.
   let r11_accept = match lex_try_rule(
     rule: TriviaRule { pattern: DelimitedPattern {
       open: LiteralPattern { text: str_slash_star },
@@ -296,4 +273,3 @@ test fn lex_match_thunk_claims_holds() -> Bool {
 
   r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8 && r9 && r10 && r11
 }
-

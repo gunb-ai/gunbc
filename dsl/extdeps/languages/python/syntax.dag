@@ -1,11 +1,3 @@
-// Python syntax specification.
-//
-// Operator semantics for Python emission. The emitter reads operator
-// symbols from this spec — no hardcoded Python syntax in the compiler.
-//
-// Ref: Python Reference §6 "Expressions"
-// https://docs.python.org/3/reference/expressions.html
-
 module extdeps.languages.python.syntax
 
 import std.syntax {
@@ -16,9 +8,16 @@ import std.syntax {
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   AlgebraFieldKind, AlgReciprocal, AlgQuotient
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Python emission item forms — target keywords for .dag→Python compilation.
-// Ref: Python Reference §8 "Compound statements"
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.python.org/3/reference/expressions.html"
+  }
+}
+
 data python_item_forms: List<ItemForm> = [
   ItemForm { kind: FuncForm, keyword: "def", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
@@ -37,14 +36,6 @@ data python_item_forms: List<ItemForm> = [
     has_uses: false, body_kind: NoBody }
 ]
 
-// Python operator precedence (emission-relevant subset).
-// Python uses word operators for boolean (and, or) and // for integer div.
-// The // binding is retained only for the v2 AlgQuotient compatibility bridge
-// consumed by legacy language emission tests. It is not v3 algebra authority;
-// delete it with AlgQuotient when v2 Div dispatch is retired or moved behind a
-// v2-local syntax authority.
-// Ref: Python Reference §6.17 "Operator precedence"
-
 data python_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "or", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
   OperatorSpec { symbol: "and", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
@@ -57,9 +48,7 @@ data python_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
   OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
   OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
-  // Div is algebra-aware for total reciprocal-shaped Field division and the
-  // v2-only AlgQuotient compatibility selector.
-  // Ref: Python Reference §6.7 "Binary arithmetic operations"
+
   OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Present { value: AlgReciprocal } },
   OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Present { value: AlgQuotient } },
   OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none }

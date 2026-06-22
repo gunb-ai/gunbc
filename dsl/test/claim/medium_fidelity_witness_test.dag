@@ -1,23 +1,11 @@
-// dsl/test/claim/medium_fidelity_witness_test.dag — Cut 2 gated witness for extdeps.communication.medium.
-//
-// GREEN: (a) text Medium<String> Lossless; (b) non-text Medium<ProbeVerdict> Lossless;
-//        (c) lossy prose Medium<String> Lossy — each tag reads back via match.
-// RED (discriminating): mis-tagged lossy prose reads as Lossless under tag-only
-//        is_lossless — proves the tag-only gap Cut 3+ semantic decode must close.
-//        Cut 2 is pure decls; this does NOT claim std rejects mis-tags (§5 honesty).
-//
-// Run: gunbc run --source-root dsl --entry <this> --function medium_fidelity_holds --claim-run
-
 module test.claim.medium_fidelity
 
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
 import std.types { String }
 import std.logic { Bool }
 
-// Local non-text representation — grammar-free verdict coproduct (not String).
 type ProbeVerdict = Dominates | Incomparable
 
-// Witness-local classifier (not substrate authority — predicate dissolution stays out of std/).
 fn is_lossless(f: DecodeFidelity) -> Bool {
   match f {
     Lossless => true
@@ -82,13 +70,10 @@ fn prose_medium_tag_is_lossy() -> Bool {
   }
 }
 
-// GREEN: correctly tagged lossy prose must NOT read as lossless by tag.
 fn lossy_prose_not_advertised_lossless() -> Bool {
   !is_lossless(prose_medium().fidelity)
 }
 
-// RED (discriminating, lens_verdict pattern): mis-tagged lossy prose falsely certifies
-// lossless under tag-only is_lossless — documents gap, does not claim std rejects.
 fn red_mistag_certifies_lossless_by_tag_alone() -> Bool {
   is_lossless(mis_tagged_prose_medium().fidelity)
 }

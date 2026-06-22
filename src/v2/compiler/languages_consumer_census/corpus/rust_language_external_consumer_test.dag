@@ -1,6 +1,3 @@
-// Scope: corpus witness — language identity row with v2 fixture dependency.
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.languages_consumer_census.corpus.rust_language_external_consumer
 
 import v2.lens.languages_consumer_census {

@@ -1,13 +1,4 @@
-// src/v2/extdeps/languages/llvm_ir.dag
-// Scope: LLVM 18 LangRef IR structural vocabulary (SSA-oriented types, instructions, terminators, and related carriers).
-// Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
-// Status: import v2.std.node Symbol; v2.std.nat Nat; v2.std.cardinality NonZeroNat.
-// Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
-// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-LLVM-OPS, SL-3229-LLVM-WAVE1-FLOAT-KIND, SL-3229-LLVM-WAVE1-INT-WIDTH, SL-3229-LLVM-WIDTH.
-// 🟡
-
 module v2.extdeps.languages.llvm_ir
-
 
 import v2.extdeps.languages.fidelity { FidelityDisposition }
 import v2.std.grammar {
@@ -62,10 +53,6 @@ import v2.std.witness { Holds, Violates }
 import v2.std.nat { Nat }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FloatKind
   = HalfFloat
   | BFloatFloat
@@ -75,8 +62,6 @@ type FloatKind
   | X86Fp80Float
   | PpcFp128Float
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmType
   = VoidType
   | LabelType
@@ -91,26 +76,18 @@ type LlvmType
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
   | NamedType { name: Symbol }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VectorScaling
   = FixedVector
   | ScalableVector
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StructPacking
   = NaturalAligned
   | Packed
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VarArg
   = FixedArity
   | Variadic
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmConstant
   = IntConstant { ty: LlvmType, value: Int }
   | FloatConstant { ty: LlvmType, bits: Int }
@@ -124,46 +101,33 @@ type LlvmConstant
   | GlobalAddress { name: Symbol }
   | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmValue
   = LocalRef { name: Symbol }
   | ConstantOperand { constant: LlvmConstant }
   | GlobalRef { name: Symbol }
 
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type BinaryOpcode
   = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
   | OpShl | OpLShr | OpAShr | OpAnd | OpOr | OpXor
   | OpFAdd | OpFSub | OpFMul | OpFDiv | OpFRem
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ConversionOpcode
   = OpTrunc | OpZExt | OpSExt
   | OpFPTrunc | OpFPExt
   | OpFPToUI | OpFPToSI | OpUIToFP | OpSIToFP
   | OpPtrToInt | OpIntToPtr | OpBitCast | OpAddrSpaceCast
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntPredicate
   = IcmpEq | IcmpNe
   | IcmpUgt | IcmpUge | IcmpUlt | IcmpUle
   | IcmpSgt | IcmpSge | IcmpSlt | IcmpSle
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FloatPredicate
   = FcmpFalse
   | FcmpOeq | FcmpOgt | FcmpOge | FcmpOlt | FcmpOle | FcmpOne | FcmpOrd
   | FcmpUeq | FcmpUgt | FcmpUge | FcmpUlt | FcmpUle | FcmpUne | FcmpUno
   | FcmpTrue
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ConstExprOpcode
   = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
   | CeAddrSpaceCast | CeGetElementPtr
@@ -171,55 +135,39 @@ type ConstExprOpcode
   | CeICmp | CeFCmp
   | CeExtractElement | CeInsertElement | CeShuffleVector
 
-
-// 🟢 grounded.
 type PhiIncoming {
   value: LlvmValue
   block: Symbol
 }
 
-
-// 🟢 grounded.
 type PhiNode {
   result: Symbol
   result_type: LlvmType
   incomings: List<PhiIncoming>
 }
 
-
-// 🟢 grounded.
 type SwitchCase {
   match_value: LlvmConstant
   target: Symbol
 }
 
-
-// 🟢 grounded.
 type CallArgument {
   ty: LlvmType
   value: LlvmValue
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type CallResult
   = VoidCall
   | ValueCall { name: Symbol, result_type: LlvmType }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LandingPadCleanup
   = IsCleanup
   | NotCleanup
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LandingClause
   = CatchClause { type_info: LlvmValue }
   | FilterClause { type_infos: List<LlvmValue> }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AtomicOrdering
   = OrderingUnordered
   | OrderingMonotonic
@@ -228,8 +176,6 @@ type AtomicOrdering
   | OrderingAcqRel
   | OrderingSeqCst
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type CmpXchgSuccessOrdering
   = SuccessMonotonic
   | SuccessAcquire
@@ -237,20 +183,17 @@ type CmpXchgSuccessOrdering
   | SuccessAcqRel
   | SuccessSeqCst
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type CmpXchgFailureOrdering
   = FailureMonotonic
   | FailureAcquire
   | FailureSeqCst
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FenceOrdering
   = FenceAcquire
   | FenceRelease
   | FenceAcqRel
   | FenceSeqCst
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AtomicRmwOrdering
   = RmwOrdMonotonic
   | RmwOrdAcquire
@@ -258,15 +201,11 @@ type AtomicRmwOrdering
   | RmwOrdAcqRel
   | RmwOrdSeqCst
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AtomicRmwOp
   = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
   | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
   | RmwFMax | RmwFMin | RmwUIncWrap | RmwUDecWrap
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LlvmInstruction
   = Binary {
       result: Symbol
@@ -404,36 +343,26 @@ type LlvmInstruction
       args: List<LlvmValue>
     }
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LoadOrdering
   = LoadUnordered
   | LoadMonotonic
   | LoadAcquire
   | LoadSeqCst
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StoreOrdering
   = StoreUnordered
   | StoreMonotonic
   | StoreRelease
   | StoreSeqCst
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LoadAtomicity
   = PlainLoad
   | AtomicLoad { ordering: LoadOrdering }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StoreAtomicity
   = PlainStore
   | AtomicStore { ordering: StoreOrdering }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Terminator
   = RetVoid
   | RetValue { value: LlvmValue }
@@ -461,14 +390,10 @@ type Terminator
   | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
   | CatchRet { catch_pad: LlvmValue, successor: Symbol }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type UnwindDest
   = UnwindToCaller
   | UnwindToLabel { target: Symbol }
 
-
-// 🟢 grounded.
 type BasicBlock {
   label: Symbol
   phis: List<PhiNode>
@@ -476,8 +401,6 @@ type BasicBlock {
   terminator: Terminator
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Linkage
   = LinkagePrivate
   | LinkageInternal
@@ -491,21 +414,15 @@ type Linkage
   | LinkageExternal
   | LinkageExternalWeak
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FunctionBody
   = Declared
   | Defined { entry: BasicBlock, rest: List<BasicBlock> }
 
-
-// 🟢 grounded.
 type FunctionParameter {
   ty: LlvmType
   name: Symbol
 }
 
-
-// 🟢 grounded.
 type LlvmFunction {
   name: Symbol
   result_type: LlvmType
@@ -515,20 +432,14 @@ type LlvmFunction {
   body: FunctionBody
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type GlobalMutability
   = MutableGlobal
   | ConstantGlobal
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type GlobalInitializer
   = ExternalInit
   | InitializedWith { constant: LlvmConstant }
 
-
-// 🟢 grounded.
 type LlvmGlobal {
   name: Symbol
   value_type: LlvmType
@@ -538,15 +449,11 @@ type LlvmGlobal {
   address_space: Int
 }
 
-
-// 🟢 grounded.
 type NamedStructDef {
   name: Symbol
   definition: LlvmType
 }
 
-
-// 🟢 grounded.
 type LlvmModule {
   data_layout: Symbol
   target_triple: Symbol
@@ -554,7 +461,6 @@ type LlvmModule {
   globals: List<LlvmGlobal>
   functions: List<LlvmFunction>
 }
-
 
 fn unwind_successors(d: UnwindDest) -> List<Symbol> {
   match d {
@@ -583,7 +489,6 @@ fn block_successors(t: Terminator) -> List<Symbol> {
   }
 }
 
-
 fn block_well_formed(b: BasicBlock) -> Bool {
   match b.terminator {
     CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => count(b.body) == 0
@@ -591,8 +496,6 @@ fn block_well_formed(b: BasicBlock) -> Bool {
   }
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FidelityFeature
   = StructuralCore
   | SsaValueSpelling
@@ -606,7 +509,6 @@ type FidelityFeature
   | UnmodeledInstruction
   | UnmodeledConstExpr
   | MalformedStructure
-
 
 fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeature> {
   match f {
@@ -625,26 +527,21 @@ fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeatur
   }
 }
 
-
-// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — feature:llvm-wave1-int-bits-subset — dissolve-on-arrival: llvm_integer_facts_catalog aligns with LlvmType.IntegerType.bits NonZeroNat carrier (wave-2 · T-4 quiet-otter-381).
 type LlvmWave1IntegerBits
   = Wave1Bits32
   | Wave1Bits64
 
-// 🟢 coproduct dissolution · SL-3229-LLVM-WAVE1-FLOAT-KIND.
 type LlvmWave1FloatKind
   = Wave1HalfFloat
   | Wave1SingleFloat
   | Wave1DoubleFloat
 
-// 🟢 grounded.
 type LlvmIntegerPrimitiveFacts {
   surface_spelling: Symbol
   wave1_bits: LlvmWave1IntegerBits
   std_projection: Symbol
 }
 
-// 🟢 grounded.
 type LlvmFloatPrimitiveFacts {
   surface_spelling: Symbol
   kind: LlvmWave1FloatKind
@@ -854,16 +751,13 @@ fn llvm_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-
 fn llvm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-
 fn llvm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
-
 
 fn llvm_global_ident_pattern() -> LexPattern {
   SequencePattern {
@@ -874,7 +768,6 @@ fn llvm_global_ident_pattern() -> LexPattern {
     }
   }
 }
-
 
 fn llvm_wave1_lex() -> LexRules {
   ModeledLexRules {
@@ -893,7 +786,6 @@ fn llvm_wave1_lex() -> LexRules {
     }
   }
 }
-
 
 fn llvm_void_function_expr() -> GrammarExpr {
   llvm_grammar_sequence(
@@ -923,7 +815,6 @@ fn llvm_void_function_expr() -> GrammarExpr {
   )
 }
 
-
 fn llvm_ir_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^llvm_production_void_function,
@@ -938,7 +829,6 @@ fn llvm_ir_wave1_grammar() -> ParseGrammar {
     }
   }
 }
-
 
 fn llvm_void_function_formal_production() -> FormalProduction {
   FormalProduction {
@@ -957,14 +847,12 @@ fn llvm_void_function_formal_production() -> FormalProduction {
   }
 }
 
-
 fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: llvm_wave1_lex(),
     grammar: llvm_ir_wave1_grammar()
   }
 }
-
 
 fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {

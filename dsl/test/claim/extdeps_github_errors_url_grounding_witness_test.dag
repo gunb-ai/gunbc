@@ -1,10 +1,3 @@
-// By-execution witness: GitHubErrorShape.documentation_url grounded on std.types.Url.
-// Discriminating: goes RED if the field reverts to bare String.
-//
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_github_errors_url_grounding_witness_test.dag \
-//     --function extdeps_github_errors_url_grounding_witnesses --claim-run
-
 module test.claim.extdeps_github_errors_url_grounding_witness
 
 import extdeps.github.errors { GitHubErrorShape, github_error_example }

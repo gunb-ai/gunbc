@@ -1,7 +1,3 @@
-// FIXTURE — planted module with a let-bound string literal passed to script: position at a
-// shell.Exec.Run call. Read as SHAPE-ONLY by transport_script_literal_violation_count_for_path
-// (parse-tree shape classification, no content scan, never executed). The by-execution oracle
-// that the projection flags a LetBoundStringLiteral violation. DO NOT import this module.
 module v2.test.fixture.transport_script_scan.let_bound_literal_plant
 
 import extdeps.shell

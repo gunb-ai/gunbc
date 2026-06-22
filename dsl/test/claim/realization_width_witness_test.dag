@@ -1,10 +1,3 @@
-// dsl/test/claim/realization_width_witness_test.dag
-//
-// §5 discriminating proof for std.realization_width — peripheral host spawn width
-// is min(IndependentShards.shard_count, PlacementSupplyRow.hardware_threads).
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_width_witnesses --claim-run
-
 module test.claim.realization_width_witness
 
 import std.nat { Nat }
@@ -111,7 +104,6 @@ fn witness_measured_balance_discriminator() -> Bool {
   witness_measured_cost_affects_shard_balance()
 }
 
-// §1-C memory-aware width: budget non-binding → width = shard_count (the 4→7 reality).
 fn witness_memory_non_binding_at_7() -> Bool {
   witness_memory_term_non_binding_uses_shard_count(
     shard_count: 7,

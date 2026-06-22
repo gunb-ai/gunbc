@@ -1,79 +1,9 @@
-// std/constructors.dag -- Type-theoretic constructors (Layer -1).
-//
-// Product and Coproduct are the irreducible type constructors from which
-// ALL other types compose. They are more fundamental than Bit —
-// Classical = True | False USES Coproduct, and OrderedRing<T> { ... }
-// USES Product.
-//
-// These are structural axioms: they exist before any .dag file can be
-// parsed, because parsing itself produces Product and Coproduct nodes.
-// Declaring them here makes the ontology explicit and allows the compiler
-// to reference them from DAG structure rather than a hardcoded enum.
-//
-// STRUCTURAL SEMANTICS:
-//
-//   Product (Conj):
-//     All children hold simultaneously.
-//     Denotational: |A × B| = |A| · |B| (cartesian product)
-//     Examples: record fields, tuple elements, struct members
-//     A product node with N children means "all N values are present."
-//
-//   Coproduct (Disj):
-//     Exactly one child holds.
-//     Denotational: |A + B| = |A| + |B| (disjoint union)
-//     Examples: enum variants, sum types, tagged unions
-//     A coproduct node with N children means "exactly 1 of N is selected."
-//
-//   Terminal (NoConnective):
-//     Zero-factor composition. A leaf node.
-//     Denotational: |1| = 1 (single inhabitant)
-//     Examples: Unit type, primitive types (Int, Bool without looking inside)
-//
-// CARDINALITY:
-//
-//   Cardinality is orthogonal to constructors. A binding site can be:
-//     Required (exactly 1 value)
-//     Optional (0 or 1 value)
-//   This is annotation on the binding, not a type wrapper.
-//
-// THE COMPILER'S VIEW:
-//
-//   The compiler knows only three structural shapes:
-//     - Product (all children): traverse all, merge results
-//     - Coproduct (one child): branch, exhaustiveness check
-//     - Terminal (leaf): base case
-//
-//   Everything else — what Int means, what String means, what methods
-//   a type has — is DAG composition from algebra.dag, not compiler knowledge.
-//
-// CURRENT REPRESENTATION:
-//
-//   type Connective = Conj | Disj | NoConnective
-//   (defined historically as a compiler-internal enum in the legacy core DAG)
-//
-//   This enum IS the Layer -1 vocabulary. The dissolution path:
-//   when the compiler reads Product/Coproduct from std declarations,
-//   the Connective enum dissolves. The 313 sites that read .connective
-//   and match on Conj/Disj become structural reads on std-declared
-//   constructor types.
-//
-// NOTE: This file declares the ontology. The compiler-side dissolution
-// of the Connective enum is tracked in the ROADMAP under
-// "Type Constructors (Layer -1, not yet in std)."
-
 module std.constructors
 
-// Product: all children hold simultaneously.
-// The type of "and" composition.
 type Product
 
-// Coproduct: exactly one child holds.
-// The type of "or" composition.
 type Coproduct
 
-// Terminal: zero-factor composition. Single-inhabitant phantom witness.
-// Used by type-level phantom composition carriers (e.g. Compose<Algebra, MachineConstraint>).
 type Phantom
 
-// Cardinality: presence annotation on binding sites.
 type Cardinality = Required | Optional

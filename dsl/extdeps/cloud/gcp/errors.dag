@@ -1,12 +1,14 @@
-// extdeps/cloud/gcp/errors.dag -- GCP API error envelope shapes.
-//
-// Two distinct upstream wire shapes are modeled here, one per spec:
-//   GcpErrorShape       -- Google APIs canonical RPC-status envelope
-//                          (https://cloud.google.com/apis/design/errors#http_mapping)
-//   GcpOAuth2ErrorShape -- RFC 6749 §5.2 OAuth2 token-endpoint error
-//                          (https://datatracker.ietf.org/doc/html/rfc6749#section-5.2)
-
 module extdeps.cloud.gcp.errors
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/apis/design/errors#http_mapping"
+  }
+}
 
 type GcpErrorDetails {
   code: Int

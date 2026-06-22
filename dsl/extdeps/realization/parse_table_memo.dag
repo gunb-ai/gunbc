@@ -1,7 +1,3 @@
-// extdeps/realization/parse_table_memo.dag — gunbc in-process parse-table memo (operator facts).
-//
-// Realization carrier for v2.compiler.parse ParseTable — dissolves hand-rolled Map threading.
-
 module extdeps.realization.parse_table_memo
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
@@ -25,17 +21,12 @@ import std.cache_interface {
 
 data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
 
-// In-process parse memo: content-addressed (grammar_digest × token_stream_digest × position × production).
-// Grammar scopes the in-process store; token_stream_digest prevents cross-source cell reuse.
 data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
   identity: parse_table_memo_id
   backing_surface: "gunbc-parse-table-in-process"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers. NOTE the
-    // parse table depends on the PARSER (a transform): when this scaffold is wired and its
-    // triggers gain ToolchainChange, content_addressed_inputs auto-adds ToolchainSpec — the
-    // key completes BY CONSTRUCTION, no separate inputs edit (the §0 fork stays dissolved).
+
     key_inputs: ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false

@@ -1,26 +1,3 @@
-// dsl/extdeps/shell/mock_corpus.dag
-// Scope: the shell layer's PUBLISHED mock corpus as a closed, declared structural fact.
-// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
-//
-// SINGLE authority for WHICH shell.* operations are hermetically realizable. Read by BOTH the
-// compile-time M2 mock_totality_lens (src/v2/lens/mock_totality.dag, via the per-layer witness)
-// AND the v1 runtime's eval_service_call (the M4 hermetic-realization fold) — one model, not two.
-// The v1 runtime loads the dsl/ tree, so this corpus lives in dsl/ for the runtime to reach the
-// SAME model the lens reads. Modeled on the M4.0 filesystem pilot
-// (dsl/extdeps/filesystem/mock_corpus.dag, #5188).
-//
-// Per-SERVICE governance: eval_service_call splits an operation_key on its last `.`, so each of
-// shell.Find / shell.Which / shell.Exec is governed independently. A service is corpus-governed
-// iff it publishes at least one case; shell.Env publishes NONE here on purpose — it is already
-// fail-closed fixtureless-hermetic (its mock_response was dissolved earlier) and replays via the
-// RecordedFixture seam, so it stays UNgoverned by this corpus with its behavior unchanged. Every
-// shell op that today carries an inline mock IS published below, so no governed op's sibling is
-// silently fail-closed.
-//
-// Rows inhabit std.hermetic_replay.PublishedMockCase. The operation set authority remains
-// dsl/extdeps/shell/shell.dag (`service shell.Find/Which/Exec`); per-case payloads live in the
-// Phase-2 RecordedFixture store ONLY — rows carry the (operation_key, case_id) structural key.
-
 module extdeps.shell.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
@@ -53,15 +30,6 @@ data shell_exec_mock_case_check: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
-// 🟡 gated — feature:shell-mock-corpus-from-service-decl — bind node://adhoc-aeaa1c56-be5
-// dissolve-on-arrival: project this corpus directly from the `service shell.*` operation sets in
-// dsl/extdeps/shell/shell.dag (the SINGLE authority for WHICH operations exist), joined with the
-// Phase-2 RecordedFixture store (the authority for WHICH recorded cases exist per operation), once
-// a v2 lens can read a service decl's operation nodes and the fixture store's keys; this declared
-// list then deletes in the same PR. forbidden: a row carrying a response VALUE (dirs/exit_success/
-// stdout/exit_code/stderr/exists) — that would fork the payload authority, now owned by the
-// fixture store (§3); rows mirror the (operation_key, case_id) structural key ONLY, and grow when
-// a published operation/case is added upstream.
 data shell_published_mock_corpus: List<PublishedMockCase> = [
   shell_find_mock_case_list_dirs,
   shell_which_mock_case_check,

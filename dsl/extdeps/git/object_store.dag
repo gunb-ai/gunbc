@@ -1,16 +1,3 @@
-// extdeps/git/object_store.dag — Git content-addressed object store
-//
-// Spec: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-// Wikipedia: https://en.wikipedia.org/wiki/Object_storage#Content-addressable_storage
-// Sections referenced:
-//   Git Internals §"Git Objects" — blob, tree, commit object types and hash addressing
-//   Git Internals §"Git References" — refs as name→hash bindings over the CAS store
-//
-// Git's object store is a content-addressed object store (CAS inhabitant): each
-// object's address is the SHA-1 or SHA-256 hash of its content. ObjectRef is the
-// CAS key, typed as CasObjectId. Blob/tree/commit are the three forge-plumbing
-// object kinds in scope (gunbhub S1); tag objects live in extdeps.git.ObjectType.
-
 module extdeps.git.object_store
 
 import std.types { ContentHash, NonEmptyStr }
@@ -19,32 +6,29 @@ import std.cache_interface { KeyDerivationClass, CacheWriteSemantics }
 import extdeps.object_storage { ObjectContainer }
 import extdeps.object_storage.content_addressed { CasObjectId, CasAddressingConfig }
 import extdeps.git { GitAuthor, ObjectType }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Git's CAS addressing configuration: one implicit container (the repo objects/),
-// content-addressed by value, write-once per hash.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/book/en/v2/Git-Internals-Git-Objects"
+  }
+}
+
 data git_object_store_config: CasAddressingConfig = {
   container: { name: "objects" }
   key_derivation: ContentAddressedByValue
   write_mode: WriteOnce
 }
 
-// A git object reference: the CAS key is the content hash.
-// Alias of CasObjectId in the git domain — no hand-rolled hash field.
 type ObjectRef = CasObjectId
-
-// --- Blob --------------------------------------------------------------------
 
 type Blob {
   size: ByteSize
   content: Bytes
 }
 
-// --- Tree --------------------------------------------------------------------
-
-// A tree entry names one child object with kind encoded structurally in the variant,
-// so kind/hash mismatch is unrepresentable (no parallel kind field alongside hash).
-// 🟢 TERMINAL — the three child-object kinds a tree entry can reference; closed by
-// git's object trichotomy (blob, subtree, commit-via-submodule).
 type TreeEntry
   = BlobEntry { name: NonEmptyStr, hash: ContentHash }
   | SubtreeEntry { name: NonEmptyStr, hash: ContentHash }
@@ -54,10 +38,6 @@ type Tree {
   entries: List<TreeEntry>
 }
 
-// --- Commit ------------------------------------------------------------------
-
-// author = who wrote the change; committer = who applied it to the tree.
-// Reuses GitAuthor from extdeps.git — single authority for the git identity shape.
 type Commit {
   tree_hash: ContentHash
   parent_hashes: List<ContentHash>
@@ -66,41 +46,24 @@ type Commit {
   message: NonEmptyStr
 }
 
-// --- Object union ------------------------------------------------------------
-
-// 🟢 TERMINAL — the three mutable git object kinds in scope for gunbhub S1
-// (blob/tree/commit); closed by git's forge-plumbing trichotomy.
 type StoreObject
   = ObjectBlob { blob: Blob }
   | ObjectTree { tree: Tree }
   | ObjectCommit { commit: Commit }
 
-// Lookup outcome — pairs the CAS address (ObjectRef) with the loaded payload.
-// 🟢 TERMINAL — found/not-found; closed by content-addressed store GET semantics.
 type ObjectLookupResult
   = ObjectFound { ref: ObjectRef, object: StoreObject }
   | ObjectNotFound
 
-// --- Refs: name → object bindings --------------------------------------------
-
-// A ref target is a direct content hash or a symbolic pointer to another named ref.
-// 🟢 TERMINAL — the two ref target kinds in git; closed by the git ref model
-// (git-symbolic-ref(1), gitglossary(7) §"symbolic ref").
 type RefTarget
   = DirectTarget { hash: ContentHash }
   | SymbolicTarget { ref_name: NonEmptyStr }
 
-// Outcome of resolving a named ref chain to a concrete hash.
-// 🟢 TERMINAL — the three ref traversal outcomes; closed by the git ref model
-// (chain either resolves, does not exist, or contains a symbolic cycle).
 type RefResolutionResult
   = RefResolved { hash: ContentHash }
   | RefNotFound
   | SymbolicCycle
 
-// --- Structural projections --------------------------------------------------
-
-// 🟢 TERMINAL — structural fold: StoreObject variant → git ObjectType discriminant.
 fn store_object_kind(object: StoreObject) -> ObjectType {
   match object {
     ObjectBlob { blob: _ } => BlobObj

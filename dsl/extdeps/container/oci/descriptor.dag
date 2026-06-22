@@ -1,12 +1,17 @@
-// extdeps/container/oci/descriptor.dag — OCI Content Descriptor (image-spec descriptor.md).
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/descriptor.md
-// Version: image-spec v1.1.0
-
 module extdeps.container.oci.descriptor
 
 import extdeps.container.oci.types { OciMediaType }
 import std.types { Bool, ContentHash }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md"
+  }
+}
 
 type OciDescriptor {
   mediaType: OciMediaType

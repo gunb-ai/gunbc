@@ -1,16 +1,18 @@
-// extdeps/memory.dag — DRAM population projections over a vendor-agnostic catalog row.
-//
-// This owns only the general DRAM concept; per-vendor catalog data lives in
-// extdeps/memory/<vendor>. A populated row carries its own catalog module, so this
-// module never dispatches on an owned SKU set and never imports a vendor catalog.
-
 module extdeps.memory
 
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.memory.types { HostMemoryPopulation, MemoryPopulationRow }
 import std.types { Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// nominal bytes for one populated row = per-module capacity × stick count.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Computer_memory"
+  }
+}
+
 fn memory_population_row_bytes(row: MemoryPopulationRow) -> ByteSize {
   byte_size(
     byte_size_count(row.module.capacity_bytes) * row.stick_count,

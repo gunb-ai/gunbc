@@ -1,14 +1,5 @@
-// Hand-maintained bootstrap slice (its former generator was removed in cleanup).
-//
-// Source: excerpt between GUNBC_BOOTSTRAP_EMIT_BEGIN/END in dsl/std/render.dag.
-// Single substrate slice for repeat_string in the bootstrap bundle — must mirror render.dag
-// (single authority, no parallel semantics; see DESIGN.md §3). Keep in sync by hand when render.dag
-// changes. Dissolution: full render.dag in bootstrap.
-
 module std.render_repeat_string_bootstrap
 
-// Repeat a string N times. Local helper until std.strings provides this.
-// Bounded loop: `remaining` descends (complexity: arithmetic descent, not same-argument).
 fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
   if remaining <= 0 {
     acc

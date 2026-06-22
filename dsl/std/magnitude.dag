@@ -1,29 +1,3 @@
-// std/magnitude.dag -- Terminal opaque carrier for unbounded counting.
-//
-// Magnitude is the foot of the construction chain
-//   Magnitude → Nat → Int → Rational → Real
-// (R3 lane #6, T-Numeric-Construction). Modeling discipline: construction-chain
-// layer authority is this module plus dsl/std/nat.dag, integer.dag, rational.dag.
-//
-// SHAPE: opaque atom — no fields, no algebra inhabitance, no value body.
-// Refinements `Nat<N>` / `Int<N>` (later slices) parameterize the namespace
-// to give it concrete bit-width at grounding time. Magnitude itself carries
-// no width — that is the structurally honest representation of "unbounded
-// counting." Encoding design: abstract counting, rejecting bit-stream and
-// word-stream encodings (no storage encoding at this layer).
-//
-// PRECEDENT: `dsl/std/constructors.dag:68,72` declares `type Product` and
-// `type Coproduct` as bare opaque atoms — same shape as Magnitude.
-//
-// CONSUMERS: none in this slice. `Nat = Semiring<Magnitude>` and downstream
-// chain layers land in subsequent slices per design doc §6 sequencing.
-//
-// HARD BOUNDARIES (per dispatch on inbox #1288):
-//   - Not a parallel magnitude representation; this IS the canonical carrier.
-//   - No tokenizer / `LitInt` / literal-grammar changes here.
-//   - Not a migration of `dsl/std/integer.dag`'s `OrderedRing<Word64>` chain;
-//     consumer migration is design doc §6 (later slice).
-
 module std.magnitude
 
 type Magnitude

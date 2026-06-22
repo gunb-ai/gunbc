@@ -1,9 +1,3 @@
-// src/v2/extdeps/runtimes/v2_effect_io_host.dag
-// Scope: Host effect-IO handler bundle — file / HTTP / storage backends routed through declared
-//   resource models (file_system.dag, network.dag). Wave-2: honest fail-closed host door until
-//   host_run transport receipts land for each backend.
-// Status: Wave-2 M-E2 — inhabits EffectHandlerBinding; pairs with v2_effect_io_pure.dag.
-
 module v2.extdeps.runtimes.v2_effect_io_host
 
 import v2.extdeps.file_system { Filesystem, ModeledFileEffects }
@@ -62,15 +56,11 @@ type EffectIoHostStorageContext {
   bucket: Symbol
 }
 
-// 🟢 coproduct dissolution — inject-per-run host backend context pairs each EffectIoResourceBackend
-// arm with its resource model (file_system, network, storage); fail-closed until host door receipts.
 type EffectIoHostBackendContext
   = HostFileContext { context: EffectIoHostFileContext }
   | HostHttpContext { context: EffectIoHostHttpContext }
   | HostStorageContext { context: EffectIoHostStorageContext }
 
-// Co-located inject-per-run authority: backend, context, mode, fixture, and handlers wire
-// together. `mode` (v2.std.execution_mode) selects hermetic fixture replay vs live host dispatch.
 type EffectIoHostHandlerBundle {
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
@@ -96,8 +86,6 @@ fn effect_io_host_deferred_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// Host file read/write route through ModeledFileEffects (single host door discipline).
-// Wave-2: fail-closed until host_run transport receipts land for file I/O.
 fn effect_io_host_file_read(
   _ctx: EffectIoHostFileContext,
   _locator: EffectIoResourceLocator
@@ -143,12 +131,6 @@ fn effect_io_host_storage_write(
   outcome_rejected(d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_storage_write_deferred))
 }
 
-// M5 step 4 (node://adhoc-7e32be31-47c): the host door is gated on ExecutionMode. Hermetic
-// (dry-run) replays from the content-addressed fixture store — the SAME content-addressed lookup
-// the pure handler uses — and fails closed on a miss (MissIsDiagnostic), with NO live host I/O.
-// Wet/Record route to the per-backend live host door (deferred honest stub until host_run
-// transport receipts land). This is the §5 hermetic-by-default safety boundary: no accidental
-// live effect unless the mode explicitly opts into wet dispatch.
 fn effect_io_host_dispatch_read(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
@@ -174,8 +156,6 @@ fn effect_io_host_dispatch_read(
   }
 }
 
-// Hermetic (dry-run) performs NO live mutation: a write is fail-closed (wet capture into the
-// fixture store is Record mode, deferred until host_run lands). Wet/Record route to the live door.
 fn effect_io_host_dispatch_write(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
@@ -206,8 +186,6 @@ fn effect_io_host_dispatch_write(
   }
 }
 
-// Inject-per-run: handlers close over backend + context + mode + fixture declared at binding
-// construction. The mode gates hermetic fixture replay vs live host dispatch (see dispatch_read).
 fn effect_io_host_handler_binding(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
@@ -287,8 +265,6 @@ fn effect_io_host_backend_context(backend: EffectIoResourceBackend) -> EffectIoH
   }
 }
 
-// Inject-per-run host runtime under an explicit ExecutionMode + fixture store. Hermetic replays
-// the fixture (content-addressed, fail-closed on miss); Wet/Record dispatch the live host door.
 fn effect_io_host_runtime(
   backend: EffectIoResourceBackend,
   mode: ExecutionMode,
@@ -311,9 +287,6 @@ fn effect_io_host_runtime(
   }
 }
 
-// Hermetic-by-default (DESIGN.md §5 safe default: no accidental live I/O) over an empty fixture —
-// a hermetic read fails closed on miss until the fixture is populated (effect_io_host_runtime with
-// a Record-captured store).
 fn effect_io_host_runtime_wave2(backend: EffectIoResourceBackend) -> V4EffectIoHostRuntime {
   effect_io_host_runtime(
     backend: backend,

@@ -1,6 +1,3 @@
-// Scope: E-10 execution receipts for the PassingCandidateFold dissolution of
-// TargetAtomRealizationLookup and TargetAtomRealizationCatalogLookup in std/compilers/target_model.dag.
-
 module v2.test.manual.target_model_atom_lookup_dissolution
 
 import v2.extdeps.languages.typescript {
@@ -65,7 +62,6 @@ fn atom_lookup_dissolution_claim_input(ok: Bool) -> Node {
   }
 }
 
-// PassingCandidateFold: two identical candidates produce ManyPassingCandidates — proves the
 fn passing_candidate_fold_duplicate_produces_many() -> Bool {
   match fold_list(
     xs: [atom_lookup_dissolution_probe_node(), atom_lookup_dissolution_probe_node()],
@@ -84,8 +80,6 @@ fn passing_candidate_fold_duplicate_produces_many() -> Bool {
   }
 }
 
-// target_atom_realization_lookup_in_catalog (typed-list path): known carrier accepts.
-// Exercises the OnePassingCandidate → second-pass extraction arm.
 fn atom_lookup_in_catalog_known_carrier_accepts() -> Bool {
   match target_atom_realization_lookup_in_catalog(
     catalog: ts_target_atom_realization_catalog,
@@ -96,8 +90,6 @@ fn atom_lookup_in_catalog_known_carrier_accepts() -> Bool {
   }
 }
 
-// target_atom_realization_lookup_in_catalog (typed-list path): unknown carrier rejects with miss.
-// Exercises the NoPassingCandidate → lookup-miss arm.
 fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> Bool {
   match target_atom_realization_lookup_in_catalog(
     catalog: ts_target_atom_realization_catalog,
@@ -108,8 +100,6 @@ fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> Bool {
   }
 }
 
-// target_atom_realization_lookup_in_catalog_node (Node path): non-Conj catalog rejects decode-invalid.
-// Exercises the outer catalog-shape guard (unchanged by dissolution).
 fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
   match target_atom_realization_lookup_in_catalog_node(
     catalog: atom_lookup_dissolution_probe_node(),
@@ -121,12 +111,6 @@ fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
   }
 }
 
-// FAIL-OPEN WITNESS (Option A per owning-manager review): a malformed row (Atom node — fails
-// target_atom_realization_from_row_node bundle check) in a Conj catalog is SKIPPED, not
-// poisoning the whole lookup. A valid matching row after it still produces Accepted.
-// This is intentional: a catalog entry that fails decode for an unrelated carrier should not
-// block a valid lookup for the requested carrier. The behavior change vs. the old
-// TargetAtomRealizationCatalogInvalid arm is witnessed here.
 fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   match target_atom_realization_lookup_in_catalog_node(
     catalog: Node {

@@ -1,59 +1,25 @@
-// extdeps/shell/gnu_coreutils.dag — GNU coreutils we actually depend on.
-//
-// Spec: https://www.gnu.org/software/coreutils/manual/coreutils.html
-// Version: GNU coreutils 8.x+
-//
-// This is a STUB. It documents the specific commands and flags that
-// gunbc workflows rely on, so we have a single place to record the
-// honest dependency surface. We do not yet wire service operations
-// here — workflows still construct command strings directly.
-//
-// Why coreutils, not POSIX:
-//   Several flags we use are GNU extensions, not POSIX:
-//     - grep -r       (recursive)            — GNU/BSD, not POSIX
-//     - diff -r       (recursive directory)  — GNU/BSD, not POSIX
-//     - diff --exclude=PATTERN                — GNU only
-//   On macOS, BSD coreutils is the default; GNU coreutils is via
-//   `brew install coreutils` (which prefixes with `g`: ggrep, gdiff).
-//   The cargo-installed compiler runs inside macOS shell, so we rely
-//   on whatever grep/diff is on PATH first. macOS BSD diff supports
-//   -r and --exclude despite not being GNU. macOS BSD grep also
-//   supports -r and -E.
-//
-// Future:
-//   When we model service operations for these tools, this file
-//   gets full coverage like cargo.dag and git.dag. For now it's
-//   the dependency declaration.
-
 module extdeps.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath }
 import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// ── Documented dependencies ─────────────────────────────────────────
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
+  }
+}
 
-// The specific grep flag combinations our workflows depend on.
-// These are recorded as data so the dependency surface is queryable
-// instead of buried in comments.
 data grep_recursive_quiet_flags: NonEmptyStr = "-rqE"
 data grep_recursive_numbered_flags: NonEmptyStr = "-rnE"
 
-// The specific diff flag combinations our workflows depend on.
 data diff_recursive_flags: NonEmptyStr = "-r"
 data diff_recursive_brief_flags: NonEmptyStr = "-rq"
-// Note: diff --exclude=NAME is a GNU extension, also supported by
-// macOS BSD diff. We rely on it for hand_maintained_src exclusion.
 
-// rm flags we depend on.
 data rm_force_recursive_flags: NonEmptyStr = "-rf"
-
-// cp: we rely on shell glob expansion (cp PATH/*.EXT DEST/), which
-// is a shell feature, not a cp feature. cp itself just copies files.
-
-// ── Spec citations ──────────────────────────────────────────────────
 
 data coreutils_docs: NonEmptyStr = "https://www.gnu.org/software/coreutils/manual/coreutils.html"
 
-// Minimum coreutils constraint for the flag semantics above. GNU coreutils
-// 8.0 (2009) is well past every modern distro's base.
 data min_coreutils_version: VersionConstraint = ">= 8.0"

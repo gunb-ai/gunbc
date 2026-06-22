@@ -1,36 +1,25 @@
-// extdeps/rust/version.dag — Cargo version carriers (SemVer scheme + requirements).
-//
-// Fidelity — extdeps invariant (cite source; DESIGN.md §3):
-//   Spec: https://doc.rust-lang.org/cargo/reference/manifest.html
-//   Package version field: SemVer 2.0.0 (manifest.md#the-version-field).
-//   Dependency version field: semver version requirement
-//   (specifying-dependencies.md#specifying-dependencies) — caret/tilde/comparator
-//   syntax, not a bare published version.
-//
-// Authority: extdeps.version.semver (semver.org), not std.types.SemVer.
-//
-// Consumers:
-//   extdeps/rust/cargo.dag — `CargoPackage`, `RegistryDep`
-
 module extdeps.cargo_version
 
 import extdeps.version.semver { SemVerIdentity, SemVerConstraint }
 
-// Published crate version in `[package].version` (crates.io / workspace manifests).
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/manifest.html"
+  }
+}
+
 type CargoPackageVersion = SemVerIdentity
 
-// Dependency version requirement in `[dependencies].crate = "…"`.
 type CargoVersionRequirement = SemVerConstraint
 
-// Minimum supported `cargo` binary for edition/workspace policy (Cargo Reference:
-// "The edition field"). Inhabits SemVerConstraint — distinct use site from
-// `[dependencies]` requirements (§3 distinct facts).
 type CargoToolVersionFloor = SemVerConstraint where brand("CargoToolVersionFloor")
 
-// Single authority for the stage0/bootstrap crate package version token.
 data default_stage0_package_version: CargoPackageVersion = "0.1.0"
 
-// Render helpers exercised by witnesses (manifest emission reuses these tokens).
 fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
   concat("version = \"", version, "\"")
 }
@@ -39,8 +28,6 @@ fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String
   concat("\"", req, "\"")
 }
 
-// `[package]` header through default_stage0_package_version — shared by
-// `stage0_crates.emit_stage0_crate_manifest` and `emit_rust.emit_cargo_toml`.
 fn render_cargo_package_header_prefix(name: String) -> String {
   concat(
     "[package]\nname = \"", name, "\"\n",

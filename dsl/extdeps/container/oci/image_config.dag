@@ -1,8 +1,3 @@
-// extdeps/container/oci/image_config.dag — OCI Image Configuration (image-spec config.md).
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/config.md
-// Version: image-spec 1.1.0
-
 module extdeps.container.oci.image_config
 
 import extdeps.container.oci.types {
@@ -13,6 +8,16 @@ import extdeps.container.oci.types {
 import extdeps.container.oci.types { Architecture }
 import extdeps.toolchain.types { Os }
 import std.types { Bool, ContentHash, FilePath, NonEmptyStr }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/config.md"
+  }
+}
 
 type ContainerImageConfig {
   User: NonEmptyStr?
@@ -33,7 +38,6 @@ type ImageConfiguration {
   rootfs: ImageRootfs
 }
 
-// dissolve-on: delete ImageConfigRejectUnspecified when a second real reject reason lands.
 type ImageConfigRejectReason
   = EmptyDiffIds
   | ImageConfigRejectUnspecified

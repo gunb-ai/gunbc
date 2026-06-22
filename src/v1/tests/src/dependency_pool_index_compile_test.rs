@@ -1,5 +1,3 @@
-//! Execution receipts for `gunbc compile --dependency-pool-index` (primary-precedence gate path).
-
 use crate::helpers::workspace_root;
 use std::fs;
 use std::process::Command;

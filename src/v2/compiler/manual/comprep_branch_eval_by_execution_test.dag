@@ -1,6 +1,3 @@
-// Scope: COMPREP wave-2 M0-B1 runtime keystone — source-gated if-then-else Branch body executes through eval.
-// Status: executable --claim-run witness; condition perturbation + swapped arms are discriminating reds.
-
 module v2.test.manual.comprep_branch_eval_by_execution
 
 import v2.compiler.body_producer {
@@ -509,14 +506,6 @@ fn comprep_branch_fixture_producer_holds() -> Bool {
   }
 }
 
-// COMPREP wave-2 M0-B1 runtime keystone:
-//   1. source-driven-true — bridged if true then 1 else 2 executes to 1;
-//   2. source-driven-false — bridged if false then 1 else 2 executes to 2 (condition dispatch);
-//   3. direct-runtime — true-source bridged callee through eval directly;
-//   4. source-pipeline-admits — true-source fn tokenizes→parses→normalizes→resolves→body_producer;
-//   5. condition-perturbation-red — true source expecting 2 fails (not arm-order only);
-//   6. swapped-arms-red — then/else swap fails the run;
-//   7. fixture-producer — direct fixture path also executes (sanity).
 test fn comprep_branch_eval_by_execution_keystone_holds() -> Bool {
   comprep_branch_source_driven_pick_true_executes_holds()
     && comprep_branch_source_driven_pick_false_executes_holds()

@@ -1,7 +1,3 @@
-// Scope: corpus regression GUARD — structural argv projection over extdeps.cargo_build.
-// Asserts consumer-policy literals (--all-targets, etc.) are ABSENT from argv post-#5107.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
-
 module v2.test.extdeps_shape_transport_policy.corpus.cargo_build_policy_leak
 
 import v2.lens.extdeps_shape_transport_policy {

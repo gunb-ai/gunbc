@@ -33,7 +33,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus ([plan](docs/plans/model-realization-fork.md))
 - [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
-- [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427); `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight ([cause table](docs/plans/ci-selection-vs-scheduling.md), [edge-(b) brief](docs/plans/edge-b-rust-dag-provenance-brief.md)) *(quick-ant-298)*
+- [ ] **rust-gate coverage** (shared §1) — **▸ run-all at nextest speed ✓ CI-green-proven (#5427, in queue): full v1 coverage every `.rs` PR ~6m (was ~42m), no coverage-vs-speed tradeoff**; `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight ([cause table](docs/plans/ci-selection-vs-scheduling.md), [edge-(b) brief](docs/plans/edge-b-rust-dag-provenance-brief.md)) *(quick-ant-298)*
 - [ ] **promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection (also unlocks coverage/testgen) *(silent-wren-739)*
 - [x] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
@@ -57,7 +57,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc ([scope](docs/plans/axiom-syllogism-lens.md))
 
-## ✦ Ergonomics LANE — make the fold the path of least resistance *(proposed; slots in the §0–§4 stability band, upstream of §0 — bright-stag to number/place)*
+## ✦ Ergonomics LANE — make the fold the path of least resistance *(lead lane of the stability band, upstream of §0 — placed bright-stag-194)*
+→ [charter: spine + ranked focus](docs/plans/fold-ergonomics.md)
 
 Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a hand-rolled `match` has a
 `_ =>` fail-open escape; a fold over a closed coproduct is total by construction and has none. So the chain
@@ -69,8 +70,8 @@ Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names 
 friction it retires** (displaced cost), never "cleaner."
 
 **◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a
-stage fold) → **▸ inert-abstraction lens (measure the residue)** → fold reachable by default (the combinators
-that stop hand-rolling) → new non-fold residue can't merge (pairs with §0 wall)
+stage fold) → **generic inference fixed ✓ (#5552, in queue)** + measure the residue (inert-abstraction lens) → fold
+reachable *by default* → new non-fold residue can't merge (pairs with §0 wall)
 
 **Audit half — measure the friction + the residue (decidable; wall-able):**
 - [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers*; generalizes the inert-lens backstop (#5433) from lenses to all carriers. **First RED witness = `Placement` / `Materialization` / `RealizationObjective`** (charter §4: "modeled + witness-passing, no non-test consumer") — a genuinely-inert carrier the lens *fires* on day one, so the lens isn't itself inert (its own §6 guardrail). (`cached_stage` is the *resolved* case — now wired, see Fix half — so it's the worked example, not the witness.)
@@ -78,9 +79,9 @@ that stop hand-rolling) → new non-fold residue can't merge (pairs with §0 wal
 - [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
 
 **Fix half — make the fold the path of least resistance:**
+- [ ] **generic-inference fix** *(fix keystone — #1)* — **▸ #5552 (keystone green-by-execution + red-on-revert witness, in merge queue):** `= FreeMonoid<Symbol>` now resolves. The hand-roll collapse (`qualified_name` trio · `ParseTable`) + §0's realization-grounding (~120 `Value` bridges) follow in de-fork phase 2. Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3, [de-fork brief](docs/plans/dsl-v2-defork-audit.md))
 - [ ] **generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid
 - [ ] **wire the seams, don't strand them** — an abstraction lands *consumed* or scaffold-marked with a dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476). Worked example (the full arc): `cached_stage` seeded inert (#5512) → caught by the keystone lens → wired with a `Miss`-stub wrapping `stage_resolve`. **Boundary:** this lane owns only that the seam *lands consumed-or-marked*; **§1/§2 own *enabling* the resolve-cache** (the realization work) — one home each.
-- [ ] **fold ergonomics in the type system** — fix the inference friction the audit surfaces so the typed-param workaround isn't needed (composes with §0's fail-closed-inference work)
 
 **Own runway — down-ranked (the lane's §6 guardrail applied to its own scope):**
 - [ ] **ban source comments** (`.dag` + `.rs`) — *separate runway, sequenced BELOW the fold items.* Orthogonal to folds (it's documentation-hygiene), load-bearing (grammar `02_parse`/`syntax`), and the item most likely to swallow the lane. Displaced cost: reviewer reads multiples of the real diff (a comment-heavy `.dag` fn is ~10% code) + LOC inflation; that's the pain, not "cleaner." Construction arc: model the live-state survivors → migrate → **delete the rest aggressively** (git is the backup) → **parser refuses free `//`** (§5, lands LAST). *(calm-seal-13: pilot CI-gate files → fan out → wall; deletion has no modeling-blocker — no gate text-scans comment bodies)*
@@ -110,7 +111,7 @@ resolve-cache enabled → one Materialization kernel (collapse the 5 caches) →
 
 **Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
 - [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) ([plan](docs/plans/compute-envelope-model.md))
-- [ ] **G2 runner deployment** — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
+- [ ] **G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate; live-fleet apply fenced for operator)* — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
 - [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile-gate so a hand-edit reds
 - [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
 
@@ -198,14 +199,15 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 - [ ] `O(n^x)→O(n log n)` substitution as per-idiom rules (open: cleaner shared framing?)
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)
-- [ ] de-fork dsl ↔ v2 (one std authority, no historical forks)
-  - [x] turn on cross-tree import — Step 1 **LANDED** (#5473); PR-B (collapse forks) next *(nimble-koi-625)*
-    - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
-    - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
+- [ ] de-fork dsl ↔ v2 (one std authority) — **grounding cluster UNPARKED: operator ruled FreeMonoid/algebra single authority** (coproduct = structural authority; dsl record-surface derived-from-inhabitance; grounded-realization wins) → de-fork + self-host fused into one grounding lane ([brief](docs/plans/dsl-v2-defork-audit.md) §3b)
+  - [x] turn on cross-tree import — Step 1 **LANDED** (#5473)
+  - [ ] **Root A — emit-seam grounding** *(build-now)*: String/`FreeMonoid`→host `Vec` via the #5428 `RustCorpusRepr` seam; drives HostNative cargo-green *(jolly-cat #5551)*
+  - [ ] **Root B — generic-inference keystone ✓ (#5552, in queue)** → def-unification (coproduct authority + aliases) → repoints (algebra/nat/integer/float/logic/effects/verification) → 🟡-marker dissolution *(bright-deer-111)*
+  - [ ] v1-coupled `coercion`/`node` renames — deferred to v1-delete
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
   - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
     - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**
-      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`)
+      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate must reproduce: [required facts](docs/plans/regen-verify-gate-required-facts.md)
   - [ ] TypeScript to first-class (beyond the `add` slice)
   - [ ] seed-honesty discharge (Diverse Double-Compiling)
   - [ ] collapse `src/v1` → pinned v2-emitted seed; delete the 154k hand-written lines (terminal, not a big-bang `rm`)

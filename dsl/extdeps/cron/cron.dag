@@ -1,20 +1,15 @@
-// extdeps/cron/cron.dag — POSIX crontab shell transport (`cron.Tab` operations).
-//
-// Interface shape only (DESIGN.md §3): faithful `crontab` utility primitives.
-// Schedule field grammar lives in `cron/schedule_model.dag` (`module extdeps.cron.schedule_model`).
-// Tag-based upsert/remove idempotency is workflow policy — compose `List` + `Replace` in
-// `gunbc/tools/cron_tag.dag`, not here.
-//
-// External authority: POSIX.1-2017 user crontab interface (crontab utility / on-disk entries)
-// — schedule-shaped data cites the same POSIX volume as the carrier module header.
-
 module extdeps.cron
 
-// 🟡 dissolved — feature:cron-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); extdeps.cron.mock_corpus (whole-tree loaded by M4.1) governs WHICH
-// cron.Tab ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html"
+  }
+}
+
 service cron.Tab {
   operation List {
     input {}
@@ -27,7 +22,6 @@ service cron.Tab {
     }
   }
 
-  // Install crontab from stdin — POSIX `crontab -` (replaces the user's entire table).
   operation Replace {
     input { entries: String }
     output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }

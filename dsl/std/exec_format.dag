@@ -1,26 +1,12 @@
-// std/exec_format.dag — format-agnostic executable vocabulary for the §10 execution-contract layer.
-//
-// Scope: LoadSegment, EntryPoint, Relocation — shared carriers before per-format extdeps
-// (ELF/PE/Mach-O) inhabit ExecutableFormat. Slice 1: ELF x86-64 subset only.
-// Anchor: per-format spec URLs live in extdeps/formats/* (gABI, PE/COFF, Mach-O loader.h).
-//
-// Uses Int / Bool / List / records / enums — no distribution-enum imports (v2-green standalone).
-
 module std.exec_format
 
 import std.types { Bool }
 
-// Closed format-family coproduct: arms added when extdeps/formats/<fmt>/ lands a cited inhabitant.
-// 🟢 TERMINAL — Elf, Pe, MachO are irreducible gABI/PE-COFF/Mach-O loader families.
-// Uninhabited-generality guard: Pe + MachO are prose-anticipated; arms present to close the
-// string-sum before those slices land, preventing the undeclared-sum anti-pattern flagged by
-// modeling discipline. No PE/Mach-O data inhabits these arms until their extdeps/ slices ship.
 type ExecutableFormatFamily
-  = Elf    // ELF (gABI); extdeps/formats/elf/ (Slice 1 complete)
-  | Pe     // PE32+ (Microsoft PECOFF); extdeps/formats/pe/ (Slice 2, anticipated)
-  | MachO  // Mach-O (Apple); extdeps/formats/mach_o/ (Slice 3, anticipated)
+  = Elf
+  | Pe
+  | MachO
 
-// Format identity carrier — one row per concrete binary format targeting this OS pillar.
 type ExecutableFormat {
   family: ExecutableFormatFamily
 }
@@ -31,7 +17,6 @@ type SegmentPermission {
   executable: Bool
 }
 
-// Loadable segment — maps to PT_LOAD (and cognates in other formats in later slices).
 type LoadSegment {
   file_offset: Int
   virtual_address: Int
@@ -45,7 +30,6 @@ type EntryPoint {
   virtual_address: Int
 }
 
-// Relocation record — format-agnostic carrier; ELF-specific typing lives in extdeps/formats/elf.
 type Relocation {
   offset: Int
   symbol_index: Int

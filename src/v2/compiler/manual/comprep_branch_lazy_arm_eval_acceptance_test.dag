@@ -1,11 +1,3 @@
-// Scope: Q-B3 lazy-arm fix carrier acceptance — SPINE-REACHED control only (05_eval ruling
-// adhoc-edb982e2-4a4). Witness reaches eval_runtime_control_node / eval_branch_node_eval on
-// body-root Branch; does NOT cover control in data-flow arg position (eval_runtime_node_via_
-// data_flow_fold — 🟡 COMPREP-EVAL-NESTED-ARG-CONTROL; follow-on carrier required).
-// Assertions per combined Branch (one per direction):
-//   (1) untaken arm never interpreted (divergent atom on real eval path);
-//   (2) chosen counted arm interpreted exactly once (allocate_literal touch counter).
-
 module v2.test.manual.comprep_branch_lazy_arm_eval_acceptance
 
 import v2.compiler.eval {
@@ -506,8 +498,6 @@ fn lazy_arm_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   }
 }
 
-// Combined: if true then <counted> else <divergent> — untaken divergent never fires (==0)
-// and chosen counted allocate_literal fires exactly once (touch counter == 1).
 fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
@@ -521,7 +511,6 @@ fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
   )
 }
 
-// Mirror: if false then <divergent> else <counted>.
 fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
@@ -535,7 +524,6 @@ fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
   )
 }
 
-// Claim-local allocate_literal touch counter: second interpretation rejects when env carries touch>=1.
 fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
   let env = empty_evaluation_environment()
   match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: env) {

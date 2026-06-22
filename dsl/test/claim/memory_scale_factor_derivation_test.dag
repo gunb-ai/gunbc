@@ -1,6 +1,3 @@
-// Discriminating witness for the DERIVED IEC memory factors (Kibi/Mebi/Tebi now come from
-// the single kibi_factor() authority by multiplication, not per-scale literals). Goes RED
-// if a derivation is wrong (e.g. Tebi != gibibyte * kibi).
 module test.claim.memory_scale_factor_derivation
 
 import std.logic { Bool }

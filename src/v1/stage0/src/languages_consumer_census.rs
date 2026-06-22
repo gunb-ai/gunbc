@@ -1,17 +1,3 @@
-//! Per-declaration consumer census for `dsl/std/languages.dag`.
-//!
-//! **SCAFFOLD (DESIGN.md §7)** — bootstrap text-scan census only.
-//! Dissolve-on (owner: `v2.lens.languages_consumer_census`): delete this module when
-//! Node-tree decl projection + import-graph resolution replace the text scan in that lens.
-//! Concrete gate: `languages.dag` ~64-row delete PR after `rust_spec`/`go_spec`/`python_spec` repoints.
-//!
-//! Host-reads the live tree without cross-resolve: each `data` row in
-//! `dsl/std/languages.dag` is keyed by `decl_name`; consumers are files whose
-//! `.dag`/`.rs` text contains a word-boundary reference to that name, excluding
-//! the authority file itself. Rows with zero external consumers are
-//! `composition_only` — safe to dissolve once `LanguageSpec` compositions repoint
-//! to `extdeps/languages/*` (the ~64 per-language duplicate rows).
-
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
