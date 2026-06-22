@@ -35,8 +35,10 @@
 //
 // THE PARTITION THAT FALLS OUT (DESIGN §5, decidability = the wall/review line):
 //   VALIDITY is decidable here as a graph fact — the argument FORM is well-formed iff
-//   it is rooted at the axioms (no orphan), acyclic (no claim derives itself), and
-//   closed (no smuggled axiom). So validity is a §5 ① WALL, checked by construction.
+//   it is non-vacuous, rooted at the axioms (no orphan), acyclic (no claim derives
+//   itself), and closed (no smuggled axiom). So validity is a §5 ① WALL, checked by
+//   construction — and fail-CLOSED on the empty argument (non-vacuity is conjoined into
+//   the headline predicate, not left for the caller to remember).
 //   SOUNDNESS is NOT decidable — whether each non-logical premise (A1-A3) is actually
 //   true is a domain question, assumed not proven; whether each inference step truly
 //   entails is first-order validity of the *content* (semi-decidable at best). So
@@ -151,18 +153,24 @@ fn argument_axiom_set_is_closed(a: Argument) -> Bool {
   covert_root_count == 0 && dangling_premise_count == 0
 }
 
-// VALIDITY: the argument FORM is well-formed — rooted at the axioms, acyclic, closed.
-// Decidable, by construction. (SOUNDNESS — the premises actually being true — is the
-// undecidable ③ residue and has no fold here; see the header "never"-trap note.)
-fn argument_form_is_valid(a: Argument) -> Bool {
-  argument_has_no_orphan(a)
-    && argument_is_acyclic(a)
-    && argument_axiom_set_is_closed(a)
-}
-
-// §5 non-vacuity floor: an empty argument fail-opens every check above (a zero-claim
-// universe vacuously has no orphan), so an argument with no axioms or no propositions
-// is itself invalid.
+// §5 non-vacuity floor: an empty argument fail-OPENS the three shape checks (a
+// zero-claim universe vacuously has no orphan / no cycle / no covert root), so an
+// argument with no axioms or no propositions is itself invalid. This is the single
+// authority for the non-vacuity fact; argument_form_is_valid composes it (it does not
+// re-implement the count check).
 fn argument_is_non_vacuous(a: Argument) -> Bool {
   (a.axioms |> count) > 0 && (a.propositions |> count) > 0
+}
+
+// VALIDITY: the argument FORM is well-formed — non-vacuous, rooted at the axioms,
+// acyclic, closed. Decidable, by construction. Non-vacuity is conjoined here (not left
+// for the caller to remember) so the headline validity predicate is fail-CLOSED on the
+// empty argument: there is no way to ask "is this a valid form?" and have an empty
+// Argument pass. (SOUNDNESS — the premises actually being true — is the undecidable ③
+// residue and has no fold here; see the header "never"-trap note.)
+fn argument_form_is_valid(a: Argument) -> Bool {
+  argument_is_non_vacuous(a)
+    && argument_has_no_orphan(a)
+    && argument_is_acyclic(a)
+    && argument_axiom_set_is_closed(a)
 }
