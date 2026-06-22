@@ -54,7 +54,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **construction-justification rule** (authoring-time) — justify why a class can't be construction before adding a lens (#5476; [plan](docs/plans/construction-justification-rule.md), [DESIGN §6](DESIGN.md)) *(silent-wren-739)*
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating ([plan](docs/plans/expressibility-frontier.md))
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
-- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc
+- [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc ([scope](docs/plans/axiom-syllogism-lens.md))
 
 ## 1. CI under control (the correctness floor)
 
