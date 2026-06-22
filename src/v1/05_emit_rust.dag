@@ -218,7 +218,8 @@ fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
 // The old per-module gates (rust_corpus_includes_v1_compiler / rust_emit_faithful_text_carrier)
 // were deleted: a per-module gate let a dsl module in a v1-bundled crate emit the faithful
 // carrier while its siblings emit host — divergence was WRITABLE (a §5 dual-authority breach).
-// §6-transitional: corpus_repr collapses to HostNative when src/v1 is deleted (seed→zero).
+// §6-transitional: when src/v1 is deleted (seed→zero) no module has_seed, so corpus_repr
+// resolves uniformly to FaithfulFreeMonoid — the pure-v2 faithful target; HostNative dissolves with the seed.
 // Shape-reading predicates over the single corpus_repr authority (match, not `==`:
 // a bare-variant `==` adjacent to a block `{` collides with record-literal syntax).
 fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> Bool {
