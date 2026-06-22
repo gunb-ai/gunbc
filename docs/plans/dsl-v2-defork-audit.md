@@ -65,20 +65,38 @@ collapses — std collapses resolve cross-tree clean, no `std.*` collision, no `
 ## 2. Fork census, re-verdicted by execution (the real shape)
 
 Three tiers. **Mirror** = v2's used symbols ⊆ dsl → mechanical delete + repoint. **Not-a-fork** =
-shared symbol count is *zero*, the basename is the only collision → rename to disambiguate.
-**Grounding cluster** = the same concept grounded on a different axis/realization in each tree (shared
-symbols exist, often with a *diverging shared-type body*) → single-authority **design**, operator-owned,
-downstream of #5428 + the model↔realization grounding. *Not* a repoint and *not* a clean additive merge.
+shared symbol count is *zero*, the basename is the only collision → rename to disambiguate — **but where
+the dsl-side file is consumed by the `src/v1` seed (import + emitted Rust + a guard test), the rename
+cascades into the seed and is held** (see the v1-coupled subsection). **Grounding cluster** = the same
+concept grounded on a different axis/realization in each tree (shared symbols exist, often with a
+*diverging shared-type body*) → single-authority **design**, operator-owned, downstream of #5428 + the
+model↔realization grounding. *Not* a repoint and *not* a clean additive merge.
 
 ### Mechanical lane (still-deer authority, bright-stag review) — finishable independently
 
 | concept | shared | each side | verdict / state |
 |---|---|---|---|
 | **reducible** | 8 (full set) | v2 header self-declares "ported from dsl" | **Mirror — DONE** (#5507) |
-| **measure** | dsl 40-decl authority ⊇ all 10 importer symbols | v2 = 3-decl declared mirror | **Mirror — in flight** (#5509) |
-| **coercion** | **0** | dsl = cast / type-representation vocab (`TypeCheckpoint`, `CastRule`, `CastSyntax`, `CallableRepr`, `dag_cast_rules`); v2 = coercion-as-homomorphism (`coercion_fold` via `find_witness`, `CoercionWitness/Result/Quality`) | **Not-a-fork — rename** (in flight). Per DESIGN §4 the *fold* **is** coercion → keep `coercion` for the v2 side, rename the dsl side to `cast_rules`. (4 dsl importers vs 14 v2 → rename dsl, lower disruption.) |
-| **node** | **0** | dsl = 3-decl, **0-importer** "compiler inductive structure" (`compiler_inductive_fields`/`compiler_recursive_types`) — a name-imposter; v2 = 126-decl, **506-importer** real Node substrate | **Not-a-fork — rename** (dispatched). Rename the dead dsl side; the v2 substrate is the real `node` authority. Zero risk (no importers move). |
+| **measure** | dsl 40-decl authority ⊇ all 10 importer symbols (only 1 importer, `timeseries_signal`, across all trees) | v2 = 3-decl declared mirror | **Mirror — in flight** (#5509, CI-green, ready) |
 | **probe_selector** (step-4) | — | `Option<T>` vs `Optional<T>` + `std.*` collision on the `compute_fabric` data import | **Unblock** (dispatched). Independent of the grounding cluster. |
+
+### Name-collision renames — V1-SEED-COUPLED (held for ruling)
+
+`coercion` and `node` are genuine not-a-forks (shared symbol count = 0; the dsl and v2 files denote
+different concepts), **but they are not clean-lane renames**: the dsl-side file in each is consumed by
+the `src/v1` bootstrap seed, so renaming its module cascades into the seed. *Caught by execution —
+importer greps that omitted `src/v1` initially mis-scoped both as low/zero-importer.* **Ruled DEFER**
+(bright-stag, 2026-06-22): both renames touch `04_infer` (a DESIGN-named load-bearing inference stage),
+the emitted Rust seed, and a guard test — high cost + load-bearing **now**, for a pure naming-collision
+fix whose collision is largely a v1-existence artifact. The cost drops toward zero once v1's consumers
+are gone (DESIGN §7 / ROADMAP §5 shrink-to-zero), and **the deferred work shrinks rather than just
+moving** (see each row). Dissolution trigger: *when v1's consumers of `dsl/std/{node,coercion}` are
+removed (v1 shrink).*
+
+| concept | shared | each side | v1 coupling | verdict / state |
+|---|---|---|---|---|
+| **coercion** | **0** | dsl = cast / type-representation vocab (`TypeCheckpoint`, `CastRule`, `CastSyntax`, `CallableRepr`, `dag_cast_rules`); v2 = coercion-as-homomorphism (`coercion_fold` via `find_witness`, `CoercionWitness/Result/Quality`) | dsl side imported by `src/v1/coercion.dag` + `src/v1/04_infer.dag`, emitted to `src/v1/stage0/src/std_coercion.rs` (+ 4 `dsl/extdeps/languages/*/types.dag` that survive v1) | **DEFERRED.** The 4 extdeps importers survive v1, so `dsl/std/coercion.dag` persists — on v1-delete the rename **shrinks to a v1-free scope** (4 extdeps + v2, no seed / no `04_infer` / no guard test), a clean disambiguation. End-state (DESIGN §4): the *fold* **is** coercion → keep `coercion` for the v2 side, rename the dsl cast vocab to `cast_rules`. (#5510 attempted it but broke v1 — missed the `src/v1` consumers — and over-scoped by renaming the v2 side; **closed**, not merged.) |
+| **node** | **0** | dsl = `compiler_inductive_fields`/`compiler_recursive_types`/`is_compiler_recursive_type` — the complexity analyzer's inductive-structure *authority* (instance of `std/induction.dag`); v2 = 126-decl, 506-importer real Node substrate | dsl side imported by `src/v1/04_infer.dag`, emitted to `src/v1/stage0/src/std_node.rs`, guarded by `src/v1/tests/src/source_audit.rs`; `compiler_inductive_fields` is consumed **only by v1, never v2** | **DEFERRED — self-dissolves.** Since `compiler_inductive_fields` is v1-only, on v1-delete `dsl/std/node.dag` goes **dead → delete it, collision gone, no rename needed at all.** It is a live v1-only authority today (not a dead imposter); the collision with the v2 substrate is a v1-existence artifact. |
 
 ### Grounding cluster (operator authority) — 7 concepts, a unification *design*
 
@@ -105,11 +123,13 @@ repoint.
 1. **Mirrors:** `reducible` (DONE #5507), `measure` (#5509). Delete the v2 copy, repoint imports to
    `dsl/std/*`; decrement the `fact_cardinality.dag` cross-tree baseline by *exactly* the deleted
    symbol count; stay green by execution (the existing witnesses are the oracle).
-2. **Renames (not-a-forks):** `coercion` (rename the dsl cast vocab → `cast_rules`), `node` (rename the
-   dead 0-importer dsl side). A rename deletes no symbol — verify the baseline is unchanged. Each
-   **atomic** (stage the renamed file + all repointed importers in one push — see hazard below).
-3. **Step-4 data import:** `probe_selector` `Option`/`Optional` + `std.*` collision, so
+2. **Step-4 data import:** `probe_selector` `Option`/`Optional` + `std.*` collision, so
    `dsl/product/compute_fabric` imports cleanly into v2.
+
+**Deferred to v1-shrink (the not-a-fork renames):** `coercion`, `node`. v1-seed-coupled; ruled DEFER
+with the dissolution trigger *"when v1's consumers of `dsl/std/{node,coercion}` are removed"* — at which
+point `node` self-dissolves (delete the dead file) and `coercion` shrinks to a v1-free disambiguation.
+Not dispatched until then.
 
 **Grounding cluster — held for the operator** (a single-authority unification *design*, downstream of
 the numeric tower #5428 and the model↔realization grounding): `algebra`, `logic`, `nat`, `integer`,
@@ -129,8 +149,17 @@ file of a rename/collapse together.
 ## 4. Dissolution trigger (DESIGN §6)
 
 Delete this doc when the fork census reaches zero — when no `std` basename denotes two concepts and
-every concept has a single authority. The mechanical lane (§3 steps 1–3) dissolves into its carriers
-(absent files, re-pointed imports) as each PR lands. The **grounding-cluster** portion (the 7 concepts)
-is downstream of the operator's grounding-unification design; this doc tracks it as decision-input
-until that design lands and the repoints become mechanical. At that point the carriers tell the whole
-story and this audit is redundant.
+every concept has a single authority. The census now has **three categories**, dissolving on different
+triggers:
+
+- **(a) True mirrors** (`reducible`, `measure`) — mechanical collapse; dissolve into their carriers
+  (absent files, re-pointed imports) as each PR lands. Plus `probe_selector` (the step-4 data-import
+  unblock), independent.
+- **(b) Grounding divergences** (`algebra`, `logic`, `nat`, `integer`, `float`, `effects`,
+  `verification`) — downstream of the operator's grounding-unification design; tracked here as
+  decision-input until that design lands and the repoints become mechanical.
+- **(c) v1-artifact collisions** (`node`, `coercion`) — deferred to v1-shrink; trigger *"when v1's
+  consumers of `dsl/std/{node,coercion}` are removed"* (`node` self-dissolves, `coercion` shrinks to a
+  v1-free rename).
+
+At the point all three are resolved the carriers tell the whole story and this audit is redundant.
