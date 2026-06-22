@@ -1,0 +1,126 @@
+module product.budget_tree
+
+import std.measure { ByteSize, byte_size, byte_size_count }
+
+// Hierarchical memory budget — the single authority for "how much does this node have, and how is it
+// partitioned among its children". Root = physical RAM; each level (host -> {OS, sccache, containers,
+// runner-slice} -> runner -> job -> within-job spawn) INHERITS a budget from its parent and
+// sub-allocates to its children. A node reads its OWN allocated budget (the cgroup memory.max its
+// parent set), never the physical host — "you already know exactly what you have". This is the §2
+// one-concept-every-scale generalization that subsumes spawn_width, runner placement, and compile-jobs
+// into consumer leaves (each was patching a symptom of the one missing invariant: a parent that never
+// allocated, so its children grabbed physical RAM and over-committed).
+//
+// Two DISTINCT regimes, never conflated (else a runtime ratchet would masquerade as a compile wall):
+//   REGIME 1 — STATIC conservation over AUTHORED budgets: a decidable, compile-time WALL. Sum of a
+//     node's children claims must not exceed its budget; an over-committed tree is unwritable by
+//     construction (§5 construction, not validation).
+//   REGIME 2 — RUNTIME reconcile of intent against MEASURED actual: a fail-closed HANDLER (the
+//     Realization pattern, intent-spec realized on the actual host). When actual capacity drops (a RAM
+//     stick dies, a cgroup shrinks), admit claims by priority until actual is exhausted, evict the
+//     rest, and raise a typed LOUD shortfall if even the guaranteed set cannot be met. NOT a wall.
+
+// QoS / eviction order. Guaranteed must be met or the machine is genuinely under-provisioned (loud
+// error); Burstable gets its floor and may be throttled; BestEffort is the first evicted when actual
+// falls below intent.
+type BudgetPriority = Guaranteed | Burstable | BestEffort
+
+// A child's claim on its parent's budget — the INTENT (authored, compile-time).
+type BudgetClaim {
+  holder: String
+  request: ByteSize
+  priority: BudgetPriority
+}
+
+// A node in the budget tree: the budget it was allocated by its parent (capacity_intent) and the
+// claims its children make on that budget.
+type BudgetNode {
+  name: String
+  capacity_intent: ByteSize
+  claims: List<BudgetClaim>
+}
+
+fn priority_eq(a: BudgetPriority, b: BudgetPriority) -> Bool {
+  match a {
+    Guaranteed => match b { Guaranteed => true  _ => false }
+    Burstable  => match b { Burstable  => true  _ => false }
+    BestEffort => match b { BestEffort => true  _ => false }
+  }
+}
+
+fn claims_of_priority(claims: List<BudgetClaim>, p: BudgetPriority) -> List<BudgetClaim> {
+  filter(claims, c => priority_eq(a: c.priority, b: p))
+}
+
+// Sum of a claim list's requests, in bytes.
+fn claims_total(claims: List<BudgetClaim>) -> ByteSize {
+  byte_size(count: fold(claims, init: 0, f: (acc, c) => acc + byte_size_count(b: c.request)))
+}
+
+// ---- REGIME 1: STATIC conservation (decidable, compile-time WALL — over-commit is unwritable) ----
+
+// Sum(children claims) <= parent budget. Authored over INTENT, so a tree that fails this is
+// over-committed BY CONSTRUCTION and must not be authored — the §5 wall (not a post-hoc validation).
+fn node_conserves(node: BudgetNode) -> Bool {
+  byte_size_count(b: claims_total(claims: node.claims)) <= byte_size_count(b: node.capacity_intent)
+}
+
+// ---- REGIME 2: RUNTIME reconcile (intent x measured-actual -> realized; fail-closed HANDLER) ----
+
+// The outcome of reconciling a node's authored claims against the MEASURED actual capacity. A runtime
+// verdict (the Realization handler), NOT a compile-time wall: AllSatisfied when actual covers intent;
+// Evicted (with the kept/evicted split) when best-effort/burstable claims are shed to fit; and
+// GuaranteedShortfall — a typed, located, LOUD error — when even the guaranteed set exceeds actual
+// (the machine is genuinely under-provisioned; never a silent OOM).
+type Reconciliation =
+    AllSatisfied { realized: List<BudgetClaim> }
+  | Evicted { kept: List<BudgetClaim>, evicted: List<BudgetClaim> }
+  | GuaranteedShortfall { shortfall: ByteSize }
+
+// Claims in priority order: Guaranteed first, then Burstable, then BestEffort — the admission order.
+fn ordered_by_priority(claims: List<BudgetClaim>) -> List<BudgetClaim> {
+  concat(
+    claims_of_priority(claims: claims, p: Guaranteed),
+    concat(
+      claims_of_priority(claims: claims, p: Burstable),
+      claims_of_priority(claims: claims, p: BestEffort)
+    )
+  )
+}
+
+// Running admission state for the reconcile fold.
+type AdmitState {
+  used: Nat
+  kept: List<BudgetClaim>
+  evicted: List<BudgetClaim>
+}
+
+// Reconcile authored claims against the measured `actual` capacity (which may differ from the node's
+// authored capacity_intent — that difference is exactly what this handler exists for). Admit in
+// priority order while the running total stays within `actual`; evict the rest; classify the outcome.
+fn reconcile(node: BudgetNode, actual: ByteSize) -> Reconciliation {
+  let actual_bytes = byte_size_count(b: actual)
+  let ordered = ordered_by_priority(claims: node.claims)
+  let final_state = fold(
+    ordered,
+    init: AdmitState { used: 0, kept: [], evicted: [] },
+    f: (st, c) =>
+      if st.used + byte_size_count(b: c.request) <= actual_bytes {
+        AdmitState {
+          used: st.used + byte_size_count(b: c.request),
+          kept: concat(st.kept, [c]),
+          evicted: st.evicted
+        }
+      } else {
+        AdmitState { used: st.used, kept: st.kept, evicted: concat(st.evicted, [c]) }
+      }
+  )
+  let evicted_guaranteed = claims_of_priority(claims: final_state.evicted, p: Guaranteed)
+  return if evicted_guaranteed.length() > 0 {
+    GuaranteedShortfall { shortfall: claims_total(claims: evicted_guaranteed) }
+  } else if final_state.evicted.length() > 0 {
+    Evicted { kept: final_state.kept, evicted: final_state.evicted }
+  } else {
+    AllSatisfied { realized: final_state.kept }
+  }
+}
