@@ -23,7 +23,7 @@ import v2.compiler.normalize { normalize, NormalizedTree }
 import v2.compiler.parse { parse }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
-import v2.std.staging { then_outcome }
+import v2.std.staging { then_outcome, cached_stage, CacheProbe, Miss }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
@@ -507,6 +507,20 @@ fn stage_resolve(lm: LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTre
 }
 
 
+// Resolve-cache seam (DESIGN §6: keep cached_stage LIVE, not inert). stage_resolve is routed
+// through cached_stage below, so the HIT/MISS decision runs on every staged compile — the
+// abstraction is consumed by the real pipeline, not only by its own witnesses. The lookup here
+// is a 🟡 SCAFFOLD: a Miss-always stub, so behaviour is byte-identical to the uncached pipeline
+// today (every input is a MISS → stage_resolve always runs). Dissolve-on: the host realization
+// layer supplies a content-addressed resolve-cache lookup (warm==cold purity oracle) — at which
+// point enabling the resolve cache (the #2 CI win) is a one-line swap of this lookup, NOT a
+// pipeline rewire. Forbidden: returning Hit without a real content-keyed cache behind it — that
+// fakes the §2 Realization key and is a §5 fail-open.
+fn resolve_cache_miss(normalized: NormalizedTree) -> CacheProbe<ResolvedTree> {
+  Miss
+}
+
+
 fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<String>> {
   fn(resolved) {
     bind_outcome(
@@ -541,7 +555,7 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
         g: then_outcome(
           f: stage_normalize(),
           g: then_outcome(
-            f: stage_resolve(lm: lm),
+            f: cached_stage(lookup: resolve_cache_miss, stage: stage_resolve(lm: lm)),
             g: stage_translate(target: target)
           )
         )
