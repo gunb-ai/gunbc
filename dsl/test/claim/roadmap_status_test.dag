@@ -20,11 +20,10 @@ module test.claim.roadmap_status
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User }
 import gunbc.roadmap_status {
-  CheckboxState, Done, Todo,
   CompletionBinding, CompletesIff, HandChecked,
   RoadmapStatusEntry,
   DriftVerdict, Drifted, Clean, Underivable,
-  pr_merged, merged_pr_numbers, derive_checkbox,
+  pr_merged, merged_pr_numbers, prs_all_merged,
   status_drift, entry_drifted,
 }
 
@@ -93,23 +92,19 @@ fn witness_merged_numbers_projection() -> Bool {
   count(nums) == 1 && (nums |> any(n => n == 5445))
 }
 
-// === Derivation: derive_checkbox ==============================================
+// === Derivation: prs_all_merged ===============================================
 
-fn checkbox_is_done(c: CheckboxState) -> Bool {
-  match c { Done => true  Todo => false }
-}
-
-// All bound PRs merged -> Done.
+// All bound PRs merged -> done.
 fn witness_all_merged_derives_done() -> Bool {
-  checkbox_is_done(c: derive_checkbox(prs: [5445], merged: [5445]))
+  prs_all_merged(prs: [5445], merged: [5445])
 }
-// A single unmerged bound PR -> Todo (not yet landed).
+// A single unmerged bound PR -> not done (not yet landed).
 fn witness_one_unmerged_derives_todo() -> Bool {
-  !checkbox_is_done(c: derive_checkbox(prs: [5445, 9999], merged: [5445]))
+  !prs_all_merged(prs: [5445, 9999], merged: [5445])
 }
-// An empty binding -> Todo (no merge evidence; fail-closed).
+// An empty binding -> not done (no merge evidence; fail-closed).
 fn witness_empty_binding_derives_todo() -> Bool {
-  !checkbox_is_done(c: derive_checkbox(prs: [], merged: [5445]))
+  !prs_all_merged(prs: [], merged: [5445])
 }
 
 // === Drift verdict: only an explicit CompletesIff binding can drift ===========
@@ -121,7 +116,7 @@ fn witness_empty_binding_derives_todo() -> Bool {
 fn witness_partial_evidence_merged_mention_stays_green() -> Bool {
   let entry = RoadmapStatusEntry {
     title: "rust-gate coverage — cites merged #5445 as partial evidence, not done",
-    claimed: Todo,
+    claimed_done: false,
     binding: HandChecked,
   }
   is_underivable(v: status_drift(entry: entry, merged: [5445]))
@@ -130,41 +125,41 @@ fn witness_partial_evidence_merged_mention_stays_green() -> Bool {
 
 // A HandChecked `[x]` is also out of the gate's reach (operator's call, no binding to check).
 fn witness_handchecked_done_underivable() -> Bool {
-  let entry = RoadmapStatusEntry { title: "audit done, no PR", claimed: Done, binding: HandChecked }
+  let entry = RoadmapStatusEntry { title: "audit done, no PR", claimed_done: true, binding: HandChecked }
   is_underivable(v: status_drift(entry: entry, merged: []))
 }
 
 // The genuine stale-checkbox: a line EXPLICITLY bound to complete iff #5445 merges, #5445 merged,
 // box still `[ ]` -> Drifted (the #5445/#5453 realization-vocab-guard case the plan cites).
 fn witness_completesiff_merged_box_todo_drifts() -> Bool {
-  let entry = RoadmapStatusEntry { title: "bound + stale", claimed: Todo, binding: completes_iff(prs: [5445]) }
+  let entry = RoadmapStatusEntry { title: "bound + stale", claimed_done: false, binding: completes_iff(prs: [5445]) }
   is_drifted(v: status_drift(entry: entry, merged: [5445])) && entry_drifted(entry: entry, merged: [5445])
 }
 // Premature `[x]`: bound to complete iff #9999 merges, #9999 unmerged -> Drifted.
 fn witness_completesiff_unmerged_box_done_drifts() -> Bool {
-  let entry = RoadmapStatusEntry { title: "bound + premature", claimed: Done, binding: completes_iff(prs: [9999]) }
+  let entry = RoadmapStatusEntry { title: "bound + premature", claimed_done: true, binding: completes_iff(prs: [9999]) }
   is_drifted(v: status_drift(entry: entry, merged: [5445]))
 }
 // Correctly-marked `[x]` on a satisfied binding -> Clean.
 fn witness_completesiff_merged_box_done_clean() -> Bool {
-  let entry = RoadmapStatusEntry { title: "bound + honest done", claimed: Done, binding: completes_iff(prs: [5445]) }
+  let entry = RoadmapStatusEntry { title: "bound + honest done", claimed_done: true, binding: completes_iff(prs: [5445]) }
   is_clean(v: status_drift(entry: entry, merged: [5445])) && !entry_drifted(entry: entry, merged: [5445])
 }
 // Correctly-marked `[ ]` on an unsatisfied binding -> Clean.
 fn witness_completesiff_unmerged_box_todo_clean() -> Bool {
-  let entry = RoadmapStatusEntry { title: "bound + honest todo", claimed: Todo, binding: completes_iff(prs: [9999]) }
+  let entry = RoadmapStatusEntry { title: "bound + honest todo", claimed_done: false, binding: completes_iff(prs: [9999]) }
   is_clean(v: status_drift(entry: entry, merged: [5445]))
 }
 // Multi-PR binding, one ref still unmerged, box `[ ]` -> Clean (not all landed).
 fn witness_completesiff_partial_multi_todo_clean() -> Bool {
-  let entry = RoadmapStatusEntry { title: "bound + multi partial", claimed: Todo, binding: completes_iff(prs: [5445, 9999]) }
+  let entry = RoadmapStatusEntry { title: "bound + multi partial", claimed_done: false, binding: completes_iff(prs: [5445, 9999]) }
   is_clean(v: status_drift(entry: entry, merged: [5445]))
 }
 
 // The host/gate edge: bound to complete iff #5445 merges; the live PR set has #5445 merged; box
 // `[ ]` -> drift.
 fn entry_against_prs_drifts() -> Bool {
-  let entry = RoadmapStatusEntry { title: "live-edge stale", claimed: Todo, binding: completes_iff(prs: [5445]) }
+  let entry = RoadmapStatusEntry { title: "live-edge stale", claimed_done: false, binding: completes_iff(prs: [5445]) }
   entry_drifted(entry: entry, merged: merged_pr_numbers(prs: [pr_5445, pr_open_9999]))
 }
 
