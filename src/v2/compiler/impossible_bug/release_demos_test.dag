@@ -1,8 +1,4 @@
-// Scope: release impossible-bug demos over v2 lens/probe surfaces.
-// The witnesses below capture the release-drift evidence and the transport-drift
-
 module v2.test.impossible_bug.release_demos
-
 
 import v2.std.logic { Bool }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
@@ -28,7 +24,6 @@ import v2.test.impossible_bug.suboptimal_complexity {
   claim_overcost_against_structural_bound_violates
 }
 
-
 fn release_complexity_claim_catches() -> Bool {
   match test_claim_expected_outcome(c: claim_overcost_against_structural_bound_violates) {
     Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
@@ -43,7 +38,6 @@ fn release_complexity_claim_catches() -> Bool {
   }
 }
 
-
 fn release_idempotency_claim_catches() -> Bool {
   match test_claim_expected_outcome(c: claim_nonidempotent_in_idempotent_position_caught) {
     Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
@@ -57,7 +51,6 @@ fn release_idempotency_claim_catches() -> Bool {
     _ => false
   }
 }
-
 
 fn release_transport_target_contract_drift_catches() -> Bool {
   match test_claim_expected_outcome(c: claim_target_contract_drift_impossible) {
@@ -74,7 +67,6 @@ fn release_transport_target_contract_drift_catches() -> Bool {
   }
 }
 
-
 fn release_transport_wire_contract_drift_catches() -> Bool {
   match test_claim_expected_outcome(c: claim_wire_contract_drift_impossible) {
     Accepted { value: Rejected { diagnostics: expected }, diagnostics: None } =>
@@ -90,27 +82,22 @@ fn release_transport_wire_contract_drift_catches() -> Bool {
   }
 }
 
-
 fn release_transport_drift_probe_catches() -> Bool {
   release_transport_target_contract_drift_catches() &&
     release_transport_wire_contract_drift_catches()
 }
 
-
 fn release_complexity_claims_are_class_rejections() -> Bool {
   release_complexity_claim_catches()
 }
-
 
 fn release_idempotency_claims_are_class_rejections() -> Bool {
   release_idempotency_claim_catches()
 }
 
-
 fn release_transport_claims_are_class_rejections() -> Bool {
   release_transport_drift_probe_catches()
 }
-
 
 test fn witness_impossible_bug_release_demos_are_v4_claims_caught() -> Bool {
   release_complexity_claims_are_class_rejections() &&

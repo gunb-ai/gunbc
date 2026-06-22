@@ -8,21 +8,15 @@ use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::SourceFile;
 use v1_compiler::v1_std_core::CompilerDiagnostic;
 
-// ── Full DSL compilation (non-consensual: all files, no exceptions) ────
-
-/// Scans dsl/ and src/v1/ for all .dag files.
-/// No hardcoded file list. If a .dag file exists, it must compile.
-///
-/// dsl/ is compiled as a flat unit (all files together).
-/// src/v1/ is verified parse-clean here; the full self-compile pipeline
-/// is tested by strict_compile_diagnostic_count (which also discovers
-/// src/v1/ files from disk, no hardcoded list).
 #[test]
+<<<<<<< HEAD
 #[ignore = "run with: cargo test -p v1-compiler-tests full_dsl_compiles -- --ignored"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn full_dsl_compiles() {
     let ws = workspace_root();
 
-    // ── dsl/ tree: full compilation ────────────────────────────────────
     let dsl_dir = ws.join("dsl");
     let mut dsl_sources: Vec<Rc<SourceFile>> = Vec::new();
     collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
@@ -37,7 +31,6 @@ fn full_dsl_compiles() {
         RenderTarget::Rust,
     );
 
-    // Complexity violations are non-blocking. Only fail on hard errors.
     let hard_diags: Vec<_> = diagnostic_messages(&dsl_result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))
@@ -55,11 +48,6 @@ fn full_dsl_compiles() {
         );
     }
 
-    // ── src/v1/ tree: parse-clean ──────────────────────────────────────
-    // Full pipeline compilation of src/v1/ is verified by
-    // strict_compile_diagnostic_count (same file discovery, 0 diag gate).
-    // Running the full pipeline again here would double the CI cost for
-    // the same coverage, so we verify parse-only.
     let v1_dir = ws.join("src/v1");
     let mut v1_count = 0;
     let mut v1_errors: Vec<String> = Vec::new();
@@ -206,8 +194,6 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
     );
 }
 
-// ── M1 regression tests ────────────────────────────────────────────────
-
 #[test]
 fn single_variant_enum_compiles() {
     let source = "module sv_test\n\ntype Wrapper = Value { inner: Int }\n\nfn unwrap(w: Wrapper) -> Int {\n  match w {\n    Value { inner: v } => v\n  }\n}\n";
@@ -215,18 +201,6 @@ fn single_variant_enum_compiles() {
     assert_no_diagnostics(&result);
 }
 
-// ── Leading-pipe single-variant nullary enum: the alias-vs-sum discriminator ──
-//
-// `type X = | Tag` is a DELIBERATE single-variant nullary sum; a bare `type X = Name`
-// stays an ALIAS and fails closed (UnresolvedType) when the RHS is not a declared
-// type. This replaces the over-widening coalesce of (closed) #4879, which silently
-// turned ANY unknown bare RHS into a nullary variant — swallowing typos. The leading
-// pipe makes the introduction explicit at the source surface, so the fix is
-// fail-closed BY CONSTRUCTION with no value/type coupling. (compute_fabric OS-catalog
-// ungate.)
-
-// Discriminator pair (a): the deliberate single-variant form resolves green — and,
-// unlike an inhabitance gate, needs NO constructor anywhere in the closure.
 #[test]
 fn leading_pipe_single_variant_nullary_enum_resolves() {
     let source = r#"module lp_single
@@ -242,8 +216,6 @@ fn tag(d: UbuntuDistribution) -> UbuntuDistribution {
     assert_no_diagnostics(&compile_dag(source));
 }
 
-// Discriminator pair (b): the FAIL-CLOSED half. A bare `= Name` to an undeclared
-// type is a typo, not a single-variant enum, and must error with UnresolvedType.
 #[test]
 fn bare_alias_unknown_rhs_fails_closed() {
     let source = "module typo_test\ntype Foo = NotARealType\nfn f(x: Foo) -> Foo { x }\n";
@@ -259,8 +231,6 @@ fn bare_alias_unknown_rhs_fails_closed() {
     );
 }
 
-// Regression: a bare `= T` where T IS a declared type stays a working alias —
-// not erroring, not turned into a single-variant enum.
 #[test]
 fn bare_alias_to_declared_type_still_aliases() {
     let source =
@@ -268,15 +238,12 @@ fn bare_alias_to_declared_type_still_aliases() {
     assert_no_diagnostics(&compile_dag(source));
 }
 
-// Regression: existing pipe-SEPARATED multi-variant (no leading pipe) is bit-for-bit
-// untouched by the optional-leading-pipe parse rule.
 #[test]
 fn pipe_separated_multi_variant_unchanged() {
     let source = "module multi\ntype Color = Red | Green | Blue\nfn pick() -> Color { Green }\n";
     assert_no_diagnostics(&compile_dag(source));
 }
 
-// Newly reachable path: a leading-pipe MULTI-variant list resolves as a normal sum.
 #[test]
 fn leading_pipe_multi_variant_resolves() {
     let source =
@@ -284,8 +251,6 @@ fn leading_pipe_multi_variant_resolves() {
     assert_no_diagnostics(&compile_dag(source));
 }
 
-// Class proof (NOT an OS special-case): two single-variant nullary enums in
-// different modules both resolve — mirrors std.os.types + gunbc.ci_emission.
 #[test]
 fn dual_site_single_variant_not_os_special_case() {
     let a = "module site.a\ntype UbuntuDistribution = | NobleNumbat2404Lts\nfn t(d: UbuntuDistribution) -> UbuntuDistribution { match d { NobleNumbat2404Lts => NobleNumbat2404Lts } }\n";
@@ -293,8 +258,6 @@ fn dual_site_single_variant_not_os_special_case() {
     assert_no_diagnostics(&compile_multi(&[("site/a.dag", a), ("site/b.dag", b)]));
 }
 
-// Real-file witness: std.os.types resolves on v2 off the broken `Option` import —
-// kernel T? optional fields + leading-pipe distro enums.
 #[test]
 fn std_os_types_resolves_with_t_question_and_leading_pipe() {
     let roots: Vec<String> = source_roots()
@@ -320,7 +283,6 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
     );
 }
 
-// Real-file witness: extdeps.cpu.types uses kernel T?, not an `Option` import (M9).
 #[test]
 fn extdeps_cpu_types_uses_kernel_t_question() {
     let content = read_v2_file("dsl/extdeps/cpu/types.dag");
@@ -334,8 +296,6 @@ fn extdeps_cpu_types_uses_kernel_t_question() {
 
 #[test]
 fn uses_binding_parses() {
-    // uses clause parses but bindings are not added to scope (M2 bug).
-    // This test ensures parsing doesn't regress.
     let source = r#"module uses_test
 
 type HttpClient { base_url: String }
@@ -347,8 +307,6 @@ fn fetch(url: String) -> String uses client: HttpClient {
     let msgs = diagnostic_messages(&result);
     eprintln!("uses_binding_parses diagnostics: {:?}", msgs);
 }
-
-// ── Basic pipeline tests ────────────────────────────────────────────────
 
 #[test]
 fn strict_pipeline_smoke() {
@@ -367,18 +325,12 @@ fn strict_pipeline_smoke() {
     );
 }
 
-// Regression for D-rescope: the Rust emitter must carry generic fn type
-// params through to the emitted signature (no synthesized bounds), and must
-// NOT treat a type param as a value param. This exercises
-// `emit_fn_def` / `emit_func_def` on a `.dag` source with both a generic
-// identity fn and a multi-type-param fn.
 #[test]
 fn generic_fn_emits_type_params_without_synthesized_bounds() {
     let source = "module gen_emit\n\nfn identity<T>(x: T) -> T {\n  x\n}\n\nfn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {\n  init\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_emit.rs");
-    // Type params appear in the signature with no `: Clone` / `: Trait` bounds.
     assert!(
         content.contains("fn identity<T>(") || content.contains("pub fn identity<T>("),
         "expected `fn identity<T>(` in emitted Rust; got:\n{content}"
@@ -387,13 +339,10 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
         content.contains("fn fold_stack<T, B>(") || content.contains("pub fn fold_stack<T, B>("),
         "expected `fn fold_stack<T, B>(` in emitted Rust; got:\n{content}"
     );
-    // The type param must not appear as a value param (would indicate the
-    // splitter misclassified it).
     assert!(
         !content.contains("identity(x: T, T:"),
         "type param T leaked into value-param list; got:\n{content}"
     );
-    // No synthesized trait bounds on type params — authority is source of truth.
     assert!(
         !content.contains("<T: Clone>") && !content.contains("<T, B: Clone>"),
         "emitter synthesized a Clone bound; got:\n{content}"
@@ -426,20 +375,10 @@ fn use_fold<T>(fold: NodeFold) -> NodeFold {
     );
 }
 
-// P3 fail-closed receipt for the `fn f<T>(T: T)` name-shadowing ambiguity
-// flagged by codex on PR #661. The emit-time type/value-param splitter keys
-// on name equality + post-resolve TypeVariable, so it can't distinguish the
-// declared type param from a value param that shadows it. Until ParamKind
-// / params-slot partition dissolves the splitter, fail-closed lives at the
-// resolve boundary (resolve_item_types in 04_resolve.dag) as a typed gunbc
-// Diagnostic. The emit-side compile_error! guard in emit_fn_def is kept as
-// a belt-and-suspenders second layer.
 #[test]
 fn generic_fn_with_value_param_shadowing_type_param_fails_closed() {
     let source = "module shadow_test\n\nfn weird<T>(t: T) -> T {\n  t\n}\n\nfn collide<T>(T: T) -> T {\n  T\n}\n";
     let result = compile_dag(source);
-    // Primary fail-closed: resolve emits a gunbc Diagnostic naming the
-    // colliding fn, so compilation does not succeed silently.
     let messages = diagnostic_messages(&result);
     assert!(
         messages
@@ -458,15 +397,10 @@ fn generic_type_declaration_smoke() {
 
 #[test]
 fn ambiguous_variant_name_resolves_correctly() {
-    // Regression: when a variant name appears in multiple enums, the module-level
-    // vtoe correction must resolve it to the correct parent. derive_variant_to_enum
-    // is first-write-wins (a cache), so ambiguous variants get an arbitrary parent
-    // that the correction fixes via structural lookup.
     let source = "module ambig_test\n\ntype Color = Red | Blue | Green\ntype Signal = Red | Yellow | Green\n\nfn pick_color() -> Color { Red }\nfn pick_signal() -> Signal { Yellow }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/ambig_test.rs");
-    // Both Red variants should be qualified to their correct parent enum
     assert!(
         content.contains("Color::Red") || content.contains("Signal::Red"),
         "ambiguous variant Red should be qualified to a parent enum"
@@ -475,9 +409,6 @@ fn ambiguous_variant_name_resolves_correctly() {
 
 #[test]
 fn fold_returns_accumulator_type() {
-    // Regression: fold must return the accumulator type, not the lambda body type.
-    // Root cause was refine_collection_result_type extracting lambda return type
-    // instead of fold_accumulator_type from AlgebraMethodSemantics.
     let source = "module fold_acc_test\n\ntype Entry { label: String }\n\nfn pick(items: List<Entry>) -> String {\n  let found = fold(items, init: { label: \"default\" }, f: (acc, e) => e)\n  found.label\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -485,8 +416,6 @@ fn fold_returns_accumulator_type() {
 
 #[test]
 fn node_binding_scoped_in_func_body() {
-    // Regression: node bindings must be in scope for subsequent statements.
-    // Root cause was stage0 parse_node_decl setting name: "" instead of the binding name.
     let source = "module node_scope_test\n\nfunc do_node(x: Int) -> Int {\n  node y = x\n  y\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -513,9 +442,6 @@ fn generic_single_param() {
     assert_no_diagnostics(&result);
 }
 
-/// Sum variants may carry positional generic type payloads (`NodeAt(LocusAnchor<T>)`);
-/// nested record patterns on instantiated generic sub-carriers must not report
-/// spurious `variant 'LocusAnchor' not found in type 'LocusAnchor'`.
 #[test]
 fn generic_variant_positional_payload_nested_record_pattern() {
     let source = r#"module test.generic_locus_anchor
@@ -585,7 +511,6 @@ fn make_node_at(s: String) -> Locus {
     );
 }
 
-/// Positional variant constructors reject named call arguments (`NodeAt(bad: x)`).
 #[test]
 fn generic_variant_positional_constructor_rejects_named_arg() {
     let source = r#"module test.positional_ctor_named_arg
@@ -609,7 +534,6 @@ fn make_bad(s: String) -> Locus {
     );
 }
 
-/// Known positional variant constructors fail closed on wrong arity (no type-ctor fallback).
 #[test]
 fn generic_variant_positional_constructor_rejects_wrong_arity() {
     let source = r#"module test.positional_ctor_wrong_arity
@@ -631,7 +555,6 @@ fn make_bad(a: Int, b: Int) -> Box {
     );
 }
 
-/// Two nested positional string-literal subpatterns get distinct scratch bindings and guards.
 #[test]
 fn generic_variant_positional_dual_string_literal_bindings() {
     let source = r#"module test.positional_dual_str_pat
@@ -664,7 +587,6 @@ fn f(x: Row) -> String {
     );
 }
 
-/// Nested named-field string literals with the same field name get path-distinct bindings.
 #[test]
 fn generic_variant_nested_same_field_string_literal_bindings() {
     let source = r#"module test.nested_same_field_str_pat
@@ -692,7 +614,6 @@ fn f(x: Row) -> String {
     );
 }
 
-/// Bare record-name patterns (no `{…}`) must not use the Conj record-destructure fallback.
 #[test]
 fn generic_record_bare_name_pattern_reports_variant_not_found() {
     let source = r#"module test.bare_record_pat
@@ -716,8 +637,6 @@ fn f(x: LocusAnchor<String>) -> String {
     );
 }
 
-// ── Match pattern binding tests ─────────────────────────────────────────
-
 #[test]
 fn match_pattern_binding_scoped_into_arm_body() {
     let source = "module match_bind\n\ntype Result = Ok { value: Int } | Err { message: String }\n\nfn extract(r: Result) -> Int {\n  match r {\n    Ok { value: v } => v\n    Err { message: _ } => 0\n  }\n}\n";
@@ -728,8 +647,6 @@ fn match_pattern_binding_scoped_into_arm_body() {
     }
     assert_no_diagnostics(&result);
 }
-
-// ── Target-specific tests ───────────────────────────────────────────────
 
 #[test]
 #[ignore = "failing: Go emit output missing 'package smoke'. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=lang-go"]
@@ -811,7 +728,6 @@ fn python_test_file_syntax_valid() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "tests/test_mock_smoke.py");
 
-    // Validate via python3 ast.parse — checks real Python syntax validity
     let status = std::process::Command::new("python3")
         .arg("-c")
         .arg(format!(
@@ -851,7 +767,6 @@ fn go_test_file_syntax_valid() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "mock_smoke_test.go");
 
-    // Valid Go test structure
     assert!(
         content.contains("package "),
         "Go test file must declare a package"
@@ -866,7 +781,6 @@ fn go_test_file_syntax_valid() {
         "Go test file must reference testing.T"
     );
 
-    // Must not contain syntax from other targets
     assert!(
         !content.contains("fn "),
         "Go test file must not contain Rust 'fn ' syntax"
@@ -980,8 +894,6 @@ fn dag_pipeline_smoke() {
     );
 }
 
-/// Regression for recursive by-value DAG serialization: shared subgraphs must
-/// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
 #[test]
 fn dag_artifact_shares_one_node_record() {
     let source = "module share_test\n\ntype Box { value: Int }\n\nfn twice(x: Box) -> Box { x }\n";
@@ -1027,9 +939,6 @@ fn dag_artifact_shares_one_node_record() {
     );
 }
 
-/// Resolved back-links must not split collection identity: key, fingerprint, and
-/// nodes-table record must all refer to the canonical declaration even when the
-/// importer module is collected before the defining module (T-37 / openai-pro RC).
 #[test]
 fn dag_collect_resolved_peel_keeps_canonical_declaration() {
     let files = &[
@@ -1080,8 +989,6 @@ fn dag_collect_resolved_peel_keeps_canonical_declaration() {
     );
 }
 
-/// Typed expression nodes must keep their own nodes-table identity (codex RC):
-/// `inferred: Resolved(type)` on ExprVar must not collapse refs to the type declaration.
 #[test]
 fn dag_collect_typed_expression_keeps_own_identity() {
     let source = "module expr_id\n\nfn id(x: Int) -> Int { x }\n";
@@ -1245,8 +1152,6 @@ fn dag_artifact_callable_params_preserved() {
     );
 }
 
-// ── Multi-module tests ──────────────────────────────────────────────────
-
 #[test]
 fn multi_module_synthetic() {
     let files = &[
@@ -1260,7 +1165,6 @@ fn multi_module_synthetic() {
         ),
     ];
     let result = compile_multi(files);
-    // Should not crash; diagnostics acceptable but not required to be zero
     let _ = diagnostic_messages(&result);
 }
 
@@ -1272,7 +1176,6 @@ fn bare_import_wildcard_survives_pipeline() {
     ];
     let result = compile_multi(files);
     assert_no_diagnostics(&result);
-    // Stage0 renames module "main" to "main_mod" to avoid Rust's main.rs entry point
     let content = find_file(&result, "src/main_mod.rs");
     assert!(
         content.contains("use crate::dep"),
@@ -1320,7 +1223,6 @@ fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
     assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
         typecheck.clone()
     ));
-    // Discovery gate demotes; strict gate (= interpreter blocking) does not.
     assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
     assert!(is_interpreter_blocking_diagnostic(typecheck));
 }
@@ -1361,8 +1263,6 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         }
     }
 
-    // One representative whole-tree compile surfaces the demoted debt magnitude
-    // without re-resolving every roster entry (overlapping closures).
     let sample = ws
         .join("src/v2/workflow/ci_floor_plan.dag")
         .to_string_lossy()
@@ -1473,8 +1373,6 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     );
 }
 
-// ── Semantic / typecheck tests ──────────────────────────────────────────
-
 #[test]
 fn lambda_record_optional_fields_are_wrapped() {
     let source = "module test\ntype Msg { text: String  email: String? }\nfn make(t: String) -> Msg {\n  Msg { text: t, email: \"a@b.com\" }\n}\n";
@@ -1488,7 +1386,11 @@ fn lambda_record_optional_fields_are_wrapped() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "stage0 does not yet validate that func defaults must be literals"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn workflow_cli_defaults_must_be_literal() {
     let source = "module test\nfn helper() -> String { \"x\" }\nfunc greet(name: String = helper()) -> String { name }\n";
     let result = compile_dag(source);
@@ -1568,7 +1470,6 @@ fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
     );
 }
 
-// self_gen8 falsification probes (#4127 worksheet §4) — emit_imports + parametric type-alias emission.
 #[test]
 #[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
 fn self_gen8_f1_type_import_skips_variant_parent_expansion() {
@@ -1627,9 +1528,6 @@ fn self_gen8_f2_target_source_import_no_carrier_kind_reexport() {
 
 #[test]
 fn self_gen8_variant_import_uses_defining_module_not_import_site_for_parent() {
-    // Emitter probe: variant-only import must qualify via the enum's defining module.
-    // Resolve boundary is tested separately — variants are not re-exported through a
-    // module that only imported the parent enum type (see diagnostics.rs).
     let files = &[
         ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
         (
@@ -2402,7 +2300,11 @@ fn map_index_emits_lookup_style_rust() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "Rc sharing bridge regressed from partial cherry-pick; needs full bootstrap-closure branch"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn rust_container_ops_emit_rc_sharing_bridges() {
     let source = "module test_ff8\nfn empty_registry() -> Map<String, Int> { empty_map() }\nfn keys(m: Map<String, Int>) -> List<String> { map_keys(m) }\nfn values(m: Map<String, Int>) -> List<Int> { map_values(m) }\nfn prefix(xs: List<Int>) -> List<Int> { xs |> take(3) }\nfn append_one(xs: List<Int>) -> List<Int> { xs |> append(42) }\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
@@ -2575,16 +2477,12 @@ fn emit_non_empty_wrappers() {
     assert_no_diagnostics(&result);
 }
 
-// ── Emit pipe methods ───────────────────────────────────────────────────
-
 #[test]
 fn emit_pipe_methods() {
     let source = "module test\n\nfn example(items: List<String>) -> Int {\n  items |> count\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
-
-// ── Parse error handling ────────────────────────────────────────────────
 
 #[test]
 fn parse_error_does_not_leak_to_resolve() {
@@ -2597,10 +2495,12 @@ fn parse_error_does_not_leak_to_resolve() {
     );
 }
 
-// ── Complexity report tests ─────────────────────────────────────────────
-
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_report_structured() {
     let source = "module cplx\nfn constant_work(x: Int) -> Int { x }\nfn linear_map(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i + 1 })\n}\nfn linear_fold(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn nested_iteration(groups: List<List<Int>>) -> List<Int> {\n  flat_map(groups, fn(g) { map(g, fn(i) { i }) })\n}\nfn filter_then_map(items: List<Int>) -> List<Int> {\n  let filtered = filter(items, fn(i) { i > 0 })\n  map(filtered, fn(i) { i * 2 })\n}\nfn for_each_loop(items: List<Int>) -> List<Int> {\n  for i in items { i + 1 }\n}\nfn count_items(items: List<Int>) -> Int {\n  items |> count\n}\n";
     let result = compile_dag(source);
@@ -2614,22 +2514,12 @@ fn complexity_report_structured() {
     );
 }
 
-// ── Hermetic complexity tests ──────────────────────────────────────────
-//
-// These test specific recursion/iteration patterns against known cost
-// formulas. They verify that the complexity analyzer correctly handles:
-// - Simple iteration (fold, map, filter)
-// - Self-recursive functions (tree walks)
-// - Multi-branch match with self-calls (structural descent)
-// - Nested iteration (fold inside fold)
-// - Non-recursive functions (baseline)
-//
-// Each test compiles a .dag program and checks cost shape.
-// These are regression tests for the decidability invariant.
-
-/// Non-recursive functions should always have Proven certainty.
 #[test]
+<<<<<<< HEAD
 #[ignore = "119s — hanging in complexity analysis; triage under PERF track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_non_recursive_proven() {
     let source = r#"module baseline
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -2641,7 +2531,6 @@ fn pick(x: Int, y: Int) -> Int {
     assert_no_diagnostics(&result);
 }
 
-/// fold/map/filter over collections should be bounded.
 #[test]
 fn complexity_collection_iteration_bounded() {
     let source = r#"module iter
@@ -2663,8 +2552,6 @@ fn nested_sum(matrix: List<List<Int>>) -> Int {
     let _result = compile_dag(source);
 }
 
-/// Self-recursive functions with a single self-call (linear recursion)
-/// should be classified as LinearRecursion.
 #[test]
 fn complexity_linear_recursion_bounded() {
     let source = r#"module recur
@@ -2679,9 +2566,6 @@ fn sum_list(items: List<Int>) -> Int {
     assert_no_diagnostics(&result);
 }
 
-/// Multi-branch match where each arm has a self-call on a child should
-/// be recognized as tree traversal (path-max = 1 per arm), not branching
-/// recursion. This is the key test for max_path_self_calls.
 #[test]
 fn complexity_match_arms_are_mutually_exclusive() {
     let source = r#"module tree
@@ -2702,8 +2586,6 @@ fn eval(e: Expr) -> Int {
     assert_no_diagnostics(&result);
 }
 
-/// Sequential if-return branches should be treated as mutually exclusive
-/// paths through the block, not summed as if they all execute.
 #[test]
 fn complexity_early_return_tail_recursion_is_single_path() {
     let source = r#"module tail_paths
@@ -2735,7 +2617,6 @@ fn walk(t: Tree, depth: Int) -> Int {
     assert_no_diagnostics(&result);
 }
 
-/// for-each loops should be bounded by collection size.
 #[test]
 fn complexity_foreach_bounded() {
     let source = r#"module foreach
@@ -2750,7 +2631,6 @@ fn process_items(items: List<Int>) -> Int {
     assert_no_diagnostics(&result);
 }
 
-/// Arithmetic descent with n-1 on a single-call path must be accepted.
 #[test]
 fn soundness_arithmetic_descent_single_call_accepted() {
     let source = r#"module soundness_arith
@@ -2761,14 +2641,6 @@ fn countdown(n: Int) -> Int {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
-
-// ── CX-A / CX-C regression tests ─────────────────────────────────────
-//
-// These tests exercise the TokenPosition dimension (CX-A) and the
-// lambda-iteration descent path (CX-C) added for parser/tree proofs.
-//
-// Default compile pipeline skips complexity (analyze_complexity: false).
-// We call build_complexity_report directly to get real complexity results.
 
 fn compile_dag_with_complexity(
     source: &str,
@@ -2818,12 +2690,15 @@ fn parse_items(state: ParserState) -> ParseResult {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    // Parser with advance + .state should produce summaries.
     assert!(complexity.function_classes.contains_key("parse_items"));
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn soundness_lambda_fold_children_accepted() {
     let source = r#"module lambda_fold
 type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
@@ -2837,35 +2712,11 @@ fn sum_tree(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    // Fold over t.children with self-call passing child should produce summaries.
     assert!(complexity.function_classes.contains_key("sum_tree"));
 }
 
-// ── Complexity class coverage ─────────────────────────────────────────
-//
-// These tests verify that the analyzer produces the correct cost formula
-// CLASS for each complexity tier reachable by .dag programs. They check
-// the formula shape (via classify_complexity) and certainty level.
-//
-// Coverage map (reachable complexity classes):
-//
-//   O(1)     — constant: arithmetic, field access, conditionals
-//   O(n)     — linear: single fold/map/filter/for
-//   O(n²)    — quadratic: nested fold (fold-inside-fold)
-//   O(n×m)   — bilinear: fold over one collection, inner fold over another
-//   O(n^k)   — polynomial: k-nested iteration
-//   ~O(n lg n) — sort_by: Conservative certainty (algebra lacks log)
-//
-// NOT reachable by .dag programs (no primitive produces them):
-//   O(log n) — no halving primitive
-//   O(√n)    — no sqrt primitive
-//   O(2^n)   — decidability prevents unbounded branching
-//   O(n!)    — not constructible from bounded iteration
-
 use v1_compiler::v1_compiler_complexity::{classify_complexity, CostExpr, SizeExpr};
 
-/// Helper: get the complexity class string for a function in a compile result.
-/// The report stores pre-classified strings ("O(1)", "O(n)", etc.).
 fn complexity_class_of(
     result: &v1_compiler::v1_compiler_compile::PipelineResult,
     func: &str,
@@ -2873,19 +2724,20 @@ fn complexity_class_of(
     result.complexity.function_classes.get(func).cloned()
 }
 
-/// Helper: check if a function's complexity class contains "log".
 fn class_contains_log(class: &str) -> bool {
     class.contains("log")
 }
 
-/// Helper: check if a function is O(1).
 fn is_constant_class_str(class: &str) -> bool {
     class == "O(1)"
 }
 
-/// O(1) — constant time: pure arithmetic and conditionals.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_class_constant() {
     let source = r#"module constant
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -2903,13 +2755,15 @@ fn triple(x: Int) -> Int { x * 3 }
             func,
             class
         );
-        // Certainty not in report (classified strings only). All costs are concrete.
     }
 }
 
-/// O(n) — linear: single fold, map, filter, count.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_class_linear() {
     let source = r#"module linear
 fn sum_items(items: List<Int>) -> Int {
@@ -2935,9 +2789,12 @@ fn pos_only(items: List<Int>) -> List<Int> {
     }
 }
 
-/// O(n²) — quadratic: nested fold over same collection.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_class_quadratic() {
     let source = r#"module quadratic
 fn all_pairs_sum(items: List<Int>) -> Int {
@@ -2949,9 +2806,6 @@ fn all_pairs_sum(items: List<Int>) -> Int {
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
     let class = complexity_class_of(&result, "all_pairs_sum");
-    // Nested fold over same collection: analyzer may simplify O(n*n) to O(n)
-    // because it tracks collection identity. The key assertion is: a concrete
-    // bound exists.
     assert!(
         class.is_some(),
         "all_pairs_sum should have a complexity class"
@@ -2963,9 +2817,12 @@ fn all_pairs_sum(items: List<Int>) -> Int {
     );
 }
 
-/// O(n × m) — bilinear: fold over one collection, inner operation on another.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_class_bilinear() {
     let source = r#"module bilinear
 fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
@@ -2977,8 +2834,6 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
     let class = complexity_class_of(&result, "cross_count");
-    // Bilinear: fold over rows with inner fold over cols.
-    // Analyzer should produce O(|rows| * |cols|) or a simplified form.
     assert!(
         class.is_some(),
         "cross_count should have a complexity class"
@@ -2990,9 +2845,12 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
     );
 }
 
-/// sort_by — should be Proven with O(n log n) via CostLog.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_class_sort_proven() {
     let source = r#"module sorting
 fn sort_ascending(items: List<Int>) -> List<Int> {
@@ -3019,7 +2877,6 @@ fn complexity_class_add_keeps_log_terms() {
         }),
         right: Rc::new(CostExpr::CostConst { value: 1 }),
     });
-    // classify_complexity returns a formatted String; verify it mentions "log".
     let formatted = classify_complexity(expr);
     assert!(
         formatted.contains("log"),
@@ -3038,7 +2895,6 @@ fn complexity_class_max_keeps_log_terms() {
             }),
         }),
     });
-    // classify_complexity returns a formatted String; verify it mentions "log".
     let formatted = classify_complexity(expr);
     assert!(
         formatted.contains("log"),
@@ -3046,9 +2902,12 @@ fn complexity_class_max_keeps_log_terms() {
     );
 }
 
-/// Structural classification: O(1) functions produce constant class.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn structural_classify_constant_is_cost_const() {
     let source = r#"module sconst
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -3063,7 +2922,6 @@ fn add(a: Int, b: Int) -> Int { a + b }
     );
 }
 
-/// Chained operations: map then fold — should be O(n), not O(n²).
 #[test]
 fn complexity_class_chain_is_linear() {
     let source = r#"module chain
@@ -3073,11 +2931,9 @@ fn sum_doubled(items: List<Int>) -> Int {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    // Chained operations are sequential (O(n) + O(n) = O(n)), not nested.
     let _class = complexity_class_of(&result, "sum_doubled");
 }
 
-/// flat_map produces O(n × body) — verify it's bounded.
 #[test]
 fn complexity_class_flat_map() {
     let source = r#"module flatmap
@@ -3090,9 +2946,12 @@ fn expand(items: List<Int>) -> List<Int> {
     assert_no_diagnostics(&result);
 }
 
-/// Verify that the structural complexity report contains all analyzed functions.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_report_covers_all_functions() {
     let source = r#"module coverage
 fn f1(x: Int) -> Int { x + 1 }
@@ -3118,16 +2977,18 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
             func, keys
         );
     }
-    // Verify every expected function has a summary in the structural data
     assert!(
         !summaries.is_empty(),
         "function_classes should not be empty"
     );
 }
 
-/// Structural data scales to any number of functions without elision.
 #[test]
+<<<<<<< HEAD
 #[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_report_scales_to_large_programs() {
     let mut source = String::from("module huge\n");
     for idx in 0..401 {
@@ -3152,18 +3013,12 @@ fn compile_sources_returns_ownership_proofs() {
     );
 }
 
-/// Match-bound variables are references (&T from destructuring), so they
-/// must always be cloned — never moved — even when used exactly once.
-/// Regression: without MatchBoundBinding in VarBindingKind, the ownership
-/// analysis treated match-bound names as LocalValueBinding and would
-/// incorrectly move them, causing rustc E0308 (expected Rc<T>, found &Rc<T>).
 #[test]
 fn match_bound_variable_always_cloned() {
     let source = "module match_own\n\nfn extract(x: String?) -> String {\n  match x {\n    Present { value: v } => v\n    Absent => \"default\"\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/match_own.rs");
-    // The match-bound variable `v` must be cloned, not moved.
     assert!(
         content.contains("v.clone()"),
         "match-bound variable should be cloned, not moved:\n{}",
@@ -3171,17 +3026,13 @@ fn match_bound_variable_always_cloned() {
     );
 }
 
-// ── Compiler self-analysis (subset) ───────────────────────────────────
-//
-// Compile a subset of the compiler's own .dag source and show the
-// complexity report. This is the evidence that the analyzer works on
-// real code with recursive tree-walk functions.
-
 #[test]
+<<<<<<< HEAD
 #[ignore = "heavy test — run manually with --ignored --nocapture"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn complexity_self_analysis_subset() {
-    // Self-compile complexity analysis requires the release binary
-    // (debug mode OOMs on ~1600 functions). Use the subprocess approach.
     let ws = crate::helpers::workspace_root();
     let stage0_bin = ws.join("target/release/gunbc");
     if !stage0_bin.exists() {
@@ -3190,8 +3041,6 @@ fn complexity_self_analysis_subset() {
         );
         return;
     }
-    // Complexity analysis is opt-in (analyze_complexity: false by default).
-    // This test validates the default pipeline compiles cleanly.
     eprintln!(
         "complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)"
     );
@@ -3220,24 +3069,12 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
     );
 }
 
-// ── Scrambled name inference tests ──────────────────────────────────────
-//
-// These tests verify that inference is name-opaque: replacing all user-defined
-// type names with arbitrary strings produces identical structural decisions
-// (typed graph shape, connective, cardinality, expr_data).
-//
-// Implementation: compile both variants with RenderTarget::Dag to get the
-// full typed graph as JSON, then normalize names and strip spans before
-// comparing the structural JSON values.
-
-/// Compile source with DAG backend and return the typed graph as parsed JSON.
 fn typed_graph_json(source: &str) -> Value {
     let result = compile_dag_target(source, RenderTarget::Dag);
     let json_str = find_file(&result, "dag-artifact.json");
     serde_json::from_str(&json_str).expect("dag artifact should be valid JSON")
 }
 
-/// Resolve a `{"$ref": "n0"}` handle through the artifact nodes table.
 fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a Value {
     let id = node_ref
         .get("$ref")
@@ -3250,10 +3087,6 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
         .unwrap_or_else(|| panic!("missing node {id} in nodes table"))
 }
 
-/// Normalize a JSON value for structural comparison:
-/// - Replace user-defined type names with ordinal placeholders
-/// - Strip span fields (source positions depend on name lengths)
-/// - Strip diagnostic messages (may contain type names)
 fn normalize_typed_graph(
     value: &Value,
     name_map: &std::collections::HashMap<&str, String>,
@@ -3262,19 +3095,16 @@ fn normalize_typed_graph(
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
             for (k, v) in map {
-                // Strip spans — they are positional, not structural
                 if k == "span" || k == "ident_span" {
                     out.insert(k.clone(), Value::Null);
                     continue;
                 }
-                // Strip diagnostic messages — they may embed type names
                 if k == "diagnostics" {
                     if let Value::Array(arr) = v {
                         out.insert(k.clone(), Value::Array(vec![Value::Null; arr.len()]));
                         continue;
                     }
                 }
-                // item_registry_keys: normalize then sort (set semantics, order is name-dependent)
                 if k == "item_registry_keys" {
                     if let Value::Array(arr) = v {
                         let mut normalized: Vec<Value> = arr
@@ -3287,7 +3117,6 @@ fn normalize_typed_graph(
                         continue;
                     }
                 }
-                // Normalize name fields: replace user-defined names with ordinals
                 if k == "name" {
                     if let Value::String(s) = v {
                         if let Some(replacement) = name_map.get(s.as_str()) {
@@ -3316,11 +3145,6 @@ fn normalize_typed_graph(
     }
 }
 
-/// Assert that two programs produce structurally identical typed graphs
-/// after normalizing user-defined type names.
-///
-/// `names_a` and `names_b` are parallel arrays: names_a[i] in source_a
-/// corresponds to names_b[i] in source_b. Both get mapped to `__T{i}`.
 fn assert_scrambled_name_structural_eq(
     source_a: &str,
     source_b: &str,
@@ -3421,8 +3245,6 @@ fn scrambled_name_inference_nested_types() {
     );
 }
 
-// ── Gist pipeline smoke ─────────────────────────────────────────────────
-
 #[test]
 fn gist_service_pipeline_smoke() {
     let source = "module gist\n\ntype GistFile {\n  filename: String\n  content: String\n}\n\ntype GistResult {\n  id: String\n  files: List<GistFile>\n}\n\nfn empty_result() -> GistResult {\n  GistResult { id: \"\", files: [] }\n}\n\nfn file_count(result: GistResult) -> Int {\n  result.files |> count\n}\n";
@@ -3432,8 +3254,6 @@ fn gist_service_pipeline_smoke() {
         "gist pipeline should emit at least 1 file"
     );
 }
-
-// ── Resolve diamond dedup ───────────────────────────────────────────────
 
 #[test]
 fn resolve_diamond_dedup() {
@@ -3446,8 +3266,6 @@ fn resolve_diamond_dedup() {
     let result = compile_multi(files);
     assert_no_diagnostics(&result);
 }
-
-// ── Emit field access ───────────────────────────────────────────────────
 
 #[test]
 fn emit_field_access_with_types() {
@@ -3506,27 +3324,6 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     );
 }
 
-// PR #650 regression: keep synthesized `+ Clone` on `impl Fn` callable params.
-// Removing it (and compensating only in the emitter) split authority vs
-// `emit_info.movable` and broke self-host; see docs/postmortems/pr-650-emitter-callable-clone-bound.md.
-// Run: `cargo test -p v1-compiler-tests rust_emit_callable_param_double_use_keeps_clone_bound_on_signature`
-// (`-p` uses the workspace package name `v1-compiler-tests`, not `v1_compiler_tests`.)
-//
-// Review note (non-blocking): a stricter assert on *which* use site carries
-// `f.clone()` would catch wrong-site refactors, but this fixture (`f(0) + f(1)`)
-// emits **plain** `f(0)` / `f(1)` in generated Rust (no spelled `f.clone()`).
-// Call-site substrings are checked only **after** the `twice` signature so stray
-// `f(0)` text elsewhere in the emitted file cannot satisfy the assert. Tighten
-// further if we add a hermetic module that deterministically materializes `f.clone()`.
-//
-// **Not sufficient alone:** re-attempting #650 could still satisfy this fixture while
-// breaking stage0 self-host. For structural edits here, also run
-// `./scripts/regenerate-stage0.sh` and `cargo test -p v1-compiler-tests ci_ -- --ignored`
-// (`ci_freshness` / `ci_fixed_point`); see post-mortem stop boundary item 4.
-//
-// TESTING.md §4 (one claim per test): signature + dual call sites are **one**
-// receipt for the same seam (double-use callable param), not unrelated claims.
-// Prefer not to copy this pattern for loose multi-claim bundles elsewhere.
 #[test]
 fn rust_emit_callable_param_double_use_keeps_clone_bound_on_signature() {
     let source =
@@ -3548,8 +3345,6 @@ fn rust_emit_callable_param_double_use_keeps_clone_bound_on_signature() {
         "expected two call sites on the callable param inside twice(): {content}"
     );
 }
-
-// ── Python emission tests ───────────────────────────────────────────────
 
 #[test]
 fn python_emit_produces_valid_syntax() {
@@ -3623,16 +3418,6 @@ fn python_emit_snake_case_functions() {
     }
 }
 
-/// End-to-end execution oracle for the Python/Go method-template consolidation
-/// (the #5039 Rust slice extended to Python/Go). Confirms by running the real
-/// compile+emit pipeline that:
-///   - flat-templatable methods (`count`) render via the SimpleMethodSpec-derived
-///     template map (`len(...)`);
-///   - the binary+ methods (`fold`/`map`/`concat`) route through the runtime
-///     bridge, which forwards EVERY argument — NOT the flat one-arg template.
-///
-/// The `fold` case is the regression sentinel: a flat `functools.reduce({arg},
-/// {recv})` / `v2rt.Fold({recv},{arg})` template would drop fold's callback.
 fn method_template_emit_source() -> &'static str {
     r#"module mt
 fn use_count(items: List<Int>) -> Int { items |> count }
@@ -3651,9 +3436,7 @@ fn python_method_template_consolidation_emit() {
         .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
         .expect("Python target should emit a .py file");
     let c = &py.content;
-    // Flat template (SimpleMethodSpec-derived).
     assert!(c.contains("len("), "count should render as len(...):\n{c}");
-    // fold via runtime bridge — callback forwarded; NOT the flat reduce template.
     assert!(
         !c.contains("functools.reduce"),
         "fold must NOT use the flat one-arg `functools.reduce` template (it drops the callback):\n{c}"
@@ -3668,7 +3451,6 @@ fn python_method_template_consolidation_emit() {
 fn go_method_template_consolidation_emit() {
     let result = compile_dag_target(method_template_emit_source(), RenderTarget::Go);
     assert_no_diagnostics(&result);
-    // The user module — not the bundled v2rt runtime (which *defines* Fold).
     let go = result
         .files
         .iter()
@@ -3676,8 +3458,6 @@ fn go_method_template_consolidation_emit() {
         .expect("Go target should emit a user .go file");
     let c = &go.content;
     assert!(c.contains("len("), "count should render as len(...):\n{c}");
-    // fold via runtime bridge — the closure (callback) is forwarded as a 3rd arg;
-    // the flat `v2rt.Fold({recv},{arg})` template would emit only two args.
     assert!(
         c.contains("v2rt.Fold(") && c.contains("func("),
         "fold should render as a v2rt.Fold bridge call forwarding the closure:\n{c}"
@@ -3750,8 +3530,6 @@ fn render(name: String) -> String {
     );
 }
 
-// Diagnostic: compile only 02_parse.dag and dump parser SCC edge classifications.
-// Avoids OOM from full self-compile while giving ground truth on edge progress.
 #[test]
 #[ignore = "diagnostic harness: dumps parser SCC edge classifications for manual triage, no assertions"]
 fn diag_parser_scc_edges() {
@@ -3792,7 +3570,6 @@ fn diag_parser_scc_edges() {
         Rc::new(HashMap::new()),
     );
 
-    // Find the large parser SCC (the one containing parse_type_expr)
     let scc_info = scc_result
         .index
         .get("parse_type_expr")
@@ -3887,7 +3664,6 @@ fn diag_parse_node_decl_env() {
     let state_param = parser_state_param(pnd.params.clone(), Rc::new(HashMap::new()))
         .expect("must have state param");
 
-    // Build parser_always_advancing exactly as the SCC analysis does
     let si = Rc::new(HashMap::new());
     let parser_always_advancing = infer_parser_always_advancing_members(
         parser_function_names(func_index_rc.clone(), Rc::new(HashMap::new())),
@@ -3895,7 +3671,6 @@ fn diag_parse_node_decl_env() {
         si.clone(),
     );
 
-    // Build scc_name_set for the parser SCC containing parse_node_decl
     use v1_compiler::v1_compiler_complexity::build_scc_index;
     let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone(), si);
     let scc_info = scc_result
@@ -3915,7 +3690,6 @@ fn diag_parse_node_decl_env() {
     eprintln!("body expr_data: {:?}", pnd.body.expr_data);
     eprintln!("body children count: {}", pnd.body.children.len());
 
-    // Call exactly what the SCC analysis calls
     let edges = collect_parser_progress_edges(
         "parse_node_decl".to_string(),
         pnd.body.clone(),
@@ -3932,11 +3706,6 @@ fn diag_parse_node_decl_env() {
         eprintln!("  {} -> {} : {:?}", e.caller, e.callee, e.progress);
     }
 }
-
-// ── Serialization fidelity tests ──────────────────────────────────────
-//
-// Verify that serialize_expr_data preserves full kind fidelity for
-// every expression variant (not collapsed to ExprOther).
 
 #[test]
 fn serialized_if_match_block_preserve_kind() {
@@ -4002,11 +3771,6 @@ fn serialized_cast_index_return_preserve_kind() {
     );
 }
 
-// ── TCO through wrapper nodes ─────────────────────────────────────────
-//
-// Verify that tail-call optimization works correctly through the new
-// NoExprData wrapper nodes (args, arms, field-inits).
-
 #[test]
 fn tco_through_if_branches() {
     let source = "module tco_test\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { countdown(n: n - 1) }\n}\n";
@@ -4031,12 +3795,12 @@ fn tco_through_match_arms() {
     );
 }
 
-// =========================================================================
-// Decidability enforcement tests
-// =========================================================================
-
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn non_descending_recursion_is_rejected() {
     let source = "module spin_test\n\nfn spin(n: Int) -> Int {\n  spin(n: n)\n}\n";
     let result = compile_dag(source);
@@ -4046,7 +3810,6 @@ fn non_descending_recursion_is_rejected() {
         "fn spin(n: n) must be rejected as non-descending recursion, got: {:?}",
         msgs
     );
-    // Complexity analysis runs but does not block emission.
 }
 
 #[test]
@@ -4072,7 +3835,11 @@ fn shadowed_descending_recursion_is_allowed() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn ascending_recursion_is_rejected() {
     let source = "module spin_up\n\nfn spin(n: Int) -> Int {\n  spin(n: n + 1)\n}\n";
     let result = compile_dag(source);
@@ -4083,11 +3850,14 @@ fn ascending_recursion_is_rejected() {
         "fn spin(n: n+1) must be rejected, got: {:?}",
         msgs
     );
-    // Complexity analysis runs but does not block emission.
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn multiplicative_recursion_is_rejected() {
     let source = "module spin_mul\n\nfn spin(n: Int) -> Int {\n  spin(n: n * n)\n}\n";
     let result = compile_dag(source);
@@ -4098,11 +3868,14 @@ fn multiplicative_recursion_is_rejected() {
         "fn spin(n: n*n) must be rejected, got: {:?}",
         msgs
     );
-    // Complexity analysis runs but does not block emission.
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn variable_rethread_recursion_is_rejected() {
     let source = "module bounce_test\n\nfn bounce(n: Int, m: Int) -> Int {\n  if n <= 0 { 0 }\n  else { bounce(n: m, m: m) }\n}\n";
     let result = compile_dag(source);
@@ -4113,13 +3886,14 @@ fn variable_rethread_recursion_is_rejected() {
         "fn bounce(n: m) must be rejected without a decreasing witness, got: {:?}",
         msgs
     );
-    // CX gate bypassed pending analyzer rewrite — diagnostics produced but
-    // emission not blocked. Re-enable after CX-5 lands.
-    // assert!(result.files.is_empty(), "variable rethread recursion should block code emission");
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn mutual_recursion_is_rejected() {
     let source = "module mutual_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
@@ -4127,9 +3901,6 @@ fn mutual_recursion_is_rejected() {
         !result.diagnostics.is_empty(),
         "mutual recursion (ping<->pong) must produce diagnostics"
     );
-    // CX gate bypassed pending analyzer rewrite — diagnostics produced but
-    // emission not blocked. Re-enable after CX-5 lands.
-    // assert!(result.files.is_empty(), "mutual recursion should block code emission");
 }
 
 #[test]
@@ -4144,7 +3915,11 @@ fn mutual_arithmetic_recursion_is_allowed() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX gate bypassed — complexity diagnostics suppressed pending CX-5 analyzer rewrite"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
     let source = "module mutual_wrong_measure\n\nfn ping(n: Int, m: Int) -> Bool {\n  if n <= 0 { true }\n  else { pong(n: n, m: n - 1) }\n}\n\nfn pong(n: Int, m: Int) -> Bool {\n  if n <= 0 { false }\n  else { ping(n: n, m: n - 1) }\n}\n";
     let result = compile_dag(source);
@@ -4154,16 +3929,15 @@ fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
         "mutual recursion that only decreases an unmeasured callee param must be rejected, got: {:?}",
         msgs
     );
-    // CX gate bypassed pending analyzer rewrite — diagnostics produced but
-    // emission not blocked. Re-enable after CX-5 lands.
-    // assert!(result.files.is_empty(), "mutual recursion on the wrong callee measure should block code emission");
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "CX acceptance criteria: non-SCC callers into cycles must not be flagged (PR #301)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn function_calling_into_cycle_is_not_rejected() {
-    // h calls into the ping<->pong cycle but is not part of it.
-    // Must NOT be flagged as mutual recursion.
     let source = "module downstream_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\nfn helper(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
     let diag_names: Vec<String> = result
@@ -4171,7 +3945,6 @@ fn function_calling_into_cycle_is_not_rejected() {
         .iter()
         .map(|d| d.module_name.clone())
         .collect();
-    // ping and pong should have diagnostics, but helper should NOT
     assert!(
         !result.diagnostics.iter().any(|d| {
             let msg = format!("{:?}", d.diagnostic);
@@ -4193,18 +3966,8 @@ fn division_descent_is_allowed() {
     );
 }
 
-// =========================================================================
-// CX-N: Recursion bound expectation tests
-//
-// Pin down which recursion patterns the analyzer classifies correctly.
-// Each test documents the EXPECTED bound. These are regression tests
-// for soundness — adding a new pattern here should correspond to a
-// structural fact, not a heuristic.
-// =========================================================================
-
 #[test]
 fn cx_bound_child_descent_is_tree_size() {
-    // Recursion on structural children → bounded by TreeSize.
     let source = "module cx_child\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn sum_tree(t: Tree) -> Int {\n  let l = match t.left { Present { value: lt } => sum_tree(t: lt), Absent => 0 }\n  let r = match t.right { Present { value: rt } => sum_tree(t: rt), Absent => 0 }\n  l + r + t.value\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -4212,12 +3975,6 @@ fn cx_bound_child_descent_is_tree_size() {
 
 #[test]
 fn cx_bound_nested_variant_optional_descent() {
-    // Nested variant match: Optional field wraps an enum whose variant
-    // contains the recursive type. The chain is:
-    //   o.detail → Inner? (OptionalRecursion)
-    //     Present { value: Resolved { node: x } } → nested destructure
-    //       x is a structural sub-value of o
-    // This tests that annotate_descent composes through both levels.
     let source = r#"module cx_nested_variant
 
 type Inner
@@ -4244,11 +4001,6 @@ fn walk(o: Outer) -> Int {
 #[test]
 #[ignore = "failing: property contraction + tree descent produces 1 violation, expected 0. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=inference"]
 fn cx_bound_property_contraction_with_tree_descent() {
-    // Property contraction (with_required_cardinality) mixed with tree descent.
-    // The contraction call passes the parameter through a known property
-    // contraction function. The tree descent call iterates over children.
-    // Both should produce evidence: ArithmeticDescent (contraction) and
-    // IteratedSubValue (children map). CX should accept this combination.
     let source = r#"module cx_prop_contract
 import std.core { with_required_cardinality }
 
@@ -4268,7 +4020,6 @@ fn walk_type(n: Node) -> String {
 
 #[test]
 fn cx_bound_list_shrink_is_collection_size() {
-    // Recursion via skip(1) on a list → bounded by CollectionSize.
     let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    Absent => 0\n    Present { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -4276,7 +4027,6 @@ fn cx_bound_list_shrink_is_collection_size() {
 
 #[test]
 fn cx_bound_arithmetic_descent_is_param() {
-    // Recursion with n-1 → bounded by ArithmeticParam.
     let source = "module cx_arith\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { 1 + countdown(n: n - 1) }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -4284,7 +4034,6 @@ fn cx_bound_arithmetic_descent_is_param() {
 
 #[test]
 fn cx_bound_mutual_descent_is_bounded() {
-    // Mutual recursion where both functions descend → bounded.
     let source = "module cx_mutual\n\nfn even(n: Int) -> Bool {\n  if n <= 0 { true }\n  else { odd(n: n - 1) }\n}\n\nfn odd(n: Int) -> Bool {\n  if n <= 0 { false }\n  else { even(n: n - 1) }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -4292,26 +4041,13 @@ fn cx_bound_mutual_descent_is_bounded() {
 
 #[test]
 fn cx_bound_metadata_field_is_not_descent_witness() {
-    // Matching on a non-recursive field (metadata) must NOT create descent evidence.
-    // name, span, etc. are not structural sub-values — they don't carry children.
     let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Present { value: next } => check_name(item: next)\n      Absent => false\n    }\n  }\n}\n";
     let result = compile_dag(source);
-    // This should compile — it descends through payload (structural child).
-    // The name field access is metadata, NOT descent evidence.
     assert_no_diagnostics(&result);
 }
 
-// =========================================================================
-// CX: Constant-bound recursion produces O(1)
-//
-// Forever and ExplicitCount are machine constants — they don't depend on
-// input size. The algebra treats them as SizeConst, which normalizes to O(1).
-// Zero violations by construction.
-// =========================================================================
-
 #[test]
 fn cx_forever_bound_produces_violation() {
-    // SameArgumentCall → Forever → CostUnknown → violation (honest "I don't know")
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
     let result = compile_dag_analyze_complexity(source);
     let class = result
@@ -4333,26 +4069,9 @@ fn cx_forever_bound_produces_violation() {
     );
 }
 
-// =========================================================================
-// CX: Soundness negative tests
-//
-// These tests verify that the analyzer REJECTS unsound patterns.
-// A test here asserts that a function produces O(?) (violation), NOT
-// that it compiles successfully. Removing these tests silently allows
-// soundness regressions.
-// =========================================================================
-
 #[test]
 #[ignore = "CX track: branching detection needs derive_bound integration (produces O(n) not O(2^n))"]
 fn soundness_branching_recursion_produces_violation() {
-    // Branching recursion: split(n) calls split(n-1) twice on the same path.
-    // This is O(2^n), not O(n). The analyzer must produce a violation.
-    //
-    // STATUS: CX-L2 arithmetic descent produces structural bounds for each call,
-    // but the analyzer doesn't yet count BRANCHES to invoke derive_bound with
-    // branches > 1. The algebra (std/induction.dag) handles branching correctly
-    // (ForeverBound for k*T(n-1)), but the analyzer needs to detect and count
-    // branching patterns. See ROADMAP CX-NEXT.
     let source = r#"module soundness_branch
 fn split(n: Int) -> Int {
   if n <= 0 { 1 }
@@ -4368,8 +4087,6 @@ fn split(n: Int) -> Int {
 
 #[test]
 fn soundness_conditional_descent_not_accepted() {
-    // Conditional descent: only one branch descends, the other passes
-    // the parameter unchanged. The analyzer must reject this.
     let source = r#"module soundness_cond
 fn cond_recurse(n: Int, flag: Bool) -> Int {
   if flag { cond_recurse(n: n - 1, flag: flag) }
@@ -4385,8 +4102,6 @@ fn cond_recurse(n: Int, flag: Bool) -> Int {
 
 #[test]
 fn soundness_same_argument_stays_violation() {
-    // Same-argument recursion: f(n) calls f(n) — infinite loop.
-    // Must always be a violation.
     let source = r#"module soundness_same
 fn loop_forever(n: Int) -> Int {
   loop_forever(n: n)
@@ -4405,21 +4120,8 @@ fn loop_forever(n: Int) -> Int {
     );
 }
 
-// =========================================================================
-// CX-P: SCC cross-named parameter regression tests
-//
-// These test the fix where SCC peers use different parameter names
-// (e.g., serialize_node(node:) calling serialize_expr_data(expr_node:)).
-// The edge collector must match by callee measure params, not caller name.
-// =========================================================================
-
 #[test]
 fn cx_scc_cross_named_params_recognized() {
-    // Two mutually recursive functions with different param names
-    // and arithmetic descent. The SCC edge collector must match by
-    // callee measure params, not caller param name.
-    // count_a(x: Int) calls count_b(y: x - 1)  — arg name "y" ≠ caller param "x"
-    // count_b(y: Int) calls count_a(x: y - 1)  — arg name "x" ≠ caller param "y"
     let source = r#"module cx_cross_name
 fn count_a(x: Int) -> Int {
   if x <= 0 { 0 }
@@ -4435,7 +4137,6 @@ fn count_b(y: Int) -> Int {
     let b_class = result.function_classes.get("count_b");
     assert!(a_class.is_some(), "count_a should have a complexity class");
     assert!(b_class.is_some(), "count_b should have a complexity class");
-    // Both should be bounded — the SCC descends on arithmetic params
     let a_violation = result
         .violations
         .iter()
@@ -4456,9 +4157,6 @@ fn count_b(y: Int) -> Int {
 
 #[test]
 fn cx_scc_positional_args_fail_closed() {
-    // Positional (unnamed) SCC calls are currently fail-closed.
-    // This documents current behavior — not a bug, a known limitation.
-    // When positional args are supported, this test should be updated.
     let source = r#"module cx_positional
 fn count_nodes(n: Node) -> Int {
   1 + n.children |> fold(init: 0, f: (acc, child) =>
@@ -4467,7 +4165,6 @@ fn count_nodes(n: Node) -> Int {
 }
 "#;
     let result = compile_dag_with_complexity(source);
-    // Direct self-recursion with named args should work fine
     let class = result.function_classes.get("count_nodes");
     assert!(
         class.is_some(),
@@ -4475,21 +4172,8 @@ fn count_nodes(n: Node) -> Int {
     );
 }
 
-// =========================================================================
-// CX: Asymptotic normalization regression tests
-//
-// Verify that the cost algebra models the math correctly:
-// - Constant absorption: O(1 + n) = O(n)
-// - Idempotent addition: O(n + n) = O(n)
-// - Idempotent max: O(max(n, n)) = O(n)
-// - Constant factor: O(k * n) = O(n)
-// - Constant-bound loop: Sum(i=1..k, f) = O(f)
-// =========================================================================
-
 #[test]
 fn cx_constant_absorption_in_linear_function() {
-    // A function with constant work + a fold over a list should be O(|items|),
-    // not O(1 + |items|) or O(1 + 1 + |items| + 1).
     let source = "module cx_absorb\n\nfn sum_items(items: List<Int>) -> Int {\n  let start = 0\n  items |> fold(init: start, f: (acc, x) => acc + x)\n}\n";
     let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
@@ -4508,7 +4192,6 @@ fn cx_constant_absorption_in_linear_function() {
 
 #[test]
 fn cx_pure_constant_function_is_o1() {
-    // A function with only constant operations should be O(1).
     let source =
         "module cx_const\n\nfn add_three(a: Int, b: Int, c: Int) -> Int {\n  a + b + c\n}\n";
     let result = compile_dag_analyze_complexity(source);
@@ -4528,7 +4211,6 @@ fn cx_pure_constant_function_is_o1() {
 
 #[test]
 fn cx_idempotent_addition_two_folds() {
-    // Two folds over the same collection: O(|items| + |items|) = O(|items|)
     let source = "module cx_idem\n\nfn sum_and_count(items: List<Int>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = items |> fold(init: 0, f: (acc, x) => acc + 1)\n  s + c\n}\n";
     let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
@@ -4547,7 +4229,6 @@ fn cx_idempotent_addition_two_folds() {
 
 #[test]
 fn cx_idempotent_max_in_match() {
-    // Match with equal-cost branches: O(max(|items|, |items|)) = O(|items|)
     let source = "module cx_max\n\nfn process(items: List<Int>, flag: Bool) -> Int {\n  if flag {\n    items |> fold(init: 0, f: (acc, x) => acc + x)\n  } else {\n    items |> fold(init: 0, f: (acc, x) => acc + 1)\n  }\n}\n";
     let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
@@ -4566,7 +4247,6 @@ fn cx_idempotent_max_in_match() {
 
 #[test]
 fn cx_multi_variable_legend() {
-    // Function iterating over two different collections: O(n + m) where n = items, m = names
     let source = "module cx_legend\n\nfn process_both(items: List<Int>, names: List<String>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = names |> fold(init: 0, f: (acc, n) => acc + 1)\n  s + c\n}\n";
     let result = compile_dag_analyze_complexity(source);
     assert_no_diagnostics(&result);
@@ -4586,18 +4266,6 @@ fn cx_multi_variable_legend() {
         class
     );
 }
-
-// =========================================================================
-// DAG compiler error detection tests
-//
-// These test the compiler's unique value: structural errors that only a
-// graph-aware, compositionally-modeled compiler can catch. Each test
-// demonstrates an error that a traditional compiler would miss.
-// =========================================================================
-
-// ── Cross-module type consistency ────────────────────────────────────────
-// The DAG compiler validates types across module boundaries at compile
-// time. A traditional compiler processes one file at a time.
 
 #[test]
 fn cross_module_unresolved_import_produces_diagnostic() {
@@ -4626,11 +4294,6 @@ fn cross_module_valid_import_produces_no_diagnostic() {
     assert_no_diagnostics(&result);
 }
 
-// ── Match exhaustiveness ─────────────────────────────────────────────────
-// The DAG compiler checks that match expressions cover all variants.
-// This is structural: it reads the coproduct's children, not a hardcoded
-// list of variant names.
-
 #[test]
 fn match_on_coproduct_missing_variant_produces_diagnostic() {
     let source = "module exh\n\ntype Shape = Circle | Square | Triangle\n\nfn describe(s: Shape) -> String {\n  match s {\n    Circle => \"round\"\n    Square => \"boxy\"\n  }\n}\n";
@@ -4651,10 +4314,6 @@ fn match_on_coproduct_all_variants_no_diagnostic() {
     assert_no_diagnostics(&result);
 }
 
-// ── Optional cardinality checks ──────────────────────────────────────────
-// The DAG compiler models optionality as cardinality on binding sites,
-// not as a type wrapper. This catches Absent/Present mismatches structurally.
-
 #[test]
 fn optional_match_missing_absent_arm_produces_diagnostic() {
     let source = "module opt\n\nfn handle(x: String?) -> String {\n  match x {\n    Present { value: v } => v\n  }\n}\n";
@@ -4668,27 +4327,15 @@ fn optional_match_missing_absent_arm_produces_diagnostic() {
     );
 }
 
-// ── Service declaration validation ───────────────────────────────────────
-// The DAG compiler validates service declarations structurally — transport
-// configuration, operation signatures, resource requirements are all
-// checked at compile time.
-
 #[test]
 fn service_with_operation_compiles_cleanly() {
     let source = "module svc\n\nservice WeatherService {\n  transport rest { base_url: \"https://api.weather.com\" }\n\n  operation get_forecast {\n    input { city: String }\n    output { temp: Float  description: String }\n  }\n}\n\nfn check_weather(ws: WeatherService, city: String) -> String {\n  let result = ws.get_forecast(city: city)\n  result.description\n}\n";
     let result = compile_dag(source);
-    // Service operations should type-check: get_forecast returns the declared output type
-    // This is a compile-time check that a traditional compiler can't do
-    // (services are usually runtime-only)
     assert!(
         !result.files.is_empty() || !diagnostic_messages(&result).is_empty(),
         "service pipeline should produce output or diagnostics"
     );
 }
-
-// ── Circular dependency detection ────────────────────────────────────────
-// The DAG compiler's graph structure detects circular module dependencies
-// at compile time using Kahn's algorithm (O(V+E)).
 
 #[test]
 fn circular_module_dependency_produces_diagnostic() {
@@ -4705,19 +4352,12 @@ fn circular_module_dependency_produces_diagnostic() {
     );
 }
 
-// ── Structural type inference ────────────────────────────────────────────
-// The DAG compiler infers types through the graph structure, not just
-// local scope. Field access, method calls, and container operations
-// are validated against the structural type definitions.
-
 #[test]
 fn field_access_on_wrong_type_produces_diagnostic() {
     let source =
         "module field\n\ntype Point { x: Int  y: Int }\n\nfn bad(p: Point) -> String {\n  p.z\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    // Accessing a field that doesn't exist on the type should be caught
-    // by the structural type system
     assert!(
         result.files.is_empty() || msgs.iter().any(|m| m.contains("field") || m.contains("z")),
         "accessing non-existent field 'z' should produce diagnostic or fail emit, got: {:?}",
@@ -4732,11 +4372,6 @@ fn valid_field_access_produces_no_diagnostic() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
-
-// ── Recursive type soundness ─────────────────────────────────────────────
-// The DAG compiler handles recursive types through SCC-based cycle
-// detection. Traditional compilers either stack overflow or reject
-// recursive types entirely.
 
 #[test]
 fn recursive_type_compiles_without_overflow() {
@@ -4763,10 +4398,6 @@ fn imported_recursive_enum_catamorphism_compiles() {
         "imported recursive enum catamorphism should still emit code"
     );
 }
-
-// ── Multi-target emission ────────────────────────────────────────────────
-// The DAG compiler emits to multiple targets from the same source.
-// The type system validates once; each backend renders independently.
 
 #[test]
 fn same_source_emits_to_rust_and_python() {
@@ -4867,8 +4498,6 @@ fn weather_rust_emit_match_arms_are_expressions_not_return_prefixed() {
     );
 }
 
-// ── Duplicate module detection ───────────────────────────────────────────
-
 #[test]
 fn duplicate_module_name_produces_diagnostic() {
     let result = compile_multi(&[
@@ -4883,10 +4512,6 @@ fn duplicate_module_name_produces_diagnostic() {
     );
 }
 
-// ── Self-hosting contract tests (SH-1 through SH-8) ────────────────────
-//
-// These verify stage boundary invariants on the PipelineResult.
-
 #[test]
 fn sh1_artifact_plan_valid() {
     let source =
@@ -4894,12 +4519,10 @@ fn sh1_artifact_plan_valid() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let plan = &result.artifact_plan;
-    // Artifact plan should have at least one artifact
     assert!(
         !plan.artifacts.is_empty(),
         "artifact plan should contain at least one artifact"
     );
-    // All boundary references should point to existing artifact names
     let artifact_names: Vec<&str> = plan.artifacts.iter().map(|a| a.name.as_str()).collect();
     for b in plan.boundaries.iter() {
         assert!(
@@ -4927,7 +4550,6 @@ fn sh2_ownership_covers_all_functions() {
     let source = "module own_check\n\nfn add(a: Int, b: Int) -> Int { a + b }\n\nfn greet(name: String) -> String { name }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    // Every function with a body should have an ownership proof
     let proof_names: Vec<&str> = result
         .ownership
         .iter()
@@ -4943,7 +4565,6 @@ fn sh2_ownership_covers_all_functions() {
         "ownership should cover 'greet', got: {:?}",
         proof_names
     );
-    // Every proof should have non-empty decisions
     for proof in result.ownership.iter() {
         assert!(
             !proof.decisions.is_empty(),
@@ -4958,7 +4579,6 @@ fn sh3_complexity_report_consistent() {
     let source = "module cx_check\n\nfn identity(x: Int) -> Int { x }\n\nfn double(x: Int) -> Int { x + x }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    // ComplexityReport struct is present (may be empty when analysis is bypassed).
     let _report = &result.complexity;
 }
 
@@ -4967,9 +4587,7 @@ fn sh7_parse_output_has_valid_structure() {
     let source = "module parse_check\n\ntype Foo { x: Int }\n\nfn bar() -> Int { 42 }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    // Files should be emitted (parse succeeded through to emit)
     assert!(!result.files.is_empty(), "compilation should produce files");
-    // Every emitted file should have a non-empty path and content
     for file in result.files.iter() {
         assert!(!file.path.is_empty(), "emitted file has empty path");
         assert!(
@@ -4986,7 +4604,6 @@ fn sh8_multi_module_imports_resolve() {
     let source_b = "module consumer_mod\n\nimport types_mod { Color }\n\nfn make_red() -> Color { Color { r: 255, g: 0, b: 0 } }\n";
     let result = compile_multi(&[("types_mod.dag", source_a), ("consumer_mod.dag", source_b)]);
     assert_no_diagnostics(&result);
-    // Both modules should produce output files
     assert!(
         result.files.iter().any(|f| f.path.contains("types_mod")),
         "types_mod should produce an output file"
@@ -4995,7 +4612,6 @@ fn sh8_multi_module_imports_resolve() {
         result.files.iter().any(|f| f.path.contains("consumer_mod")),
         "consumer_mod should produce an output file"
     );
-    // Diagnostics should be empty (imports resolved successfully)
     assert!(
         result.diagnostics.is_empty(),
         "multi-module compilation should have 0 diagnostics"
@@ -5004,15 +4620,12 @@ fn sh8_multi_module_imports_resolve() {
 
 #[test]
 fn sh4_resolved_graph_completeness() {
-    // Use DAG target to get the full typed graph as JSON, then verify
-    // structural completeness of the ResolvedGraph serialization.
     let source = "module rg_check\n\ntype Color = Red | Green | Blue\n\ntype Pair { a: Int  b: String }\n\nfn make_pair() -> Pair { Pair { a: 1, b: \"hello\" } }\n";
     let result = compile_dag_target(source, RenderTarget::Dag);
     assert_no_diagnostics(&result);
     let json_str = find_file(&result, "dag-artifact.json");
     let artifact: Value =
         serde_json::from_str(&json_str).expect("dag artifact should be valid JSON");
-    // Artifact should have version, modules, and diagnostics
     assert!(
         artifact.get("version").is_some(),
         "artifact should have version"
@@ -5025,7 +4638,6 @@ fn sh4_resolved_graph_completeness() {
         .as_array()
         .expect("modules should be array");
     assert!(!modules.is_empty(), "modules should be non-empty");
-    // Each module should have name and items
     for module in modules {
         let mod_ref = module
             .get("module")
@@ -5040,13 +4652,8 @@ fn sh4_resolved_graph_completeness() {
     }
 }
 
-// ── Structural method resolution (Tier 0) ───────────────────────────────
-
 #[test]
 fn structural_method_resolution_with_std() {
-    // std modules loaded automatically by compile_dag/compile_multi.
-    // List<Int> → FreeMonoid<Int> → Conj { map, filter, count, ... }
-    // Method calls resolve via lookup_structural_method (Tier 0).
     let user = r#"module user_test
 import std.types { List, Map }
 
@@ -5082,9 +4689,6 @@ fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
 
 #[test]
 fn structural_method_colliding_name_no_bridge() {
-    // Regression: a user-defined type with a method named "count" or "has"
-    // must NOT be tagged with AlgebraMethodSemantics for intrinsic dispatch.
-    // It should get PlainMethodSemantics so emit renders it as recv.method(args).
     let source = r#"module test
 
 type Counter {
@@ -5229,7 +4833,11 @@ fn join_ints(xs: List<Int>) -> String {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn map_wrong_callback_arity_fails_closed() {
     let source = r#"module map_wrong_arity
 
@@ -5247,7 +4855,11 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn sort_by_wrong_callback_arity_fails_closed() {
     let source = r#"module sort_by_wrong_arity
 
@@ -5265,7 +4877,11 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn map_named_callable_wrong_arity_fails_closed() {
     let source = r#"module map_named_wrong_arity
 
@@ -5287,7 +4903,11 @@ fn broken(xs: List<Int>) -> List<String> {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn flat_map_wrong_callback_return_type_fails_closed() {
     let source = r#"module flat_map_wrong_return
 
@@ -5305,7 +4925,11 @@ fn broken(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "requires full structural algebra authority (codex/l1-bootstrap-closure)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn flat_map_named_callable_wrong_return_type_fails_closed() {
     let source = r#"module flat_map_named_wrong_return
 
@@ -5325,11 +4949,6 @@ fn broken(xs: List<Int>) -> List<String> {
         msgs
     );
 }
-
-// ── Higher-order method instantiation tests ─────────────────────────────
-//
-// These verify that the inference engine correctly threads element types
-// into lambda parameters and resolves result types for collection methods.
 
 #[test]
 fn map_with_identity_lambda_compiles() {
@@ -5414,8 +5033,6 @@ fn count_positive_strings(xs: List<Int>) -> String {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
-
-// ── Keyed-collection access tests ───────────────────────────────────────
 
 #[test]
 fn map_get_returns_optional() {
@@ -5535,12 +5152,6 @@ fn label_of(value: MappedElement) -> String {
     ]);
     assert_no_diagnostics(&result);
 }
-// ── Higher-order function: named function as argument ──────────────────
-//
-// Verify that a user-defined function can be passed by name to another
-// function that accepts a function-typed parameter. This is the pattern
-// needed for generic lattice lifters: pass `merge_evidence` to
-// `optional_meet(meet, a, b)`.
 
 #[test]
 fn named_binary_function_passed_as_argument() {
@@ -5589,12 +5200,6 @@ fn test_it(a: Int?, b: Int?) -> Int? {
     assert_no_diagnostics(&result);
 }
 
-// ── Parse-emit round-trip smoke test ────────────────────────────────────
-//
-// Verify that compiling the same source twice produces identical typed
-// graph JSON. This is the idempotency property: the compiler is
-// deterministic and the serialization is stable.
-
 fn sort_json_arrays(value: &Value) -> Value {
     match value {
         Value::Object(map) => {
@@ -5606,7 +5211,6 @@ fn sort_json_arrays(value: &Value) -> Value {
         }
         Value::Array(arr) => {
             let sorted: Vec<Value> = arr.iter().map(sort_json_arrays).collect();
-            // Sort arrays of strings (like item_registry_keys)
             if sorted.iter().all(|v| v.is_string()) {
                 let mut strs: Vec<String> = sorted
                     .iter()
@@ -5648,7 +5252,6 @@ fn greet(name: String) -> String { concat("Hello, ", name) }
         json1, json2,
         "compiling the same source twice should produce structurally identical typed graph JSON"
     );
-    // Verify the artifact has the expected structural properties
     let modules = json1["modules"]
         .as_array()
         .expect("modules should be array");
@@ -5659,21 +5262,7 @@ fn greet(name: String) -> String { concat("Hello, ", name) }
     assert_eq!(mod_obj["name"], "roundtrip", "module name should match");
 }
 
-// ── Scrambled name emit tests ─────────────────────────────────────────
-//
-// These tests verify that emission is name-opaque: replacing all user-
-// defined type names with arbitrary strings produces identical emitted
-// source code (after normalizing names back to ordinal placeholders).
-//
-// This is the emit-side complement to the inference scrambled-name tests
-// above. If these tests fail, it reveals places where emit makes
-// decisions based on type names rather than structural facts.
-
-/// Normalize emitted source: replace each user-defined name with its
-/// ordinal placeholder. Longer names are replaced first to avoid partial
-/// matches (e.g. "FooBar" before "Foo").
 fn normalize_emitted_source(source: &str, names: &[&str], prefix: &str) -> String {
-    // Build replacement pairs sorted by descending length (longest first)
     let mut pairs: Vec<(&str, String)> = names
         .iter()
         .enumerate()
@@ -5688,11 +5277,6 @@ fn normalize_emitted_source(source: &str, names: &[&str], prefix: &str) -> Strin
     result
 }
 
-/// Assert that two programs produce structurally identical emitted source
-/// after normalizing user-defined type names.
-///
-/// Compiles both programs with the given target, finds files matching the
-/// `file_selector` predicate, normalizes names, and asserts equality.
 fn assert_scrambled_name_emit_eq(
     source_a: &str,
     source_b: &str,
@@ -5707,7 +5291,6 @@ fn assert_scrambled_name_emit_eq(
     let result_a = compile_dag_target(source_a, target);
     let result_b = compile_dag_target(source_b, target);
 
-    // Find the main source file from each result
     let file_a = result_a
         .files
         .iter()
@@ -5738,9 +5321,6 @@ fn assert_scrambled_name_emit_eq(
 
 #[test]
 fn scrambled_name_emit_rust() {
-    // Function names deliberately avoid containing type names to prevent
-    // false normalization hits (e.g. "make_foo" PascalCased to "MakeFoo"
-    // would collide with type name "Foo").
     let source_a = "\
 module test
 
@@ -5832,8 +5412,6 @@ fn get_label(b: Wmn) -> String { b.label }
     );
 }
 
-// ── Emit pipeline type rendering tests (E2.5 + E3.4) ──────────────────
-
 #[test]
 fn rust_primitive_bool_lowers_to_bool() {
     let source = "module test_bool_lower\n\ntype Flags {\n  active: Bool\n  visible: Bool\n}\n";
@@ -5919,7 +5497,6 @@ fn rust_map_type_lowers_to_rc_hashmap() {
         "Map should lower to Rc<HashMap<...>> in Rust, got: {}",
         content
     );
-    // "Map<" without a leading letter (to exclude "HashMap<" and "Rc<HashMap<")
     let has_raw_map = content.lines().any(|line| {
         if let Some(pos) = line.find("Map<") {
             pos == 0 || !line.as_bytes()[pos - 1].is_ascii_alphabetic()
@@ -5950,10 +5527,8 @@ fn rust_callable_renders_as_fn_trait() {
 
 #[test]
 fn rust_func_with_uses_emits_async_fn() {
-    // func with uses clause emits async fn; func without uses emits regular fn
     let source = "module test_async_func\n\nresource Net {}\n\nfunc do_work() -> String\n  uses net: Net\n{\n  \"done\"\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    // func + uses should compile and produce async fn
     if has_file(&result, "src/test_async_func.rs") {
         let content = find_file(&result, "src/test_async_func.rs");
         assert!(
@@ -5962,8 +5537,6 @@ fn rust_func_with_uses_emits_async_fn() {
             content
         );
     } else {
-        // If compilation produces diagnostics instead of files, the test still
-        // validates the pipeline doesn't crash on func+uses syntax
         let msgs = diagnostic_messages(&result);
         assert!(
             !msgs.is_empty(),
@@ -5971,10 +5544,6 @@ fn rust_func_with_uses_emits_async_fn() {
         );
     }
 }
-
-// ── Enumerate inference test ─────────────────────────────────────────────
-// Verifies that enumerate returns List<Tuple<Int, Elem>> (not bare List<Elem>),
-// and that .first/.second field access on enumerate results compiles cleanly.
 
 #[test]
 fn enumerate_returns_tuple_type() {
@@ -5994,13 +5563,6 @@ fn indexed_names(names: List<String>) -> List<String> {
         msgs
     );
 }
-
-// ── Golden tests: Rc-wrapping in emitted Rust ───────────────────────────
-//
-// These tests verify the Rc-wrapping decisions in emitted Rust code.
-// Given .dag source, we compile to Rust and assert on patterns in the
-// emitted output. This catches inconsistencies where type declarations,
-// function signatures, and construction sites disagree on Rc wrapping.
 
 #[test]
 #[ignore = "failing: Symbol data does not preserve authored identity. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-rust-render"]
@@ -6060,13 +5622,11 @@ fn make_outer() -> Outer {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_struct.rs");
-    // Struct field should be Rc-wrapped
     assert!(
         content.contains("Rc<Inner>"),
         "struct field should be Rc<Inner>, got:\n{}",
         content
     );
-    // Construction should wrap in Rc::new
     assert!(
         content.contains("Rc::new(Inner"),
         "struct construction should use Rc::new(Inner{{...}}), got:\n{}",
@@ -6088,7 +5648,6 @@ fn pick() -> Color { Red }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_unit_enum.rs");
-    // Unit-only enum should NOT be Rc-wrapped (gets Copy derive)
     assert!(
         !content.contains("Rc<Color>"),
         "unit enum should not be Rc<Color>, got:\n{}",
@@ -6117,7 +5676,6 @@ type Drawing { shape: Shape }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_data_enum.rs");
-    // Enum with data variants should be Rc-wrapped in field position
     assert!(
         content.contains("Rc<Shape>"),
         "data enum field should be Rc<Shape>, got:\n{}",
@@ -6138,7 +5696,6 @@ type Bag { items: List<String> }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_list.rs");
-    // List field should be Rc-wrapped (either via template or predicate)
     assert!(
         content.contains("Rc<Vec<") || content.contains("Rc<Vec<String>"),
         "list field should be Rc<Vec<...>>, got:\n{}",
@@ -6159,7 +5716,6 @@ type Config { entries: Map<String, String> }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_map.rs");
-    // Map field should be Rc-wrapped
     assert!(
         content.contains("Rc<HashMap<"),
         "map field should be Rc<HashMap<...>>, got:\n{}",
@@ -6180,7 +5736,6 @@ type Stats { count: Int, active: Bool, ratio: Float }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_primitives.rs");
-    // Primitive fields should NOT be Rc-wrapped
     assert!(
         !content.contains("Rc<i64>"),
         "Int field should be bare i64, not Rc<i64>, got:\n{}",
@@ -6200,8 +5755,6 @@ type Stats { count: Int, active: Bool, ratio: Float }
 
 #[test]
 fn rc_wrap_func_param_matches_field_type() {
-    // Key test: function parameter type must agree with how the type
-    // appears in struct fields. This is where inconsistency causes E0308.
     let source = "\
 module test_rc_param_match
 type Item { name: String, value: Int }
@@ -6220,7 +5773,6 @@ fn unwrap(c: Container) -> Item {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_param_match.rs");
-    // Both field declaration and parameter should agree on Rc wrapping
     let has_rc_field = content.contains("item: Rc<Item>");
     let has_rc_param = content.contains("i: Rc<Item>");
     assert_eq!(
@@ -6229,7 +5781,6 @@ fn unwrap(c: Container) -> Item {
          field has Rc: {}, param has Rc: {}\n{}",
         has_rc_field, has_rc_param, content
     );
-    // Return type should also agree
     let has_rc_return = content.contains("-> Rc<Item>");
     assert_eq!(
         has_rc_field, has_rc_return,
@@ -6241,7 +5792,6 @@ fn unwrap(c: Container) -> Item {
 
 #[test]
 fn rc_wrap_list_construction_matches_field() {
-    // Construction of a list value must match the declared type.
     let source = "\
 module test_rc_list_construct
 type Batch { items: List<Int> }
@@ -6256,7 +5806,6 @@ fn empty_batch() -> Batch {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
-    // If field is Rc<Vec<...>>, construction must use Rc::new(vec![...])
     let has_rc_field = content.contains("Rc<Vec<");
     let has_rc_construction = content.contains("Rc::new(vec![");
     assert_eq!(
@@ -6265,15 +5814,12 @@ fn empty_batch() -> Batch {
          field has Rc: {}, construction has Rc: {}\n{}",
         has_rc_field, has_rc_construction, content
     );
-    // Construction must match field type — no bare vec![] for Rc<Vec> fields
     assert!(
         content.contains("Rc::new(vec!["),
         "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
         content
     );
 }
-
-// ── M2 Boundary Sufficiency: Higher-Order Method Type Propagation ────
 
 #[test]
 fn map_preserves_element_type() {
@@ -6373,8 +5919,6 @@ fn make() -> Outer {
     );
 }
 
-// ── DEBUG: Callable field rendering ───────────────────────────────────
-
 #[test]
 fn callable_field_renders_as_fn_type() {
     let source = "
@@ -6398,7 +5942,6 @@ type Foo {
 
 #[test]
 fn generic_type_args_preserved_in_rendering() {
-    // Tuple type args
     let source = "
 module test
 
@@ -6415,7 +5958,6 @@ type Bar<K, V> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test.rs");
     eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
-    // Tuple renders as (i64, T), not bare Tuple
     assert!(
         !content.contains(": Tuple") && !content.contains("<Tuple>"),
         "Tuple should not appear as bare type name, got:\n{}",
@@ -6478,8 +6020,6 @@ type Outer<S> {
         content
     );
 }
-
-// ── Targeted type rendering correctness tests ─────────────────────────
 
 fn test_leaf_node(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
     use v1_compiler::v1_std_core::{leaf_node_with_span, SourceSpan};
@@ -6576,8 +6116,6 @@ fn type_rendering_named_conj_with_container_template() {
     );
 }
 
-// ── Boundary regression tests (review feedback 2026-04-02) ─────────────
-
 #[test]
 fn empty_list_arg_infers_type_from_parameter() {
     let source = "module test_empty_list\ntype Pair { a: Int  b: Int }\nfn sum_list(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (acc, x) => acc + x) }\nfn caller() -> Int { sum_list(xs: []) }\n";
@@ -6604,14 +6142,10 @@ fn map_insert_does_not_leave_unresolved_map_shape() {
     );
 }
 
-// ── apply_named_template correctness ────────────────────────────────────
-
 #[test]
 fn apply_named_template_does_not_rescan_substituted_values() {
     use v1_compiler::v1_compiler_emit::apply_named_template;
 
-    // Value for "recv" contains literal "{arg}" — must NOT be rewritten
-    // by the second placeholder pass.
     let template = "{recv}.join(&{arg})".to_string();
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
@@ -6628,7 +6162,6 @@ fn apply_named_template_does_not_rescan_substituted_values() {
 fn apply_named_template_arg_value_containing_recv_placeholder() {
     use v1_compiler::v1_compiler_emit::apply_named_template;
 
-    // Value for "arg" contains literal "{recv}" — must NOT be rewritten.
     let template = "{recv}.call({arg})".to_string();
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "receiver".to_string());
@@ -6643,10 +6176,6 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
 
 #[test]
 fn fold_struct_accumulator_linear_ownership() {
-    // Fold accumulators are linearly threaded (owned at each step).
-    // When the fold body constructs a new struct of the accumulator type with
-    // unique field moves, ownership.dag should prove eligibility for unwrap.
-    // Use Map fields (non-Copy) so the accumulator gets Rc-wrapped.
     let source = r#"module fold_linear_acc
 type Accum { table: Map<String, Int>, label: String }
 fn summarize(items: List<String>) -> Accum {
@@ -6657,7 +6186,6 @@ fn summarize(items: List<String>) -> Accum {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    // Behavioral: ownership proof should mark fold accumulator as eligible
     let proof = result
         .ownership
         .iter()
@@ -6671,8 +6199,6 @@ fn summarize(items: List<String>) -> Accum {
 
 #[test]
 fn fold_struct_accumulator_rejects_multi_move() {
-    // Safety: when a fold body moves the same accumulator field more than once,
-    // ownership.dag must prove the fold ineligible for unwrap optimization.
     let source = r#"module fold_multi_move
 type Accum { data: Map<String, Bool> }
 fn process(items: List<String>) -> Accum {
@@ -6685,7 +6211,6 @@ fn process(items: List<String>) -> Accum {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    // Behavioral: ownership proof should mark fold as ineligible
     let proof = result
         .ownership
         .iter()
@@ -6697,21 +6222,15 @@ fn process(items: List<String>) -> Accum {
     );
 }
 
-// ── M4 regression tests (review feedback 2026-04-06) ──────────────────
-
 #[test]
 fn bool_is_not_valid_as_cast_target() {
-    // Rust does not allow `expr as bool` — only bool→integer is valid.
-    // Cast validity is a (source, target) relation from extdeps/languages/rust/types.dag.
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_coercion::can_cast;
 
-    // Int → Bool: invalid (Rust Reference §8.2.4)
     assert!(
         !can_cast(RenderTarget::Rust, "i64".to_string(), "bool".to_string()),
         "i64 as bool is invalid Rust"
     );
-    // Float → Bool: invalid
     assert!(
         !can_cast(RenderTarget::Rust, "f64".to_string(), "bool".to_string()),
         "f64 as bool is invalid Rust"
@@ -6723,17 +6242,14 @@ fn int_and_float_are_valid_as_cast_targets() {
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_coercion::can_cast;
 
-    // Int → Float: valid
     assert!(
         can_cast(RenderTarget::Rust, "i64".to_string(), "f64".to_string()),
         "i64 as f64 should be valid"
     );
-    // Float → Int: valid
     assert!(
         can_cast(RenderTarget::Rust, "f64".to_string(), "i64".to_string()),
         "f64 as i64 should be valid"
     );
-    // Int → Int: valid (identity)
     assert!(
         can_cast(RenderTarget::Rust, "i64".to_string(), "i64".to_string()),
         "i64 as i64 should be valid"
@@ -6742,7 +6258,6 @@ fn int_and_float_are_valid_as_cast_targets() {
 
 #[test]
 fn bool_to_int_is_valid_cast() {
-    // Bool → Int is valid in Rust: `true as i64` = 1, `false as i64` = 0
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_coercion::can_cast;
 
@@ -6754,7 +6269,6 @@ fn bool_to_int_is_valid_cast() {
 
 #[test]
 fn bool_to_float_is_invalid_cast() {
-    // Bool → Float is NOT valid in Rust (must go through Int first)
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_coercion::can_cast;
 
@@ -6766,7 +6280,6 @@ fn bool_to_float_is_invalid_cast() {
 
 #[test]
 fn python_casts_use_explicit_rules() {
-    // Python cast rules: all numeric constructor casts are explicitly declared.
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_coercion::can_cast;
 
@@ -6782,17 +6295,11 @@ fn python_casts_use_explicit_rules() {
         ),
         "Python bool→float should be valid"
     );
-    // Undeclared pair: not valid
     assert!(
         !can_cast(RenderTarget::Python, "dict".to_string(), "int".to_string()),
         "Python dict→int should not be valid (no cast rule)"
     );
 }
-
-// ── Infer-phase cast validation (dag_can_cast) ──────────────────────────
-//
-// Cast validity is now checked at infer time against .dag-level rules.
-// Emit renders unconditionally — the infer phase is the single authority.
 
 #[test]
 fn int_to_float_cast_is_valid_dag_cast() {
@@ -6827,7 +6334,6 @@ fn bool_to_int_cast_is_valid_dag_cast() {
 
 #[test]
 fn invalid_cast_produces_diagnostic() {
-    // Bool → Float is not in dag_cast_rules.
     let source = "module cast_test4\n\nfn bad_cast(b: Bool) -> Float {\n  b as Float\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
@@ -6841,7 +6347,6 @@ fn invalid_cast_produces_diagnostic() {
 
 #[test]
 fn identity_cast_is_valid() {
-    // Int as Int is a no-op identity cast — must not produce diagnostics.
     let source = "module cast_test5\n\nfn identity(x: Int) -> Int {\n  x as Int\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
@@ -6849,26 +6354,13 @@ fn identity_cast_is_valid() {
 
 #[test]
 fn string_identity_cast_is_valid() {
-    // String → String is identity at emit level (same target type).
-    // Emit's can_cast safety net handles non-domain casts; infer only
-    // validates types in dag_cast_rules. See ROADMAP: structural cast
-    // model will make infer fail-closed for all domains.
     let source = "module cast_test6\n\nfn passthrough(s: String) -> String {\n  s as String\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
 
-// ── ExprLet expected-type propagation regression tests ────────────────
-//
-// The ExprLet body now receives the outer `expected` type (M2 commit
-// d5e58ea56). These tests verify that expected context flows correctly
-// through let bodies without mistyping lambda parameters.
-
 #[test]
 fn let_body_fold_init_empty_map_receives_expected() {
-    // Regression: fold(init: empty_map()) inside a let body should receive
-    // the function return type as expected context, allowing empty_map()
-    // to adopt the fully parameterized Map type.
     let source = r#"module test_let_fold
 fn build_index(items: List<String>) -> Map<String, Bool> {
   let separator = "_"
@@ -6896,8 +6388,6 @@ fn build_index(items: List<String>) -> Map<String, Bool> {
 
 #[test]
 fn fold_init_empty_map_without_let_no_bridge() {
-    // fold(init: empty_map()) directly in function body (no let wrapper)
-    // should produce turbofish, not BRIDGE fabrication.
     let source = r#"module test_fold_no_expected
 fn build(items: List<String>) -> Map<String, Bool> {
   items |> fold(init: empty_map(), f: (acc, item) =>
@@ -6920,8 +6410,6 @@ fn build(items: List<String>) -> Map<String, Bool> {
 
 #[test]
 fn fold_init_empty_map_with_struct_value_no_bridge() {
-    // fold(init: empty_map()) building Map<String, StructType> should
-    // produce turbofish, not BRIDGE. Tests cross-type fold accumulator.
     let source = r#"module test_fold_struct
 type Entry { label: String, count: Int }
 fn index_items(items: List<Entry>) -> Map<String, Entry> {
@@ -6946,9 +6434,6 @@ fn index_items(items: List<Entry>) -> Map<String, Entry> {
 
 #[test]
 fn let_body_callable_expected_types_lambda_params() {
-    // When the let body contains a lambda under a callable expected type
-    // (e.g., from a function signature), the lambda params should be typed
-    // from the callable's param types, not from the raw expected.
     let source = r#"module test_let_callable
 fn apply_transform(items: List<Int>) -> List<Int> {
   let threshold = 10
@@ -6966,10 +6451,6 @@ fn apply_transform(items: List<Int>) -> List<Int> {
 
 #[test]
 fn let_body_non_callable_expected_does_not_mistype_lambda() {
-    // When expected is a non-callable type (e.g., Map<String, Bool>),
-    // lambdas inside method calls in the let body should NOT get their
-    // params typed from the outer expected — they should get typed from
-    // the collection element type via the method inference path.
     let source = r#"module test_let_noncallable
 fn summarize(items: List<Int>) -> Map<String, Bool> {
   let doubled = items |> map(x => x * 2)
@@ -6990,7 +6471,6 @@ fn summarize(items: List<Int>) -> Map<String, Bool> {
 
 #[test]
 fn nested_let_in_match_propagates_expected() {
-    // Expected type should flow through nested let inside match arms.
     let source = r#"module test_nested_let_match
 fn classify(items: List<Int>) -> Map<String, Int> {
   match items |> first {
@@ -7009,7 +6489,6 @@ fn classify(items: List<Int>) -> Map<String, Int> {
 
 #[test]
 fn nested_let_in_if_propagates_expected() {
-    // Expected type should flow through let inside if branches.
     let source = r#"module test_nested_let_if
 fn process(items: List<Int>, flag: Bool) -> List<Int> {
   if flag {
@@ -7027,8 +6506,6 @@ fn process(items: List<Int>, flag: Bool) -> List<Int> {
 
 #[test]
 fn let_in_record_field_propagates_expected() {
-    // Expected type from struct field should flow through let bodies
-    // when constructing record literals.
     let source = r#"module test_let_record
 type Summary { counts: Map<String, Int>, total: Int }
 fn build_summary(items: List<String>) -> Summary {
@@ -7045,17 +6522,8 @@ fn build_summary(items: List<String>) -> Summary {
     assert_no_diagnostics(&result);
 }
 
-// ── Multi-module BRIDGE fabrication investigation ─────────────────────
-//
-// Single-module fold(init: empty_map()) produces turbofish (no BRIDGE).
-// Self-compile (multi-module) produces 58 BRIDGE fabrications. These
-// tests isolate which multi-module patterns trigger the gap.
-
 #[test]
 fn multi_module_fold_cross_type_bridge_check() {
-    // Type defined in module A, fold accumulator building Map<String, A.Type>
-    // in module B. This mirrors the self-compile pattern where TypeBinding
-    // is defined in 04_env.dag but fold accumulators are in 04_infer.dag.
     let files = &[
         (
             "types.dag",
@@ -7095,8 +6563,6 @@ fn build_index(items: List<Entry>) -> Map<String, Entry> {
 
 #[test]
 fn multi_module_fold_map_string_bool_bridge_check() {
-    // Simplest cross-module fold: Map<String, Bool> accumulator.
-    // Mirrors self-compile: fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
     let files = &[
         (
             "types.dag",
@@ -7132,10 +6598,6 @@ fn name_set(items: List<Item>) -> Map<String, Bool> {
 
 #[test]
 fn fold_in_let_value_no_bridge() {
-    // Fixed: fold in let VALUE position (expected: none) now resolves
-    // accumulator type via map_insert refinement on bare containers.
-    // Root cause was node_is_keyed_collection requiring children.count==2,
-    // which is always false for bare Map (children.count==0).
     let source = r#"module test_let_value
 fn process(items: List<String>) -> Map<String, Bool> {
   let index = items |> fold(init: empty_map(), f: (acc, item) =>
@@ -7157,18 +6619,8 @@ fn process(items: List<String>) -> Map<String, Bool> {
     );
 }
 
-// ── Algebra-aware operator dispatch tests ─────────────────────────────
-//
-// BinOp.Div is type-directed: Field types (Float) use reciprocal-based
-// division, OrderedRing types (Int) use quotient-based division.
-// Python distinguishes: "/" for true division, "//" for integer division.
-// Go/Rust use single "/" for both (runtime type-directed).
-
 #[test]
 fn python_div_uses_algebra_aware_dispatch() {
-    // Python: Div with AlgReciprocal → "/" (true division)
-    //         Div with AlgQuotient → "//" (integer division)
-    //         Div with no algebra_field → falls back to unconstrained (none exists → error)
     use v1_compiler::std_syntax::{AlgebraFieldKind, BinOp};
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_languages::binop_symbol;
@@ -7198,7 +6650,6 @@ fn python_div_uses_algebra_aware_dispatch() {
 
 #[test]
 fn go_rust_div_ignores_algebra_field() {
-    // Go and Rust have single "/" with algebra_field: none → matches anything
     use v1_compiler::std_syntax::{AlgebraFieldKind, BinOp};
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_languages::binop_symbol;
@@ -7239,8 +6690,6 @@ fn go_rust_div_ignores_algebra_field() {
 
 #[test]
 fn mod_maps_to_remainder_algebra() {
-    // Mod now correctly maps to "remainder" (was incorrectly "add").
-    // All languages use "%" for Mod regardless of algebra_field.
     use v1_compiler::std_syntax::BinOp;
     use v1_compiler::v1_compiler_artifact::RenderTarget;
     use v1_compiler::v1_compiler_languages::binop_symbol;
@@ -7254,7 +6703,6 @@ fn mod_maps_to_remainder_algebra() {
 
 #[test]
 fn binop_algebra_fields_div_tries_reciprocal_then_quotient() {
-    // Div candidates: [AlgReciprocal, AlgQuotient] — Field types match first, Ring types second.
     use v1_compiler::std_syntax::{AlgebraFieldKind, BinOp};
     use v1_compiler::v1_compiler_infer_types::binop_algebra_fields;
 
@@ -7279,10 +6727,6 @@ fn binop_algebra_fields_div_tries_reciprocal_then_quotient() {
         "Mod: AlgRemainder"
     );
 }
-
-// ── RE-1: Transport Emission Fidelity ───────────────────────────────────
-// Tests that the emitter consumes transport config data from .dag service
-// definitions to produce correct Rust code for REST and shell transports.
 
 #[test]
 fn rest_emit_uses_transport_method() {
@@ -7438,7 +6882,6 @@ service test.Shell {
     );
 }
 
-// ── RE-1: shell interpolation with optional params ──────────────────────
 #[test]
 fn shell_emit_optional_param_in_interp() {
     let source = r#"module re1i
@@ -7468,7 +6911,6 @@ service cron.Tab {
     );
 }
 
-// ── RE-1g: shell stdin emission ──────────────────────────────────────────
 #[test]
 fn shell_emit_stdin_pipes_and_writes() {
     let source = r#"module re1g
@@ -7500,7 +6942,6 @@ service shell.Pipe {
     );
 }
 
-// ── RE-1i: from clause JSON path extraction ─────────────────────────────
 #[test]
 fn rest_output_from_clause_extracts_path() {
     let source = r#"module re1i
@@ -7540,7 +6981,6 @@ service test.Api {
     );
 }
 
-// RE-1j: typed `response { 200 => Wire }` deserializes with serde then projects fields.
 #[test]
 fn rest_typed_response_200_body_avoids_json_pointer() {
     let source = r#"module re1j
@@ -7630,7 +7070,6 @@ func fetch_data() -> String {
     );
 }
 
-// ── RE-3a: auth_source credential acquisition ──────────────────────────
 #[test]
 fn service_auth_source_reads_env_var() {
     let source = r#"module re3a
@@ -7913,10 +7352,6 @@ fn google_oauth_refresh_200_body_round_trip_representative_wire() {
     );
 }
 
-// ── RE-2: review.dag compiles to Rust ───────────────────────────────────
-// Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
-// This is the acceptance gate for RE-2.
-
 fn unique_temp_dir(name: &str) -> std::path::PathBuf {
     let unique = format!(
         "v1-compiler-tests-{}-{}",
@@ -8024,12 +7459,15 @@ fn scoped_closure_is_smaller_than_whole_v2_tree() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "Boundary: N_v1 — v1 emitter (`compile_dag_named_with_source_roots`) on scoped v2 closure."]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
     let dsl_root = ws.join("dsl");
     let v2_root = ws.join("src/v2");
-    // witness_layer_roots authority: ["dsl", "src/v2"] — later root (v2) wins on duplicates.
     let overlay_roots = vec![dsl_root.clone(), v2_root.clone()];
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
@@ -8116,7 +7554,11 @@ fn count_dag_files_under(dir: &std::path::Path) -> usize {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "Boundary test: writes temp project and runs cargo check."]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn v2_trivial_import_emits_rust_that_cargo_checks() {
     let ws = crate::helpers::workspace_root();
     let trivial_root = unique_temp_dir("v2-trivial-src");
@@ -8154,20 +7596,22 @@ fn v2_trivial_import_emits_rust_that_cargo_checks() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "Expensive: reads from disk, writes temp project, runs cargo check"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn review_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
     let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
 
-    // Compile review.dag + all transitive imports
     let result = compile_dag_named(
         "dsl/gunbc/tools/review.dag",
         &review_content,
         RenderTarget::Rust,
     );
 
-    // Check for hard diagnostics (non-complexity)
     let hard_diags: Vec<_> = diagnostic_messages(&result)
         .into_iter()
         .filter(|d| !d.contains("complexity:"))
@@ -8185,14 +7629,12 @@ fn review_dag_compiles_to_rust() {
         "RE-2: review.dag produced no emitted files"
     );
 
-    // Write emitted files to temp dir
     let out_dir = unique_temp_dir("re2-review");
     let _ = std::fs::remove_dir_all(&out_dir);
     std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
 
     write_emitted_crate(&result, &out_dir);
 
-    // Run cargo check
     let check = std::process::Command::new(cargo_binary())
         .arg("check")
         .current_dir(&out_dir)
@@ -8201,13 +7643,11 @@ fn review_dag_compiles_to_rust() {
 
     let check_stderr = String::from_utf8_lossy(&check.stderr);
 
-    // Count errors
     let error_count = check_stderr
         .lines()
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
 
-    // Categorize
     let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
@@ -8223,7 +7663,6 @@ fn review_dag_compiles_to_rust() {
         eprintln!("  {}: {}", code, count);
     }
 
-    // Show error lines with file:line context for diagnosis
     let error_lines: Vec<_> = check_stderr
         .lines()
         .filter(|l| l.starts_with("error[") || l.trim_start().starts_with("--> src/"))
@@ -8233,13 +7672,8 @@ fn review_dag_compiles_to_rust() {
         eprintln!("RE-2 errors:\n{}", error_lines.join("\n"));
     }
 
-    // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    // RE-2 ratchet: 0 cargo check errors.
-    // Reduced from 51 → 23 → 3 → 0 via: FuncItem detection (async+service params),
-    // for-each variable fix, runtime contains/count, Rc collection wrap,
-    // shell Optional return, op arg ordering, Optional/Json call-site coercion.
     const RE2_ERROR_RATCHET: usize = 0;
     assert!(
         error_count <= RE2_ERROR_RATCHET,
@@ -8252,9 +7686,12 @@ fn review_dag_compiles_to_rust() {
     }
 }
 
-// ── RE-2: review.dag acceptance tests ─────────────────────────────────────
 #[test]
+<<<<<<< HEAD
 #[ignore = "Expensive: reads review.dag from disk, resolves transitive imports"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn review_dag_has_review_subcommand() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
@@ -8272,7 +7709,11 @@ fn review_dag_has_review_subcommand() {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "Expensive: reads review.dag from disk, resolves transitive imports"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn review_dag_emits_cargo_with_deps() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
@@ -8289,11 +7730,13 @@ fn review_dag_emits_cargo_with_deps() {
     );
 }
 
-// ── RE-2: review.dag builds and runs ─────────────────────────────────────
 #[test]
+<<<<<<< HEAD
 #[ignore = "Expensive: full cargo build + binary execution (~60-120s)"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn review_dag_builds_and_runs_dry_run() {
-    // ── Stage 1: Compile review.dag to Rust ──────────────────────────
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
     let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
@@ -8318,7 +7761,6 @@ fn review_dag_builds_and_runs_dry_run() {
         "RE-2 build: review.dag produced no emitted files"
     );
 
-    // ── Stage 2: Write files to temp dir ─────────────────────────────
     let out_dir = std::env::temp_dir().join("v2-re2-review-build");
     let _ = std::fs::remove_dir_all(&out_dir);
     std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
@@ -8332,7 +7774,6 @@ fn review_dag_builds_and_runs_dry_run() {
             .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
     }
 
-    // ── Stage 3: cargo build ─────────────────────────────────────────
     let build = std::process::Command::new("cargo")
         .arg("build")
         .current_dir(&out_dir)
@@ -8351,7 +7792,6 @@ fn review_dag_builds_and_runs_dry_run() {
         build_stderr
     );
 
-    // ── Stage 4: Derive binary path from Cargo.toml ──────────────────
     let cargo_toml_content = std::fs::read_to_string(out_dir.join("Cargo.toml"))
         .expect("failed to read generated Cargo.toml");
     let binary_name = cargo_toml_content
@@ -8368,7 +7808,6 @@ fn review_dag_builds_and_runs_dry_run() {
     );
     eprintln!("RE-2: binary built at {}", binary_path.display());
 
-    // ── Stage 5: Run binary with --help ──────────────────────────────
     let help = std::process::Command::new(&binary_path)
         .arg("--help")
         .output()
@@ -8387,7 +7826,6 @@ fn review_dag_builds_and_runs_dry_run() {
     );
     eprintln!("RE-2: --help works, review-pr subcommand present");
 
-    // ── Stage 6: Run binary with --dry-run review-pr ─────────────────
     let run = std::process::Command::new(&binary_path)
         .env("GITHUB_TOKEN", "dry-run-placeholder")
         .arg("--dry-run")
@@ -8436,13 +7874,11 @@ fn review_dag_builds_and_runs_dry_run() {
         run_stdout
     );
 
-    // ── Cleanup ──────────────────────────────────────────────────────
     let _ = std::fs::remove_dir_all(&out_dir);
 
     eprintln!("RE-2: review.dag compiled, built, and ran successfully!");
 }
 
-// ── RE-1: POST body emission ──────────────────────────────────────────────
 #[test]
 fn rest_emit_post_body_single_field() {
     let source = r#"module re1_body1
@@ -8509,7 +7945,6 @@ service test.Svc {
     );
 }
 
-// ── RE-1d: Header auth variant ─────────────────────────────────────────
 #[test]
 fn rest_emit_uses_header_auth() {
     let source = "module re1d_header\n\nimport std.types { AuthScheme }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Header(\"x-api-key\")\n    auth_input: api_key\n  }\n  operation GetData {\n    input { api_key: Secret }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n";
@@ -8526,7 +7961,6 @@ fn rest_emit_uses_header_auth() {
     );
 }
 
-// ── RE-3b: POST body for service with auth_source ─────────────────────
 #[test]
 fn rest_emit_post_with_auth_source() {
     let source = r#"module re3b
@@ -8562,7 +7996,6 @@ service test.Api {
     );
 }
 
-// ── RE-3c: Shell stdout capture ──────────────────────────────────────────
 #[test]
 fn shell_emit_captures_stdout() {
     let source = "module re3c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool, stdout: String, stderr: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"{script}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n";
@@ -8575,7 +8008,6 @@ fn shell_emit_captures_stdout() {
     );
 }
 
-// ── RE-3d: Cron upsert shell script ──────────────────────────────────────
 #[test]
 fn shell_emit_cron_upsert_script() {
     let source = "module re3d\n\nservice test.Cron {\n  config {}\n  operation Upsert {\n    input { tag: String, schedule: String, command: String }\n    output { success: Bool }\n    transport shell {\n      argv: [\"sh\", \"-c\", \"TAG='{tag}'; ENTRY='{schedule} {command}'; crontab -l | grep -v $TAG; echo $ENTRY\"]\n    }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true } \"ok\"\n    }\n  }\n}\n";
@@ -8588,10 +8020,6 @@ fn shell_emit_cron_upsert_script() {
     );
 }
 
-// ── RE-4b: OpenAI Chat Completions narrow row — request wire ratchet (#901) ─
-// `wire_contract` is `StringVariant { naming: SnakeCase }` (same wire as
-// `llm_snake_wire_contract` in `extdeps.llm.llm`) so the emitter attaches serde
-// `rename_all = "snake_case"` to role-like coproducts (System→"system", …).
 #[test]
 #[ignore = "failing: untagged OpenAiChatMessageContent variants not emitted as newtype variants (content wire mismatch). Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-projection"]
 fn openai_chat_message_role_wire_matches_llm_snake_contract() {
@@ -8606,10 +8034,6 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let pos = content
         .find(enum_decl)
         .unwrap_or_else(|| panic!("expected {enum_decl} in emitted openai module"));
-    // Other coproducts in this module (e.g. `OpenAiFinishReason`) share the same
-    // `wire_contract` and also carry `#[serde(rename_all = "snake_case")]`. Scanning the
-    // whole prelude with `rfind` would attach the wrong enum; only the attribute block
-    // immediately above `OpenAiChatMessageRole` is authoritative.
     let prelude = &content[..pos];
     let serde_snake = "#[serde(rename_all = \"snake_case\")]";
     let mut attrs_above: Vec<&str> = Vec::new();
@@ -8641,7 +8065,6 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         .find('{')
         .map(|i| pos + i)
         .expect("OpenAiChatMessageRole enum opening brace");
-    // Unit enum: no nested `}` inside variants — first `}` after `{` closes the enum.
     let close_brace = content[open_brace + 1..]
         .find('}')
         .map(|i| open_brace + 1 + i)
@@ -8724,10 +8147,6 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     );
 }
 
-// ── GitHub pulls review enums — ScreamingSnakeCase wire ratchet (post-#5163) ─
-// `review_state_wire_contract` / `review_event_wire_contract` use
-// `StringVariant { naming: ScreamingSnakeCase }` so emitted serde carries
-// `rename_all = "SCREAMING_SNAKE_CASE"` (ChangesRequested → "CHANGES_REQUESTED").
 #[test]
 fn github_review_enums_wire_matches_screaming_snake_contract() {
     let ws = crate::helpers::workspace_root();
@@ -9208,10 +8627,6 @@ type LocalUnitEnum
     );
 }
 
-// Golden JSON for the `OpenAiChatMessage` request coproduct under the same serde
-// policy as emitted code (`#[serde(tag = "role")]` with per-variant renames).
-// Guards Chat Completions role tags, tool_call_id, function rows, and typed
-// content-part discriminators without provider string branching.
 #[test]
 fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     #[derive(Copy, Clone, serde::Serialize)]
@@ -9376,9 +8791,6 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     assert_eq!(v["content"][1]["image_url"]["detail"], "high");
 }
 
-// Golden JSON for Anthropic Messages request rows under the same serde policy
-// emitted from `CoproductWireContract` rows in `dsl/extdeps/llm/anthropic.dag`.
-// Guards outer `messages[].role` and flat content-block `type` discriminators.
 #[test]
 fn anthropic_messages_request_body_json_matches_messages_wire_tags() {
     #[derive(serde::Serialize)]
@@ -9977,7 +9389,6 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     );
 }
 
-// ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
     let source = r#"module re4a
@@ -10316,7 +9727,11 @@ service test.Llm {
 }
 
 #[test]
+<<<<<<< HEAD
 #[ignore = "Expensive: reads from disk, resolves transitive imports"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn anthropic_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
@@ -10421,7 +9836,6 @@ data tool_results: List<AnthropicChatMessage> = [
     );
 }
 
-// ── RE-5: Multi-backend test ─────────────────────────────────────────────
 #[test]
 fn multi_backend_cli_and_rest_compile() {
     let source = r#"module re5
@@ -10485,25 +9899,18 @@ func ask_rest(api_key: Secret, prompt: String) -> String {
     );
 }
 
-// ── RE-4: Live Anthropic API integration ────────────────────────────────
-// Exploratory integration probe: compiles a workflow function that calls
-// the Anthropic Messages API, builds, and runs it against the real API.
-// This is NOT an L4 semantic correctness test — it checks process exit
-// and non-empty output, not declared contract fields.
-// Full L4 tests require Track 12 (verification from structure).
-// Requires ANTHROPIC_API_KEY in the environment.
 #[test]
+<<<<<<< HEAD
 #[ignore = "Expensive: builds binary, calls real Anthropic API"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn anthropic_live_e2e() {
     if std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!("Skipping live test: ANTHROPIC_API_KEY not set");
         return;
     }
 
-    // Compile a workflow function that calls the Anthropic service.
-    // Bare anthropic.dag has no workflow functions (only a service def),
-    // so the emitter generates no CLI subcommands. This wrapper provides
-    // the func → subcommand that the test can invoke.
     let wrapper_source = r#"module test_live_anthropic
 
 import extdeps.llm.anthropic
@@ -10550,7 +9957,6 @@ func ask_claude(
         "RE-4 live: test wrapper produced no emitted files"
     );
 
-    // Write files to temp dir
     let out_dir = std::env::temp_dir().join("v2-re4-live");
     let _ = std::fs::remove_dir_all(&out_dir);
     std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
@@ -10564,7 +9970,6 @@ func ask_claude(
             .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
     }
 
-    // Build
     let build = std::process::Command::new("cargo")
         .arg("build")
         .current_dir(&out_dir)
@@ -10577,7 +9982,6 @@ func ask_claude(
         panic!("RE-4 live: cargo build failed:\n{}", stderr);
     }
 
-    // Derive binary name from Cargo.toml (single authority, not hardcoded)
     let cargo_toml_content = std::fs::read_to_string(out_dir.join("Cargo.toml"))
         .expect("failed to read generated Cargo.toml");
     let binary_name = cargo_toml_content
@@ -10588,7 +9992,6 @@ func ask_claude(
         .expect("failed to parse binary name from Cargo.toml");
     let binary_path = out_dir.join("target/debug").join(binary_name);
 
-    // Invoke the workflow function subcommand (ask_claude → ask-claude)
     let run = std::process::Command::new(&binary_path)
         .arg("ask-claude")
         .env(
@@ -10614,14 +10017,8 @@ func ask_claude(
     );
 }
 
-// ── CX-L3: Structural complexity bound regression tests ─────────────────
-//
-// End-to-end: compile .dag source → CX-L1 (InductiveField) → CX-L2
-// (descent_evidence) → CX-L3 (analyze_structural_bounds) → assert bound.
-
 #[test]
 fn structural_bound_linked_list_length() {
-    // Single-branch DirectRecursion catamorphism → O(n)
     let source = r#"module list_len
 
 type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
@@ -10664,7 +10061,6 @@ fn len(xs: MyList<Int>) -> Int {
 
 #[test]
 fn structural_bound_binary_tree_size() {
-    // Multi-branch catamorphism: both branches descend on disjoint fields → O(n)
     let source = r#"module tree_size
 
 type BinTree<T> = Leaf { value: T } | Branch { left: BinTree<T>, right: BinTree<T> }
@@ -10707,8 +10103,6 @@ fn size(t: BinTree<Int>) -> Int {
 
 #[test]
 fn structural_bound_optional_chain() {
-    // OptionalRecursion on a record field: match c.next { Present { rest } => ... }
-    // CX-L2 handles field-access scrutinees: c.next where c: Chain, next: Chain?
     let source = r#"module opt_chain
 
 type Chain { value: Int, next: Chain? }
@@ -10751,9 +10145,6 @@ fn count(c: Chain) -> Int {
 
 #[test]
 fn structural_bound_arithmetic_descent() {
-    // CX-L2: Arithmetic descent on Int (n - 1) IS recognized as descent evidence.
-    // countdown(n: n - 1) terminates in O(n) calls when n > 0.
-    // The analyzer produces a structural bound with a synthetic InductiveField.
     let source = r#"module arith
 
 fn countdown(n: Int) -> Int {
@@ -10767,7 +10158,6 @@ fn countdown(n: Int) -> Int {
         .iter()
         .filter(|b| b.func_name == "countdown")
         .collect();
-    // CX-L2 recognizes n - 1 as ConstantShrink descent → O(n)
     assert!(
         !bounds.is_empty(),
         "arithmetic descent (n - 1) should produce O(n) structural bound"
@@ -10776,7 +10166,6 @@ fn countdown(n: Int) -> Int {
 
 #[test]
 fn structural_bound_bad_recursion_unknown() {
-    // Self-call passes wrong argument → SubValueUnknown → no structural bound
     let source = r#"module bad_rec
 
 type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
@@ -10802,8 +10191,6 @@ fn bad(xs: MyList<Int>, ys: MyList<Int>) -> Int {
 
 #[test]
 fn structural_bound_node_fold_children() {
-    // IteratedSubValue via fold over recursive children → O(n)
-    // This is the most common pattern in the compiler itself.
     let source = r#"module node_fold
 
 type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
@@ -10822,14 +10209,6 @@ fn sum_tree(t: Tree) -> Int {
         .iter()
         .filter(|b| b.func_name == "sum_tree")
         .collect();
-    // NOTE: This test verifies the fold-over-children pattern.
-    // CX-L2 must detect that `child` in the fold lambda is an IteratedSubValue
-    // of `cs` (which is the `children` inductive field of Tree).
-    // If CX-L2 doesn't handle fold lambdas yet, the bound will be absent.
-    // When it works, the expected bound is O(n).
-    // Fold over children: lambda element parameter is an IteratedSubValue
-    // of the receiver's collection field. CX-L2 threads context through
-    // fold/map lambdas so the self-call gets descent evidence.
     assert!(
         !bounds.is_empty(),
         "fold over children should produce catamorphism O(n) bound"
@@ -10855,8 +10234,6 @@ fn sum_tree(t: Tree) -> Int {
 
 #[test]
 fn structural_bound_bst_search() {
-    // BST search: single-branch descent (left OR right per path).
-    // Correct worst-case bound is O(n) — degenerate tree = linked list.
     let source = r#"module bst_search
 
 type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
@@ -10902,7 +10279,6 @@ fn search(tree: BST<Int>, target: Int) -> Bool {
 
 #[test]
 fn structural_bound_bst_insert() {
-    // BST insert: single-branch descent, constructs new nodes on the way back.
     let source = r#"module bst_insert
 
 type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
@@ -10947,8 +10323,6 @@ fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
 
 #[test]
 fn structural_bound_tree_depth() {
-    // Tree depth: multi-branch descent (both left AND right), takes max.
-    // Still O(n) — catamorphism visits all nodes.
     let source = r#"module tree_depth
 
 type BinTree<T> = Leaf | Node { left: BinTree<T>, right: BinTree<T> }
@@ -10994,8 +10368,6 @@ fn depth(t: BinTree<Int>) -> Int {
 
 #[test]
 fn structural_bound_binary_search() {
-    // Divide-and-conquer: binary search on sorted list.
-    // T(n) = 1·T(n/2) + O(1) → O(log n) via master theorem (Case 2, a == b^d).
     let source = r#"module bin_search
 
 fn binary_search(xs: List<Int>, target: Int) -> Bool {
@@ -11020,8 +10392,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         .iter()
         .filter(|b| b.func_name == "binary_search")
         .collect();
-    // CX-L2 detects xs |> take(mid) where mid = count(xs) / 2 as ProportionalShrink(2).
-    // CX-L3: derive_bound(branches: 1, ProportionalShrink(2), work: 0) → master_theorem → O(log n).
     assert!(
         !bounds.is_empty(),
         "expected structural bound for binary_search, got none"
@@ -11042,9 +10412,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
 
 #[test]
 fn structural_bound_composed_tree_then_search() {
-    // Composition: flatten a tree to a list, then search the list.
-    // flatten is O(n) catamorphism on tree, search is O(n) catamorphism on list.
-    // Both should independently produce structural bounds.
     let source = r#"module compose_test
 
 type BST<T> = Leaf | Node { value: T, left: BST<T>, right: BST<T> }
@@ -11075,7 +10442,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    // flatten should produce O(n) on tree
     let flatten_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -11086,7 +10452,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
         "expected structural bound for flatten"
     );
     assert_eq!(flatten_bounds[0].param, "tree");
-    // list_contains should produce O(n) on xs
     let search_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -11097,7 +10462,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
         "expected structural bound for list_contains"
     );
     assert_eq!(search_bounds[0].param, "xs");
-    // tree_contains is not recursive — no structural bound expected
     let tc_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -11111,8 +10475,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
 
 #[test]
 fn structural_bound_mutual_types() {
-    // Two recursive types used together: a forest is a list of trees.
-    // sum_tree is O(n) on tree; sum_forest is O(n) on forest.
     let source = r#"module mutual_types
 
 type Tree = Leaf { value: Int } | Branch { left: Tree, right: Tree }
@@ -11158,12 +10520,6 @@ fn sum_forest(f: Forest) -> Int {
 
 #[test]
 fn structural_bound_nested_algorithms() {
-    // Stress test: a linked list filter that calls binary search on a
-    // separate sorted list for each element. Both algorithms have
-    // independent structural bounds on different parameters.
-    //
-    // filter_by_membership: O(n) on items (catamorphism on linked list)
-    // binary_search: O(log n) on sorted (divide-and-conquer on List<Int>)
     let source = r#"module nested_algos
 
 type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
@@ -11198,7 +10554,6 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
 "#;
     let complexity = compile_dag_with_complexity(source);
 
-    // binary_search should produce O(log n) on sorted
     let bs_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -11219,7 +10574,6 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
         "binary_search should be O(log n) even when called from another algorithm"
     );
 
-    // filter_by_membership should produce O(n) on items (catamorphism)
     let filter_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -11232,13 +10586,8 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     assert_eq!(filter_bounds[0].param, "items");
 }
 
-// ── CX adversarial tests: stress the analyzer with weird/hostile patterns ───
-
 #[test]
 fn adversarial_infinite_loop() {
-    // self(same_arg) — infinite loop. Should produce NO structural bound
-    // (fail-closed). The existing complexity analyzer classifies this as
-    // "same-argument recursion" (Forever/repeat(max_int)).
     let source = r#"module inf_loop
 
 fn spin(x: Int) -> Int {
@@ -11258,8 +10607,6 @@ fn spin(x: Int) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // spin(x: x) passes x unchanged → PreservedValue → NonIncreasing evidence.
-    // merge_param_evidence → NonIncreasing (not Strict) → no structural bound.
     assert!(
         bounds.is_empty(),
         "infinite loop should produce no structural bound (fail-closed)"
@@ -11268,8 +10615,6 @@ fn spin(x: Int) -> Int {
 
 #[test]
 fn adversarial_mutual_recursion() {
-    // A calls B calls A — mutual recursion. CX-L2 only tracks self-calls,
-    // not cross-function calls. Should fail-closed.
     let source = r#"module mutual_rec
 
 type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
@@ -11304,8 +10649,6 @@ fn odd_count(xs: MyList<Int>) -> Int {
         even_bounds.len(),
         odd_bounds.len()
     );
-    // Neither function self-calls — they call each other.
-    // CX-L2 only annotates self-calls. No descent evidence → no bounds.
     assert!(
         even_bounds.is_empty(),
         "mutual recursion should produce no structural bound"
@@ -11318,8 +10661,6 @@ fn odd_count(xs: MyList<Int>) -> Int {
 
 #[test]
 fn adversarial_exponential_blowup() {
-    // Naive fibonacci: f(n-1) + f(n-2). Two recursive calls on non-structural
-    // arguments (Int, no InductiveField). Should produce no bound.
     let source = r#"module fib
 
 fn fib(n: Int) -> Int {
@@ -11334,7 +10675,6 @@ fn fib(n: Int) -> Int {
         .filter(|b| b.func_name == "fib")
         .collect();
     eprintln!("[adversarial] fib: {} bounds", bounds.len());
-    // Int is not an inductive type → no InductiveField → SubValueUnknown → no bound.
     assert!(
         bounds.is_empty(),
         "fibonacci on Int should produce no structural bound"
@@ -11343,8 +10683,6 @@ fn fib(n: Int) -> Int {
 
 #[test]
 fn adversarial_hidden_nontermination() {
-    // Looks structural but sneaks in a growing argument.
-    // Each call to walk passes a LARGER tree (wraps in Branch).
     let source = r#"module sneaky
 
 type Tree = Leaf | Branch { left: Tree, right: Tree }
@@ -11369,8 +10707,6 @@ fn walk(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // The self-call passes `Branch { left: l, right: l }` — a CONSTRUCTOR,
-    // not a sub-value. classify_argument sees ExprRecordLit, returns SubValueUnknown.
     assert!(
         bounds.is_empty(),
         "growing argument should produce no structural bound (fail-closed)"
@@ -11379,8 +10715,6 @@ fn walk(t: Tree) -> Int {
 
 #[test]
 fn adversarial_ackermann() {
-    // Ackermann function: nested recursion on two parameters.
-    // Neither parameter has InductiveField (both Int).
     let source = r#"module ackermann
 
 fn ack(m: Int, n: Int) -> Int {
@@ -11396,7 +10730,6 @@ fn ack(m: Int, n: Int) -> Int {
         .filter(|b| b.func_name == "ack")
         .collect();
     eprintln!("[adversarial] ackermann: {} bounds", bounds.len());
-    // Int has no InductiveField → all arguments are SubValueUnknown → no bound.
     assert!(
         bounds.is_empty(),
         "ackermann on Int should produce no structural bound"
@@ -11405,8 +10738,6 @@ fn ack(m: Int, n: Int) -> Int {
 
 #[test]
 fn adversarial_quadratic_nested_walk() {
-    // O(n^2): for each node in a tree, walks the entire left subtree.
-    // The inner call is on a sub-value, but it's called N times.
     let source = r#"module quadratic
 
 type Tree = Leaf { value: Int } | Branch { left: Tree, right: Tree }
@@ -11428,19 +10759,12 @@ fn quadratic_walk(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    // count_left is a catamorphism → O(n)
     let cl_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
         .filter(|b| b.func_name == "count_left")
         .collect();
     assert!(!cl_bounds.is_empty(), "count_left should be O(n)");
-    // quadratic_walk: both branches descend → merged Strict → catamorphism O(n).
-    // NOTE: The actual complexity is O(n^2) because count_left is called
-    // at each node. But CX-L3 only analyzes the STRUCTURAL recursion of
-    // quadratic_walk itself (which is a catamorphism). The O(n) per-node
-    // work from count_left is not yet factored in (work_exponent = 0).
-    // This is a known limitation: work_exponent detection is future work.
     let qw_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -11453,11 +10777,6 @@ fn quadratic_walk(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // The structural bound reports O(n) — recursion structure is catamorphism.
-    // The existing cost algebra reports O(n * n) — accounts for count_left cost.
-    // Both are correct views. The structural bound should compose with per-node
-    // work to produce O(n^2). This requires reading work_exponent from the
-    // existing analyzer (CX-L3 currently uses work_exponent=0).
     assert_eq!(
         complexity
             .function_classes
@@ -11476,19 +10795,8 @@ fn quadratic_walk(t: Tree) -> Int {
     );
 }
 
-// ── ExprLet lexical scope regression (review feedback) ──────────────────
-
 #[test]
 fn let_initializer_does_not_see_own_binding() {
-    // Regression: annotate_descent's ExprLet arm must NOT give the value
-    // initializer access to the binding being defined. Only the body should
-    // see it. If the initializer wrongly sees the binding, it could fabricate
-    // sub_value_vars evidence that doesn't exist, producing unsound bounds.
-    //
-    // Here, `let alias = xs` defines alias as a sub-value of xs. But the
-    // self-call `bad(xs: alias)` is in the VALUE of `let result = ...`,
-    // not the body. If annotate_descent applied inner_ctx to the value,
-    // alias would be visible as a descent var, producing a false O(n) bound.
     let source = r#"module let_scope
 
 type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
@@ -11505,8 +10813,6 @@ fn bad(xs: MyList<Int>) -> Int {
         .iter()
         .filter(|b| b.func_name == "bad")
         .collect();
-    // `bad` calls itself with the same argument (alias = xs, so bad(xs: alias) = bad(xs: xs)).
-    // This is NOT a catamorphism — no structural descent. Should produce no bound.
     assert!(
         bounds.is_empty(),
         "self-call with aliased same-size argument should produce no structural bound, got: {:?}",
@@ -11517,11 +10823,8 @@ fn bad(xs: MyList<Int>) -> Int {
     );
 }
 
-// ── KF-7: Space complexity regression tests ─────────────────────────────
-
 #[test]
 fn space_bound_tail_recursive_o1_stack() {
-    // Tail-recursive list walk: the self-call IS the return value → TCO → O(1) stack.
     let source = r#"module tail_stack
 
 type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
@@ -11547,7 +10850,6 @@ fn last_elem(xs: MyList<Int>) -> Int {
         !bounds.is_empty(),
         "expected structural bound for last_elem"
     );
-    // Time: O(n) catamorphism
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -11564,7 +10866,6 @@ fn last_elem(xs: MyList<Int>) -> Int {
         },
         "last_elem time should be O(n)"
     );
-    // Stack: O(1) — tail-recursive, TCO applies
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::ConstantBound,
@@ -11574,7 +10875,6 @@ fn last_elem(xs: MyList<Int>) -> Int {
 
 #[test]
 fn space_bound_non_tail_tree_on_stack() {
-    // Non-tail tree traversal: two recursive calls → can't TCO → O(n) stack.
     let source = r#"module tree_stack
 
 type BinTree<T> = Leaf | Branch { left: BinTree<T>, right: BinTree<T> }
@@ -11593,7 +10893,6 @@ fn size(t: BinTree<Int>) -> Int {
         .filter(|b| b.func_name == "size")
         .collect();
     assert!(!bounds.is_empty(), "expected structural bound for size");
-    // Time: O(n) catamorphism
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -11610,7 +10909,6 @@ fn size(t: BinTree<Int>) -> Int {
         },
         "size time should be O(n)"
     );
-    // Stack: O(n) — non-tail (size(l) + size(r)), no TCO
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -11631,7 +10929,6 @@ fn size(t: BinTree<Int>) -> Int {
 
 #[test]
 fn space_bound_binary_search_log_stack() {
-    // Binary search: O(log n) time AND O(log n) stack (not tail-recursive due to if/else).
     let source = r#"module bsearch_stack
 
 fn binary_search(xs: List<Int>, target: Int) -> Bool {
@@ -11660,7 +10957,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         !bounds.is_empty(),
         "expected structural bound for binary_search"
     );
-    // Time: O(log n)
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -11670,8 +10966,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         },
         "binary search time should be O(log n)"
     );
-    // Stack: O(1) — binary search self-calls are in tail position (if/else branches),
-    // TCO applies, so stack depth is constant despite O(log n) recursion depth.
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::ConstantBound,
@@ -11679,14 +10973,8 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     );
 }
 
-// KF-8: Optimality gate tests removed — the lossy bound_rank/cost_dominates
-// approach violated modeling faithfulness. Will be reintroduced when structural
-// CostBound comparison (direct pattern matching) is implemented.
-
 #[test]
 fn adversarial_take_mid_mul_no_proportional() {
-    // take(mid * 2) must NOT produce ProportionalShrink.
-    // Only Add/Sub with a literal constant are valid adjustments.
     let source = r#"module bad_shrink
 
 fn bad_split(xs: List<Int>) -> Int {
@@ -11711,8 +10999,6 @@ fn bad_split(xs: List<Int>) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // mid * 2 is NOT a small-constant adjustment → should not get ProportionalShrink.
-    // Expect either no bound or O(n) catamorphism at most (fail-closed).
     for b in &bounds {
         assert_ne!(
             *b.recurrence_bound,
@@ -11728,13 +11014,6 @@ fn bad_split(xs: List<Int>) -> Int {
 
 #[test]
 fn adversarial_lambda_hidden_recursion() {
-    // Self-call inside a fold on a LITERAL list (not a collection field).
-    // The fold receiver [1, 2] is not a field access on a parameter, so
-    // the lambda element parameter is NOT registered as IteratedSubValue.
-    // The self-call bad_walk(t: l) uses a match-bound sub-value l, which
-    // IS recognized. But this is called twice (fold over 2 elements),
-    // making it T(n) = 2T(n-1) = O(2^n). The disjointness check catches
-    // this: max_path=2 (two lambda invocations) > distinct_fields=1.
     let source = r#"module lambda_hidden
 
 type Tree = Leaf | Branch { left: Tree, right: Tree }
@@ -11760,12 +11039,6 @@ fn bad_walk(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // With transparent lambdas, the self-call bad_walk(t: l) IS visible.
-    // But l is used in a fold over [1, 2] (not a collection field), so
-    // the self-call gets StrictSubValue evidence for l. The fold invokes
-    // the lambda twice, so this is NOT a catamorphism. The disjointness
-    // check or the existing cost algebra should catch this.
-    // The bound should either be absent or not O(n).
     for b in &bounds {
         assert_ne!(
             *b.recurrence_bound,
@@ -11788,8 +11061,6 @@ fn bad_walk(t: Tree) -> Int {
 
 #[test]
 fn adversarial_duplicate_same_child() {
-    // f(l) + f(l): two calls descending on the SAME child.
-    // T(n) = 2T(n-1) + O(1) = O(2^n), NOT a catamorphism.
     let source = r#"module dup_child
 
 type Tree = Leaf | Branch { left: Tree, right: Tree }
@@ -11815,8 +11086,6 @@ fn dup(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // Two calls on the same child (left) → max_path=2 > distinct_fields=1.
-    // Disjointness check fails → should not produce catamorphism O(n).
     for b in &bounds {
         assert_ne!(
             *b.recurrence_bound,
@@ -11837,25 +11106,8 @@ fn dup(t: Tree) -> Int {
     }
 }
 
-// ── CX gap tests: patterns used in real compiler but not yet proven ────
-//
-// These tests document the MISSING PATTERNS that prevent the CX analyzer
-// from proving bounds for real compiler functions. Each test exercises a
-// pattern used heavily in the compiler (render_node_type, walk_expr, etc.)
-// that the current analyzer cannot handle. As the analyzer improves,
-// these tests should be upgraded from "assert no bound / assert not O(n)"
-// to "assert O(n)".
-//
-// All of these are iteration in different skin. The right fix is recursion
-// scheme recognition, not per-pattern special cases.
-
 #[test]
 fn gap_match_shape_recurse_children() {
-    // Pattern: match on expr_data (shape), recurse on children (structure).
-    // This is the dominant pattern in the compiler: render_node_type,
-    // walk_expr, resolve_expr_types all discriminate on node shape then
-    // recurse into sub-nodes. The match scrutinee (n.expr_data) and the
-    // recursion target (n.children) are different fields of the same Node.
     let source = r#"module shape_recurse
 
 type Expr
@@ -11884,7 +11136,6 @@ fn eval(e: Expr) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // This IS a catamorphism — every arm recurses on strict sub-values.
     assert!(!bounds.is_empty(), "eval should produce structural bound");
     assert_eq!(bounds[0].param, "e");
     assert_eq!(
@@ -11907,8 +11158,6 @@ fn eval(e: Expr) -> Int {
 
 #[test]
 fn gap_accessor_in_fold() {
-    // Pattern: fold over a collection field, self-call passes the element directly.
-    // This already works with lambda transparency + fold context threading.
     let source = r#"module accessor_fold
 
 type Container { items: List<Container>, label: Int }
@@ -11961,9 +11210,6 @@ fn sum_labels(c: Container) -> Int {
 
 #[test]
 fn gap_mixed_field_recursion() {
-    // Pattern: function recurses through MULTIPLE fields of the same node
-    // using different access patterns (direct field, optional unwrap, list fold).
-    // This is how resolve_expr_types and infer_item work.
     let source = r#"module mixed_fields
 
 type Item {
@@ -12001,7 +11247,6 @@ fn count_items(item: Item) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // Catamorphism through children (List), body (Optional), annotation (Optional).
     assert!(
         !bounds.is_empty(),
         "count_items should produce structural bound"
@@ -12027,9 +11272,6 @@ fn count_items(item: Item) -> Int {
 
 #[test]
 fn gap_accessor_chain_in_self_call() {
-    // Pattern: self-call argument is a chain of accessor functions.
-    // f(n: inner(n: outer(n: p))) — two levels of extraction.
-    // render_node_type uses this: render_node_type(n: child_type_node(ch: kn))
     let source = r#"module accessor_chain
 
 type Wrapper { inner: Wrapper?, label: Int }
@@ -12056,18 +11298,17 @@ fn depth(w: Wrapper) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-    // This IS a catamorphism — get_inner extracts the Optional sub-Wrapper,
-    // match unwraps it, depth recurses. Total: visits each Wrapper once.
-    // When it works: assert O(n).
     if !bounds.is_empty() {
         assert_eq!(bounds[0].param, "w");
     }
 }
 
-// ── CX complexity report dump ──────────────────────────────────────────
-
 #[test]
+<<<<<<< HEAD
 #[ignore = "run with: cargo test -p v1-compiler-tests dump_complexity_report -- --ignored --nocapture"]
+=======
+#[ignore]
+>>>>>>> origin/main
 fn dump_complexity_report() {
     let ws = workspace_root();
     let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
@@ -12240,7 +11481,6 @@ fn diag_emitter_scc() {
     );
     let func_entries = extract_func_entries(typed.clone());
 
-    // Build func_index
     let func_index: HashMap<String, Rc<v1_compiler::v1_compiler_compile::FuncEntry>> = func_entries
         .iter()
         .map(|e| (e.name.clone(), e.clone()))
@@ -12253,7 +11493,6 @@ fn diag_emitter_scc() {
         Rc::new(HashMap::new()),
     );
 
-    // Find the SCC containing emit_typed_expr
     if let Some(info) = scc_result.index.get("emit_typed_expr") {
         eprintln!("\n=== Emitter SCC ===");
         eprintln!("  Members ({}):", info.members.len());
@@ -12262,7 +11501,6 @@ fn diag_emitter_scc() {
         }
         eprintln!("  Pattern: {:?}", info.pattern);
 
-        // Collect CX-L2 tree edges
         let scc_name_set = Rc::new(
             info.member_set
                 .iter()
@@ -12281,7 +11519,6 @@ fn diag_emitter_scc() {
             eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
         }
 
-        // Check for edges involving emit_rust_expr_match
         let match_edges: Vec<_> = edges
             .iter()
             .filter(|e| e.caller == "emit_rust_expr_match" || e.callee == "emit_rust_expr_match")
@@ -12295,7 +11532,6 @@ fn diag_emitter_scc() {
             eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
         }
 
-        // Check which edges have DescentUnknown
         let unknown_edges: Vec<_> = edges
             .iter()
             .filter(|e| {
@@ -12312,7 +11548,6 @@ fn diag_emitter_scc() {
             let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
             eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
         }
-        // Detailed: look at what collect_callee_evidence returns for emit_rust_expr_match
         let entry = func_index.get("emit_typed_expr");
         if let Some(entry) = entry {
             let target_evidence = collect_callee_evidence(
@@ -12349,7 +11584,6 @@ fn diag_emitter_scc() {
                 eprintln!("    call {}: [{}]", i, kinds.join(", "));
             }
 
-            // Also check self evidence
             let self_ev = collect_self_call_evidence(
                 entry.body.clone(),
                 "emit_typed_expr".to_string(),
@@ -12388,7 +11622,6 @@ fn diag_emitter_scc() {
         eprintln!("emit_typed_expr not found in any SCC");
     }
 
-    // Check apply_named_template_nested
     let entry = func_entries
         .iter()
         .find(|e| e.name == "apply_named_template_nested");
@@ -12433,56 +11666,15 @@ fn diag_emitter_scc() {
     }
 }
 
-// ── Ownership violation tracking ─────────────────────────────────────────
-//
-// Each test compiles a .dag program where the ownership properties are
-// known by construction, then counts PROVABLE violations — clones the
-// analysis already has enough information to eliminate.
-//
-// Conceptual violation classes (for design orientation, not yet
-// individually measured):
-//
-//   V1 — Last-use clone:  fan-out > 1, but the last use clones when it
-//         could move.
-//   V2 — TCO-gated move:  fan-out = 1 + is_owned_local, but TCO gate
-//         zeroes the movable set.
-//   V3 — Fold fallback:   proof says eligible, emitter emits fallback.
-//   V4 — Read-as-clone:   Read edges emitted as .clone() when borrow
-//         would suffice.  Blocked on LS-4.
-//
-// Current measurement is two COARSE aggregates:
-//   movable_but_cloned — conflates V1 + V2 (scope-blind string match)
-//   try_unwrap_fallbacks — approximates V3 (pattern match in emitted code)
-// V4 is not yet measured.
-//
-// Limitation: counting is scope-blind — it concatenates all emitted Rust
-// and does substring matching. Bindings with the same name in different
-// functions can cause over/under-counting. This is a directional
-// indicator, not a precise violation count. The ratchet is useful for
-// detecting regressions, not for precise claims.
-
-/// Count occurrences of a pattern in a string.
 fn count_pattern(haystack: &str, needle: &str) -> usize {
     haystack.match_indices(needle).count()
 }
 
-/// Approximate ownership violation count via scope-blind string matching.
-///
-/// Cross-references the ownership proof (which bindings are movable)
-/// against emitted Rust (whether `.clone()` appears for that name).
-///
-/// **Limitation:** concatenates all emitted files and matches by name
-/// substring — scope-blind. Same-named bindings in different functions
-/// can over/under-count. Use as a directional regression indicator,
-/// not for precise claims.
-///
-/// Returns (movable_but_cloned, try_unwrap_fallbacks).
 fn count_ownership_violations(
     result: &v1_compiler::v1_compiler_compile::PipelineResult,
 ) -> (usize, usize) {
     use v1_compiler::v1_compiler_ownership::build_movable_set;
 
-    // Collect all emitted Rust into one string for searching.
     let emitted: String = result
         .files
         .iter()
@@ -12496,8 +11688,6 @@ fn count_ownership_violations(
     for proof in result.ownership.iter() {
         let movable = build_movable_set(proof.clone());
         for name in movable.iter() {
-            // The proof says this binding should move.
-            // Check if the emitted code clones it instead.
             let clone_pattern = format!("{}.clone()", name);
             let clones_in_emitted = count_pattern(&emitted, &clone_pattern);
             movable_but_cloned += clones_in_emitted;
@@ -12507,9 +11697,6 @@ fn count_ownership_violations(
     (movable_but_cloned, try_unwrap_fallbacks)
 }
 
-// ── Focused .dag programs with known ownership properties ──
-
-/// Fan-out = 1, is_owned_local → proof says movable → must not clone.
 #[test]
 fn ownership_v_single_use_moves() {
     let source = "module ov1\nfn pass_through(items: List<Int>) -> List<Int> { items }\n";
@@ -12525,8 +11712,6 @@ fn ownership_v_single_use_moves() {
     );
 }
 
-/// Fan-out = 2 → not in movable set → clones are necessary.
-/// Track total clones to see if last-use analysis improves this.
 #[test]
 fn ownership_v_multi_use_clones() {
     let source = r#"
@@ -12545,7 +11730,6 @@ fn use_twice(items: List<Int>) -> List<Int> {
     assert!(clones <= 2, "items.clone() {} > ratchet 2", clones);
 }
 
-/// Fold accumulator — assert try_unwrap fallback count stays at or below baseline.
 #[test]
 fn ownership_v_fold_fallback() {
     let source = r#"
@@ -12563,7 +11747,6 @@ fn sum_all(items: List<Int>) -> Int {
     let fallbacks = count_pattern(&content, "unwrap_or_else(|rc| (*rc).clone())");
     eprintln!("  in ov_fold.rs: {}", fallbacks);
 
-    // 2026-04-10: baseline.  Ratchet — only move down.
     const FALLBACK_RATCHET: usize = 0;
     assert!(
         fallbacks <= FALLBACK_RATCHET,
@@ -12573,17 +11756,6 @@ fn sum_all(items: List<Int>) -> Int {
     );
 }
 
-// ── Aggregate violation ratchet ──────────────────────────────────────────
-
-/// Compile a representative .dag program through the full pipeline and
-/// count ownership violations by cross-referencing the ownership proof
-/// against the emitted code.
-///
-/// A violation: build_movable_set says "move", emitted code says ".clone()".
-/// This is the only metric grounded in two authorities — the ownership
-/// proof and the emitter output.
-///
-/// Run with: cargo test -p v1-compiler-tests ownership_violation_ratchet -- --nocapture
 #[test]
 fn ownership_violation_ratchet() {
     let source = r#"
@@ -12631,17 +11803,6 @@ fn process(data: List<Int>) -> List<Int> {
     eprintln!("  ────────────────────────");
     eprintln!("  TOTAL violations:      {:>3}", total);
 
-    // ── Ratchets (only move DOWN) ──
-    //
-    // 2026-04-10: baseline (40/0/40).  Approximate — scope-blind string
-    // matching (see function doc). Useful as regression gate, not for
-    // precise claims.  As ownership modeling improves, these counts drop.
-    // 2026-04-10: 40→45 — new functions in std/termination.dag
-    // (evidence_rank, join_evidence, optional_evidence_meet,
-    // map_evidence_merge_at) add 5 clones from new code transitively
-    // compiled via std.types→std.termination; not a regression in
-    // existing code — these are new function bodies with new bindings.
-
     const MOVABLE_CLONED_RATCHET: usize = 45;
     const TRY_UNWRAP_RATCHET: usize = 0;
     const TOTAL_RATCHET: usize = 45;
@@ -12666,13 +11827,6 @@ fn process(data: List<Int>) -> List<Int> {
     );
 }
 
-// ── Stage0 clone census (gross metric, context for violations) ──────────
-
-/// Count raw clone patterns in committed stage0 files.
-/// This is the gross metric — includes both necessary and unnecessary clones.
-/// The violation ratchet above is the sharp metric.
-///
-/// Run with: cargo test -p v1-compiler-tests ownership_stage0_census -- --nocapture
 #[test]
 #[ignore = "failing: stage0 clone-census ratchet RED on main (non-emit .clone() 21540 > 20200+202 budget, ~1138 over) — it was inert under the old 3-filter allowlist while the seed drifted UP, against the \"Rust shrinks toward zero\" thesis; widening (#5427) surfaced it. Do NOT bump the cap (project spirit) — resolve by clone-reduction / substrate-migration; routed to a census/substrate-migration owner via bright-stag. FLAG-DON'T-FIX, draining-worklist not permanent."]
 fn ownership_stage0_census() {
@@ -12733,25 +11887,7 @@ fn ownership_stage0_census() {
         total_clones as f64 / total_lines as f64
     );
 
-    // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
-    // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
-    // and body_scope clearing in ExprLambda handler.
-    //
-    // Tolerance: ±1% to absorb CI vs local codegen differences (different
-    // Rust versions, optimization flags, or platform-specific clone patterns).
-    // The ratchet catches real regressions (hundreds of clones) not noise.
-    //
-    // Forensic receipt (2026-06-05): gross total 29280 on main, but +963 of the
-    // +1201 growth since #4229 lives in keystone emit modules alone
-    // (v1_compiler_emit_rust.rs regen). Non-emit modules grew only +238
-    // (19928→20166). The ratchet therefore scopes to non-emit files so a bump
-    // cannot mask clone-on-share regressions inside emit_rust.
-    //
-    // Deferred emit ratchet (TESTING.md discipline): owner=after-R2 keystone/perf
-    // lane; trigger=R2 emit complete + crisp-seal lift (ROADMAP Track 2 /
-    // ownership-design.md LS-4 clone census). Emit bucket logged below —
-    // subtracted-not-frozen until that lane re-measures emit_rust.
-    const EMIT_CLONE_BASELINE: usize = 9114; // main@e6163cb forensic; informational
+    const EMIT_CLONE_BASELINE: usize = 9114;
     const EMIT_CENSUS_EXCLUDE: &[&str] = &[
         "v1_compiler_emit.rs",
         "v1_compiler_emit_rust.rs",
@@ -12787,9 +11923,8 @@ fn ownership_stage0_census() {
         }
     }
 
-    // 2026-04-10 non-emit baseline: ~19928 at #4229; +238 through #4437/#4440 bookkeeping.
     const CLONE_RATCHET: usize = 20200;
-    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100; // 1% = ~202
+    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(

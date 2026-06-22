@@ -1,9 +1,3 @@
-//! M9 / P4: Peano literal bridges cap at 256 — oversize `Int` inputs must fail closed (`none`),
-//! not deep-recurse or wrap (PR #726 review: boundary regression).
-//!
-//! `master_theorem` / `work_exponent`: same ceiling must apply **before** `int_pow_bounded`
-//! (PR #726 meta-review: raw exponent fail-closed at the cost-algebra boundary).
-
 use std::rc::Rc;
 
 use v1_compiler::std_induction::{

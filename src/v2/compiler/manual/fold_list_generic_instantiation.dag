@@ -1,4 +1,3 @@
-// Manual execution cert: v2 R2 generic instantiation binds fold_list cons/snoc
 module test.claim.fold_list_generic_instantiation
 
 import v2.std.algebra { Cons, Empty, fold_list, fold_list_right }

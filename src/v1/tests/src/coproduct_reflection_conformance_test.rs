@@ -1,5 +1,3 @@
-//! R-reflect Phase 2a/2b: Path-3 conformance on Connective/Behavior by execution.
-
 use std::rc::Rc;
 
 use v1_compiler::cli_run;

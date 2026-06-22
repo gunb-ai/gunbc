@@ -1,7 +1,3 @@
-// Scope: corpus regression GUARD — structural argv projection over extdeps.git.
-// Asserts the origin/main...HEAD consumer-policy literal is ABSENT post-#5107.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
-
 module v2.test.extdeps_shape_transport_policy.corpus.git_policy_leak
 
 import v2.lens.extdeps_shape_transport_policy {

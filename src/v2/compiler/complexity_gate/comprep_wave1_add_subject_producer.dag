@@ -1,8 +1,3 @@
-// Scope: complexity-gate S2 — single authority for COMPREP wave-1 `add` subject-producer composition.
-//        tokenize(dag_mvp1_source_text) → parse → normalize → resolve → body_producer.
-// Consumers: comprep_eval_by_execution keystone, subject_complexity_budget_roster, lens gate rows.
-// Design: docs/design-lens-subject-supply.md §2 (no second pipeline path).
-
 module v2.test.complexity_gate.comprep_wave1_add_subject_producer
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
@@ -23,7 +18,6 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, port_locus
 import v2.std.grammar { GrammarRoot, ParseTree }
 import v2.std.compilers.lexing { Token }
 import v2.std.node { Node, Symbol }
-
 
 fn comprep_wave1_add_parse_root() -> GrammarRoot {
   GrammarRoot {

@@ -1,8 +1,3 @@
-//! Executable consumer receipt for `dsl/std/html_markup.dag`.
-//!
-//! Invoked from the always-on ci_floor_parity receipt so CI proves
-//! `try_serialize_html_node` runs green without a new workflow step.
-
 use crate::helpers::workspace_root;
 
 pub fn assert_html_markup_smoke_executes() {

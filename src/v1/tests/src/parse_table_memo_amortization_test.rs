@@ -1,10 +1,3 @@
-//! ParseTable grammar_digest amortization: memo store is grammar-scoped; cells are
-//! token-stream-specific (token_stream_digest). Divergent-stream soundness: bisect witness.
-//!
-//! §5 execution receipt: `parse_table_multi_file_ingest_amortization_by_execution` times the
-//! parse leg (`module_roots_from_source_root_ingest`, same path `assemble_program_from_ingest`
-//! uses) and proves total work is sub-linear vs N× per-file cold parse in a fresh context.
-
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -18,7 +11,6 @@ use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_r
 const AMORT_ENTRY: &str = "src/v2/compiler/parse/parse_table_memo_amortization_test.dag";
 const BISECT_ENTRY: &str = "src/v2/compiler/manual/validate_ingest_staging_stage_bisect_test.dag";
 
-/// Historical CYK pre-fill floor (per `parse_production` call) before #5084/#5093.
 const LEGACY_COLD_PARSE_FLOOR: Duration = Duration::from_secs(63);
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {

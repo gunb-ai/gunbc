@@ -1,8 +1,4 @@
-// Scope: Outcome diagnostic equality preserves tail multiplicity; merge threads accepted diagnostics.
-
-
 module v2.test.manual.outcome_diagnostics_eq
-
 
 import v2.std.diagnostic {
   Diagnostic,
@@ -36,8 +32,6 @@ fn diag_eq_y() -> Diagnostic {
   }
 }
 
-
-// [x,x,y] vs [x,y,y] under diagnostic_eq — must not compare equal.
 data nds_xx_y: NonEmptyDiagnostics = NonEmptyDiagnostics {
   head: diag_eq_x(),
   tail: [diag_eq_x(), diag_eq_y()]
@@ -62,7 +56,6 @@ fn witness_rejected_mult_not_equal() -> Bool {
     true
   }
 }
-
 
 data witness_diagnostics_merge_some: Bool = match diagnostics_merge(
   outer: Some { diagnostics: NonEmptyDiagnostics { head: diag_eq_x(), tail: [] } },

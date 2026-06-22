@@ -1,6 +1,3 @@
-//! Repro for generic-instantiation SCALE failure (adhoc-708ea66d-bb3).
-//! Regression fixture: mvp1 claim closure with target_model + v2.std.runtime import compiles clean.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};

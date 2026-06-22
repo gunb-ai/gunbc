@@ -1,5 +1,3 @@
-// Consumes: v2.compiler.parse, v2.extdeps.languages.kotlin, v2.std.*.
-
 module v2.test.manual.kotlin_mvp1_grammar_claim
 
 import v2.compiler.parse {

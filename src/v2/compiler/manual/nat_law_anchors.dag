@@ -1,6 +1,3 @@
-// Scope: Manual Nat law TestClaims (stub payload; law text in claim label).
-// Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
-
 module v2.test.manual.nat_law_anchors
 
 import v2.std.verification {TestClaim,
@@ -22,7 +19,6 @@ TestClassification,
 import v2.std.diagnostic { Accepted, None, Outcome }
 import v2.test.manual.connective_anchors { stub_empty_conj }
 
-
 data claim_nat_add_left_identity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddLeftIdentity),
@@ -30,7 +26,6 @@ data claim_nat_add_left_identity: TestClaim = CompilesClaim {
   expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_nat_add_right_identity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law)",
@@ -40,7 +35,6 @@ data claim_nat_add_right_identity: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_nat_add_associativity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law)",
   anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
@@ -48,7 +42,6 @@ data claim_nat_add_associativity: TestClaim = CompilesClaim {
   expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_nat_mul_left_identity: TestClaim = CompilesClaim {
   label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law)",
@@ -58,7 +51,6 @@ data claim_nat_mul_left_identity: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_nat_mul_annihilator: TestClaim = CompilesClaim {
   label: "manual/nat: semiring zero annihilator nat_mul(Zero,a)=Zero (law)",
   anchor: manual_claim_anchor(anchor: ManualNatMulAnnihilator),
@@ -66,7 +58,6 @@ data claim_nat_mul_annihilator: TestClaim = CompilesClaim {
   expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_nat_mul_associativity: TestClaim = CompilesClaim {
   label: "manual/nat: multiplicative monoid associativity (law)",

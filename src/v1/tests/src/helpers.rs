@@ -1,7 +1,3 @@
-//! Test helpers for the v2 compiler test suite.
-//!
-//! All helpers call stage0 functions directly — no v1 interpreter, no Value wrapping.
-
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{
@@ -10,8 +6,6 @@ use v1_compiler::v1_compiler_compile::{
 };
 use v1_compiler::v1_compiler_parse::ParseResult;
 use v1_compiler::v1_std_core::Token;
-
-// ── Workspace helpers ────────────────────────────────────────────────────
 
 pub fn workspace_root() -> std::path::PathBuf {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -28,12 +22,12 @@ pub fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
-/// Source roots where `.dag` files can be found.
 pub fn source_roots() -> [std::path::PathBuf; 2] {
     let ws = workspace_root();
     [ws.join("src/v1"), ws.join("dsl")]
 }
 
+<<<<<<< HEAD
 /// Source roots for resolving the **v2** (active self-hosted) tree: `[src/v2, dsl]`.
 ///
 /// Single Rust-side authority mirroring the canonical CI layer-roots fact
@@ -55,6 +49,8 @@ pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
 
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
+=======
+>>>>>>> origin/main
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
@@ -112,20 +108,9 @@ pub fn assert_parses_strict(relative_path: &str) {
     );
 }
 
-// ── Import-driven source resolution (FF-9) ──────────────────────────────
-//
-// The compiler takes a flat List<SourceFile>. This layer resolves imports
-// transitively: parse the entry source, discover its imports, load them
-// from source roots, recurse. Each module is loaded exactly once (memoized
-// by module path). The result is the minimal transitive closure.
-//
-// Module identity comes from the parser (single authority). The module
-// index is built once via OnceLock and maps module_path → file_path.
-
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Build module index by scanning source roots. Built once via OnceLock.
 fn build_module_index_for_roots(
     roots: &[std::path::PathBuf],
 ) -> HashMap<String, std::path::PathBuf> {
@@ -152,19 +137,12 @@ fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::
             scan_dag_files(&path, index);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             if let Some(module_path) = extract_module_declaration(&path) {
-                // Co-root overlay: later roots win (matches cli_run build_module_index).
                 index.insert(module_path, path);
             }
         }
     }
 }
 
-/// Extract module declaration via a light line scan — no full parse.
-/// Recognizes only the prefix grammar `module <dotted.name>`; the .dag grammar
-/// uses `//` line comments only (no block comments or attributes), so skipping
-/// blank and `//`-prefixed lines faithfully covers the full header convention.
-/// Avoids the O(file) tokenize+parse cost paid once per .dag file at process
-/// start by the module-index OnceLock.
 fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     for line in content.lines() {
@@ -187,9 +165,6 @@ fn module_index() -> &'static HashMap<String, std::path::PathBuf> {
     MODULE_INDEX.get_or_init(build_module_index)
 }
 
-/// Extract import module paths using the actual parser — no parallel
-/// string-scanning implementation. The parser is the single authority
-/// for import syntax.
 fn extract_imports(source: &str) -> Vec<String> {
     let result = parse_source(source);
     match &result.module {
@@ -201,9 +176,6 @@ fn extract_imports(source: &str) -> Vec<String> {
     }
 }
 
-/// Resolve imports transitively from an entry source. Returns the minimal
-/// set of SourceFiles needed — each module loaded exactly once.
-/// Lookups use the cached module index (parser-backed, built once).
 pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
     resolve_imports_transitively_with_index(entry_path, entry_content, module_index())
 }
@@ -231,16 +203,15 @@ fn resolve_imports_transitively_with_index(
 ) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
+    let mut queue: Vec<(String, String)> = Vec::new();
 
-    // Seed with the entry
     queue.push((entry_path.to_string(), entry_content.to_string()));
 
     while let Some((_path, content)) = queue.pop() {
         let imports = extract_imports(&content);
         for module_path in imports {
             if seen.contains_key(&module_path) {
-                continue; // already loaded — O(1) check
+                continue;
             }
             if let Some(file_path) = module_index.get(&module_path) {
                 if let Ok(file_content) = std::fs::read_to_string(file_path) {
@@ -253,13 +224,9 @@ fn resolve_imports_transitively_with_index(
                     queue.push((rel_path, file_content));
                 }
             }
-            // If not found, the compiler's resolve stage will
-            // report the unresolved import — no silent fallback.
         }
     }
 
-    // Return: dependencies first (they'll be sorted by resolve_modules anyway),
-    // then the entry source last.
     let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
     sources.push(Rc::new(SourceFile {
         path: entry_path.to_string(),
@@ -267,8 +234,6 @@ fn resolve_imports_transitively_with_index(
     }));
     sources
 }
-
-// ── Full pipeline ────────────────────────────────────────────────────────
 
 fn analyze_complexity_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
@@ -345,8 +310,6 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
     v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
 }
 
-// ── Result inspection ────────────────────────────────────────────────────
-
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
     result
         .diagnostics
@@ -356,8 +319,6 @@ pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
 }
 
 pub fn assert_no_diagnostics(result: &PipelineResult) {
-    // Complexity violations are non-blocking analyzer limitations.
-    // Only assert on hard errors (type/resolve/ownership).
     let msgs: Vec<_> = diagnostic_messages(result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))

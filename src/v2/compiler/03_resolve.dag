@@ -1,12 +1,5 @@
-// src/v2/compiler/03_resolve.dag
-//
-// Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
-// Status: T-8 modeled — K-1 single-file resolution; cross-file name admission lives in compiler/03_name_resolve.dag.
-// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
-
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
-
 
 import v2.compiler.normalize { NormalizedTree }
 import v2.extdeps.languages.dag {
@@ -61,41 +54,30 @@ import v2.std.node {
   well_formed
 }
 
-
 type ResolvedTree = Node
-
-
-
 
 type Namespace {
   bindings: Map<Symbol, Symbol>
   canonical_symbols: Set<Symbol>
 }
 
-
-// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension enters through compiler/03_name_resolve.dag, not a third Scope arm.
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
-
 type EdgeResolveAcc
   = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<Edge>> }
 
-
 type BindEdgeAcc
   = BindEdgeAccMk { idx: Int, acc: Outcome<List<Edge>> }
-
 
 type DeclaredBinding {
   name: Symbol
 }
 
-
 fn empty_edge_list() -> List<Edge> {
   []
 }
-
 
 fn empty_namespace() -> Namespace {
   Namespace {
@@ -103,7 +85,6 @@ fn empty_namespace() -> Namespace {
     canonical_symbols: empty_canonical_symbol_set()
   }
 }
-
 
 fn empty_canonical_symbol_set() -> Set<Symbol> {
   Set {
@@ -113,14 +94,12 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
   }
 }
 
-
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
     Named { name: sym } => optional_present(value: DeclaredBinding { name: sym })
     Positional => optional_absent()
   }
 }
-
 
 fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
   NodeFold {
@@ -137,7 +116,6 @@ fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, S
   }
 }
 
-
 fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -151,7 +129,6 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   }
 }
 
-
 fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   fold_node(
     n: root,
@@ -159,11 +136,9 @@ fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   )
 }
 
-
 fn add_module_named_exports(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   harvest_conj_named_bindings(root: root, acc: acc)
 }
-
 
 fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match n.kind {
@@ -184,7 +159,6 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
   }
 }
 
-
 fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match n.kind {
     ComputationNode { behavior: Bind } =>
@@ -201,7 +175,6 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
   }
 }
 
-
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: harvest_direct_atom_binding(
@@ -212,11 +185,9 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   }
 }
 
-
 fn scope_from_namespace(namespace: Namespace) -> Scope {
   ScopeRoot { module: namespace }
 }
-
 
 fn scope_root_module(s: Scope) -> Namespace {
   match s {
@@ -225,10 +196,6 @@ fn scope_root_module(s: Scope) -> Namespace {
   }
 }
 
-
-// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Outcome<Optional<V>>);
-// dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate at v2.std.collection);
-// site: lookup_chain — Rejected must not collapse to unbound (P3).
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
@@ -262,7 +229,6 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   }
 }
 
-
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^resolve_reason_malformed_tree,
@@ -270,7 +236,6 @@ fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
-
 
 fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -280,11 +245,9 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-
 fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
   namespace.canonical_symbols.member(name)
 }
-
 
 fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
   node_with_occurrence_id(
@@ -293,7 +256,6 @@ fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
     occurrence_id: occurrence_id
   )
 }
-
 
 fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
   match lookup_chain(s: scope, name: identity) {
@@ -324,7 +286,6 @@ fn resolve_atom(n: Node, scope: Scope, identity: Symbol) -> Outcome<Node> {
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
-
 
 fn resolve_surface_operator_atom(
   n: Node,
@@ -375,7 +336,7 @@ fn resolve_transform_children(
       Accepted { value: done, diagnostics: ad } =>
         match e.label {
           Positional =>
-            // Wave-1: operator is positional-0; later positions resolve as ordinary nodes.
+
             if length(xs: done) == 0 {
               match resolve_transform_operator_child(
                 n: e.target,
@@ -507,7 +468,6 @@ fn resolve_node(
   }
 }
 
-
 fn resolve_child_edge(
   e: Edge,
   scope: Scope,
@@ -558,7 +518,6 @@ fn resolve_child_edge(
   }
 }
 
-
 fn resolve_children_homogeneous_scope(
   n: Node,
   scope: Scope,
@@ -597,7 +556,6 @@ fn resolve_children_homogeneous_scope(
       }
   }
 }
-
 
 fn resolve_edges_first_outer_then_inner(
   edges: List<Edge>,
@@ -683,8 +641,6 @@ fn resolve_edges_first_outer_then_inner(
   }
 }
 
-
-// bind-binder-target projection (TASKS T-8 / CP-1b item 3).
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -693,7 +649,6 @@ fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
       Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
   }
 }
-
 
 fn resolve_bind_edges(
   edges: List<Edge>,
@@ -802,7 +757,6 @@ fn resolve_bind_edges(
   }
 }
 
-
 fn resolve_bind_node(
   n: Node,
   scope: Scope,
@@ -832,7 +786,6 @@ fn resolve_bind_node(
   }
 }
 
-
 fn resolve(tree: NormalizedTree, lm: LanguageModel) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
@@ -840,7 +793,6 @@ fn resolve(tree: NormalizedTree, lm: LanguageModel) -> Outcome<ResolvedTree> {
     lm: lm
   )
 }
-
 
 fn resolve_with_namespace(
   tree: NormalizedTree,

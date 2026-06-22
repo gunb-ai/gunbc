@@ -1,8 +1,3 @@
-// Scope: Stage C Lane 3 — by-execution receipts for multi-file program assembly.
-// Anchor: DESIGN.md §5 — assemble_program_from_module_roots greens on hand-built
-//   cross-file module roots (parse_binding_fidelity posture); duplicate-module RED;
-//   assemble_program_from_ingest RED on non-SourceFile witness (fail-closed before parse).
-
 module v2.test.manual.program_assembly_multi_file
 
 import extdeps.communication.medium { Lossless, Medium }
@@ -41,8 +36,6 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.qualified_name { QnCons, QnEmpty }
-
-
 
 fn pa_qn_node(seg: Symbol) -> Node {
   fold_list_node(
@@ -154,7 +147,6 @@ fn pa_cross_file_admission() -> Admission {
   }
 }
 
-
 test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
   match assemble_program_from_module_roots(
     roots: pa_cross_file_roots(),
@@ -165,7 +157,6 @@ test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   match assemble_program_from_module_roots(

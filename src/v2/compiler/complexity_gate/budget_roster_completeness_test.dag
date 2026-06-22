@@ -1,12 +1,3 @@
-// Scope: complexity-gate S2 — fail-closed family gate over complexity_subject_budget_rows.
-//        For each roster row: declared budget must be rated (not UnknownComplexity) →
-//        subject_producer → extract body → complexity_lens → dominance.
-//        unrated producers must be rated before the row lands, never pass via lattice top.
-//        Empty roster → false (anti-vacuity; lens_parallelism_family_gate precedent).
-// Status: discoverable `test fn` witness — CI floor gates it via claim_batch
-//         --roster-from-discovery (`test fn` in `*_test.dag` scanned across src/v2).
-//         (Was a `fn` that the dead lens_ci_gate.dag roster named but never ran.)
-
 module v2.test.complexity_gate.budget_roster_completeness
 
 import v2.lens.complexity {
@@ -40,7 +31,6 @@ fn complexity_declared_budget_is_rated(budget: ComplexityBound) -> Bool {
   }
 }
 
-// Semantic-red fixture only — not wired into complexity_subject_budget_rows.
 data complexity_budget_row_unrated_declared_budget_semantic_red: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
   subject_producer: comprep_source_bridged_add_arrow_with_body,
   declared_budget: fn(body) {
@@ -78,8 +68,6 @@ fn complexity_budget_roster_family_all_rows_hold(rows: List<LensSubjectComplexit
   )
 }
 
-// Discriminating control (planted bad row → RED): appending an unrated-budget row
-// to the real roster makes the family fold reject — the gate is not vacuously green.
 test fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() -> Bool {
   !complexity_budget_roster_family_all_rows_hold(
     rows: list_append(
@@ -89,9 +77,6 @@ test fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() ->
   )
 }
 
-// By-execution gate: fail-closed family fold over the real roster (empty → false,
-// never vacuous green); every rated row's declared budget must dominate its
-// computed complexity, and the planted unrated row must be rejected.
 test fn complexity_budget_roster_family_gate_holds() -> Bool {
   if is_empty(xs: complexity_subject_budget_rows) {
     false

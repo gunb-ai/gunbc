@@ -1,5 +1,3 @@
-// Scope: MVP-1 constraint_satisfaction path — solve_constraints Accepted on add-shaped graph root.
-
 module v2.test.manual.solve_constraints_add_mvp
 
 import v2.std.constraints {
@@ -40,7 +38,6 @@ fn anchor_solve_constraints_add_mvp() -> Outcome<CanonicalGrounding> {
   )
 }
 
-// find_witness Accepted carries preservation_rule on structural.property (see accepted_witness_result); closedness uses constraint_property_*.
 data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add_mvp() {
   Accepted { value: g, diagnostics: d } =>
     (g.node == fixture_add_resolved_tree())

@@ -1,5 +1,3 @@
-// Scope: let-in Bind body emit→ingest round-trip (.dag target).
-
 module v2.test.manual.comprep_bind_round_trip
 
 import v2.compiler.emit { emit }

@@ -1,6 +1,3 @@
-// Scope: corpus witness — Lattice is byte-synced (not diverged) but still coexistence debt.
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.fact_cardinality.corpus.lattice_coexistence_debt
 
 import v2.lens.fact_cardinality { fact_cardinality_live_cross_tree_is_coexistence }
