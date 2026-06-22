@@ -5701,6 +5701,45 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
+        "medium_structure_leak_facts" => {
+            // `markers` arrives as a COMPUTED list (the per-medium table flattened in `.dag`), so
+            // use the FreeMonoid-tolerant coercion for every arg.
+            let emit_roots =
+                expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
+            let check_roots =
+                expect_str_list_flex(positional.get(1).copied(), "medium_structure_leak_facts")?;
+            let markers =
+                expect_str_list_flex(positional.get(2).copied(), "medium_structure_leak_facts")?;
+            let emit_fns =
+                expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
+            let string_ops =
+                expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
+            let facts = crate::medium_structure_project::medium_structure_leak_facts(
+                &emit_roots,
+                &check_roots,
+                &markers,
+                &emit_fns,
+                &string_ops,
+            );
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let face = Value::Variant {
+                    type_name: ctx.sym("MediumLeakFace"),
+                    variant_name: ctx.sym(f.face),
+                    fields: Rc::new(HashMap::new()),
+                };
+                let mut fields = HashMap::new();
+                fields.insert(ctx.sym("path"), Value::Str(f.path));
+                fields.insert(ctx.sym("face"), face);
+                fields.insert(ctx.sym("detail"), Value::Str(f.detail));
+                items.push(Value::Record {
+                    type_name: ctx.sym("MediumStructureLeakFact"),
+                    fields: Rc::new(fields),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
             crate::fact_cardinality_census::cross_tree_coexistence_count(),
         ))),
@@ -6059,6 +6098,20 @@ fn eval_builtin(
         ))),
         "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
             crate::extdeps_shape_transport_policy_project::external_authority_live_roster_module_count(),
+        ))),
+
+        // Doc-graph reachability-completeness wall (docs/plans/inert-layer-lens.md §8) — the doc
+        // substrate of the one reachability rule the #5433 inert-lens backstop runs over the lens
+        // substrate. Host-fed live-tree census (no list-dir host effect exists yet — Tier-2 folds
+        // into pure `.dag` on gunbc#5364).
+        "doc_graph_orphan_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_orphan_count(),
+        ))),
+        "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_dangling_link_count(),
+        ))),
+        "doc_graph_doc_count" => Ok(Some(Value::Int(
+            crate::doc_reachability_project::doc_graph_doc_count(),
         ))),
 
         // Not a built-in — fall through to user-defined function lookup
@@ -6580,6 +6633,42 @@ fn expect_str_list(val: Option<&Value>, context: &str) -> InterpResult<Vec<Strin
             msg: format!("{} requires a List<String> argument", context),
         }),
     }
+}
+
+/// Like `expect_str_list`, but also accepts a FreeMonoid `Cons`/`Empty` chain — a COMPUTED
+/// string list (e.g. a single-authority `.dag` table flattened via `fold_list`/`list_append`),
+/// not only a native `Value::List`. Reuses the same list-bridge the list builtins use.
+fn expect_str_list_flex(val: Option<&Value>, context: &str) -> InterpResult<Vec<String>> {
+    let Some(v) = val else {
+        return Err(InterpError::TypeError {
+            msg: format!("{} requires a List<String> argument", context),
+        });
+    };
+    let Some(items) = free_monoid_to_vec(v) else {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a List<String> argument, got {}",
+                context,
+                v.type_label()
+            ),
+        });
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        match item {
+            Value::Str(s) => out.push(s),
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "{} expects a List<String>, got element {}",
+                        context,
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
