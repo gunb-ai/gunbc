@@ -35,6 +35,9 @@ import std.syllogism {
   argument_axiom_set_is_closed, argument_form_is_valid, argument_is_non_vacuous
 }
 
+// (test fns below; the empty-argument tooth proves the HEADLINE validity predicate is
+// fail-closed on vacuity, not just the separate floor.)
+
 // ---- GREEN over the real DESIGN §1 rows --------------------------------------
 
 // The DESIGN §1 argument is a valid form: rooted at A1-A3, acyclic, closed axiom set.
@@ -104,5 +107,9 @@ fn empty_variant() -> Argument {
 }
 
 test fn vacuous_argument_is_rejected() -> Bool {
-  argument_is_non_vacuous(empty_variant()) == false
+  // both the non-vacuity floor AND the headline validity predicate reject the empty
+  // argument — argument_form_is_valid conjoins non-vacuity, so it is fail-closed here
+  // rather than fail-open (no caller asking form-validity alone can pass an empty one).
+  (argument_is_non_vacuous(empty_variant()) == false)
+    && (argument_form_is_valid(empty_variant()) == false)
 }
