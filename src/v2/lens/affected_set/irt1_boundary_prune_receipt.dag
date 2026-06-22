@@ -1,5 +1,3 @@
-// Scope: IRT-1 leaf — purity-aware boundary prune receipt.
-
 module v2.test.lens_affected_set.irt1_boundary_prune_receipt
 
 import v2.lens.affected_set {

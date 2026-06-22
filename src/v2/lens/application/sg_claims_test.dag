@@ -1,8 +1,4 @@
-// Scope: discriminating claim-run witnesses for lens application + synthesis
-// Status: execute-the-carrier pos+neg arms; routed through v2 `dag run --claim-run`.
-
 module v2.test.lens_application.sg_claims
-
 
 import v2.lens.application {
   DeclarationId,
@@ -23,8 +19,6 @@ import v2.test.lens_synthesis.synthesis_gap_polynomial {
   synthesis_gap_poly_lens_non_empty
 }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -36,11 +30,9 @@ data lens_application_synthesis_root_declaration: DeclarationId = DeclarationId 
   path: lens_application_synthesis_root_path
 }
 
-
 test fn lens_application_introspect_advisory_holds() -> Bool {
   apply_lens_introspect_rejection_is_advisory_claim_holds()
 }
-
 
 fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
   match apply_advisory_lens(
@@ -60,11 +52,9 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
   }
 }
 
-
 test fn lens_application_synthesis_gap_polynomial_holds() -> Bool {
   synthesis_gap_poly_lens_non_empty()
 }
-
 
 test fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
   lens_application_synthesis_gap_enforce_rejects()

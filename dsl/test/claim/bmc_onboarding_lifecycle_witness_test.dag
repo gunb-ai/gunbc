@@ -1,0 +1,60 @@
+module test.claim.bmc_onboarding_lifecycle
+
+import std.logic { Bool }
+import std.types { Int }
+import std.credentials { Stored, Chained }
+import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
+import gunbc.bmc_onboarding {
+  BmcOnboardingPhase,
+  FactoryDefault,
+  CredentialsRotated,
+  OsInstalled,
+  FabricJoined,
+  bmc_onboarding_next_phase,
+  new_altra_onboarding_plan,
+}
+import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
+
+fn phase_tag(p: BmcOnboardingPhase) -> Int {
+  match p {
+    FactoryDefault => 0
+    CredentialsRotated => 1
+    OsInstalled => 2
+    FabricJoined => 3
+  }
+}
+
+fn next_tag(p: BmcOnboardingPhase) -> Int {
+  match bmc_onboarding_next_phase(phase: p) {
+    Present { value: q } => phase_tag(p: q)
+    Absent => -1
+  }
+}
+
+test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
+  next_tag(p: FactoryDefault) == 1
+    && next_tag(p: CredentialsRotated) == 2
+    && next_tag(p: OsInstalled) == 3
+    && next_tag(p: FabricJoined) == -1
+}
+
+test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
+  new_altra_onboarding_plan.bmc.host == "192.168.1.192"
+    && phase_tag(p: new_altra_onboarding_plan.start_phase) == 0
+    && match new_altra_onboarding_plan.rotated_credential {
+      Stored { secret_name: s } => s == "bmc-srv3-admin"
+      Chained { steps: _ } => false
+    }
+    && match new_altra_onboarding_plan.os_target {
+      UbuntuOs { distro: d } =>
+        match d {
+          NobleNumbat2404Lts => true
+        }
+      WindowsOs { distro: _ } => false
+      MacosOs { distro: _ } => false
+    }
+    && redfish_boot_target_wire(t: new_altra_onboarding_plan.os_install_boot_target) == "Pxe"
+    && redfish_boot_target_wire(t: BootTargetPxe) == "Pxe"
+    && redfish_account_role_wire(role: new_altra_onboarding_plan.rotated_account_role) == "Administrator"
+    && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
+}

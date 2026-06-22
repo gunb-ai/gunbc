@@ -1,4 +1,3 @@
-
 module product.compute_fabric
 
 import std.nat { Nat }
@@ -90,7 +89,6 @@ type Idempotency = Node
 type IdentityElement = Node
 type InstructionSet = Node
 
-
 type NetworkLocality =
     Loopback
   | Lan
@@ -136,13 +134,11 @@ type ComputeArtifactLocality
   | PerHostColocation
   | CrossHostFetch
 
-
 type StorageMount {
   mount_path: NonEmptyStr
   device: StorageDevice
   lifecycle: PersistenceKind
 }
-
 
 type MemoryFacts { capacity: ByteSize, memory_kind: MemoryKind }
 
@@ -293,7 +289,6 @@ fn machine_view_label(host: ComputeHost, surface: ExecutionSurface) -> NonEmptyS
   }
 }
 
-
 fn placement_supply_row(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: ByteSize) -> PlacementSupplyRow {
   PlacementSupplyRow {
     identity: identity,
@@ -433,7 +428,6 @@ fn work_demand_shard_count(demand: WorkDemand) -> Int {
   }
 }
 
-
 type ResourceEnvelope {
   cpu: CpuRequirement?
   gpu: GpuRequirement?
@@ -480,7 +474,6 @@ type WorkDemand {
   data_locality: List<ArtifactLocalityRequirement>
   effects: List<EffectBoundary>
 }
-
 
 fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
   measure_scale_fraction_ceil(m: per_shard_peak, num: hardware_thread_count_value(width), den: 1)
@@ -537,7 +530,6 @@ fn demand_envelope_fits_budget(envelope: ResourceEnvelope, budget: ByteSize) -> 
   memory_bytes_honor_demand(supply: budget, demand: demand_envelope_memory(envelope: envelope))
 }
 
-
 type ParallelismShape
   = SingleWorkItem
   | IndependentShards { shard_count: Int }
@@ -563,7 +555,6 @@ type ExecutionBudget {
 }
 
 type WatchdogLimit { max_wall: Duration }
-
 
 type DemandDimension
   = DemandCpu
@@ -682,7 +673,6 @@ fn satisfies(offer: ComputeOffer, demand: WorkDemand) -> ComputeLeaseEligibility
   }
 }
 
-
 type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
 
 type WorkUnit<T> {
@@ -692,7 +682,6 @@ type WorkUnit<T> {
   output: ArtifactSpec<T>
   requirements: WorkDemand
 }
-
 
 type MeasurementConfidence
   = SingleSample
@@ -784,7 +773,6 @@ type ExecutionReceipt<T> {
   started_at: LogicalTime
   finished_at: LogicalTime
 }
-
 
 data example_host_identity: HostIdentity = "example-host"
 data example_shared_host_provider: ProviderIdentity = "example-shared-host"
@@ -898,7 +886,6 @@ fn witness_vm_offer_admits_vm_demand() -> Bool {
     Rejected { reason: _ } => false
   }
 }
-
 
 data example_resource_cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
@@ -1021,7 +1008,6 @@ fn witness_resource_offer_admits_feasible_demand() -> Bool {
     Rejected { reason: _ } => false
   }
 }
-
 
 fn witness_run_demand_envelope_fits_budget() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(

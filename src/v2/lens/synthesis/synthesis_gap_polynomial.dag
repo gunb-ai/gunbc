@@ -1,4 +1,3 @@
-
 module v2.test.lens_synthesis.synthesis_gap_polynomial
 
 import v2.lens.complexity { ComplexityBound, complexity_lens }
@@ -57,7 +56,6 @@ data synthesis_gap_poly_inner: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// Nested Cardinality → polynomial (O(n^2)) complexity; strictly dominates Θ(n log n) lower bound.
 data synthesis_gap_poly_input: Node = Node {
   kind: TypeNode { connective: Cardinality },
   children: [
@@ -92,10 +90,6 @@ data claim_synthesis_gap_polynomial: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-// Pins the published ReportReason to SynthesisGapDecisionTree.
-// Bypasses List<T> to avoid bootstrap generic-T field-access limitation: r.reason fails when r
-// is a generic lambda param T even after T=Report is established. Calls assess_decision_tree
-// directly so r is bound from a concrete coproduct field (report: Report), not generic T.
 fn synthesis_gap_poly_first_reason_node() -> Node {
   match complexity_lens(n: synthesis_gap_poly_input) {
     Violates { diagnostic: _ } => synthesis_gap_poly_sentinel

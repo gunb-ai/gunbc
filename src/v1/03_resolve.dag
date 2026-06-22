@@ -1,13 +1,7 @@
-// v2 module resolver -- pure function from parsed modules to dependency-ordered graph.
-
 module v1.compiler.resolve
 
 import std.types { kernel_type_set }
 import v1.std.core { Node, Connective, Conj, Disj, NoConnective, ErrorNode, make_error_node, UnresolvedImport, MissingExport, DuplicateModule, CircularDependency, no_span, module_node, import_node, import_is_all, import_specific_names_at, module_imports, module_items, NewlineIndex, authored_name_at }
-
-// =========================================================================
-// Output types
-// =========================================================================
 
 type ModuleGraph {
   modules: List<ResolvedModule>
@@ -27,17 +21,11 @@ type ResolvedImport {
   target_module: Node?
 }
 
-// =========================================================================
-// Internal types -- used by the topological sort and cycle detection
-// =========================================================================
-
 type DepEdge {
   from_module: String
   to_module: String
 }
 
-
-// Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
   imports_by_name: Map<String, List<ResolvedImport>>
   diagnostics: List<ErrorNode>
@@ -50,12 +38,8 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
   }
 }
 
-// =========================================================================
-// Entry point
-// =========================================================================
-
 fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> ModuleGraph {
-  // Phase 1: check for duplicate module declarations
+
   let dup_diags = check_duplicate_modules(modules: modules, source_indices: source_indices)
 
   let module_index = modules |> fold(init: empty_map(), f: (acc, m) =>
@@ -68,9 +52,6 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m), exported_set)
   )
 
-  // Phase 2: resolve each module's imports.
-  // Build a map from module name to resolved imports for O(1) lookup,
-  // and collect diagnostics in a single pass.
   let resolve_accum = modules |> fold(init: ResolveAccum {
     imports_by_name: empty_map(),
     diagnostics: []
@@ -84,17 +65,12 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   let imports_by_name = resolve_accum.imports_by_name
   let import_diags = resolve_accum.diagnostics
 
-  // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules, source_indices: source_indices)
   let topo_diags = match topo_result.cycle_error {
     Present { value: diag } => [diag]
     Absent => []
   }
 
-  // Phase 4: assign dep_order from the sorted order.
-  // Modules not in the sorted output (cycle members) get no dep_order
-  // and are excluded from the acyclic result.
-  // Build a map from module name to its position in the sorted list for O(1) lookup.
   let sorted_names = topo_result.sorted
   let sorted_order_map = sorted_names |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     map_insert(acc, pair.second, pair.first)
@@ -123,17 +99,9 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   }
 }
 
-// =========================================================================
-// Module lookup
-// =========================================================================
-
 fn find_module(module_index: Map<String, Node>, path: String) -> Node? {
   map_get(module_index, path)
 }
-
-// =========================================================================
-// Import resolution
-// =========================================================================
 
 type ModuleResolveResult {
   resolved_imports: List<ResolvedImport>
@@ -206,10 +174,6 @@ fn resolve_import(
   }
 }
 
-// =========================================================================
-// Exported names
-// =========================================================================
-
 fn get_exported_names(module: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let item_names = module_items(n: module) |> map(item => get_item_name(item: item, source_indices: source_indices))
   let variant_names = module_items(n: module)
@@ -228,10 +192,6 @@ fn get_variant_names(item: Node, source_indices: Map<String, NewlineIndex>) -> L
   if is_coproduct { item.children |> map(c => authored_name_at(source_indices: source_indices, node: c)) }
   else { [] }
 }
-
-// =========================================================================
-// Duplicate module detection
-// =========================================================================
 
 type DuplicateCheckState {
   seen_names: Map<String, Bool>
@@ -260,10 +220,6 @@ fn check_duplicate_modules(modules: List<Node>, source_indices: Map<String, Newl
   result.diagnostics
 }
 
-// =========================================================================
-// Topological sort -- Kahn's algorithm (P5: queue-based single-pass)
-// =========================================================================
-
 type TopoResult {
   sorted: List<String>
   cycle_error: ErrorNode?
@@ -278,37 +234,23 @@ fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String,
 }
 
 fn topo_sort_key(name: String) -> String {
-  // Bootstrap bridge: declaration lookup currently needs std.types
-  // available everywhere, so resolution sorts it first until FF-9
-  // becomes fully import-driven.
+
   if name == "std.types" { "" } else { name }
 }
 
 fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> TopoResult {
   let module_names = modules |> map(m => authored_name_at(source_indices: source_indices, node: m))
-  // Set of names actually present in this resolve set — an import of a module
-  // NOT in the set (unresolved / external) carries no intra-set ordering
-  // constraint, so it must not contribute an edge or an in-degree term.
+
   let module_name_set = module_names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
-  // §5 fail-closed (truthful diagnostic): count only in-set import edges. If
-  // in-degree counted unresolved imports (whose adjacency edge is keyed by a
-  // name never dequeued), a module blocked solely on a missing import would
-  // never reach in-degree 0 and the leftover set would be reported as a FALSE
-  // circular dependency — a fabricated wrong answer masking the real
-  // unresolved-import error. Filtering both sides keeps adjacency and in-degree
-  // consistent so only genuine cycles surface as CircularDependency.
+
   let explicit_edges = modules |> flat_map(m =>
     module_imports(n: m)
       |> filter(imp => map_has(m: module_name_set, key: authored_name_at(source_indices: source_indices, node: imp)))
       |> map(imp => DepEdge { from_module: authored_name_at(source_indices: source_indices, node: imp), to_module: authored_name_at(source_indices: source_indices, node: m) })
   )
-  // §3 single-authority: ordering is import-driven only. The std.types
-  // implicit-parent bootstrap bridge was removed — it coupled every module
-  // (across the v1 and v2 trees) into one global sort, so unrelated import
-  // edges perturbed the order and let same-named v1/v2 types resolve to the
-  // wrong authority by merge order. Kahn now respects explicit edges alone.
+
   let adjacency = explicit_edges |> fold(init: empty_map(), f: (acc, edge) =>
     adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
   )

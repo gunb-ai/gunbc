@@ -1,8 +1,3 @@
-// v2 runtime template for Go targets.
-//
-// Defines the v2rt package source text for Go emission. The emit layer writes
-// generated/v2rt/v2rt.go into the output tree.
-
 module v1.compiler.runtime_go
 
 fn go_rt_header() -> String {
