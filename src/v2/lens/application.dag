@@ -69,11 +69,6 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope { declaration: DeclarationId, node: NodeId }
 
-// 🟢 TERMINAL — C-8 fail-closed: only Error is admitted steady state.
-// v2 substrate: unit variant (v3 `Error` tag is not a v2 type name).
-type DiagnosticSeverity
-  = SeverityError {}
-
 // 🟢 TERMINAL — per-lens enforcement projection + violation relation.
 // violates first argument is full Output (v3 lens_application.dag) so
 // per-lens relations can discriminate sum variants before budget comparison.
@@ -104,7 +99,6 @@ type LensApplicationConfig<Output, Budget, Projected>
   = LensIntrospect
   | LensEnforce {
       budget: Budget
-      diagnostic_severity: DiagnosticSeverity
     }
 
 // 🟢 TERMINAL — enforce-mode application carrier.
@@ -112,7 +106,6 @@ type EnforcedApplication<Output, Budget, Projected> {
   enforceable_lens: EnforceableLens<Output, Budget, Projected>
   section: SectionRef
   budget: Budget
-  diagnostic_severity: DiagnosticSeverity
   span: SourceSpan
 }
 
@@ -442,8 +435,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,
   section: SectionRef,
   root: Node,
-  budget: Budget,
-  diagnostic_severity: DiagnosticSeverity
+  budget: Budget
 ) -> Outcome<EnforcedLensResult<Output, Projected>> {
   bind_outcome(
     o: section_subject(root: root, section: section),
@@ -537,7 +529,7 @@ fn apply_advisory_lens(
       let reports = lens.read(root: subject)
       match config {
         LensIntrospect => outcome_accepted(value: reports)
-        LensEnforce { budget: _, diagnostic_severity: _ } =>
+        LensEnforce { budget: _ } =>
           if is_empty(xs: reports) {
             outcome_accepted(value: reports)
           } else {
