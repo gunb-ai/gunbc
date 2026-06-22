@@ -5416,6 +5416,73 @@ pub fn is_emittable_parametric_type_alias_item(
     }
 }
 
+pub fn import_variant_parent_for_name(
+    n: String,
+    import_module: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> String {
+    if is_import_graph_type_name(
+        n.clone(),
+        import_module.clone(),
+        typed_modules.clone(),
+        registry.clone(),
+        export_sets.clone(),
+        type_summaries.clone(),
+        source_indices.clone(),
+        module_index.clone(),
+    ) {
+        "".to_string()
+    } else {
+        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+            "".to_string()
+        } else {
+            match find_variant_parent_in_module(
+                n.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ) {
+                Some(parent) => parent.clone(),
+                None => match reexport_variant_parent_in_import_module(
+                    n.clone(),
+                    import_module.clone(),
+                    registry.clone(),
+                    type_summaries.clone(),
+                    typed_modules.clone(),
+                    export_sets.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    Some(parent) => parent.clone(),
+                    None => match find_variant_parent(
+                        type_summaries.clone(),
+                        n.clone(),
+                        imported_enums.clone(),
+                    ) {
+                        Some(parent) => parent.clone(),
+                        None => match find_variant_parent(
+                            type_summaries.clone(),
+                            n.clone(),
+                            import_module_enums.clone(),
+                        ) {
+                            Some(parent) => parent.clone(),
+                            None => "".to_string(),
+                        },
+                    },
+                },
+            }
+        }
+    }
+}
+
 pub fn emit_specific_import_block(
     import_module: String,
     mod_name: String,
@@ -5517,61 +5584,18 @@ pub fn emit_specific_import_block(
                     for p in Rc::new({
                         let mut __result = Vec::new();
                         for n in deduped_names.clone().iter().cloned() {
-                            __result.push(
-                                if is_import_graph_type_name(
-                                    n.clone(),
-                                    import_module.clone(),
-                                    typed_modules.clone(),
-                                    registry.clone(),
-                                    export_sets.clone(),
-                                    type_summaries.clone(),
-                                    source_indices.clone(),
-                                    module_index.clone(),
-                                ) {
-                                    "".to_string()
-                                } else {
-                                    if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
-                                        "".to_string()
-                                    } else {
-                                        match find_variant_parent_in_module(
-                                            n.clone(),
-                                            import_module.clone(),
-                                            typed_modules.clone(),
-                                            source_indices.clone(),
-                                            module_index.clone(),
-                                        ) {
-                                            Some(parent) => parent.clone(),
-                                            None => match reexport_variant_parent_in_import_module(
-                                                n.clone(),
-                                                import_module.clone(),
-                                                registry.clone(),
-                                                type_summaries.clone(),
-                                                typed_modules.clone(),
-                                                export_sets.clone(),
-                                                source_indices.clone(),
-                                                module_index.clone(),
-                                            ) {
-                                                Some(parent) => parent.clone(),
-                                                None => match find_variant_parent(
-                                                    type_summaries.clone(),
-                                                    n.clone(),
-                                                    imported_enums.clone(),
-                                                ) {
-                                                    Some(parent) => parent.clone(),
-                                                    None => match find_variant_parent(
-                                                        type_summaries.clone(),
-                                                        n.clone(),
-                                                        import_module_enums.clone(),
-                                                    ) {
-                                                        Some(parent) => parent.clone(),
-                                                        None => "".to_string(),
-                                                    },
-                                                },
-                                            },
-                                        }
-                                    }
-                                },
-                            );
+                            __result.push(import_variant_parent_for_name(
+                                n.clone(),
+                                import_module.clone(),
+                                registry.clone(),
+                                type_summaries.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                                imported_enums.clone(),
+                                import_module_enums.clone(),
+                            ));
                         }
                         __result
                     })
@@ -5588,7 +5612,21 @@ pub fn emit_specific_import_block(
                 let non_variant_top = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
-                        if if is_known_variant(type_summaries.clone(), n.clone()) {
+                        if if import_variant_parent_for_name(
+                            n.clone(),
+                            import_module.clone(),
+                            registry.clone(),
+                            type_summaries.clone(),
+                            typed_modules.clone(),
+                            export_sets.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                            imported_enums.clone(),
+                            import_module_enums.clone(),
+                        ) != "".to_string()
+                        {
+                            false
+                        } else if is_known_variant(type_summaries.clone(), n.clone()) {
                             is_enum_in_summaries(type_summaries.clone(), n.clone())
                         } else {
                             true
