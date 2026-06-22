@@ -1,0 +1,131 @@
+// dsl/test/claim/ci_compile_jobs_witness_test.dag
+//
+// §5 discriminating proof for gunbc.ci_compile_jobs — derive the cargo build_jobs count from the
+// model (fleet cores × committed per-rustc measurement × live cgroup budgets) instead of the
+// hand-set CARGO_BUILD_JOBS=1 clamp, and FAIL CLOSED (typed refusal) when the measurement is not
+// committed rather than guessing a count.
+//
+// Run: gunbc run --source-root dsl --entry <this> --function ci_compile_jobs_witnesses --claim-run
+
+module test.claim.ci_compile_jobs_witness
+
+import std.types { Int, Bool }
+import std.measure { hardware_thread_count, ByteSize, byte_size }
+import gunbc.ci_compile_measurement { CompileJobMeasurement, CompileJobMeasured }
+import gunbc.ci_compile_jobs {
+  DerivedCompileJobs, CompileJobs, CompileJobsRefuse,
+  ci_compile_jobs, ci_compile_jobs_for
+}
+
+fn jobs_count_or(d: DerivedCompileJobs, default: Int) -> Int {
+  match d {
+    CompileJobs { count: c } => c
+    CompileJobsRefuse { reason: _ } => default
+  }
+}
+
+fn jobs_is_refuse(d: DerivedCompileJobs) -> Bool {
+  match d {
+    CompileJobsRefuse { reason: _ } => true
+    CompileJobs { count: _ } => false
+  }
+}
+
+// A hypothetical committed measurement (injected — NOT the real fleet value, which is still
+// Unmeasured): per-rustc peak 2.1 GB (the same magnitude the floor measures per shard) and 3
+// processes per job (rustc + sccache client + server share). Witnesses inject this to exercise the
+// number path; the committed-global path stays Unmeasured and is proven to refuse below.
+fn sample_measured() -> CompileJobMeasurement {
+  CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3 }
+}
+
+// Pulled out so the magnitude reads once; the ByteSize carrier keeps the dimension attached.
+fn hypothetical_peak() -> ByteSize {
+  byte_size(2100028416)
+}
+
+// COMMITTED STATE FAIL-CLOSED: the real measurement is Unmeasured, so the top-level derive over the
+// committed global REFUSES — it does not guess a job count. This is the §5 wall: the build refuses
+// until a fleet measurement is stamped. RED if the derive fabricated a number from thin air.
+fn witness_committed_unmeasured_refuses() -> Bool {
+  jobs_is_refuse(ci_compile_jobs(memory_budget_bytes: 137438953472, pids_budget: 4096, force_serial: false))
+}
+
+// PIDS BINDS: with a committed measurement, a small pids budget is the binding term (the EAGAIN-on-
+// spawn limit the =1 clamp dodges). 24 pids ÷ 3 = 8 < memory term (~52) < cores 128 → 8. RED if the
+// pids term were dropped (would give the memory bound).
+fn witness_pids_budget_binds_the_count() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget_bytes: 137438953472,
+      pids_budget: 24,
+      force_serial: false
+    ),
+    0
+  ) == 8
+}
+
+// MEMORY STILL BINDS under the 3-term fold when it is the smallest: tight 6 GiB → 0.8×6GiB ÷ 2.1GB
+// = 2, below cores 128 and pids 4096÷3=1365.
+fn witness_memory_budget_binds_the_count() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget_bytes: 6442450944,
+      pids_budget: 4096,
+      force_serial: false
+    ),
+    0
+  ) == 2
+}
+
+// EAGAIN PRECEDENCE: the cold-retry serial-override wins over the derived count even when the
+// committed measurement is Unmeasured — serial is always valid, so force_serial yields 1, not a
+// refusal. This is the argv --build-jobs 1 clamp that beats the env CARGO_BUILD_JOBS the retry sets.
+fn witness_force_serial_overrides_unmeasured() -> Bool {
+  jobs_count_or(ci_compile_jobs(memory_budget_bytes: 137438953472, pids_budget: 4096, force_serial: true), 0) == 1
+}
+
+// EAGAIN PRECEDENCE (discriminating): force_serial beats a WIDE budget that would otherwise derive a
+// large count — proves the override is load-bearing, not coincidentally 1. Measured + huge budgets
+// would give cores 128; force_serial collapses it to 1.
+fn witness_force_serial_beats_wide_budget() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget_bytes: 1099511627776,
+      pids_budget: 1000000,
+      force_serial: true
+    ),
+    0
+  ) == 1
+}
+
+// FAIL-CLOSED on an unreadable LIVE budget (0 sentinel from the host) → the conservative committed
+// serial fallback (1), never an unbounded count and never an OOM/EAGAIN. Distinct from the Unmeasured
+// REFUSAL: a committed measurement exists, but the host could not read the live budget this run.
+fn witness_unreadable_budget_falls_back_serial() -> Bool {
+  jobs_count_or(
+    ci_compile_jobs_for(
+      measurement: sample_measured(),
+      hardware_threads: hardware_thread_count(128),
+      memory_budget_bytes: 0,
+      pids_budget: 4096,
+      force_serial: false
+    ),
+    0
+  ) == 1
+}
+
+test fn ci_compile_jobs_witnesses() -> Bool {
+  witness_committed_unmeasured_refuses()
+    && witness_pids_budget_binds_the_count()
+    && witness_memory_budget_binds_the_count()
+    && witness_force_serial_overrides_unmeasured()
+    && witness_force_serial_beats_wide_budget()
+    && witness_unreadable_budget_falls_back_serial()
+}

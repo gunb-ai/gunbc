@@ -385,9 +385,9 @@ fn process_memory_aware_width_value(
 }
 
 // PIDS BINDS: cores 128 and memory admit far more than the process budget, so width = the pids
-// term. pids 4096 ÷ 3 procs/job = 1365, but memory 0.8×128GiB ÷ 2.1GB ≈ 48 and cores 128 — so a
-// SMALL pids budget is the discriminator: 24 pids ÷ 3 = 8 < 48 < 128 → width 8. RED if the pids
-// term is dropped (would give 48, the memory bound).
+// term. With a generous 128GiB budget the memory term is 0.8×128GiB ÷ 2.1GB ≈ 52 and cores = 128,
+// so a SMALL pids budget is the discriminator: 24 pids ÷ 3 procs/job = 8 < 52 < 128 → width 8. RED
+// if the pids term is dropped (would give 52, the memory bound).
 fn witness_pids_term_binds_below_cores_and_memory() -> Bool {
   process_memory_aware_width_value(
     hardware_threads: hardware_thread_count(128),

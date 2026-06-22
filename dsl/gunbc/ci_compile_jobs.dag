@@ -1,0 +1,97 @@
+// gunbc/ci_compile_jobs.dag — derive CARGO parallelism (the cargo build_jobs arg) from the model
+// instead of the hand-set `CARGO_BUILD_JOBS=1` clamp. The §1/§3 move the operator asked for: a job
+// count is a MODELED input (it grounds in the fleet's hardware + the committed per-rustc measurement
+// + the live cgroup budgets), so the hand-tuned flag is REMOVED, not merely computed. Companion to
+// gunbc.ci_floor_plan.gunbc_ci_floor_spawn_width (same shape: a pure derive the host READS, with the
+// live budget threaded in at the host seam).
+//
+// FORMULA (single authority — std.realization_width.process_memory_aware_spawn_width, the SAME
+// min-fold + 0.8 safety + fail-closed-on-zero as the floor's memory_aware_spawn_width, with the
+// process/pids bound added as the third term):
+//   jobs = min(cores, ⌊0.8·mem_budget ÷ per_rustc_peak⌋, ⌊pids_budget ÷ procs_per_job⌋)
+// The pids term is the one that actually binds today: the =1 clamp's trigger is an EAGAIN-on-spawn
+// (pids/RLIMIT_NPROC), set only when sccache is active — a PROCESS budget, not memory (§3: name the
+// term that actually binds).
+//
+// ATTACH (this PR, additive on #5427's cargo.Build.Nextest): the derived `count` binds to a modeled
+// `build_jobs: Int?` field on the cargo.Build ops (wired conditionally into argv as `-j` / `--build-jobs`),
+// NOT the CARGO_BUILD_JOBS env — a typed op field REMOVES the flag (construction over validation, §5),
+// the env seam is fallback-only.
+//
+// 🟡 SCAFFOLD — feature:ci-compile-jobs-from-model — bind gunbc adhoc-67ab12eb-6e3 —
+// dissolve-on: the committed gunbc.ci_compile_measurement flips from Unmeasured to a fleet-measured
+// value AND the build_jobs field lands on cargo.Build (cargo.Build.Nextest is on main first). Until
+// then the derive REFUSES (CompileJobsRefuse) on the committed Unmeasured state — it never guesses.
+
+module gunbc.ci_compile_jobs
+
+import std.types { Int, String }
+import std.measure { ByteSize, byte_size, HardwareThreadCount, hardware_thread_count_value }
+import std.realization_width { process_memory_aware_spawn_width }
+import gunbc.ci_compile_measurement {
+  CompileJobMeasurement, CompileJobMeasured, CompileJobUnmeasured,
+  gunbc_ci_compile_measurement, gunbc_ci_compile_conservative_fallback_jobs
+}
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
+
+// Derived parallelism, as a closed sum so "cannot derive" is a typed REFUSAL the host maps to a
+// fail-closed build error — never a silently-guessed Int (DESIGN §5).
+type DerivedCompileJobs
+  = CompileJobs { count: Int }
+  | CompileJobsRefuse { reason: String }
+
+// The fleet's hardware-thread cap (the compile's demand cap — a compile never benefits from more
+// jobs than hardware threads). Sourced from the operator-fleet CPU catalog (Ampere Altra Max
+// M128-30, 128t), exactly like gunbc_ci_floor_hardware_threads — one authority, not a literal.
+fn gunbc_ci_compile_hardware_threads() -> HardwareThreadCount {
+  altra_max_m12830_catalog.threads
+}
+
+// Core derive (measurement INJECTED — the single decision site, testable with any measurement).
+// Precedence (fierce-hawk's EAGAIN watch-out): `force_serial` wins over everything. The EAGAIN
+// cold-retry sets this so the retry clamps to a single job via the argv `--build-jobs 1` (which beats
+// the env CARGO_BUILD_JOBS the retry also sets) — the reactive serial-override beats the predictive
+// budget-derived count, fail-closed. Serial is always valid, so force_serial yields a count even when
+// Unmeasured.
+fn ci_compile_jobs_for(
+  measurement: CompileJobMeasurement,
+  hardware_threads: HardwareThreadCount,
+  memory_budget_bytes: Int,
+  pids_budget: Int,
+  force_serial: Bool
+) -> DerivedCompileJobs {
+  if force_serial {
+    CompileJobs { count: 1 }
+  } else {
+    match measurement {
+      CompileJobUnmeasured => CompileJobsRefuse {
+        reason: "ci_compile_jobs: gunbc.ci_compile_measurement is Unmeasured — no committed per-rustc peak / procs-per-job. Refusing to guess a job count (DESIGN §5); stamp a real fleet measurement first."
+      }
+      CompileJobMeasured { per_rustc_peak: peak, procs_per_job: ppj } => CompileJobs {
+        count: hardware_thread_count_value(
+          t: process_memory_aware_spawn_width(
+            hardware_threads: hardware_threads,
+            memory_budget: byte_size(memory_budget_bytes),
+            per_job_peak: peak,
+            pids_budget: pids_budget,
+            procs_per_job: ppj,
+            conservative_fallback_width: gunbc_ci_compile_conservative_fallback_jobs
+          )
+        )
+      }
+    }
+  }
+}
+
+// Top-level derive over the committed measurement. `memory_budget_bytes` + `pids_budget` are the raw
+// host values at the host seam (claim_executor / the CI step reads cgroup memory.max + pids.max live —
+// §3 measured⇒peripheral, an external system authors them so the host READS them, never committed).
+fn ci_compile_jobs(memory_budget_bytes: Int, pids_budget: Int, force_serial: Bool) -> DerivedCompileJobs {
+  ci_compile_jobs_for(
+    measurement: gunbc_ci_compile_measurement,
+    hardware_threads: gunbc_ci_compile_hardware_threads(),
+    memory_budget_bytes: memory_budget_bytes,
+    pids_budget: pids_budget,
+    force_serial: force_serial
+  )
+}
