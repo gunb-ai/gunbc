@@ -593,6 +593,94 @@ fn peak_rss_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
+/// The cgroup directory whose `memory.max` is the TIGHTEST along the `/proc/self/cgroup`
+/// leaf→root walk — the EFFECTIVE budget the OOM-killer enforces (the same ancestor
+/// `read_host_memory_budget_bytes` reduces to by `min`, returned here so the peak can be
+/// read at the SAME level the budget binds). `None` when `/proc/self/cgroup` is unreadable
+/// or no ancestor sets a numeric cap.
+fn binding_cap_cgroup_dir() -> Option<std::path::PathBuf> {
+    let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
+    let rel = self_cg
+        .lines()
+        .find_map(|l| l.strip_prefix("0::"))
+        .map(|p| p.trim().trim_start_matches('/').to_string())?;
+    let root = Path::new("/sys/fs/cgroup");
+    let mut dir = root.join(&rel);
+    let mut best: Option<(u64, std::path::PathBuf)> = None;
+    loop {
+        if let Ok(s) = fs::read_to_string(dir.join("memory.max")) {
+            let s = s.trim();
+            if s != "max" {
+                if let Ok(v) = s.parse::<u64>() {
+                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
+                    if take {
+                        best = Some((v, dir.clone()));
+                    }
+                }
+            }
+        }
+        if dir == root || !dir.pop() {
+            break;
+        }
+    }
+    best.map(|(_, d)| d)
+}
+
+/// Whole-tree memory high-water + live pid count at the binding-cap ancestor cgroup. cgroup v2
+/// `memory.peak`/`pids.current` are HIERARCHICAL (account for all descendant cgroups), and child
+/// rustc/sccache fork-inherit the executor's cgroup, so reading at the budget-binding ancestor
+/// captures every PID the budget governs — the SOUND placement divisor input, unlike SELF-RSS
+/// `VmHWM` which omits children. Returns `(memory.peak bytes, pids.current, cgroup rel path)`.
+/// `None` if no binding ancestor or `memory.peak` is unreadable (kernels < 5.19).
+fn cgroup_peak_pids_at_binding_ancestor() -> Option<(u64, u64, String)> {
+    let dir = binding_cap_cgroup_dir()?;
+    let peak = fs::read_to_string(dir.join("memory.peak"))
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    let pids = fs::read_to_string(dir.join("pids.current"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    let rel = dir
+        .strip_prefix("/sys/fs/cgroup")
+        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
+        .unwrap_or_else(|_| dir.to_string_lossy().into_owned());
+    Some((peak, pids, rel))
+}
+
+/// Best-effort cgroup-v2 relative path of the sccache SERVER daemon (a `sccache` comm), scanned
+/// from `/proc`. Emitted beside the binding-cap ancestor path so the analysis can classify the
+/// "accounted exactly once" case: a path UNDER the ancestor → sccache is inside `memory.peak`
+/// (don't subtract); a SIBLING path → subtract it as `host_fixed_overhead`. Returns `None` when
+/// no sccache server process is found (then it's fixed host overhead by default, fail-closed).
+fn sccache_server_cgroup_rel() -> Option<String> {
+    for entry in fs::read_dir("/proc").ok()?.flatten() {
+        let p = entry.path();
+        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        if fs::read_to_string(p.join("comm")).unwrap_or_default().trim() != "sccache" {
+            continue;
+        }
+        if let Some(rel) = fs::read_to_string(p.join("cgroup"))
+            .ok()
+            .and_then(|cg| {
+                cg.lines()
+                    .find_map(|l| l.strip_prefix("0::"))
+                    .map(|s| s.trim().to_string())
+            })
+        {
+            return Some(rel);
+        }
+    }
+    None
+}
+
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
@@ -966,6 +1054,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         ),
         None => eprintln!(
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
+        ),
+    }
+    // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input. SELF-RSS above
+    // (VmHWM) excludes child rustc/sccache PIDs; cgroup v2 `memory.peak` at the binding-cap
+    // ancestor is hierarchical and captures them. Paired with the sccache-server cgroup path so
+    // the "accounted exactly once" classification (inside-subtree vs sibling host overhead) is a
+    // read of these two paths, not a brittle in-process prefix check. Runtime-harmless read-only.
+    match cgroup_peak_pids_at_binding_ancestor() {
+        Some((peak, pids, anc_rel)) => {
+            let sccache = sccache_server_cgroup_rel()
+                .unwrap_or_else(|| "not-found (treat as fixed host overhead)".to_string());
+            eprintln!(
+                "[measurement] floor cgroup peak: {peak} bytes (memory.peak @ {anc_rel}) pids.current={pids} at spawn_width={spawn_width}; sccache-server cgroup: {sccache}"
+            );
+        }
+        None => eprintln!(
+            "[measurement] floor cgroup peak: unavailable (no binding-cap cgroup or memory.peak) at spawn_width={spawn_width}"
         ),
     }
     if outcome.any_failed {
