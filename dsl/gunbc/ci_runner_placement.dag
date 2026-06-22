@@ -167,14 +167,11 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   )
 }
 
-// Single authority for effective co-resident run count per host. Downstream lanes (e.g.
-// compile-jobs sizing) derive N from this value: N = floor(host_threads / R) and
-// R x N x per_rustc_peak <= host_ram is the joint safety constraint.
-// Returns conservative_high (10) until the operator applies the 3-runner cap (FENCED);
-// premature use of the model-derived 3 while ~7 co-runners are live is unwritable at
-// gunbc_ci_runner_cap_enforced.
-fn gunbc_ci_runners_per_host() -> Int {
-  if gunbc_ci_runner_cap_enforced {
+// Parametric core; call via gunbc_ci_runners_per_host() for the live value.
+// Exposed for test fixtures that need to verify the cap_enforced=true branch by construction
+// without mutating the global flag (dissolution trigger: inline once cap is permanently true).
+fn effective_runners_per_host(cap_enforced: Bool) -> Int {
+  if cap_enforced {
     match runner_deployment_plan() {
       PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
         fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
@@ -183,4 +180,14 @@ fn gunbc_ci_runners_per_host() -> Int {
   } else {
     gunbc_ci_concurrent_runs_conservative_high
   }
+}
+
+// Single authority for effective co-resident run count per host. Downstream lanes (e.g.
+// compile-jobs sizing) derive N from this value: N = floor(host_threads / R) and
+// R x N x per_rustc_peak <= host_ram is the joint safety constraint.
+// Returns conservative_high (10) until the operator applies the 3-runner cap (FENCED);
+// premature use of the model-derived 3 while ~7 co-runners are live is unwritable at
+// gunbc_ci_runner_cap_enforced.
+fn gunbc_ci_runners_per_host() -> Int {
+  effective_runners_per_host(cap_enforced: gunbc_ci_runner_cap_enforced)
 }

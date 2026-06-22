@@ -8,6 +8,7 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan_for,
   host_runner_count,
   gunbc_ci_runners_per_host,
+  effective_runners_per_host,
 }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest, runner_deploy_drifted }
 import gunbc.ci_floor_measurement {
@@ -113,6 +114,16 @@ fn witness_runners_per_host_fail_closed_pre_cap() -> Bool {
     && gunbc_ci_runners_per_host() == gunbc_ci_concurrent_runs_conservative_high
 }
 
+fn witness_runners_per_host_cap_enforced_derives_model_count() -> Bool {
+  let effective_r = effective_runners_per_host(cap_enforced: true)
+  match runner_deployment_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      let model_r = fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc })
+      effective_r == model_r && model_r >= 1
+    PlanUnsound { reason: _ } => false
+  }
+}
+
 fn witness_manifest_drift_red_receipt() -> Bool {
   !runner_deploy_drifted(committed: expected_runner_deploy_manifest())
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
@@ -121,6 +132,7 @@ fn witness_manifest_drift_red_receipt() -> Bool {
 test fn runner_placement_holds() -> Bool {
   witness_live_carrier_measured_derives_plan()
     && witness_runners_per_host_fail_closed_pre_cap()
+    && witness_runners_per_host_cap_enforced_derives_model_count()
     && witness_measured_mix_derives_capacity()
     && witness_derived_count_respects_host_budget()
     && witness_over_commit_is_refused()
