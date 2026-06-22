@@ -1,12 +1,12 @@
 // src/v2/std/reducible_test.dag
-// Scope: by-execution witnesses for v2.std.reducible (classify_leaf, verdict_eq,
+// Scope: by-execution witnesses for std.reducible (classify_leaf, verdict_eq,
 // reduce_verdicts_located Unknown latch). Perturb-RED arm discriminates wrong expectation.
 
 module v2.test.std.reducible
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.reducible {
+import std.reducible {
   Irreducible,
   Reduced,
   Unknown,
