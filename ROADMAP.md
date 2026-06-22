@@ -108,11 +108,12 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
 - [x] F2/F3 `resolved_graph` key derived from declared `inputs_considered` (#5425) — construction, not a lens
   - [ ] P1 honest keys by construction — warm==cold purity oracle (#5429)
     - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
-      - [ ] hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))
+      - hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))
       - [ ] P3 **resolve-cache enable** — cuts ~18% of floor wall; purity proven (616/616); gated on #5429 ← **core ask**
 - [ ] P4 economic tier (measured cost → `Materialization`) — instrument done (#5431); remaining = the consumer feedback + width-fold
 - [ ] P5 native `content(T) = content_hash(subgraph)` — gated on B2
-- [ ] blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)
+
+- blockers: [ ] B1 #5295 generic-instantiation (gates cross-shard `Share`) · [ ] B2 cross-tree content-hash (gates P5)
 
 ## 3. Complexity budget gate (stability — validation)
 

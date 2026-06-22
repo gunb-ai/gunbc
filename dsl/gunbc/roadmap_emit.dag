@@ -2,6 +2,7 @@ module gunbc.roadmap_emit
 
 import std.markdown {
   MarkdownDocument, MarkdownBlock, MarkdownInline, HeadingBlock, ParagraphBlock, TaskListBlock,
+  UnorderedListBlock, MarkdownListItem,
   MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
 }
 import gunbc.roadmap_model {
@@ -10,7 +11,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, item_is_done }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
 import ctrl.process_algebra { ProcessNodeId }
 
 fn roadmap_max_depth() -> Int { 8 }
@@ -50,6 +51,15 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
         desc_inlines(description: description),
       )
     AuthoredLine { done: _, content } => [TextInline { text: content }]
+    PlainLine { content } => [TextInline { text: content }]
+  }
+}
+
+fn node_is_plain(rn: RoadmapNode) -> Bool {
+  match rn.line {
+    PlainLine { content: _ } => true
+    DerivableLine { prs: _, title: _, description: _ } => false
+    AuthoredLine { done: _, content: _ } => false
   }
 }
 
@@ -75,27 +85,56 @@ fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
   }
 }
 
+fn plain_item_for(rn: RoadmapNode) -> MarkdownListItem {
+  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn) }] }
+}
+
 fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
   let para = ParagraphBlock { inlines: node_inlines(rn: rn) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
-    [para, TaskListBlock { items: kids |> map(k => task_item_for(rn: k, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1)) }]
+    concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))
   } else {
     [para]
   }
   task_item_with(done: node_is_done(rn: rn, merged: merged), blocks: blocks)
 }
 
+fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownTaskItem>, pbuf: List<MarkdownListItem> }) -> List<MarkdownBlock> {
+  if acc.mode == 1 {
+    concat(acc.blocks, [TaskListBlock { items: acc.tbuf }])
+  } else {
+    if acc.mode == 2 {
+      concat(acc.blocks, [UnorderedListBlock { items: acc.pbuf }])
+    } else {
+      acc.blocks
+    }
+  }
+}
+
+fn nodes_to_blocks(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> List<MarkdownBlock> {
+  let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
+    if node_is_plain(rn: rn) {
+      let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
+      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn)]) }
+    } else {
+      let flushed = if a.mode == 2 { concat(a.blocks, [UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
+      { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)]), pbuf: [] }
+    }
+  })
+  flush_run(acc: acc)
+}
+
 fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
   let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
-  let list = TaskListBlock { items: tops |> map(n => task_item_for(rn: n, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())) }
+  let list_blocks = nodes_to_blocks(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())
   if g.label == "" {
-    [list]
+    list_blocks
   } else {
-    [
-      ParagraphBlock { inlines: [StrongInline { inlines: [TextInline { text: concat(g.label, ":") }] }] },
-      list,
-    ]
+    concat(
+      [ParagraphBlock { inlines: [StrongInline { inlines: [TextInline { text: concat(g.label, ":") }] }] }],
+      list_blocks,
+    )
   }
 }
 
