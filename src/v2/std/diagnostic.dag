@@ -368,10 +368,23 @@ fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> 
 // `Notice` is intentionally ABSENT: it has zero live consumers (only the dead
 // `render_log_annotation.AnnotationNotice`), so adding it now would be §5
 // specification-without-execution. Add it the moment a live info-level consumer appears.
-// Variants are prefixed (`SeverityError`/`SeverityWarning`) not bare `Error`/`Warning` to
-// avoid the name-shadowing hazard this module documents (see `extent_eq` note above) and the
-// distinct `std.behavioral.Severity` risk scale (Low|Medium|High|Critical) — a different
-// concept, not a fork.
+//
+// §3 SINGLE AUTHORITY + KNOWN TWIN (marked, not silent). This is the intended single authority
+// for diagnostic severity. Variants are prefixed (`SeverityError`/`SeverityWarning`), not bare
+// `Error`/`Warning`, to avoid the name-shadowing hazard this module documents (see `extent_eq`
+// note above). Distinct from `std.behavioral.Severity` (Low|Medium|High|Critical) — a different
+// concept (external edge-case risk scale), not a fork.
+//   TWIN: `v2.lens.application.DiagnosticSeverity` (`= SeverityError {}`) is a SECOND, same-named
+//   type — the C-8 lens-enforcement severity where only Error is admitted (fail-closed) steady
+//   state. It is the SAME concept; std is the correct single authority (the layer DAG points
+//   imports toward std, so the lens must ground on THIS type, never the reverse). The lens type
+//   is NOT a plain duplicate: only `SeverityError` is WRITABLE there (no warning-severity lens
+//   enforcement exists), so it is a construction-level REFINEMENT of this 2-variant type, not a
+//   widening. Dissolution trigger: collapse `v2.lens.application`'s severity onto THIS type while
+//   PRESERVING Error-only-by-construction (a refinement — e.g. a narrowed witness/newtype over
+//   `DiagnosticSeverity` — never a silent widening that admits Warning into lens enforcement).
+//   Deferred out of this PR: `v2.lens.application` is §3 load-bearing and the refinement carries
+//   real design tension; tracked as a named emission §3 follow-on work-item.
 type DiagnosticSeverity = SeverityError | SeverityWarning
 
 type EmitDirective {
