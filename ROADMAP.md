@@ -205,7 +205,7 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
   - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
     - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**
-      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`)
+      - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate must reproduce: [required facts](docs/plans/regen-verify-gate-required-facts.md)
   - [ ] TypeScript to first-class (beyond the `add` slice)
   - [ ] seed-honesty discharge (Diverse Double-Compiling)
   - [ ] collapse `src/v1` → pinned v2-emitted seed; delete the 154k hand-written lines (terminal, not a big-bang `rm`)
