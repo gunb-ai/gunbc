@@ -58,7 +58,6 @@ fn section_0() -> RoadmapSection {
       section_prose(content: "→ [audit + checklist](docs/plans/fail-closed-lockdown.md)"),
       section_prose(content: "This window = a few days of STABILITY — shrink the fail-open surface, don't \"lock\" it. The deepest root (`Value::Null` overload, ~131 sites) stays OPEN until its own runway ([fork plan](docs/plans/model-realization-fork.md) §3)."),
       section_prose(content: "**◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*"),
-      section_prose(content: "**Dispatch discipline (anti-stale-ledger, §6):** a lever earns a lane only after it is re-measured against CURRENT main — a displaced cost already paid by another merge is the purity trap (e.g. rust-test sharding, ruled out post-#5427's nextest cut). And the lane/parked list is DERIVED from this authority, never hand-typed (a hand-list drifts exactly like a second representation). The authority tracks ALL planned work; work-items dispatch only the active subset."),
       section_group(
         label: "Audits (done)",
         nodes: [
@@ -111,6 +110,7 @@ fn section_0() -> RoadmapSection {
         ],
         edges: [],
       ),
+      section_prose(content: "**Dispatch discipline (anti-stale-ledger, §6):** a lever earns a lane only after it is re-measured against CURRENT main — a displaced cost already paid by another merge is the purity trap (e.g. rust-test sharding, ruled out post-#5427's nextest cut). And the lane/parked list is DERIVED from this authority, never hand-typed (a hand-list drifts exactly like a second representation). The authority tracks ALL planned work; work-items dispatch only the active subset."),
     ],
   }
 }
