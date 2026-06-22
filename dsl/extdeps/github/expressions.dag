@@ -28,7 +28,6 @@ module extdeps.github.expressions
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.communication.medium { Medium, Lossless }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -138,284 +137,48 @@ fn function_name(function: ExpressionFunction) -> String {
   }
 }
 
-// -- The delimiter spelling rows (single authority, read in BOTH directions) ---
-//
-// Every structural delimiter byte the serializer produces lives in ONE row the
-// fold looks up, so a wrong delimiter is one row edit (and one RED witness),
-// never a literal buried in the fold. This is what lets the §5.2 round-trip law
-// read the SAME rows backward (the ingest below) — DESIGN §4 one grammar, both
-// directions. The closed name maps (context_name / function_name) are the OTHER
-// authority; ingest reverses those same functions. (The default values are the
-// real GitHub Actions spellings — `${{ … }}`, `.`, `'…'`, `||` — not nicknames.)
-type ExpressionSpellings {
-  path_sep: String       // "."     dotted context property path
-  call_open: String      // "("     function call open
-  call_close: String     // ")"     function call close
-  arg_sep: String        // ", "    between function arguments
-  string_quote: String   // "'"     expression-level string literal delimiter
-  or_op: String          // " || "  logical-or operator
-  interp_open: String    // "${{ "  interpolation open
-  interp_close: String   // " }}"   interpolation close
-}
-
-data default_expression_spellings: ExpressionSpellings = {
-  path_sep: ".",
-  call_open: "(",
-  call_close: ")",
-  arg_sep: ", ",
-  string_quote: "'",
-  or_op: " || ",
-  interp_open: "${{ ",
-  interp_close: " }}",
-}
-
-fn join_path_with(path: List<String>, sp: ExpressionSpellings) -> String {
-  join(path, sp.path_sep)
-}
-
-fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> String {
-  join(map(args, a => serialize_expression_with(expression: a, sp: sp)), sp.arg_sep)
-}
-
-// The expression body (no `${{ }}` delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
-fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) -> String {
-  match expression {
-    ContextAccess { context: c, path: p } =>
-      join([context_name(context: c), join_path_with(path: p, sp: sp)], sp.path_sep)
-    FunctionCall { function: f, args: a } =>
-      join([function_name(function: f), sp.call_open, serialize_args_with(args: a, sp: sp), sp.call_close], "")
-    StringLiteral { value: v } =>
-      join([sp.string_quote, v, sp.string_quote], "")
-    LogicalOr { left: l, right: r } =>
-      join([serialize_expression_with(expression: l, sp: sp), serialize_expression_with(expression: r, sp: sp)], sp.or_op)
-  }
-}
-
-// The place the interpolation delimiter bytes are produced (now via the rows).
-fn interpolate_with(expression: Expression, sp: ExpressionSpellings) -> String {
-  join([sp.interp_open, serialize_expression_with(expression: expression, sp: sp), sp.interp_close], "")
-}
-
-fn serialize_segment_with(segment: TemplateSegment, sp: ExpressionSpellings) -> String {
-  match segment {
-    LiteralText { text: t } => t
-    Interpolation { expression: e } => interpolate_with(expression: e, sp: sp)
-  }
-}
-
-fn serialize_template_with(template: ExpressionTemplate, sp: ExpressionSpellings) -> String {
-  fold(template.segments, init: "", f: (acc, segment) =>
-    concat(acc, serialize_segment_with(segment: segment, sp: sp)))
-}
-
-// -- Canonical-spelling entries (the corpus surface; consumers untouched) ------
-// `serialize_expression` / `interpolate` / `serialize_template` keep their
-// signatures, delegating to the `_with` forms over the default GHA spellings.
-
 fn join_path(path: List<String>) -> String {
-  join_path_with(path: path, sp: default_expression_spellings)
+  fold(path, init: "", f: (acc, segment) =>
+    if acc == "" { segment } else { concat(concat(acc, "."), segment) })
 }
 
 fn serialize_args(args: List<Expression>) -> String {
-  serialize_args_with(args: args, sp: default_expression_spellings)
+  fold(args, init: "", f: (acc, arg) => {
+    let part = serialize_expression(expression: arg)
+    if acc == "" { part } else { concat(concat(acc, ", "), part) }
+  })
 }
 
 // The expression body (no delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
 fn serialize_expression(expression: Expression) -> String {
-  serialize_expression_with(expression: expression, sp: default_expression_spellings)
+  match expression {
+    ContextAccess { context: c, path: p } =>
+      concat(concat(context_name(context: c), "."), join_path(path: p))
+    FunctionCall { function: f, args: a } =>
+      concat(concat(function_name(function: f), "("), concat(serialize_args(args: a), ")"))
+    StringLiteral { value: v } =>
+      concat(concat("'", v), "'")
+    LogicalOr { left: l, right: r } =>
+      concat(concat(serialize_expression(expression: l), " || "), serialize_expression(expression: r))
+  }
 }
 
 // The ONLY place the `${{ … }}` delimiter bytes are produced. Every emitted GitHub Actions
 // expression in the corpus routes through here; nothing hand-authors the delimiters.
 fn interpolate(expression: Expression) -> String {
-  interpolate_with(expression: expression, sp: default_expression_spellings)
+  concat(concat("${{ ", serialize_expression(expression: expression)), " }}")
 }
 
 fn serialize_segment(segment: TemplateSegment) -> String {
-  serialize_segment_with(segment: segment, sp: default_expression_spellings)
+  match segment {
+    LiteralText { text: t } => t
+    Interpolation { expression: e } => interpolate(expression: e)
+  }
 }
 
 fn serialize_template(template: ExpressionTemplate) -> String {
-  serialize_template_with(template: template, sp: default_expression_spellings)
-}
-
-// =========================================================================
-// INGEST — GHA expression SOURCE → Expression / ExpressionTemplate (the §5.2
-// round-trip inverse). DESIGN §4 one grammar, both directions; §5.2 the
-// round-trip law `ingest ∘ emit = id` is the medium-completeness oracle.
-//
-// Reads the SAME authorities the emitter writes: the `ExpressionSpellings`
-// delimiter rows (backward) AND the closed name maps `context_name` /
-// `function_name` (reversed via the enumerations below — NO re-spelled second
-// name authority; §3 single authority). Fail-closed: any structure outside the
-// core yields `Absent`, never a fabricated expression (§5).
-//
-// FIDELITY BOUNDARY (extdeps.communication.medium):
-// `ingest ∘ emit = id` is Lossless over the **FLAT canonical core**:
-//   - ContextAccess (context + dotted path), StringLiteral (delimiter-free value),
-//   - FunctionCall whose args are FLAT ContextAccess/StringLiteral,
-//   - LogicalOr in LEFT-associative (canonical) nesting,
-//   - ExpressionTemplate interleaving literal text + interpolations.
-// This is round-trip-complete for the FLAT core, NOT the whole GHA expression
-// language — nesting is COMMON in real GHA (`contains(x, fromJSON(y))`) and is
-// explicitly the **Lossy frontier**, not claimed:
-//   - nested FunctionCall / LogicalOr as a function argument,
-//   - RIGHT-associative LogicalOr nesting (emit→ingest collapses to left-assoc:
-//     `id` on the canonical normal form, a section on non-canonical input),
-//   - StringLiteral values containing delimiter bytes (quote / `||` / `, ` / parens),
-//   - whitespace variants (`${{runner.os}}` — emit/ingest use canonical spacing only).
-// Frontier inputs fail the round-trip (Absent or a different tree), asserted by
-// execution in the witness — the boundary is enforced, not just commented.
-// Dissolve-on: a precedence/paren-aware tokenizer recovering nested expressions,
-// at which point nesting flips to Lossless.
-// =========================================================================
-
-// The closed variant enumerations — the reverse name lookups iterate these and
-// match via the FORWARD authority (context_name / function_name), so the spelling
-// of each name lives in exactly one place (§3). Listing the closed set is not a
-// name fork; the names themselves are never re-typed here.
-data all_expression_contexts: List<ExpressionContext> = [
-  Github, Env, Vars, Job, Jobs, Steps, Runner, Secrets, Strategy, Matrix, Needs, Inputs
-]
-
-data all_expression_functions: List<ExpressionFunction> = [
-  Contains, StartsWith, EndsWith, Format, Join, ToJSON, FromJSON, HashFiles,
-  Success, Always, Cancelled, Failure
-]
-
-fn context_from_name(name: String) -> ExpressionContext? {
-  fold(all_expression_contexts, init: none, f: (acc, c) => match acc {
-    Present { value: x } => Present { value: x }
-    Absent => if context_name(context: c) == name { Present { value: c } } else { none }
-  })
-}
-
-fn function_from_name(name: String) -> ExpressionFunction? {
-  fold(all_expression_functions, init: none, f: (acc, fn_variant) => match acc {
-    Present { value: x } => Present { value: x }
-    Absent => if function_name(function: fn_variant) == name { Present { value: fn_variant } } else { none }
-  })
-}
-
-fn expr_is_string_literal(s: String, sp: ExpressionSpellings) -> Bool {
-  starts_with(s: s, prefix: sp.string_quote)
-    && ends_with(s: s, suffix: sp.string_quote)
-    && (s.length() >= (2 * sp.string_quote.length()))
-}
-
-fn expr_is_call(s: String, sp: ExpressionSpellings) -> Bool {
-  ends_with(s: s, suffix: sp.call_close) && string_contains(s, sp.call_open)
-}
-
-fn parse_args_with(args_str: String, sp: ExpressionSpellings) -> List<Expression>? {
-  if args_str == "" {
-    Present { value: [] }
-  } else {
-    fold(split(s: args_str, delimiter: sp.arg_sep), init: Present { value: [] }, f: (acc, part) => match acc {
-      Absent => none
-      Present { value: sofar } => match parse_atom_with(s: part, sp: sp) {
-        Absent => none
-        Present { value: e } => Present { value: concat(sofar, [e]) }
-      }
-    })
-  }
-}
-
-// A non-or atom: string literal, function call, or context access.
-fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
-  if expr_is_string_literal(s: s, sp: sp) {
-    Present { value: StringLiteral {
-      value: substring(s: s, start: sp.string_quote.length(), end: s.length() - sp.string_quote.length()),
-    } }
-  } else if expr_is_call(s: s, sp: sp) {
-    let segs = split(s: s, delimiter: sp.call_open)
-    let after = join(segs.skip(n: 1), sp.call_open)
-    let args_str = if ends_with(s: after, suffix: sp.call_close) {
-      substring(s: after, start: 0, end: after.length() - sp.call_close.length())
-    } else {
-      after
-    }
-    match function_from_name(name: segs.first()) {
-      Absent => none
-      Present { value: fn_variant } => match parse_args_with(args_str: args_str, sp: sp) {
-        Absent => none
-        Present { value: args } => Present { value: FunctionCall { function: fn_variant, args: args } }
-      }
-    }
-  } else {
-    let segs = split(s: s, delimiter: sp.path_sep)
-    match context_from_name(name: segs.first()) {
-      Absent => none
-      Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
-    }
-  }
-}
-
-// Top-level: split on or_op and fold LEFT (the canonical normal form), else atom.
-fn parse_expression_with(s: String, sp: ExpressionSpellings) -> Expression? {
-  let parts = split(s: s, delimiter: sp.or_op)
-  if parts.length() == 1 {
-    parse_atom_with(s: s, sp: sp)
-  } else {
-    fold(parts.skip(n: 1), init: parse_atom_with(s: parts.first(), sp: sp), f: (acc, part) => match acc {
-      Absent => none
-      Present { value: left } => match parse_atom_with(s: part, sp: sp) {
-        Absent => none
-        Present { value: e } => Present { value: LogicalOr { left: left, right: e } }
-      }
-    })
-  }
-}
-
-fn ingest_expression_with(src: String, sp: ExpressionSpellings) -> Expression? {
-  parse_expression_with(s: src, sp: sp)
-}
-
-fn ingest_expression(src: String) -> Expression? {
-  ingest_expression_with(src: src, sp: default_expression_spellings)
-}
-
-// Template ingest: split on interp_open; the leading segment is literal text,
-// each following segment is `<expr><interp_close><trailing literal>`.
-fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
-  let parts = split(s: src, delimiter: sp.interp_open)
-  let lead = parts.first()
-  let lead_segs = if lead == "" { [] } else { [ LiteralText { text: lead } ] }
-  let built = fold(parts.skip(n: 1), init: Present { value: lead_segs }, f: (acc, part) => match acc {
-    Absent => none
-    Present { value: sofar } => {
-      let halves = split(s: part, delimiter: sp.interp_close)
-      if halves.length() < 2 {
-        none
-      } else {
-        let trailing = join(halves.skip(n: 1), sp.interp_close)
-        match parse_expression_with(s: halves.first(), sp: sp) {
-          Absent => none
-          Present { value: e } => {
-            let with_interp = concat(sofar, [ Interpolation { expression: e } ])
-            Present {
-              value: if trailing == "" { with_interp } else { concat(with_interp, [ LiteralText { text: trailing } ]) },
-            }
-          }
-        }
-      }
-    }
-  })
-  match built {
-    Absent => none
-    Present { value: segs } => Present { value: ExpressionTemplate { segments: segs } }
-  }
-}
-
-fn ingest_template(src: String) -> ExpressionTemplate? {
-  ingest_template_with(src: src, sp: default_expression_spellings)
-}
-
-// The §5.2 (B) per-medium decidability partition: the FLAT core is Lossless;
-// the carried representation is the recovered expression. Nesting / non-canonical
-// input is the unclaimed Lossy partition (never advertised by this Medium).
-fn gha_expression_medium_lossless(expr: Expression) -> Medium<Expression> {
-  Medium { carried: expr, fidelity: Lossless }
+  fold(template.segments, init: "", f: (acc, segment) =>
+    concat(acc, serialize_segment(segment: segment)))
 }
 
 // -- Runner-context grounding -----------------------------------------
