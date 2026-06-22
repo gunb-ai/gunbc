@@ -24,6 +24,7 @@ import v2.std.diagnostic {
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
+  SeverityError,
   Unavailable,
   bind_outcome,
   diagnostics_singleton,
@@ -70,10 +71,17 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope { declaration: DeclarationId, node: NodeId }
 
-// §3 SINGLE AUTHORITY — DiagnosticSeverity grounded on v2.std.diagnostic (imported above).
-// C-8 fail-closed: only SeverityError is admitted in lens enforcement contexts steady state
-// (SeverityWarning is never a valid argument to apply_lens_enforce or LensEnforce — usage
-// constraint, enforced by convention after the §3 twin dissolution).
+// 🟢 TERMINAL — C-8 fail-closed: single-variant refinement of v2.std.diagnostic.DiagnosticSeverity.
+// Grounded on std (single authority §3). Only EnforceError is writable at the lens enforcement
+// seam by construction — SeverityWarning cannot be constructed here (§5, not convention).
+type LensEnforcementSeverity = EnforceError {}
+
+// Projects to the std authority; the one valid lens-enforce severity is SeverityError.
+fn lens_severity_to_diagnostic(s: LensEnforcementSeverity) -> DiagnosticSeverity {
+  match s {
+    EnforceError {} => SeverityError
+  }
+}
 
 // 🟢 TERMINAL — per-lens enforcement projection + violation relation.
 // violates first argument is full Output (v3 lens_application.dag) so
@@ -105,7 +113,7 @@ type LensApplicationConfig<Output, Budget, Projected>
   = LensIntrospect
   | LensEnforce {
       budget: Budget
-      diagnostic_severity: DiagnosticSeverity
+      diagnostic_severity: LensEnforcementSeverity
     }
 
 // 🟢 TERMINAL — enforce-mode application carrier.
@@ -113,7 +121,7 @@ type EnforcedApplication<Output, Budget, Projected> {
   enforceable_lens: EnforceableLens<Output, Budget, Projected>
   section: SectionRef
   budget: Budget
-  diagnostic_severity: DiagnosticSeverity
+  diagnostic_severity: LensEnforcementSeverity
   span: SourceSpan
 }
 
@@ -444,7 +452,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
   section: SectionRef,
   root: Node,
   budget: Budget,
-  diagnostic_severity: DiagnosticSeverity
+  diagnostic_severity: LensEnforcementSeverity
 ) -> Outcome<EnforcedLensResult<Output, Projected>> {
   bind_outcome(
     o: section_subject(root: root, section: section),

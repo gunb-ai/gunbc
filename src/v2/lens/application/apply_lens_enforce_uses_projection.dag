@@ -5,12 +5,13 @@ module v2.test.lens_application.apply_lens_enforce_uses_projection
 import v2.lens.application {
   DeclarationId,
   DeclarationScope,
+  EnforceError,
   EnforceableLens,
   Lens,
   LensEnforcement,
   apply_lens_enforce
 }
-import v2.std.diagnostic { Accepted, DiagnosticSeverity, Outcome, Rejected, SeverityError, outcome_accepted }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.verification {
@@ -77,7 +78,7 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
     section: DeclarationScope { declaration: projection_test_declaration },
     root: projection_test_root,
     budget: ^projection_budget_ok,
-    diagnostic_severity: SeverityError {}
+    diagnostic_severity: EnforceError {}
   ) {
     Accepted { value: result, diagnostics: _ } =>
       result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
