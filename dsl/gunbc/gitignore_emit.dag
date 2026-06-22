@@ -26,11 +26,11 @@ fn producer_display(p: Producer) -> String {
     Derivable { kind: OpenClawArtifact } => "OpenClaw workspace artifacts"
     Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
     Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
-    Cited { kind: OperatingSystem, upstream: _ } => "OS metadata (from os)"
-    Cited { kind: EditorIDE, upstream: _ } => "Editor/IDE state (from editor)"
-    Cited { kind: NodeJS, upstream: _ } => "Node.js (from npm)"
-    Cited { kind: SecretsConvention, upstream: _ } => "Secrets and local config (from secrets)"
-    Cited { kind: PythonLang, upstream: _ } => "Python (local dev-only scripts; never committed to the .dag/.rs substrate)"
+    Cited { kind: OperatingSystem, upstream: u } => concat("OS metadata [cited: ", concat(u, "]"))
+    Cited { kind: EditorIDE, upstream: u } => concat("Editor/IDE state [cited: ", concat(u, "]"))
+    Cited { kind: NodeJS, upstream: u } => concat("Node.js [cited: ", concat(u, "]"))
+    Cited { kind: SecretsConvention, upstream: u } => concat("Secrets and local config [cited: ", concat(u, "]"))
+    Cited { kind: PythonLang, upstream: u } => concat("Python (local dev-only scripts; never committed to the .dag/.rs substrate) [cited: ", concat(u, "]"))
   }
 }
 
