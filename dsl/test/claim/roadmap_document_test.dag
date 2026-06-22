@@ -11,7 +11,7 @@ module test.claim.roadmap_document
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import ctrl.process_algebra { ProcessNodeId }
@@ -45,13 +45,19 @@ fn child_node() -> RoadmapNode {
 }
 
 fn lockdown_section() -> RoadmapSection {
-  RoadmapSection { title: "0. Fail-closed lock-down", nodes: [audit_node()], edges: [] }
+  RoadmapSection {
+    title: "0. Fail-closed lock-down",
+    elements: [section_group(label: "", nodes: [audit_node()], edges: [])],
+  }
 }
 fn expansion_section() -> RoadmapSection {
   RoadmapSection {
     title: "6. Expansion",
-    nodes: [status_node(), child_node()],
-    edges: [RoadmapEdge { child: child_id, parent: status_id }],
+    elements: [section_group(
+      label: "",
+      nodes: [status_node(), child_node()],
+      edges: [RoadmapEdge { child: child_id, parent: status_id }],
+    )],
   }
 }
 
@@ -114,7 +120,7 @@ fn expected_roadmap() -> String {
     "\n",
     "## 6. Expansion\n",
     "\n",
-    "- [x] **PR-checkbox status**\n",
+    "- [x] **PR-checkbox status** (#5491)\n",
     "  - [ ] **host-fed status bridge**\n"
   ], "")
 }

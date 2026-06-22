@@ -41,6 +41,7 @@ import std.measure {
   byte_size,
   byte_size_count,
   bit_width_count,
+  bits_per_byte,
   Watt,
   watt,
   watt_count,
@@ -133,7 +134,7 @@ type Platform {
 // extdeps.memory.dram_data_chips_per_rank also keys on — so the 64-bit bus is modeled once (as a
 // BitWidth, the same width concept as chip_width), not duplicated as a separate 8-byte constant.
 fn dram_channel_bus_bytes() -> Int {
-  bit_width_count(b: dram_data_word_width) / 8
+  bit_width_count(b: dram_data_word_width) / bits_per_byte()
 }
 
 // 🟡 CALIBRATE(board-downclock-thresholds) — the signal-integrity downclock model, one of
