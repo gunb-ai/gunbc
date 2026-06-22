@@ -19,12 +19,10 @@ import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
-  DiagnosticSeverity,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
-  SeverityError,
   Unavailable,
   bind_outcome,
   diagnostics_singleton,
@@ -71,18 +69,6 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope { declaration: DeclarationId, node: NodeId }
 
-// 🟢 TERMINAL — C-8 fail-closed: single-variant refinement of v2.std.diagnostic.DiagnosticSeverity.
-// Grounded on std (single authority §3). Only EnforceError is writable at the lens enforcement
-// seam by construction — SeverityWarning cannot be constructed here (§5, not convention).
-type LensEnforcementSeverity = EnforceError {}
-
-// Projects to the std authority; the one valid lens-enforce severity is SeverityError.
-fn lens_severity_to_diagnostic(s: LensEnforcementSeverity) -> DiagnosticSeverity {
-  match s {
-    EnforceError {} => SeverityError
-  }
-}
-
 // 🟢 TERMINAL — per-lens enforcement projection + violation relation.
 // violates first argument is full Output (v3 lens_application.dag) so
 // per-lens relations can discriminate sum variants before budget comparison.
@@ -113,7 +99,6 @@ type LensApplicationConfig<Output, Budget, Projected>
   = LensIntrospect
   | LensEnforce {
       budget: Budget
-      diagnostic_severity: LensEnforcementSeverity
     }
 
 // 🟢 TERMINAL — enforce-mode application carrier.
@@ -121,7 +106,6 @@ type EnforcedApplication<Output, Budget, Projected> {
   enforceable_lens: EnforceableLens<Output, Budget, Projected>
   section: SectionRef
   budget: Budget
-  diagnostic_severity: LensEnforcementSeverity
   span: SourceSpan
 }
 
