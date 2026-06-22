@@ -1,155 +1,179 @@
-# CI, end to end — what runs, why it runs poorly, what to do now
+# CI, end to end — what's on `.dag` today, what isn't, and the lane that closes the gap
 
-> **The consolidating map for ROADMAP §1.** Every other CI plan doc is a *slice*; this one is the
-> whole pipeline in one place, with each slice linked at the point it applies (no dual representation —
-> the carriers and the linked docs stay the authority). Written from two independent audits that agree
-> (neat-dove-397 Explore + quick-ant-298, the §1 CI lead, both verified on `origin/main`, 2026-06-22).
-> DESIGN refs: §1 (time = cost/safety), §2 (Realization — the parallelization arm), §3 (single
-> authority; the *measured-peripheral* split), §5 (fail-closed; **derive, don't hand-set**).
+> **The charter for ROADMAP §1.** Every other CI plan doc is a *slice*; this is the whole pipeline in
+> one place — the causal chain from `git push` to test execution, each link marked on-`.dag` or not, with
+> each slice linked where it applies (no dual representation — the carriers and linked docs stay the
+> authority). Built from two independent audits that agree (neat-dove-397 Explore + quick-ant-298, the §1
+> CI lead), both verified on `origin/main`, 2026-06-22. DESIGN refs: §1 (time = cost/safety), §2
+> (Realization — the parallelization arm), §3 (single authority; the *measured-peripheral* split), §5
+> (fail-closed — **derive, don't hand-set**), §6 (price the lane in displaced cost, not elegance), §7
+> (the substrate analyzing itself).
 >
-> Live scalars below are marked **[confirm]** — quick-ant-298 holds the freshest numbers; the *shape*
-> is the point, not the digits.
+> Live scalars are marked **[confirm]** — quick-ant-298 holds the freshest numbers; the *shape* is the point.
 
 ---
 
-## 0. Where this sits on the ROADMAP
+## 0. Why CI is a lane, not a chore
 
-CI is **ROADMAP §1 — "CI under control (the correctness floor)"**, and it is *upstream of every §0
-claim*: a flaky or green-but-broken floor means no gate protects anything, so every `[x]` in §0–§4
-rests on this. It is also the near-term face of the project thesis — **infra migrating onto the `.dag`
-substrate** (DESIGN §7): the Rust/host layer shrinks toward being a *derived realization*. Faster CI is
-the displaced-cost payoff; **the fleet-as-a-model is the moat.**
+CI is **ROADMAP §1**, and it is *upstream of every §0 claim*: a flaky or green-but-broken floor means no
+gate protects anything, so every `[x]` in §0–§4 rests on it. But the deeper reason it deserves a lane:
+**CI is the one workload that flexes *every* substrate layer at once** — execution-as-a-DAG, scheduling,
+caching, secrets/effects, emission — so it is the **forcing function** that turns each *modeled-but-inert*
+abstraction load-bearing (the direct antidote to DESIGN §6's "the machinery exists but nothing gates on
+it").
 
-The §1 milestone spine: `opt-3 per-PR ✓ (#5456) → ▸ NOW: floor never OOMs (memory-aware width) →
-floor runs the affected set → every host knob from one measured ResourceEnvelope`.
-
----
-
-## 1. The pipeline as it actually runs today
-
-One PR push → one CI run, in this order:
-
-1. **Trigger.** `ci.yml` fires on `pull_request` **and** `workflow_dispatch`.
-2. **The workflow is derived, not hand-written.** `ci.yml` is a byte-for-byte projection of
-   `gunbc.ci_yaml_emit` (`dsl/gunbc/ci_workflow.dag` → `ci_yaml_emit.dag`), drift-gated by
-   `dsl/tools/ci_yaml_gate.dag` (floor-enrolled, fail-closed). The workflow **structure is on fabric.**
-3. **One job, one runner.** `jobs.ci` has **no `matrix`/`strategy`** — it is a *single* job. Its
-   `runs-on: [self-hosted, linux, arm64]` is derived (`ci_fleet.gunbc_ci_runner_spec()` →
-   `runner_spec_from_offer`, projecting our self-hosted `ComputeOffer`). GitHub's own scheduler then
-   assigns that one job to the **first idle label-matching runner.**
-4. **The job runs one composed floor pass:**
-   `claim_executor --source-root src/v2 --source-root dsl --plan-entry
-   src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches`.
-5. **Batches come from a single authority.** `gunbc.ci_spec` → `ci_floor_plan.gunbc_ci_floor_batches`:
-   the only structural fact the plan adds is *compile-clean gates the rest* (batch-1
-   `dsl_compile_clean_gate` → batch-2 everything else). Heavy-resolve gates are serialized by
-   `ResourceDependsOn` edges so their memory peaks don't co-occur.
-6. **Within-job parallelism is memory-aware (the one live, load-bearing piece).**
-   `std.realization_width.memory_aware_spawn_width = min(shard_count, cores, ⌊0.8·budget ÷ peak⌋)`,
-   consuming the **committed measured per-shard peak** (`gunbc.ci_floor_measurement.dag`, provenance-
-   stamped VmHWM, ~8.4 GB **[confirm]**) and the **live cgroup `memory.max`** read at runtime by
-   `claim_executor.eval_spawn_width` (`/proc/self/status`). Green-by-execution (#5444, #5524).
-7. **The `.dag` floor already shrinks to the affected set.** `affected_set_floor_runner` does
-   node-level `SkipAssumedGreen` for discovery rows whose node-closure misses the git-diff frontier,
-   wired through `claim_executor` (`skip_unaffected_node_frontier`). Stateless; skipped rows are assumed
-   green from the last full `main` run.
-8. **Effectful gates ride batch-2:** rust fmt/clippy monolith + run-all (on `.rs` PRs), emit-host
-   smokes, layering-imports scan, source-root-ingest, the `ci.yml` drift gate. sccache is wired
-   (`extdeps/cache/sccache.dag`).
-
-**So the model is largely on fabric** — workflow, spec, batch plan, within-run width, the per-run
-demand envelope (`compute_fabric.parallel_run_demand_envelope`, #5524), the `.dag` affected-set, the
-fleet *inventory* (`operator_fleet.dag`: srv1 + srv2 as real `ComputeOffer`s, Ampere Altra 128c/128 GiB),
-even the runner-identity projection. That is more than either audit expected going in.
+**The deliverable is therefore not "faster CI."** Faster CI is the displaced-cost *symptom* you feel
+(*"move with confidence"*). The deliverable is **shared abstractions, proven by CI consuming them**: one
+Materialization kernel (collapsing the caches), one Placement authority (collapsing jobs/threads/sessions),
+one secrets model. Speed falls *out* of that. Priced in elegance instead, "flex every layer" is unbounded
+(the §6 purity trap) — so the lane is on-dial only insofar as CI-timeliness is the *cheapest path to the
+pain*, and each shared abstraction is pulled in **as CI actually flexes it**, not by taxonomy.
 
 ---
 
-## 2. Why it runs poorly — one root, several faces
+## 1. The pipeline as it runs today
 
-**The root (one sentence): the model is on fabric, but the decisions that *govern utilization* —
-which host a run lands on, how many runners per host, each runner's memory cap — are NOT derived from
-it. They are hand/host/ctrl-managed and demand-blind. That mismatch *is* the dumpster fire.**
+One PR push → one CI run: trigger (`ci.yml` on `pull_request`+`workflow_dispatch`) → GitHub starts the
+run → concurrency-group eval → GitHub places the **single** `jobs.ci` (no `matrix`) on the first idle
+`[self-hosted, linux, arm64]` runner → the runner builds `v1-compiler` and invokes
+`claim_executor … --plan-function gunbc_ci_floor_batches` → the executor derives batches from
+`ci_floor_plan.dag`, reads the live cgroup budget, shards by `spawn_width`, and runs the `.dag` witness
+corpus + gates → exit code → GitHub marks the check → dashboard gates review/merge.
 
-The symptom is a fleet with **no modeled operating point** — two 128-core hosts that are either
-oversubscribed/crashing or sitting at ~1% doing nothing, never the sane middle
-([compute-envelope-model.md](compute-envelope-model.md) §1). The faces:
-
-| # | Face | Mechanism | Cost |
-|---|------|-----------|------|
-| 1 | **Cross-host placement is demand-blind** | single job, no matrix → GitHub picks the first idle runner with no idea of the run's ~40 GB demand → heavy runs **pile onto one host while the other idles**; `operator_fleet` has **no CI-run placement consumer** (the ctrl `plans.capacity` consumer places *sessions/containers, not GHA jobs*) | ~29 min contention **[confirm]**; the underutilization root |
-| 2 | **Runner deployment is hand-managed** | how many runners per host + each runner's cgroup cap are **not in the repo at all** (host/ctrl-set), so nothing prevents too many ~40 GB runners co-residing | the OOM/EAGAIN crashes |
-| 3 | **Resolve cache dormant in CI** | `GUNBC_RESOLVED_GRAPH_CACHE_DIR` is never set in `ci.yml` (only sccache is wired), so the cold resolve re-runs every CI **and** keeps per-shard peak high → caps `spawn_width` low → a 128-core box runs at **width ~4** | ~191 s/run **[confirm]** + suppressed width |
-| 4 | **`workflow_dispatch` dup** | `ci.yml` fires on `workflow_dispatch` *and* `pull_request`; the dashboard fires a dispatch on top of the natural PR run; the modeled concurrency key (`workflow-{pull_request.number ‖ run_id}`) falls back to `run_id`, so the two same-SHA runs **escape into different groups and co-reside** → OOM | dup ~40 GB runs |
-| 5 | **Rust gate is all-or-nothing** | `rust_gates_ci.dag` has no affected-set reference — on a `.rs` PR it runs every rust test, execution-dominated | the ~50 min ceiling on `.rs` PRs |
-| 6 | **Stale-green merge** *(distinct root, mostly settled)* | a PR validated against a base that pre-dates a newly-landed gate, merged without re-validation | reds `main` post-merge ([ci-merge-freshness.md](ci-merge-freshness.md)) |
-
-Faces 1–4 are **one disease**: utilization decisions live outside the model. Face 5 is *selection*
-(orthogonal — [ci-selection-vs-scheduling.md](ci-selection-vs-scheduling.md)). Face 6 is *freshness*.
+`ci.yml` itself is a byte-for-byte projection of `gunbc.ci_yaml_emit` (`ci_workflow.dag` → `ci_yaml_emit`,
+authored steps incl. the build command and the `claim_executor` invocation), drift-gated by
+`tools/ci_yaml_gate.dag`. So the **workflow description is on fabric.** The question §2 answers is whether
+the *fabric* is.
 
 ---
 
-## 3. The graveyard — what's live, half-built, and dead
+## 2. The causal chain — what's on `.dag` today vs not
 
-The "scattered features that don't work" resolve to exactly this. **Almost all of it is one missing
-consumer**, not many broken things.
+**Legend:** 🟢 **DERIVED** (`.dag` is the authority; artifact generated + drift-gated) · 🔵 **EXECUTING
+`.dag`** (the `.dag` is literally interpreted at runtime — the strongest sense) · 🟡 **MODELED-INERT**
+(`.dag` *describes* it but doesn't operate/enforce it) · 🔴 **OFF-FABRIC** (GitHub-native or hand/host;
+no `.dag`).
 
-| Component | Path | State | Evidence |
-|-----------|------|-------|----------|
-| within-run memory-aware `spawn_width` | `ci_floor_plan.dag` + `ci_floor_measurement.dag` + `realization_width.dag` | **LIVE** | `claim_executor` reads live budget, shards discovery batch (#5444) |
-| topology scheduler + heavy-resolve serialization | `ci_floor_plan.dag`, `executor.dag` | **LIVE** | `claim_executor.run_walk` walks batches; single-host only |
-| `ci.yml` derived + drift-gated | `ci_workflow.dag`, `ci_yaml_emit.dag` | **LIVE** | `ci_yaml_gate` fail-closed |
-| `.dag` floor affected-set selection | `affected_set_floor_runner` | **LIVE** | wired via `claim_executor` |
-| per-run demand `ResourceEnvelope` | `compute_fabric.parallel_run_demand_envelope` | **LIVE (producer)** | #5524; **no placement consumer reads it** |
-| fleet inventory (srv1/srv2) | `operator_fleet.dag`, `operator_fleet_network.dag` | **HALF — input only** | feeds `ci.yml` labels; **not** runtime placement. *Keep* — it's the input to the fix below |
-| placement predicate | `compute_fabric.satisfies()`, `placement_supply.dag` | **DEAD** | the only consumer (ctrl `plans.capacity`) places sessions, **not CI runs**; a CI-run placement consumer exists *nowhere* |
-| cross-host matrix | — | **MISSING** | `ci.yml` emits no `matrix`; sharding across srv1+srv2 unbuilt |
-| runner deployment config (count/host, caps) | — | **MISSING from repo** | host/ctrl-managed, demand-blind |
-| resolve cache in CI | `resolved_graph.dag` modeled | **DORMANT** | env var never set in `ci.yml` |
-| rust-gate affected-set (edge-b) | `rust_gates_ci.dag` | **MISSING** | no affected reference |
-
-DESIGN §6 note: the DEAD/MISSING rows are scaffolds without a named dissolution trigger — that is
-itself the §6 violation. Each needs to **become load-bearing or be deleted** (§5 below).
-
----
-
-## 4. What to do now — leverage-ranked, none of it a tweak
-
-The ordering principle: **finishes and enables that make utilization fall out of the model come before
-any new scheduler.** Sharding/tiering knobs are explicitly *not* here — they lower a number once and
-don't compound (the purity trap, DESIGN §6).
-
-1. **Derive the runner *deployment* config from `operator_fleet` + `ResourceEnvelope`, generate-and-
-   drift-gate it** (same pattern as `ci.yml`). Makes *"N runners × per-run peak < host RAM"* a **derived
-   fact, not a hand guess** → ends over-commit (face 2) and gives the demand envelope its first real
-   consumer. This is the cheapest *substrate-migration* win and the literal answer to "runner config
-   should go through `.dag`." Not a placement scheduler. → [compute-envelope-model.md](compute-envelope-model.md)
-2. **Enable the resolve cache in CI** (binary-keyed `GUNBC_RESOLVED_GRAPH_CACHE_DIR`). Cuts the cold
-   resolve **and** lowers per-shard peak → width rises → the active host fills up (faces 3 + the
-   width cap). Cheap, orthogonal, purity already proven 616/616.
-   → [realization-measurement-loop.md](realization-measurement-loop.md)
-3. **Emit a cross-host `matrix` from the fleet model** (shard the single job across srv1+srv2). Turns
-   the serial single-host run into parallel shards that use the idle host (face 1). **This is the only
-   step that needs a genuine decision** — it is the placement predicate's real consumer, so it forces
-   *build-now vs fence-under-one-runway* on the DEAD rows in §3.
-4. **edge-(b) rust affected-set** — selection for the rust gate, so a `.rs` PR runs only the affected
-   rust tests, fail-closed (face 5). Scoped keystone. → [ci-selection-vs-scheduling.md](ci-selection-vs-scheduling.md)
-5. **Collapse the `workflow_dispatch` dup** in the concurrency-key model + stop the redundant dispatch
-   (face 4). Model edit. → [ci-merge-freshness.md](ci-merge-freshness.md) (adjacent)
-
-**Expected shape of the win:** steps 1–2 use idle capacity and cut time *with no new scheduler* — the
-non-tweak progress, robust regardless of the step-3 decision. Step 3 removes the ~29 min contention;
-the matrix shards the rest. The 50 min is a *symptom of placement*; fix placement structurally and it
-falls out.
+| # | Link (push → execute) | Verdict | Authority today / gap |
+|---|------|---------|----------------------|
+| 1 | push branch / open-sync PR | 🔴 | git + GitHub native |
+| 2 | GitHub reads committed `ci.yml` triggers, starts run | 🟢 *file* / 🔴 *act* | file derived+gated; dispatch engine native. **Bootstrap seam**: reads the *committed* file → stale-on-invocation-surface is uncaught |
+| 3 | concurrency group + cancel-in-progress | 🟢 *key* / 🔴 *eval* | key modeled (`ci_workflow_expressions`), **carries the `run_id`-fallback dup bug**; evaluated by GitHub |
+| 3′ | dashboard *also* fires `workflow_dispatch` same SHA | 🔴 | ctrl/dashboard — **the dup source** |
+| 4 | GitHub matches labels & **places the job on a host** | 🟢 *labels* / 🔴 *placement* | labels derived (`runner_spec_from_offer`); **placement is native, demand-blind, first-idle** ← **underutilization root (G1)** |
+| 5 | a runner daemon on srv1/srv2 picks it up | 🔴 (🟡 inventory) | runners/host, registration, on-box labels = **hand-run shell, no repo artifact (G2)**; `operator_fleet` only *describes* the hosts |
+| 6 | the runner's cgroup cap bounds it | 🔴 | `TasksMax`/`MemoryMax` host-set by hand **(G3)**; `.dag` only *reads* it live — adaptive, not authoritative |
+| 7 | steps: isolate toolchain, checkout, setup-rust, cache | 🟢 *list* / 🔴 *tools* | step list derived; bodies shell out to git/rustup/cache |
+| 8 | `cargo build -p v1-compiler` + freshness/exists verify | 🟢 | command + §5 fail-closed guards derived; cargo/sccache external |
+| 9 | `claim_executor … gunbc_ci_floor_batches` | 🔵 | **executor interprets `ci_floor_plan.dag`; batches from dependency edges** — strongest on-fabric link |
+| 10 | read live budget → `memory_aware_spawn_width` → shard | 🔵 *decision* / 🔴 *input* | width logic executes `.dag`, reading off-fabric host state |
+| 11 | affected-set skip over the git-diff frontier | 🔵 | the `.dag` floor already shrinks to affected |
+| 12 | gates: ci.yml-drift, rust fmt/clippy, layering, witness corpus | 🔵 *corpus* / 🔴 *rust* | the witness corpus **is `.dag` executing**; fmt/clippy shell to cargo and have **no affected-set (G5)** |
+| 13 | exit code → GitHub marks the check | 🔴 | GitHub-native |
+| 14 | dashboard reads check + reviews → merge | 🔴 | ctrl/dashboard; merge manual |
 
 ---
 
-## 5. The two open decisions (operator)
+## 3. The conflation, named: three layers of "on fabric"
 
-1. **Target ceiling.** "~50 is the unacceptable status quo; get it to **~___**." Decides whether
-   steps 1–2 suffice or step 3 is load-bearing this week.
-2. **Step 3 — build CI-run placement now, or fence it.** *Build now* → the DEAD placement predicate
-   (§3) gets its consumer and becomes load-bearing. *Defer* → delete or fence it under **one** named
-   runway so it stops reading as a broken feature. (Keep `operator_fleet` either way — it's the input
-   to step 1.)
+"Largely on fabric" hid that **two different links are both genuinely on `.dag`, at opposite ends**, with
+an off-fabric band between them:
 
-Steps 1, 2, 4, 5 are sound under either answer. Only step 3 waits on decision 2.
+- **A — the workflow *description*** (links 2–8): `ci.yml`. **🟢 DERIVED**, drift-gated.
+- **B — the fabric *operation*** (links 4–6): which host, runners-per-host, cgroup caps, the shell you SSH
+  in and run. **🔴 OFF-FABRIC** — imperative, hand-run, unversioned, *no repo artifact*. `operator_fleet`
+  *describes* the hosts (🟡 inert) but does not *operate* them; nothing generates host config, nothing
+  reconciles host supply against `ci.yml`'s demand. A mis-set host doesn't red — CI silently runs
+  narrow/slow or OOMs.
+- **C — the A↔B relationship**: **not enforced.** Coupled only by a label string + a one-way live read of
+  `memory.max` (adaptive, not authoritative).
+
+**The one-line gap:** the *description* (A) and the *work* (§4) are on `.dag`; the *operation of the
+fabric* (B — placement + runner deployment + caps) is entirely off it. Close B as one unit and "on `.dag`"
+becomes true of the whole chain except GitHub's irreducible engine.
+
+---
+
+## 4. Which substrate layers CI flexes — and do they work?
+
+| Layer | State | Evidence |
+|---|---|---|
+| **Execution as a dependency graph** | **✅ WORKS — the realest layer** | the floor *is* a bounded forward DAG walk; `claim_executor` interprets `ci_floor_plan.dag`, one fold (`fold_node`), batches from dependency edges. The core thesis runs in prod every push |
+| **Scheduling** | **◑ one axis live, rest inert** | **Width** consumes the measured envelope (#5444), single-host. `Placement`/`Materialization`/`RealizationObjective` are modeled + witness-passing but have **no non-test consumer** — the same band as the host-ops gap (§3-B), substrate side |
+| **Caching** | **◑ five forks, converging** | sccache live (build) · resolve-cache **dormant** (modeled, pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live (content-addressed, amortization witness) · RecordedFixture (record/replay) · BuildBuddy opt-in. The one-door `realize(subject)` kernel (§2 P2) is staged |
+| **Secrets / effects** | **○ ad hoc** | live cgroup reads, sccache servers, BMC, tokens — no single model yet |
+| **Emission** | **✅ works** | `ci.yml` + testgen are emitted + drift-gated; stage0 seed `--verify` is the one missing gate (§5 keystone) |
+
+So: execution and emission **work**; scheduling and caching **work in one slice each and are inert/forked
+otherwise**; secrets are unmodeled. CI is the workload that makes finishing each of these *pay*.
+
+---
+
+## 5. Why it runs poorly — one root, several faces
+
+**Root: the model is on fabric, but the decisions that govern utilization — which host a run lands on,
+runners-per-host, per-runner caps — are NOT derived from it. They're demand-blind hand/host knobs.** The
+symptom is a fleet with **no operating point** — two 128-core hosts either oversubscribed/crashing or at
+~1%, never the middle ([compute-envelope-model.md](compute-envelope-model.md) §1). Headline: a 128-core
+box runs CI at **width ~4 [confirm]** while the other host idles.
+
+| Face | Mechanism | Link |
+|------|-----------|------|
+| placement demand-blind | single job, no matrix → first-idle → heavy runs co-reside, other host idles | G1 (link 4) |
+| runner deployment hand-managed | runners/host + caps not in repo → over-commit | G2/G3 (links 5–6) |
+| resolve cache dormant | `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset → ~191s [confirm] cold resolve + high peak caps width low | §4 caching |
+| `workflow_dispatch` dup | dispatch + PR → two same-SHA runs escape the `run_id` key → OOM | G4 (links 3/3′) |
+| rust gate all-or-nothing | no affected-set on `.rs` PRs | G5 (link 12) |
+| stale-green merge | PR validated before a new gate landed | [ci-merge-freshness.md](ci-merge-freshness.md) |
+
+---
+
+## 6. What to do now — leverage-ranked, none a tweak
+
+Ordering principle: **finishes/enables that make utilization fall out of the model come before any new
+scheduler.** Sharding/tiering knobs are excluded — they lower a number once and don't compound (§6).
+
+1. **G2/G3 — derive runner *deployment* (count + caps) from `operator_fleet` + `ResourceEnvelope`,
+   generate + drift-gate it** (the `ci.yml` pattern, for the host). Makes *"N runners × peak < host RAM"* a
+   computed fact, gives the envelope its first real consumer, and converts "I SSH in and run shell" into
+   "regenerate + a gate reds on drift." The cheapest substrate-migration win; not a scheduler.
+   → [compute-envelope-model.md](compute-envelope-model.md)
+2. **Enable the resolve cache in CI** — cuts cold resolve *and* lowers per-shard peak → width rises → the
+   host fills. Cheap, orthogonal, purity proven. → [realization-measurement-loop.md](realization-measurement-loop.md)
+3. **G1 — emit a cross-host `matrix` from the fleet model** (shard across srv1+srv2). The placement
+   predicate's real consumer. **The one step needing a decision** — build CI placement now vs fence the
+   dead predicate.
+4. **G5 — edge-(b) rust affected-set.** → [ci-selection-vs-scheduling.md](ci-selection-vs-scheduling.md)
+5. **G4 — collapse the `workflow_dispatch` dup** (key model + stop redundant dispatch). → [ci-merge-freshness.md](ci-merge-freshness.md)
+
+Steps 1–2 use idle capacity and cut time with no new scheduler. Step 3 removes the contention; the matrix
+shards the rest. The 50 min is a *symptom of placement*.
+
+---
+
+## 7. The lane's real deliverable — shared abstractions
+
+Beyond closing the gaps, the lane converges the forks CI exposes (pull each in **as CI flexes it**, §6):
+
+- **One Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture /
+  BuildBuddy onto `realize(subject)` (§2 P2).
+- **One Placement authority** — jobs (GitHub), threads (`spawn_width`), sessions (ctrl `plans.capacity`)
+  are three forks of "put work on a host."
+- **One secrets/effects model** — BMC, tokens, sccache-auth modeled once.
+- **gunbhub** — owning the Git/CI engine eventually closes the irreducible GitHub boundary (links 2,
+  13–14 / G6). *Not pressing*; the pain that denominates the lane is timeliness-for-confidence, not engine
+  ownership.
+
+---
+
+## 8. Open decisions (operator + bright-stag)
+
+1. **Target ceiling** — "~50 is the unacceptable status quo; get it to **~___**." Decides whether steps
+   1–2 suffice or step 3 is load-bearing this window.
+2. **Step 3 — build CI-run placement now, or fence it.** *Build* → the DEAD placement predicate (§4) gets
+   its consumer. *Defer* → delete/fence it under one named runway. (Keep `operator_fleet` either way — it's
+   the input to step 1.)
+3. **Lane shape** — adopt §0's framing (CI as the substrate integration dogfood; deliverable = shared
+   abstractions) as the §1 ROADMAP lane, with this doc as its charter.
+
+Steps 1, 2, 4, 5 are sound under any answer; only step 3 waits on decision 2.

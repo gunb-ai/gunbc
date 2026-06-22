@@ -56,23 +56,52 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog ([Disposition plan](docs/plans/disposition-carrier.md))
 - [ ] **axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc ([scope](docs/plans/axiom-syllogism-lens.md))
 
-## 1. CI under control (the correctness floor)
+## 1. CI as the substrate integration dogfood (the correctness floor)
 
 A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim.
-(Compute fabric lives here: the substrate CI runs on; selling it as infra is downstream.)
-→ [end-to-end map](docs/plans/ci-process-end-to-end.md) — the whole pipeline today, why it runs poorly, what to do now.
+CI is also the one workload that flexes *every* substrate layer at once (execution · scheduling · caching ·
+secrets/effects · emission), so it is the forcing function that turns each modeled-but-inert abstraction
+load-bearing. **Deliverable = shared abstractions proven by CI consuming them** (one Materialization kernel ·
+one Placement authority · one secrets model); faster CI falls *out* of that, it is not the goal (§6 — price
+the lane in displaced cost, "move with confidence", not elegance).
+→ [charter: causal-chain gap analysis](docs/plans/ci-process-end-to-end.md) — what's on `.dag` today vs not, push→execute.
 
-**◆ Milestones:** opt-3 per-PR ✓ (#5456) → **▸ NOW — floor never OOMs (memory-aware width)** → floor runs the affected-set → every host knob from one measured `ResourceEnvelope`
+**◆ Milestones:** execution-as-DAG ✓ (the floor *is* a bounded forward graph walk) · width on `.dag` ✓ (#5444)
+→ **▸ NOW — host-operation on `.dag` (placement · runner deployment · caps are hand-managed, off-fabric)** →
+resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority
+(jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)
 
-- [x] privacy (compute fabric)
-- [ ] **floor runs the right things** — cadence = two axes: SELECTION (by *what changed*) vs SCHEDULING (by cost); cost never drives selection ([plan](docs/plans/ci-selection-vs-scheduling.md))
+**What's on `.dag` today (the gap map — detail in the charter §2/§4):**
+- [x] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)
+- [x] **scheduling: width axis** — `memory_aware_spawn_width` consumes the measured envelope (#5444); single-host
+- [ ] **scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)
+- [ ] **caching forked** — sccache live · resolve-cache **dormant** (pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)
+
+**Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
+- [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) ([plan](docs/plans/compute-envelope-model.md))
+- [ ] **G2 runner deployment** — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
+- [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile-gate so a hand-edit reds
+- [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
+
+**Adjacent gaps (smaller, outside the host band):**
+- [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM ([decision record](docs/plans/ci-merge-freshness.md))
+- [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one) ([plan](docs/plans/ci-selection-vs-scheduling.md))
+- [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection ([plan](docs/plans/ci-selection-vs-scheduling.md))
   - [x] opt-level=3 restores Pop-A to per-PR — #5456 merged
   - [ ] per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)
   - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*
-- [ ] **floor runs reliably & affordably** — memory-aware scheduling (spawn_width is memory-blind → OOM as the corpus grows) + kill sccache false-greens
 - [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open ([force-check plan](docs/plans/compile-clean-forcecheck.md)) *(quick-ant-298)*
+- [ ] **kill sccache false-greens** — exit-0-no-binary; build-verify asserts artifact exists + fresh (partly landed in `ci.yml`)
+
+**Shared abstractions (the lane's real deliverable — §6: pull in as CI flexes them, not by taxonomy):**
+- [ ] **one Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)
+- [ ] **one Placement authority** — jobs (GitHub) · threads (`spawn_width`) · sessions (ctrl `plans.capacity`) are 3 forks of "put work on a host"
+- [ ] **shared secrets/effects** — BMC · tokens · sccache-auth modeled once (when the fork is the pain)
+
+**Downstream / parked:**
+- [x] privacy (compute fabric)
 - [ ] repo model (internal repo) on compute fabric
-- [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
+- [ ] **gunbhub** — own the Git/CI engine (closes G6, the irreducible GitHub boundary); not pressing
 - [ ] *(downstream)* compute fabric as a sellable infra piece
 
 ## 2. Minimal work — caching by realization (fail-closed)
