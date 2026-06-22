@@ -4,7 +4,7 @@
 use self::SizeExpr::*;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
-pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
+pub use crate::std_cast_rules::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::RecursionShape::{
@@ -19,7 +19,7 @@ pub use crate::std_induction::{
     sub_value_to_evidence,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
+pub use crate::std_compiler_inductive_fields::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };

@@ -257,7 +257,7 @@ fn stage0_cargo_check() {
 // 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence.
 // 2026-04-09: PR #361 — CX-L2 infrastructure + structural completeness work:
 //   ArithmeticDescent, element_type threading, type-based collection detection,
-//   std/node.dag declarations, centralized evidence (all calls annotated),
+//   std/compiler_inductive_fields.dag declarations, centralized evidence (all calls annotated),
 //   PreservedValue in structural check, transparent wrapper propagation,
 //   collection element extraction (match list |> first), lambda boundary fix.
 //   render_node_type dissolved (140). make_indent dissolved (44).

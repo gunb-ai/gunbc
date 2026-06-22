@@ -5674,7 +5674,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  // Compiler types' inductive fields are declared in std/node.dag.
+  // Compiler types' inductive fields are declared in std/compiler_inductive_fields.dag.
   // This provides the structural facts for CX-L2 to prove tree-walk
   // functions are O(n). See ROADMAP CX-NEXT Phase 2.
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)

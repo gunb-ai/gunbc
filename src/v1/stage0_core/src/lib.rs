@@ -46,8 +46,8 @@ pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
 #[path = "../../stage0/src/std_algebra.rs"]
 pub mod std_algebra;
-#[path = "../../stage0/src/std_coercion.rs"]
-pub mod std_coercion;
+#[path = "../../stage0/src/std_cast_rules.rs"]
+pub mod std_cast_rules;
 #[path = "../../stage0/src/std_computation.rs"]
 pub mod std_computation;
 #[path = "../../stage0/src/std_effects.rs"]
@@ -64,8 +64,8 @@ pub mod std_http_path;
 pub mod std_induction;
 #[path = "../../stage0/src/std_iteration.rs"]
 pub mod std_iteration;
-#[path = "../../stage0/src/std_node.rs"]
-pub mod std_node;
+#[path = "../../stage0/src/std_compiler_inductive_fields.rs"]
+pub mod std_compiler_inductive_fields;
 #[path = "../../stage0/src/std_syntax.rs"]
 pub mod std_syntax;
 #[path = "../../stage0/src/std_termination.rs"]
