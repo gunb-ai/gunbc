@@ -1,11 +1,3 @@
-// Scope: REGISTRATION witness (PASS arm) — proves unit_modeling_lens, now in
-//        always_required_lenses(), does NOT false-positive a correctly-modeled field.
-//        The SAME `ram_bytes` field attached to a `ByteSize` carrier (not a bare Int leaf)
-//        is ADMITTED by the full roster (both fact_density and unit_modeling Accept).
-//        Pairs with unit_modeling_blocked_via_always_required_lenses.dag (FAIL arm) — the
-//        two differ ONLY in the field's resolved leaf type, so together they prove the
-//        registered lens discriminates on the modeled type, not the field name alone.
-
 module v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses
 
 import v2.compiler.compile {
@@ -40,16 +32,12 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
-// Field target resolved to the `ByteSize` carrier — a correctly-modeled unit field,
-// NOT the bare kernel `Int` binding.
 data unit_ar_pass_carrier_target: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ByteSize } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-// Same `ram_bytes` field as the FAIL arm, attached to the ByteSize carrier — both
-// fact_density (fact-bundle) and unit_modeling (modeled leaf) Accept.
 data unit_ar_pass_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [

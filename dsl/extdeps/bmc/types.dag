@@ -11,6 +11,16 @@ import std.measure {
 }
 import std.types { NonEmptyStr, Int, List }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
 type RedfishPowerState = On | Off | PoweringOn | PoweringOff
 
 type RedfishProcessorSummary {
@@ -76,4 +86,70 @@ type BmcGroundedHostObservations {
   processor_core_count: HardwareThreadCount
   total_memory_bytes: ByteSize
   power_consumed_watts: Watt?
+}
+
+type RedfishBootSourceOverrideTarget =
+    BootTargetNone
+  | BootTargetPxe
+  | BootTargetHdd
+  | BootTargetCd
+  | BootTargetUsb
+  | BootTargetBiosSetup
+  | BootTargetDiags
+
+type RedfishBootSourceOverrideEnabled =
+    BootOverrideDisabled
+  | BootOverrideOnce
+  | BootOverrideContinuous
+
+type RedfishResetType =
+    ResetForceOff
+  | ResetForceOn
+  | ResetForceRestart
+  | ResetGracefulRestart
+  | ResetGracefulShutdown
+  | ResetPowerCycle
+
+type RedfishAccountRole =
+    AccountRoleAdministrator
+  | AccountRoleOperator
+  | AccountRoleReadOnly
+
+fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
+  match t {
+    BootTargetNone => "None"
+    BootTargetPxe => "Pxe"
+    BootTargetHdd => "Hdd"
+    BootTargetCd => "Cd"
+    BootTargetUsb => "Usb"
+    BootTargetBiosSetup => "BiosSetup"
+    BootTargetDiags => "Diags"
+  }
+}
+
+fn redfish_boot_override_enabled_wire(e: RedfishBootSourceOverrideEnabled) -> NonEmptyStr {
+  match e {
+    BootOverrideDisabled => "Disabled"
+    BootOverrideOnce => "Once"
+    BootOverrideContinuous => "Continuous"
+  }
+}
+
+fn redfish_reset_type_wire(r: RedfishResetType) -> NonEmptyStr {
+  match r {
+    ResetForceOff => "ForceOff"
+    ResetForceOn => "ForceOn"
+    ResetForceRestart => "ForceRestart"
+    ResetGracefulRestart => "GracefulRestart"
+    ResetGracefulShutdown => "GracefulShutdown"
+    ResetPowerCycle => "PowerCycle"
+  }
+}
+
+fn redfish_account_role_wire(role: RedfishAccountRole) -> NonEmptyStr {
+  match role {
+    AccountRoleAdministrator => "Administrator"
+    AccountRoleOperator => "Operator"
+    AccountRoleReadOnly => "ReadOnly"
+  }
 }

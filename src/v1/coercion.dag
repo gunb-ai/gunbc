@@ -1,5 +1,3 @@
-// Type realization: data-driven type coercion from .dag algebra declarations.
-
 module v1.compiler.coercion
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
@@ -18,10 +16,6 @@ import extdeps.languages.go.types {
   go_optional_template, go_cast_syntax
 }
 import extdeps.languages.dag.types { dag_type_checkpoints }
-
-// =========================================================================
-// Per-target dispatch
-// =========================================================================
 
 fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
   match target {
@@ -64,10 +58,6 @@ fn target_optional_template(target: RenderTarget) -> String {
   }
 }
 
-// =========================================================================
-// Level 0: Cast syntax lookup
-// =========================================================================
-
 fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
   match target {
     Rust => Present { value: rust_cast_syntax }
@@ -92,16 +82,10 @@ fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> Stri
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 
-// =========================================================================
-// Level 1: Checkpoint lookup (primitive scalar coercion)
-// =========================================================================
-
 fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? {
   target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
 }
 
-// Transitional: fail-open (returns dag_name on miss). M5-full should
-// fail-closed once all surface types have checkpoint declarations.
 fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
     Present { value: cp } => cp.target_type
@@ -126,10 +110,6 @@ fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
   }
 }
 
-// =========================================================================
-// Level 2: Algebra inhabitant lookup (container coercion)
-// =========================================================================
-
 fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
@@ -144,10 +124,6 @@ fn coerce_container_template(target: RenderTarget, container_name: String) -> St
   }
 }
 
-// =========================================================================
-// Template application utilities
-// =========================================================================
-
 fn apply_inhabitant_template1(template: String, inner: String) -> String {
   replace(template, "\{0\}", inner)
 }
@@ -155,10 +131,6 @@ fn apply_inhabitant_template1(template: String, inner: String) -> String {
 fn apply_inhabitant_template2(template: String, first: String, second: String) -> String {
   replace(replace(template, "\{0\}", first), "\{1\}", second)
 }
-
-// =========================================================================
-// Structural test extraction -- auto-generate coercion tests from data
-// =========================================================================
 
 type CoercionAssertion
   = CheckpointAssertion { target: RenderTarget, dag_name: String, expected_type: String }
@@ -193,8 +165,6 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
   }
 }
 
-// Generate container test: coerce_container_template(target, name) == Some(template)
-// Derived from canonical_container_names (std/types.dag) — single authority.
 fn inhabitant_test_names() -> List<String> {
   canonical_container_names()
 }
@@ -265,4 +235,3 @@ fn extract_coercion_tests() -> List<CoercionTestEntry> {
     copy_tests(),
     template_application_tests())
 }
-

@@ -1,0 +1,41 @@
+module test.claim.roadmap_gate
+
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.roadmap_document { project_roadmap_to_markdown }
+import gunbc.roadmap_authority {
+  roadmap_authority, authored_merged_prs, expected_roadmap_md, roadmap_drifted,
+}
+
+fn emit_dropping_measure() -> String {
+  let perturbed = [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425, 5236,
+    5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527, 5444]
+  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: perturbed))
+}
+
+fn witness_clean_not_drift() -> Bool {
+  !roadmap_drifted(committed: expected_roadmap_md())
+}
+
+fn witness_set_perturbation_drifts() -> Bool {
+  let dropped = emit_dropping_measure()
+  roadmap_drifted(committed: dropped)
+    && string_contains(s: dropped, pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    && !string_contains(s: dropped, pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    && string_contains(s: expected_roadmap_md(), pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+}
+
+fn witness_hand_edit_drifts() -> Bool {
+  roadmap_drifted(committed: concat(expected_roadmap_md(), "\n- [x] **a hand-added line**"))
+}
+
+fn witness_authored_set_nonvacuous() -> Bool {
+  count(authored_merged_prs()) > 0
+    && string_contains(s: expected_roadmap_md(), pattern: "- [x] **numeric-tower grounding** (#5428)")
+}
+
+test fn roadmap_gate_witnesses() -> Bool {
+  witness_clean_not_drift()
+    && witness_set_perturbation_drifts()
+    && witness_hand_edit_drifts()
+    && witness_authored_set_nonvacuous()
+}

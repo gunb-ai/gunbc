@@ -4,6 +4,16 @@ import std.types { Url, HttpMethod, AuthScheme }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 import extdeps.github.errors { GitHubErrorShape }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/reference/sts/rest"
+  }
+}
+
 type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
 
 type RequestedTokenType = RequestAccessToken | RequestIdToken

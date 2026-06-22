@@ -2,12 +2,9 @@ module test.claim.roadmap_authority
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
-import gunbc.roadmap_authority { roadmap_authority }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 
-fn merged() -> List<Int> {
-  [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5470, 5478, 5421, 5425, 5236,
-   5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527]
-}
+fn merged() -> List<Int> { authored_merged_prs() }
 
 fn emit_with(m: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: m))
@@ -18,7 +15,7 @@ fn witness_frame_all_sections() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "# gunbc — Roadmap")
     && string_contains(s: o, pattern: "## 0. Fail-closed lock-down")
-    && string_contains(s: o, pattern: "## 1. CI under control")
+    && string_contains(s: o, pattern: "## 1. CI as the substrate integration dogfood")
     && string_contains(s: o, pattern: "## 2. Minimal work")
     && string_contains(s: o, pattern: "## 3. Complexity budget gate")
     && string_contains(s: o, pattern: "## 4. Testgen as the bug-class oracle")
@@ -77,7 +74,8 @@ fn witness_a_prose_verbatim() -> Bool {
 
 fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\nThis window = a few days of STABILITY")
+  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\n→ [audit + checklist](docs/plans/fail-closed-lockdown.md)")
+    && string_contains(s: o, pattern: "[audit + checklist](docs/plans/fail-closed-lockdown.md)\n\nThis window = a few days of STABILITY")
     && string_contains(s: o, pattern: "[fork plan](docs/plans/model-realization-fork.md) §3).\n\n**◆ Milestones:** fail-open audited")
     && string_contains(s: o, pattern: "`Value::Null` split *(deep root)*\n\n**Audits (done):**")
 }

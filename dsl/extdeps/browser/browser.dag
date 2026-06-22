@@ -2,6 +2,16 @@ module extdeps.browser
 
 import std.types { FilePath }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "playwright.dev/docs/api/class-browsercontext"
+  }
+}
+
 type BrowserConfig {
   headless: Bool = false
   profile_path: FilePath
