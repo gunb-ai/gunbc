@@ -8,7 +8,6 @@ import v2.lens.application {
   DeclarationId,
   DeclarationScope,
   LensEnforce,
-  SeverityError,
   apply_advisory_lens
 }
 import v2.lens.synthesis { decision_tree_synthesis_advisory_lens }
@@ -53,7 +52,6 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
         reason: SynthesisGapDecisionTree,
         at: node_locus(node: synthesis_gap_poly_input)
       },
-      diagnostic_severity: SeverityError {}
     }
   ) {
     Rejected { diagnostics: d } =>
