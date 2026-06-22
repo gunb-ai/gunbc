@@ -28,10 +28,6 @@ module gunbc.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
-// The committed checkbox a ROADMAP line asserts. Legend: `[x]` done · `[ ]` todo — markdown carries
-// no third state, so a two-variant closed sum.
-type CheckboxState = Done | Todo
-
 // The §5 boundary between a checkbox that can be DERIVED and one that must stay hand-checked.
 type CompletionBinding
   // Explicit "this line is done IFF every one of these PRs merges" — the work-DAG authority edge.
@@ -42,10 +38,14 @@ type CompletionBinding
   // The honest un-derivable residue — hand-checked, NEVER gated.
   | HandChecked
 
-// A roadmap line's status surface: its title, the box it commits, and its completion binding.
+// A roadmap line's status surface: its title, whether the committed box reads done, and its completion
+// binding. The box is a plain Bool — markdown carries no third checkbox state, so completion is exactly
+// 2-valued; the GFM render-glyph (`std.markdown.CheckboxState = Checked | Unchecked`) is a SEPARATE
+// medium concept the emit projection maps this Bool onto (§2: don't restate a Bool as a 2-variant enum;
+// §3: completion ≠ glyph).
 type RoadmapStatusEntry {
   title: String
-  claimed: CheckboxState
+  claimed_done: Bool
   binding: CompletionBinding
 }
 
@@ -67,16 +67,25 @@ fn merged_pr_numbers(prs: List<PullRequest>) -> List<Int> {
   prs |> filter(pr => pr_merged(pr: pr)) |> map(pr => pr.number)
 }
 
-// === Derivation: the checkbox an explicitly-bound line SHOULD show ===========
+// === Derivation: whether an explicitly-bound line SHOULD read done ============
 
-// Done iff the binding is non-empty and EVERY bound PR merged. Defined over the PR list of a
-// CompletesIff binding only — a HandChecked line has no derived box at all (it is residue, below).
-// An empty binding is not derivably-done (no merge evidence) → Todo, fail-closed.
-fn derive_checkbox(prs: List<Int>, merged: List<Int>) -> CheckboxState {
-  if count(prs) > 0 && all(prs, r => merged |> any(m => m == r)) {
-    Done
-  } else {
-    Todo
+// Done iff the binding is non-empty and EVERY bound PR merged — THE completion authority, a plain Bool
+// (no 2-variant enum restating it, §2). Single authority for the predicate, so the drift gate and the
+// emit projection both reuse it. Defined over the PR list of a CompletesIff binding only — a HandChecked
+// line has no derived box. An empty binding is not derivably-done (no merge evidence) → false,
+// fail-closed.
+fn prs_all_merged(prs: List<Int>, merged: List<Int>) -> Bool {
+  count(prs) > 0 && all(prs, r => merged |> any(m => m == r))
+}
+
+// The done-ness an entry's box SHOULD show: DERIVED (every bound PR merged) for a CompletesIff binding
+// — the inversion; the AUTHORED box for a HandChecked line — honest residue (§5 DecodeFidelity). THE
+// completion authority the emitted checkbox glyph maps from (a Bool — the emit projection turns it into
+// `std.markdown.CheckboxState`, which it alone names).
+fn entry_is_done(entry: RoadmapStatusEntry, merged: List<Int>) -> Bool {
+  match entry.binding {
+    CompletesIff { prs } => prs_all_merged(prs: prs, merged: merged)
+    HandChecked => entry.claimed_done
   }
 }
 
@@ -92,7 +101,7 @@ fn status_drift(entry: RoadmapStatusEntry, merged: List<Int>) -> DriftVerdict {
   match entry.binding {
     HandChecked => Underivable
     CompletesIff { prs } =>
-      if entry.claimed == derive_checkbox(prs: prs, merged: merged) {
+      if entry.claimed_done == prs_all_merged(prs: prs, merged: merged) {
         Clean
       } else {
         Drifted

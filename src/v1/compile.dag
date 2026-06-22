@@ -4,7 +4,7 @@ module v1.compiler.compile
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at,
-  ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
+  ErrorNode, CompilerDiagnostic, is_error_diagnostic, is_discovery_corpus_blocking_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
   Connective, NoConnective, Arrow, Cardinality,
   resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
@@ -1224,7 +1224,37 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   )
 }
 
+// Discovery-corpus merged resolve: same pipeline as `compile_to_resolved`, but
+// advisory-demoted typecheck diagnostics do not nil the typed graph (SCAFFOLD in
+// `00_core.dag`; consumed by `discover_owned_data_decls`).
+fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
+  compile_to_resolved_with_options_gated(
+    sources: sources,
+    options: default_compile_pipeline_options(),
+    discovery_corpus_advisory_typecheck: true
+  )
+}
+
+fn is_resolved_pipeline_typecheck_blocking(diagnostic: CompilerDiagnostic, discovery_corpus_advisory_typecheck: Bool) -> Bool {
+  if !is_error_diagnostic(d: diagnostic) {
+    return false
+  }
+  if discovery_corpus_advisory_typecheck {
+    is_discovery_corpus_blocking_diagnostic(d: diagnostic)
+  } else {
+    true
+  }
+}
+
 fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
+  compile_to_resolved_with_options_gated(
+    sources: sources,
+    options: options,
+    discovery_corpus_advisory_typecheck: false
+  )
+}
+
+fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: CompilePipelineOptions, discovery_corpus_advisory_typecheck: Bool) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices
   match frontend.graph {
@@ -1280,7 +1310,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       }
       let all_diags = concat(typed_diags, complexity_diags)
 
-      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let type_errors = typed_diags |> filter(d => is_resolved_pipeline_typecheck_blocking(diagnostic: d.diagnostic, discovery_corpus_advisory_typecheck: discovery_corpus_advisory_typecheck))
       if type_errors |> count > 0 {
         return ResolvedPipelineResult {
           graph: none,
