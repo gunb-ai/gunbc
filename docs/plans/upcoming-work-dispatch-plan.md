@@ -62,6 +62,7 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 - then proud-tern #5559: cross-host placement (srv1/srv2 by measured ResourceEnvelope) — **model + drift-gate only; live-fleet apply FENCED for operator**
 - then sleek-cat #5546: compile-jobs (CARGO_BUILD_JOBS from envelope)
 - quick-ant: §5 diagnosability (gate swallows nextest test-names)
+- **from quick-ant's own audit (neat-dove flagged dropped — re-added):** concurrency-key / `workflow_dispatch` dup (a REAL OOM source — duplicate concurrent runs) · dormant resolve cache (~191s cold resolve every run) · edge-(b) rust affected-set (rust tests are all-or-nothing). All measured + quick-ant-adjacent.
 
 **ONE measurement / THREE consumers** (placement #5559, compile-jobs #5546, within-run width re-check) all gate on #5427 merge + quick-ant's cgroup-peak measurement. The §5 bug it fixes: the existing `[measurement]` line reports `claim_executor` **self-RSS (~11.7GB) as the whole-run peak**, but the true cgroup peak is ~3.4× higher (~39.9GB) because child rustc/sccache PIDs are excluded — keying any divisor on the self-RSS reproduces the OOM. Now structural (sccache-unaccounted → `PlanUnsound`). Both consumers held fail-closed until the real cgroup peak exists post-#5427.
 
@@ -96,8 +97,21 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 **Next:** inert-abstraction lens (keystone — flags defined+self-tested+zero-consumer carriers); non-fold-residue audit (`_=>` over closed coproducts); generic-inference keystone (DONE #5552, the fold-reachability root).
 **Milestone (verify):** new non-fold residue can't merge (the wall pairs with §0).
 
-### Parked / post-stability (not dispatched this wave)
-§3 complexity budget-gate (gated on §5 fn-body reflection) · §4 testgen anemia lens (likely advisory) · §6 idea-machine language axis · §7 react/html. Listed so the plan is complete; none dispatch until the stability band (Lanes 1–4) is through.
+### Lane 8 — Ingestion (the OTHER half of §4, currently MISSING) — *needs owner (DECISION C10)*
+neat-dove/operator HOLD: Lane 5 is emission-only, but §4 is **one grammar, BOTH directions**. Ingest — folding foreign surface INTO the node tree, `Lossless` / fail-closed `DecodeFidelity` — is the inverse, and the §7 "any language with a typed honesty boundary" payoff + the grammar-inverse thread (**emit = ingest⁻¹ over one `GrammarRelation`**) both depend on it. The parser-wall (loyal-raven-204, blocked pre-merge on the same ctrl coherence-gate as C7) is a tiny corner; the *direction at large* has no lane.
+**Milestone (verify):** a foreign-surface input ingests to a node tree and re-emits byte-faithful (round-trip witness), with `DecodeFidelity` fail-closed where lossy.
+
+### Lane 9 — TypeScript self-host (the §7 medium-agnostic proof at scale) — *needs owner (DECISION C11)*
+neat-dove/operator HOLD: TS is currently one tail-bullet under jolly-cat ("emit beyond `add`"). But self-hosting **to** TypeScript — emit the compiler itself as TS and reproduce a fixed point — is what makes "language design collapses to a row" real (the self-host anchor: emit Rust *and* TypeScript, fixed point *per realization*). It deserves its own lane + milestone + owner; jolly-cat's Lane C is the *seed*, not the whole thing.
+**Milestone (verify):** TS-emitted compiler reproduces its own source to a per-realization merkle fixed point (the Lane-1 gate, mirrored for the TS realization).
+
+### Parked / post-stability — DERIVED, not hand-curated (neat-dove meta-fix)
+**The authority for this list is (a) DESIGN.md "Open threads" + (b) non-closed parked work-items in the DAG (`dashboard-ops work-items`) — derive from both; do not hand-type** (a hand-curated parked list drifts exactly like the Section-A status snapshot — §6 second-representation, the very leak this doc exists to plug). Non-authoritative snapshot of what those two sources currently surface (verify against them, don't trust this):
+- **`Value::Null` split** (Optional/Witness/miss on one sentinel, ~131 sites) — the deepest open root, the *other half* of the model↔realization fork after the numeric tower grounded. (Lane 1's value-grounding is FreeMonoid/Rc-Box, NOT this.)
+- **A1–A3 axiom + syllogism lens** — DESIGN's named "operator's next project", #5521 live WIP — was missing from both lanes and parked.
+- Measure migration (~22 flat-`Int` leaf types) · std/ §3 leak audit (35 leaks, `STD_LEAK_PLAN.md`) · path-literal census (100+ sites) · hermetic-testing rollout.
+- §3 complexity budget-gate (gated on §5 fn-body reflection) · §4 testgen anemia lens (likely advisory) · §6 idea-machine language axis · §7 react/html.
+None dispatch until the stability band (Lanes 1–4) is through.
 
 ---
 
@@ -112,6 +126,8 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 7. **Coherence-gate breakage** — the ctrl-side modeling-coherence gate is head-independently broken and may block #5427's manual merge. Operator/ctrl harness fix (source-root + cycle), or confirm how merges proceed past it. *(Time-sensitive — gates the keystone.)*
 8. **28 mis-homed modules** (std-vs-extdeps) — needed to close the extdeps anchor lane. Widen-lens-for-self-anchor vs strict-external.
 9. **CI inline-shell de-fork** (Lane 3b) — dispatch as its own lane, fold into Lane 3/7, or defer?
+10. **Ingestion lane owner** (Lane 8) — the §4 inverse direction is unowned; who/when?
+11. **TypeScript self-host owner** (Lane 9) — promote from jolly-cat tail-bullet to a first-class lane with an owner.
 
 ## D. What "agreement" gates
 Until all three sign off: **no new work-items, no fan-out children, no new workers.** In-flight work (Section A) continues; load-bearing edits and destructive/live-fleet steps stay fenced regardless.
