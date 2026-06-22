@@ -371,3 +371,35 @@ fn roadmap_authority() -> RoadmapDocument {
     ],
   }
 }
+
+// === The committed merged-PR snapshot (single authority §3, the lockfile pattern) ===
+//
+// The AUTHORED world-snapshot of which referenced PRs have merged — ONE list, referenced by both the
+// emission/gate AND the witness (never re-listed per section). A DerivableLine's box stays genuinely
+// DERIVED (`line.prs ⊆ this set`), so this is NOT a per-line literal box (that would defeat the
+// inversion); it is the single committed datum, lockfile-shaped. It keeps the floor gate PURE/hermetic
+// (no live network call) — the box is computed from committed data, deterministically.
+//
+// §5 BOUNDARY (what this set does NOT guarantee): it is kept honest against LIVE PR-merged state by the
+// SEPARATE, non-hermetic status bridge (slice-1 #5491), which flags a STALE snapshot (a PR merged but
+// not added here). The floor gate makes hand-edits-vs-authority unwritable; it does NOT make a stale
+// snapshot unwritable — that residue is bridge #5491's, out of the floor. So "RoadmapGate green" means
+// "ROADMAP.md matches the authority", NOT "checkboxes provably current vs GitHub".
+fn authored_merged_prs() -> List<Int> {
+  [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5470, 5478, 5421, 5425, 5236,
+   5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527]
+}
+
+// === The emitted projection + drift predicate (the ci_yaml_emit analogue) ===
+//
+// `expected_roadmap_md()` is the markdown analogue of `gunbc.ci_yaml_emit.expected_ci_yml()`: the ROADMAP
+// bytes the `.dag` authority projects, against the committed merged snapshot. PURE — no host input.
+fn expected_roadmap_md() -> String {
+  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: authored_merged_prs()))
+}
+
+// Drift iff the committed ROADMAP.md bytes differ from the projection (the `ci_yml_drifted` analogue).
+// The single drift authority every consumer (the gate, its witnesses) routes through.
+fn roadmap_drifted(committed: String) -> Bool {
+  !(committed == expected_roadmap_md())
+}

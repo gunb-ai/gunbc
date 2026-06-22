@@ -16,14 +16,11 @@ module test.claim.roadmap_authority
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
-import gunbc.roadmap_authority { roadmap_authority }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 
-// The merged-PR set = current MAIN reality (the PRs that have actually landed; step-3b #5529 is NOT in
-// it — the inversion sub-rows are authored to what merged, not to the incoming PR).
-fn merged() -> List<Int> {
-  [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5470, 5478, 5421, 5425, 5236,
-   5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527]
-}
+// The merged-PR set = the SINGLE authored snapshot in roadmap_authority (§3 single authority — not a
+// re-listed copy). step-3b #5529 is NOT in it; the inversion sub-rows are authored to what merged.
+fn merged() -> List<Int> { authored_merged_prs() }
 
 fn emit_with(m: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: m))

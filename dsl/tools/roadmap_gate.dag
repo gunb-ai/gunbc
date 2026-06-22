@@ -1,0 +1,91 @@
+// tools/roadmap_gate.dag — fixed-point drift gate for `ROADMAP.md` (the inversion flagship capstone).
+//
+// The committed ROADMAP.md must equal `expected_roadmap_md()` byte-for-byte — the `ci_yaml_gate` clone
+// over the markdown medium (DESIGN §7 self-emit fixed point; plan invert-hand-maintained §6 step 3). The
+// `.dag` authority (`gunbc.roadmap_authority`) is the SOURCE; ROADMAP.md is its emitted projection.
+// Regenerate with `main_wet`.
+//
+// PURE / HERMETIC (warm-lark-306 ruling — the 2-gate decouple): the projection takes the AUTHORED
+// merged-PR snapshot (`authored_merged_prs`, the lockfile pattern), NOT a live GitHub call — so this
+// FLOOR gate is deterministic and reproducible (no network in the floor). A DerivableLine's box stays
+// genuinely DERIVED (`line.prs ⊆ snapshot`), so the gate catches a hand-toggle whose PR is not in the
+// snapshot (emit derives the other box → drift), not merely a literal-box mismatch.
+//
+// §5 BOUNDARY — what "RoadmapGate green" does and does NOT mean (read this before trusting it):
+//   - DOES make unwritable: any hand-edit to ROADMAP.md that diverges from the `.dag` authority (frame,
+//     fenced prose, or a box vs the authored snapshot) → drift → RED, never a warning.
+//   - Does NOT make unwritable: a STALE authored snapshot (a PR merged on GitHub but not added to
+//     `authored_merged_prs`). That residue is the SEPARATE, non-hermetic host-fed status bridge
+//     (slice-1 #5491, live PR state) — deliberately OUT of the floor. So green ≠ "checkboxes provably
+//     current vs GitHub"; green = "ROADMAP.md matches the authority."
+//
+// Run (check):
+//   gunbc run --source-root dsl --entry dsl/tools/roadmap_gate.dag --function main
+// Regenerate (write):
+//   gunbc run --source-root dsl --entry dsl/tools/roadmap_gate.dag --function main_wet
+
+module tools.roadmap_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap_authority { expected_roadmap_md, roadmap_drifted }
+
+data roadmap_md_path: String = "ROADMAP.md"
+
+func run_roadmap_gate_body() -> ProcessExit {
+  let committed = Filesystem.Read(path: roadmap_md_path)
+  let drift_ok = committed.success && !roadmap_drifted(committed: committed.content)
+  return if drift_ok {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "ROADMAP.md drift: it is a GENERATED projection of gunbc.roadmap_authority — do not hand-edit. Regenerate via main_wet on dsl/tools/roadmap_gate.dag (edit the .dag authority, not the file)."
+    )
+  }
+}
+
+func main() -> ProcessExit {
+  run_roadmap_gate_body()
+}
+
+func main_wet() -> ProcessExit {
+  let expected = expected_roadmap_md()
+  let w = Filesystem.Write(path: roadmap_md_path, content: expected)
+  return if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("ROADMAP.md write failed: ", w.error))
+  }
+}
+
+fn exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+// The floor entry: the drift check PLUS the §5 red receipt (the gate has teeth).
+func run_roadmap_gate() -> ProcessExit {
+  let gate = run_roadmap_gate_body()
+  let red = drift_red_receipt()
+  return if exit_ok(e: gate) && exit_ok(e: red) {
+    ExitSuccess
+  } else if !exit_ok(e: gate) {
+    gate
+  } else {
+    red
+  }
+}
+
+// §5 receipt: the clean committed bytes must match, AND a perturbation MUST drift — so a gate that can
+// never go red (the fail-open trap) is itself caught. The perturbation here is a byte-level hand-edit;
+// the SET-perturbation tooth (a box flips when its PR leaves the snapshot — the inversion proof) is the
+// pure witness `test.claim.roadmap_gate`, which runs without a host effect.
+func drift_red_receipt() -> ProcessExit {
+  let committed = Filesystem.Read(path: roadmap_md_path)
+  let clean_ok = committed.success && !roadmap_drifted(committed: committed.content)
+  let perturb_drifts = roadmap_drifted(committed: concat(expected_roadmap_md(), "\n- [x] **drift-receipt-perturb**"))
+  return if clean_ok && perturb_drifts {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "ROADMAP.md drift red receipt failed: clean must match; perturb must drift")
+  }
+}
