@@ -60,6 +60,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 A flaky or green-but-broken floor means no gate protects anything — so CI is upstream of every §0 claim.
 (Compute fabric lives here: the substrate CI runs on; selling it as infra is downstream.)
+→ [end-to-end map](docs/plans/ci-process-end-to-end.md) — the whole pipeline today, why it runs poorly, what to do now.
 
 **◆ Milestones:** opt-3 per-PR ✓ (#5456) → **▸ NOW — floor never OOMs (memory-aware width)** → floor runs the affected-set → every host knob from one measured `ResourceEnvelope`
 
