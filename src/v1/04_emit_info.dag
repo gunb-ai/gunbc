@@ -41,6 +41,20 @@ type TypeSummary {
   has_fn_fields: Bool
 }
 
+// RustCorpusRepr: which container/text REALIZATION HANDLER the Rust emitter
+// selects for the WHOLE corpus. The spec is unchanged (List<e> = FreeMonoid<e>
+// at std/types.dag; String) — this names WHICH of the §2 N handlers realizes it.
+// It is a whole-CORPUS property, computed ONCE at the emit boundary
+// (rust_corpus_repr in 05_emit_rust.dag) and threaded down as an individual
+// emit-info field (like shared_types), never decided per-module: a corpus that
+// bundles any v1 seed source (src/v1) emits the HOST representation end-to-end
+// (§7 — the bootstrap seed is host: List→Vec, String, Nat/Int→i64); a pure v2
+// target keeps the faithful FreeMonoid carrier. Selecting once and threading the
+// selection makes per-module divergence UNWRITABLE (§5 construction-not-check).
+// §6-TRANSITIONAL: HostNative dissolves when src/v1 is deleted (seed→0 ⇒ no seed
+// source ⇒ rust_corpus_repr is FaithfulFreeMonoid uniformly).
+type RustCorpusRepr = HostNative | FaithfulFreeMonoid
+
 // EmitGraphInfo: the reconcile→emit boundary contract.
 //
 // Invariant: emit never calls back into infer. All data the emitter needs
@@ -78,6 +92,12 @@ type EmitGraphInfo {
   // (no Consumed) and fan-out > 1. These can be passed by borrow (&Rc<T>).
   read_only_params_index: Map<String, Set<String>>
   read_only_params: Set<String>
+  // Corpus-global Rust container/text realization handler (§2 one-spec-N-handlers).
+  // Computed ONCE at the emit boundary (rust_corpus_repr) and read by the
+  // type-renderers' leaf gates (rust_seed_host_container_base / _numeric_alias /
+  // rust_named_type_base) so every module emits the SAME representation — the
+  // single authority for the host-vs-faithful selection. §6-transitional.
+  corpus_repr: RustCorpusRepr
 }
 
 type EmitInfoBuildState {
@@ -100,7 +120,10 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     variant_to_enum: empty_map(),
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
-    read_only_params: empty_set()
+    read_only_params: empty_set(),
+    // Default to the faithful v2-target carrier; emit_rust overrides to HostNative
+    // for a corpus that bundles v1 seed source (rust_corpus_repr, computed once).
+    corpus_repr: FaithfulFreeMonoid
   }
 }
 
