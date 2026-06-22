@@ -168,6 +168,7 @@ fn section_1() -> RoadmapSection {
         nodes: [
           authored(id: "1-materialization-kernel", done: false, content: "**one Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)"),
           authored(id: "1-placement-authority", done: false, content: "**one Placement authority** — jobs (GitHub) · threads (`spawn_width`) · sessions (ctrl `plans.capacity`) are 3 forks of \"put work on a host\""),
+          authored_doc(id: "1-budget-tree", done: false, content: "**resource budget tree** (§2 one-concept-every-scale, ns-memo→infra-deploy) — each level inherits a parent RAM budget as a transaction: static `Σ children ≤ parent` over authored budgets is a compile-time **wall** (over-commit unwritable by construction, §5); the runtime intent-vs-actual reconcile (capacity drop → evict by QoS / reschedule / loud-error on an unsatisfiable Guaranteed) is a fail-closed **handler**, *not* a wall (two verdicts, never conflated). Subsumes spawn-width (#5444) · cross-host placement (#5559) · compile-jobs (#5546) as consumer leaves — the uncapped-runner over-commit is the missing parent allocation.", path: "dsl/product/budget_tree.dag"),
           authored(id: "1-shared-secrets", done: false, content: "**shared secrets/effects** — BMC · tokens · sccache-auth modeled once (when the fork is the pain)"),
         ],
         edges: [],
