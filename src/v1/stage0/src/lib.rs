@@ -15,6 +15,7 @@
 pub mod cache_purity_oracle;
 pub mod cli_run;
 pub mod coproduct_reflection;
+pub mod doc_reachability_project;
 pub mod extdeps_cargo;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
@@ -33,6 +34,7 @@ pub mod fact_cardinality_census;
 pub mod import_resolution_project;
 pub mod languages_consumer_census;
 pub mod layering_imports_project;
+pub mod medium_structure_project;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;

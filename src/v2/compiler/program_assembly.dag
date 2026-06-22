@@ -14,6 +14,7 @@ module v2.compiler.program_assembly
 import v2.compiler.name_resolve {
   Admission,
   resolve_with_admission,
+  resolve_with_admission_grounded,
   validate_module_roots
 }
 import v2.compiler.normalize { normalize }
@@ -22,8 +23,15 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
   source_authority_diagnostic,
+  source_root_set_from_ingest,
 }
 import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.cross_tree.resolution {
+  SourceRootIndex,
+  source_root_index_empty,
+  source_root_index_insert
+}
 import v2.std.language_model { LanguageModel }
 import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
 import v2.std.artifact { SourceFile }
@@ -41,7 +49,8 @@ import v2.std.node { Node }
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
-      roots: FreeMonoid<Node>
+      roots: FreeMonoid<Node>,
+      index: SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics
@@ -82,6 +91,10 @@ fn program_assembly_read_to_normalized_root(
 }
 
 
+// Per-read step: tokenize → parse_module → normalize the module root, AND pair its
+// QualifiedName with the host source_root tag into the grounded index. A root whose module
+// QualifiedName cannot be projected is left out of the index (validate_module_roots rejects
+// it downstream); a Rejected parse short-circuits the whole fold.
 fn program_assembly_fold_step(
   state: ProgramAssemblyFoldState,
   read: DagSourceReadWitness,
@@ -90,11 +103,20 @@ fn program_assembly_fold_step(
   match state {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: acc } =>
+    ProgramAssemblyFoldOk { roots: acc, index: idx } =>
       match program_assembly_read_to_normalized_root(read: read, lm: lm) {
         Accepted { value: root, diagnostics: _ } =>
-          ProgramAssemblyFoldOk {
-            roots: list_snoc_item(xs: acc, item: root)
+          match qualified_name_from_module_node(root: root) {
+            Accepted { value: qn, diagnostics: _ } =>
+              ProgramAssemblyFoldOk {
+                roots: list_snoc_item(xs: acc, item: root),
+                index: source_root_index_insert(index: idx, module: qn, root: read.source_root)
+              }
+            Rejected { diagnostics: _ } =>
+              ProgramAssemblyFoldOk {
+                roots: list_snoc_item(xs: acc, item: root),
+                index: idx
+              }
           }
         Rejected { diagnostics: d } =>
           ProgramAssemblyFoldFailed { diagnostics: d }
@@ -103,19 +125,31 @@ fn program_assembly_fold_step(
 }
 
 
-// Whole-ingest fold: per-read tokenize → parse_module → normalize; first Rejected short-circuits.
+// Whole-ingest fold: per-read parse + grounded source-root index accumulation.
+fn program_assembly_fold_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> ProgramAssemblyFoldState {
+  fold_list(
+    xs: ingest,
+    empty: ProgramAssemblyFoldOk {
+      roots: program_assembly_empty_roots(),
+      index: source_root_index_empty()
+    },
+    cons: fn(state, read) {
+      program_assembly_fold_step(state: state, read: read, lm: lm)
+    }
+  )
+}
+
+
+// Module roots from the ingest (parse leg only; index discarded). First Rejected short-circuits.
 fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<Node>> {
-  match fold_list(
-    xs: ingest,
-    empty: ProgramAssemblyFoldOk { roots: program_assembly_empty_roots() },
-    cons: fn(state, read) {
-      program_assembly_fold_step(state: state, read: read, lm: lm)
-    }
-  ) {
-    ProgramAssemblyFoldOk { roots: roots } =>
+  match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
+    ProgramAssemblyFoldOk { roots: roots, index: _ } =>
       outcome_accepted(value: roots)
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       Rejected { diagnostics: d }
@@ -142,20 +176,30 @@ fn assemble_program_from_module_roots(
 }
 
 
-// Program assembly: whole ingest monoid → validated roots → admitted resolved program.
+// Program assembly: whole ingest → validated roots → GROUNDED admitted resolved program.
+// The grounded source-root index and active source-root set are derived from the same
+// host-tagged ingest (§4 provenance), so cross-tree import edges are admitted on filesystem
+// truth + tree-pair fundamentality rather than a QualifiedName-prefix guess.
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   lm: LanguageModel
 ) -> Outcome<Node> {
-  bind_outcome(
-    o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
-    f: fn(roots) {
-      assemble_program_from_module_roots(
-        roots: roots,
-        admission: admission,
-        lm: lm
+  match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
+    ProgramAssemblyFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
+    ProgramAssemblyFoldOk { roots: roots, index: idx } =>
+      bind_outcome(
+        o: validate_module_roots(roots: roots),
+        f: fn(validated_roots) {
+          resolve_with_admission_grounded(
+            lm: lm,
+            roots: validated_roots,
+            admission: admission,
+            index: idx,
+            active_roots: source_root_set_from_ingest(ingest: ingest)
+          )
+        }
       )
-    }
-  )
+  }
 }

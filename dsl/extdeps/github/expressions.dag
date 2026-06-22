@@ -1,0 +1,260 @@
+// extdeps/github/expressions.dag — GitHub Actions `${{ }}` expression sub-language as Nodes.
+//
+// The first roster entry of the **medium-as-Node guard** (docs/plans/emission-ingestion-inverse.md
+// §5: a target medium stays a modeled Node from authoring through checking; raw string only at the
+// realization edge). GitHub Actions expressions are a sub-language layered on YAML scalars; modeling
+// them as opaque `String` (see `actions.dag` `RunsOnExpression { expression: String }`, 🟡 scaffold)
+// makes every consumer hand-author the `${{ … }}` delimiters and every check string-grep the emitted
+// YAML — an ad-hoc partial re-ingest, the N×M heuristic DESIGN §4 forbids. This module makes the
+// expression a typed `Node`, and `serialize_expression` / `interpolate` the SINGLE place the
+// `${{ … }}` delimiter bytes are produced. Emit-side (`gunbc.ci_workflow_expressions`) and check-side
+// (the model-walk witnesses) both consume it; neither carries the inline syntax (§3 single authority).
+//
+// Grounding (DESIGN §3 — cite the real upstream, keep its real names, model what it actually provides):
+//   Expressions: https://docs.github.com/en/actions/learn-github-actions/expressions
+//   Contexts:    https://docs.github.com/en/actions/learn-github-actions/contexts
+// The context set (`github`/`env`/`vars`/`runner`/…) and the documented functions
+// (`contains`/`hashFiles`/…) are GitHub's, not minted nicknames.
+//
+// Scope (the first instance — one medium): the expression sub-language sufficient for the
+// expressions `gunbc.ci_workflow` emits (context access, function call, logical-or, string literal,
+// and a literal/interpolation template). NOT all of YAML and NOT shell-in-`run:` blocks — those are
+// later roster entries (§5.1 census).
+//
+// v1-interpreter-clean (only language builtins + citation deps), so the witnesses execute under
+// `gunbc run` exactly as `extdeps/formats/yaml.dag` does.
+
+module extdeps.github.expressions
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/learn-github-actions/expressions"
+  }
+}
+
+// -- Contexts ---------------------------------------------------------
+// The documented GitHub Actions expression contexts (the objects an expression may read).
+// Closed set per the contexts spec; expanding it is a deliberate taxonomy change when GitHub
+// documents a new context.
+type ExpressionContext
+  = Github
+  | Env
+  | Vars
+  | Job
+  | Jobs
+  | Steps
+  | Runner
+  | Secrets
+  | Strategy
+  | Matrix
+  | Needs
+  | Inputs
+
+// The documented GitHub Actions expression functions (general + status-check).
+type ExpressionFunction
+  = Contains
+  | StartsWith
+  | EndsWith
+  | Format
+  | Join
+  | ToJSON
+  | FromJSON
+  | HashFiles
+  | Success
+  | Always
+  | Cancelled
+  | Failure
+
+// -- Expression -------------------------------------------------------
+// One `${{ … }}` expression, as an AST rather than a string.
+//
+// Field ledger (§2 decompress — each arm genuinely atomic):
+//   ContextAccess — a context object read by a dotted property path. `runner.os` is
+//     `ContextAccess { context: Runner, path: ["os"] }`; `github.event.pull_request.number`
+//     is `ContextAccess { context: Github, path: ["event", "pull_request", "number"] }`. The
+//     path is the grounded GitHub property path — NOT split into a fresh enum per context
+//     (GitHub's property space per context is open).
+//   FunctionCall — a documented function applied to argument expressions.
+//   StringLiteral — a single-quoted expression-level string literal (GitHub uses `'…'`).
+//   LogicalOr — the `||` operator (the only operator `ci_workflow` uses today; other
+//     operators are added as arms when a consumer needs them, not pre-minted — §6 just-in-time).
+type Expression
+  = ContextAccess { context: ExpressionContext, path: List<String> }
+  | FunctionCall { function: ExpressionFunction, args: List<Expression> }
+  | StringLiteral { value: String }
+  | LogicalOr { left: Expression, right: Expression }
+
+// -- Template ---------------------------------------------------------
+// A YAML scalar may interleave literal text with one or more `${{ }}` expressions
+// (`cargo-ci-${{ runner.os }}-${{ runner.arch }}-…`). A template is that interleaving:
+// literal runs and interpolated expressions. A lone `${{ runner.temp }}` is the degenerate
+// one-segment template `[Interpolation { … }]`.
+type TemplateSegment
+  = LiteralText { text: String }
+  | Interpolation { expression: Expression }
+
+type ExpressionTemplate {
+  segments: List<TemplateSegment>
+}
+
+// -- Serialization (the SINGLE delimiter-byte authority) --------------
+
+fn context_name(context: ExpressionContext) -> String {
+  match context {
+    Github => "github"
+    Env => "env"
+    Vars => "vars"
+    Job => "job"
+    Jobs => "jobs"
+    Steps => "steps"
+    Runner => "runner"
+    Secrets => "secrets"
+    Strategy => "strategy"
+    Matrix => "matrix"
+    Needs => "needs"
+    Inputs => "inputs"
+  }
+}
+
+fn function_name(function: ExpressionFunction) -> String {
+  match function {
+    Contains => "contains"
+    StartsWith => "startsWith"
+    EndsWith => "endsWith"
+    Format => "format"
+    Join => "join"
+    ToJSON => "toJSON"
+    FromJSON => "fromJSON"
+    HashFiles => "hashFiles"
+    Success => "success"
+    Always => "always"
+    Cancelled => "cancelled"
+    Failure => "failure"
+  }
+}
+
+fn join_path(path: List<String>) -> String {
+  fold(path, init: "", f: (acc, segment) =>
+    if acc == "" { segment } else { concat(concat(acc, "."), segment) })
+}
+
+fn serialize_args(args: List<Expression>) -> String {
+  fold(args, init: "", f: (acc, arg) => {
+    let part = serialize_expression(expression: arg)
+    if acc == "" { part } else { concat(concat(acc, ", "), part) }
+  })
+}
+
+// The expression body (no delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
+fn serialize_expression(expression: Expression) -> String {
+  match expression {
+    ContextAccess { context: c, path: p } =>
+      concat(concat(context_name(context: c), "."), join_path(path: p))
+    FunctionCall { function: f, args: a } =>
+      concat(concat(function_name(function: f), "("), concat(serialize_args(args: a), ")"))
+    StringLiteral { value: v } =>
+      concat(concat("'", v), "'")
+    LogicalOr { left: l, right: r } =>
+      concat(concat(serialize_expression(expression: l), " || "), serialize_expression(expression: r))
+  }
+}
+
+// The ONLY place the `${{ … }}` delimiter bytes are produced. Every emitted GitHub Actions
+// expression in the corpus routes through here; nothing hand-authors the delimiters.
+fn interpolate(expression: Expression) -> String {
+  concat(concat("${{ ", serialize_expression(expression: expression)), " }}")
+}
+
+fn serialize_segment(segment: TemplateSegment) -> String {
+  match segment {
+    LiteralText { text: t } => t
+    Interpolation { expression: e } => interpolate(expression: e)
+  }
+}
+
+fn serialize_template(template: ExpressionTemplate) -> String {
+  fold(template.segments, init: "", f: (acc, segment) =>
+    concat(acc, serialize_segment(segment: segment)))
+}
+
+// -- Runner-context grounding -----------------------------------------
+// Constructors for the runner context properties `gunbc.ci_workflow` reads (real property names).
+fn runner_os() -> Expression { ContextAccess { context: Runner, path: ["os"] } }
+fn runner_arch() -> Expression { ContextAccess { context: Runner, path: ["arch"] } }
+fn runner_temp() -> Expression { ContextAccess { context: Runner, path: ["temp"] } }
+
+// The default environment variables GitHub injects that mirror the runner context (each has a
+// proper `runner.*` home). Reading one of these through the `env` context instead of `runner.*`
+// ties correctness to runtime step-ordering rather than the model — the bad state the model-walk
+// guard flags. Grounded in the runner default-env-var table:
+// https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables
+data runner_provided_env_var_names: List<String> = [
+  "RUNNER_NAME",
+  "RUNNER_OS",
+  "RUNNER_ARCH",
+  "RUNNER_TEMP",
+  "RUNNER_TOOL_CACHE",
+  "RUNNER_DEBUG",
+  "RUNNER_ENVIRONMENT"
+]
+
+fn string_in_list(needle: String, haystack: List<String>) -> Bool {
+  fold(haystack, init: false, f: (acc, candidate) => acc || (candidate == needle))
+}
+
+// -- Model-walk predicates (the guard) --------------------------------
+// These walk the typed expression model — never the emitted YAML string.
+
+// True iff this expression (recursively) reads a runner-provided var through the `env` context.
+fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
+  match expression {
+    ContextAccess { context: c, path: p } =>
+      match c {
+        Env => string_in_list(needle: join_path(path: p), haystack: runner_provided_env_var_names)
+        _ => false
+      }
+    FunctionCall { function: _, args: a } =>
+      fold(a, init: false, f: (acc, arg) => acc || expression_accesses_runner_var_via_env(expression: arg))
+    LogicalOr { left: l, right: r } =>
+      expression_accesses_runner_var_via_env(expression: l) ||
+        expression_accesses_runner_var_via_env(expression: r)
+    StringLiteral { value: _ } => false
+  }
+}
+
+// True iff this expression (recursively) reads the given context.
+fn expression_uses_context(expression: Expression, target: ExpressionContext) -> Bool {
+  match expression {
+    ContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: target)
+    FunctionCall { function: _, args: a } =>
+      fold(a, init: false, f: (acc, arg) => acc || expression_uses_context(expression: arg, target: target))
+    LogicalOr { left: l, right: r } =>
+      expression_uses_context(expression: l, target: target) ||
+        expression_uses_context(expression: r, target: target)
+    StringLiteral { value: _ } => false
+  }
+}
+
+fn template_accesses_runner_var_via_env(template: ExpressionTemplate) -> Bool {
+  fold(template.segments, init: false, f: (acc, segment) => acc || match segment {
+    Interpolation { expression: e } => expression_accesses_runner_var_via_env(expression: e)
+    LiteralText { text: _ } => false
+  })
+}
+
+fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext) -> Bool {
+  fold(template.segments, init: false, f: (acc, segment) => acc || match segment {
+    Interpolation { expression: e } => expression_uses_context(expression: e, target: target)
+    LiteralText { text: _ } => false
+  })
+}
+
+// Walk a roster of templates: does ANY interpolated expression read a runner-provided var via env?
+fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>) -> Bool {
+  fold(templates, init: false, f: (acc, template) =>
+    acc || template_accesses_runner_var_via_env(template: template))
+}

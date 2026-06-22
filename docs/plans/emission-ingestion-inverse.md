@@ -132,6 +132,129 @@ pure wall ⇒ `program.dag` is deletable. Discriminating witness: a fresh non-ed
 `ShellStmt` goes RED; an edge module does not. This is what makes `shell(intent())` a realization-edge
 feature, never authored inside consumer code. **Ties to §6** (the item it protects).
 
+### 5.1 Generalization: the medium must stay a `Node`, string only at the edge
+
+The §5 guard catches a module *importing* a target AST it shouldn't. But there is a sin **one rung
+earlier**: a medium that is *never modeled as an AST at all* — its syntax authored as **string literals**
+and its correctness checked by **string-grep over the emitted output**. The §5 import-predicate cannot see
+this, because there is no import to flag. The CI-YAML workflow is the live example, and it is the same
+violation, generalized.
+
+**The single rule:**
+
+> A target medium — and every sub-language embedded in it — stays a modeled `Node` from authoring through
+> checking. A raw string is legitimate **only** at the realization edge (the grammar-row emitter). Both
+> *writing* target syntax as a string literal and *inspecting* emitted output with string operations are
+> the same violation: the medium's structure has leaked out of the `Node` into a string.
+
+**Why it is one rule** (the §3 architecture above, turned on the *check* direction): emission = ingestion⁻¹
+means a medium round-trips model↔string through the *same* grammar rows read both ways. A
+`string_contains(yaml, "${{ env.RUNNER_TEMP }}")` check is therefore an **ad-hoc partial re-ingest** — it
+re-implements a sliver of the parser to recover a fact the `Node` already holds. That is precisely the
+N×M heuristic the closed substrate forbids (§4 of DESIGN): fragile (misses `${{env.RUNNER_TEMP}}` without
+the spaces, or a newline-folded variant), lossy, and **fail-open** (an unanticipated surface form passes
+silently — §5 of DESIGN). The rule reduces to: **never re-ingest by string; walk the model.**
+
+**Two faces, one leak** (DESIGN §2-horizontal):
+- *emit-side* — inline target syntax in a string literal outside the realization edge
+  (`"${{ runner.temp }}"` in `dsl/gunbc/ci_workflow.dag`; `RunsOnExpression { expression: String }` 🟡 in
+  `extdeps/github/actions.dag` — the GHA expression language modeled as an opaque `String`);
+- *check-side* — string ops over an emitted-medium value (`string_contains(expected_ci_yml(), …)`, ~30 of
+  them in `dsl/test/claim/ci_yaml_serializer_witness_test.dag`, incl. the operator's
+  `witness_no_runner_env_vars_accessed_via_env_context`).
+
+**The audit census (worst → best — the spectrum is the finding):**
+
+| medium | state | tell |
+| --- | --- | --- |
+| GitHub Actions `${{ }}` expression language | **opaque `String`** (🟡 scaffold) — worst | `actions.dag` `*Expression { expression: String }`; inline `${{ runner.temp }}`/`${{ hashFiles(…) }}` in `ci_workflow.dag` |
+| CI YAML structure + shell-in-`run:` | partly modeled, values strings; **three nested unmodeled languages** (YAML + GHA-expr + shell) all grepped | `ci_yaml_serializer_witness_test.dag`, `ci_runner_seam_witness_test.dag` |
+| bash intent (`program.dag`) | sidecar AST, 11 importers | the §5 guard's existing target |
+| **markup** (react/html/markdown) | **modeled with escape semantics + MODEL-level discriminating witnesses** — the target state | `react_markup_witness_test.dag` checks the *reject behavior* (`escape_url`, std/markup SECURITY SCOPE), not a grep |
+
+Markup already does it right; the CI YAML is the same problem three layers deep, still strings.
+
+**Mechanism (extend §5's predicate, don't fork):** the same host-enumerated `LayerImportFact`-style sweep,
+two added detectors keyed on a per-medium **grounded** syntax-marker set (the *real* upstream tokens —
+`${{`, the YAML structural tokens, the shell metacharacters — cited from each medium's spec, not a
+heuristic): (a) a string literal containing a medium's syntax markers in a non-edge module; (b) a
+string-op (`string_contains`/`starts_with`/…) whose receiver is an emitted-medium value in a non-edge
+module. Both are `MediumStructureLeak`, the generalization of `RealizationVocabularyLeak`.
+
+*The detector must not become the heuristic it forbids* (the rule turned on its own enforcement): (i) the
+check-side detector identifies an "emitted-medium value" receiver by **provenance/type** — it is a
+`Medium<R>` or traces to the emit edge — **never by guessing** from the string's shape, which would be the
+same ad-hoc re-ingest in the lens itself; (ii) the emit-side detector scans **authoring source** (the
+legitimate ② residue, with the named ① dissolve-on), **not** emitted output — emitted output is *supposed*
+to contain target syntax, so flagging it there would wall the realization edge it is meant to protect.
+
+**Frontier placement** (per [expressibility-frontier](expressibility-frontier.md)): **② now** — flag the
+two faces over a **shrinking roster** (same shape as §5); **① wall** — once a medium is a `Medium<R>`
+`Node` emitted via grammar rows, *"no runner env var accessed"* is a **model walk**
+(`workflow.steps.any(s ⇒ s.env.references(RunnerContext.Temp))`) or **unwritable** (the model has no
+`RunnerEnvContext` variant for those vars), and the grep dissolves; **③** — none, fully decidable.
+**Dissolve-on:** each medium modeled as a `Node` emitted via grammar rows (GHA-expr first — it is the most
+anemic) ⇒ its roster entries empty ⇒ the guard flips from ratchet to wall. **First instance** (operator,
+2026-06-21): model the GHA env/runner context so `${{ env.RUNNER_TEMP }}` is a `Node`
+(`RunnerContextRef { var: RunnerTemp }`) and rewrite the witness as a model walk — the ① form if the model
+simply has no such variant.
+
+### 5.2 Formalizing "properly modeled": the round-trip law is the oracle, the partition is the boundary
+
+§5.1 gives the **detector** — it *finds* a leak (a string op, an inline literal) after the fact, so it is
+still *validation* (§5 of DESIGN: it concedes the bad state is writable). Two further mechanisms turn the
+rule from a grep-replacement into a constructive discipline: an **oracle** that *proves* a site clean, and
+a **boundary** that says *where* the cure is even available. With all three, "properly modeled medium"
+becomes a one-line executable bar instead of a judgment call.
+
+**(A) The round-trip law as the single oracle (`ingest ∘ emit = id`).** A medium is *properly modeled*
+**iff** `ingest ∘ emit = id` holds over its IR, with `DecodeFidelity` marking where that is `Lossless`.
+This collapses both faces of the §5.1 rule into **one decidable question** — *does a round-trip law hold
+over the same grammar rows?* A row-driven emitter has an ingest that reads the *same* rows, so the law is
+**provable by execution**; a hand-rolled emitter (inline literals) has **no shared-row ingest to
+round-trip against**, and that absence *is* the leak signal. So "is this a leak?" stops being the
+detector's necessarily-heuristic question ("does it grep target syntax?") and becomes a structural one
+("is there a round-trip over shared rows?"). The hand-rolled `serialize_yaml` (confirmed 2026-06-22:
+`emit_yaml_value`/`emit_mapping_body` hardcode `'- '`/`':'`/`'#'`/`'|\n'` as inline literals through
+`concat()` chains) **fails** this oracle — there is no yaml *ingest* over those same spellings to
+round-trip against; deep-newt's row-driven `serialize_markdown_source` (#5501) **passes** it the moment a
+markdown ingest reads the same construct→spelling rows. This is the §4 "one grammar, both directions"
+turned into the *test* — and it is *why* §5.1 pushes every serializer to be row-driven: only a row-driven
+emitter can satisfy the oracle from day one. **It is therefore the acceptance test for a new medium
+target** (emission-lane-owned, `quick-seal-137`): a target row-set is *done* iff its round-trip law is
+green by execution, not iff it merely emits — the §5-of-DESIGN "green by a real consumer, with a
+discriminating input" bar applied to a medium.
+
+But *done* here is **medium-complete**, which is **not** the merge bar for an emit PR — collapsing the two
+would wrongly over-gate. The round-trip law is the medium-**completeness** gate — a *later* step than
+emit-rows-merge-ready, **never** the emit-PR bar. An emit-only PR with correct, green grammar rows is
+merge-ready *as the emit step*; the medium is *complete* only once its round-trip law is green
+(`DecodeFidelity`-bounded). E.g. markdown #5501 and the bash-diagnostic #5505 landed the **emit step** —
+their round-trip *completeness* is the named **next** step, not a merge precondition.
+
+**(B) The per-medium decidability partition (the boundary, not a blanket ban).** The rule is **not** "ban
+all string ops over media" — that is the "never" trap (§5 of DESIGN): a ratchet wearing a wall's clothes,
+and it would wall the realization edge itself (where target syntax is *supposed* to live). Partition each
+medium-emitting site, per [expressibility-frontier](expressibility-frontier.md):
+- **① wall** — the medium has grammar rows + a green round-trip law ⇒ inline syntax is *unwritable* and the
+  check is a model walk (markup today);
+- **② lens-residue** — a hand-rolled emitter on the shrinking roster with a named dissolve-on = its grammar
+  rows (`serialize_yaml`, the markdown IR→HTML serializer today — honestly marked SCAFFOLD, not silently
+  forked);
+- **③ undecidable / fence** — a medium whose grammar is *not* closed/modeled (an arbitrary embedded DSL
+  with no upstream spec to cite): fence it, mark `DecodeFidelity = lossy`, **never fake-gate**. Honesty
+  replaces the wall exactly here.
+
+The formal statement is therefore *per medium*: **wall inline syntax exactly where the medium has a closed
+grammar and a round-trip; flag where it is hand-rolled-but-closeable; fence where the grammar is genuinely
+open** — each a decidable test, so the guard never masquerades undecidable residue as a wall (the §5
+decidability check).
+
+**Composition.** §5.1's detector *finds* leaks; (A) the round-trip oracle *proves* a site clean (the ①
+test); (B) the partition decides *which* sites are walled now vs flagged vs fenced. Together they bound the
+guard against the purity trap (§6 of DESIGN): a medium earns a wall only when it is the cheapest path to a
+real displaced cost (a grep that goes fail-open on an unanticipated surface form), never for elegance.
+
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
 Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dsl")`

@@ -1,29 +1,40 @@
 // src/v2/std/cross_tree/resolution.dag
 //
-// Route C Phase B — QualifiedName-grounded cross-tree resolution helpers.
-// Bridges name_resolve admission to import_model without String module-path interim.
-// Consumers: v2.compiler.name_resolve (namespace_for_subject cross-tree gate).
+// Route C Phase C — grounded cross-tree resolution helpers.
+// Bridges name_resolve admission to import_model using a QualifiedName -> SourceRootRef
+// index built from the host-tagged ingest (DagSourceReadWitness.source_root, PR-A).
+// Consumers: v2.compiler.name_resolve (admit_import_entry cross-tree gate),
+//            v2.compiler.program_assembly (index construction during the assembly fold).
 //
-// SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback
-// dissolve-on (grounded source_root at ingest): add source_root: SourceRootRef to
-//   DagSourceReadWitness (src/v2/compiler/source_authority.dag); host tags by which
-//   --source-root the file came from; delete source_root_ref_from_qualified_name and
-//   source_root_set_from_module_roots QN-prefix fallback.
-// ACTIVATION GATE (hard): supplying a non-Unknown TreeFundamentalityOrder for real
-//   compilation (cross-tree direction-flip) MUST NOT land until grounded source_root
-//   tagging replaces this fallback. INERT Unknown-default is allowed; relying on QN-prefix
-//   for admitted cross-tree edges is forbidden (DESIGN §4).
+// GROUNDED (§4): per-edge source-tree identity comes from filesystem-truth provenance
+//   (which --source-root each file was read from), NOT a QualifiedName-prefix guess. The
+//   prior QN-prefix fallback (source_root_ref_from_qualified_name /
+//   source_root_set_from_module_roots) is DELETED — it mis-tagged the 9 src/v2 files that
+//   declare non-`v2.`-prefixed modules (extdeps.shell, bisect.add, extdeps.fixture.*,
+//   test.claim.fold_list_generic_instantiation) as DslTree, which is unsound, not merely
+//   impure. ACTIVATION (the prior header's hard gate): cross-tree imports are now admitted
+//   on grounded provenance, so the direction is live for real compilation.
+//
+// Fundamentality is grounded as a tree-pair relation (tree_fundamentality_order), NOT a
+// caller-supplied global scalar: dsl is the single authority v2 builds on, so a v2->dsl
+// import targets the strictly-more-fundamental tree (admit, layer permitting) and a dsl->v2
+// import inverts fundamentality (deny). A global `MoreFundamental` would fail OPEN on a
+// dsl->v2.std peer edge (layer-direction holds at equal ordinals); deriving the order per
+// pair closes that inversion (§5 fail-closed).
 
 module v2.std.cross_tree.resolution
 
 import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.cross_tree.import_model {
+  CoFundamental,
   CrossTreeAdmitted,
-  CrossTreeAdmissionVerdict,
   CrossTreeDenied,
   CrossTreeImport,
   DslTree,
+  LessFundamental,
+  MoreFundamental,
   SourceRootRef,
+  SourceRootSet,
   TreeFundamentalityOrder,
   V2Tree,
   cross_tree_import_admitted,
@@ -38,33 +49,103 @@ import v2.std.layer {
   LayerPrefixWorkflow
 }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty }
+import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty, qualified_name_eq }
 import v2.std.text { String }
 
 
-// ── Source-tree tagging (QN-prefix fallback — see module header dissolve-on) ───
+// ── Grounded source-root index (QualifiedName -> SourceRootRef) ─────────────────
+//
+// Built during program assembly: each parsed module root's QualifiedName is paired with
+// the source_root its DagSourceReadWitness carried (the host filesystem truth). This is the
+// §4-grounded replacement for the deleted QN-prefix guess.
 
-// 🟡 SCAFFOLD — feature:route-c-cross-tree-resolution-qn-fallback — bind dissolve-on above.
-// KNOWN LIMITATION: cross-tree-overlaid module paths (e.g. extdeps.shell in BOTH
-// dsl/extdeps/shell/shell.dag and src/v2/extdeps/shell.dag) mis-tag as DslTree even when
-// witness_layer_roots overlay makes the v2 copy authoritative. QN materialization does NOT
-// fix this — the path stays extdeps.shell in both trees. Harmless while FundamentalityUnknown
-// denies all cross-tree edges (floor-verified inert); forbidden: admitting cross-tree edges
-// through this fallback after direction-flip activation.
-fn source_root_ref_from_qualified_name(qn: QualifiedName) -> SourceRootRef {
-  match qn {
-    QnEmpty => DslTree
-    QnCons { head: h, tail: _ } =>
-      if h == ^v2 {
-        V2Tree
+type SourceRootBinding {
+  module: QualifiedName
+  root: SourceRootRef
+}
+
+type SourceRootIndex = FreeMonoid<SourceRootBinding>
+
+
+fn source_root_index_empty() -> SourceRootIndex {
+  Empty
+}
+
+fn source_root_index_insert(
+  index: SourceRootIndex,
+  module: QualifiedName,
+  root: SourceRootRef
+) -> SourceRootIndex {
+  Cons { head: SourceRootBinding { module: module, root: root }, tail: index }
+}
+
+
+// SourceRootLookup — fail-closed 3-state result. Absent (module not in the ingest) is NOT
+// an error here: the edge falls through to ordinary module_root_find, which produces the
+// accurate unresolved-import diagnostic. Ambiguous (one QualifiedName bound to conflicting
+// trees — the cross-tree-overlay hazard the QN-prefix guess silently mis-tagged) is a §5
+// fail-closed denial.
+type SourceRootLookup
+  = SourceRootResolved { root: SourceRootRef }
+  | SourceRootAbsent
+  | SourceRootAmbiguous
+
+
+fn source_root_index_lookup(
+  index: SourceRootIndex,
+  module: QualifiedName
+) -> SourceRootLookup {
+  fold_list(
+    xs: index,
+    empty: SourceRootAbsent,
+    cons: fn(acc, binding) {
+      if qualified_name_eq(a: binding.module, b: module) {
+        match acc {
+          SourceRootAbsent => SourceRootResolved { root: binding.root }
+          SourceRootResolved { root: prev } =>
+            if source_root_ref_eq(a: prev, b: binding.root) {
+              SourceRootResolved { root: prev }
+            } else {
+              SourceRootAmbiguous
+            }
+          SourceRootAmbiguous => SourceRootAmbiguous
+        }
       } else {
-        DslTree
+        acc
+      }
+    }
+  )
+}
+
+
+// ── Tree-pair fundamentality (the operator's grounded de-fork decision) ─────────
+//
+// dsl ⊐ v2: dsl is the single std/extdeps/ci-spec authority v2 builds on. Same-tree pairs
+// are CoFundamental but are never reached via cross_tree_edge_decision (it short-circuits
+// same-tree to EdgeNormalResolution before consulting fundamentality).
+fn tree_fundamentality_order(
+  from_tree: SourceRootRef,
+  to_tree: SourceRootRef
+) -> TreeFundamentalityOrder {
+  match from_tree {
+    V2Tree =>
+      match to_tree {
+        V2Tree => CoFundamental
+        DslTree => MoreFundamental
+      }
+    DslTree =>
+      match to_tree {
+        V2Tree => LessFundamental
+        DslTree => CoFundamental
       }
   }
 }
 
 
-// Layer tier from module QualifiedName — mirrors DESIGN.md §3 four-tier DAG.
+// ── Layer tier from module QualifiedName ───────────────────────────────────────
+// Mirrors DESIGN.md §3 four-tier DAG. Unlike the deleted tree guess, layer tier IS encoded
+// in the module path by construction (std/extdeps/compiler/workflow), so reading it from the
+// QualifiedName is grounded, not a nickname.
 fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
   match qn {
     QnEmpty => LayerPrefixStd
@@ -114,47 +195,59 @@ fn source_root_set_insert(
 }
 
 
-// Derive the active source-root set from a pool of qualified names.
-fn source_root_set_from_module_roots(qns: FreeMonoid<QualifiedName>) -> FreeMonoid<SourceRootRef> {
-  fold_list(
-    xs: qns,
-    empty: Empty,
-    cons: fn(acc, qn) {
-      source_root_set_insert(roots: acc, r: source_root_ref_from_qualified_name(qn: qn))
-    }
-  )
-}
-
-
 // Interim empty module-path strings — CrossTreeImport admission ignores them;
 // dissolve-on: bold-bee 3a.2 QualifiedName materialization replaces with QN render.
 data cross_tree_module_path_interim: String = ""
 
-// QualifiedName-grounded cross-tree admission (Phase B wiring surface).
-fn cross_tree_import_admitted_qualified(
+
+// ── Grounded per-edge admission decision ────────────────────────────────────────
+//
+// CrossTreeEdgeDecision — what admit_import_entry should do with one import edge, decided
+// from the grounded index. EdgeNormalResolution = resolve via module_root_find (same tree,
+// or target absent from the ingest so module_root_find owns the unresolved diagnostic);
+// EdgeCrossAdmitted = grounded cross-tree edge that passes fundamentality + layer direction;
+// EdgeCrossDenied = grounded cross-tree edge that fails them; EdgeCrossAmbiguous = a
+// module bound to conflicting trees (fail-closed).
+type CrossTreeEdgeDecision
+  = EdgeNormalResolution
+  | EdgeCrossAdmitted
+  | EdgeCrossDenied
+  | EdgeCrossAmbiguous
+
+
+fn cross_tree_edge_decision(
+  index: SourceRootIndex,
   from_qn: QualifiedName,
   to_qn: QualifiedName,
-  roots: FreeMonoid<SourceRootRef>,
-  order: TreeFundamentalityOrder
-) -> CrossTreeAdmissionVerdict {
-  cross_tree_import_admitted(
-    edge: CrossTreeImport {
-      from_tree: source_root_ref_from_qualified_name(qn: from_qn),
-      from_layer: layer_prefix_from_qualified_name(qn: from_qn),
-      from_module: cross_tree_module_path_interim,
-      to_tree: source_root_ref_from_qualified_name(qn: to_qn),
-      to_layer: layer_prefix_from_qualified_name(qn: to_qn),
-      to_module: cross_tree_module_path_interim
-    },
-    roots: roots,
-    order: order
-  )
-}
-
-
-fn cross_tree_import_is_same_tree(from_qn: QualifiedName, to_qn: QualifiedName) -> Bool {
-  source_root_ref_eq(
-    a: source_root_ref_from_qualified_name(qn: from_qn),
-    b: source_root_ref_from_qualified_name(qn: to_qn)
-  )
+  active_roots: SourceRootSet
+) -> CrossTreeEdgeDecision {
+  match source_root_index_lookup(index: index, module: from_qn) {
+    SourceRootAbsent => EdgeNormalResolution
+    SourceRootAmbiguous => EdgeCrossAmbiguous
+    SourceRootResolved { root: from_tree } =>
+      match source_root_index_lookup(index: index, module: to_qn) {
+        SourceRootAbsent => EdgeNormalResolution
+        SourceRootAmbiguous => EdgeCrossAmbiguous
+        SourceRootResolved { root: to_tree } =>
+          if source_root_ref_eq(a: from_tree, b: to_tree) {
+            EdgeNormalResolution
+          } else {
+            match cross_tree_import_admitted(
+              edge: CrossTreeImport {
+                from_tree: from_tree,
+                from_layer: layer_prefix_from_qualified_name(qn: from_qn),
+                from_module: cross_tree_module_path_interim,
+                to_tree: to_tree,
+                to_layer: layer_prefix_from_qualified_name(qn: to_qn),
+                to_module: cross_tree_module_path_interim
+              },
+              roots: active_roots,
+              order: tree_fundamentality_order(from_tree: from_tree, to_tree: to_tree)
+            ) {
+              CrossTreeAdmitted => EdgeCrossAdmitted
+              CrossTreeDenied { reason: _ } => EdgeCrossDenied
+            }
+          }
+      }
+  }
 }
