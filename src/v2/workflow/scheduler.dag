@@ -1,8 +1,3 @@
-// src/v2/workflow/scheduler.dag
-// Scope: dependency-graph execution scheduler surface.
-// Status: D2 scheduler-first slice — runnable frontier is the execution dual of affected-set
-// frontier selection, projected through v2.std.dependency readiness folds.
-
 module v2.workflow.scheduler
 
 import v2.std.collection { List, list_at_optional, optional_present_witness }
@@ -29,13 +24,9 @@ type RunnableFrontier {
   ready: List<Node>
 }
 
-// 🟡 coproduct dissolution — feature:scheduler-blocked-evidence-kind — consumer:scheduler_plan_from_state
-// dissolve-on-arrival: blocked scheduler diagnostics classify missing prerequisite/cycle evidence directly.
 type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier {}
 
-// 🟡 coproduct dissolution — feature:scheduler-plan-outcome — consumer:scheduler_plan_from_dependencies
-// dissolve-on-arrival: workflow execution state projects complete/runnable/blocked directly from dependency facts.
 type SchedulerPlan
   = SchedulerPlanComplete {
       layers: List<ReadinessLayer>,
@@ -61,8 +52,6 @@ type SchedulerRunState {
   frontier: RunnableFrontier
 }
 
-// 🟡 coproduct dissolution — feature:scheduler-execution-kind-policy — consumer:scheduler_execution_dependencies
-// dissolve-on-arrival: substrate projects execution-ordering dependencies from the dependency fact carrier.
 fn scheduler_execution_dependency_kind_classifier() -> DependencyKindClassifier<Bool> {
   DependencyKindClassifier {
     contains: false,
@@ -275,8 +264,6 @@ fn scheduler_step_plan_from_dependencies(
   )
 }
 
-// Bounded fixed point: each non-empty frontier schedules at least one remaining node,
-// so `length(nodes)` scheduler steps are enough to complete or expose blocked evidence.
 fn scheduler_run_to_fixed_point(
   nodes: List<Node>,
   dependencies: List<DependencyView>,
@@ -311,8 +298,6 @@ fn scheduler_nodes_from_layers(layers: List<ReadinessLayer>) -> List<Node> {
   })
 }
 
-// Graph-node plans are projections over canonical readiness layers. Dependency-row plans use
-// scheduler_plan_from_dependencies to execute the fixed point and distinguish runnable/blocked work.
 fn scheduler_plan_for_layers(layers: List<ReadinessLayer>, blocked: List<Node>) -> SchedulerPlan {
   let runnable = runnable_frontier_from_layers(layers: layers)
   if non_empty(xs: runnable.ready) {

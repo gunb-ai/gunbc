@@ -1,25 +1,13 @@
-// tools/emit_host_fixtures.dag — MVP host-transport fixture sources for `tools.emit_host_gate`.
-//
-// Authority: v3 `v4_emit_host_harness_test.rs` minimal fixtures (five-byte stdout contract)
-// and `typescript.dag` `ts_host_transport_mvp1_harness_suffix`. These are the executable
-// programs the gate compiles/runs — not the authority_source_text pins in extdeps (those
-// are emit-model references; the gate proves the host boundary independently of emit()).
-//
-// SCAFFOLD — dissolves when emit_host.dag host rows wire through gunbc Realization and
-// generated TestClaimRun fixtures replace hand-authored sources (T-PB-B / T-22).
-
 module tools.emit_host_fixtures
 
 import std.measure { ByteSize, byte_size }
 
-// Five stdout bytes — MVP-2 runtime value alignment (rust/python/go row).
 data rust_mvp2_stdout_fixture_source: String = "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 5]); }"
 
 data python_mvp2_stdout_fixture_source: String = "import sys\nsys.stdout.buffer.write(b'\\x00' * 5)\n"
 
 data go_mvp2_stdout_fixture_source: String = "package main\nimport \"os\"\nfunc main() { _, _ = os.Stdout.Write(make([]byte, 5)) }\n"
 
-// TypeScript row — add(2,3)=5 as signed i32 LE on stdout (four bytes).
 data ts_mvp1_host_fixture_prefix: String = "// @ts-nocheck\nfunction add(x: number, y: number): number { return x + y; }\n"
 
 data ts_mvp1_host_fixture_harness_suffix: String = "
@@ -31,9 +19,5 @@ process.stdout.write(__gunbc_b);
 
 data ts_mvp1_host_fixture_source: String = "{ts_mvp1_host_fixture_prefix}{ts_mvp1_host_fixture_harness_suffix}"
 
-// Expected stdout byte counts per row (gate discriminant), modeled as the
-// std.measure ByteSize value-Measure — not a bare Int domain-unit scalar. The raw
-// Nat magnitude is projected only at the shell boundary (emit_host_transport.dag)
-// via byte_size_count.
 data mvp2_stdout_byte_count: ByteSize = byte_size(5)
 data ts_signed_i32_le_byte_count: ByteSize = byte_size(4)

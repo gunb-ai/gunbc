@@ -1,28 +1,7 @@
-// gunbc/bootstrap.dag -- Bootstrap pipeline data model.
-//
-// The gunbc compiler is self-hosting. The bootstrap pipeline is:
-//   1. .dag source files define the compiler
-//   2. stage0 .rs files are a frozen compiled version
-//   3. stage0 compiles .dag -> produces new .rs -> must match stage0
-//
-// This file models the pipeline stages, their inputs/outputs, and the
-// strategies for handling structural changes (new Node fields, new types)
-// so the pipeline knows what to do automatically instead of requiring
-// manual stage0 edits.
-//
-// These types are gunbc-specific (not std/): they model THIS compiler's
-// bootstrap process, not a general-purpose build system.
-
 module gunbc.bootstrap
 
 import std.types { ContentHash, FilePath, NonEmptyStr }
 
-// --- Pipeline stages ------------------------------------------------------
-
-// The ordered stages of the compiler pipeline.
-// Each stage is a pure function: input -> (output, diagnostics).
-// Ordering is total: tokenize < parse < resolve < normalize < infer
-//   < complexity < ownership < emit.
 type CompilerStage
   = Tokenize
   | Parse
@@ -33,8 +12,6 @@ type CompilerStage
   | Ownership
   | Emit
 
-// What a stage consumes. Every stage after Tokenize consumes the
-// previous stage's output.
 type StageInput
   = SourceText { files: List<SourceEntry> }
   | TokenStream { from_stage: CompilerStage }
@@ -44,8 +21,6 @@ type StageInput
   | TypedGraph { from_stage: CompilerStage }
   | AnnotatedGraph { from_stage: CompilerStage }
 
-// What a stage produces. Diagnostics thread through every stage
-// boundary (DESIGN.md: "Every stage returns { value, diagnostics }").
 type StageOutput {
   stage: CompilerStage
   artifact_kind: ArtifactKind
@@ -62,18 +37,12 @@ type ArtifactKind
   | OwnershipProofs
   | RenderedFiles
 
-// --- Source entry ----------------------------------------------------------
-
 type SourceEntry {
   path: FilePath
   content: String
   module_name: NonEmptyStr?
 }
 
-// --- Change classification ------------------------------------------------
-
-// What kind of structural change is being made to the compiler.
-// This drives the BootstrapStrategy selection.
 type ChangeKind
   = AddField
   | RemoveField
@@ -84,7 +53,6 @@ type ChangeKind
   | ModifyVariant
   | AddStage
 
-// A classified change to the compiler's own structure.
 type ChangeClassification {
   kind: ChangeKind
   target_type: NonEmptyStr
@@ -93,23 +61,8 @@ type ChangeClassification {
   affects_stages: List<CompilerStage>
 }
 
-// --- Bootstrap strategy ---------------------------------------------------
-
-// How to handle a change through the bootstrap pipeline.
-//
-// SinglePass: the change is backward-compatible (e.g. new field with
-//   default, new coproduct variant). The current stage0 can compile
-//   the new .dag source and produce correct output.
-//
-// TwoPhase: the change is NOT backward-compatible (e.g. new required
-//   field, removed field). The old compiler must first be taught to
-//   handle defaults, then the new compiler can take over.
-//
-// Additive: a special case of SinglePass where the change only adds
-//   new structure without modifying existing paths.
 type BootstrapStrategy = SinglePass | TwoPhase | Additive
 
-// The resolved strategy for a specific change.
 type BootstrapPlan {
   change: ChangeClassification
   strategy: BootstrapStrategy
@@ -117,11 +70,6 @@ type BootstrapPlan {
   reason: String
 }
 
-// --- Fixed-point verification ---------------------------------------------
-
-// The convergence check: regen(regen(source)) == regen(source).
-// If pass1 != pass2, the change is not at fixed point and the
-// pipeline must iterate.
 type FixedPointCheck {
   pass1_hash: ContentHash
   pass2_hash: ContentHash
@@ -129,21 +77,11 @@ type FixedPointCheck {
   diff_files: List<FilePath>
 }
 
-// Overall result of a bootstrap cycle.
 type BootstrapResult
   = Converged { check: FixedPointCheck }
   | Diverged { check: FixedPointCheck, iteration: Int }
   | CompileError { stage: CompilerStage, message: String }
 
-// --- Field propagation ----------------------------------------------------
-
-// Which transforms preserve which fields across pipeline stages.
-// This is the structural fact that determines whether a field
-// survives a stage boundary or must be recomputed.
-//
-// Example: map_children preserves ident (it copies the parent node's
-// metadata while transforming children). But normalize may discard
-// source spans from desugared nodes.
 type PropagationRule
   = Preserved
   | Recomputed
@@ -155,7 +93,6 @@ type FieldPropagation {
   rule: PropagationRule
 }
 
-// A transform and the fields it guarantees to preserve.
 type TransformContract {
   transform_name: NonEmptyStr
   stage: CompilerStage
@@ -163,12 +100,6 @@ type TransformContract {
   recomputed_fields: List<NonEmptyStr>
 }
 
-// --- Strategy selection ---------------------------------------------------
-
-// Determine the bootstrap strategy from a change classification.
-// Additive: new field with default, or new type.
-// SinglePass: new coproduct variant (existing match arms still work).
-// TwoPhase: everything else (requires old compiler to handle the gap).
 fn classify_strategy(change: ChangeClassification) -> BootstrapStrategy {
   match change.kind {
     AddField => if change.has_default { Additive } else { TwoPhase }

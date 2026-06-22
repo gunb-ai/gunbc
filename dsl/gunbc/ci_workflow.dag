@@ -1,12 +1,3 @@
-// gunbc/ci_workflow.dag — authoritative GitHub Actions Workflow value for repo CI.
-//
-// Single authority for `.github/workflows/ci.yml` (DESIGN §3). The committed file
-// is the literal byte output of `serialize_yaml(project_workflow_to_yaml(ci_workflow))`
-// — no hash pin, no dual representation.
-//
-// Job timeout uses `default_job_timeout_minutes` (360): the claim_executor CI floor
-// (#5122) exceeds the prior 240m limit on self-hosted runners; not lens-specific cost.
-
 module gunbc.ci_workflow
 
 import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
@@ -37,8 +28,7 @@ data ci_workflow: Workflow = {
   ],
   concurrency: Present {
     value: ConcurrencyMappingQueueNotMax {
-      // GitHub Actions `${{ }}` expressions are typed Nodes in `gunbc.ci_workflow_expressions`
-      // and serialized here (medium-as-Node guard — no inline expression strings in this file).
+
       group: ci_concurrency_group(),
       cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
       explicit_single: none
@@ -66,8 +56,7 @@ data ci_workflow: Workflow = {
       RunStep {
         name: Present { value: "Isolate toolchain dirs" },
         id: none,
-        // CARGO_HOME/RUSTUP_HOME before Setup Rust + Cache Cargo. Fleet sccache is
-        // host-managed (SCCACHE_SERVER_UDS); enable wrapper only when daemon responds.
+
         run: concat(
           concat(
             concat(
