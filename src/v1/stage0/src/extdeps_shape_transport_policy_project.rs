@@ -812,6 +812,69 @@ pub fn external_authority_live_roster_module_count() -> i64 {
         .count() as i64
 }
 
+fn anchor_present_in_any_source_root(module_path: &str) -> bool {
+    let ws = crate::module_path_index::workspace_root();
+    for root in crate::module_path_index::default_source_roots() {
+        let root_path = std::path::PathBuf::from(&root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        crate::cli_run::collect_dag_files_tolerant(&root_path, &mut files);
+        for file in files {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let declares = content
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("module ").map(|m| m.trim().to_string()));
+            if declares.as_deref() != Some(module_path) {
+                continue;
+            }
+            let rel = file
+                .strip_prefix(&ws)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
+            let (items, source_indices) = parse_module_items(&rel);
+            if matches!(
+                read_external_authority_anchor_from_items(&items, &source_indices),
+                ExternalAuthorityAnchorProjection::Present { .. }
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: String) -> bool {
+    match project_external_authority_anchor(&module_path) {
+        ExternalAuthorityAnchorProjection::Present { .. } => false,
+        ExternalAuthorityAnchorProjection::Absent => anchor_present_in_any_source_root(&module_path),
+    }
+}
+
+pub fn external_authority_anchor_shadow_masked_for_qualified_name(
+    qn: &crate::v1_interpreter::Value,
+) -> bool {
+    let module_path = crate::module_path_index::qualified_name_value_to_module_path(qn);
+    external_authority_anchor_shadow_masked_for_module_path(module_path)
+}
+
+pub fn external_authority_live_shadow_mask_holds() -> bool {
+    for path in derived_extdeps_module_paths() {
+        if is_clean_tree_roster_excluded_for_module_path(&path)
+            || is_machinery_exempt_for_module_path(&path)
+        {
+            continue;
+        }
+        if external_authority_anchor_shadow_masked_for_module_path(path) {
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

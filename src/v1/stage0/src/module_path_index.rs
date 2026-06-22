@@ -4,7 +4,7 @@ pub fn workspace_root() -> std::path::PathBuf {
     crate::cli_run::workspace_root()
 }
 
-fn default_source_roots() -> Vec<String> {
+pub(crate) fn default_source_roots() -> Vec<String> {
     let ws = workspace_root();
     vec![
         ws.join("dsl").to_string_lossy().into_owned(),
