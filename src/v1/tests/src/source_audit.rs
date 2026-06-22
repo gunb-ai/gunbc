@@ -707,7 +707,7 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
     );
     assert_live_contains(
         &source,
-        "let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
+        "let type_errors = typed_diags |> filter(d => is_resolved_pipeline_typecheck_blocking(diagnostic: d.diagnostic, discovery_corpus_advisory_typecheck: discovery_corpus_advisory_typecheck))",
         "src/v1/compile.dag should gate emission on type errors",
     );
     assert_live_not_contains(
