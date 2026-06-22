@@ -1,5 +1,3 @@
-// Scope: derived-roster modules marked machinery-exempt must pass live policy.
-
 module v2.test.extdeps_external_authority.lens_unit.derived_machinery_exempt_live
 
 import v2.lens.extdeps_external_authority {

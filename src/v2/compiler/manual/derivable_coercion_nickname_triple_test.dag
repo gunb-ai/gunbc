@@ -1,7 +1,3 @@
-// Scope: DERIVABLE-COERCION thesis payoff — TaskId nickname triple (API+DB+wire);
-//   distinct SurfaceSpelling per layer, shared encoding+carrier core; CRUX matrix by execution.
-// Status: EXECUTED Bool witnesses — all realized preservation rules × sibling pairs measured.
-
 module v2.test.manual.derivable_coercion_nickname_triple
 
 import v2.compiler.eval { run_test_claim_assert }
@@ -102,13 +98,9 @@ fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
   }
 }
 
-// --- Preconditions (sibling shape) -------------------------------------------------
-
 data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
 
 data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
-
-// --- CRUX matrix: exact_structural_equality_zip_fold ---------------------------------
 
 data witness_matrix_exact_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
@@ -118,8 +110,6 @@ data witness_matrix_exact_db_to_wire_accepts: Bool = find_witness_sibling_accept
 
 data witness_matrix_exact_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
-// --- CRUX matrix: preservation_rule_refinement_widening ------------------------------
-
 data witness_matrix_widening_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
 
 data witness_matrix_widening_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
@@ -128,8 +118,6 @@ data witness_matrix_widening_db_to_wire_accepts: Bool = find_witness_sibling_acc
 
 data witness_matrix_widening_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
 
-// --- CRUX matrix: preservation_rule_constraint_satisfaction --------------------------
-
 data witness_matrix_constraint_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
 
 data witness_matrix_constraint_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
@@ -137,8 +125,6 @@ data witness_matrix_constraint_api_to_wire_accepts: Bool = find_witness_sibling_
 data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
 
 data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
-
-// --- CRUX verdict: the dispatch derives siblings when find_witness gains a faithful rule. ---
 
 data witness_dispatch_api_to_db_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
 
@@ -154,8 +140,6 @@ fn find_witness_dispatch_faithful_for_siblings() -> Bool {
     && witness_dispatch_db_to_wire_accepts
     && !witness_dispatch_api_to_account_id_accepts
 }
-
-// Legacy matrix controls: no pre-existing rule should be made faithful by this PR.
 
 fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
   if rule == ^preservation_rule_exact_structural_equality_zip_fold {
@@ -180,10 +164,7 @@ fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
 
 data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_siblings()
 
-// Same-layer reflexivity control (exact rule still works for identity).
 data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
-
-// --- Executing claims (discriminating via EqualsClaim + run_test_claim_assert) -------
 
 fn derivable_coercion_pass_node() -> Node {
   task_id_api_inhabitant_node()

@@ -1,11 +1,3 @@
-// Scope: ParseTable Realization amortization witness — grammar_digest-scoped memo store with
-// token-stream-specific cells (node://adhoc-942b5811-772 closeout bar).
-// Receipt: multi-file SourceRootIngest through module_roots_from_source_root_ingest (parse
-// leg of assemble_program_from_ingest); Rust companion discriminates memo reuse on a second
-// ingest pass in the same interpreter context (RED if memo keyed per-table Rc only).
-// §5 execution receipt: `parse_table_multi_file_ingest_amortization_by_execution` (Rust) times
-// the same path and asserts sub-linear total vs 2× isolated two-file pass + legacy 63s floor.
-
 module v2.test.parse.parse_table_memo_amortization
 
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
@@ -18,7 +10,6 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.node { Hash, Node, content_hash }
-
 
 data memo_amort_empty_a_source: Medium<String> = Medium { carried: "module memo_amort_a\n", fidelity: Lossless }
 data memo_amort_empty_b_source: Medium<String> = Medium { carried: "module memo_amort_b\n", fidelity: Lossless }
@@ -71,7 +62,6 @@ data memo_amort_ingest_bisect_add: SourceRootIngest = Cons {
   tail: Empty
 }
 
-
 fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash> {
   match module_roots_from_source_root_ingest(
     ingest: ingest,
@@ -94,7 +84,6 @@ fn memo_amort_single_root_content_hash(ingest: SourceRootIngest) -> Outcome<Hash
       Rejected { diagnostics: d }
   }
 }
-
 
 fn memo_amort_parse_one_file_holds() -> Bool {
   match module_roots_from_source_root_ingest(
@@ -120,9 +109,6 @@ fn memo_amort_parse_two_files_twice_holds() -> Bool {
   memo_amort_parse_two_files_holds() && memo_amort_parse_two_files_holds()
 }
 
-// §5 hit-path fidelity: pass-1 miss and pass-2 hit (try_parse_table_memo_dispatch
-// witness_holds(cached_v)) must yield content_hash-equal normalized roots on non-trivial
-// source — not merely Bool(true) with value discarded.
 fn witness_parse_table_memo_hit_path_content_hash_stable() -> Bool {
   match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
     Accepted { value: hash_miss, diagnostics: _ } =>

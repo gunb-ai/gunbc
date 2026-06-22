@@ -1,5 +1,3 @@
-// Scope: TestClaim rows for Swift Wave 2a lex/grammar behavior beyond MVP-1.
-
 module v2.test.parse.swift_wave2a
 
 import v2.std.compilers.lexing { TokenStream }

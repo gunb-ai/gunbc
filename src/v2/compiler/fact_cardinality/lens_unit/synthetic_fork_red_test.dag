@@ -1,6 +1,3 @@
-// Scope: lens-unit RED witness — synthetic cross-tree content mismatch is diverged.
-// Status: 🟡 DRAFT-until-signed — load-bearing witness receipts.
-
 module v2.test.fact_cardinality.lens_unit.synthetic_fork_red
 
 import v2.lens.fact_cardinality {

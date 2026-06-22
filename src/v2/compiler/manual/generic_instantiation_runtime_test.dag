@@ -1,7 +1,3 @@
-// Lane 2b: execution-proven generic instantiation witnesses (v2 manual certs).
-// Runs fold_list cons/snoc T-binding and chained generic field access through
-// the compile+interpret pipeline (same path as ci_claim_gate / v1-compiler-tests).
-
 module v2.test.manual.generic_instantiation_runtime
 
 import v2.std.algebra { fold_list, fold_list_right }

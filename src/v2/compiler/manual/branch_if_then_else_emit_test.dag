@@ -1,5 +1,3 @@
-// Scope: Bool if-then-else Branch body emit through value-expression tier (.dag target).
-
 module v2.test.manual.branch_if_then_else_emit
 
 import v2.compiler.body_producer {
@@ -140,7 +138,6 @@ fn branch_if_then_else_emit_post_translate_root() -> Outcome<Node> {
   )
 }
 
-// still-seal leg-2 diagnostic: substrate vs post-translate serialize INPUT trees.
 fn branch_if_then_else_emit_diag_substrate_eq_post_translate() -> Bool {
   match branch_if_then_else_emit_post_translate_root() {
     Accepted { value: translated, diagnostics: d } =>

@@ -1,7 +1,3 @@
-//! P3: `derive_bound` must not return plausible `AtomicBound` / `Forever` costs for impossible
-//! recurrence parameters (OpenAI-pro #726 — `UnitShrink` / `ConstantShrink` arms vs
-//! `master_theorem`).
-
 use std::rc::Rc;
 
 use v1_compiler::std_computation::ShrinkFactor;

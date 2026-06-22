@@ -1,8 +1,4 @@
-// Anchor: MVP add(x,y)=x+y
-
-
 module v2.test.manual.infer_ground_add_mvp
-
 
 import v2.compiler.eval {
   EvalContext,
@@ -76,9 +72,9 @@ import v2.std.runtime {
   ValueInterpreter
 }
 import v2.std.witness { Holds, Violates }
-// Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
+
 type InferReceiptCase
-// 🟡 coproduct dissolution
+
   = InferDiagnosticReceiptCase {
       label: String
       input_symbol: Symbol
@@ -92,7 +88,6 @@ type InferReceiptCase
       expected_value: Node
     }
 
-
 fn fixture_int_type_node(atom: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: atom } },
@@ -101,7 +96,6 @@ fn fixture_int_type_node(atom: Symbol) -> Node {
 }
 }
 
-
 fn infer_receipt_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -109,7 +103,6 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn infer_receipt_runtime_value() -> RuntimeValue {
   RuntimePrimitive {
@@ -120,7 +113,6 @@ fn infer_receipt_runtime_value() -> RuntimeValue {
   }
 }
 
-
 fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_receipt_extdeps,
@@ -129,11 +121,9 @@ fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-
 fn infer_receipt_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
-
 
 fn infer_receipt_call_primitive(
   node: Node,
@@ -143,16 +133,13 @@ fn infer_receipt_call_primitive(
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-
 fn infer_receipt_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
 
-
 fn infer_receipt_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
 }
-
 
 fn infer_receipt_bind_value(
   _key: EnvironmentBindingKey,
@@ -161,7 +148,6 @@ fn infer_receipt_bind_value(
 ) -> Outcome<EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
-
 
 fn infer_receipt_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
@@ -183,14 +169,12 @@ fn infer_receipt_interpretation() -> InterpretationAlgebra {
   }
 }
 
-
 fn infer_receipt_case_input(case: InferReceiptCase) -> Node {
   match case {
     InferDiagnosticReceiptCase { input: input, label: _, input_symbol: _, expected_rejection: _ } => input
     InferCompilesReceiptCase { input: input, label: _, input_symbol: _, expected_value: _ } => input
   }
 }
-
 
 fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
   match case {
@@ -223,7 +207,6 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
   }
 }
 
-
 fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
     allocate_literal: ^infer_receipt_allocate_literal_sym,
@@ -243,7 +226,6 @@ fn infer_receipt_context() -> EvalContext {
   )
 }
 
-
 fn infer_receipt_empty_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
@@ -256,7 +238,6 @@ fn infer_receipt_empty_tree(root: Node) -> InferredTree {
     }
   }
 }
-
 
 fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
   let input = infer_receipt_case_input(case: case)
@@ -271,7 +252,6 @@ fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
   }
 }
 
-
 fn infer_receipt_case_pin(case: InferReceiptCase) -> Symbol {
   match case {
     InferDiagnosticReceiptCase { input_symbol: sym, label: _, input: _, expected_rejection: _ } => sym
@@ -279,8 +259,6 @@ fn infer_receipt_case_pin(case: InferReceiptCase) -> Symbol {
   }
 }
 
-
-// Project infer's Outcome<InferredTree> to Outcome<Node> for DiagnosticClaim rejection compare only.
 fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node> {
   match actual {
     Accepted { value: tree, diagnostics: ad } =>
@@ -288,7 +266,6 @@ fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node>
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-
 
 fn infer_add_mvp_receipt_run(
   subject: TestClaimEvalSubject<Node>,
@@ -323,7 +300,6 @@ fn infer_add_mvp_receipt_run(
   }
 }
 
-
 fn infer_descent_witness_receipt_run(
   subject: TestClaimEvalSubject<Node>,
 ) -> TestClaimRun<Node, Node> {
@@ -342,8 +318,6 @@ fn infer_descent_witness_receipt_run(
   }
 }
 
-
-// MVP add(x: Int, y: Int) -> Int = x + y as a resolved CoreNode-shaped Arrow (domain, codomain, body).
 fn fixture_add_resolved_node() -> Node {
   fixture_add_resolved_tree()
 }
@@ -377,13 +351,10 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
 }
 }
 
-
 fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
   infer(tree: fixture_add_resolved_tree())
 }
 
-
-// Behavior receipt: bounded TypeNode substrate derives Holds descent witness.
 fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   match infer_descent_witness_for_node(n: n) {
     Holds { value: _ } => Accepted { value: n, diagnostics: None }
@@ -392,7 +363,6 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   }
 }
 
-
 data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
   input_symbol: ^infer_receipt_input_infer_add_mvp,
@@ -400,12 +370,9 @@ data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
   expected_value: fixture_add_resolved_tree()
 }
 
-
 data subject_infer_add_mvp_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_compiles)
 
-
 data run_infer_add_mvp_compiles: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_compiles)
-
 
 data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer_descent_witness_contract_node Holds on bounded Atom TypeNode",
@@ -414,14 +381,10 @@ data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesRece
   expected_value: fixture_int_type_node(atom: ^fixture_add_int_atom)
 }
 
-
 data subject_infer_descent_witness_holds_atom: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_holds_atom)
-
 
 data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_holds_atom)
 
-
 data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_compiles)
-
 
 data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)

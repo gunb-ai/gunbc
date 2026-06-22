@@ -1,6 +1,3 @@
-// Scope: fold_node_topdown behavior anchors — init/child_context/step algebra contract.
-// Status: PR1 standalone non-resolve fixture.
-
 module v2.test.manual.fold_node_topdown_mvp
 
 import v2.std.node {
@@ -54,7 +51,6 @@ fn topdown_two_level_chain() -> Node {
   }
 }
 
-// Depth-tracking fold: context A=Int is current depth; result R=Int is max depth in subtree.
 fn depth_max_algebra() -> NodeFoldTopDown<Int, Int> {
   NodeFoldTopDown {
     init: fn(_, depth) { depth },
@@ -63,13 +59,10 @@ fn depth_max_algebra() -> NodeFoldTopDown<Int, Int> {
   }
 }
 
-// Witnesses
 data witness_leaf_returns_init: Bool = fold_node_topdown(n: topdown_leaf(), ctx: 0, algebra: depth_max_algebra()) == 0
 data witness_one_child_max_depth_is_one: Bool = fold_node_topdown(n: topdown_one_child_tree(), ctx: 0, algebra: depth_max_algebra()) == 1
 data witness_two_level_chain_max_depth_is_two: Bool = fold_node_topdown(n: topdown_two_level_chain(), ctx: 0, algebra: depth_max_algebra()) == 2
 
-// Edge-dispatch algebra: child_context returns depth+2 for ^topdown_right_child, depth+1 otherwise.
-// Proves child_context receives the edge (not an int index).
 fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
   NodeFoldTopDown {
     init: fn(_, depth) { depth },
@@ -84,8 +77,6 @@ fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
   }
 }
 
-// Root with ^topdown_left_child (leaf → depth 1) and ^topdown_right_child (leaf → depth 2).
-// max = 2 only if edge label is dispatched, not ordinal position.
 fn topdown_edge_dispatch_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },

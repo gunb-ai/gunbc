@@ -1,5 +1,3 @@
-// Status: manual runtime interpretation receipt.
-
 module v2.test.manual.eval_runtime_mvp
 
 import v2.compiler.eval {
@@ -114,9 +112,6 @@ fn eval_mvp2_algebra_node() -> Node {
 }
 }
 
-// Well-formed Value leaves (node.dag: Value => count(children) == 0). Per-node
-// InferredFacts: grounding.node == subject under evaluation; resolved value type is
-// structural.evidence (algebra witness), not the subject node.
 data eval_mvp2_two_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],

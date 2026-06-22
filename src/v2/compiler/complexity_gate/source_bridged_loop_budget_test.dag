@@ -1,7 +1,3 @@
-// Scope: complexity-gate S1a exemplar — source-bridged COMPREP wave-1 `loop` body as lens subject.
-// Status: discoverable `test fn` witness — CI floor gates it via claim_batch
-//         --roster-from-discovery (`test fn` in `*_test.dag` scanned across src/v2).
-
 module v2.test.complexity_gate.source_bridged_loop_budget
 
 import v2.lens.complexity {

@@ -1,8 +1,3 @@
-//! Execution witness for `gunbc.tools.cron_tag` tag-scoped crontab upsert (#5069 follow-up).
-//!
-//! Typecheck alone missed `++` (not a language operator — parses as `+` `+`). These run the
-//! pure `upsert_tagged_entries` composer through the real compile+interpret pipeline.
-
 use std::fs;
 use std::rc::Rc;
 

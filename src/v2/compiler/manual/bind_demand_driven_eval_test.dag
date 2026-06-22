@@ -1,5 +1,3 @@
-// Scope: demand-driven eval_bind_node_eval — value edge before body; divergent value rejects without body.
-
 module v2.test.manual.bind_demand_driven_eval
 
 import v2.compiler.eval {

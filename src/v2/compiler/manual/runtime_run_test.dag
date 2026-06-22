@@ -1,6 +1,3 @@
-// Scope: §4a runtime_run loop gate witness — bounded sequential frontier eval with receipt append.
-// Falsifier: needing per-effect bespoke handler wiring beyond EffectIoEvalContext (escalate).
-
 module v2.test.manual.runtime_run
 
 import v2.compiler.eval {
@@ -60,9 +57,6 @@ import v2.workflow.scheduler { RunnableFrontier }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.extdeps.runtimes.v2_effect_io_pure { effect_io_pure_unit_type_node }
 
-
-// Two independent nodes — structurally distinct symbols, no dependencies, both runnable
-// from the initial frontier (mirrors scheduler_runnable_frontier identity pattern).
 data runtime_run_node_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runtime_run_node_a_symbol } },
   children: [],
@@ -93,7 +87,6 @@ fn runtime_run_facts_for(node: Node) -> InferredFacts {
   )
 }
 
-// Per-node lookup: grounding.node matches the queried node exactly.
 fn runtime_run_fact_lookup(node: Node) -> Witness<InferredFacts> {
   if node == runtime_run_node_a {
     Holds { value: runtime_run_facts_for(node: runtime_run_node_a) }
@@ -113,7 +106,6 @@ fn runtime_run_test_tree() -> InferredTree {
   }
 }
 
-// Minimal interpretation: allocate_literal always succeeds with a unit value.
 fn runtime_run_unit_value() -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue { unit_type: effect_io_pure_unit_type_node() }
@@ -200,7 +192,6 @@ fn runtime_run_context() -> EvalContext {
   )
 }
 
-// Gate witness 1: single frontier step evaluates one node and appends one receipt.
 fn runtime_run_step_appends_receipt_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
@@ -213,7 +204,6 @@ fn runtime_run_step_appends_receipt_holds() -> Bool {
   length(xs: state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
 }
 
-// Gate witness 2: full sequential run over two independent nodes reaches RuntimeRunComplete.
 fn runtime_run_completes_both_nodes_holds() -> Bool {
   match runtime_run(
     nodes: runtime_run_nodes,
@@ -227,8 +217,6 @@ fn runtime_run_completes_both_nodes_holds() -> Bool {
   }
 }
 
-// Discriminating red: a two-node frontier-only step does not advance further —
-// step_from_frontier processes only the nodes given, not the whole node set.
 fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
   let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
   let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
@@ -238,7 +226,7 @@ fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
     tree: runtime_run_test_tree(),
     context: runtime_run_context()
   )
-  // node_b is NOT scheduled — step only processes nodes in the frontier.
+
   state.scheduled == [runtime_run_node_a] && length(xs: state.log.entries) == 1
 }
 

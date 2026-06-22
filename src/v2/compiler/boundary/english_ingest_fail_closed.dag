@@ -1,16 +1,4 @@
-// Scope: TestClaim — the English boundary-honesty probe. English is two
-//        regimes:
-//          (a) arbitrary natural English has no formal grammar and is NOT
-//              a language model — pointing `ingest` at it produces a
-//              PRECISE Diagnostic, never a fabricated parse (this probe;
-//              the no-engine / no-fallback thesis made visible).
-//        The fail-closed boundary in this file guards regime (a) only;
-//        regime (b) is claimed by manual/english_emit_add.dag.
-// Anchor: no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
-//         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
-
 module v2.test.boundary.english_ingest_fail_closed
-
 
 import v2.std.diagnostic {
   AmbiguousIntent,
@@ -36,7 +24,6 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-
 data arbitrary_english_prose_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -51,7 +38,6 @@ data arbitrary_english_prose_input: Node = Node {
   ],
   occurrence_id: SyntheticOccurrence
 }
-
 
 data english_shape_b_docs_input: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -68,7 +54,6 @@ data english_shape_b_docs_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data english_shape_b_docs_output: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -84,7 +69,6 @@ data english_shape_b_docs_output: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
   label: "english prose ingest rejects outside the lossless core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -98,7 +82,6 @@ data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
     ),
   classification: TestClassification { tier: Tier3, layer: Boundary }
 }
-
 
 data test_english_emit_is_shapeB_docs: TestClaim = CompilesClaim {
   label: "english prose output is shape-b docs over typed values",

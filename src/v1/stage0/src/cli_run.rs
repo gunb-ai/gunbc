@@ -1,7 +1,3 @@
-// cli_run.rs — Hand-maintained Run subcommand handler.
-// Not generated — survives stage0 regeneration.
-// The generated main.rs calls handle_run_with_options() for the Run subcommand.
-
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -36,9 +32,6 @@ use crate::resolved_graph_cache::{
     write as cross_process_write, CacheLookupResult,
 };
 
-/// Which typecheck diagnostics block entry resolve. Strict is the default for
-/// gunbc run/compile and all non-discovery consumers; DiscoveryCorpusAdvisory
-/// is the SCAFFOLD carve-out (00_core.dag) for floor discovery scan-coverage only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveTypecheckGate {
     Strict,
@@ -73,12 +66,10 @@ fn log_discovery_advisory_typecheck(
     }
 }
 
-/// Module that owns `UnifiedTestClaim` and its registration arms.
 pub const UNIFIED_CLAIM_VERIFICATION_MODULE: &str = "v2.std.verification";
 pub const BOOL_WITNESS_CLAIM_TYPE: &str = "BoolWitnessClaim";
 pub const NODE_CORPUS_TYPE: &str = "NodeCorpus";
 
-/// Recursively find all .dag files under a directory.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
@@ -95,7 +86,6 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
     }
 }
 
-/// Extract the `module x.y.z` declaration from a .dag file.
 fn extract_module_path(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
@@ -109,7 +99,6 @@ fn extract_module_path(content: &str) -> Option<String> {
     None
 }
 
-/// Extract import module paths from a .dag file.
 pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
@@ -125,7 +114,6 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
-/// Workspace root (parent of `src/`).
 pub fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -134,7 +122,6 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// `module_path` → repo-relative `.dag` path; fail-closed on duplicate module paths.
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
     let ws = workspace_root();
     let mut index = HashMap::new();
@@ -161,12 +148,6 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-                // Co-root overlay: later `source_roots` win on duplicate module paths
-                // (same last-wins policy as `build_module_index`). TRANSITIONAL (slice 3):
-                // enables v2 overlay without panic while dsl+src/v2 coexist. DISSOLUTION
-                // RESTORE (final slice): when witness_layer_roots reverts to a single root and
-                // dsl/extdeps/shell is deleted, restore fail-closed panic on duplicate module_path
-                // so an accidental name collision is loud again (§5).
                 index.insert(module_path.clone(), rel);
             }
         }
@@ -174,10 +155,8 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
     index
 }
 
-/// module_path → pre-read source (built once; shared across per-entry resolves).
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
-/// Build module index: read each `.dag` under `source_roots` once into `ModuleSourceIndex`.
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     let mut index = ModuleSourceIndex::new();
     for root in source_roots {
@@ -205,7 +184,6 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     index
 }
 
-/// Resolve imports transitively. Returns sorted sources.
 fn resolve_transitively(
     entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
@@ -228,7 +206,6 @@ fn resolve_transitively(
     result
 }
 
-/// Load one entry `.dag` file plus its transitive import closure (not the whole tree).
 pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
@@ -276,15 +253,12 @@ fn load_sources_for_entry_with_index(
         seen.insert(mod_path, entry_source.clone());
     }
     let mut sources = resolve_transitively(vec![entry_source.clone()], index, seen);
-    // Module-less entry files have no `module` line, so they never enter `seen`; ensure the
-    // entry path is still in the closure result.
     if !sources.iter().any(|s| s.path == rel_path) {
         sources.push(entry_source);
     }
     Ok(sources)
 }
 
-/// Load and resolve sources from source roots (every `.dag` under the first root).
 fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
     let index = build_module_index(source_roots);
     let first_root = std::path::Path::new(&source_roots[0]);
@@ -321,32 +295,14 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
     sources
 }
 
-/// Outcome of running a single Bool witness (`--claim-run` semantics), without
-/// touching the process exit code. The exit-code contract lives in the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
-    /// Function returned `Bool(true)` — witness holds.
     Pass,
-    /// Function returned `Bool(false)` — witness fails (the perturb-red signal).
     Fail,
-    /// Function returned a non-Bool value; under `--claim-run` the entry must
-    /// return Bool. Carries the rendered value for diagnostics.
     NotBool { got: String },
-    /// The interpreter raised a runtime error.
     RuntimeError { message: String },
 }
 
-/// Resolve one entry `.dag` file's transitive import closure into a typed graph,
-/// or return formatted blocking diagnostics. This is the expensive step
-/// (`build_module_index` + closure resolve + full compile); callers that run
-/// many witnesses against the SAME entry should call this once and reuse the
-/// returned graph (see the `claim_batch` bin).
-///
-/// Single-authority note: this reuses the exact primitives the per-run path in
-/// `handle_run_with_options` uses (`load_sources_for_entry`,
-/// `compile_to_resolved`, `is_interpreter_blocking_diagnostic`). It is an
-/// alternate ORCHESTRATION over those primitives (resolve-once / run-many), not
-/// a second copy of the resolve logic.
 pub fn resolve_entry_graph(
     source_roots: &[String],
     entry_file: &str,
@@ -361,84 +317,13 @@ pub fn resolve_entry_graph(
     resolve_entry_graph_with_index(&index, entry_file)
 }
 
-/// Opaque module source index built from a set of source roots. Pass to
-/// `resolve_entry_with_index` to resolve multiple entries without re-scanning
-/// the filesystem per entry. Used by the `claim_batch` multi-entry green pass.
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
-    /// Lazily-accumulated intern table. Starts empty; grows as new files are
-    /// parsed for the first time. `parse_with_table` advances it via its
-    /// returned `intern_table` field, so every token string gets a stable ID
-    /// regardless of which entry first triggers its parse.
     intern_table: RefCell<Rc<InternTable>>,
-    /// Lazily-populated parse cache: file path → (ParseResult, NewlineIndex).
-    /// Populated on first access for each file; shared across all entry resolves.
     parse_cache: RefCell<HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
-    /// Lazily-populated typed-module cache: module name → its
-    /// `TypecheckModuleResult` (typed module + its diagnostics). Populated on
-    /// first type-reconciliation of each module; reused across all entry resolves
-    /// that share this index.
-    ///
-    /// Why module name is a sound (alias-free) key WITHIN one index: each entry's
-    /// closure is read once into `source_files`, so a module name maps to exactly
-    /// one immutable source file. A module's typed result is a pure function of
-    /// (its own resolved AST) + (the typed results of the modules it imports,
-    /// looked up by name) + (the foundational `std.types` env) — `typecheck_module`
-    /// consults `parent_index` only for those (v1_compiler_infer.rs build_type_env
-    /// / collect_parent_envs), never the rest of the closure, and modules are
-    /// processed in topological order so a module's imports are always already
-    /// typed. The shared interner table grows monotonically, so a token's id is
-    /// stable across entries. Therefore the same name always yields the same typed
-    /// result, and reuse is byte-identical to recomputation. This is the
-    /// resolve-cost lever PR1: it collapses N near-identical full
-    /// type-reconciliations (one per entry, ~30-50 modules each, heavily
-    /// overlapping) into one shared core typed once plus per-entry leaves. Sibling
-    /// to `parse_cache`.
     typed_module_cache: RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
 }
 
-/// Pre-seed `table` with the fixed type-name set that `build_type_env`
-/// (v1_compiler_infer) interns AT TYPE TIME: `kernel_type_set()` (String, Int,
-/// Bool, Json, Unit, …), the Optional family (`Optional`/`Present`/`Absent`/
-/// `value`/`none`), and `compiler_recursive_types()`.
-///
-/// Why this is REQUIRED for the typed-module cache to be sound: `build_type_env`
-/// interns these names into a *local clone* of whatever intern table it is given,
-/// so their ids land after the parse tokens already in that table — i.e. they are
-/// table-SIZE dependent. The shared index table grows as each entry parses, so
-/// without this seed a module typed for an early entry bakes its kernel-type ids
-/// at that entry's table size, while a module typed fresh for a later entry uses
-/// different kernel-type ids; a reused binding (keyed by the early ids) then
-/// misses on lookup and the type collapses to the `Json` fallback — an
-/// order-dependent, verdict-affecting miscompile. Seeding these names into the
-/// SHARED table BEFORE any parse makes `intern()` return the same ids for every
-/// entry's `build_type_env`, so cached and freshly-typed modules cross-reference
-/// correctly.
-///
-/// This only ADDS names `build_type_env` would intern anyway (idempotent intern);
-/// it changes no typecheck semantics. The full claim-witness corpus across
-/// permuted entry orders (vs the no-cache cold resolve as oracle) is the proof
-/// that the seed is complete — see `resolve_typed_cache_equivalence_test`.
-///
-/// SOUNDNESS PROPERTY (born-mark) — INTERN-ID CONTENT-STABILITY.
-/// A module's typed result is content-addressable (a pure function of its content
-/// + its imports' identities) ONLY IF the type-time-interned kernel type-name ids
-/// are content-stable, i.e. independent of how many tokens happen to precede them
-/// in the ambient intern table. Content-addressed memoization (this typed-module
-/// cache; the planned cross-process resolved-graph cache) is sound ONLY over a
-/// pure unit, so this property is a PRECONDITION for caching resolve at all — not
-/// a cache band-aid. It was discovered because the cache surfaced the latent
-/// violation: `build_type_env` assigns kernel-type ids by ambient table size, so
-/// the per-module typed result secretly depended on resolution-context state.
-///   Enforced by: this function (seed the kernel names so their ids are fixed
-///     across every entry in an index).
-///   Witness: `resolve_typed_cache_equivalence_test` (order-permuted, cold-oracle).
-///   TRIPWIRE: anyone who changes the kernel type-name set, the `build_type_env`
-///     type-time interning, or this seed MUST keep the witness green; a red
-///     witness means content-stability regressed and the cache is unsound. If the
-///     instability proves broader than a fixed name-set (genuinely table-SIZE
-///     dependent inside generated infer), that is a typechecker purity defect to
-///     fix in infer, not to paper over by extending this seed.
 fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     let mut t = table;
     for name in v1_rt::map_keys(&kernel_type_set()).iter().cloned() {
@@ -453,10 +338,6 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
     t
 }
 
-/// Scan the given source roots once and return a `MultiEntryIndex`. Only the
-/// filesystem scan happens here; tokenise+parse work is deferred to the first
-/// `resolve_entry_with_index` call that needs each file, so the index build cost
-/// is proportional to the number of .dag files on disk — not to their parse time.
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     MultiEntryIndex {
         source_files: build_module_index(source_roots),
@@ -466,9 +347,6 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     }
 }
 
-/// Resolve one entry's import closure using a pre-built `MultiEntryIndex`.
-/// Uses cached parse trees for all files in the source root, skipping
-/// tokenize+parse per entry.
 pub fn resolve_entry_with_index(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -482,9 +360,6 @@ pub fn resolve_entry_with_index(
     resolve_entry_with_parse_cache(index, entry_file, ResolveTypecheckGate::Strict)
 }
 
-/// Discovery-corpus resolve: threads the SCAFFOLD typecheck advisory gate (floor
-/// scan-coverage only). All other entry points use [`resolve_entry_with_index`]
-/// (Strict).
 pub fn resolve_entry_with_index_for_discovery_corpus(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -516,19 +391,6 @@ fn resolve_entry_graph_with_index(
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
-/// Resolve one entry's closure using a lazily-populated parse cache from
-/// `MultiEntryIndex`. Each file is tokenised and parsed at most once per
-/// session; shared std/ files are reused across all entry resolves.
-///
-/// Cache miss path: tokenise the file, advance the global intern table via
-/// `parse_with_table` (which pre-interns internally), store the result, and
-/// continue. The intern table only grows, so cached parse results stay valid
-/// for all future entries.
-// TODO(dissolution): this function duplicates the tokenize→parse→resolve→normalize→reconcile→
-// ownership pipeline that `resolved_graph_from_sources` drives through `compile_to_resolved`.
-// The duplication exists solely to thread the lazy intern table across cached parses.  When
-// `compile_to_resolved` (or a wrapper) learns to accept a pre-populated parse cache and intern
-// table, fold this back and delete the inline pipeline.
 fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -556,14 +418,11 @@ fn resolve_entry_with_parse_cache(
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
 
     for source in &sources {
-        // Release immutable borrow before any potential mutation below.
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
             None => {
-                // First encounter for this file: tokenise, parse with the
-                // current accumulated intern table, advance the table, cache.
                 let tokens =
                     v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
@@ -574,7 +433,6 @@ fn resolve_entry_with_parse_cache(
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                // Advance the global intern table with tokens from this file.
                 *index.intern_table.borrow_mut() = parsed.intern_table.clone();
                 let entry = (parsed.result.clone(), nl_index);
                 index
@@ -601,8 +459,6 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-    // Snapshot the accumulated intern table after all files in this closure
-    // have been parsed; pass it to reconcile for type-name lookup.
     let global_table = index.intern_table.borrow().clone();
 
     let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
@@ -649,9 +505,6 @@ fn resolve_entry_with_parse_cache(
         return Err(msgs.join("\n"));
     }
 
-    // Ownership validation — same check compile_to_resolved applies after
-    // reconcile (P3 fail-closed parity: claim_batch must not green-light a
-    // graph that gunbc run would block on ownership errors).
     let ownership = v1_compiler_compile::extract_ownership_proofs(typed.clone());
     let ownership_diags = v1_compiler_compile::ownership_diagnostics(ownership);
     if ownership_diags
@@ -669,22 +522,6 @@ fn resolve_entry_with_parse_cache(
     Ok((typed, source_indices))
 }
 
-/// Host-side memoized form of `v1_compiler_infer::reconcile`. Produces the same
-/// `ResolvedGraph` it would, but per-module typed results come from (and populate)
-/// `typed_cache`, so modules shared across many entry resolves are type-reconciled
-/// once instead of once per entry (the resolve-cost lever, PR1).
-///
-/// Single-authority note: this is an alternate ORCHESTRATION over the exact pure
-/// primitives the generated `typecheck_modules` loop drives — `collect_parent_envs`,
-/// `typecheck_module`, `expand_transitive_services`, `build_emit_graph_info` — not a
-/// reimplementation of type checking. It mirrors that loop step-for-step (same per-
-/// module ops, same topological module order, same diagnostic-chunk ordering, same
-/// 5-pass service expansion) and threads a typed-module cache the way
-/// `resolve_entry_with_parse_cache` threads a parse cache. With an empty cache the
-/// output is byte-identical to `reconcile`; a cache hit reuses a result that is, by
-/// the argument on `MultiEntryIndex::typed_module_cache`, equal to recomputation.
-/// (Falsifier: witness verdicts must be byte-identical with the cache warm vs cold —
-/// gated by the claim-witness corpus + perturb pass.)
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -697,9 +534,6 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
 
     for resolved in graph.modules.iter().cloned() {
-        // collect_parent_envs is cheap (import-scoped lookups) and its diagnostics
-        // depend on the live module_index; recompute it every iteration exactly as
-        // the generated loop does — only the expensive typecheck_module is cached.
         let parent_result = v1_compiler_infer::collect_parent_envs(
             resolved.clone(),
             module_index.clone(),
@@ -787,11 +621,6 @@ fn format_error_nodes(
         .join("\n")
 }
 
-/// Compile an already-assembled source closure to a resolved graph, or return
-/// formatted blocking diagnostics. Shared by the per-entry path
-/// (`resolve_entry_graph_with_index`) and the batched discovery path
-/// (`discover_owned_data_decls`), which merges many entry closures into one
-/// compile.
 fn resolved_graph_from_sources(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     typecheck_gate: ResolveTypecheckGate,
@@ -849,11 +678,6 @@ fn resolved_graph_from_sources(
     Ok((graph, result.source_indices.clone()))
 }
 
-/// Build the evaluation context for a resolved graph. The context owns the
-/// per-graph interpreter state (fn index, service registry, `data` cache), so
-/// its lifetime IS the evaluation scope: callers running many functions over
-/// one graph (see `claim_batch`) build this once and pass it to each
-/// `run_claim`/`run_value` call; dropping it releases everything.
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -877,8 +701,6 @@ pub fn make_eval_context_with_fixture_store(
     )
 }
 
-/// Like [`make_eval_context_with_fixture_store`], but threads M4.1 whole-tree precomputed
-/// published-mock keys so hermetic governance is independent of the entry import closure.
 pub fn make_eval_context_with_runtime_options(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -895,7 +717,6 @@ pub fn make_eval_context_with_runtime_options(
     )
 }
 
-/// Source roots that name a `dsl/` tree (whole-tree published-mock-corpus authority for M4.1).
 fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
     let mut dsl: Vec<String> = source_roots
         .iter()
@@ -905,8 +726,6 @@ fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
         })
         .cloned()
         .collect();
-    // Workspace-only `--source-root <repo>` still indexes dsl/ via build_multi_entry_index;
-    // include `<root>/dsl` when present so universal corpus precompute matches.
     for root in source_roots {
         let child = Path::new(root).join("dsl");
         if child.is_dir() {
@@ -918,9 +737,6 @@ fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
     dsl
 }
 
-/// Precompute the published mock corpus operation-key set from the whole dsl/ source tree.
-/// Independent of any witness entry's import closure — the SAME authority the M2
-/// `mock_totality_lens` reads module-by-module.
 pub fn precompute_whole_tree_published_mock_keys(
     source_roots: &[String],
 ) -> Result<std::collections::HashSet<String>, String> {
@@ -951,11 +767,6 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
-/// Run one Bool witness function against an already-resolved graph, classifying
-/// the result the same way `handle_run_with_options`'s `--claim-run` branch
-/// does (Bool true → Pass, false → Fail, anything else → diagnostic), but
-/// without calling `std::process::exit`. Eager data-env is disabled to match
-/// claim-run behavior (witnesses pull data lazily).
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
@@ -969,14 +780,6 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
     }
 }
 
-/// Run one Bool witness with cache-subject-keyed measurement. Sets the eval-tap
-/// subject, records wall + eval self-time into a `PerformanceReceipt`, and leaves
-/// verdict classification to the caller. Eval self-time accumulates only when
-/// `GUNBC_INTERP_PROFILE=1` (zero overhead on the default green path).
-///
-/// SCAFFOLD — v1 host wiring only. P5 receipt: CI floor `DiscoverySummary` Measured
-/// roll-up + keystone witness. dissolve-on: v2 witness runner Realization carrier
-/// (`docs/plans/realization-measurement-loop.md` Phase 0 table).
 pub fn run_claim_measured(
     ctx: &v1_interpreter::InterpContext,
     closure_subject_digest: &str,
@@ -995,12 +798,6 @@ pub fn run_claim_measured(
     (outcome, receipt)
 }
 
-/// Run a function against an already-resolved graph and return its raw
-/// interpreter `Value`, without imposing the `--claim-run` Bool contract. This
-/// is the host-transport read path: the batch executor evaluates a plan function
-/// that returns a structured value (the executor-decided batches) and walks the
-/// result, rather than collapsing it to a single Bool. Eager data-env is
-/// disabled to match the witness/plan-run convention (values pull lazily).
 pub fn run_value(
     ctx: &v1_interpreter::InterpContext,
     function: &str,
@@ -1008,7 +805,6 @@ pub fn run_value(
     v1_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
 }
 
-/// Entry point for `gunbc ci`. Delegates to dsl/tools/gunbc_ci.dag (CiSpec consumer).
 pub fn handle_ci() {
     handle_run_with_options(
         vec!["dsl".to_string(), "src/v2".to_string()],
@@ -1019,7 +815,6 @@ pub fn handle_ci() {
     );
 }
 
-/// Entry point for `dag run`. Called from the generated main.rs.
 pub fn handle_run(
     source_roots: Vec<String>,
     function: String,
@@ -1029,7 +824,6 @@ pub fn handle_run(
     handle_run_with_options(source_roots, function, entry_file, false, claim_run);
 }
 
-/// Entry point with options for dry-run mode.
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -1062,10 +856,8 @@ pub fn handle_run_with_options(
     };
     eprintln!("resolved {} sources", sources.len());
 
-    // Compile through validation (no emission)
     let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
 
-    // Check for errors
     let has_errors = result
         .diagnostics
         .iter()
@@ -1097,7 +889,6 @@ pub fn handle_run_with_options(
         std::process::exit(1);
     }
 
-    // Extract graph (guaranteed present when no errors)
     let graph = match result.graph.as_ref() {
         Some(g) => g,
         None => {
@@ -1106,8 +897,6 @@ pub fn handle_run_with_options(
         }
     };
 
-    // Run the interpreter — keep one context alive for symbol resolution while
-    // printing and classifying the return value (ctrl#1533 phase 3).
     eprintln!("running {}()...", function);
     let execution_mode = if dry_run {
         v1_interpreter::ExecutionMode::Hermetic
@@ -1121,7 +910,6 @@ pub fn handle_run_with_options(
             Ok(val) => {
                 println!("{}", val);
                 if claim_run {
-                    // Witness entry points return Bool; fail-closed like ProcessExit below.
                     match &val {
                         v1_interpreter::Value::Bool(false) => std::process::exit(1),
                         v1_interpreter::Value::Bool(true) => return,
@@ -1135,21 +923,8 @@ pub fn handle_run_with_options(
                         }
                     }
                 }
-                // FAIL-CLOSED EXIT CODE CONTRACT
-                //
-                // Functions invoked via `dag run` MUST return std/process.dag's
-                // ProcessExit variant. The host translates ExitSuccess → 0 and
-                // ExitFailure { code } → code. Any other return value is a
-                // programmer error: the host cannot tell whether the function
-                // succeeded or failed, so it exits 2 with a clear diagnostic.
-                //
-                // This makes silent failure IMPOSSIBLE: a function whose result
-                // type isn't structurally ProcessExit cannot accidentally exit 0
-                // when its rich result represents failure. Compose internal
-                // helpers (check_l1_ratchet → L1RatchetResult) freely; entry
-                // points must wrap their result in ProcessExit explicitly.
                 match classify_exit(&val, &ctx) {
-                    ExitClass::Success => {} // exit 0 (default)
+                    ExitClass::Success => {}
                     ExitClass::Failure(code) => std::process::exit(code),
                     ExitClass::NotProcessExit { type_name } => {
                         eprintln!(
@@ -1172,24 +947,12 @@ pub fn handle_run_with_options(
     });
 }
 
-/// Classification of a `dag run` return value for exit-code mapping.
 enum ExitClass {
     Success,
     Failure(i32),
-    /// The value is not a ProcessExit variant. Carries the actual type
-    /// for the diagnostic.
-    NotProcessExit {
-        type_name: String,
-    },
+    NotProcessExit { type_name: String },
 }
 
-/// Map a Value to its exit-code class. Structural — checks the specific
-/// type and variant names from std/process.dag, never substrings or
-/// naming conventions.
-///
-///   ProcessExit::ExitSuccess              → Success
-///   ProcessExit::ExitFailure { code, .. } → Failure(code)
-///   anything else                         → NotProcessExit (fail-closed at host)
 fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> ExitClass {
     match val {
         v1_interpreter::Value::Variant {
@@ -1221,21 +984,12 @@ fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
     }
 }
 
-// ---------------------------------------------------------------------------
-// discover_owned_data — host transport for Consolidation #4553 resolved-type glob
-// ---------------------------------------------------------------------------
-// These structs serde-mirror the modeled types in v2.compiler.discovery_enumeration
-// (promoted there from v2.test.claim.workflow.discovery_types; the emitted manifest below
-// imports that module). Keep the field shapes in lockstep with that .dag authority.
-
-/// Resolved declaration identity from the typed graph (not authored surface names).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedDeclRef {
     pub module: String,
     pub name: String,
 }
 
-/// Initializer coproduct — arm-specific transport fields only on the matching arm.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "arm", rename_all = "snake_case")]
 pub enum OwnedDataDeclInitializer {
@@ -1249,7 +1003,6 @@ pub enum OwnedDataDeclInitializer {
     },
 }
 
-/// Neutral owned top-level `data` declaration fact (no membership filtering).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OwnedDataDeclRecord {
     pub entry: String,
@@ -1526,7 +1279,6 @@ fn owned_data_initializer_from_body(
     })
 }
 
-/// Owned top-level `data` decls declared in the entry module (not imported-closure decls).
 pub fn owned_data_decls_for_entry(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
@@ -1570,10 +1322,6 @@ pub fn owned_data_decls_for_entry(
                 decl_name, info.name
             ));
         }
-        // Consolidation #4553 co-location convention: corpus markers are named
-        // `data unified_claim_*` (not name-agnostic resolved-type scan). Membership
-        // arm is still resolved from the typed graph; the prefix is an authored
-        // roster anchor, not a grep substitute.
         if !decl_name.starts_with("unified_claim_") {
             continue;
         }
@@ -1629,17 +1377,12 @@ fn path_excluded(path: &Path, exclude_subpaths: &[String]) -> bool {
         .any(|ex| !ex.is_empty() && path_str.contains(ex))
 }
 
-/// Cheap pre-scan before per-entry resolve: corpus markers are co-located
-/// `data unified_claim_*: UnifiedTestClaim = ...` owned decls.
 fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
     content
         .lines()
         .any(|line| line.trim_start().starts_with("data unified_claim_"))
 }
 
-/// Top-level decl names declared by one source file (column-0 item keywords).
-/// Used ONLY to group entry closures into collision-free merged resolves; the
-/// discovered facts themselves still come exclusively from the resolved graph.
 fn top_level_decl_names(content: &str) -> Vec<String> {
     const ITEM_KEYWORDS: [&str; 8] = [
         "data ",
@@ -1667,20 +1410,12 @@ fn top_level_decl_names(content: &str) -> Vec<String> {
     names
 }
 
-/// One merged resolve unit: entry files whose combined import closures declare
-/// no top-level name twice, so a single `compile_to_resolved` over the union
-/// yields the same per-entry facts as per-entry resolves.
 struct DiscoveryResolveGroup {
-    /// (entry path, entry module, count of column-0 `data unified_claim_` markers).
     entries: Vec<(String, String, usize)>,
-    /// file path -> source, union of member entry closures.
     sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-    /// top-level decl name -> declaring file path.
     decl_names: HashMap<String, String>,
 }
 
-/// `None` if the closure can merge into the group; otherwise the first
-/// top-level decl-name collision, as `(name, file already in group, new file)`.
 fn closure_group_conflict(
     group: &DiscoveryResolveGroup,
     closure: &[Rc<v1_compiler_compile::SourceFile>],
@@ -1717,27 +1452,13 @@ fn add_closure_to_group(
     }
 }
 
-/// Discovery output: resolved-type owned-data records plus the resolve-count
-/// receipt consumed by the CI latency ratchet (`--max-resolves`).
 pub struct OwnedDataDiscovery {
     pub records: Vec<OwnedDataDeclRecord>,
     pub entry_count: usize,
-    /// Number of `compile_to_resolved` graph resolves performed. 1 unless a
-    /// top-level decl-name collision between entry closures forces a split.
     pub graph_resolves: usize,
-    /// One line per forced group split: the decl-name collision (name, file
-    /// already in the group, new file) that made the entry start a new group.
     pub group_split_collisions: Vec<String>,
 }
 
-/// Glob claim corpus files, resolve fail-closed, expose owned `data` facts.
-///
-/// Latency shape (the #4633→ratchet history): a resolve costs ~O(closure), and
-/// entry closures overlap almost entirely, so this batches all entries into
-/// collision-free groups and resolves each group ONCE instead of resolving per
-/// entry (formerly ~46 near-identical full resolves per CI run). Facts are
-/// still read per entry from the typed graph; grouping is a pure orchestration
-/// change over the same resolve + extraction primitives.
 pub fn discover_owned_data_decls(
     source_roots: &[String],
     scan_dir: &str,
@@ -1831,9 +1552,6 @@ pub fn discover_owned_data_decls(
             .collect();
         for (entry, entry_module, marker_count) in group.entries {
             let records = owned_data_decls_for_entry(&graph, &si, &entry, &entry_module)?;
-            // Fail-closed guard on the merged-resolve path: every column-0
-            // `data unified_claim_` marker must surface as a resolved record;
-            // a shortfall means a registry collision swallowed a decl.
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
@@ -1897,7 +1615,6 @@ fn illegal_other_init_count(records: &[OwnedDataDeclRecord]) -> usize {
         .count()
 }
 
-/// Host-computed discovery receipt for modeled standing gates (scalar checks, no list fold).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnedDataDiscoveryReceipt {
     pub unified_claim_arm_count: usize,
@@ -1907,7 +1624,6 @@ pub struct OwnedDataDiscoveryReceipt {
     pub transport_projection_complete: bool,
 }
 
-/// Inline manifest list only for small fixture-scale scans; large corpus uses receipt + TSV.
 pub const MANIFEST_INLINE_LIST_MAX: usize = 64;
 
 pub fn compute_owned_data_discovery_receipt(
@@ -1930,7 +1646,6 @@ pub fn compute_owned_data_discovery_receipt(
     })
 }
 
-/// Fail-closed: every BoolWitnessClaim arm projects to exactly one transport row.
 pub fn verify_bool_witness_transport_projection_complete(
     records: &[OwnedDataDeclRecord],
 ) -> Result<(), String> {
@@ -1953,7 +1668,6 @@ fn dag_string_escape_core(s: &str) -> String {
         .replace('\t', "\\t")
 }
 
-/// Fail-closed: manifest scalar fields (paths, names, hashes) must not contain `{`/`}`.
 fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
     if s.contains('{') || s.contains('}') {
         return Err(format!(
@@ -1963,8 +1677,6 @@ fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
     Ok(dag_string_escape_core(s))
 }
 
-/// Embedded raw `.dag` source in manifest string literals — brace-escape pairs with
-/// `v1_compiler_tokenize::process_escapes` (`\{`/`\}` → literal braces).
 fn dag_embedded_dag_source_escape(s: &str) -> String {
     dag_string_escape_core(s)
         .replace('{', "\\{")
@@ -2004,7 +1716,6 @@ fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> Result
     }
 }
 
-/// Emit an ephemeral importable `.dag` manifest (never committed).
 pub fn emit_owned_data_manifest(
     path: &Path,
     records: &[OwnedDataDeclRecord],
@@ -2087,7 +1798,6 @@ pub fn emit_owned_data_manifest(
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
 }
 
-/// TSV rows for BoolWitnessClaim transport: `label<TAB>entry<TAB>function`.
 pub fn owned_data_bool_witness_transport_tsv(
     records: &[OwnedDataDeclRecord],
 ) -> Result<String, String> {
@@ -2120,18 +1830,6 @@ pub fn owned_data_bool_witness_transport_tsv(
     Ok(out)
 }
 
-// ── Floor discovery corpus (shared by claim_batch + claim_executor) ──────────
-//
-// The discovery ROSTER (which `(entry, function)` Bool witnesses make up the CI
-// floor corpus) is a single authority (DESIGN §3): the `--roster-from-discovery`
-// scan in `claim_batch` and the scheduler's `DiscoveryBatch` node (driven by
-// `claim_executor`) both reflect over the SAME corpus via the functions below,
-// rather than either re-coining the roster or duplicating the scan. The exclude
-// set, the `unified_claim_*`/`test fn`/`test data` reflection, and the
-// `*_test.dag`-only convention live here once.
-
-/// One discovered witness row. `label` is for diagnostics; the `(entry,
-/// function)` pair is what gets resolved and run.
 #[derive(Clone)]
 pub struct DiscoveryRow {
     pub label: String,
@@ -2139,7 +1837,6 @@ pub struct DiscoveryRow {
     pub function: String,
 }
 
-/// Per-entry resolve timing (clock 1 of the audit's two-clock split).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryResolveReceipt {
     pub entry: String,
@@ -2147,7 +1844,6 @@ pub struct EntryResolveReceipt {
     pub resolve_nanos: u128,
 }
 
-/// One witness verdict from a discovery-corpus run (for wet/hermetic equivalence).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryWitnessOutcome {
     pub entry: String,
@@ -2155,30 +1851,20 @@ pub struct DiscoveryWitnessOutcome {
     pub outcome: ClaimOutcome,
 }
 
-/// Summary of running the floor discovery corpus: how many witnesses ran, how
-/// many passed, how many were skipped (stateless node-frontier), and a rendered
-/// failure line per non-pass (empty on full green).
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub skipped: usize,
     pub failures: Vec<String>,
-    /// Per-witness outcomes in roster order (wet/hermetic equivalence gate).
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
-    /// Per-entry resolve wall time keyed by closure cache-subject.
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
-    /// Aggregate resolve wall time across distinct entries (nanoseconds).
     pub total_resolve_nanos: u128,
-    /// Per-witness PerformanceReceipt rows keyed by cache-subject (clock 2).
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
-    /// Aggregate measured witness-eval wall time (nanoseconds) — CostAccount.time roll-up.
     pub total_measured_nanos: u128,
 }
 
-/// Enrolled witness `.dag` carrying the scaffold roster entry-prefix authority.
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
     "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
-/// `data` binding name for the single-authority roster entry prefix (§3).
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
@@ -2213,8 +1899,6 @@ fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Resul
     ))
 }
 
-/// Load the scaffold roster entry-prefix from the enrolled witness `.dag` data
-/// binding. Rust filter code must use this — no parallel substring authority.
 pub fn wet_hermetic_scaffold_roster_entry_prefix(
     source_roots: &[String],
 ) -> Result<String, String> {
@@ -2252,20 +1936,10 @@ pub fn wet_hermetic_scaffold_roster_entry_prefix(
     ))
 }
 
-/// Scaffold roster filter: one discoverable `test fn` per extdeps layer with a
-/// published mock corpus under `prefix` (from
-/// `wet_hermetic_scaffold_roster_entry_prefix`). These witnesses exercise the M4
-/// hermetic-realization *model* in pure `.dag` — they do NOT traverse
-/// `eval_service_call` under either Wet or Hermetic, so they cannot observe
-/// mock-vs-live faithfulness. Dissolution: replace with witnesses that dispatch
-/// live transport under Wet and published-mock under Hermetic.
 pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
     !prefix.is_empty() && row.entry.contains(prefix)
 }
 
-/// Row-for-row outcome comparator for the P3c scaffold gate. Returns divergence
-/// lines (empty when equivalent). Teeth: unit-tested with synthetic vectors;
-/// roster integration is vacuous until live-transport witnesses enroll.
 pub fn wet_hermetic_discovery_outcome_divergences(
     wet: &[DiscoveryWitnessOutcome],
     hermetic: &[DiscoveryWitnessOutcome],
@@ -2297,12 +1971,6 @@ pub fn wet_hermetic_discovery_outcome_divergences(
     divergences
 }
 
-/// Default exclude set for floor discovery. Manifest/law files that import the
-/// ephemeral discovery output would otherwise re-enter discovery acyclically;
-/// the manual lane (`test/manual/`) carries its own ExpectPass|ExpectFail
-/// expected-outcome (some pinned red to tracking anchors), so a universal-green
-/// floor must not run them as must-pass. Single home (was duplicated in the
-/// claim_batch bin as `DISCOVERY_EXCLUDES`).
 pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "impossible_bug",
     "test/manual/",
@@ -2310,24 +1978,17 @@ pub const FLOOR_DISCOVERY_EXCLUDES: &[&str] = &[
     "glob_discovery_law.dag",
     "host_discovered_owned_data_manifest.dag",
     "host_source_root_ingest_manifest.dag",
-    // Gate-only: requires host manifest overlay (v2.workflow.source_root_ingest_gate).
     "program_assembly/real_ingest_test.dag",
     "self_host/compiler_closure_emit_from_ingest_test.dag",
     "unified_test_claim_substrate_equivalence.dag",
 ];
 
-/// True if `path` matches any `FLOOR_DISCOVERY_EXCLUDES` subpath. Excluded files
-/// are skipped by BOTH the `unified_claim_*` scan and the `test fn`/`test data`
-/// scan — gate-only / manifest / manual-lane witnesses must not enter the floor.
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
     FLOOR_DISCOVERY_EXCLUDES
         .iter()
         .any(|sub| path.contains(sub))
 }
 
-/// Tolerant `.dag` walk (silently skips unreadable dirs — a gate must not panic
-/// on a transient read error). The eager `collect_dag_files` above panics, which
-/// is wrong for the floor scan.
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
@@ -2343,10 +2004,6 @@ pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Extract `NAME` from every `test fn NAME(...)` / `test data NAME: ...`
-/// declaration in source text (the v2 parser drops the contextual `test`
-/// keyword, so the marker is detected in source text — same posture as the
-/// `data unified_claim_` scan).
 fn scan_test_decl_names(content: &str) -> Vec<String> {
     scan_test_decl_lines(content)
         .into_iter()
@@ -2354,11 +2011,6 @@ fn scan_test_decl_names(content: &str) -> Vec<String> {
         .collect()
 }
 
-/// Like `scan_test_decl_names` but pairs each name with its 1-based declaration line. A
-/// `test fn` is not an AST `module.items` entry (the parser drops the contextual `test`
-/// keyword before the span is recorded), so the node-frontier partition gets its decl line
-/// from source text — the only way to bound a witness body the way an item span bounds a
-/// `data` decl.
 fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     let mut out = Vec::new();
     for (i, line) in content.lines().enumerate() {
@@ -2379,9 +2031,6 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-/// Fail-closed filename hygiene: `.dag` basenames under the source roots must not
-/// contain `__` (legacy flat-dir encoding; use subdirectories). Preserved from
-/// the retired `ci_claim_gate` (#5051).
 pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), String> {
     let mut violations: Vec<String> = Vec::new();
     for root in source_roots {
@@ -2408,11 +2057,6 @@ pub fn check_floor_filename_hygiene(source_roots: &[String]) -> Result<(), Strin
     ))
 }
 
-/// Reflect over the scan dirs for the floor corpus roster: every discovered
-/// `unified_claim_*` BoolWitness decl plus every single-representation
-/// `test fn`/`test data` decl (the latter only in `*_test.dag` files — a `test`
-/// decl found in an implementation file is a hard error). Rows are deduped on
-/// `(entry, function)` and sorted. This is the single roster authority.
 pub fn discover_floor_corpus_rows(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -2454,20 +2098,10 @@ pub fn discover_floor_corpus_rows(
     }
 
     let mut test_fn_violations: Vec<String> = Vec::new();
-    // Import-closure graph captured during the single walk (zero extra IO) — feeds the
-    // inert-lens hygiene backstop below (DESIGN.md §6: an inert lens is a lie). Keyed on
-    // repo-relative paths so it is stable whether callers pass absolute (tests) or relative
-    // (`claim_batch --source-root src/v2`) roots, matching authored `unified_claim_*` entries.
     let mut path_imports: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
-    // Authoring-time construction-justification rule (DESIGN.md §5/§6, ROADMAP §0): every
-    // top-level lens module (`v2.lens.<name>`) must RECORD why its bad-state class is a lens
-    // (validation) rather than construction. The judgment is human residue; its PRESENCE is
-    // structurable, so we capture which lenses carry the `construction_justification` decl during
-    // the same walk (zero extra IO) and fail closed below on any that lack it. This LAYERS ON TOP
-    // of the inert-lens backstop — it does not supersede it (DESIGN.md §6).
     let mut lens_with_justification: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     for root in source_roots {
@@ -2478,8 +2112,6 @@ pub fn discover_floor_corpus_rows(
             let entry = path.to_string_lossy().into_owned();
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
-            // Capture the import graph for EVERY file (even floor-excluded ones — a lens may be
-            // reached only through a non-witness implementation file). Seeds are rows only.
             let rel = repo_relative_dag_path(&entry);
             if let Some(m) = extract_module_path(&content) {
                 if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
@@ -2522,9 +2154,6 @@ pub fn discover_floor_corpus_rows(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
-    // Inert-lens hygiene backstop (DESIGN.md §6): every `v2.lens.*` module must be a discovered
-    // fail-closed witness or be deleted — an inert lens is a lie. This runs over the corpus on
-    // every floor discovery and fails closed if any lens is unreached by the discovered roster.
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
     if !inert.is_empty() {
         return Err(format!(
@@ -2536,11 +2165,6 @@ pub fn discover_floor_corpus_rows(
             inert.join(", ")
         ));
     }
-    // Construction-justification hygiene (DESIGN.md §5/§6, ROADMAP §0): layered ON TOP of the
-    // inert-lens backstop above — every top-level lens module must RECORD its construction
-    // justification (which §5 class + why it is residue, not construction). The judgment's
-    // correctness is unstructurable human residue; the REQUIREMENT to have recorded one is
-    // structurable and fails closed here. (Does NOT supersede the wired-or-deleted check above.)
     let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
     if !unjustified.is_empty() {
         return Err(format!(
@@ -2557,11 +2181,6 @@ pub fn discover_floor_corpus_rows(
     Ok(rows)
 }
 
-/// `true` iff `content` declares the fixed-name `construction_justification` carrier typed as
-/// `ConstructionJustification` (the authoring-time construction-justification rule, DESIGN.md
-/// §5/§6). A text scan over the file — same style as the floor-discovery hygiene gates — so it
-/// runs during the single corpus walk with no resolve cost. The judgment in the decl is the
-/// unstructurable residue; only its PRESENCE is checked here.
 fn declares_construction_justification(content: &str) -> bool {
     content.lines().any(|line| {
         let trimmed = line.trim_start();
@@ -2570,11 +2189,6 @@ fn declares_construction_justification(content: &str) -> bool {
     })
 }
 
-/// Top-level lens modules (`v2.lens.<name>`) authored under the source roots that do NOT record a
-/// `construction_justification` (DESIGN.md §5/§6). Sorted, deduped. An empty result means every
-/// authored lens carries its authoring-time justification. Reuses `is_top_level_lens_module` (the
-/// same single authority for "what is a lens" the inert-lens backstop uses) so the two checks
-/// cover exactly the same set — this one layers on top, it does not redefine the set.
 fn unjustified_lens_modules(
     module_to_path: &std::collections::HashMap<String, String>,
     justified: &std::collections::BTreeSet<String>,
@@ -2589,9 +2203,6 @@ fn unjustified_lens_modules(
     missing
 }
 
-/// Repo-relative, forward-slash form of a walked `.dag` path (strips the absolute workspace
-/// prefix and any leading `./`), so the import-closure graph and authored `unified_claim_*`
-/// `witness_entry` strings key identically regardless of how `source_roots` were spelled.
 fn repo_relative_dag_path(path: &str) -> String {
     let normalized = path.replace('\\', "/");
     let ws = workspace_root();
@@ -2603,9 +2214,6 @@ fn repo_relative_dag_path(path: &str) -> String {
     stripped.trim_start_matches("./").to_string()
 }
 
-/// `true` iff `module` is a top-level lens module `v2.lens.<name>` (exactly three segments —
-/// support/witness sub-modules like `v2.lens.extdeps_shape_transport_policy.module_refs` are
-/// excluded; only the lens itself is held to the wired-or-deleted contract).
 fn is_top_level_lens_module(module: &str) -> bool {
     match module.strip_prefix("v2.lens.") {
         Some(rest) => !rest.is_empty() && !rest.contains('.'),
@@ -2613,9 +2221,6 @@ fn is_top_level_lens_module(module: &str) -> bool {
     }
 }
 
-/// Lens modules (`v2.lens.<name>`) authored under the source roots but NOT reachable from any
-/// discovered witness via transitive imports — the inert set the backstop fails closed on.
-/// Sorted, deduped. An empty result means every authored lens is wired.
 fn inert_lens_modules(
     rows: &[DiscoveryRow],
     path_imports: &std::collections::HashMap<String, Vec<String>>,
@@ -2625,7 +2230,6 @@ fn inert_lens_modules(
     let mut queue: Vec<String> = Vec::new();
     let path_to_module: std::collections::HashMap<&String, &String> =
         module_to_path.iter().map(|(m, p)| (p, m)).collect();
-    // Seed: every discovered witness entry file — its own module plus its direct imports.
     let entry_paths: std::collections::BTreeSet<String> = rows
         .iter()
         .map(|r| repo_relative_dag_path(&r.entry))
@@ -2644,7 +2248,6 @@ fn inert_lens_modules(
             }
         }
     }
-    // Transitive closure over the module import graph.
     while let Some(module) = queue.pop() {
         if let Some(mpath) = module_to_path.get(&module) {
             if let Some(imports) = path_imports.get(mpath) {
@@ -2666,11 +2269,8 @@ fn inert_lens_modules(
     inert
 }
 
-/// Phase 1.5a REDO v2 — stateless node-frontier floor skip (mirrors RunnableDiscoveryBatch).
 pub struct DiscoveryCorpusOptions {
     pub skip_unaffected_node_frontier: bool,
-    /// When true, skip marker/`test fn` roster discovery and run only `explicit_entries`.
-    /// Host tests use this to exercise skip transport without walking the full floor corpus.
     pub explicit_roster_only: bool,
 }
 
@@ -2683,8 +2283,6 @@ impl Default for DiscoveryCorpusOptions {
     }
 }
 
-/// Default diff policy — witness-gated to `floor_skip_git_diff_policy()` /
-/// `gunbc.ci_spec.diff_policy` (`floor_test_diff_policy_matches_ci_spec_holds`).
 const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
 const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
 
@@ -2693,7 +2291,6 @@ enum FloorGitDiffOutcome {
     UnifiedProduced(String),
 }
 
-/// New-side inclusive line range from one unified-diff hunk (`git diff -U0`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FileLineRange {
     start: i64,
@@ -2701,9 +2298,6 @@ struct FileLineRange {
 }
 
 fn floor_git_diff_range() -> Result<String, String> {
-    // Injection seam: the unified diff text is the real input to the affected-set; git is
-    // one transport for obtaining it. A caller (host test / CI step) may supply the text
-    // directly via GUNBC_CI_DIFF_UNIFIED; production leaves it unset and shells to git.
     if let Ok(injected) = std::env::var("GUNBC_CI_DIFF_UNIFIED") {
         return Ok(injected);
     }
@@ -2736,14 +2330,12 @@ fn normalize_repo_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
 }
 
-/// Match a diff-side repo-relative path to a witness entry path (absolute or relative).
 fn diff_file_matches_entry(diff_file: &str, entry_path: &str) -> bool {
     let file = normalize_repo_path(diff_file);
     let entry = normalize_repo_path(entry_path);
     file == entry || entry.ends_with(&file) || file.ends_with(&entry)
 }
 
-/// Parse unified diff output into new-side line ranges per repo-relative file path.
 fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
@@ -2787,8 +2379,6 @@ fn newline_index_for_span<'a>(
     })
 }
 
-/// Fuzzy repo-path equality (abs vs repo-relative): one path ends with the other after
-/// normalization. Mirrors the lookup in `newline_index_for_span`.
 fn span_file_matches(span_file: &str, target_norm: &str) -> bool {
     let s = normalize_repo_path(span_file);
     s == target_norm || s.ends_with(target_norm) || target_norm.ends_with(&s)
@@ -2809,7 +2399,6 @@ fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::Interp
     }
 }
 
-/// Is `val` a substrate `Node` record value?
 fn value_is_node(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
     matches!(
         val,
@@ -2817,13 +2406,6 @@ fn value_is_node(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContex
     )
 }
 
-/// Collect every `Node`-valued sub-tree reachable from `val` (the evaluated value of a
-/// changed data item). A changed data item conservatively contributes every Node it
-/// denotes to the rerun frontier — seeding only from changed *TestClaims* is fail-open
-/// (editing a plain `Node` datum or a std fn a witness depends on would seed nothing and
-/// the witness would skip silently). The witness-touch check (`==` / subtree-by-identity)
-/// then decides which witnesses actually depend on a changed node. Over-collect within a
-/// changed item, never under-collect (fail-closed).
 fn collect_node_values(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -2877,20 +2459,10 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-/// Node-precise skip seeds from git unified-diff line ranges. String-keyed (no `Value`)
-/// so the struct is `Send` and a clone can ride into each width-shard thread.
 #[derive(Clone, Default)]
 struct NodeFrontierSeeds {
-    /// `(repo-relative file, data item name)` for every `data` declaration whose span
-    /// overlaps the diff (re-evaluated per entry into substrate `Node`s).
     overlapping_data_items: HashSet<(String, String)>,
-    /// `(repo-relative file, witness fn name)` for every `test fn` whose own body span was
-    /// edited — that witness's behavior IS the diff, so it must run (finding 1, fail-closed).
     edited_test_fns: HashSet<(String, String)>,
-    /// Fail-closed escape hatch: a change the node-frontier cannot bound — a non-`.dag`
-    /// file (e.g. the Rust seed), a `.dag` that fails to resolve (finding 2), an
-    /// unparsed/empty `.dag`, a module/import (preamble) edit, or a `fn`/`type`/`service`
-    /// declaration edit — disables the skip so the full corpus runs.
     force_run_all: bool,
 }
 
@@ -2903,11 +2475,6 @@ impl NodeFrontierSeeds {
     }
 }
 
-/// Node-precise frontier seeds: classify each changed line of each changed `.dag` file by
-/// the top-level declaration whose source span owns it. A `data` decl joins the rerun
-/// frontier; a `test fn` decl force-runs that witness; anything the frontier cannot bound
-/// (see `force_run_all`) fails closed to a full run. Pure over the AST — the per-entry
-/// touch check (`entry_touches_frontier_seeds`) does the substrate evaluation.
 fn collect_frontier_seeds_from_diff_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
@@ -2916,14 +2483,10 @@ fn collect_frontier_seeds_from_diff_line_ranges(
     let mut edited_test_fns = HashSet::new();
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            // A non-`.dag` change (the Rust seed / interpreter) can flip any witness's
-            // result; the node-frontier only models the `.dag` substrate → fail closed.
             return Ok(NodeFrontierSeeds::run_all());
         }
         let file_norm = normalize_repo_path(file_path);
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
-            // Finding 2: a changed `.dag` we cannot resolve contributes nothing to the
-            // frontier; witnesses depending on it must not be assumed green → fail closed.
             Ok(pair) => pair,
             Err(_) => return Ok(NodeFrontierSeeds::run_all()),
         };
@@ -2931,18 +2494,7 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             Ok(c) => c,
             Err(_) => return Ok(NodeFrontierSeeds::run_all()),
         };
-        // `test fn` is stripped of its `test` marker before parse, so the AST cannot tell a
-        // witness from a plain `fn`; match names against the same text scan discovery uses.
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        // Unified, source-ordered line partition of every top-level declaration. `data`/`fn`/
-        // `type`/`service` come from the AST (`module.items`) at their decl line; a `test fn`
-        // is NOT an AST item, so its decl line comes from the same text scan discovery uses.
-        // Both kinds are needed as boundaries: without the scanned `test fn` lines every
-        // witness body would fall into the *last* `data` item's trailing span, so a
-        // witness-body edit would be misattributed to that node and the witness could skip on
-        // a change to its own behavior — a fail-open hole (finding 1). Each declaration owns
-        // [its line .. next decl's line − 1] (EOF for the last), so every changed line maps to
-        // exactly one declaration. (line, name, is_data)
         let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
@@ -2967,8 +2519,6 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             return Ok(NodeFrontierSeeds::run_all());
         }
         decls.sort_by_key(|(line, _, _)| *line);
-        // A change in the preamble (module decl / imports, before the first declaration)
-        // can re-resolve every symbol in the file → unbounded effect → fail closed.
         if ranges.iter().any(|r| r.start < decls[0].0) {
             return Ok(NodeFrontierSeeds::run_all());
         }
@@ -2983,8 +2533,6 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             } else if *is_data {
                 overlapping_data_items.insert((file_norm.clone(), name.clone()));
             } else {
-                // A changed `fn`/`type`/`service` declaration can affect any dependent
-                // witness transitively; the node-frontier can't bound that → fail closed.
                 return Ok(NodeFrontierSeeds::run_all());
             }
         }
@@ -2996,8 +2544,6 @@ fn collect_frontier_seeds_from_diff_line_ranges(
     })
 }
 
-/// Re-evaluate changed data items in the *entry* context so frontier `Node` values share
-/// the same `InterpContext` as the witness claims (`==` / subtree checks are ctx-sensitive).
 fn entry_frontier_nodes_from_seeds(
     ctx: &v1_interpreter::InterpContext,
     entry_path: &str,
@@ -3006,11 +2552,6 @@ fn entry_frontier_nodes_from_seeds(
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for (_file, name) in &seeds.overlapping_data_items {
-        // A witness depends on a changed node whether it lives in the entry's OWN file or an
-        // imported one, so the gate is "does this entry's closure declare `name`?" — not
-        // "is the changed file the entry file?". The old file-equals-entry filter was a §5
-        // fail-open hole: an edit to a shared imported `.dag` (e.g. a std node) was invisible
-        // to every importing witness, which then skipped on a change it actually depends on.
         if !ctx.item_registry.contains_key(name) {
             continue;
         }
@@ -3033,10 +2574,6 @@ fn entry_frontier_nodes_from_seeds(
     Ok(out)
 }
 
-/// Does any witness in `entry_path` depend on a changed `data` node? Re-evaluates the
-/// overlapping data items in *this* entry's context (a claim edited in its own file lands
-/// here too: its `lhs`/`rhs` `Node`s join the frontier and the claim touches them). An
-/// edited `test fn` body is handled separately at the row level (`edited_test_fns`).
 fn entry_touches_frontier_seeds(
     ctx: &v1_interpreter::InterpContext,
     entry_path: &str,
@@ -3054,9 +2591,6 @@ fn entry_claims_touch_frontier(
     frontier: &v1_interpreter::Value,
 ) -> Result<bool, String> {
     let mut saw_claim = false;
-    // Same active-context guard as the frontier-seed path: the data initializers
-    // include FreeMonoid Variant chains (`test_claim_evaluation_nodes`) that only
-    // decode while ACTIVE_CTX is set (root fix, #5295).
     let initializer_values = v1_interpreter::with_active_context(ctx, || {
         v1_interpreter::eval_data_initializer_values(ctx)
     })
@@ -3099,18 +2633,9 @@ fn entry_claims_touch_frontier(
             }
         }
     }
-    // Fail-closed: no TestClaim surface in this entry → always run the witness.
     Ok(!saw_claim)
 }
 
-/// Run the whole floor discovery corpus through one shared module index
-/// (resolve-once-per-entry), returning a pass/fail summary. `explicit_entries`
-/// are appended to the discovered roster with `(entry, function)` dedup — exactly
-/// the `claim_batch --roster-from-discovery` + `--entry`/`--function` shape, so
-/// one `DiscoveryBatch` node equals the whole `claim_batch` floor step.
-/// Fail-closed: an empty roster is an error (a zero-witness corpus is never a
-/// successful run). This is the `DiscoveryBatch` scheduler-node handler;
-/// `claim_batch` keeps its own timing/stats loop but shares the roster.
 pub fn run_discovery_corpus(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -3137,17 +2662,12 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
-    // Roster-only (skip the whole-tree walk): either a caller that pins a
-    // representative witness set via `explicit_roster_only` (host skip tests), or the
-    // wet/hermetic equivalence gate (empty scan_dirs + explicit entries).
     let mut rows =
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
             discover_floor_corpus_rows(source_roots, scan_dirs)?
         };
-    // Append explicit rows with (entry, function) dedup, then re-sort so each
-    // entry's witnesses stay grouped for the resolve-once loop below.
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
         .map(|r| (r.entry.clone(), r.function.clone()))
@@ -3200,19 +2720,8 @@ pub fn run_discovery_corpus_with_options(
     let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier
         && !line_ranges_by_file.is_empty()
     {
-        // The frontier analysis resolves only the changed `.dag` files, to locate which of
-        // their declarations moved. `resolve_entry_with_index` warms the index's
-        // interior-mutable caches (parse / intern / typed-module), so resolving over the
-        // corpus's own `index` would let this read-only analysis pre-seed — and, under the
-        // known v2 generic-instantiation bootstrap limitation, corrupt — a module the corpus
-        // later reuses: a workflow entry resolved first caches `FreeMonoid<T>` without its
-        // variants, and every later witness then reports `Empty`/`Cons` "not found". Resolve
-        // over a throwaway index so the analysis cannot perturb the corpus it decides over
-        // (the width>1 shards already build a fresh index per thread; this gives the width==1
-        // path the same isolation). Cache impurity oracle: cold-vs-warm resolve must agree.
         let frontier_index = build_multi_entry_index(source_roots);
         match collect_frontier_seeds_from_diff_line_ranges(&frontier_index, &line_ranges_by_file) {
-            // `force_run_all` (a change the frontier can't bound) disables the skip.
             Ok(seeds) => (!seeds.force_run_all, seeds),
             Err(msg) => {
                 eprintln!(
@@ -3225,9 +2734,6 @@ pub fn run_discovery_corpus_with_options(
         (false, NodeFrontierSeeds::default())
     };
 
-    // Width realization (§3 peripheral): shard whole entry-groups across worker threads;
-    // the topology (which witnesses run vs. skip) is unchanged — only host fan-out differs.
-    // Seeds are string-keyed (Send), so each shard shares a clone of the skip decision.
     let width = parallel_width.max(1);
     if width == 1 {
         return run_discovery_rows(
@@ -3278,8 +2784,6 @@ pub fn run_discovery_corpus_with_options(
     Ok(merge_discovery_summaries(summaries))
 }
 
-/// Partition row indices by whole entry groups (preserve resolve-once warmth), then
-/// round-robin groups across `parallel_width` shards.
 fn shard_row_indices_by_entry(rows: &[DiscoveryRow], parallel_width: usize) -> Vec<Vec<usize>> {
     let width = parallel_width.max(1);
     let mut entry_groups: Vec<Vec<usize>> = Vec::new();
@@ -3336,9 +2840,6 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
     merged
 }
 
-/// Run an ordered slice of discovery rows against a shared multi-entry index. Rows must be
-/// sorted by `(entry, function)` so resolve-once-per-entry holds. `skip_enabled` +
-/// `frontier_seeds` carry the node-precise floor skip decision.
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
@@ -3395,8 +2896,6 @@ fn run_discovery_rows(
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
         }
-        // Finding 1 (fail-closed): a witness whose own `test fn` body span was edited must
-        // run even when no `data` node it reads changed — its behavior IS the diff.
         let function_edited = skip_enabled
             && frontier_seeds.edited_test_fns.iter().any(|(file, func)| {
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
@@ -3517,9 +3016,6 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
     }
 
-    /// `test fn`s are not AST items, so the partition gets their decl lines from source text.
-    /// Without these boundaries a witness-body edit would fall into the last `data` item's
-    /// trailing span (the finding-1 fail-open). Pin the 1-based line pairing.
     #[test]
     fn scan_test_decl_lines_pairs_names_with_1_based_lines() {
         let source = "module m\n\ndata d: Int = 1\n\ntest fn witness_a() -> Bool { true }\n\ntest data witness_b: Int = 2\n";
@@ -3530,10 +3026,6 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
     }
 
-    /// §5 discriminating receipt: same FILE, two different nodes. A node a claim references
-    /// → the entry touches the frontier (runs). An ORPHAN node referenced by no claim → the
-    /// entry does NOT touch (skips). Same file, different nodes, different outcomes: only
-    /// true node precision (not file-level) can produce the orphan skip.
     #[test]
     fn node_precise_same_file_referenced_vs_orphan_discriminates() {
         let ws = workspace_root();
@@ -3580,27 +3072,14 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     }
 }
 
-// ---------------------------------------------------------------------------
-// discover_source_root_ingest — host transport for Stage C Lane 3a SourceRootIngest
-// ---------------------------------------------------------------------------
-// Mirrors v2.compiler.source_authority.{DagSourceReadWitness, SourceRootIngest,
-// SourceRootProvenanceCoverageReceipt}. Keep field shapes in lockstep with that .dag authority.
-
-/// One host-read `.dag` source file projected to the modeled ingest witness shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
-    /// Grounded source-tree provenance: the `SourceRootRef` variant token (`V2Tree` / `DslTree`)
-    /// for the `--source-root` this file was actually read from. Filesystem truth at ingest —
-    /// keep in lockstep with `v2.std.cross_tree.import_model.SourceRootRef`.
     pub source_root: String,
 }
 
-/// Map a `--source-root` path to its `SourceRootRef` variant token. Fail-closed on an
-/// unrecognized root. Authority: `gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dsl]`
-/// realized as the closed coproduct `SourceRootRef = V2Tree | DslTree`.
 fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
     match root.trim_end_matches('/') {
         "src/v2" => Ok("V2Tree".to_string()),
@@ -3613,16 +3092,6 @@ fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
     }
 }
 
-/// Attribute a host-read file to the `--source-root` it came from (grounded in the actual
-/// filesystem path, NOT the module's self-declared QN prefix), then map to its
-/// `SourceRootRef` variant. Fail-closed: a path matching zero or 2+ roots is an error.
-///
-/// Both the file path and the roots are first normalized to repo-relative form
-/// (`repo_relative_dag_path`, the same workspace-anchored authority the import-closure keying
-/// uses) so admission is invocation-independent: an ABSOLUTE `--source-root`
-/// (`<ws>/src/v2`, as host tests pass) and a RELATIVE one (`src/v2`, as `claim_batch` passes)
-/// both ground to the same `src/v2`/`dsl` and map to the same `SourceRootRef`. Without this,
-/// an absolute root reached the variant map verbatim and fail-closed as `unknown --source-root`.
 fn source_root_ref_token_for_path(
     file_path: &str,
     source_roots: &[String],
@@ -3681,7 +3150,6 @@ fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
     source_root_ingest_symbol_from_stem(stem)
 }
 
-/// Parsed `Admission` facts for the scoped `--entry` module (subject + import targets).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRootEntryAdmission {
     pub subject: Vec<String>,
@@ -3705,9 +3173,6 @@ fn parse_dotted_module_path(path: &str) -> Option<Vec<String>> {
     }
 }
 
-/// Parse `module …` and `import …` lines from an entry `.dag` source for manifest admission.
-/// Bootstrap host transport only — same lightweight line-scan shape as `extract_module_path`;
-/// dissolves when v2 owns ingest-side admission projection.
 pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntryAdmission, String> {
     let mut subject: Option<Vec<String>> = None;
     let mut imports: Vec<Vec<String>> = Vec::new();
@@ -3780,10 +3245,6 @@ mod manifest_emit_tests {
 
     use super::source_root_ref_token_for_path;
 
-    // Discriminating: grounded source-root tag comes from the FILE'S actual --source-root
-    // (filesystem truth), so a `dsl/`-rooted file tags DslTree even when its module decl
-    // would QN-guess otherwise, and a `src/v2/` file tags V2Tree. Fail-closed on a path
-    // under no root (or 2+).
     #[test]
     fn source_root_token_grounds_in_filesystem_location() {
         let roots = vec!["src/v2".to_string(), "dsl".to_string()];
@@ -3795,24 +3256,14 @@ mod manifest_emit_tests {
             source_root_ref_token_for_path("dsl/std/algebra.dag", &roots).unwrap(),
             "DslTree"
         );
-        // src/v2 file declaring a non-`v2.`-prefixed module (e.g. extdeps.shell) still tags
-        // V2Tree — the FS truth, not the QN guess (this is exactly the case the QN-prefix
-        // fallback mis-tagged as DslTree).
         assert_eq!(
             source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
             "V2Tree"
         );
-        // fail-closed: path under no declared root.
         assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
-        // boundary: a sibling dir sharing a prefix must not match (src/v20 ≠ src/v2).
         assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
     }
 
-    // Discriminating regression for the abs-vs-rel admission bug: ABSOLUTE roots + an absolute
-    // file path (exactly how the host manifest tests invoke discover_source_root_reads_for_entry)
-    // must ground to the same SourceRootRef as the repo-relative form. Before the
-    // repo_relative_dag_path normalization, an absolute root reached the variant map verbatim and
-    // fail-closed as `unknown --source-root`. Goes RED on revert of that normalization.
     #[test]
     fn source_root_token_admits_absolute_roots() {
         let ws = super::workspace_root();
@@ -3820,7 +3271,6 @@ mod manifest_emit_tests {
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dsl").to_string_lossy().into_owned(),
         ];
-        // absolute file under an absolute root
         assert_eq!(
             source_root_ref_token_for_path(
                 ws.join("src/v2/std/algebra.dag").to_str().unwrap(),
@@ -3837,12 +3287,10 @@ mod manifest_emit_tests {
             .unwrap(),
             "DslTree"
         );
-        // mixed: repo-relative file path against absolute roots also grounds correctly.
         assert_eq!(
             source_root_ref_token_for_path("dsl/std/algebra.dag", &abs_roots).unwrap(),
             "DslTree"
         );
-        // fail-closed survives normalization: a file under no root is still rejected.
         assert!(source_root_ref_token_for_path(
             ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
             &abs_roots
@@ -3892,8 +3340,6 @@ fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
         .any(|sub| path.contains(sub) || path.ends_with(sub))
 }
 
-/// Walk `scan_dir` for `.dag` files, read source text, fail-closed on missing module
-/// headers or duplicate module paths. `source_roots` must exist (compile overlay roots).
 pub fn discover_source_root_reads(
     source_roots: &[String],
     scan_dir: &str,
@@ -3954,8 +3400,6 @@ pub fn discover_source_root_reads(
     Ok(records)
 }
 
-/// Parse-level import closure for one entry `.dag` file — same scope as
-/// `--claim-run --entry` / `load_sources_for_entry`, projected to ingest witnesses.
 pub fn discover_source_root_reads_for_entry(
     source_roots: &[String],
     entry_path: &str,
@@ -4022,7 +3466,6 @@ fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<St
     Ok(out)
 }
 
-/// Emit an ephemeral importable `.dag` manifest (never committed).
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
@@ -4124,7 +3567,6 @@ mod inert_lens_hygiene_tests {
         assert!(is_top_level_lens_module(
             "v2.lens.extdeps_shape_transport_policy"
         ));
-        // support/witness sub-modules are NOT the lens itself.
         assert!(!is_top_level_lens_module(
             "v2.lens.extdeps_shape_transport_policy.module_refs"
         ));
@@ -4135,9 +3577,6 @@ mod inert_lens_hygiene_tests {
         assert!(!is_top_level_lens_module("v2.lens."));
     }
 
-    // Discriminating witness for the detector: it goes RED on an unreached lens, GREEN once a
-    // discovered witness reaches it (directly or transitively). An always-green check would be
-    // the very coverage-by-illusion (DESIGN.md §6) the backstop exists to kill.
     #[test]
     fn detector_red_on_unreached_green_on_wired() {
         let mut module_to_path: HashMap<String, String> = HashMap::new();
@@ -4148,11 +3587,9 @@ mod inert_lens_hygiene_tests {
         );
         path_imports.insert("src/v2/lens/demo.dag".to_string(), vec![]);
 
-        // No discovered witness reaches it → inert (RED).
         let inert = inert_lens_modules(&[], &path_imports, &module_to_path);
         assert_eq!(inert, vec!["v2.lens.demo".to_string()]);
 
-        // A discovered witness importing it → wired (GREEN).
         module_to_path.insert(
             "v2.test.lens_demo.w".to_string(),
             "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
@@ -4167,7 +3604,6 @@ mod inert_lens_hygiene_tests {
             "wiring a discovered witness must clear the inert flag"
         );
 
-        // Transitive: a sibling lens reached only through `demo` (lens-imports-lens) is wired.
         module_to_path.insert("v2.lens.sib".to_string(), "src/v2/lens/sib.dag".to_string());
         path_imports.insert("src/v2/lens/sib.dag".to_string(), vec![]);
         path_imports.insert(
@@ -4180,8 +3616,6 @@ mod inert_lens_hygiene_tests {
         );
     }
 
-    // Whole-corpus enforcement: floor discovery over the real witness roots must succeed, which
-    // (per the backstop wired into `discover_floor_corpus_rows`) means zero inert lenses.
     #[test]
     fn floor_corpus_has_no_inert_lenses() {
         let ws = workspace_root();
@@ -4219,9 +3653,6 @@ mod construction_justification_hygiene_tests {
             .to_path_buf()
     }
 
-    // The scan predicate is the structurable half of the rule: it sees the recorded decl, not its
-    // (unstructurable) correctness. RED when the carrier is absent — exactly the strip-and-revert
-    // discriminator the brief requires.
     #[test]
     fn justification_scan_predicate() {
         let with = "module v2.lens.demo\n\
@@ -4232,19 +3663,14 @@ mod construction_justification_hygiene_tests {
             }\n";
         assert!(declares_construction_justification(with));
 
-        // A bare name without the type annotation is NOT a recorded justification.
         assert!(!declares_construction_justification(
             "data construction_justification_note: String = \"todo\"\n"
         ));
-        // Stripped of the decl entirely → RED.
         assert!(!declares_construction_justification(
             "module v2.lens.demo\ndata other: String = \"z\"\n"
         ));
     }
 
-    // Discriminating witness for the detector: a top-level lens with NO recorded justification is
-    // RED; recording one clears it. An always-green check would be the coverage-by-illusion
-    // (DESIGN.md §6) this rule layers onto the backstop to prevent.
     #[test]
     fn detector_red_on_missing_green_on_recorded() {
         let mut module_to_path: HashMap<String, String> = HashMap::new();
@@ -4252,8 +3678,6 @@ mod construction_justification_hygiene_tests {
             "v2.lens.demo".to_string(),
             "src/v2/lens/demo.dag".to_string(),
         );
-        // Support/sub-modules and non-lens modules are NOT subject to the rule (same set as the
-        // inert-lens backstop, via is_top_level_lens_module).
         module_to_path.insert(
             "v2.lens.common.construction_justification".to_string(),
             "src/v2/lens/common/construction_justification.dag".to_string(),
@@ -4275,9 +3699,6 @@ mod construction_justification_hygiene_tests {
         );
     }
 
-    // Whole-corpus enforcement, green-by-execution: floor discovery over the real roots succeeds,
-    // which (per the check wired into `discover_floor_corpus_rows`) means every authored
-    // `v2.lens.*` module records its construction-justification. Strip one and this goes RED.
     #[test]
     fn floor_corpus_every_lens_is_justified() {
         let ws = workspace_root();

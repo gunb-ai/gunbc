@@ -1,8 +1,4 @@
-// Status: Wave-0 eval regression anchor.
-
-
 module v2.test.manual.diagnostic_assert_eval
-
 
 import v2.compiler.eval {
   TestClaimEvalSubject,
@@ -41,7 +37,6 @@ fn diag_assert_node() -> Node {
   stub_empty_conj
 }
 
-
 fn diag_assert_d() -> Diagnostic {
   Diagnostic {
     reason: ^diag_assert_reason,
@@ -49,7 +44,6 @@ fn diag_assert_d() -> Diagnostic {
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
-
 
 fn diag_assert_other_d() -> Diagnostic {
   Diagnostic {
@@ -59,26 +53,20 @@ fn diag_assert_other_d() -> Diagnostic {
   }
 }
 
-
 data rejected_expected_rejection: NonEmptyDiagnostics = diagnostics_singleton(d: diag_assert_d())
-
 
 data rejected_expected: Outcome<Node> = Rejected { diagnostics: rejected_expected_rejection }
 
-
 data rejected_same: Outcome<Node> = rejected_expected
-
 
 data rejected_other: Outcome<Node> = Rejected {
   diagnostics: diagnostics_singleton(d: diag_assert_other_d())
 }
 
-
 data accepted_actual: Outcome<Node> = Accepted {
   value: diag_assert_node(),
   diagnostics: None
 }
-
 
 data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim match",
@@ -88,7 +76,6 @@ data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim mismatch",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -97,7 +84,6 @@ data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data witness_diagnostic_claim_accepted_fail: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim accepted fail",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -105,7 +91,6 @@ data witness_diagnostic_claim_accepted_fail: TestClaim = DiagnosticClaim {
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data witness_diagnostic_assert_match_pass: Bool = match run_test_claim_assert(
   claim: witness_diagnostic_claim_match,
@@ -117,7 +102,6 @@ data witness_diagnostic_assert_match_pass: Bool = match run_test_claim_assert(
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-
 data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert(
   claim: witness_diagnostic_claim_mismatch,
   actual: rejected_other,
@@ -128,11 +112,9 @@ data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-
 fn empty_node_verdicts() -> List<Verdict<TestClaimEvalSubject<Node>, Node>> {
   []
 }
-
 
 data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert(
   claim: witness_diagnostic_claim_accepted_fail,
@@ -144,13 +126,11 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-
 data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_node_verdicts(), at: diag_assert_node()) {
   Pass => false
   Fail { actual: _, falsification: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
-
 
 fn deferred_verdict() -> Verdict<TestClaimEvalSubject<Node>, Node> {
   Deferred {
@@ -158,7 +138,6 @@ fn deferred_verdict() -> Verdict<TestClaimEvalSubject<Node>, Node> {
     diagnostic: eval_diagnostic(reason: ^diag_assert_reason, node: diag_assert_node())
   }
 }
-
 
 data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()], at: diag_assert_node()) {
   Pass => false

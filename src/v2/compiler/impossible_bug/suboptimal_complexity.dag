@@ -1,20 +1,4 @@
-// Scope: TestClaim — suboptimal-complexity contract violation impossible-bug
-//        class (R1). There is NO `complexity ≤ O(...)` annotation: complexity
-//        IS coercion-cost, DERIVED by
-//        lens/complexity.dag from Node structure. An operation whose
-//        structural context bounds its cost (the bound its consuming
-//        position / algebra inhabitance permits) but whose lens-derived
-//        complexity exceeds that bound MUST error at compile time, not
-//        review time. Bound = structural requirement; cost = lens-derived;
-//        neither is a tag (feedback_no_annotations — compositional only).
-// Anchor: enumerable impossible-bug class R1 (DESIGN.md §5 fail-closed) — the
-//         CLASS only; an "annotated complexity ≤ O(n log n)" wording
-//         is annotation shorthand, the modeled mechanism is a structural
-//         cost bound + lens derivation. Also lens/complexity.dag.
-
-
 module v2.test.impossible_bug.suboptimal_complexity
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -46,7 +30,6 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-
 fn complexity_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -58,7 +41,6 @@ fn complexity_contract(body: Node) -> Node {
 }
 }
 
-
 fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) -> NonEmptyDiagnostics {
   diagnostics_singleton(
     d: Diagnostic {
@@ -69,12 +51,9 @@ fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) 
   )
 }
 
-
 data within_bound_input: Node = complexity_contract(body: atom_node(s: ^complexity_body_linear_symbol))
 
-
 data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: ^complexity_body_quadratic_symbol))
-
 
 data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
@@ -83,7 +62,6 @@ data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
   expected_value: within_bound_input,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticClaim {
   label: "complexity bound rejects lens-derived over-cost body",
@@ -97,9 +75,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticCla
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
-
 
 data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {
   label: "complexity inhabitance rejects contradictory body cost",
