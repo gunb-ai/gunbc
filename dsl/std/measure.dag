@@ -177,15 +177,21 @@ fn gibibyte_scale_factor_bytes() -> Nat {
   1073741824
 }
 
+// Single authority for the IEC binary scale step (2^10). The Mebi/Tebi memory factors
+// derive from this and the gibibyte authority above — no per-scale magic literal.
+fn kibi_factor() -> Nat {
+  1024
+}
+
 // Bytes per unit at Memory scale `s` (One = byte; Gibi = 2^30 bytes per gibibyte).
 // Fail-closed (§5): SI decimal scales are not memory-capacity factors — returns Absent.
 fn memory_scale_factor_bytes(s: Scale) -> Nat? {
   match s {
     One  => Present { value: 1 }
-    Kibi => Present { value: 1024 }
-    Mebi => Present { value: 1048576 }
+    Kibi => Present { value: kibi_factor() }
+    Mebi => Present { value: kibi_factor() * kibi_factor() }
     Gibi => Present { value: gibibyte_scale_factor_bytes() }
-    Tebi => Present { value: 1099511627776 }
+    Tebi => Present { value: gibibyte_scale_factor_bytes() * kibi_factor() }
     Atto  => none
     Femto => none
     Pico  => none
@@ -319,11 +325,17 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 // DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
 // carrier; Information's FIRST inhabitant — sets precedent: Information = digital
 // bits, atomic unit at scale One).
-// 🟡 feature:memory-information-byte-bit-conversion — bind first cross-conversion
-// consumer needing Memory <-> Information (byte <-> bit x8). x8 is non-decimal so
-// it will NOT be an SI Scale; lands as a separate sub-unit authority (same pattern
-// as currency ISO minor-unit at lines 205-209). Dissolve-on: first consumer.
+// 🟢 feature:memory-information-byte-bit-conversion — DISSOLVED: the byte<->bit sub-unit
+// authority is `bits_per_byte` below; its first cross-conversion consumer is
+// product.hardware_selection.dram_channel_bus_bytes (bit-width / bits_per_byte = bytes).
+// x8 is non-decimal so it is NOT an SI Scale — a separate sub-unit authority, as foretold.
 type BitWidth = Measure<Information, One, Nat>
+
+// Cross-unit single authority (IEC 80000-13): 8 bits per byte — the Information<->Memory
+// bridge. One place owns the "8"; a bit-width divided by it is a byte count.
+fn bits_per_byte() -> Nat {
+  8
+}
 
 // Dimensional alias for sustained per-thread clock rate (SI hertz).
 type Hertz = Measure<Frequency, One, Nat>
