@@ -6,9 +6,11 @@ Purpose: one reviewable place for the three of us to converge on *what's running
 
 ---
 
-## A. In-flight now (already dispatched — continues during the pause)
+## A. In-flight now — POINT-IN-TIME SNAPSHOT (hand-authored-scratch, drifts)
 
-| Lane | Owner | Artifact | State |
+> ⚠️ **This table is a snapshot, not authority.** Live owner/status/PR truth lives in the work-item DAG (`dashboard-ops work-items mine`) — derive it, don't trust this. Per DESIGN §6 (no second representation) — the same rule the ROADMAP-authority lane enforces — **this doc owns only the DURABLE plan** (Sections B–D: sequencing, milestones, verification bar, decisions), NOT the live status columns. If this snapshot and `dashboard-ops` disagree, `dashboard-ops` wins. (neat-dove caught my last map drifting: it missed the parser-wall and listed an inherited lane under its old owner.)
+
+| Lane | Owner (as of snapshot) | Artifact | State |
 |---|---|---|---|
 | Self-host Root B (value-grounding) | bright-deer-111 | #5552 | keystone READY; slice-1 design only (fan-out HELD) |
 | Self-host tail + TS | jolly-cat-29 | #5551→tail | type-alias dropped; pivoting to E0252/closure-Debug |
