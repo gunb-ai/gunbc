@@ -23,7 +23,7 @@ module gunbc.generated_artifact
 
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
-import gunbc.gitignore_emit { expected_gitignore, ignore_patterns }
+import gunbc.gitignore_emit { expected_gitignore, path_is_ignored }
 import gunbc.roadmap_authority { expected_roadmap_md }
 
 // Q1 — the closed registry of artifacts gunbc generates from a .dag authority.
@@ -34,21 +34,15 @@ type GeneratedArtifact
 
 // 🟡 §5 COMPLETENESS RESIDUE: the gate folds this LIST. A new variant added to GeneratedArtifact + its
 // path/generate arms but FORGOTTEN here is silently UNGATED — the "add a row -> auto-gated" promise fails
-// OPEN. Without seed enum-reflection this list cannot be fully derived from the type. Mitigation: the
-// no-regression witness (test.claim.generated_artifact_drift) cross-checks this list against an
-// INDEPENDENT enumeration of all known variants, so a forgotten (or spurious) entry trips RED.
-// DISSOLUTION TRIGGER: derive generated_artifact_registry from the enum by reflection once v2 self-host
-// lands enum-variant enumeration (then this hand-list + its cross-check witness both delete).
+// OPEN. The exhaustive `match` arms below (artifact_path/generate/extra_valid/eq) DO force a compile
+// error when a variant is added, steering the author into this module; what they do NOT force is the LIST
+// entry. The completeness witness (test.claim.generated_artifact_drift) is a HAND-MAINTAINED roster: it
+// names each known variant individually and asserts registry membership + cardinality, so dropping a known
+// variant from the registry trips RED, and adding a variant changes the cardinality and forces a conscious
+// witness update. This is a backstop, NOT a full wall — a variant added to BOTH enum and registry but not
+// the witness is still possible until enum-reflection. DISSOLUTION TRIGGER: derive this list from the enum
+// by reflection once v2 self-host lands enum-variant enumeration (then list + witness roster both delete).
 data generated_artifact_registry: List<GeneratedArtifact> = [
-  CiYamlArtifact,
-  GitignoreArtifact,
-  RoadmapArtifact
-]
-
-// INDEPENDENT enumeration of every GeneratedArtifact variant (the closed coproduct, hand-mirrored). The
-// completeness witness asserts registry == this set so a registry omission is caught until reflection
-// dissolves both (see residue note above). This is authored from the TYPE, not copied from the registry.
-data all_generated_artifact_variants: List<GeneratedArtifact> = [
   CiYamlArtifact,
   GitignoreArtifact,
   RoadmapArtifact
