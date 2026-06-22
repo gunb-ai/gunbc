@@ -42,6 +42,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 **◆ Milestones:** fail-open audited ✓ · numeric tower grounded ✓ (#5428) → **▸ NOW: cache warm==cold oracle · every lens wired-or-deleted · stage0 census under budget** → `Value::Null` split *(deep root)*
 
+**Dispatch discipline (anti-stale-ledger, §6):** a lever earns a lane only after it is re-measured against CURRENT main — a displaced cost already paid by another merge is the purity trap (e.g. rust-test sharding, ruled out post-#5427's nextest cut). And the lane/parked list is DERIVED from this authority, never hand-typed (a hand-list drifts exactly like a second representation). The authority tracks ALL planned work; work-items dispatch only the active subset.
+
 **Audits (done):**
 
 - [x] lens/gate wiring — most analytical lenses inert (authored, no discovered gate)
@@ -103,6 +105,7 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 **Adjacent gaps (smaller, outside the host band):**
 
 - [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM [decision record](docs/plans/ci-merge-freshness.md)
+- [ ] **CI inline-shell de-fork** — `RunStep.run` is raw concat'd bash across ~26 sites; #5427 modeled `cargo.Build.Nextest` but bypasses it for the release build (`ci_release_build_script` hand-writes bash) = a model↔realization fork in one file (+ hardcoded `CARGO_BUILD_JOBS`, pinned nextest version, a bash `uname` arch-case we already model as `TargetArchitecture`). Root: `RunStep` carries modeled effects, not a `String`; revive the inline-shell reducibility lens — §3 transport-fusion de-fork (the N×M adapter trap → one shape + N bound handlers). Sequence after #5427/#5546 (same file). [plan](docs/plans/emission-ingestion-inverse.md)
 - [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one) [plan](docs/plans/ci-selection-vs-scheduling.md)
 - [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection [plan](docs/plans/ci-selection-vs-scheduling.md)
   - [x] opt-level=3 restores Pop-A to per-PR (#5456) — merged
@@ -190,7 +193,8 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
   - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
     - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**
       - [ ] dissolve seed hand-patches (`patch_*` / `HAND_MAINTAINED_STAGE0_FILES`) — the `emit_rust` hand-sync caveat the gate must reproduce: [required facts](docs/plans/regen-verify-gate-required-facts.md)
-  - [ ] TypeScript to first-class (beyond the `add` slice)
+    - [ ] **TypeScript self-host (own lane)** — emit the compiler ITSELF as TypeScript and reproduce a per-realization merkle fixed point (the Rust `regen --verify` gate, mirrored for the TS realization). This is what makes "language design collapses to a row" real at full scale — §7 medium-agnostic proof, emit Rust *and* TypeScript, fixed point *per realization*. `5-ts-first-class` is the emit seed; this is the self-host. Gated on the Rust fixed point.
+  - [ ] TypeScript to first-class (beyond the `add` slice) — the emit SEED
   - [ ] seed-honesty discharge (Diverse Double-Compiling)
   - [ ] collapse `src/v1` → pinned v2-emitted seed; delete the 154k hand-written lines (terminal, not a big-bang `rm`)
 
@@ -202,6 +206,7 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
 
 - [x] **medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult{value: Medium<Node>}`
 - [x] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527) — established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2 [plan](docs/plans/emission-ingestion-inverse.md)
+- [ ] **ingestion as a first-class direction** — fold foreign surface INTO the node tree (the inverse of emit): `Lossless` where decidable, fail-closed `DecodeFidelity` where not, and **emit = ingest⁻¹ over ONE `GrammarRelation`** (§4: one grammar read both directions; the §7 "any language with a typed honesty boundary" payoff). Emission is well-covered (round-trip law, language axis); ingest *at large* — beyond the per-medium round-trips — has no lane. (parser-wall #5553 is one corner; the direction needs an owner.) [plan](docs/plans/emission-ingestion-inverse.md)
 - [ ] **language axis** — 15+ targets wave-1; English emit proven
   - [ ] English vocabulary closure → fail-closed English ingest (today's catch-all is fail-open; also §0)
   - [ ] English ingest round-trip (only emit proven today)
