@@ -22,7 +22,7 @@ import gunbc.roadmap_authority {
 // The projection under a perturbed merged-set (the committed snapshot minus #5470/#5478, the measure PRs).
 fn emit_dropping_measure() -> String {
   let perturbed = [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425, 5236,
-    5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527]
+    5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527, 5444]
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: perturbed))
 }
 

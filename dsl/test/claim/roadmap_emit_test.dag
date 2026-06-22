@@ -10,7 +10,7 @@ module test.claim.roadmap_emit
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc, SectionElement, section_group }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import ctrl.process_algebra { ProcessNodeId }
 
@@ -23,7 +23,7 @@ fn parent_node() -> RoadmapNode {
   RoadmapNode {
     node: parent_id,
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
-    carrier: PlanDoc { path: "docs/plans/invert-hand-maintained.md" },
+    carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
   }
 }
 
@@ -32,7 +32,7 @@ fn child_node() -> RoadmapNode {
   RoadmapNode {
     node: child_id,
     line: DerivableLine { prs: [5491], title: "PR-checkbox status", description: "" },
-    carrier: NoCarrier,
+    carriers: [],
   }
 }
 

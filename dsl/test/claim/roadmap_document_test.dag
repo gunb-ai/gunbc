@@ -11,7 +11,7 @@ module test.claim.roadmap_document
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc, SectionElement, section_group }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import ctrl.process_algebra { ProcessNodeId }
@@ -25,7 +25,7 @@ fn audit_node() -> RoadmapNode {
   RoadmapNode {
     node: audit_id,
     line: AuthoredLine { done: true, content: "**fail-open audit**" },
-    carrier: PlanDoc { path: "docs/plans/fail-closed-lockdown.md" },
+    carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
   }
 }
 // DerivableLine — box DERIVED from the merged set, emit bolds the structural title.
@@ -33,14 +33,14 @@ fn status_node() -> RoadmapNode {
   RoadmapNode {
     node: status_id,
     line: DerivableLine { prs: [5491], title: "PR-checkbox status", description: "" },
-    carrier: NoCarrier,
+    carriers: [],
   }
 }
 fn child_node() -> RoadmapNode {
   RoadmapNode {
     node: child_id,
     line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
-    carrier: NoCarrier,
+    carriers: [],
   }
 }
 
@@ -69,7 +69,7 @@ fn preamble() -> List<MarkdownBlock> {
 }
 
 fn authority() -> RoadmapDocument {
-  RoadmapDocument { preamble: preamble(), sections: [lockdown_section(), expansion_section()] }
+  RoadmapDocument { preamble: preamble(), lead_lanes: [], sections: [lockdown_section(), expansion_section()] }
 }
 
 fn emit(merged: List<Int>) -> String {

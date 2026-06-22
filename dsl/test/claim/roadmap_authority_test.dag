@@ -33,7 +33,7 @@ fn witness_frame_all_sections() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "# gunbc — Roadmap")
     && string_contains(s: o, pattern: "## 0. Fail-closed lock-down")
-    && string_contains(s: o, pattern: "## 1. CI under control")
+    && string_contains(s: o, pattern: "## 1. CI as the substrate integration dogfood")
     && string_contains(s: o, pattern: "## 2. Minimal work")
     && string_contains(s: o, pattern: "## 3. Complexity budget gate")
     && string_contains(s: o, pattern: "## 4. Testgen as the bug-class oracle")
@@ -114,7 +114,8 @@ fn witness_a_prose_verbatim() -> Bool {
 // `tail\n\nhead` adjacencies hold ONLY if order is preserved (a reorder breaks every one of them).
 fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\nThis window = a few days of STABILITY")
+  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\n→ [audit + checklist](docs/plans/fail-closed-lockdown.md)")
+    && string_contains(s: o, pattern: "[audit + checklist](docs/plans/fail-closed-lockdown.md)\n\nThis window = a few days of STABILITY")
     && string_contains(s: o, pattern: "[fork plan](docs/plans/model-realization-fork.md) §3).\n\n**◆ Milestones:** fail-open audited")
     && string_contains(s: o, pattern: "`Value::Null` split *(deep root)*\n\n**Audits (done):**")
 }
