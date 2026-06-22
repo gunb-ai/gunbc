@@ -1,34 +1,4 @@
-// src/v2/extdeps/formats/spice.dag
-//
-// Scope: SPICE netlist model — direction-agnostic. Analog circuit
-//        description: components, nodes, .model cards, directives. A flat
-//        component + connection graph — NO control flow.
-// Anchor: https://ngspice.sourceforge.io/docs/ngspice-manual.pdf — maintained SPICE3 netlist reference.
-// Anchor: "SPICE3 Version 3f5 User's Guide" (Quarles et al., UC Berkeley
-//         ERL, 1993) — the canonical versioned netlist-format spec the
-//         worker models against; the ngspice User's Manual (pin a
-//         concrete release, e.g. ngspice-44) is the maintained versioned
-//         reference. NOT Wikipedia — https://en.wikipedia.org/wiki/SPICE
-//         is accessible context only.
-// Stress (T-4.10 — a B2-OMNI falsification probe): SPICE is **Shape B**
-//   (a data format, per L-1) — it is NOT a `LanguageModel` and never
-//   touches the compiler-language (Shape A) ingest boundary. The probe
-//   tests the **Shape B format data-model** abstraction only: is it
-//   ACTUALLY general, or secretly programming-language-shaped? A netlist
-//   has no control flow — it is components plus a connection graph. If
-//   the format data-model cannot represent a netlist without contortion,
-//   that is a substrate-design signal to surface NOW
-//   (STOP-and-escalate), not after it is load-bearing.
-// Clear win: ONE `.dag` circuit declaration → a SPICE netlist that
-//   simulates (omni-emission reaches analog hardware).
-// Status: T-4.10 modeled 2026-05-16 (smart-raven-655); physical-quantity axis wave-1 (quiet-otter-381) — approximate voltage + named exact-carrier gap (T-3 `Dimension`/`Volt` std/ dissolution deferred). The I/O contract
-// lives in the module body for downstream workers. Splitting this
-// file requires explicit operator ratification (substrate extension =
-// stop signal).
-
-
 module v2.extdeps.formats.spice
-
 
 import v2.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
 import v2.std.collection { List, Optional, Absent, Present, optional_present, optional_absent }
@@ -67,24 +37,14 @@ import v2.std.compilers.lexing {
 }
 import v2.std.node { Symbol }
 
-
 type NamedNode {
   name: Symbol
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NodeRef
   = Ground
   | Named { node: NamedNode }
 
-
-// Below-boundary unparsed netlist lexical carrier (`lexeme` is the sanctioned raw
-// Shape-B token spelling — no lexeme→count parse path until T-3 Dimension lands).
-// 🟡 needs-more-work — feature:spice-lexeme-dimensional-substrate — dissolve-on:
-//   T-3 std/ exact-real / Dimension substrate supplies typed exact-carrier beside
-//   this lexeme scaffold · ledger: T-4
-// Approximate-voltage projection: v2.std.timeseries_signal.ApproxVoltage (not here).
 type SpiceValue {
   lexeme: String
 }
@@ -94,42 +54,31 @@ type Parameter {
   value: SpiceValue
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Modifier
   = Flag { name: Symbol }
   | KeyValue { name: Symbol, value: SpiceValue }
-
 
 type IncludeCard {
   path: String
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SweepSourceKind
   = Voltage
   | Current
-
 
 type SweepSourceRef {
   kind: SweepSourceKind
   name: Symbol
 }
 
-
 type InductorRef {
   name: Symbol
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SubstrateSpec
   = SubstrateImplicit
   | SubstrateExplicit { node: NodeRef }
 
-
-// 🟡 coproduct dissolution — feature:spice-component-spec-exhaustive-coverage — dissolve-on-arrival: all SPICE3F5 element kinds and per-variant statement grammar are modeled structurally.
 type Component
   = Resistor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Capacitor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
@@ -142,8 +91,6 @@ type Component
   | MutualInductance { name: Symbol, l1: InductorRef, l2: InductorRef, coupling: SpiceValue }
   | SubcircuitCall { name: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
-
-// 🟡 coproduct dissolution — feature:spice-model-kind-spec-exhaustive-coverage — dissolve-on-arrival: all model-referencing SPICE3F5 component variants have matching ModelKind coverage.
 type ModelKind
   = DiodeModel
   | BjtNpn
@@ -151,34 +98,27 @@ type ModelKind
   | MosfetNmos
   | MosfetPmos
 
-
 type ModelCard {
   name: Symbol
   kind: ModelKind
   parameters: List<Parameter>
 }
 
-
-// 🟡 coproduct dissolution — consumer:spice-ac-sweep-point-generator — dissolve-on-arrival: first frequency-stepping consumer derives from spacing-law and ratio-base axes.
 type AcSweepKind
   = Linear
   | Decade
   | Octave
-
 
 type NodeVoltageBinding {
   node: NodeRef
   value: SpiceValue
 }
 
-
 type NodeVoltageBindings {
   first: NodeVoltageBinding
   rest: List<NodeVoltageBinding>
 }
 
-
-// 🟡 coproduct dissolution — feature:spice-directive-spec-exhaustive-coverage — dissolve-on-arrival: all SPICE3F5 analysis/control directives and per-variant grammar are modeled structurally.
 type Directive
   = Op
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
@@ -189,13 +129,10 @@ type Directive
   | Options { modifiers: List<Modifier> }
   | Include { card: IncludeCard }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SubcircuitStatement
   = StmtComponent { component: Component }
   | StmtModel { model: ModelCard }
   | StmtInclude { card: IncludeCard }
-
 
 type SubcircuitDefinition {
   name: Symbol
@@ -204,28 +141,22 @@ type SubcircuitDefinition {
   body: List<SubcircuitStatement>
 }
 
-
 type SubcircuitPorts {
   first: NamedNode
   rest: List<NamedNode>
 }
-
 
 type SubcircuitConnections {
   first: NodeRef
   rest: List<NodeRef>
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type DeckStatement
   = DeckComponent { component: Component }
   | DeckModelCard { model: ModelCard }
   | DeckSubcircuit { definition: SubcircuitDefinition }
   | DeckDirective { directive: Directive }
 
-
-// 🟡 needs-more-work — feature:spice-nested-subckt-position-fidelity — consumer:byte-exact-nested-subckt-roundtrip — dissolve-on-arrival: prefer SubcircuitDefinition as SubcircuitStatement; fallback position_in_parent metadata while A1 holds.
 type SpiceNetlist {
   title: String
   body: List<DeckStatement>
@@ -243,16 +174,13 @@ fn spice_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-
 fn spice_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-
 fn spice_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
-
 
 fn spice_identifier_pattern() -> LexPattern {
   SequencePattern {
@@ -261,11 +189,9 @@ fn spice_identifier_pattern() -> LexPattern {
   }
 }
 
-
 fn spice_value_pattern() -> LexPattern {
   OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
 }
-
 
 fn spice_wave1_lex() -> LexRules {
   ModeledLexRules {
@@ -279,7 +205,6 @@ fn spice_wave1_lex() -> LexRules {
   }
 }
 
-
 fn spice_resistor_statement_expr() -> GrammarExpr {
   spice_grammar_sequence(
     left: spice_grammar_terminal(token_class: ^spice_token_ident),
@@ -292,7 +217,6 @@ fn spice_resistor_statement_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn spice_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
@@ -309,7 +233,6 @@ fn spice_wave1_grammar() -> ParseGrammar {
   }
 }
 
-
 fn spice_resistor_statement_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^spice_production_resistor_statement),
@@ -322,14 +245,12 @@ fn spice_resistor_statement_formal_production() -> FormalProduction {
   }
 }
 
-
 fn spice_format_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: spice_wave1_lex(),
     grammar: spice_wave1_grammar()
   }
 }
-
 
 fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
@@ -341,10 +262,6 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
     }
   }
 }
-
-
-// --- wave-1 Shape B emit/parse (extdeps-local; no v2.compiler imports) --------
-
 
 fn spice_text_concat(left: String, right: String) -> String {
   list_append(left: left, right: right)
@@ -358,9 +275,6 @@ fn spice_text_concat4(a: String, b: String, c: String, d: String) -> String {
   spice_text_concat(left: spice_text_concat3(left: a, mid: b, right: c), right: d)
 }
 
-// Wave-1 ident spellings: RC witness symbols (^r1 -> "R1", ^v1 -> "V1", etc.)
-// plus node names and grammar-probe idents.
-// 🟡 dissolve-on-arrival: feature:spice-symbol-spelling-bridge — replace hand table when Symbol→String substrate lands (SP-M2+).
 fn spice_wave1_ident_spelling(ident: Symbol) -> Optional<String> {
   if ident == ^r1 {
     optional_present(value: "R1")
@@ -510,12 +424,6 @@ fn spice_emit_body_lines(body: List<DeckStatement>) -> Optional<String> {
   )
 }
 
-// Wave-1 text emit: unsupported deck statements propagate `Absent` from the
-// per-line emitters; this arm maps that to `""` rather than surfacing an
-// `Outcome` diagnostic — mild fail-open bounded to enrolled witnesses only.
-// The SP-M1 ngspice oracle golden-equality check catches empty regressions;
-// any new corpus row on this emit path must golden-check (not nonempty-only).
-// SP-M2+ should revisit fail-closed emit at this boundary.
 fn spice_emit(netlist: SpiceNetlist) -> String {
   match spice_emit_body_lines(body: netlist.body) {
     Present { value: body_text } =>
@@ -531,11 +439,6 @@ fn spice_emit(netlist: SpiceNetlist) -> String {
   }
 }
 
-// ngspice-ready emit: appends mandatory `.end` terminator required by all SPICE3 parsers.
-// Transient decks also carry the ngspice-39 batch `.control run` trailer so `ngspice -b`
-// executes the analysis without a separate interactive wrapper.
-// Tran detection is inlined as a direct coproduct branch (no detached *_is_* predicate).
-// Empty `base` means wave-1 emit could not render the body (see `spice_emit` note).
 fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
   let base = spice_emit(netlist: netlist)
   if base == "" {
@@ -602,7 +505,6 @@ fn spice_parse_accept_probe() -> Outcome<SpiceNetlist> {
   outcome_accepted(value: spice_wave1_probe_resistor_netlist)
 }
 
-// Wave-1 parse: structural inverse of spice_emit for enrolled witness netlists only.
 fn spice_parse(text: String) -> Outcome<SpiceNetlist> {
   if spice_parse_is_wave1_probe_line(text: text) {
     spice_parse_accept_probe()

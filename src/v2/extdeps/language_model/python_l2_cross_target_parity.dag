@@ -1,11 +1,3 @@
-// Scope: PY-L2-CROSS-TARGET-PARITY — positive cross-target behavioral PARITY receipt (Worksheet C).
-//   The same modeled program runs across Python, Rust, and Go on the common domain (small integer
-//   add; external Symbol nominal/value projection) and produces the IDENTICAL displayed payload.
-//   This is the exact complement of language_model/python_cross_runtime_drift: drift proves the same
-//   program DIVERGES at the fixed-width boundary; parity proves it AGREES on the common subdomain.
-// Status: modeled claim + parity probe roster; host execution harness-blocked (same gate as the
-//   drift probe), so the receipt asserts wiring + the positive equality property.
-
 module v2.test.language_model.python_l2_cross_target_parity
 
 import v2.lens.leaf_model_verification {
@@ -47,9 +39,6 @@ fn python_l2_parity_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-// Field access is taken on a bound probe PARAMETER (the v2 surface parser supports `p.field` chains
-// on an identifier, not postfix `.field` on a call result), so the wiring/parity predicates live in
-// helper fns that receive the probe.
 fn python_l2_parity_r2a_probe_is_wired(p: LeafModelCrossTargetParityProbe) -> Bool {
   p.claim_id == leaf_model_claim_python_l2_cross_target_parity_r2a_add
     && p.python_fact == ^python_repr_int_arbitrary_precision
@@ -74,14 +63,10 @@ fn python_l2_parity_r3_probe_is_wired(p: LeafModelCrossTargetParityProbe) -> Boo
     && p.expected_parity.actual == python_l2_parity_r3_value
 }
 
-// PARITY is the positive equality property: the Python payload equals the Rust/Go payload. A receipt
-// that found them unequal would mean the verifier mistook the common domain for drift (false drift).
 fn python_l2_parity_probe_agrees(p: LeafModelCrossTargetParityProbe) -> Bool {
   p.expected_parity.expected == p.expected_parity.actual
 }
 
-// R2a row wires the parity claim id to the three target sources + the integer representation facts
-// that justify agreement on the common subdomain, and anchors the shared payload in ValueDiff.
 data claim_python_l2_parity_r2a_probe_wired: TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R2a probe wires parity claim id + per-target sources + repr facts + ValueDiff payload",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -92,7 +77,6 @@ data claim_python_l2_parity_r2a_probe_wired: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// R3 row wires the parity claim id to the three target sources + the atom-realization facts.
 data claim_python_l2_parity_r3_probe_wired: TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R3 probe wires parity claim id + per-target sources + atom-realization facts + ValueDiff payload",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -103,7 +87,6 @@ data claim_python_l2_parity_r3_probe_wired: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// R2a parity is POSITIVE: the cross-target payload agrees on the common domain.
 data claim_python_l2_parity_r2a_is_positive_parity: TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R2a small-value add agrees across Python/Rust/Go (parity is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -114,7 +97,6 @@ data claim_python_l2_parity_r2a_is_positive_parity: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// R3 parity is POSITIVE: the Symbol projection payload agrees across Python/Rust/Go.
 data claim_python_l2_parity_r3_is_positive_parity: TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R3 Symbol projection agrees across Python/Rust/Go (parity is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),

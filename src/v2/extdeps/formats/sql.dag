@@ -1,10 +1,4 @@
-// src/v2/extdeps/formats/sql.dag
-// Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
-// Status: DDL/relational facts + numeric lexeme (wave-1 bundles) landed; parse/emit axes + identifier/unique-name profile gated (SL-3229-T4-FORMAT-T6T7, SL-3229-SQL-IDENTIFIER-UNIQUENESS). Transport execution config (`SqlStatementKind`, `SqlParameterStyle`, `SqlTransactionMode`, `SqlTransportConfig`) remains sole authority in `dsl/extdeps/transports/sql.dag` until the v2 port retires the v3 split (#3224 single-authority ruling).
-// Anchor: https://www.iso.org/standard/76583.html
-
 module v2.extdeps.formats.sql
-
 
 import v2.std.grammar { GrammarSchema }
 import v2.std.algebra { fold_list, list_append }
@@ -21,22 +15,16 @@ import v2.std.model_core {
 }
 import v2.std.witness { Holds, Violates }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlDialect.
 type SqlDialect
   = SqlDialectIso9075
   | SqlDialectPostgreSql
   | SqlDialectSqlite
   | SqlDialectMySql
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlIdentifier.
 type SqlIdentifier
   = SqlRegularIdentifier { name: String }
   | SqlDelimitedIdentifier { name: String }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlDataType.
 type SqlDataType
   = SqlTypeBoolean
   | SqlTypeSmallInt
@@ -53,17 +41,13 @@ type SqlDataType
   | SqlTypeTimestamp
   | SqlTypeTimestampWithTimeZone
 
-
 type SqlColumnConstraints {
   not_null: Bool,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlColumnDefault.
 type SqlColumnDefault
   = SqlColumnDefaultAbsent
   | SqlColumnDefaultLiteral { literal: String }
-
 
 type SqlColumnDefinition {
   name: SqlIdentifier,
@@ -72,8 +56,6 @@ type SqlColumnDefinition {
   column_default: SqlColumnDefault,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlTableConstraint.
 type SqlTableConstraint
   = SqlTableUnique { columns: List<SqlIdentifier> }
   | SqlTableForeignKey {
@@ -82,7 +64,6 @@ type SqlTableConstraint
       referenced_columns: List<SqlIdentifier>,
     }
 
-
 type SqlTableDefinition {
   name: SqlIdentifier,
   columns: List<SqlColumnDefinition>,
@@ -90,8 +71,6 @@ type SqlTableDefinition {
   table_constraints: List<SqlTableConstraint>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlSchemaOperation.
 type SqlSchemaOperation
   = SqlCreateTable { table: SqlTableDefinition }
   | SqlDropTable { table_name: SqlIdentifier }
@@ -107,7 +86,6 @@ type SqlSchemaOperation
   | SqlAlterTableRaw { table_name: SqlIdentifier, alteration: String }
   | SqlRawStep { statement: String }
 
-
 type SqlMigrationStep {
   name: String,
   operation: SqlSchemaOperation,
@@ -115,13 +93,11 @@ type SqlMigrationStep {
   reversible: Bool,
 }
 
-
 type SqlMigrationScript {
   migration_id: String,
   wraps_transaction: Bool,
   steps: List<SqlMigrationStep>,
 }
-
 
 type SqlMigrationEmissionTarget {
   grammar_schema: GrammarSchema,
@@ -129,34 +105,19 @@ type SqlMigrationEmissionTarget {
   migrations: List<SqlMigrationScript>,
 }
 
-
-// ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed exact numeric
-// types with implementation-defined precision, and REAL/DOUBLE PRECISION as
-// approximate numerics with implementation-defined precision and encoding.
-// Width and IEEE-754 binding are therefore implementation facts, not spec
-// facts, and are deliberately not carried on these records.
-
 type SqlIntegerPrimitiveFacts {
   surface_spelling: Symbol
 }
 
-
 type SqlFloatPrimitiveFacts {
   surface_spelling: Symbol
 }
-
 
 type SqlNonNumericPrimitiveFacts {
   surface_spelling: Symbol
   representation: Symbol
 }
 
-
-// ISO/IEC 9075 surface spellings.
-// Representation identities — ISO/IEC 9075 §4 semantics (boolean three-valued,
-// datetime, character large object). Approximate-numeric and exact-numeric
-// representations are NOT bound (implementation-defined per ISO §6).
-// Signedness — ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed.
 data sql_facts_smallint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
   surface_spelling: ^sql_surface_spelling_smallint,
 }
@@ -207,8 +168,6 @@ data sql_facts_timestamp_with_time_zone: SqlNonNumericPrimitiveFacts = SqlNonNum
   representation: ^sql_repr_timestamp_with_time_zone,
 }
 
-
-// 🟡 needs-more-work — feature:sql-primitive-bundle-catalog-derivation — scaffold:T-4.6-sql-primitive-fact-bundles · dissolve-on: substrate gains coproduct-variant enumeration so the constant-arm subset of SqlDataType derives a homomorphism into List<PrimitiveFactBundle> and the three hand-enumerated catalogs below collapse into that derivation (single-authority over the SqlDataType constant arms; same gap on src/v2/extdeps/languages/rust.dag's per-category facts catalogs).
 data sql_integer_facts_catalog: List<SqlIntegerPrimitiveFacts> = [
   sql_facts_smallint,
   sql_facts_integer,
@@ -228,7 +187,6 @@ data sql_nonnumeric_facts_catalog: List<SqlNonNumericPrimitiveFacts> = [
   sql_facts_timestamp,
   sql_facts_timestamp_with_time_zone,
 ]
-
 
 fn sql_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -354,10 +312,6 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
-// fold_list is a left fold, so cons-prepend folds reverse input order.
-// reverse + cons-prepend recovers the input order — this is the order-preserving
-// idiom for List<T> in v2 substrate today; list_append is canonical in
-// std/algebra, while list_map remains local here.
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
   fold_list(
     xs: xs,

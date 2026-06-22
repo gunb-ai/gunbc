@@ -1,8 +1,3 @@
-// Scope: PY-L2-CROSS-RUNTIME-DRIFT — positive cross-runtime divergence receipt (complement of
-//   the L2 cross-target parity lane). The same modeled program (exact integer add at the
-//   fixed-width boundary) diverges: Python arbitrary precision vs Rust i64 / Go int64 wraparound.
-// Status: modeled claim + drift probe row.
-
 module v2.test.language_model.python_cross_runtime_drift
 
 import v2.lens.leaf_model_verification {
@@ -39,9 +34,6 @@ fn python_cross_runtime_drift_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-// Field access is taken on a bound probe PARAMETER (the v2 surface parser supports `p.field`
-// chains on an identifier, not postfix `.field` on a call result), so the wiring/divergence
-// predicates live in helper fns that receive the probe.
 fn python_cross_runtime_drift_probe_is_wired(p: LeafModelCrossRuntimeDriftProbe) -> Bool {
   p.claim_id == leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
     && p.arbitrary_precision_fact == ^python_repr_int_arbitrary_precision
@@ -58,8 +50,6 @@ fn python_cross_runtime_drift_probe_diverges(p: LeafModelCrossRuntimeDriftProbe)
   p.expected_divergence.expected != p.expected_divergence.actual
 }
 
-// The drift probe wires the modeled claim id to the three target sources, and anchors the expected
-// divergence to ValueDiff<String> (expected = arbitrary-precision value, actual = fixed-width value).
 data claim_python_cross_runtime_drift_probe_wired: TestClaim = EqualsClaim {
   label: "language_model/python_cross_runtime_drift: probe wires drift claim id + per-target sources + ValueDiff divergence anchor",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -70,8 +60,6 @@ data claim_python_cross_runtime_drift_probe_wired: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// The divergence is POSITIVE: the arbitrary-precision value and the fixed-width value differ. A
-// receipt that found them equal would mean the verifier failed to detect drift (false parity).
 data claim_python_cross_runtime_drift_is_positive_divergence: TestClaim = EqualsClaim {
   label: "language_model/python_cross_runtime_drift: arbitrary-precision value diverges from fixed-width value (drift is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
