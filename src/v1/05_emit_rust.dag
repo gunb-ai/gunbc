@@ -325,27 +325,18 @@ fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> S
 
 // VALUE-side seed carrier (the construction analogue of rust_seed_host_container_base,
 // which grounds the List TYPE to the host `Vec`). In the v1-seed branch a List VALUE is the
-// host `Rc<Vec<T>>` the v1_rt ops already use, so the FreeMonoid coproduct CONSTRUCTORS
-// ground to host construction instead of emitting the `Empty`/`Cons` variants (which would
-// be a `FreeMonoid` value where the type rendered as `Vec`, an E0308):
-//   Empty             -> Rc::new(vec![])                                  (the empty Rc-Vec)
-//   Cons{head, tail}  -> v1_rt::rc_list_concat(Rc::new(vec![head]), tail) (prepend head, cons semantics)
+// host `Rc<Vec<T>>` the v1_rt ops already use, so the FreeMonoid coproduct's EMPTY
+// constructor grounds to host construction instead of emitting the `Empty` variant (which
+// would be a `FreeMonoid` value where the type rendered as `Vec`, an E0308):
+//   Empty -> Rc::new(vec![])   (the empty Rc-Vec the v1_rt list ops consume)
 // GUARDED to carriers that ground to `Vec` (List only, via the same single authority above),
 // so a bare faithful `FreeMonoid<T>` keeps the coproduct, and the value side fires exactly
 // where the type side grounds (both keyed on the same `rust_seed_host_container_base`).
-// `head_expr`/`tail_expr` are the already-emitted element/tail values (their own Rc-wrapping
-// applied by the caller). DISSOLUTION: removes with HostNative when src/v1 is deleted (seed->0).
+// (`Cons` prepend grounding is the paired follow-on, gated on the seed-census Rc/clone
+// semantics.) DISSOLUTION: removes with HostNative when src/v1 is deleted (seed->0).
 fn rust_seed_host_freemonoid_empty(carrier_name: String, corpus_repr: RustCorpusRepr) -> String? {
   match rust_seed_host_container_base(name: carrier_name, corpus_repr: corpus_repr) {
     Present { value: _ } => Present { value: "Rc::new(vec![])" }
-    Absent => none
-  }
-}
-
-fn rust_seed_host_freemonoid_cons(carrier_name: String, head_expr: String, tail_expr: String, corpus_repr: RustCorpusRepr) -> String? {
-  match rust_seed_host_container_base(name: carrier_name, corpus_repr: corpus_repr) {
-    Present { value: _ } =>
-      Present { value: concat("v1_rt::rc_list_concat(Rc::new(vec![", head_expr, "]), ", tail_expr, ")") }
     Absent => none
   }
 }
@@ -6534,12 +6525,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Absent => concat(display_tn, " {}")
         }
       } else if fields |> count == 0 {
-        let empty_raw = concat(display_tn, " {}")
-        let record_parent_enum = match parent_enum {
-          Present { value: en } => en
-          Absent => ""
+        // FreeMonoid `Empty` value grounding: when the value's carrier grounds to the host
+        // `Vec` in the seed (List under HostNative), construct the empty `Rc<Vec>` instead of
+        // the `Empty {}` coproduct variant (which would mismatch the `Vec`-rendered type,
+        // E0308). Faithful / non-container carriers fall through to the coproduct variant.
+        let host_freemonoid_carrier = authored_name_at(source_indices: si, node: resolved_type)
+        match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier, corpus_repr: emit_info.corpus_repr) {
+          Present { value: grounded } => grounded
+          Absent => concat(display_tn, " {}")
         }
-        empty_raw
       } else {
         let variant_summary_name = match effective_parent {
           Present { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
