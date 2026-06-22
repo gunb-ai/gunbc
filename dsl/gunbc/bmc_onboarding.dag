@@ -4,7 +4,7 @@ import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.logic { Bool }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, RedfishAccountRole, AccountRoleAdministrator }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
@@ -30,8 +30,6 @@ fn bmc_onboarding_is_complete(phase: BmcOnboardingPhase) -> Bool {
     Present { value: _ } => false
   }
 }
-
-data bmc_onboarding_phase_order: List<BmcOnboardingPhase> = [FactoryDefault, CredentialsRotated, OsInstalled, FabricJoined]
 
 type BmcOnboardingPlan {
   bmc: BmcEndpoint

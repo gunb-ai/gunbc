@@ -1,7 +1,7 @@
 module test.claim.bmc_onboarding_lifecycle
 
 import std.logic { Bool }
-import std.types { Int, List }
+import std.types { Int }
 import std.credentials { Stored, Chained }
 import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
 import gunbc.bmc_onboarding {
@@ -12,7 +12,6 @@ import gunbc.bmc_onboarding {
   FabricJoined,
   bmc_onboarding_next_phase,
   bmc_onboarding_is_complete,
-  bmc_onboarding_phase_order,
   new_altra_onboarding_plan,
 }
 import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
@@ -33,13 +32,8 @@ fn next_tag(p: BmcOnboardingPhase) -> Int {
   }
 }
 
-fn phase_count(ps: List<BmcOnboardingPhase>) -> Int {
-  fold(ps, init: 0, f: (acc, p) => acc + 1)
-}
-
 test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
-  phase_count(ps: bmc_onboarding_phase_order) == 4
-    && next_tag(p: FactoryDefault) == 1
+  next_tag(p: FactoryDefault) == 1
     && next_tag(p: CredentialsRotated) == 2
     && next_tag(p: OsInstalled) == 3
     && next_tag(p: FabricJoined) == -1
