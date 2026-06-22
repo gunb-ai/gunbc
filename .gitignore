@@ -97,3 +97,4 @@ __pycache__/
 # claim-corpus execution-map output
 .claim-map/
 src/v2/compiler/manual/sg2_scratch_probe.dag
+strip_dag_comments.py
