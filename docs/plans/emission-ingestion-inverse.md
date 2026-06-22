@@ -199,6 +199,62 @@ anemic) ⇒ its roster entries empty ⇒ the guard flips from ratchet to wall. *
 (`RunnerContextRef { var: RunnerTemp }`) and rewrite the witness as a model walk — the ① form if the model
 simply has no such variant.
 
+### 5.2 Formalizing "properly modeled": the round-trip law is the oracle, the partition is the boundary
+
+§5.1 gives the **detector** — it *finds* a leak (a string op, an inline literal) after the fact, so it is
+still *validation* (§5 of DESIGN: it concedes the bad state is writable). Two further mechanisms turn the
+rule from a grep-replacement into a constructive discipline: an **oracle** that *proves* a site clean, and
+a **boundary** that says *where* the cure is even available. With all three, "properly modeled medium"
+becomes a one-line executable bar instead of a judgment call.
+
+**(A) The round-trip law as the single oracle (`ingest ∘ emit = id`).** A medium is *properly modeled*
+**iff** `ingest ∘ emit = id` holds over its IR, with `DecodeFidelity` marking where that is `Lossless`.
+This collapses both faces of the §5.1 rule into **one decidable question** — *does a round-trip law hold
+over the same grammar rows?* A row-driven emitter has an ingest that reads the *same* rows, so the law is
+**provable by execution**; a hand-rolled emitter (inline literals) has **no shared-row ingest to
+round-trip against**, and that absence *is* the leak signal. So "is this a leak?" stops being the
+detector's necessarily-heuristic question ("does it grep target syntax?") and becomes a structural one
+("is there a round-trip over shared rows?"). The hand-rolled `serialize_yaml` (confirmed 2026-06-22:
+`emit_yaml_value`/`emit_mapping_body` hardcode `'- '`/`':'`/`'#'`/`'|\n'` as inline literals through
+`concat()` chains) **fails** this oracle — there is no yaml *ingest* over those same spellings to
+round-trip against; deep-newt's row-driven `serialize_markdown_source` (#5501) **passes** it the moment a
+markdown ingest reads the same construct→spelling rows. This is the §4 "one grammar, both directions"
+turned into the *test* — and it is *why* §5.1 pushes every serializer to be row-driven: only a row-driven
+emitter can satisfy the oracle from day one. **It is therefore the acceptance test for a new medium
+target** (emission-lane-owned, `quick-seal-137`): a target row-set is *done* iff its round-trip law is
+green by execution, not iff it merely emits — the §5-of-DESIGN "green by a real consumer, with a
+discriminating input" bar applied to a medium.
+
+But *done* here is **medium-complete**, which is **not** the merge bar for an emit PR — collapsing the two
+would wrongly over-gate. The round-trip law is the medium-**completeness** gate — a *later* step than
+emit-rows-merge-ready, **never** the emit-PR bar. An emit-only PR with correct, green grammar rows is
+merge-ready *as the emit step*; the medium is *complete* only once its round-trip law is green
+(`DecodeFidelity`-bounded). E.g. markdown #5501 and the bash-diagnostic #5505 landed the **emit step** —
+their round-trip *completeness* is the named **next** step, not a merge precondition.
+
+**(B) The per-medium decidability partition (the boundary, not a blanket ban).** The rule is **not** "ban
+all string ops over media" — that is the "never" trap (§5 of DESIGN): a ratchet wearing a wall's clothes,
+and it would wall the realization edge itself (where target syntax is *supposed* to live). Partition each
+medium-emitting site, per [expressibility-frontier](expressibility-frontier.md):
+- **① wall** — the medium has grammar rows + a green round-trip law ⇒ inline syntax is *unwritable* and the
+  check is a model walk (markup today);
+- **② lens-residue** — a hand-rolled emitter on the shrinking roster with a named dissolve-on = its grammar
+  rows (`serialize_yaml`, the markdown IR→HTML serializer today — honestly marked SCAFFOLD, not silently
+  forked);
+- **③ undecidable / fence** — a medium whose grammar is *not* closed/modeled (an arbitrary embedded DSL
+  with no upstream spec to cite): fence it, mark `DecodeFidelity = lossy`, **never fake-gate**. Honesty
+  replaces the wall exactly here.
+
+The formal statement is therefore *per medium*: **wall inline syntax exactly where the medium has a closed
+grammar and a round-trip; flag where it is hand-rolled-but-closeable; fence where the grammar is genuinely
+open** — each a decidable test, so the guard never masquerades undecidable residue as a wall (the §5
+decidability check).
+
+**Composition.** §5.1's detector *finds* leaks; (A) the round-trip oracle *proves* a site clean (the ①
+test); (B) the partition decides *which* sites are walled now vs flagged vs fenced. Together they bound the
+guard against the purity trap (§6 of DESIGN): a medium earns a wall only when it is the cheapest path to a
+real displaced cost (a grep that goes fail-open on an unanticipated surface form), never for elegance.
+
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
 Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dsl")`
