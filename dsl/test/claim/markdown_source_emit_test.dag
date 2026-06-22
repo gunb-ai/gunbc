@@ -1,0 +1,225 @@
+// dsl/test/claim/markdown_source_emit_test.dag
+//
+// By-execution witnesses for extdeps.languages.markdown — the row-driven
+// MarkdownDocument → markdown-SOURCE serializer (peer of serialize_yaml).
+//
+// Two teeth:
+//   1. EXACT bytes — a sample document exercising all construct families
+//      (headings, links, GFM task-checkboxes incl nesting, unordered/ordered
+//      lists, emphasis/strong, fenced code, GFM table, block quote, inline code)
+//      serializes to the literal expected markdown source.
+//   2. ROW-DISCIPLINE (the medium-as-Node guard, #5496) — perturbing ONE spelling
+//      row (the unordered bullet) MUST change the output. If the fold inlined the
+//      bullet literal instead of looking up the row, the perturbation would be
+//      inert and this witness goes RED.
+//
+// Run via: gunbc run --source-root dsl --entry test.claim.markdown_source_emit --function <fn> --claim-run
+
+module test.claim.markdown_source_emit
+
+import std.markdown {
+  MarkdownDocument,
+  MarkdownListItem,
+  MarkdownTaskItem,
+  MarkdownTableRow,
+  MarkdownTableCell,
+  HeadingBlock,
+  ParagraphBlock,
+  UnorderedListBlock,
+  OrderedListBlock,
+  CodeBlock,
+  TaskListBlock,
+  TableBlock,
+  BlockquoteBlock,
+  TextInline,
+  EmphasisInline,
+  StrongInline,
+  CodeInline,
+  LinkInline,
+  H1,
+  Checked,
+  Unchecked,
+  AlignNone,
+  AlignCenter,
+}
+import extdeps.languages.markdown {
+  MarkdownSpellings,
+  commonmark_gfm_spellings,
+  serialize_markdown_source,
+  serialize_markdown_source_with,
+}
+
+fn sample_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
+      ParagraphBlock {
+        inlines: [
+          TextInline { text: "See " },
+          LinkInline {
+            inlines: [ TextInline { text: "plan" } ],
+            url: "docs/plan.md",
+          },
+          TextInline { text: "." },
+        ],
+      },
+      TaskListBlock {
+        items: [
+          MarkdownTaskItem {
+            state: Checked,
+            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
+          },
+          MarkdownTaskItem {
+            state: Unchecked,
+            blocks: [
+              ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] },
+              UnorderedListBlock {
+                items: [
+                  MarkdownListItem {
+                    blocks: [ ParagraphBlock { inlines: [ TextInline { text: "subnote" } ] } ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      UnorderedListBlock {
+        items: [
+          MarkdownListItem {
+            blocks: [
+              ParagraphBlock {
+                inlines: [
+                  StrongInline { inlines: [ TextInline { text: "bold" } ] },
+                  TextInline { text: " and " },
+                  EmphasisInline { inlines: [ TextInline { text: "italic" } ] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      OrderedListBlock {
+        items: [
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "one" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
+        ],
+      },
+      CodeBlock { code: "let x = 1;\n" },
+      TableBlock {
+        header: MarkdownTableRow {
+          cells: [
+            MarkdownTableCell { inlines: [ TextInline { text: "h1" } ] },
+            MarkdownTableCell { inlines: [ TextInline { text: "h2" } ] },
+          ],
+        },
+        alignments: [ AlignNone, AlignCenter ],
+        rows: [
+          MarkdownTableRow {
+            cells: [
+              MarkdownTableCell { inlines: [ TextInline { text: "a" } ] },
+              MarkdownTableCell { inlines: [ TextInline { text: "b" } ] },
+            ],
+          },
+        ],
+      },
+      BlockquoteBlock {
+        blocks: [
+          ParagraphBlock {
+            inlines: [
+              TextInline { text: "quote " },
+              CodeInline { text: "code" },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// The literal expected markdown source (independent re-derivation, not via the fold).
+fn expected_markdown() -> String {
+  join([
+    "# Roadmap\n",
+    "\n",
+    "See [plan](docs/plan.md).\n",
+    "\n",
+    "- [x] done item\n",
+    "- [ ] todo item\n",
+    "  - subnote\n",
+    "\n",
+    "- **bold** and *italic*\n",
+    "\n",
+    "1. one\n",
+    "2. two\n",
+    "\n",
+    "```\n",
+    "let x = 1;\n",
+    "```\n",
+    "\n",
+    "| h1 | h2 |\n",
+    "| --- | :-: |\n",
+    "| a | b |\n",
+    "\n",
+    "> quote `code`\n"
+  ], "")
+}
+
+fn witness_exact_bytes() -> Bool {
+  serialize_markdown_source(doc: sample_doc()) == expected_markdown()
+}
+
+// A one-field perturbation of the canonical rows: the unordered bullet "- " -> "+ ".
+fn perturbed_bullet_spellings() -> MarkdownSpellings {
+  MarkdownSpellings {
+    heading_marker: commonmark_gfm_spellings.heading_marker,
+    heading_sep: commonmark_gfm_spellings.heading_sep,
+    unordered_bullet: "+ ",
+    ordered_suffix: commonmark_gfm_spellings.ordered_suffix,
+    task_checked: commonmark_gfm_spellings.task_checked,
+    task_unchecked: commonmark_gfm_spellings.task_unchecked,
+    emphasis_delim: commonmark_gfm_spellings.emphasis_delim,
+    strong_delim: commonmark_gfm_spellings.strong_delim,
+    code_span_delim: commonmark_gfm_spellings.code_span_delim,
+    code_fence: commonmark_gfm_spellings.code_fence,
+    link_text_open: commonmark_gfm_spellings.link_text_open,
+    link_text_close: commonmark_gfm_spellings.link_text_close,
+    link_url_open: commonmark_gfm_spellings.link_url_open,
+    link_url_close: commonmark_gfm_spellings.link_url_close,
+    image_marker: commonmark_gfm_spellings.image_marker,
+    table_pipe: commonmark_gfm_spellings.table_pipe,
+    table_cell_pad: commonmark_gfm_spellings.table_cell_pad,
+    table_align_none: commonmark_gfm_spellings.table_align_none,
+    table_align_left: commonmark_gfm_spellings.table_align_left,
+    table_align_center: commonmark_gfm_spellings.table_align_center,
+    table_align_right: commonmark_gfm_spellings.table_align_right,
+    blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
+    list_indent: commonmark_gfm_spellings.list_indent,
+    block_separator: commonmark_gfm_spellings.block_separator,
+  }
+}
+
+fn tiny_list_doc() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: [
+      UnorderedListBlock {
+        items: [
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "x" } ] } ] },
+        ],
+      },
+    ],
+  }
+}
+
+// The medium-as-Node guard: the fold must READ the bullet row, so perturbing it
+// changes the bytes. Inert here == the spelling was inlined in the fold == RED.
+fn witness_row_driven_bullet() -> Bool {
+  let canonical = serialize_markdown_source_with(doc: tiny_list_doc(), sp: commonmark_gfm_spellings)
+  let perturbed = serialize_markdown_source_with(doc: tiny_list_doc(), sp: perturbed_bullet_spellings())
+  (canonical == "- x\n") && (perturbed == "+ x\n") && !(canonical == perturbed)
+}
+
+test fn markdown_source_emit_keystone_holds() -> Bool {
+  witness_exact_bytes()
+    && witness_row_driven_bullet()
+}
