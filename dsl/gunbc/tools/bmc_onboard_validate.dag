@@ -1,4 +1,4 @@
-module gunbc.tools.bmc_onboard
+module gunbc.tools.bmc_onboard_validate
 
 import extdeps.bmc.http
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
