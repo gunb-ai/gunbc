@@ -19,6 +19,7 @@ import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  DiagnosticSeverity,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
@@ -69,10 +70,10 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope { declaration: DeclarationId, node: NodeId }
 
-// 🟢 TERMINAL — C-8 fail-closed: only Error is admitted steady state.
-// v2 substrate: unit variant (v3 `Error` tag is not a v2 type name).
-type DiagnosticSeverity
-  = SeverityError {}
+// §3 SINGLE AUTHORITY — DiagnosticSeverity grounded on v2.std.diagnostic (imported above).
+// C-8 fail-closed: only SeverityError is admitted in lens enforcement contexts steady state
+// (SeverityWarning is never a valid argument to apply_lens_enforce or LensEnforce — usage
+// constraint, enforced by convention after the §3 twin dissolution).
 
 // 🟢 TERMINAL — per-lens enforcement projection + violation relation.
 // violates first argument is full Output (v3 lens_application.dag) so
