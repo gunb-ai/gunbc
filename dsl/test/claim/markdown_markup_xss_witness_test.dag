@@ -1,11 +1,3 @@
-// dsl/test/claim/markdown_markup_xss_witness_test.dag
-//
-// By-execution witnesses for std.markdown CommonMark consumer: reduces to
-// std.markup.Fragment, serializes through the ONE serialize_fragment fold
-// (CoC=1 with html/react), and scheme-allowlists link/image URLs fail-closed.
-//
-// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
-
 module test.claim.markdown_markup_xss_witness
 
 import std.markup {
@@ -179,8 +171,6 @@ fn witness_heading_levels_map_to_tags() -> Bool {
     Rejected { reason: _ } => false
   }
 }
-
-// -- XSS reject-witness: link and image URLs ----------------------------------
 
 fn javascript_link_doc() -> MarkdownDocument {
   MarkdownDocument {

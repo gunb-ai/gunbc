@@ -1,16 +1,4 @@
-// src/v2/test/claim/affected_set_universe_test.dag
-//
-// Discriminating witnesses for the repo-process-universe COMPLETENESS model
-// (v2.lens.affected_set, testgen-oracle.md §4.4). Proves the universe is reflected from
-// declared coproducts (so nothing declared is a blind spot) and that the completeness check
-// fails CLOSED on an omitted kind (DESIGN §5) rather than vacuously passing.
-//
-// Lives under src/v2/test/claim (the witness floor discovers `test fn` in `*_test.dag`); it
-// imports gunbc.ci_spec for the INDEPENDENT gate reference (gunbc_ci_gates), mirroring
-// ci_spec_witness_test — the floor loads both source-roots, so the cross-tree import resolves.
-
 module v2.test.claim.affected_set_universe
-
 
 import v2.std.logic { Bool }
 import v2.std.collection { List }
@@ -28,31 +16,22 @@ import v2.lens.affected_set {
 }
 import gunbc.ci_spec { Gate, gunbc_ci_gates }
 
-
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
-
 
 fn process_identities(ps: List<RepoProcess>) -> List<Symbol> {
   fold(ps, init: [], f: fn(acc, p) { list_snoc_item(xs: acc, item: p.identity) })
 }
 
-
 fn gate_discriminants(gates: List<Gate>) -> List<Symbol> {
   fold(gates, init: [], f: fn(acc, g) { list_snoc_item(xs: acc, item: discriminant(v: g)) })
 }
-
 
 fn identity_in(ps: List<RepoProcess>, sym: Symbol) -> Bool {
   fold(ps, init: false, f: fn(acc, p) { acc || (p.identity == sym) })
 }
 
-
-// Anti-drift: the universe's CI-gate processes are EXACTLY the declared gate roster (the
-// independent reference `gunbc_ci_gates`, not a re-reflection of the same arm-key list), so a
-// gate dropped from the universe goes RED. Mirrors ci_spec_witness's roster↔arm-keys proof,
-// lifted to the RepoProcess wrapping.
 test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
   bag_eq(
     xs: process_identities(ps: ci_gate_processes()),
@@ -61,18 +40,12 @@ test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
   )
 }
 
-
-// Meta-completeness: the affected-set lens (and testgen) ARE in their own universe — the lens
-// is not a self-blind-spot — and a bogus role is ABSENT (proves the membership check is sharp,
-// not a vacuous always-true).
 test fn affected_set_universe_includes_meta_self() -> Bool {
   identity_in(ps: meta_processes(), sym: ^AffectedSetLens)
     && identity_in(ps: meta_processes(), sym: ^TestgenLens)
     && !identity_in(ps: meta_processes(), sym: ^NotARealMetaProcess)
 }
 
-
-// Completeness: the full reflected universe covers every declared RepoProcessKind arm.
 test fn affected_set_universe_is_complete() -> Bool {
   match repo_process_universe() {
     UniverseComplete { processes: _ } => true
@@ -80,10 +53,6 @@ test fn affected_set_universe_is_complete() -> Bool {
   }
 }
 
-
-// Discrimination — the completeness check is NOT vacuous: a universe carrying only the gate
-// processes (meta-processes omitted) fails CLOSED to UniverseIncomplete, naming the uncovered
-// kind ^MetaProcessRole. This proves an omitted process category is CAUGHT, not assumed green.
 test fn affected_set_universe_incomplete_fails_closed() -> Bool {
   match repo_process_universe_from(processes: ci_gate_processes()) {
     UniverseComplete { processes: _ } => false

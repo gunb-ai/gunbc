@@ -1,6 +1,3 @@
-// Scope: §5 discriminating execution witnesses for CreateEffect create-if-absent double-init (increment 1).
-// GREEN: same proven identity → dedupable. RED inputs: create-always or different identity → not dedupable.
-
 module v2.test.claim.create_if_absent_double_init_witness_test
 
 import v2.std.effects {
@@ -13,7 +10,6 @@ import v2.std.effects {
 }
 import v2.std.logic { Bool }
 
-// Positive: create-if-absent with proven identity is idempotent/dedupable.
 test fn create_if_absent_same_identity_is_dedupable_holds() -> Bool {
   let shape = create_if_absent_shape(key_source: sample_create_if_absent_key_source)
   create_effect_is_dedupable(shape: shape)
@@ -23,14 +19,12 @@ test fn create_if_absent_same_identity_is_dedupable_holds() -> Bool {
     )
 }
 
-// Discriminating negative input: create-always must never be dedupable (fail-closed).
 test fn create_always_is_not_dedupable_holds() -> Bool {
   let shape = create_always_shape()
   !create_effect_is_dedupable(shape: shape)
     && !create_double_init_collapsible(a: shape, b: shape)
 }
 
-// Discriminating negative input: different proven identities must not collapse (Share withheld).
 test fn create_if_absent_different_identity_not_dedupable_holds() -> Bool {
   let a = create_if_absent_shape(key_source: sample_create_if_absent_key_source)
   let b = create_if_absent_shape(key_source: sample_create_if_absent_key_b)

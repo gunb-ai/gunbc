@@ -1,8 +1,3 @@
-// src/v2/extdeps/formatters/black.dag
-// Scope: Black 26.5.1 pyproject [tool.black] configuration model.
-// Status: T-4.16 scaffold — Black 26.5.1 pyproject schema.
-// Anchor: https://github.com/psf/black/blob/26.5.1/src/black/resources/black.schema.json
-
 module v2.extdeps.formatters.black
 
 import v2.std.collection { List }
@@ -13,8 +8,6 @@ import v2.std.refinement {
   positive_int_authoritative_literal
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BlackTargetVersion
   = BlackPy33
   | BlackPy34
@@ -30,20 +23,14 @@ type BlackTargetVersion
   | BlackPy314
   | BlackPy315
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BlackTargetVersionPolicy
   = BlackTargetVersionAbsent
   | BlackTargetVersionExplicit { targets: List<BlackTargetVersion> }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BlackRequiredVersionPolicy
   = BlackRequiredVersionAbsent
   | BlackRequiredVersionExplicit { version: String }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BlackUnstableFeature
   = BlackUnstableStringProcessing
   | BlackUnstableHugParensWithBracesAndSquareBrackets
@@ -54,8 +41,6 @@ type BlackUnstableFeature
   | BlackUnstablePyiOverloadGroupBlankLines
   | BlackUnstablePyiBlankLineBeforeDecoratedClass
 
-
-// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: witness checks enable_unstable_feature empty unless preview; unstable implies preview; forbidden: ad-hoc cross-field guards outside validation substrate.
 type BlackConfig {
   line_length: Outcome<PositiveInt>
   target_version: BlackTargetVersionPolicy
@@ -74,7 +59,6 @@ type BlackConfig {
   extend_exclude: String
   force_exclude: String
 }
-
 
 data black_defaults: BlackConfig = BlackConfig {
   line_length: positive_int_authoritative_literal(value: 88),
@@ -95,11 +79,8 @@ data black_defaults: BlackConfig = BlackConfig {
   force_exclude: "",
 }
 
-
 type BlackConfigPatch = ConfigPatchRecord<BlackConfig>
-
 
 fn black_layer(base: BlackConfig, patch: BlackConfigPatch) -> BlackConfig {
   config_patch_layer(base: base, patch: patch)
 }
-

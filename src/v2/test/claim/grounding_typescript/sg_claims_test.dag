@@ -1,4 +1,3 @@
-
 module v2.test.grounding_typescript.sg_claims
 
 import v2.compiler.eval {
@@ -76,7 +75,6 @@ fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
   content_hash(n: a) == content_hash(n: b)
 }
 
-// 🟡 predicate dissolution — feature:G-2-grounding-evidence-bool-bridge — bind ROADMAP.md T-PB-B /
 fn ts_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
   Sg1Evidence { source_carrier: symbol_kernel_type_node() }
 }
@@ -303,7 +301,6 @@ data run_ts_g2_sg5_collection_absence: TestClaimRun<Node, RuntimeValue> = run_te
   subject: subject_ts_g2_sg5_collection_absence
 )
 
-// Wave-A route-through-v2 partial additive named tests: discriminating claim-run witnesses (E-10).
 test fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
   ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
 }

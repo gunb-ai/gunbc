@@ -1,7 +1,3 @@
-// extdeps/cache/rustup.dag — rustup toolchain store cache catalog (cited facts).
-//
-// Spec: https://rust-lang.github.io/rustup/overrides.html
-
 module extdeps.cache.rustup
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, NativeInternal, ToolchainSpec }
@@ -31,7 +27,7 @@ data rustup_toolchain_store_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "rustup-toolchains-dir"
   transport_encoding: OpaqueStringEncoding
   key_derivation: {
-    // EXTERNAL vendor cache: rustup keys the toolchain triple itself — CITED, not derived.
+
     key_inputs: NativeInternal { cited_inputs: [ToolchainSpec] }
     overwritable: false
     prefix_fallback_allowed: false

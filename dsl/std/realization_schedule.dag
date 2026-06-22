@@ -1,10 +1,3 @@
-// std/realization_schedule.dag — Schedule arm of std.realization (dsl-tree authority).
-//
-// Lives in the dsl tree so schedule-lens witnesses execute without pulling the v2
-// resolution closure. Live ci_floor_plan generative wiring is proven in
-// v2/test/claim/realization_schedule_witness.dag (dissolution: enroll when v2
-// self-compile-clean closes the Empty-in-generic sequence_outcome substrate gap).
-
 module std.realization_schedule
 
 import std.types { ContentHash, Bool, String, List, Int }
@@ -22,16 +15,10 @@ import std.lens_verdict {
   ModuleWholeFile,
 }
 
-// dissolve-on: extdeps/realization measured cost handlers — peripheral host realizers
-//   aggregate PerformanceReceipt rows into cost_account_measured_* at the floor boundary.
 type CostBasis
   = Predicted
   | Measured
 
-// Scale-AGNOSTIC cost ledger: `time` is a `Time` magnitude at ANY scale `<S>` (DESIGN §3
-// — the framework names no scale; a consumer pins `<S>`, e.g. `CostAccount<Nano>` for
-// measured wall-clock, at its own boundary). `space`/`power` keep their own dimensional
-// scales (`Memory@One` / `Power@One`); only the time axis is the relocated scale choice.
 type CostAccount<S> {
   time: Measure<Time, S, Nat>
   space: ByteSize
@@ -57,7 +44,6 @@ fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   }
 }
 
-// Magnitude projection at the ledger's declared scale (count, not scale-named "nanos").
 fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat {
   measure_count(m: account.time)
 }
@@ -86,10 +72,7 @@ type RealizationPlan<S> {
   target: ContentHash
   objective: RealizationObjective
   schedule: Schedule
-  // Measured roll-up along schedule critical path (seq across batches, max within batch);
-  // authority v1.compiler.complexity span / cost_seq / cost_par — see
-  // std.realization_measurement.schedule_critical_path_time. `<S>` is the consumer-pinned
-  // time scale of the ledger (e.g. `RealizationPlan<Nano>`); the plan itself is agnostic.
+
   total: CostAccount<S>
 }
 

@@ -1,15 +1,3 @@
-// v2/test/claim/realization_schedule_witness.dag
-//
-// Generative + schedule-lens witnesses for std.realization wired to LIVE ci_floor_plan.
-// Proves execute=interpret-plan: gunbc_ci_floor_batches is a pure pass-through of the
-// inner scheduler schedule (identical content + order), and the schedule lens is GREEN
-// on the live floor plan but RED when batch-0 order is perturbed (discriminating — §5).
-//
-// DISSOLUTION TRIGGER: enroll in default CI discovery corpus when v2 self-compile-clean
-// closes the Empty-in-generic sequence_outcome substrate gap (v2.std.diagnostic). Until
-// then, dsl/test/claim/realization_schedule_witness.dag proves the lens by execution on
-// a synthetic RealizationPlan in the dsl tree.
-
 module v2.test.claim.realization_schedule_witness
 
 import v2.std.algebra { list_snoc_item }
@@ -31,7 +19,6 @@ import v2.workflow.ci_floor_plan {
   ci_floor_compile_gate_fn,
 }
 
-// Generative pass-through: host entry reads plan.schedule, identical to inner scheduler.
 fn witness_batches_are_plan_schedule() -> Bool {
   schedule_generates_identical_schedule(
     plan: gunbc_ci_floor_realization_plan(),
@@ -39,7 +26,6 @@ fn witness_batches_are_plan_schedule() -> Bool {
   )
 }
 
-// Safety: generative routing cannot perturb the live floor — exact schedule equality.
 fn witness_batches_identical_to_inner_schedule() -> Bool {
   schedule_eq(
     left: gunbc_ci_floor_batches(),
@@ -59,7 +45,6 @@ fn witness_schedule_lens_holds_on_floor_plan() -> Bool {
   }
 }
 
-// Discriminating RED: swap batch-0 and batch-1 — compile gate no longer first.
 fn perturbed_schedule_wrong_order(inner: List<List<Runnable>>) -> List<List<Runnable>> {
   list_snoc_item(
     xs: list_snoc_item(xs: [], item: inner.skip(n: 1).first()),

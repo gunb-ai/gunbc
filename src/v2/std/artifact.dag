@@ -1,7 +1,3 @@
-// src/v2/std/artifact.dag
-// Scope: artifact identity and Node-to-artifact provenance.
-// Status: Wave-2-A substrate.
-
 module v2.std.artifact
 
 import v2.std.diagnostic { Accepted, Locus, Outcome, Rejected }
@@ -9,7 +5,6 @@ import v2.std.node { Node, Symbol }
 import v2.std.refinement { Refined, Validation, refine }
 import v2.std.text { String }
 
-// 🟢 coproduct dissolution
 type ArtifactKind
   = SourceFile
   | GeneratedSource
@@ -25,25 +20,12 @@ type Artifact {
   file_path: String
 }
 
-// Stable identity of the generator that produced an artifact (F.2-P1 shared fact;
-// coordinated with Source-authority Mgr per Branch H §H.5). Idiomatic Id-alias shape
-// (cf. v2.std.leaf_model_verification LeafModelClaimId = Symbol, Artifact.id: Symbol).
-// Referenced by testgen Generator provenance (v2.lens.testgen) so a generated
-// `GeneratedSource` / `TestClaimArtifact` carries the producing generator's identity.
 type GeneratorId = Symbol
 
-// An Artifact constrained to generator-output kinds (`GeneratedSource` /
-// `TestClaimArtifact`). A generator's provenance may name only artifacts it produced;
-// the refinement makes non-generated kinds (`SourceFile`, `CorePackage`, …)
-// unrepresentable in `GeneratorProvenance` (Source-authority guardrail per Branch H §H.5
-// — generated output is not, and cannot be tagged as, canonical source). Single authority
-// over `Artifact` via refinement, not a parallel kind enumeration. Pattern: posix.dag
-// ProcessId/ExitCode over `Refined<Int>`.
 type GeneratedArtifact {
   refined: Refined<Artifact>
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:artifact-generated-kind-query — owner/lane: F.2-P1 Runtime/TestClaim — bind node://adhoc-6c543d46-716 — dissolve-on-arrival: substrate projects a canonical generated/producer-output partition over ArtifactKind (query/fold), `generated_artifact_validation.admits` routes through it, and this hand-written arm match is deleted in the same PR; forbidden: parallel ad-hoc generated-kind Bool predicates outside this validation authority.
 fn artifact_is_generated(a: Artifact) -> Bool {
   match a.kind {
     GeneratedSource => true
@@ -69,13 +51,6 @@ fn make_generated_artifact(base: Artifact, at: Locus) -> Outcome<GeneratedArtifa
   }
 }
 
-// Total constructor for the statically-admitted `TestClaimArtifact` kind. The kind is
-// fixed here (not a parameter), so the result provably satisfies `artifact_is_generated`
-// with no runtime check — this is the smart-constructor counterpart to
-// `make_generated_artifact`, which stays the only path for a *dynamic* Artifact whose kind
-// is not statically known. Keeps total (List-returning) testgen producers total (no
-// `Outcome` cascade) while non-generated kinds remain unrepresentable in
-// `GeneratorProvenance` (the field type is `GeneratedArtifact`, never a raw `Artifact`).
 fn test_claim_generated_artifact(id: Symbol, file_path: String) -> GeneratedArtifact {
   GeneratedArtifact {
     refined: Refined {
@@ -84,11 +59,6 @@ fn test_claim_generated_artifact(id: Symbol, file_path: String) -> GeneratedArti
   }
 }
 
-// Provenance of a generated artifact: the generator identity plus the generated Artifact
-// it emitted. Bundles the artifact-domain pair so testgen carriers (v2.lens.testgen
-// Generator<C>) hold a single provenance field rather than parallel id/artifact fields
-// (Cost-of-Change single authority; mirrors NodeArtifactProvenance below). The `artifact`
-// is a `GeneratedArtifact`, so only generator-output kinds are representable.
 type GeneratorProvenance {
   generator_id: GeneratorId
   artifact: GeneratedArtifact

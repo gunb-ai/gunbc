@@ -1,12 +1,3 @@
-// examples/html_markup_smoke.dag — in-repo consumer for std.html_markup.
-//
-// Builds MarkupNode trees and asserts try_serialize_html_node output through
-// func main (executed-green receipt). Run:
-//   gunbc run \
-//     --source-root dsl/examples/html_markup_smoke \
-//     --source-root dsl/std \
-//     --entry dsl/examples/html_markup_smoke/html_markup_smoke.dag \
-//     --function main
 
 module examples.html_markup_smoke
 
@@ -42,15 +33,12 @@ data href_amp: MarkupNode = ElementNode {
   children: [ TextNode { text: "link" } ],
 }
 
-// REQ-A: url-within-attribute composition — hostile href must not break out of
-// the double-quoted attr (quote percent-encoded, not left literal).
 data href_hostile: MarkupNode = ElementNode {
   tag: "a",
   attrs: [ MarkupAttr { name: "href", value: "x\"&<y onmouseover=z" } ],
   children: [],
 }
 
-// XSS: dangerous URL schemes must fail-closed before serialization.
 data href_javascript: MarkupNode = ElementNode {
   tag: "a",
   attrs: [ MarkupAttr { name: "href", value: "javascript:alert(1)" } ],

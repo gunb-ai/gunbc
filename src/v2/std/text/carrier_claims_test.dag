@@ -1,7 +1,4 @@
-// These witnesses migrate the behavioral content of
-
 module v2.test.std_text.carrier_claims
-
 
 import v2.std.algebra { Cons, Empty, Equal, FreeMonoid, Ordering }
 import v2.std.logic { Bool }
@@ -18,24 +15,19 @@ import v2.std.text {
   string_is_empty
 }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-// Two distinct Char (= Nat) witnesses; small Peano values so the carriers stay shallow.
+
 data text_witness_char_a: Char = Succ { prev: Zero }
 data text_witness_char_b: Char = Succ { prev: Succ { prev: Zero } }
-
 
 fn text_not(b: Bool) -> Bool {
   b == false
 }
 
-
-// Char equality via the substrate total-order compare (no reliance on `==` over Nat).
 fn text_char_eq(a: Char, b: Char) -> Bool {
   match nat_compare(a: a, b: b) {
     Equal => true
@@ -43,16 +35,10 @@ fn text_char_eq(a: Char, b: Char) -> Bool {
   }
 }
 
-
-// Build a single-char String directly through the FreeMonoid<Char> carrier.
 fn text_single(c: Char) -> String {
   Cons { head: c, tail: Empty }
 }
 
-
-// Fact 1 (String remains the Unicode FreeMonoid<Char> carrier): the empty carrier is
-// empty, a single-char carrier is non-empty, and its head projects back to the stored
-// char. Discriminates: a non-FreeMonoid carrier or a broken head would not behave.
 test fn text_string_freemonoid_carrier_holds() -> Bool {
   string_is_empty(s: Empty)
     && text_not(b: string_is_empty(s: text_single(c: text_witness_char_a)))
@@ -62,11 +48,6 @@ test fn text_string_freemonoid_carrier_holds() -> Bool {
     }
 }
 
-
-// Fact 2 (HostStringText constructor + projection consumers preserve text): round-trip a
-// single-char carrier through host_string_text → host_string_text_value; the projected
-// head must equal char_a AND must NOT equal char_b. The negative arm makes the witness
-// discriminate stored-value identity, not just presence.
 test fn text_host_string_roundtrip_holds() -> Bool {
   match string_head(
     s: host_string_text_value(
@@ -80,18 +61,10 @@ test fn text_host_string_roundtrip_holds() -> Bool {
   }
 }
 
-
-// Fact 2b (projection returns the actually-stored text, not a constant): round-trip the
-// EMPTY carrier; it must come back empty. Pairs with the positive round-trip to pin the
-// projection to its argument.
 test fn text_host_string_empty_roundtrip_holds() -> Bool {
   string_is_empty(s: host_string_text_value(value: host_string_text(text: Empty)))
 }
 
-
-// Fact 3 (HostStringText record field is `text: String`): construct the record literal
-// directly via the `text` field and project it back. A different field name would not
-// compile/run; the projected head discriminates the stored char.
 test fn text_host_string_field_text_holds() -> Bool {
   match string_head(
     s: host_string_text_value(value: HostStringText { text: text_single(c: text_witness_char_b) })

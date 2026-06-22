@@ -1,8 +1,3 @@
-// extdeps/container/oci/descriptor.dag — OCI Content Descriptor (image-spec descriptor.md).
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/descriptor.md
-// Version: image-spec v1.1.0
-
 module extdeps.container.oci.descriptor
 
 import extdeps.container.oci.types { OciMediaType }

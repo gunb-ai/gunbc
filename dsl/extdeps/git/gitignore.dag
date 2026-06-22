@@ -1,15 +1,7 @@
-// extdeps/git/gitignore.dag -- "What is .gitignore?"
-//
-// Stable domain model of .gitignore files. Tautological definitions:
-// categories group exclusion patterns with provenance and rationale.
-//
-// Superseded by gunbc.gitignore_authority (IgnoreGroup list) + gunbc.gitignore_emit.
-
 module extdeps.gitignore
 
 import std.render { OutputFormat }
 
-// A category of gitignore rules with provenance tracking.
 type GitignoreCategory {
   id: String
   name: String
@@ -19,13 +11,11 @@ type GitignoreCategory {
   when_build_system: String?
 }
 
-// A complete .gitignore file with provenance rule comment.
 type GitignoreFile {
   rule_comment: String
   categories: List<GitignoreCategory>
 }
 
-// OutputFormat parameterization for .gitignore.
 data gitignore_output_format: OutputFormat = {
   name: "Gitignore",
   indent_unit: "",
@@ -35,8 +25,6 @@ data gitignore_output_format: OutputFormat = {
   section_separator: "\n",
   trailing_newline: true
 }
-
-// -- Category filtering -----------------------------------------------
 
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
   let by_build = filter(categories, c => match c.when_build_system {

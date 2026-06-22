@@ -1,13 +1,7 @@
-// extdeps/llm/anthropic_errors.dag -- Anthropic Messages API error envelope shape.
-//
-// Spec: https://docs.anthropic.com/en/api/errors
-// API version: 2023-06-01 (anthropic-version header)
-
 module extdeps.llm.anthropic_errors
 
 import std.types { NonEmptyStr }
 
-// Anthropic error envelope outer `type` — currently only "error" on the wire.
 type AnthropicErrorEnvelopeType
   = AnthropicErrorEnvelope {}
 
@@ -19,7 +13,6 @@ fn anthropic_error_envelope_type_label(kind: AnthropicErrorEnvelopeType) -> Stri
   }
 }
 
-// Anthropic error `error.type` registry (extensible — closed cited rows + Other).
 type AnthropicErrorType
   = AnthropicAuthenticationError
   | AnthropicInvalidRequestError

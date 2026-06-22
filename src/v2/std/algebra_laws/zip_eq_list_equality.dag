@@ -1,8 +1,4 @@
-// Scope: TestClaim corpus for zip_eq two-list structural equality.
-
-
 module v2.test.algebra_laws.zip_eq_list_equality
-
 
 import v2.std.algebra { Cons, Empty, FreeMonoid, zip_eq }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -21,7 +17,6 @@ fn sym_list_a() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_a, tail: Empty 
 fn sym_list_b() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_b, tail: Empty } }
 fn sym_list_ab() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_a, tail: Cons { head: ^zip_eq_sym_b, tail: Empty } } }
 
-
 fn zip_eq_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^zip_eq_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
@@ -36,30 +31,24 @@ fn zip_eq_claim_input(ok: Bool) -> Node {
   if ok { zip_eq_pass_node() } else { zip_eq_fail_node() }
 }
 
-
 data witness_zip_eq_empty_empty: Bool = zip_eq(a: sym_list_empty(), b: sym_list_empty(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) })
 
-
 data witness_zip_eq_same_single: Bool = zip_eq(a: sym_list_a(), b: sym_list_a(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) })
-
 
 data witness_zip_eq_different_single: Bool = match zip_eq(a: sym_list_a(), b: sym_list_b(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }
 
-
 data witness_zip_eq_left_longer: Bool = match zip_eq(a: sym_list_ab(), b: sym_list_a(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }
 
-
 data witness_zip_eq_right_longer: Bool = match zip_eq(a: sym_list_a(), b: sym_list_ab(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
   true => false
   false => true
 }
-
 
 data claim_zip_eq_empty_empty_true: TestClaim = CompilesClaim {
   label: "algebra/zip_eq: empty/empty lists are equal",
@@ -69,7 +58,6 @@ data claim_zip_eq_empty_empty_true: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_zip_eq_same_single_true: TestClaim = CompilesClaim {
   label: "algebra/zip_eq: identical single-element lists are equal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -77,7 +65,6 @@ data claim_zip_eq_same_single_true: TestClaim = CompilesClaim {
   expected_value: zip_eq_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_zip_eq_different_single_false: TestClaim = CompilesClaim {
   label: "algebra/zip_eq: distinct single-element lists are not equal",
@@ -87,7 +74,6 @@ data claim_zip_eq_different_single_false: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_zip_eq_left_longer_false: TestClaim = CompilesClaim {
   label: "algebra/zip_eq: left-longer list is not equal to shorter right",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -95,7 +81,6 @@ data claim_zip_eq_left_longer_false: TestClaim = CompilesClaim {
   expected_value: zip_eq_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_zip_eq_right_longer_false: TestClaim = CompilesClaim {
   label: "algebra/zip_eq: right-longer list is not equal to shorter left",

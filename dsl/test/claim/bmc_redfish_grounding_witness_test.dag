@@ -1,11 +1,3 @@
-// test/claim/bmc_redfish_grounding_witness_test.dag — by-execution witness (DESIGN §5)
-// for the BMC → host-facts grounding seam.
-//
-// Fixture grounded on live srv2 Redfish probe 2026-06-20 (operator warm-crane-135):
-//   Systems/system: CoreCount=128, 128GiB, Model=ALTRAD8UD-1L2T, Manufacturer=ASRockRack
-//   Chassis ALTRAD8UD_1L2T: Power/Thermal empty; sensors power_PWR_Core_VRD ~95W,
-//   power_PWR_SOC_VRD ~17W (Nat whole-watt fixture).
-
 module test.claim.bmc_redfish_grounding
 
 import std.logic { Bool }
@@ -37,7 +29,6 @@ import extdeps.bmc.redfish {
 import extdeps.bmc { bmc_ground_snapshot }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
 
-// Live srv2 system inventory shape.
 data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_inventory(
   model: "ALTRAD8UD-1L2T",
   manufacturer: Present { value: "ASRockRack" },
@@ -49,7 +40,6 @@ data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_invent
   logical_processor_count: Present { value: hardware_thread_count(128) }
 )
 
-// OpenBMC ALTRAD8UD: Chassis Power collection is empty — power from sensor docs.
 data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
   chassis_id: asrock_altrad8ud_redfish_chassis_id,
   sensors: [
@@ -86,7 +76,6 @@ test fn bmc_redfish_grounding_holds() -> Bool {
     }
 }
 
-// Power subsystem present but every PowerControl omits PowerConsumedWatts → Absent, not 0 W.
 data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
   controls: [
     RedfishPowerControl {

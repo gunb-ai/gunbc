@@ -1,14 +1,8 @@
-// src/v2/std/report.dag
-// Scope: advisory report carrier.
-// Status: T-17 closed ReportReason; T-23 adds ReportSuggestion + diagnostic seam.
-// Anchor: docs/r4-carve-out-routing.md
-
 module v2.std.report
 
 import v2.std.diagnostic { Locus }
 import v2.std.node { Symbol }
 
-// 🟢 coproduct dissolution
 type ReportReason
   = SynthesisGapDecisionTree
   | SynthesisGapInformationTheoretic

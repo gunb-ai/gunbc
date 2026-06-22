@@ -1,19 +1,8 @@
-// extdeps/cloud/gcp/iam.dag -- "What is GCP IAM?"
-//
-// IAM resource model: roles, bindings, policies, impersonation
-// chains, token lifetimes.
-//
-// Consumers:
-//   gunbc/auth/patterns.dag        -- credential_chain pattern
-//   gunbc/auth/patterns.dag        -- credential_chain pattern
-
 module extdeps.cloud.gcp.iam
 
 import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject, GcpProjectId, ServiceAccountEmail }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
 import std.types { HttpMethod, AuthScheme }
-
-// -- Roles ---------------------------------------------------------
 
 type GcpRole {
   name: String
@@ -33,8 +22,6 @@ data common_roles: List<GcpRole> = [
   { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
 ]
 
-// -- Bindings & policies -------------------------------------------
-
 type IamCondition {
   title: String
   expression: String
@@ -53,15 +40,11 @@ type GcpPolicy {
   version: Int
 }
 
-// -- Impersonation -------------------------------------------------
-
 type ImpersonationChain {
   source: String
   target: String
   delegates: List<String>
 }
-
-// -- Token lifetimes -----------------------------------------------
 
 type TokenLifetime {
   default_seconds: Int
@@ -78,21 +61,14 @@ type GcpGenerateAccessToken200Body {
   expire_time: String from "expireTime"
 }
 
-// -- Service: REST transport wiring ------------------------------
-
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH gcp.IAM ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.IAM {
   config {
     endpoint: "https://iamcredentials.googleapis.com"
     auth: Bearer
     auth_input: access_token
-    // GCP IAM Credentials rate limits: 60 requests/min per service account
+
     rate_limit: { requests: 60, per: minute, scope: iam_credentials }
-    // Retry on quota exceeded and server errors with exponential backoff
+
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
@@ -106,8 +82,7 @@ service gcp.IAM {
       access_token: Secret from "accessToken"
       expire_time: String from "expireTime"
     }
-    // Derivation unknown: POST derives CreateEffect (fail-closed).
-    // Idempotency is declared per Google API semantics for generateAccessToken.
+
     idempotent
     transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
     response {
@@ -121,11 +96,6 @@ service gcp.IAM {
   }
 }
 
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH gcp.ResourceManager ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 

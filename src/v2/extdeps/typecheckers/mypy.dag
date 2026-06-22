@@ -1,10 +1,3 @@
-// src/v2/extdeps/typecheckers/mypy.dag
-// Scope: mypy static type-checker profile - tool identity, version/config policy,
-//   and per-tool diagnostic-code namespace consumed by TargetStaticAnalysisInvocation /
-//   TargetStaticAnalysisVerdict (v2.std.leaf_model_verification).
-// Status: PY-L1-STATIC-STRUCTURAL companion profile for release-minimum pyright/mypy checks.
-// Anchor: https://mypy.readthedocs.io/en/stable/command_line.html
-
 module v2.extdeps.typecheckers.mypy
 
 import v2.std.collection { List }
@@ -12,9 +5,6 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-// Stable tool identity referenced by StaticAnalysisRejected/Advisory.tool_id.
-// Version/config policy. The invocation pins a concrete mypy release and target Python
-// version so static-analysis receipts do not depend on ambient PATH behavior.
 type MypyConfig {
   mypy_version: String
   python_version: String
@@ -29,9 +19,6 @@ data mypy_profile_l1: MypyConfig = MypyConfig {
   show_error_codes: true,
 }
 
-// Stable PROFILE identity for the mypy_profile_l1 row - distinct from ^mypy_tool_id.
-// Per-tool diagnostic-code namespace. The code string is the bracketed mypy error code
-// emitted when --show-error-codes is enabled.
 type MypyDiagnosticCode {
   code_id: Symbol
   code_name: String
