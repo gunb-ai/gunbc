@@ -33,7 +33,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus ([plan](docs/plans/model-realization-fork.md))
 - [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
-- [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427) ([cause table](docs/plans/ci-selection-vs-scheduling.md))
+- [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427); `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight ([cause table](docs/plans/ci-selection-vs-scheduling.md), [edge-(b) brief](docs/plans/edge-b-rust-dag-provenance-brief.md)) *(quick-ant-298)*
 - [ ] **promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection (also unlocks coverage/testgen) *(silent-wren-739)*
 - [x] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
@@ -45,6 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 - [x] **cross-tree import activation** (§5) — LANDED (#5473); the §0↔§5 escalate item is now closed
 - [ ] **`Disposition` carrier** ([plan](docs/plans/disposition-carrier.md)) — a new concept; parked
 - [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction
+- [ ] **cardinality refinement** — illegal cardinalities (wrong length · empty · overflow) unwritable by construction; the *decidable* refinement axis (linear arithmetic over counts), fold-propagated. MVP-1 (`Byte` via `Length<8>`) + P4 (fold homomorphism · uint8 overflow → typed `Rejected`) proven (#5512); P1 (`where` lowering) / P2 (construction-enforced) behind this lane; P5 (phantom-width reflection) substrate-blocked. → [plan](docs/plans/cardinality-refinement.md) · [P1](docs/plans/p1-where-clause-lowering.md)
 
 **Meta — lock down the reasoning (§7 recursion):**
 
@@ -101,7 +102,11 @@ the lane in displaced cost, "move with confidence", not elegance).
 resolve-cache enabled → one Materialization kernel (collapse the 5 caches) → one Placement authority
 (jobs · threads · sessions = 3 forks) → shared secrets · gunbhub closes the GitHub engine (G6, parked)
 
-**What's on `.dag` today** (status, not work — the verdict tables live in [charter §2/§4](docs/plans/ci-process-end-to-end.md)): execution ✅ (the floor *is* a fold-walk) · width ✅ (#5444) · placement/materialization 🟡 inert · caching forked (resolve-cache **dormant** = biggest dormant lever). The `[ ]`s below are the work.
+**What's on `.dag` today (the gap map — detail in the charter §2/§4):**
+- [x] **execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)
+- [x] **scheduling: width axis** — `memory_aware_spawn_width` consumes the measured envelope (#5444); single-host
+- [ ] **scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)
+- [ ] **caching forked** — sccache live · resolve-cache **dormant** (pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)
 
 **Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
 - [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) ([plan](docs/plans/compute-envelope-model.md))

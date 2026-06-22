@@ -1,6 +1,3 @@
-// v2/workflow/affected_set_floor_runner_test.dag
-// Phase 1.5a REDO witnesses — stateless node-frontier skip policy.
-
 module v2.test.workflow.affected_set_floor_runner
 
 import v2.std.algebra { count_equal, length }

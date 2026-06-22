@@ -2,7 +2,7 @@
 //
 // The PURE half of step-3 (O4): proves BY EXECUTION that project_roadmap_to_markdown over a synthetic
 // whole-document authority serializes to the right ROADMAP bytes — preamble first, then each section's
-// H2 + task list in order, with CompletesIff boxes DERIVED from the merged set and HandChecked boxes
+// H2 + task list in order, with DerivableLine boxes DERIVED from the merged set and AuthoredLine boxes
 // AUTHORED. Discriminating: flip the merged set and the derived box flips; the effectful drift gate
 // (read the real ROADMAP.md, byte-compare) is the SEPARATE RoadmapGate variant (step-3b), since
 // Filesystem.Read is a host effect and cannot live in a pure witness.
@@ -11,8 +11,8 @@ module test.claim.roadmap_document
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc }
-import gunbc.roadmap_status { RoadmapStatusEntry, CompletesIff, HandChecked }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc, SectionElement, section_group }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import ctrl.process_algebra { ProcessNodeId }
 
@@ -20,38 +20,44 @@ data audit_id: ProcessNodeId = "fail-closed-audit"
 data status_id: ProcessNodeId = "pr-checkbox-status"
 data child_id: ProcessNodeId = "host-fed-status-bridge"
 
-// HandChecked line — authored box (no PR derivation).
+// AuthoredLine — authored box (no PR derivation); the bold lives verbatim IN `content` (the §5 fence).
 fn audit_node() -> RoadmapNode {
   RoadmapNode {
     node: audit_id,
-    line: RoadmapStatusEntry { title: "fail-open audit", claimed_done: true, binding: HandChecked },
+    line: AuthoredLine { done: true, content: "**fail-open audit**" },
     carrier: PlanDoc { path: "docs/plans/fail-closed-lockdown.md" },
   }
 }
-// CompletesIff line — box DERIVED from the merged set.
+// DerivableLine — box DERIVED from the merged set, emit bolds the structural title.
 fn status_node() -> RoadmapNode {
   RoadmapNode {
     node: status_id,
-    line: RoadmapStatusEntry { title: "PR-checkbox status", claimed_done: false, binding: CompletesIff { prs: [5491] } },
+    line: DerivableLine { prs: [5491], title: "PR-checkbox status", description: "" },
     carrier: NoCarrier,
   }
 }
 fn child_node() -> RoadmapNode {
   RoadmapNode {
     node: child_id,
-    line: RoadmapStatusEntry { title: "host-fed status bridge", claimed_done: false, binding: HandChecked },
+    line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carrier: NoCarrier,
   }
 }
 
 fn lockdown_section() -> RoadmapSection {
-  RoadmapSection { title: "0. Fail-closed lock-down", nodes: [audit_node()], edges: [] }
+  RoadmapSection {
+    title: "0. Fail-closed lock-down",
+    elements: [section_group(label: "", nodes: [audit_node()], edges: [])],
+  }
 }
 fn expansion_section() -> RoadmapSection {
   RoadmapSection {
     title: "6. Expansion",
-    nodes: [status_node(), child_node()],
-    edges: [RoadmapEdge { child: child_id, parent: status_id }],
+    elements: [section_group(
+      label: "",
+      nodes: [status_node(), child_node()],
+      edges: [RoadmapEdge { child: child_id, parent: status_id }],
+    )],
   }
 }
 
@@ -82,18 +88,18 @@ fn witness_both_sections() -> Bool {
   string_contains(s: out, pattern: "## 0. Fail-closed lock-down")
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
-// HandChecked authored box + its plan-doc link.
+// AuthoredLine authored box + its plan-doc link.
 fn witness_authored_box_and_link() -> Bool {
   let out = emit(merged: [5491])
   string_contains(s: out, pattern: "[x] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/fail-closed-lockdown.md)")
 }
-// CompletesIff child-bearing node: #5491 merged -> derived [x], nesting its child one indent.
+// DerivableLine child-bearing node: #5491 merged -> derived [x], nesting its child one indent.
 fn witness_derived_checked_when_merged() -> Bool {
   string_contains(s: emit(merged: [5491]), pattern: "[x] **PR-checkbox status**")
 }
-// Discriminating: #5491 NOT merged -> SAME line derives [ ] (not authored — claimed_done is false too,
-// but the point is it's DERIVED: a HandChecked false would also be [ ], so pair with the merged case).
+// Discriminating: #5491 NOT merged -> SAME line derives [ ] (not authored — the point is it's DERIVED:
+// an AuthoredLine false would also be [ ], so pair with the merged case to isolate the derivation).
 fn witness_derived_unchecked_when_unmerged() -> Bool {
   let out = emit(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
@@ -114,7 +120,7 @@ fn expected_roadmap() -> String {
     "\n",
     "## 6. Expansion\n",
     "\n",
-    "- [x] **PR-checkbox status**\n",
+    "- [x] **PR-checkbox status** (#5491)\n",
     "  - [ ] **host-fed status bridge**\n"
   ], "")
 }
@@ -123,7 +129,7 @@ fn expected_roadmap() -> String {
 fn witness_exact_bytes() -> Bool {
   emit(merged: [5491]) == expected_roadmap()
 }
-// Drift receipt: the CompletesIff box is genuinely a function of the merged set, not baked into the
+// Drift receipt: the DerivableLine box is genuinely a function of the merged set, not baked into the
 // golden — the clean set MUST match the golden, a perturbed set MUST diverge (so the gate has teeth).
 fn witness_drift_receipt() -> Bool {
   emit(merged: [5491]) == expected_roadmap()

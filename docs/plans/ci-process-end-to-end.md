@@ -118,16 +118,14 @@ otherwise**; secrets are unmodeled. CI is the workload that makes finishing each
 **Root: the model is on fabric, but the decisions that govern utilization — which host a run lands on,
 runners-per-host, per-runner caps — are NOT derived from it. They're demand-blind hand/host knobs.** The
 symptom is a fleet with **no operating point** — two 128-core hosts either oversubscribed/crashing or at
-~1%, never the middle ([compute-envelope-model.md](compute-envelope-model.md) §1). Headline (measured,
-#5427): the box runs its heaviest phases at **width 8** (the `.dag` corpus) and **`jobs=1`** (the rust
-compile) — single-digit parallelism on 128 cores — while the other host idles. (Width tracks the live
-budget; 8 came from a 112 GB cgroup `memory.max`. See §6/§7.)
+~1%, never the middle ([compute-envelope-model.md](compute-envelope-model.md) §1). Headline: a 128-core
+box runs CI at **width ~4 [confirm]** while the other host idles.
 
 | Face | Mechanism | Link |
 |------|-----------|------|
 | placement demand-blind | single job, no matrix → first-idle → heavy runs co-reside, other host idles | G1 (link 4) |
 | runner deployment hand-managed | runners/host + caps not in repo → over-commit | G2/G3 (links 5–6) |
-| resolve cache dormant | `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset → resolve runs cold every run (840s CPU in the corpus, #5427) + high peak caps width low | §4 caching |
+| resolve cache dormant | `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset → ~191s [confirm] cold resolve + high peak caps width low | §4 caching |
 | `workflow_dispatch` dup | dispatch + PR → two same-SHA runs escape the `run_id` key → OOM | G4 (links 3/3′) |
 | rust gate all-or-nothing | no affected-set on `.rs` PRs | G5 (link 12) |
 | stale-green merge | PR validated before a new gate landed | [ci-merge-freshness.md](ci-merge-freshness.md) |

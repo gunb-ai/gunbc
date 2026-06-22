@@ -1,29 +1,3 @@
-// v2/workflow/ci_floor_plan.dag — the CI floor as a dependency-ordered scheduler plan,
-// DERIVED FROM `gunbc_ci_spec` (the single floor authority, DESIGN §3).
-//
-// This is the default CI runtime: `gunbc ci` (via `gunbc.ci_spec.gunbc_ci_run_script`)
-// invokes `claim_executor --plan-entry … --plan-function gunbc_ci_floor_batches`, and
-// the v2.workflow scheduler decides the batches. There is NO parallel hardcoded floor
-// list — the gates come from `gunbc_ci_spec.gates`, the corpus roots/scan dirs from
-// `gunbc.ci_layer_roots` (discovery roster is marker-driven, not hand-listed). The ONLY fact added here is the
-// dependency TOPOLOGY: `DslCompileCleanGate` (whole-tree compile) is the fail-fast
-// root, and every other gate + the discovery corpus sit in a later readiness layer
-// behind it, so they run dependency-ordered and parallelize where independent
-// (DESIGN §4/§5). Add a gate to the spec → it re-batches here with zero host change.
-//
-// HOME + bridge note (DESIGN §3/§6/§7). This file lives in the v2 tree because it
-// REUSES the v2.workflow scheduler model (parallel_executor_plan_from_dependencies,
-// over v2.std Node/DependencyView) — forking that scheduler into dsl would violate §3.
-// The plan must also read the single-authority spec, which lives in dsl
-// (`gunbc.ci_spec`); hence the `import gunbc.ci_spec` below is a v2→dsl bridge. It is
-// safe today (no gate gunbc-compiles the v2 tree standalone — v2 is mid-§7 bootstrap
-// and not yet self-compile-clean; the host always co-resolves `--source-root dsl
-// --source-root src/v2` at run time). It canNOT live in dsl: a dsl file importing the
-// v2 scheduler drags the not-yet-self-clean v2 tree into the `DslCompileCleanGate`,
-// turning that load-bearing gate red. DISSOLUTION TRIGGER (§6): when v2 reaches
-// self-compile-clean (§7), this bridge moves to host-mediated — claim_executor evals
-// the dsl topology and the v2 scheduler separately, with no cross-tree module import.
-
 module v2.workflow.ci_floor_plan
 
 import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs }
@@ -71,7 +45,6 @@ import v2.workflow.executor {
   parallel_executor_plan_from_dependencies
 }
 
-// CI floor target digest (subgraph grain — dissolution: content_hash(floor_nodes)).
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
 
 data ci_floor_compile_gate_fn: String = "dsl_compile_clean_gate_passes"
@@ -80,13 +53,11 @@ data floor_gate_witness_entry: String = "dsl/tools/floor_effect_gate_witness.dag
 
 data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
 
-// The discovery-corpus node (one fixed identity).
 data floor_corpus_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^gunbc_floor_corpus } },
   children: []
 }
 
-// Closed Gate enum → one fixed-identity Node each (no runtime symbol minting).
 fn gate_node(g: Gate) -> Node {
   match g {
     RustMonolithGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_rust } }, children: [] }
@@ -100,8 +71,6 @@ fn gate_node(g: Gate) -> Node {
   }
 }
 
-// Gate → nullary Bool adapter (the single Gate→effect authority is
-// tools.ci_gates.run_spec_gate, wrapped per gate in floor_effect_gate_witness).
 fn gate_runnable(g: Gate) -> Runnable {
   match g {
     RustMonolithGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "rust_monolith_gate_passes" }
@@ -118,12 +87,10 @@ fn gate_runnable(g: Gate) -> Runnable {
   }
 }
 
-// The fail-fast root: the whole-tree compile-clean gate.
 fn floor_compile_root_node() -> Node {
   gate_node(g: DslCompileCleanGate)
 }
 
-// ── corpus runnable fields, derived from ci_layer_roots (§3 single authority) ─
 fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
@@ -137,7 +104,6 @@ fn corpus_runnable() -> Runnable {
   }
 }
 
-// ── nodes + dependency edges (the only NEW fact: compile-clean gates the rest) ─
 fn floor_nodes(spec: CiSpec) -> List<Node> {
   fold(spec.gates, init: [floor_corpus_node], f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
@@ -153,15 +119,6 @@ fn floor_depends_on_compile(dependent: Node) -> DependencyView {
   }
 }
 
-// ── heavy whole-tree resolves: at most one per readiness layer ───────────────
-// A floor node is a "heavy resolve" when it resolves the whole co-rooted tree and so peaks at
-// roughly one full corpus shard's memory. At the pinned floor width the corpus already runs
-// `width` such resolves concurrently across its shards (saturating the fleet memory budget on
-// the tightest host — the deterministic exit-137 evidence behind #5375). So a SECOND heavy
-// resolve must NOT co-run in the corpus's readiness layer: removing run_walk's per-runnable
-// width split (the host fix) lets the whole layer run at once, which would otherwise put
-// source-root ingest next to the corpus and OOM. The compile-clean ROOT is a heavy resolve
-// too but is the corpus's predecessor (runs alone in the first layer), so it never co-runs.
 fn gate_is_heavy_resolve(g: Gate) -> Bool {
   match g {
     SourceRootIngestGate => true
@@ -185,9 +142,6 @@ fn floor_node_is_heavy_resolve(node: Node, spec: CiSpec) -> Bool {
   }
 }
 
-// Resource-ordering edge: a heavy-resolve gate runs only after the corpus is scheduled, so the
-// scheduler places it in a later readiness layer. ResourceDependsOn (a memory conflict, not a
-// data dependency) — the scheduler's execution classifier orders on it (scheduler.dag).
 fn floor_corpus_serializes(dependent: Node) -> DependencyView {
   DependencyView {
     source: floor_corpus_node,
@@ -197,12 +151,6 @@ fn floor_corpus_serializes(dependent: Node) -> DependencyView {
   }
 }
 
-// Every gate except the compile-clean ROOT depends on it (the root gates nothing before
-// itself). Consume `Gate` structurally at the dependency site — the root arm adds no
-// self-edge, every other gate gets one. A non-root heavy resolve additionally gets a
-// ResourceDependsOn edge behind the corpus (when `serialize_heavy`), serializing it into its
-// own later layer. `serialize_heavy: false` is the memory-blind control for the discriminating
-// oracle below.
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
   fold(spec.gates, init: [floor_depends_on_compile(dependent: floor_corpus_node)], f: fn(acc, g) {
     match g {
@@ -226,7 +174,6 @@ fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
   floor_dependencies_with(spec: spec, serialize_heavy: true)
 }
 
-// ── node -> Runnable (the single binding site; unmapped -> fail-closed sentinel) ─
 fn floor_unrunnable_sentinel() -> Runnable {
   RunnableSingleClaim { entry: "", function: "__gunbc_ci_floor_unmapped__" }
 }
@@ -247,7 +194,6 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-// Scheduler-decided batches projected to runnables (inner — plan.schedule authority).
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
     nodes: floor_nodes(spec: gunbc_ci_spec),
@@ -263,7 +209,6 @@ fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
   }
 }
 
-// Generative: RealizationPlan.schedule is the authority; host reads this field.
 fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   RealizationPlan {
     target: ci_floor_target_digest
@@ -273,12 +218,10 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   }
 }
 
-// claim_executor entry — schedule projected from the plan (execute = interpret plan).
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
 
-// Schedule lens receipt (observable independently of host execution).
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: gunbc_ci_floor_realization_plan(),
@@ -291,43 +234,14 @@ fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
   }
 }
 
-// Floor breadth = the count of independent floor units (one per spec gate; the corpus
-// node rides the same later layer), DERIVED from the single-authority spec — never a
-// tuned constant. Add a gate to gunbc_ci_spec → breadth re-derives here automatically.
 fn gunbc_ci_floor_breadth() -> Int {
   length(xs: gunbc_ci_spec.gates)
 }
 
-// The fleet's hardware-thread cap (CPU term). Sourced from the operator-fleet CPU catalog
-// (Ampere Altra Max M128-30, 128t), not a literal — the part a host runs is a deployment fact.
-// Never binds for the floor today (shard_count = breadth = 7 < 128); kept for fidelity so the
-// fold is the full min(shard_count, threads, memory).
 fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
   altra_max_m12830_catalog.threads
 }
 
-// claim_executor spawn-width companion (host never decides width — it READS the live budget
-// and threads it in here; this fold stays the pure authority). §1-C MEMORY-AWARE, DERIVED, not
-// the pinned constant #5419 left behind:
-//   width = min(shard_count, hardware_threads, ⌊0.8·budget ÷ measured_per_shard_peak⌋)
-// - shard_count   = gunbc_ci_floor_breadth() (spec-derived; corpus-explosion is Phase 1)
-// - hardware_threads = the fleet CPU cap (non-binding today)
-// - memory_budget_bytes = LIVE cgroup budget (raw bytes the host realizer read from the OS),
-//   grounded into the std.measure ByteSize carrier at this boundary before the std fold sees it
-//   (§3 measured⇒peripheral; an external system authors it → read it live)
-// - per_shard_peak = the MEASURED VmHWM÷width fact (gunbc.ci_floor_measurement, a ByteSize), NOT
-//   a literal
-// The memory term is non-binding today (admits ≫7) — it is the fail-closed FLOOR that only
-// REDUCES width below the topology cap once the tree outgrows budget/7 (DESIGN §5). A 0-byte
-// budget (host could not read one) yields the conservative committed fallback, never an OOM.
-// The `memory_budget_bytes: Int` arg is the raw host value at the host seam (claim_executor reads
-// OS bytes, not a ByteSize); it is grounded into ByteSize on the very next line so the std
-// authority fold carries the dimension.
-// 🟡 SCAFFOLD — feature:host-seam-bytesize — this is the ONE flat-scalar `*_bytes: Int` field in
-// §1-C: the claim_executor↔.dag seam where a raw OS byte count crosses (the host has no ByteSize
-// value to pass). Tracked, not silent debt. dissolve-on: the host realizer constructs and passes
-// a `ByteSize` directly (run_in_context_with_args binding a built Measure value) so this signature
-// becomes `memory_budget: ByteSize` and the `byte_size(...)` grounding below moves host-side.
 fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   memory_aware_spawn_width(
     shard_count: gunbc_ci_floor_breadth(),
@@ -338,15 +252,6 @@ fn gunbc_ci_floor_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
   )
 }
 
-// ── §1-C per-run demand envelope: what THIS floor run needs (for cross-run placement) ─
-// The floor run's resource DEMAND as a ResourceEnvelope (product.compute_fabric — the carrier
-// placement already consumes, no parallel mint). Reuses the EXACT same width inputs as
-// gunbc_ci_floor_spawn_width above (breadth, fleet threads, measured per-shard peak, conservative
-// fallback) — one authority for "the floor's width inputs", so the exposed envelope and the spawn
-// width can never drift (§3 no re-derived shard_count fork). Memory demand = derived_width ×
-// per_shard_peak, ⌊0.8·budget⌋-bounded BY CONSTRUCTION (the demand never exceeds the budget it was
-// derived against — the floor that never OOMs). Cross-run bin-packing is operator/infra-owned and
-// out of scope here; this is the demand MODEL it rides on, exposed per run.
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
   parallel_run_demand_envelope_from_budget(
     shard_count: gunbc_ci_floor_breadth(),
@@ -357,23 +262,14 @@ fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
   )
 }
 
-// Discriminating witness on the LIVE floor inputs (real breadth + measured peak): a tight host
-// budget (~10 GB — a smaller host than the fleet) backs the floor's derived width BELOW its
-// shard_count, and the exposed envelope's memory demand stays under that budget. The discriminating
-// input is the BUDGET (the floor's own peak/breadth are real), so it exercises the real model
-// end-to-end, not a synthetic shape.
 fn witness_floor_tight_budget_backs_off_envelope() -> Bool {
   let tight_budget = 10000000000
   let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: tight_budget)
-  // 0.8 × 10 GB = 8 GB ÷ ~2.1 GB measured peak = 3 shards < breadth 7 → derived width drops to 3.
+
   demand_envelope_thread_count(envelope: envelope) < gunbc_ci_floor_breadth()
     && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(tight_budget))
 }
 
-// RED control through the SAME shared fit predicate: a memory-BLIND width = min(breadth, threads)
-// (what a fail-open derive picks, ignoring the budget) at the floor's real peak does NOT fit the
-// same tight budget — the floor's real shape over-commits without the memory term. Passes by
-// asserting the blind envelope FAILS the fit check, proving the derive is load-bearing on the live floor.
 fn witness_floor_fail_open_would_exceed_budget() -> Bool {
   let tight_budget = 10000000000
   let blind_envelope = parallel_run_demand_envelope(
@@ -386,19 +282,11 @@ fn witness_floor_fail_open_would_exceed_budget() -> Bool {
   demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(tight_budget)) == false
 }
 
-// Fail-closed: a 0-byte budget (host could not read a live cap) exposes the conservative committed
-// width, never an unbounded demand — the floor under-subscribes rather than OOMs on a missing measurement.
 fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
   let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: 0)
   demand_envelope_thread_count(envelope: envelope) == gunbc_ci_floor_conservative_fallback_width
 }
 
-// ── §5 plan oracle: at most one heavy whole-tree resolve per readiness layer ──
-// run_walk now launches a whole readiness layer at once (the host fix removed the per-runnable
-// width split). The fail-closed safety property is then a flat topology fact — no two heavy
-// resolves share a layer — rather than a memory-budget computation (the memory-aware placement
-// model was removed as unwired complexity, #5419). The corpus saturates the fleet at its width;
-// keeping every other heavy resolve in its own later layer is what prevents the co-run OOM.
 fn floor_layer_heavy_resolve_count(batch: ExecutorBatch, spec: CiSpec) -> Int {
   fold(batch.jobs, init: 0, f: fn(acc, job) {
     if floor_node_is_heavy_resolve(node: job.node, spec: spec) { acc + 1 } else { acc }
@@ -415,23 +303,16 @@ fn floor_plan_serializes_heavy_resolves(dependencies: List<DependencyView>) -> B
       fold(batches, init: true, f: fn(ok, batch) {
         ok && (floor_layer_heavy_resolve_count(batch: batch, spec: gunbc_ci_spec) <= 1)
       })
-    // Fail-closed: a non-complete plan cannot be certified.
+
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
   }
 }
 
-// The §5 plan oracle on the LIVE floor: every scheduler readiness layer carries at most one
-// heavy whole-tree resolve. The corpus layer carries the corpus alone (cheap gates do not
-// count); source-root ingest is serialized behind it.
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
   floor_plan_serializes_heavy_resolves(dependencies: floor_dependencies(spec: gunbc_ci_spec))
 }
 
-// Discriminating control (NEGATE when bundling — a bare RED control breaks marker discovery,
-// which runs every `test fn` expecting PASS). Drop the serialization edges: source-root ingest
-// re-joins the corpus's layer, giving it two heavy resolves, so the oracle goes RED. Proves the
-// resource edge is load-bearing, not decoration.
 fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
   floor_plan_serializes_heavy_resolves(
     dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)

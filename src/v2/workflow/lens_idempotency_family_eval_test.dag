@@ -1,17 +1,4 @@
-// De-vacuum (DESIGN.md §5/§6): the roster fold alone only proves the lens behaves on the ONE
-// positive subject (a non-empty EffectDependsOn edge → Violates / RequiresAlgebraWitness, the
-// fail-closed default). A lens stubbed to a constant verdict would still pass it. The lens
-// classifies every dependency KIND to RequiresAlgebraWitness by design (a dependency edge alone
-// never proves the algebraic law), so the one reachable discrimination axis of the public
-// `idempotency_witness` is POLARITY: an empty dependency list has nothing unproven and MUST
-// resolve (Holds), whereas any edge MUST Violate. The control below pins that axis — pairing with
-// the existing positive subject to form a discriminating unit, RED-on-revert: a witness collapsed
-// to always-Violates reds the empty-resolves control; one collapsed to always-Holds reds the
-// positive subject. Whole-corpus/change-set coverage stays OUT this window — blocked on the .dag
-// structural-reflection wall (the documented dissolve trigger in
-// lens_discrimination_family_eval_test.dag, shared by lens/coverage.dag and lens/testgen.dag).
 module v2.test.workflow.lens_idempotency_family_eval
-
 
 import v2.compiler.eval {
   TestClaimRun,
@@ -41,8 +28,6 @@ import v2.test.lens_idempotency.family_receipt {
   lens_idempotency_runtime_value_rows
 }
 
-// Discriminating control — POLARITY: an empty dependency list has nothing unproven, so the
-// witness MUST resolve (Holds). The positive subject covers the other pole (an edge → Violates).
 fn idempotency_control_empty_resolves() -> Bool {
   match idempotency_witness(tree: idempotency_claim_tree(), dependencies: []) {
     Holds { value: _ } => true
@@ -54,23 +39,19 @@ fn idempotency_discriminating_controls_pass() -> Bool {
   idempotency_control_empty_resolves()
 }
 
-
 type LensFamilyEvalEntry {
   run: TestClaimRun<Node, RuntimeValue>
 }
 
-
 type LensFamilyEvalReport {
   entries: List<LensFamilyEvalEntry>
 }
-
 
 fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
   })
 }
-
 
 fn run_lens_idempotency_family_eval() -> LensFamilyEvalReport {
   LensFamilyEvalReport {
@@ -81,12 +62,10 @@ fn run_lens_idempotency_family_eval() -> LensFamilyEvalReport {
   }
 }
 
-
 fn lens_idempotency_family_all_pass(report: LensFamilyEvalReport) -> Bool {
   let tally = lens_family_eval_report_tally(r: report)
   (tally.fail == Zero) && (tally.deferred == Zero)
 }
-
 
 fn lens_idempotency_family_gate(report: LensFamilyEvalReport) -> Bool {
   if is_empty(xs: report.entries) {
@@ -96,7 +75,6 @@ fn lens_idempotency_family_gate(report: LensFamilyEvalReport) -> Bool {
       && idempotency_discriminating_controls_pass()
   }
 }
-
 
 test data witness_lens_idempotency_family_gate_closed: Bool = lens_idempotency_family_gate(
   report: run_lens_idempotency_family_eval()

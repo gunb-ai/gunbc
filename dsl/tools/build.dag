@@ -1,13 +1,3 @@
-// tools/build.dag -- Cargo build, test, and clippy in parallel.
-//
-// Runs cargo build first, then test and clippy in parallel (both
-// depend on build success). Aggregates results into a summary.
-//
-// The aggregate fn uses shared/dag_util helpers instead of inline
-// aggregation logic.
-//
-// Replaces: gunbc-app/src/build/graph.rs (~13 nodes)
-
 module tools.build
 
 import std.types { Summary, StageResult }
@@ -15,17 +5,15 @@ import extdeps.cargo_build
 import shared.dag_util { aggregate_results, format_report, stage_from_output }
 
 func build_all() -> { overall_success: Bool, summary: Summary, report: String, build_stderr: String, test_stderr: String, clippy_stderr: String } {
-  // Phase 1: Build (must succeed before test/clippy)
+
   build = cargo.Build.Build(extra_args: ["--all-targets"])
 
-  // Phase 2: Test and clippy in parallel (both depend on build)
   test = cargo.Build.Test(extra_args: ["--workspace"]) [after build, when build.success]
   clippy = cargo.Build.Clippy(
     extra_args: ["--all-targets"],
     lint_args: ["-D", "warnings"]
   ) [after build, when build.success]
 
-  // Phase 3: Aggregate using shared helper
   stages = [
     stage_from_output(name: "build",  success: build.success,  stdout: build.stdout,  stderr: build.stderr,  skipped: false),
     stage_from_output(name: "test",   success: test.success,   stdout: test.stdout,   stderr: test.stderr,   skipped: !build.success),

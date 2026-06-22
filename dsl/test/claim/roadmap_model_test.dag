@@ -6,8 +6,8 @@
 // Three projections, each with a discriminating red/green pair:
 //   - dependency: roadmap_parent returns the decomposition parent; a top-level node has none.
 //   - carrier: a resolving plan-doc is clean; a DANGLING pointer is caught (the unwritable class).
-//   - status: node_status_drift routes through the slice-1 authority — CompletesIff can drift,
-//     HandChecked is honest residue (never drift).
+//   - status: node_status_drift routes through the slice-1 authority — a DerivableLine can drift,
+//     an AuthoredLine is honest residue (never drift).
 //
 // Run: gunbc run --source-root dsl --entry dsl/test/claim/roadmap_model_test.dag \
 //        --function roadmap_model_witnesses --claim-run
@@ -16,7 +16,7 @@ module test.claim.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
 import gunbc.roadmap_status {
-  RoadmapStatusEntry, CompletesIff, HandChecked,
+  RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,
 }
 import gunbc.roadmap_model {
@@ -71,7 +71,7 @@ data existing_docs: List<String> = [
 fn node_with_carrier(c: PlanDocCarrier) -> RoadmapNode {
   RoadmapNode {
     node: child_node,
-    line: RoadmapStatusEntry { title: "PR→checkbox status", claimed_done: false, binding: HandChecked },
+    line: AuthoredLine { done: false, content: "PR→checkbox status" },
     carrier: c,
   }
 }
@@ -97,24 +97,24 @@ fn witness_no_carrier_clean() -> Bool {
 
 // === Status projection: routes through the slice-1 authority ==================
 
-// A node whose embedded line is CompletesIff its (merged) PR but committed `[ ]` -> Drifted (the
-// stale-checkbox class), proving the model reuses slice-1's drift authority over the embedded entry.
+// A node whose embedded line is a DerivableLine on its (merged) PR but committed `[ ]` -> Drifted (the
+// stale-checkbox class), proving the model reuses slice-1's drift authority over the embedded line.
 fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
-    line: RoadmapStatusEntry { title: "stale", claimed_done: false, binding: CompletesIff { prs: [5491] } },
+    line: DerivableLine { prs: [5491], title: "stale", description: "" },
     carrier: NoCarrier,
   }
-  verdict_is_drifted(v: node_status_drift(rn: rn, merged: [5491]))
+  verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
 }
-// A HandChecked node is Underivable even when its mentioned PR is merged (the soundness boundary).
-fn witness_node_handchecked_underivable() -> Bool {
+// An AuthoredLine node is Underivable even when its mentioned PR is merged (the soundness boundary).
+fn witness_node_authored_underivable() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
-    line: RoadmapStatusEntry { title: "partial evidence", claimed_done: false, binding: HandChecked },
+    line: AuthoredLine { done: false, content: "partial evidence" },
     carrier: NoCarrier,
   }
-  verdict_is_underivable(v: node_status_drift(rn: rn, merged: [5491]))
+  verdict_is_underivable(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
 }
 
 test fn roadmap_model_witnesses() -> Bool {
@@ -125,5 +125,5 @@ test fn roadmap_model_witnesses() -> Bool {
     && witness_dangling_carrier_caught()
     && witness_no_carrier_clean()
     && witness_node_status_drifts()
-    && witness_node_handchecked_underivable()
+    && witness_node_authored_underivable()
 }

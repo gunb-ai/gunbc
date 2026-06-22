@@ -1,0 +1,21 @@
+// Discriminating witness for the DERIVED IEC memory factors (Kibi/Mebi/Tebi now come from
+// the single kibi_factor() authority by multiplication, not per-scale literals). Goes RED
+// if a derivation is wrong (e.g. Tebi != gibibyte * kibi).
+module test.claim.memory_scale_factor_derivation
+
+import std.logic { Bool }
+import std.nat { Nat }
+import std.measure { Scale, Kibi, Mebi, Tebi, memory_scale_factor_bytes }
+
+fn factor_is(s: Scale, expected: Nat) -> Bool {
+  match memory_scale_factor_bytes(s: s) {
+    Present { value: n } => n == expected
+    Absent => false
+  }
+}
+
+test fn memory_scale_factors_derive_correctly() -> Bool {
+  factor_is(s: Kibi, expected: 1024)
+    && factor_is(s: Mebi, expected: 1048576)
+    && factor_is(s: Tebi, expected: 1099511627776)
+}

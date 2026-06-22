@@ -1,5 +1,3 @@
-// gunbc/gunbhub_serve_html.dag — Html consumer arm for gunbhub serve.
-
 module gunbc.gunbhub_serve_html
 
 import std.markup {
