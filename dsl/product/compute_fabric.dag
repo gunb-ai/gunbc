@@ -1174,6 +1174,68 @@ fn witness_resource_offer_admits_feasible_demand() -> Bool {
   }
 }
 
+// ── §1-C per-run demand-envelope witnesses (derived width, fail-closed) ───────
+// A ~62.5 GiB host budget, 7 floor shards, 128 fleet threads — the floor's real shape; the per-shard
+// peak is the planted DISCRIMINATING input (a high-demand shard must SHRINK the derived width).
+
+// Non-binding: at the measured ~2.1 GB peak the budget admits ≫7, so width = shard_count and the
+// envelope (7 × 2.1 GB ≈ 14.7 GB) fits comfortably. The everyday floor case.
+fn witness_run_demand_envelope_fits_budget() -> Bool {
+  let envelope = parallel_run_demand_envelope_from_budget(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(67108864000),
+    per_shard_peak: byte_size(2100028416),
+    conservative_fallback_width: 4
+  )
+  demand_envelope_thread_count(envelope: envelope) == 7
+    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(67108864000))
+}
+
+// DISCRIMINATING: plant a high per-shard demand (~20 GB). 0.8 × 62.5 GiB ≈ 50 GB ÷ 20 GB = 2, so the
+// derived width DROPS 7 → 2 and the envelope (2 × 20 GB = 40 GB) still fits. Proves the memory term
+// backs the run off BEFORE the OOM — the floor under-subscribes rather than over-packs.
+fn witness_high_demand_shrinks_envelope_and_fits() -> Bool {
+  let envelope = parallel_run_demand_envelope_from_budget(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(67108864000),
+    per_shard_peak: byte_size(20000000000),
+    conservative_fallback_width: 4
+  )
+  demand_envelope_thread_count(envelope: envelope) == 2
+    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(67108864000))
+}
+
+// RED control through the SAME predicate: a memory-BLIND width = min(shard_count, cores) (no budget
+// term — what a fail-open derive would pick) at the same ~20 GB peak demands 7 × 20 GB = 140 GB and
+// does NOT fit the 62.5 GiB budget. The witness passes by asserting the blind envelope FAILS the
+// shared fit check — proving the memory derive is load-bearing: drop it and the run over-commits.
+fn witness_fail_open_memory_blind_demand_exceeds_budget() -> Bool {
+  let blind_width = bounded_host_spawn_width(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128)
+  )
+  let blind_envelope = parallel_run_demand_envelope(
+    width: blind_width,
+    per_shard_peak: byte_size(20000000000)
+  )
+  demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(67108864000)) == false
+}
+
+// Fail-closed: a 0-byte budget (host could not read a live cap) yields the conservative committed
+// width, never an unbounded demand. RED if the from-budget derive ignored the unreadable sentinel.
+fn witness_unreadable_budget_uses_conservative_demand() -> Bool {
+  let envelope = parallel_run_demand_envelope_from_budget(
+    shard_count: 7,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(0),
+    per_shard_peak: byte_size(2100028416),
+    conservative_fallback_width: 4
+  )
+  demand_envelope_thread_count(envelope: envelope) == 4
+}
+
 // Content-addressed digest over work identity + demand (action/inputs/output spec
 // join when ArtifactRef/WorkAction inhabit — P-CF-INGRESS). Returns a 16-hex hash,
 // never the hand-authored work.id brand (§0 one-key-for-3-dimensions).
