@@ -1,11 +1,4 @@
-// src/v2/std/find_witness.dag
-// Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
-// Anchor: Pass B unification row.
-// Status: W-T-10 — T-25-tail predicate prover for constraint_satisfaction + exact_structural_equality_zip_fold.
-
-
 module v2.std.find_witness
-
 
 import v2.std.collection { List }
 import v2.std.algebra { contains }
@@ -51,11 +44,11 @@ type FindWitnessResult {
   witness: StructuralPropertyWitness
   closedness: StructuralPropertyWitness
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type TargetSelectionPolicy
   = TargetDeclaredPriority { priority: Node }
   | UserSelected { selection: Node }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type MultiplicityPolicy
   = UniqueOnly
   | TargetSelection { policy: TargetSelectionPolicy }
@@ -102,9 +95,7 @@ fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// enumerate substrate-closed CandidateSet entries only — coercion/authored lists flatten
-// declared_inhabitants; find_witness must not Conj-expand entries (would drop aggregate carriers).
-// `predicate` is retained for call-site symmetry; realized rules only (see find_witness entry match).
+
 fn enumeration_candidate_list(
   candidates: CandidateSet,
   predicate: PreservationPredicate
@@ -144,7 +135,7 @@ fn preservation_predicate_holds(
     false
   }
 }
-// Only called from find_witness_realized / verify_witness_realized after rule dispatch; unknown rules reject at entry via find_witness_not_realized.
+
 fn passing_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,

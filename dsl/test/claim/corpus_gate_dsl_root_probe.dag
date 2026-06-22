@@ -1,12 +1,3 @@
-// dsl/test/claim/corpus_gate_dsl_root_probe.dag — parametric corpus gate dsl/-root probe.
-//
-// Purpose: permanent self-owned fixture that proves the claim-witness corpus gate
-// (scripts/v2-claim-witness-corpus-gate.sh) can host dsl/-rooted witnesses end-to-end
-// under --source-root dsl (CI job: v2_claim_witness_corpus_b, shard b).
-//
-// This is gate INFRASTRUCTURE, not a domain model. Domain dsl/ witnesses (e.g. §10
-// syscall numbers) enroll separately once their substrate lands in main.
-
 module test.claim.corpus_gate_dsl_root_probe
 
 fn witness_dsl_root_gate_probe() -> Bool { true }

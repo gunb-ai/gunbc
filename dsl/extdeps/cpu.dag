@@ -1,9 +1,3 @@
-// extdeps/cpu.dag — CPU concept projections over a vendor-agnostic catalog row.
-//
-// Types: extdeps.cpu.types. Per-vendor catalog data: extdeps.cpu.<vendor>.
-// This owns only the general CPU concept; it does not enumerate any one
-// vendor's parts, so it does NOT dispatch on owned SKUs.
-
 module extdeps.cpu
 
 import extdeps.cpu.types { Architecture, CpuFacts }

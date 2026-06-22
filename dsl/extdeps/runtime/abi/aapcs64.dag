@@ -1,15 +1,3 @@
-// extdeps/runtime/abi/aapcs64.dag — AArch64 AAPCS64 ABI facts (Linux syscall subset).
-//
-// Scope: Slice-1 Linux aarch64 syscall register convention cited to the real kernel/AAPCS64 docs.
-// Args flow x0 → x1 → x2 → x3 → x4 → x5; syscall NR in x8; return value in x0 (same register as arg0).
-//
-// Anchor: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
-//         (Procedure Call Standard for the ARM 64-bit Architecture — register roles / stack)
-// Anchor: https://github.com/torvalds/linux/v6.8/arch/arm64/kernel/syscall.c
-//         (do_el0_svc: syscall number from regs->regs[8]; return via syscall_set_return_value → x0)
-// Anchor: https://github.com/torvalds/linux/v6.8/include/uapi/asm-generic/unistd.h
-//         (Linux aarch64 syscall numbers via asm-generic unistd)
-
 module extdeps.runtime.abi.aapcs64
 
 import std.abi { ArchitecturalRegister, CallingConvention }
@@ -25,10 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// 🟢 terminal — cited AArch64 GPR names are irreducible spec atoms (AAPCS64 / kernel entry).
 type Aarch64Gpr = X0 | X1 | X2 | X3 | X4 | X5 | X8
 
-// Aarch64Gpr atoms inhabit ArchitecturalRegister (existential at the SyscallAbi boundary).
 data aarch64_inhabitant_x0: ArchitecturalRegister = X0
 data aarch64_inhabitant_x1: ArchitecturalRegister = X1
 data aarch64_inhabitant_x2: ArchitecturalRegister = X2
@@ -48,7 +34,6 @@ data aapcs64_linux_syscall_convention: CallingConvention = {
   return_value: aarch64_inhabitant_x0,
 }
 
-// Falsifier stub: wrong syscall-number register (x0) — distinct from the cited convention.
 data aapcs64_wrong_syscall_number_convention: CallingConvention = {
   arg0: aarch64_inhabitant_x0,
   arg1: aarch64_inhabitant_x1,
@@ -60,8 +45,6 @@ data aapcs64_wrong_syscall_number_convention: CallingConvention = {
   return_value: aarch64_inhabitant_x0,
 }
 
-// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
-// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until swift-stag dsl corpus gate lands.
 fn witness_convention_arg0_identity() -> Bool {
   aapcs64_linux_syscall_convention.arg0 == aarch64_inhabitant_x0
 }

@@ -1,13 +1,8 @@
-// src/v2/std/projection.dag
-// Scope: projection-as-data substrate.
-// Status: Wave-2-A substrate.
-
 module v2.std.projection
 
 import v2.std.artifact { ArtifactKind }
 import v2.std.node { Node, Symbol }
 
-// 🟢 coproduct dissolution
 type ProjectionKind
   = TestClaimLens
   | BoundaryTestLens

@@ -1,7 +1,4 @@
-// Scope: phase1/nat_semiring rung-8 TestClaimRun roster — full fixture law corpus (§7).
-
 module v2.test.nat_semiring.rung_8
-
 
 import v2.compiler.eval { TestClaimRun, run_test_claim, test_claim_input }
 import v2.std.collection { List }
@@ -19,7 +16,6 @@ import v2.test.algebra_laws.nat_semiring {
 }
 import v2.test.rung_3_4_common { rung34_test_claim_subject }
 
-
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim(
     subject: rung34_test_claim_subject(
@@ -29,27 +25,19 @@ fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
   )
 }
 
-
 data run_claim_nat_add_left_identity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_add_left_identity)
-
 
 data run_claim_nat_add_right_identity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_add_right_identity)
 
-
 data run_claim_nat_add_associativity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_add_associativity)
-
 
 data run_claim_nat_mul_left_identity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_mul_left_identity)
 
-
 data run_claim_nat_mul_annihilator: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_mul_annihilator)
-
 
 data run_claim_nat_mul_associativity: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_mul_associativity)
 
-
 data run_claim_nat_add_wrong_identity_falsifies_law: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_nat_add_wrong_identity_falsifies_law)
-
 
 data phase1_nat_semiring_rung8_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_claim_nat_add_left_identity,

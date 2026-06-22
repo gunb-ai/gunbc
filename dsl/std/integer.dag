@@ -1,176 +1,26 @@
-// std/integer.dag -- Integer types as carrier + algebra witness.
-//
-// T-Numeric-Construction Slice 3 pivots the default `Int` alias from the
-// legacy 64-bit storage carrier to the honest construction-chain form.
-// Authority chain:
-//
-//   - construction-chain layer 3.
-//   - Q6 single-authority resolution: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
-//     not the rejected compact form `type Int = GroupCompletion<Nat>`.
-//   - GroupCompletion<M> substrate-introduction (#1448, merged).
-//   - Director ratifications on inbox #1288 (#4360232423 substrate-split,
-//     #4362239705 Slice 3 alias-pivot dispatch).
-//
-// Construction-chain progression:
-//
-//   Magnitude → Nat = Semiring<Magnitude> → Int = AbelianGroup<GroupCompletion<Nat>> → ...
-//
-// `GroupCompletion<Nat>` is the **derived carrier** (opaque atom denoting
-// the abelian-group carrier obtained from Nat via the Grothendieck
-// construction). `AbelianGroup<T>` is the standard algebra witness over
-// that carrier — `T = GroupCompletion<Nat>` types `inverse: fn(GroupCompletion<Nat>) -> GroupCompletion<Nat>`,
-// which is honest by construction (every element of the group-completion
-// carrier has an additive inverse).
-//
-// Fixed-width rows (`Int8`..`Int128`, `UInt8`..`UInt128`) are **width
-// refinements** of the abstract carriers `Int` / `UInt` via
-// `Compose<Algebra, MachineWidth<N>>` with literal-Nat `N` in slot-2 for every
-// fixed width including 8-bit (`MachineWidth<8>`), matching parser-lowered
-// `Int<8>` / `UInt<8>` / `Nat<8>` (R3 gate #60 Slice Z; DESIGN.md §3 single
-// slot-2 authority). Gate #19 `numeric_aliases_align_to_refinements` — not
-// parallel `OrderedRing<Word*>` / `Semiring<Word*>` substrate. Grounding still
-// maps each pair to the same Rust `i*` / `u*` primitives as before (`Byte` at
-// `dsl/std/bit.dag` remains the nominal 8-bit **value** carrier for primitives;
-// machine-width slot-2 is indexed by literal `8`, not `Byte`).
-//
-// Signed/unsigned distinction comes from the algebra (legacy fixed-width rows):
-//   OrderedRing has negate (signed arithmetic — additive inverse)
-//   Semiring has no negate (unsigned — only add and mul)
-
 module std.integer
 
 import std.algebra { AbelianGroup, GroupCompletion }
 import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 
-// Signed integers: abstract `Int` × machine width (refinement-shaped Compose).
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>
 type Int32 = Compose<Int, MachineWidth<32>>
 type Int64 = Compose<Int, MachineWidth<64>>
 type Int128 = Compose<Int, MachineWidth<128>>
 
-// Unsigned integers: abstract `UInt` (= Nat) × machine width.
 type UInt8 = Compose<UInt, MachineWidth<8>>
 type UInt16 = Compose<UInt, MachineWidth<16>>
 type UInt32 = Compose<UInt, MachineWidth<32>>
 type UInt64 = Compose<UInt, MachineWidth<64>>
 type UInt128 = Compose<UInt, MachineWidth<128>>
 
-// S9 Phase-1 step 3 emission entries — parametric `Compose<Algebra, MachineConstraint>`
-// instantiations per Q-MachineConstraint sub-decision 2 RATIFIED at gunbc#828
-// #issuecomment-4385530115 (NOT AlgebraMachineProduct table rows).
-//
-// Slot-1 spelling = fully-applied algebraic-concept name (`Int` =
-// `AbelianGroup<GroupCompletion<Nat>>` per #1466 Q6 audit; `UInt` = `Nat`
-// per #1818 / single-authority framing) — NOT bare witness shape (Q-MC sub-decision
-// 3 critical correction: witness shape doesn't go in slot-1; the named
-// concept does).
-//
-// Slot-2 spelling = `MachineWidth<N>` literal-Nat phantom index (gate #60 Slice Z),
-// including `N = 8` for the 8-bit rows — sibling to `MachineWidth<PointerWidth>` on
-// `IntPlatform` / `UIntPlatform` below (opaque / target-resolved inner tokens).
-
-// Default aliases.
-//
-// T-Numeric-Construction Slice 3 alias-pivot.
-//
-// `Int` is the abstract integer algebra: an `AbelianGroup` over the
-// derived `GroupCompletion<Nat>` carrier. `GroupCompletion<Nat>` (from
-// `std.algebra`) is the opaque atom denoting "the abelian-group carrier
-// derived from Nat via the Grothendieck construction"; `AbelianGroup<T>`
-// over that carrier is the standard algebra witness. This is the canonical
-// Q6 single-authority form; the compact
-// alternative `type Int = GroupCompletion<Nat>` was explicitly rejected.
-//
-// Fixed-width `Int8`..`Int128` names refine this abstract `Int` via Compose
-// (see above); only this declaration is the unconstrained abstract carrier.
-//
-// `UInt` is the abstract unsigned-integer algebra. Per the design-doc
-// authority `UInt IS Nat`, the faithful pivot is the direct alias —
-// `Nat` is already `CommutativeSemiring<Magnitude>` (additive monoid +
-// multiplicative monoid + distribution + commutativity on both), which
-// IS the unsigned-integer algebra surface. Wrapping `Nat` in
-// `CommutativeMonoid<Nat>` (or `Monoid<Nat>`) would project out the
-// multiplicative structure and the multiplicative identity `1`,
-// violating facts-flow-forward (DESIGN.md §3 single authority) — the substrate cannot structurally
-// name "the additive monoid projection of Nat" without dropping
-// Nat's other monoid. The brief's `CommutativeMonoid<Nat>` shorthand
-// is anemic for the same reason `Int = AbelianGroup<Nat>` would be
-// unfaithful: it discards substrate facts already established at the
-// Nat layer.
-//
-// (Asymmetry with `Int` is structural: `Int` requires additive
-// inverses that Nat lacks, so the explicit `GroupCompletion<Nat>`
-// carrier is necessary to introduce them honestly. `UInt` requires no
-// new operations beyond what Nat already carries, so no new carrier
-// or projection is needed — the alias IS the algebra.)
-//
-// Fixed-width `UInt8`..`UInt128` refine this carrier via Compose (see above).
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
 
-// IntPlatform / UIntPlatform — pointer-width-sized integer substrate concepts.
-//
-// Per Director Q1+Q2+Q3+Q4 RATIFIED at gunbc#1739 #issuecomment-4393248961
-// (2026-05-07) + inner-token rename `Platform` → `PointerWidth` RATIFIED
-// at gunbc#828 #issuecomment-4393616097. Outer carrier names
-// `IntPlatform`/`UIntPlatform` stay verbatim (Q1 RATIFIED). Inner substrate
-// token is `PointerWidth` to avoid collision with pre-existing
-// `Platform = Linux | Macos | Windows` (OS-identity axis) at
-// `dsl/std/types.dag:356`; per reason-not-label, pointer-width
-// is the structural reason and OS-identity vs pointer-width are
-// orthogonal axes (32-bit Linux vs 64-bit Linux are different pointer
-// widths but same OS).
-//
-// Composition per Q-MachineConstraint-Carrier sub-decision 3
-// (gunbc#828 #issuecomment-4385530115) extended with substrate token
-// `PointerWidth` per Q3 ratification (substrate-concept layer, NOT target-
-// only) — `MachineWidth<PointerWidth>` resolves at Grounding-emit time
-// per target spec; substrate stays target-agnostic.
-//
-// Direct consumer: the target integer-inhabitance rows for `isize`
-// (kernel_integer = IntPlatform) and `usize` (kernel_integer = UIntPlatform)
-// with `bound: PlatformDependentFact`.
-// Targets without native pointer-sized integers (Python's arbitrary-
-// precision `int`, etc.) handle ground-time projection via target-
-// conditioned **lowering** — substrate stays clean (Grounding-lane work).
-//
-// Decomposition (DESIGN.md §2): N/A — type aliases over existing `Compose<...>` carrier;
-// no new sum types or coproducts introduced here.
 type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
-// Nat-alignment refinements (S9 Slice 2 / Slice 2.5 / Phase-4).
-//
-// NonNegativeInt formerly lived in dsl/std/types.dag refining Int with a
-// non-negative range predicate. Slice 2 Nat-alignment migrates the
-// algebra-side carrier to Nat: non-negativity is structural to Nat by
-// construction (the canonical natural-number carrier), not a refinement
-// over Int. Refining Int for non-negativity projects out Nat's structural
-// property — the same modeling fault Codex's BLOCKING review on PR #1818
-// caught for UInt as a CommutativeMonoid wrap of Nat. Declared here (not
-// in std.types) because this module imports std.nat directly; locating in
-// std.types would require an std.types to std.nat import edge that
-// triggers a circular-dependency false-positive during transitive load of
-// test fixtures via std.render chains.
-//
-// PositiveInt migrates to Nat-where-gt_zero per S9 Slice 2.5 (Path 3
-// RATIFIED at gunbc#828 issuecomment-4390333451). The gt_zero primitive
-// IS the reason for "Nat without zero" / "Nat above structural bound"
-// (Director Option 2 ratification at gunbc#828 issuecomment-4390199218);
-// the prior range(min: 1) over Int was a misleading label that treated
-// Nat's lower-bound = 0 as a contingent rather than structural fact.
-// gt_zero is enrolled in the lowerer's predicate registry, which
-// retired the prior PB-1 file-path special case.
 type NonNegativeInt = Nat
 type PositiveInt    = Nat where gt_zero
-
-// ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
-//
-// **Substrate-declared ordering authority** for diagnostic enumeration (narrow→wide).
-// Not emission policy — fail-closed UX only. The ordered rows are keyed by
-// `DeclarationRef`, which is not loaded in the dsl-only std bootstrap seed.
-//
-// **Dissolution:** when typed `width_bits` (or equivalent) lands on word carriers
-// (`dsl/std/bit.dag`), derive order from carriers and remove these lists.

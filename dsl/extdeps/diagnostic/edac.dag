@@ -1,6 +1,3 @@
-// extdeps/diagnostic/edac.dag — EDAC correctable counter read (ras-mc-ctl).
-// Anchor: https://www.kernel.org/doc/html/latest/admin-guide/ras.html
-
 module extdeps.diagnostic.edac
 
 import extdeps.external_authority { ExternalAuthority }
@@ -13,12 +10,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// 🟡 dissolved — feature:diagnostic-edac-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
-// WHICH diagnostic.edac.RasMcCtl ops are hermetically realizable, and the fixture store owns the
-// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
-// shapes.
 service diagnostic.edac.RasMcCtl {
   operation CorrectableCounts {
     input {}

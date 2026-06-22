@@ -1,8 +1,3 @@
-// extdeps/container/oci/image_config.dag — OCI Image Configuration (image-spec config.md).
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/config.md
-// Version: image-spec 1.1.0
-
 module extdeps.container.oci.image_config
 
 import extdeps.container.oci.types {
@@ -33,7 +28,6 @@ type ImageConfiguration {
   rootfs: ImageRootfs
 }
 
-// dissolve-on: delete ImageConfigRejectUnspecified when a second real reject reason lands.
 type ImageConfigRejectReason
   = EmptyDiffIds
   | ImageConfigRejectUnspecified

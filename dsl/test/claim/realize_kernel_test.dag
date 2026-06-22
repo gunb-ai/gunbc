@@ -1,28 +1,3 @@
-// dsl/test/claim/realize_kernel_test.dag
-//
-// §5 discriminating proof for the `realize` one-door cache kernel (ROADMAP §2 P2 — the SOLE
-// cache API every hand-rolled cache becomes a handler of). Proven BY EXECUTION over the kernel
-// folds in std.cache_interface (realize_route / classify_write), not by typecheck or grep.
-//
-// Read side (realize_route) — Reuse-vs-Recompute routing, fail-closed:
-//   - a VERIFIED hit reuses (the §2 minimal-work win — recompute would be redundant);
-//   - a Miss recomputes (SubjectAbsent);
-//   - a RejectedHit recomputes and SURFACES the reason (HitRefused) — it is NEVER served.
-//     Discriminating RED: flip the RejectedHit arm to Reuse (serve a refused/under-keyed
-//     payload) and witness_refused_hit_never_reused goes red — that is the §5 fail-open the
-//     kernel forbids.
-//
-// Write side (classify_write) — the purity oracle, fail-closed:
-//   - a fresh subject is Written;
-//   - the SAME subject offered the SAME content is the idempotent no-op (double-init Share);
-//   - the SAME subject offered DIFFERENT content FAILS CLOSED (WriteOnceConflict) — the
-//     byte-identical-warm-vs-cold falsifier (equal inputs -> unequal output = impure transform
-//     or under-keyed subject). Discriminating RED: weaken the conflict arm to Written (silent
-//     overwrite) and witness_purity_conflict_rejects_overwrite goes red.
-//
-// Run: gunbc run --source-root dsl --entry dsl/test/claim/realize_kernel_test.dag \
-//        --function realize_kernel_witnesses --claim-run
-
 module test.claim.realize_kernel
 
 import std.types { Bool, ContentHash }
@@ -62,8 +37,6 @@ data content_v1: ContentHash = "realize-kernel-witness-content-v1"
 data content_v2: ContentHash = "realize-kernel-witness-content-v2"
 data receipt_digest_v: ExecutionReceiptDigest = "realize-kernel-witness-receipt-digest"
 
-// A well-formed cached receipt carrying `content` as its stored content digest. T is phantom
-// across ArtifactIdentity / ProducerReceipt, so the witness pins it concretely below.
 fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
   CachedArtifactReceipt {
     artifact: ArtifactIdentity {
@@ -81,10 +54,6 @@ fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
   }
 }
 
-// === Read side: realize_route ===============================================
-
-// A verified hit reuses — recompute would be redundant work (§2). RED if the kernel recomputes
-// a good hit (the minimal-work loss).
 fn witness_verified_hit_reuses() -> Bool {
   let r = mk_receipt(content: content_v1)
   match realize_route(lookup: Hit { receipt: r }) {
@@ -93,7 +62,6 @@ fn witness_verified_hit_reuses() -> Bool {
   }
 }
 
-// A miss recomputes, attributed to SubjectAbsent (no entry), never a refused-hit cause.
 fn witness_miss_recomputes() -> Bool {
   match realize_route(lookup: Miss) {
     Recompute { reason: SubjectAbsent } => true
@@ -101,8 +69,6 @@ fn witness_miss_recomputes() -> Bool {
   }
 }
 
-// A refused hit is NEVER served — it routes to Recompute. THIS is the §5 fail-closed tooth:
-// flip realize_route's RejectedHit arm to Reuse and this goes red.
 fn witness_refused_hit_never_reused() -> Bool {
   match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
     Recompute { reason: _ } => true
@@ -110,8 +76,6 @@ fn witness_refused_hit_never_reused() -> Bool {
   }
 }
 
-// The refusal is surfaced, not silent — the Recompute carries HitRefused with the reason
-// (observability; a silent recompute would hide a corrupt/under-keyed backend).
 fn witness_refused_hit_surfaces_reason() -> Bool {
   match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
     Recompute { reason: HitRefused { reason: ContentDigestMismatch } } => true
@@ -119,9 +83,6 @@ fn witness_refused_hit_surfaces_reason() -> Bool {
   }
 }
 
-// === Write side: classify_write (purity oracle) =============================
-
-// A fresh subject (Miss) is Written.
 fn witness_fresh_subject_written() -> Bool {
   let fresh = mk_receipt(content: content_v1)
   match classify_write(existing: Miss, offered_content: content_v1, fresh_receipt: fresh) {
@@ -130,8 +91,6 @@ fn witness_fresh_subject_written() -> Bool {
   }
 }
 
-// The SAME subject offered the SAME content is the idempotent no-op (double-init Share collapse).
-// RED if the kernel rejects a legitimate re-write of identical content.
 fn witness_idempotent_same_content() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v1)
@@ -141,9 +100,6 @@ fn witness_idempotent_same_content() -> Bool {
   }
 }
 
-// The SAME subject offered DIFFERENT content FAILS CLOSED with WriteOnceConflict — the purity
-// falsifier (equal inputs produced unequal output). THIS is the §5 fail-closed tooth: weaken
-// the conflict arm to Written (silent overwrite) and this goes red.
 fn witness_purity_conflict_rejects_overwrite() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v2)
@@ -153,7 +109,6 @@ fn witness_purity_conflict_rejects_overwrite() -> Bool {
   }
 }
 
-// A write atop a prior RejectedHit composes the backend reason — never silently Written.
 fn witness_write_over_rejected_hit_composes_reason() -> Bool {
   let fresh = mk_receipt(content: content_v1)
   match classify_write(

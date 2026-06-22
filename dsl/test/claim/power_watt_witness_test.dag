@@ -1,26 +1,13 @@
-// test/claim/power_watt_witness.dag — by-execution witness that COMPUTES watts.
-//
-// The Power Quantity value (std/measure.dag) is minted WITH this consuming fold, not
-// ahead of demand (Q-Unit-5 gate, measure.dag:67ff). `total_power_watts` folds a list of
-// component draws into a power TOTAL — Watt is computed here, not merely stored — and the
-// witness asserts the exact computed sum (DESIGN §5 green-by-execution). The richer
-// consumers (PSU sizing, perf-per-watt) land in product.hardware_selection; this is the
-// minimal self-contained fold that demonstrates the dimension is exercised.
-
 module test.claim.power_watt
 
 import std.logic { Bool }
 import std.types { Int, List }
 import std.measure { Watt, watt, watt_count }
 
-// Consuming fold: total power draw = Σ component watts. Stays power-typed end to end
-// (Watt -> Watt), never leaking a bare Int across the boundary.
 fn total_power_watts(components: List<Watt>) -> Watt {
   watt(count: fold(components, init: 0, f: (acc, w) => acc + watt_count(w: w)))
 }
 
-// Generic example PSU-load budget — generic SKUs, NOT the operator's fleet (lane scope):
-// a ~166W-draw CPU + 8 DIMMs @ ~3W each + a ~30W board = 220W of load.
 data example_component_draws: List<Watt> = [
   watt(count: 166),
   watt(count: 3), watt(count: 3), watt(count: 3), watt(count: 3),
@@ -28,18 +15,14 @@ data example_component_draws: List<Watt> = [
   watt(count: 30)
 ]
 
-// DISCRIMINATING: the fold must compute 166 + 8*3 + 30 = 220. A wrong fold (or a Watt
-// that silently dropped its magnitude) lands on a different number and goes red.
 fn total_power_is_computed_sum() -> Bool {
   watt_count(w: total_power_watts(components: example_component_draws)) == 220
 }
 
-// Empty budget folds to the additive identity 0 W — not a fabricated default.
 fn empty_budget_is_zero_watts() -> Bool {
   watt_count(w: total_power_watts(components: [])) == 0
 }
 
-// Carrier round-trip (mirrors measure_magnitude_carrier for the new alias).
 fn watt_roundtrips() -> Bool {
   watt_count(w: watt(count: 183)) == 183
 }

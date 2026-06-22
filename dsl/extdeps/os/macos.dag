@@ -1,6 +1,3 @@
-// extdeps/os/macos.dag — macOS distribution catalog (cited facts).
-// Scope: macOS 15 Sequoia.
-
 module extdeps.os.macos
 
 import std.os.types {
@@ -21,13 +18,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Anchor: https://developer.apple.com/documentation/macos-release-notes/macos-15-release-notes
 data sequoia_15_catalog: MacosDistributionCatalogRow = MacosDistributionCatalogRow {
   distribution: Sequoia15,
   release_label: "macOS 15 Sequoia",
-  // M5: none — cited Apple macOS 15 release-notes page documents OS/SDK, not Darwin kernel version.
+
   darwin_version: none,
-  // Anchor (de-facto dev PM; Apple ships no official CLI PM): https://docs.brew.sh/
+
   package_manager: HomebrewDeFacto,
   libc: LibSystem,
   libc_version: none,

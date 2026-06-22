@@ -1,16 +1,3 @@
-// extdeps/external_authority.dag — external authority citation carrier (DESIGN §3).
-//
-// Every extdeps/ module cites an EXTERNAL authority — a real URL to a wiki, ISO,
-// ECMA, vendor SPEC page, or other intersubjective framework for the *concept*
-// modeled in the module (not the umbrella company homepage). The locator names the
-// spec surface the module's facts ground on.
-//
-// Canonical module-level data row name (projection + lens match literally):
-//   data extdeps_external_authority_anchor: ExternalAuthority = ...
-//
-// Internal file: anchors are reserved for anchor-machinery modules only
-// (extdeps.uri, extdeps.external_authority) — see lens machinery-exempt roster.
-
 module extdeps.external_authority
 
 import std.types { NonEmptyStr }
@@ -20,14 +7,11 @@ type ExternalAuthority {
   uri: Uri
 }
 
-// Field-level override: a specific fact cites a finer locator than the module
-// root (e.g. a page fragment on a PDF). Absent ⇒ inherit module root.
 type FactAuthorityOverride {
   fact: NonEmptyStr
   authority: ExternalAuthority
 }
 
-// Self-anchor: DESIGN §3 single-authority (internal doc cited as file: fragment).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: File

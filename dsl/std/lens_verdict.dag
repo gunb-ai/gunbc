@@ -1,14 +1,3 @@
-// std/lens_verdict.dag — tier-0 unified lens verdict carrier (dsl-tree authority).
-//
-// Single-authority (§3): lives in the dsl tree so schedule-lens and other dsl
-// witnesses execute without pulling the v2 resolution closure. NOT
-// `v2.std.verdict.Verdict<Subj,T>` (eval-claim Pass/Fail/Deferred). Per-lens
-// bespoke verdicts dissolve by projecting here.
-//
-// Dissolve-on: `v2.std.diagnostic.Diagnostic` locus when v2 self-compile-clean
-// closes the cross-tree import gap — then Violation/NotApplicable/Unrealized
-// carry the full located diagnostic instead of the interim String carrier.
-
 module std.lens_verdict
 
 type LensVerdictLocus

@@ -1,12 +1,3 @@
-// extdeps/runtime/architecture/aarch64_linux.dag — aarch64 Linux architecture profile (cited facts).
-//
-// Scope: Slice-1 inhabitant #2 of extdeps.toolchain.architecture_profile.ArchitectureProfile — Architecture::Aarch64
-// with cited machine facts, aapcs64 syscall convention, and downward stack.
-//
-// Anchor: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst (§5.4.2 stack; §4.1 alignment)
-// Anchor: https://github.com/torvalds/linux/v6.8/arch/arm64/include/asm/page-def.h (PAGE_SIZE via PAGE_SHIFT)
-// Anchor: https://github.com/torvalds/linux/v6.8/arch/arm64/kernel/syscall.c
-
 module extdeps.runtime.architecture.aarch64_linux
 
 import extdeps.runtime.abi.aapcs64 {
@@ -66,8 +57,6 @@ data aarch64_linux_deployment_target: DeploymentTarget = {
   invocation: SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
 }
 
-// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
-// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 fn witness_architecture_is_aarch64() -> Bool {
   aarch64_linux_architecture_profile.architecture == Aarch64
 }

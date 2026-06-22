@@ -1,23 +1,9 @@
-// extdeps/access/aws_iam.dag -- "What is AWS IAM (policy language)?"
-//
-// AWS Identity and Access Management JSON policy documents: a list of statements, each granting
-// or denying actions on resources for principals, optionally conditioned. Faithful model of the
-// policy grammar, keeping its real element names.
-//
-// Source: AWS IAM JSON policy grammar, policy language version "2012-10-17".
-//   https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
-//
-// One of several access-control systems in extdeps/access; the std abstraction is derived from
-// their commonality and validated against each (DESIGN §3), not re-coined from one.
-
 module extdeps.access.aws_iam
 
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// External-authority anchor (promotes the Source citation above to the structured carrier
-// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -29,35 +15,30 @@ type Effect
   = Allow
   | Deny
 
-// The Principal element (resource-based policies): "*" (anyone) or specific AWS/service/federated
-// identities. (IAM also has the dual NotPrincipal; modeled as the negated form when present.)
 type Principal
-  = AnyPrincipal                                        // "Principal": "*"
-  | AwsPrincipal { arns: List<NonEmptyStr> }             // "AWS": [arn ...]
-  | ServicePrincipal { services: List<NonEmptyStr> }     // "Service": [...]
-  | FederatedPrincipal { providers: List<NonEmptyStr> }  // "Federated": [...]
-  | CanonicalUserPrincipal { ids: List<NonEmptyStr> }    // "CanonicalUser": [...]
+  = AnyPrincipal
+  | AwsPrincipal { arns: List<NonEmptyStr> }
+  | ServicePrincipal { services: List<NonEmptyStr> }
+  | FederatedPrincipal { providers: List<NonEmptyStr> }
+  | CanonicalUserPrincipal { ids: List<NonEmptyStr> }
 
-// One Condition entry: operator -> key -> values, e.g. StringEquals { "aws:username": ["alice"] }.
 type ConditionEntry {
-  operator: NonEmptyStr    // e.g. "StringEquals", "IpAddress", "DateGreaterThan", "Bool"
-  key: NonEmptyStr         // e.g. "aws:SourceIp", "s3:prefix", "aws:username"
+  operator: NonEmptyStr
+  key: NonEmptyStr
   values: List<NonEmptyStr>
 }
 
-// A statement. Exactly one of action/not_action and resource/not_resource is used in real IAM;
-// here `actions`/`resources` carry the positive form and `*` is a legal token.
 type Statement {
-  sid: NonEmptyStr?                  // optional "Sid"
+  sid: NonEmptyStr?
   effect: Effect
-  principal: Principal?              // present in resource-based policies
-  actions: List<NonEmptyStr>         // "Action": ["s3:GetObject", "*"]
-  resources: List<NonEmptyStr>       // "Resource": [arn ...]
-  conditions: List<ConditionEntry>   // "Condition" block (empty = unconditional)
+  principal: Principal?
+  actions: List<NonEmptyStr>
+  resources: List<NonEmptyStr>
+  conditions: List<ConditionEntry>
 }
 
 type PolicyDocument {
-  version: NonEmptyStr               // "2012-10-17"
-  id: NonEmptyStr?                   // optional "Id"
-  statements: List<Statement>        // "Statement": [...]
+  version: NonEmptyStr
+  id: NonEmptyStr?
+  statements: List<Statement>
 }

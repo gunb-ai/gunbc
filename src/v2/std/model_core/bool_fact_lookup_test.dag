@@ -1,12 +1,4 @@
-// Replaces the v2_std_model_core_dag_smoke_test.rs declaration-shape ratchet AND the hand-Rust
-// MIRROR helper (bool_fact_axis_dispatch) — a tautology that re-stated the fold in Rust rather than
-// folding the REAL node. This witness folds the real fn by execution and DISCRIMINATES:
-//   arm-1 (Width) holds the width fact; arm-2 (Encoding) holds the DIFFERENT encoding fact;
-//   the unbound axis (Signedness) fails closed (Violates).
-// Mutation-proven: flipping the encoding arm to return the width fact collapses encoding_ok -> RED.
-
 module v2.test.std_model_core.bool_fact_lookup
-
 
 import v2.std.logic {
   Bool,
@@ -23,8 +15,6 @@ import v2.std.model_core {
   model_core_wave1_bool_fact_lookup
 }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -34,16 +24,13 @@ fn bool_lookup_width_ok(vw: Node) -> Bool {
   content_hash(n: vw) == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
 }
 
-
 fn bool_lookup_encoding_ok(ve: Node) -> Bool {
   content_hash(n: ve) == content_hash(n: bool_encoding_fact_node(encoding: bool_primitive_facts.encoding))
 }
 
-
 fn bool_lookup_facts_ok(vw: Node, ve: Node) -> Bool {
   bool_lookup_width_ok(vw: vw) && bool_lookup_encoding_ok(ve: ve)
 }
-
 
 fn bool_lookup_signed_fails_closed(w: Witness<Node>) -> Bool {
   match w {
@@ -51,7 +38,6 @@ fn bool_lookup_signed_fails_closed(w: Witness<Node>) -> Bool {
     Holds { value: _ } => false
   }
 }
-
 
 test fn witness_model_core_bool_fact_lookup_discriminates() -> Bool {
   let w_width = model_core_wave1_bool_fact_lookup(

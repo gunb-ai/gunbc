@@ -1,11 +1,3 @@
-// src/v2/extdeps/languages/swift.dag
-// Scope: Swift language/standard-library scalar fact-bundles, ModelCore wave-1 (primitives), wave-2b (inhabitance+laws+effects+partiality).
-// Consumes: v2.std.grammar, v2.std.compilers.lexing, v2.std.collection, v2.std.model_core, v2.std.compilers.target_model, v2.std.node, v2.std.logic, v2.std.algebra, v2.std.text.
-// Status: T-4 Swift wave-1+2b; fixed-width integer spellings explicit, Int/UInt platform-word-width, Float/Double IEEE-754; wave-2b: signed int OrderedRing + unsigned int CommutativeSemiring + float ApproximateField + bool BooleanAlgebra + string FreeMonoid inhabitance; laws+effects+partiality; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/compilers/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
-// Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
-// Ledger: CP-3229-GREEN-TERMINAL, SL-T4-WAVE2B-SWIFT-LAW-KEY.
-// 🟡
-
 module v2.extdeps.languages.swift
 import v2.std.language_model { LanguageModel }
 
@@ -112,7 +104,6 @@ import v2.std.algebra {
 }
 import v2.std.text { String }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftIntWidth
   = Bits8
   | Bits16
@@ -120,42 +111,34 @@ type SwiftIntWidth
   | Bits64
   | PointerWord
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftIntSignedness
   = Signed
   | Unsigned
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftFloatWidth
   = Bits32
   | Bits64
 
-// 🟢 grounded.
 type SwiftStringRepresentation {
   tag: Symbol
 }
 
-// 🟢 grounded.
 type SwiftCharacterRepresentation {
   tag: Symbol
 }
 
-// 🟢 grounded.
 type SwiftUnitRepresentation {
   tag: Symbol
 }
 
-// 🟢 grounded.
 type SwiftBoolRepresentation {
   tag: Symbol
 }
 
-// 🟢 grounded.
 type SwiftIntegerOverflowSemantics {
   tag: Symbol
 }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftScalar
   = IntScalar { signedness: SwiftIntSignedness, width: SwiftIntWidth }
   | FloatScalar { width: SwiftFloatWidth }
@@ -164,7 +147,6 @@ type SwiftScalar
   | StringScalar
   | VoidScalar
 
-// 🟢 grounded.
 type SwiftIntegerPrimitiveFacts {
   surface_spelling: Symbol
   signedness: SwiftIntSignedness
@@ -172,14 +154,12 @@ type SwiftIntegerPrimitiveFacts {
   overflow: SwiftIntegerOverflowSemantics
 }
 
-// 🟢 grounded.
 type SwiftFloatPrimitiveFacts {
   surface_spelling: Symbol
   width: SwiftFloatWidth
   ieee754_binary: Symbol
 }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftNonNumericPrimitiveFacts
   = SwiftBoolPrimitiveFacts {
       surface_spelling: Symbol
@@ -198,11 +178,6 @@ type SwiftNonNumericPrimitiveFacts
       representation: SwiftUnitRepresentation
     }
 
-// 🟢 grounded.
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-
-// 🟢 grounded.
 type SwiftGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
@@ -576,11 +551,9 @@ fn swift_mvp1_source_text_authority() -> String {
 }
 
 fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  // T-11: serialize through the single shared morphism (no parallel wire authority).
+
   concrete_syntax_token_to_node(token: token)
 }
-
-
 
 fn swift_mvp1_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
@@ -655,7 +628,6 @@ fn swift_mvp1_grammar_relation_row() -> SwiftGrammarRelationRow {
     tokens: swift_mvp1_concrete_tokens()
   }
 }
-
 
 fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
   Node {
@@ -884,8 +856,6 @@ fn swift_wave1_lex_rules() -> LexRuleSet {
 fn swift_wave1_lex() -> LexRules {
   ModeledLexRules { root: swift_wave1_lex_rules() }
 }
-
-
 
 fn swift_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -2100,8 +2070,6 @@ fn swift_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-
-// 🟡 coproduct dissolution — SL-T4-WAVE2B-SWIFT-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for swift_model_core_law_node kind edge — owner:T-4 swift language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
 type SwiftModelCoreLawKey
   = SwiftLawSignedIntAddAssociative
   | SwiftLawSignedIntAddCommutative
@@ -2432,7 +2400,6 @@ fn swift_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
     ]
   }
 }
-
 
 fn swift_model_core_wave2b() -> ModelCore {
   ModelCore {

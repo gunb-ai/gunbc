@@ -1,23 +1,9 @@
-// std/hermetic_replay.dag -- Phase-2 hermetic replay vocabulary (RecordedFixture seam).
-//
-// Anchor: DESIGN.md §3 (single payload authority) / §6 (model-before-implement).
-//
-// A mock is NOT a hand-rolled stub: hermetic execution replays wet-captured
-// RecordedFixture rows keyed by (operation_key, content_hash(inputs)).
-// Published mock corpora carry structural keys ONLY — never response payloads.
-
 module std.hermetic_replay
 
-// Structural key for a published mock case. Both filesystem and REST layers
-// inhabit this row shape (operation_key matches RecordedFixture.operation).
 type PublishedMockCase {
-  // 🟡 gated — feature:hermetic-published-mock-operation-ref — dissolve-on: delete
-  // operation_key once every corpus row carries grounded service + operation fields and
-  // resolve_published_mock_keys reads only those (§3 nick).
+
   operation_key: String
-  // Grounded service / operation names (same spelling as the extdeps service decl). The
-  // runtime composes `service.operation` as the hermetic key; operation_key mirrors during
-  // migration.
+
   service: String
   operation: String
   case_id: Int

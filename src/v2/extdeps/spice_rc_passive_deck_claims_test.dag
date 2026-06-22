@@ -1,6 +1,3 @@
-// Scope: E-10 consumer for spice_rc_passive_deck fixture authority — structural topology witness.
-// Status: imports v2.test.fixture.spice_rc_passive_deck; fails if fixture drifts from canonical RC+.op deck.
-
 module v2.test.extdeps.spice_rc_passive_deck_claims
 
 import v2.test.fixture.spice_rc_passive_deck { spice_rc_passive_deck }
@@ -93,7 +90,6 @@ fn spice_rc_passive_deck_op_directive_holds(body: List<DeckStatement>) -> Bool {
   }
 }
 
-// Structural witness on imported fixture authority — wrong R/C values, nodes, or missing .op → false.
 test fn spice_rc_passive_deck_authority_holds() -> Bool {
   match spice_rc_passive_deck {
     SpiceNetlist { title: title, body: body } =>

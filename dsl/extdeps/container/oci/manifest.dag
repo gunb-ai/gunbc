@@ -1,8 +1,3 @@
-// extdeps/container/oci/manifest.dag — OCI Image Manifest (image-spec manifest.md).
-//
-// Spec: https://github.com/opencontainers/image-spec/blob/main/manifest.md
-// Version: image-spec v1.1.0
-
 module extdeps.container.oci.manifest
 
 import extdeps.container.oci.descriptor {

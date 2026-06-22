@@ -1,17 +1,6 @@
-// Hero demo for the public daglang launch: types, enums, pure functions,
-// pattern matching, and list pipelines — compiles to Rust with zero hand glue.
-//
-// Gate (from repo root, after `cargo build --release -p v1-compiler --bin gunbc`):
-//   ./target/release/gunbc compile \
-//     --source-root dsl/examples/weather \
-//     --source-root dsl/std \
-//     --output-dir /tmp/weather-out \
-//     --target rust \
-//   && cargo check --manifest-path /tmp/weather-out/Cargo.toml
 
 module examples.weather
 
-// -- Domain types --
 
 type Temperature {
   celsius: Float
@@ -30,7 +19,6 @@ type Forecast {
   condition: Condition
 }
 
-// -- Pure functions --
 
 fn to_fahrenheit(temp: Temperature) -> Float {
   temp.celsius * 1.8 + 32.0

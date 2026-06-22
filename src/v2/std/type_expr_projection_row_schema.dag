@@ -1,8 +1,3 @@
-// src/v2/std/type_expr_projection_row_schema.dag
-// Scope: SG-2 row child-slot discipline symbols (leaf — no find_witness / target_model import).
-// Anchor: connective_edge_discipline (node.dag); consumed by target_model row envelope + zip-fold predicate.
-
 module v2.std.type_expr_projection_row_schema
 
 import v2.std.node { Symbol }
-
