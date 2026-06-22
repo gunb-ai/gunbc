@@ -57,8 +57,8 @@ fn section_0() -> RoadmapSection {
       section_group(
         label: "Audits (done)",
         nodes: [
-          authored(id: "0-audit-wiring", done: true, content: "**lens/gate wiring** — most analytical lenses inert (authored, no discovered gate)"),
-          authored(id: "0-audit-failopen", done: true, content: "**fail-open code** — cache lossy-digest · under-keyed memos · `unwrap_or_default` infer"),
+          authored(id: "0-audit-wiring", done: true, content: "lens/gate wiring — most analytical lenses inert (authored, no discovered gate)"),
+          authored(id: "0-audit-failopen", done: true, content: "fail-open code — cache lossy-digest · under-keyed memos · `unwrap_or_default` infer"),
           authored_doc(id: "0-audit-fork", done: true, content: "**model↔realization fork — ROOT CONFIRMED** — one seam (~13 bridges); sub-roots = numeric tower + `Value::Null`", path: "docs/plans/model-realization-fork.md"),
           authored_pp(id: "0-audit-remaining", done: false, content: "remaining: coercion/equality straddles · inference fail-open · cache-purity · CI-coverage-completeness", carriers: [ptr(label: "detail", path: "docs/plans/fail-closed-lockdown.md")]),
         ],
@@ -68,12 +68,12 @@ fn section_0() -> RoadmapSection {
         label: "In-scope this window",
         nodes: [
 
-          derivable_doc(id: "0-numeric-tower", prs: [5428], title: "numeric-tower grounding", description: "— `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus", path: "docs/plans/model-realization-fork.md"),
+          derivable_doc(id: "0-numeric-tower", prs: [5428], title: "**numeric-tower grounding**", description: "— `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus", path: "docs/plans/model-realization-fork.md"),
           authored(id: "0-cache-trustworthy", done: false, content: "**cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now"),
           authored_pp(id: "0-rust-gate", done: false, content: "**rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427); `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight *(quick-ant-298)*", carriers: [ptr(label: "cause table", path: "docs/plans/ci-selection-vs-scheduling.md"), ptr(label: "edge-(b) brief", path: "docs/plans/edge-b-rust-dag-provenance-brief.md")]),
           authored(id: "0-promote-lenses", done: false, content: "**promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection (also unlocks coverage/testgen) *(silent-wren-739)*"),
 
-          derivable_doc(id: "0-realization-vocab", prs: [5445, 5453], title: "realization-vocabulary containment guard", description: "— target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable", path: "docs/plans/emission-ingestion-inverse.md"),
+          derivable_doc(id: "0-realization-vocab", prs: [5445, 5453], title: "**realization-vocabulary containment guard**", description: "— target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable", path: "docs/plans/emission-ingestion-inverse.md"),
           authored(id: "0-stage0-census", done: false, content: "**stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*"),
         ],
         edges: [],
@@ -84,7 +84,7 @@ fn section_0() -> RoadmapSection {
           authored(id: "0-value-null", done: false, content: "**split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; own runway"),
           authored(id: "0-selfhost-purity", done: false, content: "**self-host purity gate** — a §5 deliverable, not §0 (avoids the §0↔§5 cycle)"),
 
-          derivable(id: "0-cross-tree", prs: [5473], title: "cross-tree import activation (§5)", description: "— LANDED; the §0↔§5 escalate item is now closed"),
+          derivable(id: "0-cross-tree", prs: [5473], title: "**cross-tree import activation** (§5)", description: "— LANDED; the §0↔§5 escalate item is now closed"),
           authored_doc(id: "0-disposition", done: false, content: "**`Disposition` carrier** — a new concept; parked", path: "docs/plans/disposition-carrier.md"),
           authored(id: "0-complexity-residue", done: false, content: "complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction"),
           authored_pp(id: "0-cardinality", done: false, content: "**cardinality refinement** — illegal cardinalities (wrong length · empty · overflow) unwritable by construction; the *decidable* refinement axis (linear arithmetic over counts), fold-propagated. MVP-1 (`Byte` via `Length<8>`) + P4 (fold homomorphism · uint8 overflow → typed `Rejected`) proven (#5512); P1 (`where` lowering) / P2 (construction-enforced) behind this lane; P5 (phantom-width reflection) substrate-blocked.", carriers: [ptr(label: "plan", path: "docs/plans/cardinality-refinement.md"), ptr(label: "P1", path: "docs/plans/p1-where-clause-lowering.md")]),
@@ -95,11 +95,11 @@ fn section_0() -> RoadmapSection {
         label: "Meta — lock down the reasoning (§7 recursion)",
         nodes: [
 
-          derivable(id: "0-inert-hygiene", prs: [5433], title: "inert-lens hygiene backstop", description: "— every `lens/*.dag` wired or deleted; runs over the corpus"),
+          derivable(id: "0-inert-hygiene", prs: [5433], title: "**inert-lens hygiene backstop**", description: "— every `lens/*.dag` wired or deleted; runs over the corpus"),
           authored_doc(id: "0-reachability", done: false, content: "**reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs", path: "docs/plans/inert-layer-lens.md"),
-          authored_doc(id: "0-gate-hygiene", done: false, content: "**gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land *(quick-ant-298)*", path: "docs/plans/emission-ingestion-inverse.md"),
+          authored(id: "0-gate-hygiene", done: false, content: "**gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2; [merge-freshness decision record](docs/plans/ci-merge-freshness.md)) *(quick-ant-298)*"),
 
-          derivable_pp(id: "0-construction-rule", prs: [5476], title: "construction-justification rule", description: "(authoring-time) — justify why a class can't be construction before adding a lens *(silent-wren-739)*", carriers: [ptr(label: "plan", path: "docs/plans/construction-justification-rule.md"), ptr(label: "DESIGN §6", path: "DESIGN.md")]),
+          derivable_pp(id: "0-construction-rule", prs: [5476], title: "**construction-justification rule**", description: "(authoring-time) — justify why a class can't be construction before adding a lens *(silent-wren-739)*", carriers: [ptr(label: "plan", path: "docs/plans/construction-justification-rule.md"), ptr(label: "DESIGN §6", path: "DESIGN.md")]),
           authored_doc(id: "0-expressibility", done: false, content: "**expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating", path: "docs/plans/expressibility-frontier.md"),
           authored_pp(id: "0-skipped-modeling", done: false, content: "**confront the skipped modeling decisions** — the `🟡` comment backlog", carriers: [ptr(label: "Disposition plan", path: "docs/plans/disposition-carrier.md")]),
           authored_pp(id: "0-axiom-lens", done: false, content: "**axiom + syllogism lens** (DESIGN open thread #1) — every claim chains back to an axiom, no orphan/cycle; stays `[ ]` until it runs executably over this doc", carriers: [ptr(label: "scope", path: "docs/plans/axiom-syllogism-lens.md")]),
@@ -121,8 +121,8 @@ fn section_1() -> RoadmapSection {
         label: "What's on `.dag` today (the gap map — detail in the charter §2/§4)",
         nodes: [
           authored(id: "1-exec-walk", done: true, content: "**execution = a dependency-graph walk** — `claim_executor` interprets `ci_floor_plan.dag`; one fold, batches from dependency edges (the realest layer)"),
-          derivable(id: "1-sched-width", prs: [5444], title: "scheduling: width axis", description: "— `memory_aware_spawn_width` consumes the measured envelope; single-host"),
-          derivable_doc(id: "1-measure-foundation", prs: [5470, 5478], title: "Section 1 spawn-width foundation — std.measure expressibility", description: "— the FLOOR family (measure_scale_fraction_floor + measure_fit_count_floor) and the demand-CEIL family completing the ceil-not-equal-floor money-pair landed, dissolving the measure unwrap→raw-arith→rewrap §3 fork. Authority: the expressibility-frontier spec #5467", path: "docs/plans/expressibility-frontier.md"),
+          derivable(id: "1-sched-width", prs: [5444], title: "**scheduling: width axis**", description: "— `memory_aware_spawn_width` consumes the measured envelope; single-host"),
+          derivable_doc(id: "1-measure-foundation", prs: [5470, 5478], title: "**Section 1 spawn-width foundation — std.measure expressibility**", description: "— the FLOOR family (measure_scale_fraction_floor + measure_fit_count_floor) and the demand-CEIL family completing the ceil-not-equal-floor money-pair landed, dissolving the measure unwrap→raw-arith→rewrap §3 fork. Authority: the expressibility-frontier spec #5467", path: "docs/plans/expressibility-frontier.md"),
           authored(id: "1-placement-inert", done: false, content: "**scheduling: placement + materialization inert** — `Placement`/`Materialization` modeled + witness-passing, **no live consumer** (same band as the host-ops gap, substrate side)"),
           authored(id: "1-caching-forked", done: false, content: "**caching forked** — sccache live · resolve-cache **dormant** (pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live · RecordedFixture · BuildBuddy opt-in → converge on `realize(subject)` (§2 P2)"),
         ],
@@ -248,7 +248,7 @@ fn section_4() -> RoadmapSection {
           derivable(id: "4-gate-output", prs: [5434], title: "gate the generated output", description: "— floor-discover `generated/` (or regen==committed drift gate)"),
           derivable(id: "4-coproduct-exhaust", prs: [5441], title: "CoproductExhaustiveness made structural", description: "— over every declared coproduct, not a hand-roster"),
           derivable(id: "4-cross-rep", prs: [5449], title: "cross-representation-equality category", description: "— straddle witness per coproduct × native realization"),
-          derivable(id: "4-oracle-method", prs: [5471], title: "the oracle method (retro)", description: "— bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2)"),
+          derivable(id: "4-oracle-method", prs: [5471], title: "**the oracle method (retro)**", description: "— bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2)"),
           derivable(id: "4-affected-set", prs: [5430], title: "affected-set = the completeness half", description: "— model the full repo-process universe"),
           authored(id: "4-anemia", done: false, content: "*anemia lens?* (parked, DESIGN §2 leaf-side) — likely advisory, not a hard gate; decide whether to elevate"),
         ],
@@ -278,7 +278,7 @@ fn section_5() -> RoadmapSection {
           authored(id: "5-emit-rust", done: true, content: "emit whole tree `--target rust` (well-typed under CI gate)"),
           authored(id: "5-defork", done: false, content: "de-fork dsl ↔ v2 (one std authority, no historical forks)"),
 
-          derivable(id: "5-defork-step1", prs: [5473], title: "turn on cross-tree import — Step 1 LANDED", description: "— PR-B (collapse forks) next *(nimble-koi-625)*"),
+          derivable(id: "5-defork-step1", prs: [5473], title: "turn on cross-tree import — Step 1 **LANDED**", description: "— PR-B (collapse forks) next *(nimble-koi-625)*"),
           authored(id: "5-collapse-dups", done: false, content: "collapse clear duplicates (algebra, logic, nat, reducible, measure)"),
           authored(id: "5-resolve-pairs", done: false, content: "resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)"),
           authored(id: "5-cargo-green", done: false, content: "emitted crate `cargo build`s green (Route-A last mile)"),
@@ -316,7 +316,7 @@ fn section_6() -> RoadmapSection {
         nodes: [
           authored(id: "6-medium-axis", done: true, content: "**medium axis** — `Medium<R>` + `DecodeFidelity`; `LanguageModel` unified (13 forks dissolved); `compile(Eval) → EvalResult\{value: Medium<Node>\}`"),
 
-          derivable_doc(id: "6-roundtrip-law", prs: [5525, 5527], title: "round-trip law (ingest∘emit = id, DecodeFidelity-bounded)", description: "— established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2", path: "docs/plans/emission-ingestion-inverse.md"),
+          derivable_doc(id: "6-roundtrip-law", prs: [5525, 5527], title: "**round-trip law (ingest∘emit = id, DecodeFidelity-bounded)**", description: "— established across two structurally-different media: markdown (block-document) and GHA-expr (recursive-expression). v2-TargetModel convergence is the deferred single-authority destination; per-medium round-trips are v1-seed interim. Authority for the law: the round-trip oracle #5513 §5.2", path: "docs/plans/emission-ingestion-inverse.md"),
           authored(id: "6-language-axis", done: false, content: "**language axis** — 15+ targets wave-1; English emit proven"),
           authored(id: "6-cross-media", done: false, content: "**cross-media targets beyond syntax** — JSON / react / diagram as first-class media (not stringified)"),
           authored(id: "6-medium-homo", done: false, content: "`Medium<A> ↔ Medium<B>` homomorphisms"),
@@ -325,7 +325,7 @@ fn section_6() -> RoadmapSection {
           authored(id: "6-eval-generalize", done: false, content: "eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)"),
           authored_doc(id: "6-invert", done: false, content: "**invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern)", path: "docs/plans/invert-hand-maintained.md"),
 
-          derivable_doc(id: "6-invert-status", prs: [5491, 5508, 5520], title: "PR→checkbox status + section-emit + projection layer", description: "— box derived from an explicit *completes-iff-PR* binding (not mere mention), drift-gated; slice-1 status derivation + slice-2 section-emit + step-3a whole-document projection landed; #5513 medium-as-Node operative as the acceptance test", path: "docs/plans/invert-hand-maintained.md"),
+          derivable_doc(id: "6-invert-status", prs: [5491, 5508, 5520], title: "**PR→checkbox status + section-emit + projection layer**", description: "— box derived from an explicit *completes-iff-PR* binding (not mere mention), drift-gated; slice-1 status derivation + slice-2 section-emit + step-3a whole-document projection landed; #5513 medium-as-Node operative as the acceptance test", path: "docs/plans/invert-hand-maintained.md"),
 
           authored(id: "6-english-closure", done: false, content: "English vocabulary closure → fail-closed English ingest (today's catch-all is fail-open; also §0)"),
           authored(id: "6-english-roundtrip", done: false, content: "English ingest round-trip (only emit proven today)"),

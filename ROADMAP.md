@@ -18,8 +18,8 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 **Audits (done):**
 
-- [x] **lens/gate wiring** — most analytical lenses inert (authored, no discovered gate)
-- [x] **fail-open code** — cache lossy-digest · under-keyed memos · `unwrap_or_default` infer
+- [x] lens/gate wiring — most analytical lenses inert (authored, no discovered gate)
+- [x] fail-open code — cache lossy-digest · under-keyed memos · `unwrap_or_default` infer
 - [x] **model↔realization fork — ROOT CONFIRMED** — one seam (~13 bridges); sub-roots = numeric tower + `Value::Null` [plan](docs/plans/model-realization-fork.md)
 - [ ] remaining: coercion/equality straddles · inference fail-open · cache-purity · CI-coverage-completeness [detail](docs/plans/fail-closed-lockdown.md)
 
@@ -36,7 +36,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [ ] **split `Value::Null`** (None/Absent/miss/Violates → own carriers) — ~131-site substrate change, the deeper root; own runway
 - [ ] **self-host purity gate** — a §5 deliverable, not §0 (avoids the §0↔§5 cycle)
-- [x] **cross-tree import activation (§5)** (#5473) — LANDED; the §0↔§5 escalate item is now closed
+- [x] **cross-tree import activation** (§5) (#5473) — LANDED; the §0↔§5 escalate item is now closed
 - [ ] **`Disposition` carrier** — a new concept; parked [plan](docs/plans/disposition-carrier.md)
 - [ ] complexity-budget whole-codebase (§3) · cache-redundancy completeness (§2 P3) — residue, after construction
 - [ ] **cardinality refinement** — illegal cardinalities (wrong length · empty · overflow) unwritable by construction; the *decidable* refinement axis (linear arithmetic over counts), fold-propagated. MVP-1 (`Byte` via `Length<8>`) + P4 (fold homomorphism · uint8 overflow → typed `Rejected`) proven (#5512); P1 (`where` lowering) / P2 (construction-enforced) behind this lane; P5 (phantom-width reflection) substrate-blocked. [plan](docs/plans/cardinality-refinement.md) [P1](docs/plans/p1-where-clause-lowering.md)
@@ -45,7 +45,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **inert-lens hygiene backstop** (#5433) — every `lens/*.dag` wired or deleted; runs over the corpus
 - [ ] **reachability-completeness lens** — every declared node (code carrier · doc · lens) reachable from a run-root, rostered, or deleted; generalizes #5433 to carriers + docs [plan](docs/plans/inert-layer-lens.md)
-- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land *(quick-ant-298)* [plan](docs/plans/emission-ingestion-inverse.md)
+- [ ] **gate-hygiene: a floor-enrolled gate must be green-on-main at merge** — roster-completeness assertion promoted to should-land ([plan](docs/plans/emission-ingestion-inverse.md) §2; [merge-freshness decision record](docs/plans/ci-merge-freshness.md)) *(quick-ant-298)*
 - [x] **construction-justification rule** (#5476) (authoring-time) — justify why a class can't be construction before adding a lens *(silent-wren-739)* [plan](docs/plans/construction-justification-rule.md) [DESIGN §6](DESIGN.md)
 - [ ] **expressibility frontier** — partition each modeling discipline into wall / lens-residue / undecidable-review *before* gating [plan](docs/plans/expressibility-frontier.md)
 - [ ] **confront the skipped modeling decisions** — the `🟡` comment backlog [Disposition plan](docs/plans/disposition-carrier.md)
@@ -79,7 +79,7 @@ A flaky or green-but-broken floor means no gate protects anything — so CI is u
 - [ ] **G4 dispatch dup** — `workflow_dispatch`+PR fire two same-SHA runs; `run_id` concurrency fallback won't collapse them → OOM [decision record](docs/plans/ci-merge-freshness.md)
 - [ ] **G5 rust-gate selection** — rust fmt/clippy/run-all is all-or-nothing on `.rs` PRs; no affected-set (the `.dag` floor already has one) [plan](docs/plans/ci-selection-vs-scheduling.md)
 - [ ] **floor runs the right things** — SELECTION (what changed) vs SCHEDULING (by cost); cost never drives selection [plan](docs/plans/ci-selection-vs-scheduling.md)
-  - [x] **opt-level=3 restores Pop-A to per-PR** (#5456) — merged
+  - [x] opt-level=3 restores Pop-A to per-PR (#5456) — merged
   - [ ] per-PR = #5427 run-all sound baseline, shrunk to the affected set (#5427)
   - [ ] nightly = full-corpus selector-backstop + non-hermetic residue (#5447 stood down; ⚠ CI-gen load-bearing) *(quick-ant-298)*
 - [ ] **tree-scoped builtin registry** (fail-closed) — global seed registry leaks intrinsics into the substrate compile; instance fix #5452, class fix (partition) open *(quick-ant-298)* [force-check plan](docs/plans/compile-clean-forcecheck.md)
@@ -104,8 +104,8 @@ Gate: uncached non-redundant work is an ERROR, not "slow". The cache-key-from-in
 
 **◆ Milestones:** key-by-construction ✓ (#5425) → **▸ warm==cold purity proven (616/616, #5429)** → resolve-cache ON — ~18% floor cut *(core ask)* → native `content(T)` *(gated B2)*
 
-- [x] **F1 scheduler gives heavy nodes budgeted width** (#5421)
-- [x] **F2/F3 `resolved_graph` key derived from declared `inputs_considered`** (#5425) — construction, not a lens
+- [x] F1 scheduler gives heavy nodes budgeted width (#5421)
+- [x] F2/F3 `resolved_graph` key derived from declared `inputs_considered` (#5425) — construction, not a lens
   - [ ] P1 honest keys by construction — warm==cold purity oracle (#5429)
     - [ ] P2 one door: `realize(subject)` sole API — kernel inhabits `cache_interface.dag` (#5446); ParseTable dissolution is downstream of the dsl→v2 de-fork (§5)
       - [ ] hermetic fixtures feed P2: [x] M4.1 universal hermetic corpus governance (#5236, [plan](docs/plans/m4-universal-hermetic-corpus.md)); [ ] M5 fixture-store onto one Realization kernel ([plan](docs/plans/m5-fixture-store-consolidation.md))
@@ -121,7 +121,7 @@ Operator decision (2026-06-21): budget-gate validation is the in-window tool; th
 **◆ Milestones:** budget-gate non-toothless ✓ (#5437) → complexity gates the whole codebase *(gated on §5 fn-body reflection)*
 
 - [x] complexity lens total over the kernel (cost.dag U2); the gate runs a curated subject roster
-- [x] **cost-lens zero-absorption fix — budgets non-toothless** (#5437)
+- [x] cost-lens zero-absorption fix — budgets non-toothless (#5437)
   - [ ] a subject-producer for every fn (#5437 helper; whole-corpus needs fn-body reflection)
     - [ ] complexity budget gates the whole codebase (gated on fn-body reflection)
 - [ ] synthesis stays advisory (by Rice, optimality is a ratchet not a wall — DESIGN §5)
@@ -134,11 +134,11 @@ Prevent the next class, not the last instance: generate witnesses from declared 
 
 **◆ Milestones:** output gated ✓ (#5434) · coproduct-exhaustiveness structural ✓ (#5441) · cross-rep-equality ✓ (#5449) · oracle-method mapped ✓ (#5471) → anemia lens? *(parked, likely advisory)*
 
-- [x] **gate the generated output** (#5434) — floor-discover `generated/` (or regen==committed drift gate)
-- [x] **CoproductExhaustiveness made structural** (#5441) — over every declared coproduct, not a hand-roster
-- [x] **cross-representation-equality category** (#5449) — straddle witness per coproduct × native realization
+- [x] gate the generated output (#5434) — floor-discover `generated/` (or regen==committed drift gate)
+- [x] CoproductExhaustiveness made structural (#5441) — over every declared coproduct, not a hand-roster
+- [x] cross-representation-equality category (#5449) — straddle witness per coproduct × native realization
 - [x] **the oracle method (retro)** (#5471) — bug-class→mechanism map (generator/lens/wall); testgen owns A + B-routing only, rest are lenses/walls ([map](docs/plans/testgen-oracle.md) §2)
-- [x] **affected-set = the completeness half** (#5430) — model the full repo-process universe
+- [x] affected-set = the completeness half (#5430) — model the full repo-process universe
   - [ ] *anemia lens?* (parked, DESIGN §2 leaf-side) — likely advisory, not a hard gate; decide whether to elevate
 
 ## 5. Self-host v2 → delete `src/v1` (expansion)
@@ -155,7 +155,7 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)
 - [ ] de-fork dsl ↔ v2 (one std authority, no historical forks)
-  - [x] **turn on cross-tree import — Step 1 LANDED** (#5473) — PR-B (collapse forks) next *(nimble-koi-625)*
+  - [x] turn on cross-tree import — Step 1 **LANDED** (#5473) — PR-B (collapse forks) next *(nimble-koi-625)*
     - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
     - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
 - [ ] emitted crate `cargo build`s green (Route-A last mile)

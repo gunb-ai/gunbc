@@ -27,11 +27,11 @@ fn parent_node() -> RoadmapNode {
   }
 }
 
-// A DerivableLine on #5491 — box DERIVED from the merged set, emit bolds the structural title.
+// A DerivableLine on #5491 — box DERIVED from the merged set; bold lives in the title string (the §5 fence), refs emit from the binding.
 fn child_node() -> RoadmapNode {
   RoadmapNode {
     node: child_id,
-    line: DerivableLine { prs: [5491], title: "PR-checkbox status", description: "" },
+    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
   }
 }

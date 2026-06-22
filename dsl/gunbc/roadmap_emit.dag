@@ -46,7 +46,7 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
   match line {
     DerivableLine { prs, title, description } =>
       concat(
-        concat([StrongInline { inlines: [TextInline { text: title }] }], refs_inlines(prs: prs)),
+        concat([TextInline { text: title }], refs_inlines(prs: prs)),
         desc_inlines(description: description),
       )
     AuthoredLine { done: _, content } => [TextInline { text: content }]

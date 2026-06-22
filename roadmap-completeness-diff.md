@@ -1,73 +1,45 @@
-# ROADMAP completeness diff — current main (245 ln) vs emit(authority) (152 ln)
+# ROADMAP completeness diff — current main (245 ln) vs emit(authority) (201 ln, ✦-lane held)
 
-Classification: `[intended-correction]` = one of the 6 status corrections · `[benign-rewrap]` =
-pointer label/placement reframed, **path + content preserved** · `[GAP]` = content lost, must fix.
+Status: **re-transcribed faithfully from current main.** Zero content loss confirmed by token audit:
+every plan-doc path and every PR ref on main is present in the emit; the only *added* refs are the
+C1–C5 corrections (#5470/#5478, #5525/#5527/#5513/#5467, #5491/#5508/#5520, #5481/#5514). The ✦ lane
+is the ONLY missing block — HELD pending #5545 merge (will be transcribed natively from post-#5545 main).
 
-## HEADLINE FINDING — staleness, scope is bigger than the 4 named gaps
+All 5 witnesses green by execution; the effectful gate runs drift-clean on the regenerated file with a
+live red-receipt (perturb the merged set → drift RED).
 
-The authority was transcribed from a **stale ROADMAP base**, not current main. The 6 corrections were
-applied correctly, but on an older/thinner skeleton. So beyond the 4 named gaps, **§1 is entirely stale**
-(wrong title + wrong prose + wrong milestones + wrong groups) and **§2/§3/§4/§5/§6 each dropped current
-nested items**. Fix = re-transcribe from current main faithfully, re-apply only the 6 corrections + benign
-rewrap. The gate is unaffected — pure authority-completeness.
+## Classification of every delta
 
-## Preamble
-- `[GAP]` para2: dropped `— don't restate it here (no dual representations)` (the §2 no-dual-rep tag).
-- `[GAP]` Legend: dropped the entire `Each section opens with a **◆ Milestones** spine — … Read L→R = the path.` sentence.
+### [held — pending #5545] — the ONLY missing content
+- **✦ Ergonomics LANE** (main L60–88). Model machinery is in place (`lead_lanes: List<RoadmapSection>`,
+  sigil-from-position). Authoring deferred per warm-lark's ordering ruling: transcribe the FINAL
+  post-#5545 bytes natively, not hand-folded from bright-stag's PR description.
 
-## ✦ Ergonomics LANE (main L60–88)
-- `[GAP]` **ENTIRELY MISSING.** GAP 1. Whole lane (why-a-tier prose, ◆ Milestones, Audit half ×3,
-  Fix half ×3, Own-runway ban-source-comments, Pairs-with prose). Restore as lead-lane (model shape below).
+### [intended-correction] — the five corrections (and nothing else adds content)
+- **C1** §1: `**Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)` — DerivableLine, box derives `[x]`, refs from binding; placed in the "What's on `.dag` today" group after the width item. *(placement is bright-stag's call — flag.)*
+- **C2** §6: `**round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527)` — own `[x]` row distinct from the medium-axis check; authority #5513 cited; no overclaim.
+- **C3** §6: `**PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520)` — replaces the old "model + witness landed, host-fed gate next (§6.4)" sub-row.
+- **C4** §5 milestone: adds `· class-3 corpus-coherence + cargo-green seed ✓ (#5481)` + the `*(§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable)*` no-overclaim tail.
+- **C5** §0 rust-gate: line restored in full, stays `[ ]` (no status change), edge-(b) brief pointer included.
+- §1 **title reverted** to "CI as the substrate integration dogfood (the correctness floor)" (GAP 2 — your revert directive, not a new delta).
 
-## §1  (main "CI as the substrate integration dogfood (the correctness floor)")
-- `[GAP]` GAP 2 — **title** emitted as "CI under control (the correctness floor)"; revert to original.
-- `[GAP]` **prose** fully rewritten/lost (the "flexes every substrate layer … forcing function … Deliverable = shared abstractions proven by CI consuming them …" para → replaced by a wrong 1-liner).
-- `[GAP]` dropped section pointer `→ [charter: causal-chain gap analysis](docs/plans/ci-process-end-to-end.md) — …`.
-- `[GAP]` **milestones** replaced (execution-as-DAG ✓ · width ✓ … → wrong opt-3 milestones).
-- `[GAP]` dropped groups: **What's on `.dag` today** (4 items), **Host-operation band G1–G3 + CI-on-fabric**, **Adjacent gaps G4–G5 + floor-selection (+nested) + tree-scoped-registry + sccache-false-greens**, **Shared abstractions ×3**, **Downstream/parked ×4**. (My emit's §1 items are an older, different set.)
-- NOTE: C1 (measure #5470/#5478) belongs as a §1 item per the correction; it currently rides on the stale skeleton — re-home it into the re-transcribed §1.
+### [benign-rewrap] — form only, content byte-preserved
+- **Line wrapping**: main hard-wraps prose at ~100 cols; the projection emits one line per paragraph. Every multi-line `<` / single-line `>` hunk is this. Content identical.
+- **Pointer frame** (your shape-2a ruling): `([label](path))` → ` [label](path)` — parens/commas are projection frame; **label + path are data, preserved exactly** (cause table / edge-(b) brief / detail / decision record / force-check plan / Disposition plan / scope / merge-freshness decision record all kept).
+- **Refs-from-binding** (§3): a DerivableLine's `(#N)` is generated from `prs` and sits right after the title; main hand-placed it mid-sentence. Same ref, repositioned.
+- **Structural-title bold is now authored data** (not emit-applied): the emit no longer force-bolds derivable titles; bold lives in the title string (the §5 fence, consistent with AuthoredLine). This made the emit match main's *per-item* bolding exactly (main bolds some derivable titles, not others; I matched each). Two authored audit items (lens/gate wiring, fail-open code) un-bolded to match main.
+- **Uniform blank line after a sub-group label** (`**Audits (done):**` ¶ then list). main is inconsistent (§0 has the blank, §1 host-band doesn't); the projection is uniform.
 
-## §0
-- `[GAP]` dropped section pointer `→ [audit + checklist](docs/plans/fail-closed-lockdown.md)`.
-- `[GAP]` rust-gate item: dropped `; \`.dag\`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight`, the 2nd pointer `[edge-(b) brief](…edge-b-rust-dag-provenance-brief.md)`, and `*(quick-ant-298)*`. (C5 = "no status change" — but the line's content was truncated; restore in full.)
-- `[GAP]` promote-lenses: dropped `(also unlocks coverage/testgen)`.
-- `[GAP]` realization-vocab: dropped `; dissolve-on: bash-sidecar arc empties the roster → pure wall → \`program.dag\` deletable`.
-- `[GAP]` GAP 4 — **cardinality refinement** item (last in Fenced-OUT) MISSING. Restore (#5512 MVP-1/P4 landed; P1/P2/P5 pending; 2 pointers).
-- `[GAP]` construction-justification: dropped 2nd pointer `[DESIGN §6](DESIGN.md)`.
-- `[GAP]` axiom+syllogism: dropped pointer `[scope](docs/plans/axiom-syllogism-lens.md)`.
-- `[benign-rewrap]` fork / remaining / numeric-tower / disposition / confront-skipped: pointer label or paren-placement reframed to ` [plan](path)`; path preserved.
-- `[benign-rewrap]` cross-tree (§5)/(#5473)/LANDED token reorder; content preserved.
+### [benign-rewrap — FLAGGED for your call] — 2 compact multi-task bullets
+main has two plain `- ` bullets carrying *inline* `[x]`/`[ ]` glyphs:
+- `- hermetic fixtures feed P2: [x] M4.1 … ; [ ] M5 …` (mixed states)
+- `- blockers: [ ] B1 … · [ ] B2 …`
 
-## §2
-- `[GAP]` dropped the whole nested cache-realization subtree under F2/F3: **P1 honest-keys (#5429) → P2 one-door realize() (#5446) [+ M4.1 #5236 / M5 hermetic fixtures] → P3 resolve-cache enable (core ask)**.
+The `SectionElement` model emits task-items only (no plain-bullet variant), so these render with a
+leading `- [ ]` wrapper; **all content (inline boxes, both PR refs, both plan links) is preserved
+verbatim** inside. Byte-exact plain bullets would need an `UnorderedList` SectionElement variant (a new
+shape — not adding it unilaterally). Your call: accept the leading-box (content-complete) or request the
+variant.
 
-## §3
-- `[GAP]` dropped nested items: **a subject-producer for every fn (#5437 helper)** → **complexity budget gates the whole codebase**.
-
-## §4
-- `[GAP]` dropped nested **anemia lens? (parked, DESIGN §2 leaf-side)** under affected-set.
-- `[benign-rewrap]` oracle-method pointer `[map](…) §2` → `[plan](…)`; path preserved.
-
-## §5
-- `[intended-correction]` C4 — milestones add `· class-3 corpus-coherence + cargo-green seed ✓ (#5481)` and the `*(§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable)*` no-overclaim tail. ✓
-- `[GAP]` dropped **adjacent-lane prose** (algorithmic-cost rewrite engine, → plan).
-- `[GAP]` dropped nested under de-fork: **collapse clear duplicates (algebra/logic/nat/reducible/measure)** + **resolve same-name/different-job pairs**.
-- `[GAP]` collapsed the emitted-crate subtree into 1 line; dropped **real fixed point**, **regen --verify keystone (+ dissolve seed hand-patches)**, **TypeScript to first-class**, **seed-honesty (DDC)**, **collapse src/v1 (terminal)** as distinct nested items.
-
-## §6
-- `[intended-correction]` C2 — **round-trip law (#5525/#5527)** row added as own line, distinct from medium-axis, no overclaim. ✓
-- `[intended-correction]` C3 — **PR→checkbox** expanded with slice-1/2/3a (#5491/#5508/#5520). ✓
-- `[GAP]` dropped nested **`Medium<A> ↔ Medium<B>` homomorphisms** under cross-media-targets.
-
-## §7, §8
-- Clean. No deltas.
-
-## Corrections accounted for
-- C1 measure #5470/#5478 — present but on stale §1; re-home into re-transcribed §1.
-- C2 medium/round-trip #5525/#5527 — ✓ §6.
-- C3 inversion slices 1/2/3a — ✓ §6.
-- C4 self-host PATH-A #5481 / §7-deferred #5514 / src/v1-not-deletable — ✓ §5.
-- C5 edge-b rust-gate scoped/no-status-change — line restored in full per §0 GAP above (no `[x]`/`[ ]` flip).
-- C6 (the 6th) — verify against warm-lark's list during re-transcription.
-
-**Target after re-transcription: ZERO [GAP].**
+**Net: zero [GAP] except the held ✦-lane. Awaiting bright-stag content sign-off (incl. C1 placement +
+the 2 flagged bullets) and warm-lark gate-integrity confirm; #5535 stays DRAFT until then + #5545 merges.**

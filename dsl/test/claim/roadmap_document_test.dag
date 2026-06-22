@@ -28,11 +28,11 @@ fn audit_node() -> RoadmapNode {
     carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
   }
 }
-// DerivableLine — box DERIVED from the merged set, emit bolds the structural title.
+// DerivableLine — box DERIVED from the merged set; bold lives in the title string (the §5 fence).
 fn status_node() -> RoadmapNode {
   RoadmapNode {
     node: status_id,
-    line: DerivableLine { prs: [5491], title: "PR-checkbox status", description: "" },
+    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
   }
 }
