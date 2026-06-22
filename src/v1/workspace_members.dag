@@ -1,34 +1,7 @@
-// v2 workspace-membership authority -- .dag model of the generated stage0
-// crate entries inside the top-level `[workspace] members` array.
-//
-// Open Question 4 of the crate-boundary doc: `[workspace] members` was a
-// hand-edited literal, so adding a split crate meant editing both the
-// `stage0_crate_plan` AND `Cargo.toml`. This module closes that: the member
-// entry for each generated stage0 crate is *derived* from the same
-// `stage0_crate_plan` that emits the crate's `Cargo.toml`/`lib.rs`. Adding a
-// `Stage0CrateSpec` now contributes its `[workspace] members` line for free --
-// regen_stage0 rewrites the bracketed region of the top-level manifest.
-//
-// Scope is deliberately narrow. Only the generated stage0 crate entries are
-// modeled; the hand-authored members (the regen bin, tests, v3 crates, tools)
-// and all other workspace-global config (`[workspace.dependencies]`, profiles,
-// metadata) stay hand-edited in `Cargo.toml`. We own one bracketed region of
-// that file, never the whole manifest.
-
 module v1.compiler.workspace_members
 
 import v1.compiler.stage0_crates { stage0_crate_plan, Stage0CrateSpec }
 
-// =========================================================================
-// Managed-region markers
-// =========================================================================
-
-// Sentinel comment lines that bracket the generated stage0 crate entries
-// inside the top-level `Cargo.toml` `[workspace] members` array. regen_stage0
-// locates these (sourced from here, not hardcoded in Rust) and replaces the
-// lines between them with `stage0_workspace_member_region`. The leading
-// indentation matches the array's element indentation so the committed file is
-// rustfmt/taplo-neutral.
 fn workspace_members_region_begin_marker() -> String {
   "    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)"
 }
@@ -37,19 +10,10 @@ fn workspace_members_region_end_marker() -> String {
   "    # END generated stage0 crate members"
 }
 
-// =========================================================================
-// Region body -- one members entry per generated stage0 crate
-// =========================================================================
-
-// A single TOML array element line for one generated stage0 crate, using the
-// crate's own `crate_dir` from the boundary plan -- the same field that names
-// where its `Cargo.toml`/`lib.rs` are written.
 fn stage0_member_entry(spec: Stage0CrateSpec) -> String {
   concat("    \"", spec.crate_dir, "\",")
 }
 
-// The full set of generated stage0 member lines, derived from the boundary
-// plan. This is exactly the text regen_stage0 splices between the markers.
 fn stage0_workspace_member_region() -> String {
   stage0_crate_plan().crates
     |> map(stage0_member_entry)

@@ -1,8 +1,3 @@
-// Scope: IRT-1 leaf — excluded-dimension propagation receipt.
-// Observation: ReExecFrontier.decisions is a std Map = PartialFunction with no decidable
-// structural `==`; the receipt observes the frontier by application (frontier_decision_matches)
-// and compares the resolved FrontierDecision, never whole-frontier `==`.
-
 module v2.test.lens_affected_set.irt1_excluded_propagation_receipt
 
 import v2.lens.affected_set { DimensionNotRead, Excluded, ExclusionKey, FrontierDecision, PropagationExclusionProof, empty_frontier, mark_excluded }
@@ -54,9 +49,6 @@ fn irt1_excluded_propagation_receipt_claim_holds() -> Bool {
   )
 }
 
-// Discrimination receipt (perturb-red, committed): one mark_excluded yields rest:[],
-// which must NOT match the accumulated expected decision rest:[proof]. Holds == true
-// proves the comparison discriminates on Excluded.rest, not a tautology.
 fn irt1_excluded_propagation_receipt_discriminates() -> Bool {
   frontier_decision_matches(
     frontier: mark_excluded(

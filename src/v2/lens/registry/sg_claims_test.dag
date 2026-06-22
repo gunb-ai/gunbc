@@ -1,8 +1,4 @@
-// Scope: discriminating claim-run witnesses for lens registry query
-// Status: executes lens_registry_v0 query surface; pos+neg discriminates singleton resolution.
-
 module v2.test.lens_registry.sg_claims
-
 
 import v2.lens.registry {
   Complexity,
@@ -23,8 +19,6 @@ import v2.lens.registry {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -42,11 +36,9 @@ data lens_registry_v0_required_ids: List<LensIdV0> = [
   TableDecisionTree
 ]
 
-
 test fn lens_registry_required_ids_resolve_holds() -> Bool {
   lens_registry_ids_resolve(lens_ids: lens_registry_v0_required_ids)
 }
-
 
 test fn lens_registry_singleton_row_counts_holds() -> Bool {
   lens_registry_row_count(lens_id: Complexity) == 1
