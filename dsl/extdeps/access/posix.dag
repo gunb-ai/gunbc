@@ -54,8 +54,6 @@ type PosixGroupMembership {
 
 data posix_root_uid: Int = 0
 
-data posix_sudo_group: NonEmptyStr = "sudo"
-
 fn posix_user_is_root(user: PosixUser) -> Bool {
   user.uid == posix_root_uid
 }
