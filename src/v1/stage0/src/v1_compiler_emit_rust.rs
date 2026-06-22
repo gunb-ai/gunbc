@@ -18404,8 +18404,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                 v1_rt::concat(
                     v1_rt::concat(
                         log_line,
-                        "\npanic!(\"no mock data available for dry-run operation: "
-                            .to_string(),
+                        "\npanic!(\"no mock data available for dry-run operation: ".to_string(),
                     ),
                     op_name.clone(),
                 ),
