@@ -110,8 +110,11 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 ];
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
+    "cache_purity_oracle.rs",
     "cli_run.rs",
     "coproduct_reflection.rs",
+    "doc_reachability_project.rs",
+    "medium_structure_project.rs",
     "extdeps_shape_transport_policy_project.rs",
     "fact_cardinality_census.rs",
     "import_resolution_project.rs",
@@ -1391,13 +1394,13 @@ mod tests {
     #[test]
     fn cargo_invalidation_receipt_hashes_workspace_and_stage0_manifests() {
         let workspace = temp_test_dir("workspace");
-        let manifest_dir = workspace.join("src").join("v2").join("stage0");
+        let manifest_dir = workspace.join("src").join("v1").join("stage0");
         fs::create_dir_all(&manifest_dir).expect("create manifest dir");
         fs::write(workspace.join("Cargo.toml"), "[workspace]\n").expect("write workspace toml");
         fs::write(workspace.join("Cargo.lock"), "# lock\n").expect("write cargo lock");
         fs::write(
             manifest_dir.join("Cargo.toml"),
-            "[package]\nname = \"v2\"\n",
+            "[package]\nname = \"v1\"\n",
         )
         .expect("write stage0 toml");
 
