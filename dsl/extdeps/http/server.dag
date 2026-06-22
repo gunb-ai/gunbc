@@ -2,6 +2,15 @@ module extdeps.http.server
 
 import std.http_path { PathTemplate }
 import std.types { HttpMethod, HttpStatus, Port }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110"
+  }
+}
 
 type HttpContentType
   = TextHtmlUtf8
