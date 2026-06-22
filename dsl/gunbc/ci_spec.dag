@@ -31,8 +31,7 @@ type CiSpec {
   notice_title: String
 }
 
-data gunbc_ci_gates: List<Gate> = [
-  RustMonolithGate,
+data gunbc_ci_floor_gates: List<Gate> = [
   EmitHostGate,
   LayeringImportsGate,
   ResolvedImportsGate,
@@ -42,8 +41,14 @@ data gunbc_ci_gates: List<Gate> = [
   SourceRootIngestGate
 ]
 
+data gunbc_ci_rust_job_gates: List<Gate> = [
+  RustMonolithGate
+]
+
+data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
+
 data gunbc_ci_spec: CiSpec = {
-  gates: gunbc_ci_gates,
+  gates: gunbc_ci_floor_gates,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
@@ -157,18 +162,6 @@ fn ci_release_build_script() -> String {
   )
 }
 
-fn ci_rust_gate_fmt_command() -> String {
-  "cargo fmt --all --check"
-}
-
-fn ci_rust_gate_clippy_command() -> String {
-  "cargo clippy --all-targets -- -D warnings"
-}
-
-fn ci_rust_gate_test_command() -> String {
-
-  "cargo test -p v1-compiler-tests -- interp_recorded_fixture wet_hermetic resolve_expr_types_retraversal"
-}
 
 fn claim_executor_bin_shell() -> String {
   "\"$ROOT/target/release/claim_executor\""
@@ -216,4 +209,23 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_run_script(spec: spec)
+}
+
+fn gunbc_ci_rust_gate_invoke() -> String {
+  ci_cargo_eagain_retry_script(
+    command: concat(
+      concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
+      " --entry dsl/tools/rust_gates_ci.dag --function main"
+    )
+  )
+}
+
+fn gunbc_ci_rust_job_run() -> String {
+  concat(
+    concat(ci_release_build_script(), "\n"),
+    concat(
+      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
+      gunbc_ci_rust_gate_invoke()
+    )
+  )
 }

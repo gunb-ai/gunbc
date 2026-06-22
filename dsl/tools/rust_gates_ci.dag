@@ -2,32 +2,22 @@ module tools.rust_gates_ci
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git
-import extdeps.shell
+import extdeps.cargo_build
 import tools.rust_stage0_gates { should_run_gates }
 import gunbc.ci_spec {
   gunbc_ci_spec,
   DiffMergeBase,
   DiffTwoDot,
-  ci_cargo_eagain_retry_shell_exec,
-  ci_rust_gate_fmt_command,
-  ci_rust_gate_clippy_command,
-  ci_rust_gate_test_command,
 }
 
 func run_gates() -> ProcessExit {
-  fmt = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
-  )
-  clippy = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_clippy_command())
-  )
-  test = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_test_command())
-  )
+  fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
+  clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
+  test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"])
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
-    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo test (hermetic discriminators)" }
+    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo nextest run -p v1-compiler-tests" }
   }
 }
 

@@ -34,7 +34,7 @@ fn patch_target_model(content: &str, patch: TargetModelPatch) -> String {
 }
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usize, Vec<String>) {
