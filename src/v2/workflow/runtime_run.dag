@@ -1,9 +1,3 @@
-// src/v2/workflow/runtime_run.dag
-// Scope: thin sequential runtime run loop — scheduler RunnableFrontier → single
-// eval_with_context step per ready node → receipt append. Wave-1 sequential,
-// bounded: fold(nodes, ...) caps iteration to length(nodes) steps (mirrors
-// scheduler_run_to_fixed_point in v2.workflow.scheduler).
-
 module v2.workflow.runtime_run
 
 import v2.compiler.eval {
@@ -31,26 +25,20 @@ import v2.workflow.scheduler {
   scheduler_remaining_nodes
 }
 
-// Execution receipt for a single evaluated node.
 type RuntimeRunReceipt {
   node: Node
   result: Outcome<RuntimeValue>
 }
 
-// Ordered log of receipts from the run loop.
 type RuntimeRunLog {
   entries: List<RuntimeRunReceipt>
 }
 
-// Internal fold accumulator: receipts so far and nodes marked evaluated.
 type RuntimeRunState {
   log: RuntimeRunLog
   scheduled: List<Node>
 }
 
-// 🟡 coproduct dissolution — feature:runtime-run-result — consumer:runtime_run —
-// dissolve-on-arrival: host transport returns per-node execution verdicts back into
-// .dag types, replacing plan-only blocked evidence (mirrors executor-host-run-result gate).
 type RuntimeRunResult
   = RuntimeRunComplete {
       log: RuntimeRunLog
@@ -97,8 +85,6 @@ fn runtime_run_eval_node(
   }
 }
 
-// Evaluate every ready node in frontier sequentially, appending a receipt per node.
-// Single wave-1 step: no parallelism, fail-closed per node (receipt captures Rejected too).
 fn runtime_run_step_from_frontier(
   frontier: RunnableFrontier,
   state: RuntimeRunState,
@@ -110,7 +96,6 @@ fn runtime_run_step_from_frontier(
   })
 }
 
-// One scheduling step: derive the current runnable frontier and evaluate it.
 fn runtime_run_step_state(
   nodes: List<Node>,
   dependencies: List<DependencyView>,
@@ -156,9 +141,6 @@ fn runtime_run_result_from_state(
   }
 }
 
-// Bounded sequential run loop. Terminates in at most length(nodes) steps because
-// each non-empty frontier schedules at least one remaining node (same bound as
-// scheduler_run_to_fixed_point). Receipts capture Accepted or Rejected per node.
 fn runtime_run(
   nodes: List<Node>,
   dependencies: List<DependencyView>,

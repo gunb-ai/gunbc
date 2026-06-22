@@ -1,6 +1,4 @@
-
 module v2.test.workflow.manual_corpus_eval
-
 
 import v2.std.algebra { is_empty }
 import v2.std.logic { Bool }
@@ -11,10 +9,6 @@ import v2.test.workflow.testclaim_corpus_runner {
   run_manual_testclaim_corpus_eval
 }
 
-
-// F5 acceptance: non-empty roster AND every row Pass (zero Fail, zero Deferred).
-// Requiring fail == Zero (not deferred-only) keeps a Verdict::Fail from silently closing the
-// witness — a Fail row holds the gate open, so the Fail fact flows forward to the surface.
 fn manual_corpus_gate(report: CorpusEvalReport) -> Bool {
   if is_empty(xs: report.entries) {
     false
@@ -23,11 +17,9 @@ fn manual_corpus_gate(report: CorpusEvalReport) -> Bool {
   }
 }
 
-
 fn manual_corpus_all_pass(report: CorpusEvalReport) -> Bool {
   let tally = corpus_report_tally(r: report)
   (tally.fail == Zero) && (tally.deferred == Zero)
 }
-
 
 data witness_manual_corpus_gate_closed: Bool = manual_corpus_gate(report: run_manual_testclaim_corpus_eval())

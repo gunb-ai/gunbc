@@ -1,9 +1,3 @@
-// Status: discovered fail-closed witness for the ownership lens (DESIGN.md §6 inert-lens hygiene:
-// every lens is a discovered fail-closed witness or deleted). Asserts the ownership lens correctly
-// classifies a ResourceDependsOn edge: its witness returns Violates and ownership_fact tags the edge
-// RequiresAccessWitness (resource access needs explicit evidence). A broken ownership lens (wrong
-// classification, or no Violates) makes the structural claim false => RED.
-
 module v2.test.workflow.lens_ownership_family_eval
 
 import v2.std.logic { Bool }

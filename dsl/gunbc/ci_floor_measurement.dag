@@ -1,39 +1,3 @@
-// gunbc/ci_floor_measurement.dag — the CI floor's MEASURED per-shard memory peak (§1-C).
-//
-// This is the committed half of the §1 measurement→plan loop (realization-measurement-loop.md
-// Phase 0/1). The spawn-width derivation (src/v2/workflow/ci_floor_plan.dag) divides the LIVE
-// host memory budget by the per-shard peak recorded HERE. Per DESIGN §3 (measured⇒peripheral):
-//   - the per-shard peak is OUR measurement → we COMMIT it, provenance-stamped (this file);
-//   - the cgroup budget is authored by an EXTERNAL system (the host/scheduler) → the host
-//     realizer READS it live (claim_executor), never committed.
-// This file is the peripheral measured realization; the v2 plan stays pure topology.
-//
-// NOT a hand-grounded literal: the number below is claim_executor's MEASURED VmHWM emit
-// ("[measurement] floor peak RSS: <bytes> (VmHWM) at spawn_width=N", added in #5431). It
-// replaces — does not re-add — the ~14GB hand-grounded literal #5419 deleted as unwired.
-//
-// ── PROVENANCE (re-stamp on every re-measure) ────────────────────────────────
-//   source emit : "[measurement] floor peak RSS: 8400113664 bytes (VmHWM) at spawn_width=4"
-//   run         : GitHub Actions run 27893441091 (#5431 PR CI, job 82540829121)
-//   commit      : cb71163cf2 (the #5431 merge that landed the VmHWM emit)
-//   corpus      : 616 discovery witnesses (0 skipped)
-//   date        : 2026-06-21
-// Each DiscoveryBatch shard does a WHOLE-TREE resolve, so the per-shard peak ≈ the whole-floor
-// VmHWM ÷ the spawn_width it was measured at (the concurrency). It scales with TREE size, not
-// witnesses-per-shard — which is why a larger tree (the old ~2900-row era) peaked far higher.
-//
-// 🟡 SCAFFOLD — feature:measured-peak-drift-gate —
-// consumer: ci_floor_plan.gunbc_ci_floor_spawn_width (via std.realization_width).
-// RESIDUE (DESIGN §6, legit unstructurable-before-execution): the committed peak is stale in
-// exactly ONE dangerous direction — the tree grows un-re-stamped → committed peak too LOW →
-// ⌊budget ÷ peak⌋ too HIGH → OOM. A peak is fundamentally a runtime OUTPUT (you cannot know a
-// run's peak before running it), so a committed-prior-measurement + a drift-check is the legit
-// §6 residue, not a construction wall. The #5431 emit each run is the drift MONITOR but nothing
-// GATES on it yet (observe-by-eyeball = validation, not construction).
-// dissolve-on: a cheap CI gate compares this committed peak against the live emit's VmHWM÷width
-// and fails closed when committed is stale-LOW beyond a margin (re-stamp required). Out of scope
-// for the §1-C width PR; this marker keeps the committed fact from being a silent staleness trap.
-
 module gunbc.ci_floor_measurement
 
 import std.measure { ByteSize, byte_size }
@@ -43,25 +7,13 @@ import std.realization_measurement {
   concurrent_memory_peak_per_share,
 }
 
-// The measured whole-floor concurrent peak (VmHWM) bundled with the concurrency it was sampled
-// at — ONE fact (a ConcurrentMemoryPeakSample), the single authority for the §1-C derivation.
-// Peak and concurrency are only meaningful together (per-share = peak ÷ concurrency), so they
-// live in one carrier rather than as two loose rows that could drift apart. Re-stamp the pair
-// here on every re-measure (provenance above).
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
   peak: byte_size(8400113664)
   concurrency: 4
 }
 
-// Per-shard peak: each DiscoveryBatch shard does a whole-tree resolve, so the per-shard peak is
-// the measured concurrent peak distributed across its sample concurrency. Delegates to the std
-// measure-algebra derivation (std.realization_measurement) — no inline unwrap/divide/re-ground
-// here; the division is a grounded measure operation, not a one-off expression.
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   concurrent_memory_peak_per_share(sample: gunbc_ci_floor_measured_peak)
 }
 
-// Fail-closed fallback width when the host cannot read a live memory budget: the last
-// known-safe MEASURED width (the run above passed at width 4 = 8.40 GB concurrent on the real
-// fleet). A bounded, grounded fallback — never fabricated, never an unbounded memory-blind width.
 data gunbc_ci_floor_conservative_fallback_width: Int = 4

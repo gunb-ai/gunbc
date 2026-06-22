@@ -1,15 +1,3 @@
-// tools/layering_imports_gate.dag — cross-layer import gate, run by `gunbc` (NOT a Rust binary).
-//
-// Replaces scripts/v4-layering-imports-gate.sh and the deleted layering_imports_scan host.
-// Host enumerates import facts via tools.layering_imports_transport; v2.lens.layering_imports
-// owns violation semantics. This is the §7 shape: gate logic is `.dag` authority.
-//
-// Run in CI:
-//   cargo run -p v1-compiler --release --bin gunbc -- run \
-//     --source-root dsl --entry dsl/tools/layering_imports_gate.dag --function main
-//
-// SCAFFOLD — dissolves when layering-imports scan wires through gunbc Realization.
-
 module tools.layering_imports_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -18,7 +6,6 @@ import tools.layering_imports_transport {
   run_scanner_perturb_receipts
 }
 
-// Green pass + scanner-execution perturb receipts (no short-circuit).
 func run_layering_imports_gate_body() -> ProcessExit {
   let clean = run_clean_tree_gate()
   let perturb = run_scanner_perturb_receipts()
@@ -35,7 +22,6 @@ func main() -> ProcessExit {
   run_layering_imports_gate_body()
 }
 
-// Composed CI entry point (tools.ci_gates imports this name).
 func run_layering_imports_ci_gate() -> ProcessExit {
   run_layering_imports_gate_body()
 }

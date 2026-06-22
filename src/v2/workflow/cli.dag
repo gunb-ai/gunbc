@@ -1,15 +1,3 @@
-// src/v2/workflow/cli.dag
-// Scope: gunbc CLI route contract rows (Branch H §H.5 CLI surface).
-// Status: Wave-2 row-shaped route contracts for the Runtime/TestClaim CLI surface
-//   (`gunbc testgen`, `gunbc test`). Deliberately NOT a closed command coproduct so
-//   Source-authority (Branch H) can compose its own `gunbc compile --target dag` row
-//   without duplicate authority — coordinated with Source-authority Mgr (silent-koi-227).
-// Authority split (§H.5): testgen/test are Runtime/TestClaim CLI rows; compile --target
-//   dag is the source-authority row; JSON/IR output is boundary/debug, never source.
-// Route identity (name + semantics) is derived from the ROW TYPE, never stored as a
-//   caller-supplied field — so a row cannot be minted with an off-contract name or
-//   misclassified semantics (single authority, DESIGN.md §3).
-
 module v2.workflow.cli
 
 import v2.std.logic { Bool }
@@ -21,36 +9,19 @@ import v2.workflow.bootstrap {
   witness_bootstrap_evaluator_corpus_harness_well_formed
 }
 
-// Semantic class of a gunbc CLI route, per §H.5 RR-H acceptance ("CLI routes named by
-// source vs debug semantics"). A neutral shared classifier: each domain's route rows are
-// classified by their *row type* (see the per-row `*_semantics` functions below), so
-// Source-authority can add `SourceAuthorityRoute`-classed rows (compile --target dag)
-// alongside these Runtime/TestClaim rows without contention.
-// 🟢 coproduct dissolution
 type GunbcCliRouteSemantics
   = SourceAuthorityRoute
   | RuntimeTestClaimRoute
   | BoundaryDebugRoute
 
-// `gunbc testgen` — synthesize generated TestClaim artifacts. The row type *is* the route
-// authority: its name and semantics are derived (see below), not stored, so the row cannot
-// carry an off-contract name or a source-authority class. It names the producing generator.
 type GunbcTestgenRoute {
   generator: GeneratorId
 }
 
-// `gunbc test` — execute the TestClaim corpus at runtime (T-38 harness). A runtime verdict
-// surface keyed by a corpus selection function, not an authoring-time / source-authority
-// route. `selection_fn` mirrors the authority on `ci.dag` `TestClaimCorpusEvalCommand`.
 type GunbcTestRoute {
   selection_fn: Symbol
 }
 
-// Canonical route names — the single authority for each Runtime/TestClaim route name
-// (self-identifying Symbol idiom, cf. `dag_language_model_surface_id`). Reached only via
-// the per-row accessors below, so the name is a function of the row type.
-// Route name derived from the row type (not a stored field): a `GunbcTestgenRoute` is
-// always the `testgen` route, a `GunbcTestRoute` always the `test` route.
 fn gunbc_testgen_route_name_of(_route: GunbcTestgenRoute) -> Symbol {
   ^gunbc_testgen_route_name
 }
@@ -63,20 +34,10 @@ fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) 
   ^gunbc_test_corpus_harness_route_name
 }
 
-// RR-A §5.2: bootstrap stage0 corpus harness — run entry lives on the modeled harness row,
-// not on `GunbcTestRoute.selection_fn` (that field mirrors `ci.dag` corpus narrowing only).
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2) —
-// feature:rr-a-gunbc-test-corpus-harness-route — consumer: gunbc test manual-corpus harness
-// projection — bind RR-A §5.2 + bootstrap_manual_corpus_harness — dissolve-on-arrival: delete
-// when workflow/CI projection reads the harness substrate from `ci_pipeline` alone and this
-// separate CLI row is redundant; forbidden: storing the stage0 run entry on
-// `GunbcTestRoute.selection_fn` (single authority, DESIGN.md §3).
 type GunbcTestCorpusHarnessRoute {
   harness: BootstrapEvaluatorCorpusHarnessEntry
 }
 
-// Route class derived from the row type (not a stored field): both rows are
-// Runtime/TestClaim routes and cannot be misclassified as source-authority (§H.5 / M2).
 fn gunbc_testgen_route_semantics(_route: GunbcTestgenRoute) -> GunbcCliRouteSemantics {
   RuntimeTestClaimRoute
 }
@@ -89,10 +50,6 @@ fn gunbc_test_corpus_harness_route_semantics(_route: GunbcTestCorpusHarnessRoute
   RuntimeTestClaimRoute
 }
 
-// A `gunbc testgen` route attributes provenance to each generated artifact it emits,
-// naming itself (its `generator`) as producer. This is the structural consumer of
-// `GeneratorProvenance` / `GeneratedArtifact` on the CLI surface: the route + a generated
-// artifact yield the provenance fact the testgen lens carries on `Generator<C>`.
 fn gunbc_testgen_route_provenance(
   route: GunbcTestgenRoute,
   artifact: GeneratedArtifact
@@ -103,8 +60,6 @@ fn gunbc_testgen_route_provenance(
   }
 }
 
-// RR-A §5.2: canonical manual-corpus harness CLI row — imports bootstrap harness substrate;
-// `GunbcTestRoute.selection_fn` remains reserved for `ci_testclaim_corpus_selection_fn` narrowing.
 data gunbc_test_manual_corpus_harness_route: GunbcTestCorpusHarnessRoute = GunbcTestCorpusHarnessRoute {
   harness: bootstrap_manual_corpus_harness
 }
