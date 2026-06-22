@@ -563,15 +563,19 @@ fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
     let sccache_rel = sccache_server_cgroup_rel();
-    // Descendant iff sccache's cgroup path is under the leaf. When the leaf IS the cgroup root
-    // (`leaf_r` empty — e.g. a single-cgroup container), everything is a descendant. On the real
-    // fleet the leaf is the runner-service cgroup and sccache lives in a sibling service cgroup, so
-    // this is correctly `false` (subtract). Misclassifying as sibling would only over-subtract,
-    // which is the fail-closed direction, but we classify exactly here.
+    // Descendant iff sccache's cgroup is the leaf or strictly under it — a PATH-COMPONENT prefix,
+    // not a bare string prefix, so a sibling like `<leaf>-other.service` is NOT misclassified as a
+    // descendant (that would under-count host overhead — the fail-OPEN direction). When the leaf is
+    // the cgroup root (`leaf_r` empty — e.g. a single-cgroup container) everything is a descendant.
+    // On the real fleet the leaf is the runner-service cgroup and sccache is a sibling service
+    // cgroup, so this is `false` (subtract as host_fixed_overhead).
     let leaf_r = leaf_rel.trim_start_matches('/').to_string();
     let sccache_under_leaf = sccache_rel
         .as_deref()
-        .map(|r| leaf_r.is_empty() || r.trim_start_matches('/').starts_with(&leaf_r))
+        .map(|r| {
+            let r = r.trim_start_matches('/');
+            leaf_r.is_empty() || r == leaf_r || r.starts_with(&format!("{leaf_r}/"))
+        })
         .unwrap_or(false);
     Some(CgroupMeasurement {
         leaf_peak,
