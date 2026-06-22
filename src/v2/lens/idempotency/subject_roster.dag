@@ -1,7 +1,4 @@
-// Status: single-leaf family — expand when additional lens_idempotency claims land.
-
 module v2.test.lens_idempotency.subject_roster
-
 
 import v2.compiler.eval { TestClaimEvalSubject }
 import v2.std.collection { List }
@@ -9,7 +6,6 @@ import v2.std.node { Node }
 import v2.test.lens_idempotency.write_effect {
   subject_idempotency_write_effect_receipt
 }
-
 
 data lens_idempotency_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_idempotency_write_effect_receipt

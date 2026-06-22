@@ -1,4 +1,3 @@
-
 module v2.test.lens_application.empty_required_lenses_skip_gate
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }

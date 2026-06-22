@@ -1,21 +1,11 @@
-// v2 trace model -- normalized execution traces, repro cases, source mapping.
-
 module v1.compiler.trace
 
 import v1.std.core { SourceSpan }
-
-// =========================================================================
-// F1: Span mapping -- generated code line → source .dag span
-// =========================================================================
 
 type SpanMapping {
   generated_line: Int
   source_span: SourceSpan
 }
-
-// =========================================================================
-// F2: Trace events -- normalized from emitted runtimes or host adapters
-// =========================================================================
 
 type TraceEvent
   = TraceEnter { node_id: String, span: SourceSpan, inputs: Map<String, String> }
@@ -41,7 +31,6 @@ fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
   Trace { events: list_push(trace.events, event), stack: trace.stack }
 }
 
-// Push a frame onto the trace stack (function entry). O(1) with Rc<Vec>.
 fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
   Trace { events: trace.events, stack: list_push(trace.stack, frame) }
 }
@@ -54,10 +43,6 @@ fn trace_pop_frame(trace: Trace) -> Trace {
     Trace { events: trace.events, stack: trace.stack |> take(n - 1) }
   }
 }
-
-// =========================================================================
-// F2: Trace helpers -- extract fields from TraceEvent variants
-// =========================================================================
 
 fn event_span(event: TraceEvent) -> SourceSpan {
   match event {
@@ -74,10 +59,6 @@ fn event_node_id(event: TraceEvent) -> String {
     TraceError { node_id: id, span: _, message: _ } => id
   }
 }
-
-// =========================================================================
-// F2: Trace filtering and replay
-// =========================================================================
 
 type TraceFilter
   = FilterByFunc { func_name: String }
@@ -103,10 +84,6 @@ fn replay_trace(trace: Trace, filter: TraceFilter) -> List<TraceEvent> {
   }
 }
 
-// =========================================================================
-// F2: Trace formatting
-// =========================================================================
-
 fn format_span(sp: SourceSpan) -> String {
   concat("[", to_string(sp.start), "..", to_string(sp.end), ")")
 }
@@ -126,10 +103,6 @@ fn format_trace(trace: Trace) -> List<String> {
   trace.events |> map(e => format_trace_event(event: e))
 }
 
-// =========================================================================
-// F3: Hermetic reproduction
-// =========================================================================
-
 type ReproCase {
   func_name: String
   inputs: Map<String, String>
@@ -145,10 +118,6 @@ fn capture_repro(func_name: String, inputs: Map<String, String>, trace: Trace) -
     trace: Present { value: trace }
   }
 }
-
-// =========================================================================
-// F4: Cross-language source mapping
-// =========================================================================
 
 type SourceMap {
   generated_file: String

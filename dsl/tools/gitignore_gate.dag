@@ -1,0 +1,41 @@
+module tools.gitignore_gate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.gitignore_emit { expected_gitignore, gitignore_drifted }
+
+data gitignore_path: String = ".gitignore"
+
+func run_gitignore_gate_body() -> ProcessExit {
+  let committed = Filesystem.Read(path: gitignore_path)
+  let drift_ok = committed.success && !gitignore_drifted(committed: committed.content)
+  return if drift_ok { ExitSuccess }
+  else { exit_failure(reason: "gitignore drift: regenerate via main_wet on dsl/tools/gitignore_gate.dag") }
+}
+
+func main() -> ProcessExit { run_gitignore_gate_body() }
+
+func main_wet() -> ProcessExit {
+  let expected = expected_gitignore()
+  let w = Filesystem.Write(path: gitignore_path, content: expected)
+  return if w.success { ExitSuccess }
+  else { exit_failure(reason: concat(".gitignore write failed: ", w.error)) }
+}
+
+fn exit_ok(e: ProcessExit) -> Bool { match e { ExitSuccess => true  _ => false } }
+
+func drift_red_receipt() -> ProcessExit {
+  let committed = Filesystem.Read(path: gitignore_path)
+  let clean_ok = committed.success && !gitignore_drifted(committed: committed.content)
+  let perturb_drifts = gitignore_drifted(committed: concat(expected_gitignore(), "\n# drift-receipt-perturb"))
+  return if clean_ok && perturb_drifts { ExitSuccess }
+  else { exit_failure(reason: ".gitignore drift red receipt failed: clean must match; perturb must drift") }
+}
+
+func run_gitignore_gate() -> ProcessExit {
+  let gate = run_gitignore_gate_body()
+  let red = drift_red_receipt()
+  return if exit_ok(gate) && exit_ok(red) { ExitSuccess }
+  else if !exit_ok(gate) { gate }
+  else { red }
+}

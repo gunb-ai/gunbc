@@ -1,0 +1,167 @@
+module gunbc.ci_runner_placement
+
+import product.compute_fabric { ComputeOffer, compute_host_ram_bytes_total }
+import product.placement_supply { HostIdentity }
+import std.realization_width { memory_bounded_fit_count, memory_effective_budget }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor }
+import std.nat { nat_max }
+import std.types { Int, List, String, Bool }
+import extdeps.github.actions { RunnerSpec }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.ci_floor_measurement {
+  CiJobPeak,
+  JobCgroupPeakMeasurement,
+  JobCgroupPeakMeasured,
+  JobCgroupPeakUnmeasured,
+  HostFixedOverhead,
+  HostFixedOverheadMeasured,
+  HostFixedOverheadUnmeasured,
+  gunbc_ci_job_peaks,
+  gunbc_ci_host_fixed_overhead,
+}
+import gunbc.operator_fleet { operator_fleet_offers }
+
+type RunnerHostDeployment {
+  identity: HostIdentity
+  runner_count: Int
+  per_runner_memory_cap: ByteSize
+  runner: RunnerSpec
+}
+
+type RunnerDeploymentPlan
+  = PlanDerived { hosts: List<RunnerHostDeployment>, fleet_concurrent_runs: Int }
+  | PlanUnsound { reason: String }
+
+type JobPeakResolution
+  = JobPeaksResolved { run_unit_peak: ByteSize }
+  | JobPeaksUnresolved { reason: String }
+
+type PeakFold {
+  max_bytes: Int
+  any_unmeasured: Bool
+  count: Int
+}
+
+type DeploymentAccumulator {
+  deployments: List<RunnerHostDeployment>
+  any_unfit: Bool
+  total: Int
+}
+
+fn fold_job_peak(acc: PeakFold, job_peak: CiJobPeak) -> PeakFold {
+  match job_peak.peak {
+    JobCgroupPeakUnmeasured =>
+      PeakFold { max_bytes: acc.max_bytes, any_unmeasured: true, count: acc.count + 1 }
+    JobCgroupPeakMeasured { cgroup_peak: p } =>
+      PeakFold {
+        max_bytes: nat_max(a: acc.max_bytes, b: byte_size_count(b: p)),
+        any_unmeasured: acc.any_unmeasured,
+        count: acc.count + 1,
+      }
+  }
+}
+
+fn resolve_run_unit_peak(job_peaks: List<CiJobPeak>) -> JobPeakResolution {
+  let folded = fold(
+    job_peaks,
+    init: PeakFold { max_bytes: 0, any_unmeasured: false, count: 0 },
+    f: (a, j) => fold_job_peak(acc: a, job_peak: j)
+  )
+  if folded.count == 0 {
+    JobPeaksUnresolved {
+      reason: "no CI jobs declared: cannot derive runner capacity without a per-job peak"
+    }
+  } else if folded.any_unmeasured {
+    JobPeaksUnresolved {
+      reason: "at least one CI job has an unmeasured cgroup whole-tree peak: refuse to derive runner capacity on a missing per-job measurement (self-RSS undercounts child rustc/sccache, an over-commit risk)"
+    }
+  } else if folded.max_bytes == 0 {
+    JobPeaksUnresolved {
+      reason: "measured per-job peak is zero bytes: refuse to divide host RAM by a zero peak"
+    }
+  } else {
+    JobPeaksResolved { run_unit_peak: byte_size(folded.max_bytes) }
+  }
+}
+
+fn host_runner_count(offer: ComputeOffer, run_unit_peak: ByteSize, reserved: ByteSize) -> Int {
+  memory_bounded_fit_count(
+    budget: compute_host_ram_bytes_total(host: offer.supply.physical),
+    unit_peak: run_unit_peak,
+    reserved: reserved
+  )
+}
+
+fn host_deployment(offer: ComputeOffer, count: Int, reserved: ByteSize) -> RunnerHostDeployment {
+  let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
+  RunnerHostDeployment {
+    identity: offer.supply.physical.identity,
+    runner_count: count,
+    per_runner_memory_cap: measure_scale_fraction_floor(
+      m: memory_effective_budget(budget: host_ram, reserved: reserved),
+      num: 1,
+      den: count
+    ),
+    runner: runner_spec_from_offer(offer: offer),
+  }
+}
+
+fn empty_deployment_accumulator() -> DeploymentAccumulator {
+  DeploymentAccumulator { deployments: [], any_unfit: false, total: 0 }
+}
+
+fn accumulate_host_deployment(
+  acc: DeploymentAccumulator,
+  offer: ComputeOffer,
+  run_unit_peak: ByteSize,
+  reserved: ByteSize
+) -> DeploymentAccumulator {
+  let count = host_runner_count(offer: offer, run_unit_peak: run_unit_peak, reserved: reserved)
+  DeploymentAccumulator {
+    deployments: concat(acc.deployments, [host_deployment(offer: offer, count: count, reserved: reserved)]),
+    any_unfit: acc.any_unfit || (count == 0),
+    total: acc.total + count,
+  }
+}
+
+fn derive_plan_with_budget(offers: List<ComputeOffer>, run_unit_peak: ByteSize, reserved: ByteSize) -> RunnerDeploymentPlan {
+  let acc = fold(
+    offers,
+    init: empty_deployment_accumulator(),
+    f: (a, o) => accumulate_host_deployment(acc: a, offer: o, run_unit_peak: run_unit_peak, reserved: reserved)
+  )
+  if acc.any_unfit {
+    PlanUnsound {
+      reason: "at least one fleet host cannot host a single runner under its safety budget minus fixed overhead (heaviest co-resident job peak exceeds 0.8 x host RAM - host_fixed_overhead)"
+    }
+  } else {
+    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
+  }
+}
+
+fn runner_deployment_plan_for(
+  job_peaks: List<CiJobPeak>,
+  overhead: HostFixedOverhead,
+  offers: List<ComputeOffer>
+) -> RunnerDeploymentPlan {
+  match resolve_run_unit_peak(job_peaks: job_peaks) {
+    JobPeaksUnresolved { reason: r } => PlanUnsound { reason: r }
+    JobPeaksResolved { run_unit_peak: peak } =>
+      match overhead {
+        HostFixedOverheadUnmeasured =>
+          PlanUnsound {
+            reason: "host fixed overhead unmeasured: the sccache server daemon may live in a sibling host cgroup outside every per-job cgroup, so it is counted by no per-job peak; refuse to derive runner capacity until it is classified and reserved exactly once"
+          }
+        HostFixedOverheadMeasured { bytes: reserved } =>
+          derive_plan_with_budget(offers: offers, run_unit_peak: peak, reserved: reserved)
+      }
+  }
+}
+
+fn runner_deployment_plan() -> RunnerDeploymentPlan {
+  runner_deployment_plan_for(
+    job_peaks: gunbc_ci_job_peaks,
+    overhead: gunbc_ci_host_fixed_overhead,
+    offers: operator_fleet_offers
+  )
+}

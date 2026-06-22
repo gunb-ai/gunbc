@@ -1,10 +1,3 @@
-// Scope: B1 unit-modeling lens — FAIL/flag witness. A Named unit-token field
-//        (`ram_bytes`) typed as a bare kernel `Int` leaf MUST be flagged
-//        (gate Rejected). Pairs with modeled_unit_field_passes.dag (same field
-//        name, attached to a carrier → Accepted) — the two differ ONLY in the
-//        leaf type, so together they prove the lens discriminates on the type,
-//        not the name alone.
-
 module v2.test.lens_unit_modeling.flat_scalar_unit_leaf_flagged
 
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -30,15 +23,12 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-// A field target whose resolved type is the bare kernel `Int` binding.
 data int_leaf_target: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-// A carrier with one Named unit-token field (`ram_bytes`) typed as bare `Int` —
-// the exact flat-scalar unit leaf the lens exists to catch.
 data flat_scalar_unit_leaf_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -50,8 +40,6 @@ data flat_scalar_unit_leaf_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// ram_bytes has a KNOWN carrier (ByteSize) in the hint map, so the flag is the
-// FIXABLE-NOW class — assert both the flag AND the class.
 test fn flat_scalar_unit_leaf_flagged_holds() -> Bool {
   match unit_modeling_gate(node: flat_scalar_unit_leaf_input) {
     Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
