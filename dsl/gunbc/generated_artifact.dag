@@ -77,60 +77,11 @@ fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
   }
 }
 
-// Q2 — COMMIT, derived. A gitignore pattern matches a path under a faithful subset of gitignore
-// semantics over the authority's actual pattern forms:
-//   - trailing "/"  => directory pattern: path is that dir or sits under it (anywhere in the tree
-//                      unless leading-"/" anchored)
-//   - leading "/"   => anchored to repo root
-//   - "*.ext"       => basename suffix glob
-//   - plain name    => exact basename, anywhere in the tree
-// FAIL-CLOSED toward committed-and-gated: an UNCERTAIN match returns false (treat as committed => still
-// drift-gated). Wrongly dropping a committed artifact from the gate would be fail-OPEN (silent drift);
-// wrongly gating an ignored one is loud (read() of an absent path goes RED). So we only return true on a
-// confident match.
-// Seed string helpers (the seed has substring/length, not drop_prefix/suffix).
-fn without_prefix(s: String, prefix: String) -> String {
-  substring(s: s, start: prefix.length(), end: s.length())
-}
-
-fn without_suffix(s: String, suffix: String) -> String {
-  substring(s: s, start: 0, end: s.length() - suffix.length())
-}
-
-fn path_basename(path: String) -> String {
-  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
-}
-
-fn dir_pattern_matches(dir: String, path: String) -> Bool {
-  // dir already has leading/trailing slashes stripped.
-  let anchored = concat(dir, "/")
-  path == dir
-    || starts_with(path, prefix: anchored)
-    || string_contains(s: path, pattern: concat("/", anchored))
-}
-
-fn strip_slashes(p: String) -> String {
-  let no_lead = if starts_with(p, prefix: "/") { without_prefix(s: p, prefix: "/") } else { p }
-  if ends_with(s: no_lead, suffix: "/") { without_suffix(s: no_lead, suffix: "/") } else { no_lead }
-}
-
-fn pattern_matches(pattern: String, path: String) -> Bool {
-  if ends_with(s: pattern, suffix: "/") {
-    dir_pattern_matches(dir: strip_slashes(p: pattern), path: path)
-  } else if starts_with(pattern, prefix: "*.") {
-    ends_with(s: path, suffix: without_prefix(s: pattern, prefix: "*"))
-  } else if starts_with(pattern, prefix: "/") {
-    let anchored = without_prefix(s: pattern, prefix: "/")
-    path == anchored || starts_with(path, prefix: concat(anchored, "/"))
-  } else {
-    path == pattern || path_basename(path: path) == pattern || ends_with(s: path, suffix: concat("/", pattern))
-  }
-}
-
-fn path_is_ignored(path: String) -> Bool {
-  any(ignore_patterns(), p => pattern_matches(pattern: p, path: path))
-}
-
+// Q2 — COMMIT, derived: committed = generated AND NOT ignored. The ignore side is answered by
+// gitignore_emit.path_is_ignored (the interpreter homed beside the gitignore authority it reads), so there
+// is exactly ONE reader of gitignore semantics in the project. Fail-closed: not-ignored => committed =>
+// still drift-gated, so a matcher false-negative is loud (read of an absent path goes RED), never a silent
+// drop.
 fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
   !path_is_ignored(path: artifact_path(a: a))
 }
