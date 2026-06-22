@@ -435,8 +435,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,
   section: SectionRef,
   root: Node,
-  budget: Budget,
-  diagnostic_severity: LensEnforcementSeverity
+  budget: Budget
 ) -> Outcome<EnforcedLensResult<Output, Projected>> {
   bind_outcome(
     o: section_subject(root: root, section: section),
@@ -530,7 +529,7 @@ fn apply_advisory_lens(
       let reports = lens.read(root: subject)
       match config {
         LensIntrospect => outcome_accepted(value: reports)
-        LensEnforce { budget: _, diagnostic_severity: _ } =>
+        LensEnforce { budget: _ } =>
           if is_empty(xs: reports) {
             outcome_accepted(value: reports)
           } else {

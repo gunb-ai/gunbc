@@ -375,12 +375,11 @@ fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> 
 // from `std.behavioral.Severity` (Low|Medium|High|Critical) — a different concept (external
 // edge-case risk scale), not a fork.
 //   TWIN DISSOLVED: `v2.lens.application.DiagnosticSeverity` (`= SeverityError {}`) was a
-//   second, same-named type (the C-8 lens-enforcement severity). Dissolved by RENAMING (not
-//   widening) to `LensEnforcementSeverity = EnforceError {}` in `v2.lens.application` — a
-//   single-variant refinement grounded on this type via `lens_severity_to_diagnostic`
-//   (`EnforceError {} → SeverityError`). The enforcement seam types `diagnostic_severity` as
-//   `LensEnforcementSeverity`, so `SeverityWarning` remains unwritable there by construction
-//   (§5). §3 met: no same-named twin; std is the single DiagnosticSeverity authority.
+//   second, same-named type (the C-8 lens-enforcement severity). Dissolved by REMOVING the
+//   dead severity apparatus entirely — `diagnostic_severity` had zero real consumers (set in
+//   two fixtures, discarded with `_` in every match arm, never read). §3 met: no same-named
+//   twin; std is the single DiagnosticSeverity authority. If lens enforcement ever needs to
+//   stamp a severity, it is added with its reading consumer at the emit site, grounded on std.
 type DiagnosticSeverity = SeverityError | SeverityWarning
 
 type EmitDirective {

@@ -7,7 +7,6 @@ module v2.test.lens_application.sg_claims
 import v2.lens.application {
   DeclarationId,
   DeclarationScope,
-  EnforceError,
   LensEnforce,
   apply_advisory_lens
 }
@@ -53,7 +52,6 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
         reason: SynthesisGapDecisionTree,
         at: node_locus(node: synthesis_gap_poly_input)
       },
-      diagnostic_severity: EnforceError {}
     }
   ) {
     Rejected { diagnostics: d } =>
