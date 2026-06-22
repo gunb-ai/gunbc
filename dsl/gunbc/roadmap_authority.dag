@@ -280,11 +280,12 @@ fn section_5() -> RoadmapSection {
           authored(id: "5-on-logn", done: false, content: "`O(n^x)→O(n log n)` substitution as per-idiom rules (open: cleaner shared framing?)"),
           authored(id: "5-frontend", done: true, content: "front-end (parse / resolve / infer) over the whole tree"),
           authored(id: "5-emit-rust", done: true, content: "emit whole tree `--target rust` (well-typed under CI gate)"),
-          authored(id: "5-defork", done: false, content: "de-fork dsl ↔ v2 (one std authority, no historical forks)"),
+          authored(id: "5-defork", done: false, content: "de-fork dsl ↔ v2 (one std authority) — **grounding cluster UNPARKED: operator ruled FreeMonoid/algebra single authority** (coproduct = structural authority; dsl record-surface derived-from-inhabitance; grounded-realization wins) → de-fork + self-host fused into one grounding lane ([brief](docs/plans/dsl-v2-defork-audit.md) §3b)"),
 
-          derivable(id: "5-defork-step1", prs: [5473], title: "turn on cross-tree import — Step 1 **LANDED**", description: "— PR-B (collapse forks) next *(nimble-koi-625)*"),
-          authored(id: "5-collapse-dups", done: false, content: "collapse clear duplicates (algebra, logic, nat, reducible, measure)"),
-          authored(id: "5-resolve-pairs", done: false, content: "resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)"),
+          derivable(id: "5-defork-step1", prs: [5473], title: "turn on cross-tree import — Step 1 **LANDED**", description: ""),
+          authored(id: "5-root-a", done: false, content: "**Root A — emit-seam grounding** *(build-now)*: String/`FreeMonoid`→host `Vec` via the #5428 `RustCorpusRepr` seam; drives HostNative cargo-green *(jolly-cat #5551)*"),
+          authored(id: "5-root-b", done: false, content: "**Root B — generic-inference keystone ✓ (#5552, in queue)** → def-unification (coproduct authority + aliases) → repoints (algebra/nat/integer/float/logic/effects/verification) → 🟡-marker dissolution *(bright-deer-111)*"),
+          authored(id: "5-v1coupled", done: false, content: "v1-coupled `coercion`/`node` renames — deferred to v1-delete"),
           authored(id: "5-cargo-green", done: false, content: "emitted crate `cargo build`s green (Route-A last mile)"),
           authored(id: "5-real-fixpoint", done: false, content: "real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)"),
           authored(id: "5-regen-verify", done: false, content: "wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**"),
@@ -295,8 +296,9 @@ fn section_5() -> RoadmapSection {
         ],
         edges: [
           RoadmapEdge { child: nid(s: "5-defork-step1"), parent: nid(s: "5-defork") },
-          RoadmapEdge { child: nid(s: "5-collapse-dups"), parent: nid(s: "5-defork-step1") },
-          RoadmapEdge { child: nid(s: "5-resolve-pairs"), parent: nid(s: "5-defork-step1") },
+          RoadmapEdge { child: nid(s: "5-root-a"), parent: nid(s: "5-defork") },
+          RoadmapEdge { child: nid(s: "5-root-b"), parent: nid(s: "5-defork") },
+          RoadmapEdge { child: nid(s: "5-v1coupled"), parent: nid(s: "5-defork") },
           RoadmapEdge { child: nid(s: "5-real-fixpoint"), parent: nid(s: "5-cargo-green") },
           RoadmapEdge { child: nid(s: "5-regen-verify"), parent: nid(s: "5-real-fixpoint") },
           RoadmapEdge { child: nid(s: "5-dissolve-patches"), parent: nid(s: "5-regen-verify") },
@@ -385,7 +387,7 @@ fn section_ergonomics_lane() -> RoadmapSection {
     elements: [
       section_prose(content: "→ [charter: spine + ranked focus](docs/plans/fold-ergonomics.md)"),
       section_prose(content: "Why a tier: **\"it compiles but nothing works\" traces to non-fold residue** — a hand-rolled `match` has a `_ =>` fail-open escape; a fold over a closed coproduct is total by construction and has none. So the chain is **ergonomics → adoption → fail-closed**: when the fold is awkward to reach, people hand-roll, and every hand-roll reintroduces a fail-open arm ([model↔realization fork](docs/plans/model-realization-fork.md) is the systemic instance — per-site bridges that should be one coercion fold). This lane **stops new residue by making folds ergonomic**; §0's fail-open-shape walls **retire the old**. The two together drain the fork. Guardrail (§6 — ergonomics is the #1 purity-trap magnet): every item **names the fail-open class or measured friction it retires** (displaced cost), never \"cleaner.\""),
-      section_prose(content: "**◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a stage fold) → **▸ measure the residue (inert-abstraction lens) + fix the root (generic inference)** → fold reachable *by default* → new non-fold residue can't merge (pairs with §0 wall)"),
+      section_prose(content: "**◆ Milestones:** staging/`then_outcome` combinator seeded ✓ (#5512 — compiler front-end de-pyramided to a stage fold) → **generic inference fixed ✓ (#5552, in queue)** + measure the residue (inert-abstraction lens) → fold reachable *by default* → new non-fold residue can't merge (pairs with §0 wall)"),
       section_group(
         label: "Audit half — measure the friction + the residue (decidable; wall-able)",
         nodes: [
@@ -398,7 +400,7 @@ fn section_ergonomics_lane() -> RoadmapSection {
       section_group(
         label: "Fix half — make the fold the path of least resistance",
         nodes: [
-          authored(id: "erg-generic-inference", done: false, content: "**generic-inference fix** *(fix keystone — #1, start here)* — the root that makes the fold reachable *by default*, not just reachable; collapses a fan-out of hand-rolls (`qualified_name` trio · `ParseTable` · `cached_stage` indirection) and is the prereq for §0's realization-grounding (~120 `Value` bridges become a fold, not a 131-site grind). Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3)"),
+          authored(id: "erg-generic-inference", done: false, content: "**generic-inference fix** *(fix keystone — #1)* — **▸ #5552 (keystone green-by-execution + red-on-revert witness, in merge queue):** `= FreeMonoid<Symbol>` now resolves. The hand-roll collapse (`qualified_name` trio · `ParseTable`) + §0's realization-grounding (~120 `Value` bridges) follow in de-fork phase 2. Dissolve-on `feature:free-monoid-entry-generic-inference` ([charter](docs/plans/fold-ergonomics.md) §3, [de-fork brief](docs/plans/dsl-v2-defork-audit.md))"),
           authored(id: "erg-staging-combinator", done: false, content: "**generalize the staging combinator** — `then_outcome` (Kleisli for the `Outcome` monad) seeded the pattern (#5512); lift it to the standard way to compose fail-closed stages, so a pipeline is a fold of typed stages, not a `bind_outcome` pyramid"),
           authored(id: "erg-wire-seams", done: false, content: "**wire the seams, don't strand them** — an abstraction lands *consumed* or scaffold-marked with a dissolution trigger ([construction-justification rule](docs/plans/construction-justification-rule.md), #5476). Worked example (the full arc): `cached_stage` seeded inert (#5512) → caught by the keystone lens → wired with a `Miss`-stub wrapping `stage_resolve`. **Boundary:** this lane owns only that the seam *lands consumed-or-marked*; **§1/§2 own *enabling* the resolve-cache** (the realization work) — one home each."),
         ],
