@@ -33,7 +33,7 @@ This window = a few days of STABILITY — shrink the fail-open surface, don't "l
 
 - [x] **numeric-tower grounding** (#5428) — `Int=GroupCompletion<Nat>`; `==` straddle guard now dead-in-corpus ([plan](docs/plans/model-realization-fork.md))
 - [ ] **cache trustworthy** — authoritative home is §2 F2/F3/P1; ship the warm==cold oracle as a detective now
-- [ ] **rust-gate coverage** (shared §1) — opt-level=3 restores Pop-A to per-PR (#5456); run-all-unless-`#[ignore]`d (#5427); `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight ([cause table](docs/plans/ci-selection-vs-scheduling.md), [edge-(b) brief](docs/plans/edge-b-rust-dag-provenance-brief.md)) *(quick-ant-298)*
+- [ ] **rust-gate coverage** (shared §1) — **▸ run-all at nextest speed ✓ CI-green-proven (#5427, in queue): full v1 coverage every `.rs` PR ~6m (was ~42m), no coverage-vs-speed tradeoff**; `.dag`→rust coverage wall = edge-(b), SCOPED / pending operator greenlight ([cause table](docs/plans/ci-selection-vs-scheduling.md), [edge-(b) brief](docs/plans/edge-b-rust-dag-provenance-brief.md)) *(quick-ant-298)*
 - [ ] **promote-or-delete inert lenses · de-vacuum gates** — EmitHostGate de-vacuumed ✓ (#5477); 4 advisory lenses widened+bounded, whole-corpus deferred to `.dag` structural-reflection (also unlocks coverage/testgen) *(silent-wren-739)*
 - [x] **realization-vocabulary containment guard** (#5445/#5453) — target-AST importable only at the realization edge (fail-closed, shrinking-roster); dissolve-on: bash-sidecar arc empties the roster → pure wall → `program.dag` deletable ([plan](docs/plans/emission-ingestion-inverse.md))
 - [ ] **stage0 clone-census inert + seed regressed** to 21540 (~1138 over) — resolve by clone-reduction / substrate-migration, NEVER a cap-bump; #5427 `#[ignore]` is the interim *(fierce-hawk-540 via quick-ant-298)*
@@ -111,7 +111,7 @@ resolve-cache enabled → one Materialization kernel (collapse the 5 caches) →
 
 **Host-operation band — off-fabric, unmodeled, unenforced (G1–G3, NOW):**
 - [ ] **G1 placement** — which host a job lands on is GitHub-native, demand-blind, first-idle → heavy runs co-reside, other host idles (the underutilization root) ([plan](docs/plans/compute-envelope-model.md))
-- [ ] **G2 runner deployment** — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
+- [ ] **G2 runner deployment + cross-host placement** *(dispatched proud-tern-439: model + drift-gate; live-fleet apply fenced for operator)* — runners/host + registration are hand-run shell, **no repo artifact**; derive from `operator_fleet`+envelope, generate + drift-gate (the `ci.yml` pattern, for the host)
 - [ ] **G3 cgroup caps** — `TasksMax`/`MemoryMax` host-set by hand, only *read* live; derive + reconcile-gate so a hand-edit reds
 - [ ] **CI on compute fabric** — derive every host knob from one measured `ResourceEnvelope`; ends the crash-or-idle swing ([plan](docs/plans/compute-envelope-model.md))
 
@@ -199,10 +199,11 @@ Adjacent lane — algorithmic-cost rewrite engine (the §3 construction design; 
 - [ ] `O(n^x)→O(n log n)` substitution as per-idiom rules (open: cleaner shared framing?)
 - [x] front-end (parse / resolve / infer) over the whole tree
 - [x] emit whole tree `--target rust` (well-typed under CI gate)
-- [ ] de-fork dsl ↔ v2 (one std authority, no historical forks)
-  - [x] turn on cross-tree import — Step 1 **LANDED** (#5473); PR-B (collapse forks) next *(nimble-koi-625)*
-    - [ ] collapse clear duplicates (algebra, logic, nat, reducible, measure)
-    - [ ] resolve same-name/different-job pairs (integer, effects, float, coercion, node, verification)
+- [ ] de-fork dsl ↔ v2 (one std authority) — **grounding cluster UNPARKED: operator ruled FreeMonoid/algebra single authority** (coproduct = structural authority; dsl record-surface derived-from-inhabitance; grounded-realization wins) → de-fork + self-host fused into one grounding lane ([brief](docs/plans/dsl-v2-defork-audit.md) §3b)
+  - [x] turn on cross-tree import — Step 1 **LANDED** (#5473)
+  - [ ] **Root A — emit-seam grounding** *(build-now)*: String/`FreeMonoid`→host `Vec` via the #5428 `RustCorpusRepr` seam; drives HostNative cargo-green *(jolly-cat #5551)*
+  - [ ] **Root B — generic-inference keystone ✓ (#5552, in queue)** → def-unification (coproduct authority + aliases) → repoints (algebra/nat/integer/float/logic/effects/verification) → 🟡-marker dissolution *(bright-deer-111)*
+  - [ ] v1-coupled `coercion`/`node` renames — deferred to v1-delete
 - [ ] emitted crate `cargo build`s green (Route-A last mile)
   - [ ] real fixed point: `content_hash` stage1==stage2 (dissolve placeholder hashes)
     - [ ] wire `regen_stage0 --verify` lockstep gate into CI — enforces no stage0 hand-edits ← **keystone**
