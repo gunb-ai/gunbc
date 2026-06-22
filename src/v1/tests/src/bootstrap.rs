@@ -1,4 +1,6 @@
+
 #![allow(clippy::disallowed_macros)]
+
 
 fn build_stage0() -> std::path::PathBuf {
     let build = std::process::Command::new("cargo")
@@ -179,6 +181,7 @@ fn diff_excluding_hand_maintained(
     }
 }
 
+
 #[test]
 fn stage0_cargo_check() {
     let output = std::process::Command::new("cargo")
@@ -194,14 +197,11 @@ fn stage0_cargo_check() {
     );
 }
 
+
 const DIAG_RATCHET: usize = 358;
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "Requires building stage0 binary (~2 min)"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn strict_compile_diagnostic_count() {
     let stage0_bin = find_or_build_stage0();
 
@@ -225,11 +225,7 @@ fn strict_compile_diagnostic_count() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "Requires building stage0 binary (~2 min)"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn stage0_compile_accepts_dag_target() {
     let stage0_bin = find_or_build_stage0();
 
@@ -272,11 +268,7 @@ fn stage0_compile_accepts_dag_target() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "Requires building stage0 binary (~2 min)"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn stage0_compile_imports_ephemeral_generated_source_root() {
     let stage0_bin = find_or_build_stage0();
 
@@ -345,14 +337,11 @@ fn main() -> Int { generated_answer() }
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
+
 const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "Expensive: builds binary + runs full compile + cargo check"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn bootstrap_stage0_to_stage1() {
     let stage0_bin = find_or_build_stage0();
     let ws = crate::helpers::workspace_root();
@@ -437,12 +426,9 @@ fn bootstrap_stage0_to_stage1() {
     let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
+
 #[test]
-<<<<<<< HEAD
 #[ignore = "Expensive: builds two binaries + two full compiles"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn bootstrap_fixed_point() {
     let ws = crate::helpers::workspace_root();
     let stage0_bin = find_or_build_stage0();
@@ -500,14 +486,11 @@ fn bootstrap_fixed_point() {
     let _ = std::fs::remove_dir_all(&stage2_dir);
 }
 
+
 const PERF_RATCHET_SECONDS: u64 = 150;
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "Requires building stage0 binary"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn performance_ratchet() {
     let stage0_bin = find_or_build_stage0();
 
@@ -535,6 +518,7 @@ fn performance_ratchet() {
 
     let _ = std::fs::remove_dir_all(&out_dir);
 }
+
 
 use std::sync::LazyLock;
 
@@ -671,11 +655,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 });
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn ci_full_dsl() {
     ci_timing("ci_full_dsl: start");
     let ws = crate::helpers::workspace_root();
@@ -714,11 +694,7 @@ fn ci_full_dsl() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn ci_diagnostic_ratchet() {
     let pass1 = &*CI_PASS1;
     let diag_count = parse_diagnostic_count(&pass1.stderr);
@@ -735,11 +711,7 @@ fn ci_diagnostic_ratchet() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn ci_performance_ratchet() {
     let pass1 = &*CI_PASS1;
     eprintln!(
@@ -756,11 +728,7 @@ fn ci_performance_ratchet() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
     if let Err(ref diff) = pass1.freshness {
@@ -774,11 +742,7 @@ fn ci_freshness() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn ci_fixed_point() {
     let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
@@ -790,12 +754,9 @@ fn ci_fixed_point() {
     }
 }
 
+
 #[test]
-<<<<<<< HEAD
 #[ignore = "Expensive: compiles .dag, builds emitted crate, runs cargo test"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn bootstrap_l4_structural() {
     let result = std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
@@ -889,7 +850,6 @@ fn generate_weather_structural_tests() -> String {
 use v1_compiled::examples_weather::Condition::*;
 use std::rc::Rc;
 
-// ── Layer 1: Type witnesses — every type is constructible ───────────
 
 #[test]
 fn witness_temperature() {
@@ -911,7 +871,6 @@ fn witness_forecast() {
     });
 }
 
-// ── Layer 1: Function calls — every function runs without panic ─────
 
 #[test]
 fn call_to_fahrenheit() {
@@ -944,7 +903,6 @@ fn call_freezing_locations_empty() {
     let _result = freezing_locations(Rc::new(vec![]));
 }
 
-// ── Layer 2: Variant coverage — coproduct exhaustiveness ────────────
 
 #[test]
 fn describe_condition_all_variants() {
@@ -954,7 +912,6 @@ fn describe_condition_all_variants() {
     let _ = describe_condition(Rc::new(Snowy { cm_per_hour: 0.0 }));
 }
 
-// ── Layer 3: Non-trivial witnesses + structural oracles ─────────────
 
 #[test]
 fn to_fahrenheit_known_value() {
@@ -996,7 +953,6 @@ fn describe_condition_rainy_branches() {
     assert_ne!(light, heavy, "light and heavy rain should have different descriptions");
 }
 
-// ── Serde roundtrip — serialization correctness ─────────────────────
 
 #[test]
 fn roundtrip_temperature() {

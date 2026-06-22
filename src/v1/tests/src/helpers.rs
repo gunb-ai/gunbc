@@ -1,3 +1,4 @@
+
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{
@@ -6,6 +7,7 @@ use v1_compiler::v1_compiler_compile::{
 };
 use v1_compiler::v1_compiler_parse::ParseResult;
 use v1_compiler::v1_std_core::Token;
+
 
 pub fn workspace_root() -> std::path::PathBuf {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -27,30 +29,12 @@ pub fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v1"), ws.join("dsl")]
 }
 
-<<<<<<< HEAD
-/// Source roots for resolving the **v2** (active self-hosted) tree: `[src/v2, dsl]`.
-///
-/// Single Rust-side authority mirroring the canonical CI layer-roots fact
-/// `gunbc.ci_layer_roots` (`witness_layer_roots = [src/v2, dsl]`). Any test resolving a
-/// `src/v2/**` entry MUST use this: a v2 compiler module's import closure reaches `dsl/`
-/// (std + extdeps), so omitting `dsl` silently breaks resolution — exactly the
-/// `extdeps.communication.medium` under-scoping the run-all widening surfaced (14 tests
-/// that hand-defined a local `v2_source_roots() = [src/v2]` and so dropped `dsl`).
-///
-/// §6 dissolution: DERIVE from the `.dag` `gunbc.ci_layer_roots` fact once a Rust-reachable
-/// accessor exists, so this Rust copy cannot drift from the authority. This is an instance
-/// of the two-rosters-drift class (cf. neat-ibex-867's roster-drift de-fork); funnelling the
-/// per-file `v2_source_roots()` copies through this one function removes the §3 fork until
-/// then.
 pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
     let ws = workspace_root();
     vec![ws.join("src/v2"), ws.join("dsl")]
 }
 
-// ── Tokenize + Parse ─────────────────────────────────────────────────────
 
-=======
->>>>>>> origin/main
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
@@ -107,6 +91,7 @@ pub fn assert_parses_strict(relative_path: &str) {
         relative_path
     );
 }
+
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -203,7 +188,7 @@ fn resolve_imports_transitively_with_index(
 ) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue: Vec<(String, String)> = Vec::new();
+    let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
 
     queue.push((entry_path.to_string(), entry_content.to_string()));
 
@@ -211,7 +196,7 @@ fn resolve_imports_transitively_with_index(
         let imports = extract_imports(&content);
         for module_path in imports {
             if seen.contains_key(&module_path) {
-                continue;
+                continue; // already loaded — O(1) check
             }
             if let Some(file_path) = module_index.get(&module_path) {
                 if let Ok(file_content) = std::fs::read_to_string(file_path) {
@@ -234,6 +219,7 @@ fn resolve_imports_transitively_with_index(
     }));
     sources
 }
+
 
 fn analyze_complexity_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
@@ -309,6 +295,7 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
     let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
     v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
 }
+
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
     result

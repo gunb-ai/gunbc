@@ -1,3 +1,4 @@
+
 use std::rc::Rc;
 
 use crate::helpers::*;
@@ -86,6 +87,7 @@ fn total_source_text_at_chars_walked(
     }
     take_text_lookup_chars_walked()
 }
+
 
 #[test]
 fn fn_lambda_syntax() {
@@ -201,6 +203,7 @@ fn foo(item: String) -> String {
 }"#;
     assert_parses(source, "typecheck_match_with_itemresult");
 }
+
 
 #[test]
 fn parse_generic_fn() {
@@ -399,6 +402,7 @@ fn unicode_parses_strict() {
     assert_parses_strict("dsl/std/unicode.dag");
 }
 
+
 #[test]
 fn core_parses_strict() {
     assert_parses_strict("src/v1/00_core.dag");
@@ -459,11 +463,12 @@ fn shared_primitives_parses_strict() {
     assert_parses_strict("dsl/std/primitives.dag");
 }
 
+
 #[test]
 fn tokenizer_non_ascii_performance_regression() {
     use std::time::Instant;
 
-    let source = read_v2_file("src/v1/02_parse.dag");
+    let source = read_v2_file("src/v1/02_parse.dag"); // largest .dag, has non-ASCII
     assert!(!source.is_ascii(), "test requires non-ASCII source file");
 
     let ascii_source: String = source
@@ -525,6 +530,7 @@ fn tokenizer_text_lookup_flat_in_file_size() {
         "tail lookups should be one index op each (flat in file offset)"
     );
 }
+
 
 #[test]
 fn source_text_at_lookup_flat_in_file_size() {
@@ -603,8 +609,8 @@ fn source_text_at_lookup_flat_in_file_padding() {
 
 #[test]
 fn tokenizer_scales_linearly_with_file_size() {
-    let small_source = read_v2_file("src/v1/ownership.dag");
-    let large_source = read_v2_file("src/v1/02_parse.dag");
+    let small_source = read_v2_file("src/v1/ownership.dag"); // ~23KB
+    let large_source = read_v2_file("src/v1/02_parse.dag"); // ~271KB
 
     let _ = tokenize(&small_source);
     let _ = tokenize(&large_source);
@@ -664,11 +670,7 @@ fn tokenizer_scanning_scales_linearly() {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "Stream D: parser uses List<Token> consumption (skip(1) on Rc<Vec<T>> is O(n)). Structural correctness is established; O(n²) runtime is a known cost of the list-based representation. Fix: runtime slice type or cursor (M4/single-emitter)."]
-=======
-#[ignore]
->>>>>>> origin/main
 fn parser_scales_linearly_with_token_count() {
     use std::time::Instant;
 
@@ -708,6 +710,7 @@ fn parser_scales_linearly_with_token_count() {
         token_ratio, time_ratio, token_ratio * 2.0,
     );
 }
+
 
 #[test]
 fn tokenizer_smoke() {
@@ -783,6 +786,7 @@ fn tokenize_produces_correct_kinds() {
     );
 }
 
+
 #[test]
 fn parser_e2e() {
     let result = parse_source("module test");
@@ -814,11 +818,7 @@ fn transform(items: List<Int>) -> List<Int> {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore = "40s — hanging in parser; triage under PERF track"]
-=======
-#[ignore]
->>>>>>> origin/main
 fn parse_multiline_pipe_chain() {
     let source = "module test\nfn transform(items: List<Int>) -> List<Int> {\n  let x = items |> map(i =>\n    process(i)\n  ) |> filter(f => f != none)\n  x\n}\n";
     let result = parse_source(source);
@@ -861,6 +861,7 @@ fn gist_transitive_closure_parse() {
         assert_parses_strict(path);
     }
 }
+
 
 #[test]
 fn keyword_as_field_name_allowed() {
