@@ -46,7 +46,6 @@ mod compiler_tests {
                         .unwrap()
                         .to_string_lossy()
                         .to_string();
-
                     if rel.contains("/tests/") {
                         continue;
                     }
@@ -1202,7 +1201,6 @@ mod compiler_tests {
                     modules.push(m);
                 }
                 let parse_elapsed = t.elapsed();
-
                 let t = Instant::now();
                 let resolve_si = sources.iter().fold(
                     crate::v1_rt::rc_empty_map::<

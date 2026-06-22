@@ -104,7 +104,6 @@ fn transform_content_digest() -> Hash {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyInputAxis {
     ClosureSubject,
-
     TransformContent,
 }
 

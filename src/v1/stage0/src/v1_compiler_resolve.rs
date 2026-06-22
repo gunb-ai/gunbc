@@ -506,12 +506,10 @@ pub fn topological_sort(
             }
             __result
         });
-
         let module_name_set = module_names.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, name: String| v1_rt::rc_map_insert(acc, name, true),
         );
-
         let explicit_edges = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
@@ -540,7 +538,6 @@ pub fn topological_sort(
             }
             __result
         });
-
         let adjacency = explicit_edges.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {

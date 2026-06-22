@@ -469,7 +469,6 @@ pub fn eval_concept_decl_facts_live(
             if name.is_empty() {
                 continue;
             }
-
             let info = module
                 .item_registry
                 .get(&name)
@@ -900,7 +899,6 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let syntactic = extract_type_sum_arm_pairs(&source, "Connective").expect("syntactic pairs");
-
         assert_eq!(syntactic[0].payload_type_name, "{ identity: Symbol }");
         assert_eq!(syntactic[1].payload_type_name, NULLARY_PAYLOAD_TYPE_NAME);
     }
@@ -930,7 +928,6 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/v2/std/node.dag");
         let source = std::fs::read_to_string(&path).expect("read node.dag");
         let arms = extract_type_sum_arm_labels(&source, "Behavior").expect("Behavior arms");
-
         assert_eq!(
             arms,
             vec!["Value", "Transform", "Branch", "Loop", "Bind", "Match"]

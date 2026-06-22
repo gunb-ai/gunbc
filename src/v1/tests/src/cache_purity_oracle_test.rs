@@ -128,7 +128,6 @@ fn real_resolved_graph_realization_is_pure_under_nonkeyed_probes() {
     let (roots, entry) = write_fixture(&dir);
     let cache_dir = dir.join("cache");
     fs::create_dir_all(&cache_dir).expect("cache dir");
-
     let _guard = CacheEnvGuard::set(&cache_dir);
     let sibling = dir.join("unrelated_not_imported.dag");
 
@@ -138,7 +137,6 @@ fn real_resolved_graph_realization_is_pure_under_nonkeyed_probes() {
     };
 
     let env_key = "GUNBC_CACHE_PURITY_PROBE_UNRELATED";
-
     let sibling_for_perturb = sibling.clone();
     let sibling_for_restore = sibling.clone();
 
@@ -200,7 +198,6 @@ fn oracle_raises_loud_located_error_on_injected_impurity() {
     let hidden_for_restore = hidden.clone();
     let mut probes = [HiddenInputProbe {
         axis: "injected_hidden_counter",
-
         perturb: Box::new(move || hidden_for_perturb.set(0xFF)),
         restore: Box::new(move || hidden_for_restore.set(0x00)),
     }];
@@ -213,13 +210,11 @@ fn oracle_raises_loud_located_error_on_injected_impurity() {
         violation.unkeyed_axis, "injected_hidden_counter",
         "the violation must LOCATE the read-but-unkeyed axis"
     );
-
     assert_eq!(violation.content_key, "feedfacefeedface");
     assert_ne!(
         violation.warm_digest, violation.cold_digest,
         "warm (cached baseline) must differ from cold (fresh recompute) — that IS the impurity"
     );
-
     let shouted = format!("{violation}");
     assert!(
         shouted.contains("CACHE PURITY VIOLATION") && shouted.contains("injected_hidden_counter"),

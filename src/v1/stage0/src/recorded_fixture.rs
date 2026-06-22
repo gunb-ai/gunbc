@@ -17,7 +17,6 @@ pub const FIXTURE_FRESHNESS_SECS: u64 = 30 * 24 * 60 * 60;
 pub struct RecordedFixture {
     pub operation: String,
     pub input_hash: String,
-
     pub inputs: serde_json::Value,
     pub response: serde_json::Value,
     pub recorded_at: u64,

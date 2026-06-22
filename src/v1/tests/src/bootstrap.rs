@@ -78,7 +78,6 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
 
 fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v1/stage0/src");
-
     for name in &[
         "v1_interpreter.rs",
         "cli_run.rs",
@@ -366,12 +365,10 @@ fn bootstrap_stage0_to_stage1() {
         .output()
         .expect("failed to cargo check stage1");
     let check_stderr = String::from_utf8_lossy(&check.stderr);
-
     let error_count = check_stderr
         .lines()
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
-
     let error_count = if !check.status.success() && error_count == 0 {
         eprintln!(
             "cargo check failed with uncategorized errors:\n{}",
@@ -381,7 +378,6 @@ fn bootstrap_stage0_to_stage1() {
     } else {
         error_count
     };
-
     let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
@@ -398,7 +394,6 @@ fn bootstrap_stage0_to_stage1() {
     for (code, count) in cats.iter().take(10) {
         eprintln!("  {}: {}", code, count);
     }
-
     for (code, _) in cats.iter().take(3) {
         let needle = code.trim_end_matches(']').trim_start_matches("error[");
         let samples: Vec<&str> = check_stderr
@@ -454,7 +449,6 @@ fn bootstrap_fixed_point() {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-
     let stage1_bin = stage1_dir.join("target/release/v1_compiler");
 
     let stage2_dir = std::env::temp_dir().join("v2-fp-stage2");
@@ -542,7 +536,6 @@ struct Pass1Output {
     output_dir: std::path::PathBuf,
     stderr: String,
     elapsed: std::time::Duration,
-
     freshness: Result<(), String>,
 }
 
@@ -613,7 +606,6 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let pass1 = &*CI_PASS1;
     let ws = crate::helpers::workspace_root();
-
     ci_timing("PASS2: start generated crate rebuild");
     let stage1_target_dir = std::env::temp_dir().join("v2-ci-pass2-target");
     let _ = std::fs::remove_dir_all(&stage1_target_dir);
@@ -658,7 +650,6 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 #[ignore]
 fn ci_full_dsl() {
     ci_timing("ci_full_dsl: start");
-
     let ws = crate::helpers::workspace_root();
     let dsl_dir = ws.join("dsl");
     let mut dsl_sources: Vec<std::rc::Rc<v1_compiler::v1_compiler_compile::SourceFile>> =
@@ -732,7 +723,6 @@ fn ci_performance_ratchet() {
 #[ignore]
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
-
     if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\

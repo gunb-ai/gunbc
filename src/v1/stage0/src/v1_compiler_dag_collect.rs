@@ -66,7 +66,6 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
     let anchor = dag_node_collection_anchor(node);
-
     if is_synthetic_span(&anchor.span) {
         return v1_rt::concat(":0..0:".to_string(), dag_node_fingerprint(anchor.clone()));
     }

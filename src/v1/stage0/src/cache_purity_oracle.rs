@@ -8,20 +8,15 @@ pub trait AuditedRealization {
 
 pub struct HiddenInputProbe<'a> {
     pub axis: &'a str,
-
     pub perturb: Box<dyn FnMut() + 'a>,
-
     pub restore: Box<dyn FnMut() + 'a>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachePurityViolation {
     pub content_key: Hash,
-
     pub unkeyed_axis: String,
-
     pub warm_digest: Hash,
-
     pub cold_digest: Hash,
 }
 
@@ -49,7 +44,6 @@ pub fn audit_warm_equals_cold(
     probes: &mut [HiddenInputProbe<'_>],
 ) -> Result<(), CachePurityViolation> {
     let baseline_key = realization.content_key();
-
     let warm_digest = v1_rt::bytes_identity_hash(&realization.realize_cold());
 
     for probe in probes.iter_mut() {

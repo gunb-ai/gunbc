@@ -734,7 +734,6 @@ fn testgen_emits_valid_rust() {
         emit_source.contains("TestProjection"),
         "05_emit.dag should contain TestProjection"
     );
-
     let lang_source = read_v2_file("src/v1/languages.dag");
     assert_live_contains(
         &lang_source,
@@ -874,7 +873,6 @@ fn parse_item_keyword_arm_count() {
     let rest = &source[func_start..];
     let func_end = rest[1..].find("\nfn ").map(|i| i + 1).unwrap_or(rest.len());
     let func_body = &rest[..func_end];
-
     let live = live_source(func_body);
     let arm_count = live.matches("Some { value: ShKw").count();
     assert_eq!(
@@ -922,12 +920,10 @@ fn second_syntax_spec_exists() {
         "Rust SyntaxSpec must exist at dsl/extdeps/languages/rust/syntax.dag"
     );
     let content = std::fs::read_to_string(&rust_spec).expect("should read Rust syntax spec");
-
     assert!(
         content.contains("rust_syntax_spec: SyntaxSpec"),
         "Rust spec should declare rust_syntax_spec: SyntaxSpec"
     );
-
     assert!(
         content.contains("rust_item_forms"),
         "should define item forms"
@@ -940,7 +936,6 @@ fn second_syntax_spec_exists() {
         content.contains("rust_keyword_literals"),
         "should define keyword literals"
     );
-
     assert!(
         content.contains("\"struct\""),
         "should include struct keyword"

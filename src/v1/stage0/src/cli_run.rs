@@ -148,7 +148,6 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-
                 index.insert(module_path.clone(), rel);
             }
         }
@@ -254,7 +253,6 @@ fn load_sources_for_entry_with_index(
         seen.insert(mod_path, entry_source.clone());
     }
     let mut sources = resolve_transitively(vec![entry_source.clone()], index, seen);
-
     if !sources.iter().any(|s| s.path == rel_path) {
         sources.push(entry_source);
     }
@@ -300,11 +298,8 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
-
     Fail,
-
     NotBool { got: String },
-
     RuntimeError { message: String },
 }
 
@@ -324,11 +319,8 @@ pub fn resolve_entry_graph(
 
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
-
     intern_table: RefCell<Rc<InternTable>>,
-
     parse_cache: RefCell<HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
-
     typed_module_cache: RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
 }
 
@@ -441,7 +433,6 @@ fn resolve_entry_with_parse_cache(
                     m
                 });
                 let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-
                 *index.intern_table.borrow_mut() = parsed.intern_table.clone();
                 let entry = (parsed.result.clone(), nl_index);
                 index
@@ -468,7 +459,6 @@ fn resolve_entry_with_parse_cache(
     }
 
     let source_indices = Rc::new(si_map);
-
     let global_table = index.intern_table.borrow().clone();
 
     let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
@@ -736,7 +726,6 @@ fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
         })
         .cloned()
         .collect();
-
     for root in source_roots {
         let child = Path::new(root).join("dsl");
         if child.is_dir() {
@@ -934,7 +923,6 @@ pub fn handle_run_with_options(
                         }
                     }
                 }
-
                 match classify_exit(&val, &ctx) {
                     ExitClass::Success => {}
                     ExitClass::Failure(code) => std::process::exit(code),
@@ -962,7 +950,6 @@ pub fn handle_run_with_options(
 enum ExitClass {
     Success,
     Failure(i32),
-
     NotProcessExit { type_name: String },
 }
 
@@ -1335,7 +1322,6 @@ pub fn owned_data_decls_for_entry(
                 decl_name, info.name
             ));
         }
-
         if !decl_name.starts_with("unified_claim_") {
             continue;
         }
@@ -1426,9 +1412,7 @@ fn top_level_decl_names(content: &str) -> Vec<String> {
 
 struct DiscoveryResolveGroup {
     entries: Vec<(String, String, usize)>,
-
     sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-
     decl_names: HashMap<String, String>,
 }
 
@@ -1471,9 +1455,7 @@ fn add_closure_to_group(
 pub struct OwnedDataDiscovery {
     pub records: Vec<OwnedDataDeclRecord>,
     pub entry_count: usize,
-
     pub graph_resolves: usize,
-
     pub group_split_collisions: Vec<String>,
 }
 
@@ -1570,7 +1552,6 @@ pub fn discover_owned_data_decls(
             .collect();
         for (entry, entry_module, marker_count) in group.entries {
             let records = owned_data_decls_for_entry(&graph, &si, &entry, &entry_module)?;
-
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
@@ -1875,21 +1856,15 @@ pub struct DiscoverySummary {
     pub passed: usize,
     pub skipped: usize,
     pub failures: Vec<String>,
-
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
-
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
-
     pub total_resolve_nanos: u128,
-
     pub performance_receipts: Vec<v1_interpreter::PerformanceReceipt>,
-
     pub total_measured_nanos: u128,
 }
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
     "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
-
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
@@ -2123,12 +2098,10 @@ pub fn discover_floor_corpus_rows(
     }
 
     let mut test_fn_violations: Vec<String> = Vec::new();
-
     let mut path_imports: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut module_to_path: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
-
     let mut lens_with_justification: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     for root in source_roots {
@@ -2139,7 +2112,6 @@ pub fn discover_floor_corpus_rows(
             let entry = path.to_string_lossy().into_owned();
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
-
             let rel = repo_relative_dag_path(&entry);
             if let Some(m) = extract_module_path(&content) {
                 if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
@@ -2182,7 +2154,6 @@ pub fn discover_floor_corpus_rows(
             .cmp(&b.entry)
             .then_with(|| a.function.cmp(&b.function))
     });
-
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
     if !inert.is_empty() {
         return Err(format!(
@@ -2194,7 +2165,6 @@ pub fn discover_floor_corpus_rows(
             inert.join(", ")
         ));
     }
-
     let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
     if !unjustified.is_empty() {
         return Err(format!(
@@ -2260,7 +2230,6 @@ fn inert_lens_modules(
     let mut queue: Vec<String> = Vec::new();
     let path_to_module: std::collections::HashMap<&String, &String> =
         module_to_path.iter().map(|(m, p)| (p, m)).collect();
-
     let entry_paths: std::collections::BTreeSet<String> = rows
         .iter()
         .map(|r| repo_relative_dag_path(&r.entry))
@@ -2279,7 +2248,6 @@ fn inert_lens_modules(
             }
         }
     }
-
     while let Some(module) = queue.pop() {
         if let Some(mpath) = module_to_path.get(&module) {
             if let Some(imports) = path_imports.get(mpath) {
@@ -2303,7 +2271,6 @@ fn inert_lens_modules(
 
 pub struct DiscoveryCorpusOptions {
     pub skip_unaffected_node_frontier: bool,
-
     pub explicit_roster_only: bool,
 }
 
@@ -2495,9 +2462,7 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
 #[derive(Clone, Default)]
 struct NodeFrontierSeeds {
     overlapping_data_items: HashSet<(String, String)>,
-
     edited_test_fns: HashSet<(String, String)>,
-
     force_run_all: bool,
 }
 
@@ -2529,9 +2494,7 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             Ok(c) => c,
             Err(_) => return Ok(NodeFrontierSeeds::run_all()),
         };
-
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-
         let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
@@ -2556,7 +2519,6 @@ fn collect_frontier_seeds_from_diff_line_ranges(
             return Ok(NodeFrontierSeeds::run_all());
         }
         decls.sort_by_key(|(line, _, _)| *line);
-
         if ranges.iter().any(|r| r.start < decls[0].0) {
             return Ok(NodeFrontierSeeds::run_all());
         }
@@ -2629,7 +2591,6 @@ fn entry_claims_touch_frontier(
     frontier: &v1_interpreter::Value,
 ) -> Result<bool, String> {
     let mut saw_claim = false;
-
     let initializer_values = v1_interpreter::with_active_context(ctx, || {
         v1_interpreter::eval_data_initializer_values(ctx)
     })
@@ -2672,7 +2633,6 @@ fn entry_claims_touch_frontier(
             }
         }
     }
-
     Ok(!saw_claim)
 }
 
@@ -2702,14 +2662,12 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     check_floor_filename_hygiene(source_roots)?;
-
     let mut rows =
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
             discover_floor_corpus_rows(source_roots, scan_dirs)?
         };
-
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
         .iter()
         .map(|r| (r.entry.clone(), r.function.clone()))
@@ -2938,7 +2896,6 @@ fn run_discovery_rows(
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
         }
-
         let function_edited = skip_enabled
             && frontier_seeds.edited_test_fns.iter().any(|(file, func)| {
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
@@ -3120,7 +3077,6 @@ pub struct SourceRootReadRecord {
     pub file_path: String,
     pub module_path: String,
     pub source: String,
-
     pub source_root: String,
 }
 
@@ -3300,14 +3256,11 @@ mod manifest_emit_tests {
             source_root_ref_token_for_path("dsl/std/algebra.dag", &roots).unwrap(),
             "DslTree"
         );
-
         assert_eq!(
             source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
             "V2Tree"
         );
-
         assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
-
         assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
     }
 
@@ -3318,7 +3271,6 @@ mod manifest_emit_tests {
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dsl").to_string_lossy().into_owned(),
         ];
-
         assert_eq!(
             source_root_ref_token_for_path(
                 ws.join("src/v2/std/algebra.dag").to_str().unwrap(),
@@ -3335,12 +3287,10 @@ mod manifest_emit_tests {
             .unwrap(),
             "DslTree"
         );
-
         assert_eq!(
             source_root_ref_token_for_path("dsl/std/algebra.dag", &abs_roots).unwrap(),
             "DslTree"
         );
-
         assert!(source_root_ref_token_for_path(
             ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
             &abs_roots
@@ -3617,7 +3567,6 @@ mod inert_lens_hygiene_tests {
         assert!(is_top_level_lens_module(
             "v2.lens.extdeps_shape_transport_policy"
         ));
-
         assert!(!is_top_level_lens_module(
             "v2.lens.extdeps_shape_transport_policy.module_refs"
         ));
@@ -3717,7 +3666,6 @@ mod construction_justification_hygiene_tests {
         assert!(!declares_construction_justification(
             "data construction_justification_note: String = \"todo\"\n"
         ));
-
         assert!(!declares_construction_justification(
             "module v2.lens.demo\ndata other: String = \"z\"\n"
         ));
@@ -3730,7 +3678,6 @@ mod construction_justification_hygiene_tests {
             "v2.lens.demo".to_string(),
             "src/v2/lens/demo.dag".to_string(),
         );
-
         module_to_path.insert(
             "v2.lens.common.construction_justification".to_string(),
             "src/v2/lens/common/construction_justification.dag".to_string(),

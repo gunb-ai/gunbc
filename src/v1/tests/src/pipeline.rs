@@ -327,7 +327,6 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_emit.rs");
-
     assert!(
         content.contains("fn identity<T>(") || content.contains("pub fn identity<T>("),
         "expected `fn identity<T>(` in emitted Rust; got:\n{content}"
@@ -336,12 +335,10 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
         content.contains("fn fold_stack<T, B>(") || content.contains("pub fn fold_stack<T, B>("),
         "expected `fn fold_stack<T, B>(` in emitted Rust; got:\n{content}"
     );
-
     assert!(
         !content.contains("identity(x: T, T:"),
         "type param T leaked into value-param list; got:\n{content}"
     );
-
     assert!(
         !content.contains("<T: Clone>") && !content.contains("<T, B: Clone>"),
         "emitter synthesized a Clone bound; got:\n{content}"
@@ -378,7 +375,6 @@ fn use_fold<T>(fold: NodeFold) -> NodeFold {
 fn generic_fn_with_value_param_shadowing_type_param_fails_closed() {
     let source = "module shadow_test\n\nfn weird<T>(t: T) -> T {\n  t\n}\n\nfn collide<T>(T: T) -> T {\n  T\n}\n";
     let result = compile_dag(source);
-
     let messages = diagnostic_messages(&result);
     assert!(
         messages
@@ -401,7 +397,6 @@ fn ambiguous_variant_name_resolves_correctly() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/ambig_test.rs");
-
     assert!(
         content.contains("Color::Red") || content.contains("Signal::Red"),
         "ambiguous variant Red should be qualified to a parent enum"
@@ -1165,7 +1160,6 @@ fn multi_module_synthetic() {
         ),
     ];
     let result = compile_multi(files);
-
     let _ = diagnostic_messages(&result);
 }
 
@@ -1177,7 +1171,6 @@ fn bare_import_wildcard_survives_pipeline() {
     ];
     let result = compile_multi(files);
     assert_no_diagnostics(&result);
-
     let content = find_file(&result, "src/main_mod.rs");
     assert!(
         content.contains("use crate::dep"),
@@ -1225,7 +1218,6 @@ fn resolve_typecheck_gate_strict_blocks_advisory_demoted_typecheck() {
     assert!(is_discovery_corpus_advisory_typecheck_diagnostic(
         typecheck.clone()
     ));
-
     assert!(!is_discovery_corpus_blocking_diagnostic(typecheck.clone()));
     assert!(is_interpreter_blocking_diagnostic(typecheck));
 }
@@ -2660,7 +2652,6 @@ fn parse_items(state: ParserState) -> ParseResult {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-
     assert!(complexity.function_classes.contains_key("parse_items"));
 }
 
@@ -2679,7 +2670,6 @@ fn sum_tree(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-
     assert!(complexity.function_classes.contains_key("sum_tree"));
 }
 
@@ -2762,7 +2752,6 @@ fn all_pairs_sum(items: List<Int>) -> Int {
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
     let class = complexity_class_of(&result, "all_pairs_sum");
-
     assert!(
         class.is_some(),
         "all_pairs_sum should have a complexity class"
@@ -2787,7 +2776,6 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
     let class = complexity_class_of(&result, "cross_count");
-
     assert!(
         class.is_some(),
         "cross_count should have a complexity class"
@@ -2827,7 +2815,6 @@ fn complexity_class_add_keeps_log_terms() {
         }),
         right: Rc::new(CostExpr::CostConst { value: 1 }),
     });
-
     let formatted = classify_complexity(expr);
     assert!(
         formatted.contains("log"),
@@ -2846,7 +2833,6 @@ fn complexity_class_max_keeps_log_terms() {
             }),
         }),
     });
-
     let formatted = classify_complexity(expr);
     assert!(
         formatted.contains("log"),
@@ -2879,7 +2865,6 @@ fn sum_doubled(items: List<Int>) -> Int {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-
     let _class = complexity_class_of(&result, "sum_doubled");
 }
 
@@ -2922,7 +2907,6 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
             func, keys
         );
     }
-
     assert!(
         !summaries.is_empty(),
         "function_classes should not be empty"
@@ -2961,7 +2945,6 @@ fn match_bound_variable_always_cloned() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/match_own.rs");
-
     assert!(
         content.contains("v.clone()"),
         "match-bound variable should be cloned, not moved:\n{}",
@@ -2980,7 +2963,6 @@ fn complexity_self_analysis_subset() {
         );
         return;
     }
-
     eprintln!(
         "complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)"
     );
@@ -3039,14 +3021,12 @@ fn normalize_typed_graph(
                     out.insert(k.clone(), Value::Null);
                     continue;
                 }
-
                 if k == "diagnostics" {
                     if let Value::Array(arr) = v {
                         out.insert(k.clone(), Value::Array(vec![Value::Null; arr.len()]));
                         continue;
                     }
                 }
-
                 if k == "item_registry_keys" {
                     if let Value::Array(arr) = v {
                         let mut normalized: Vec<Value> = arr
@@ -3059,7 +3039,6 @@ fn normalize_typed_graph(
                         continue;
                     }
                 }
-
                 if k == "name" {
                     if let Value::String(s) = v {
                         if let Some(replacement) = name_map.get(s.as_str()) {
@@ -3379,9 +3358,7 @@ fn python_method_template_consolidation_emit() {
         .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
         .expect("Python target should emit a .py file");
     let c = &py.content;
-
     assert!(c.contains("len("), "count should render as len(...):\n{c}");
-
     assert!(
         !c.contains("functools.reduce"),
         "fold must NOT use the flat one-arg `functools.reduce` template (it drops the callback):\n{c}"
@@ -3396,7 +3373,6 @@ fn python_method_template_consolidation_emit() {
 fn go_method_template_consolidation_emit() {
     let result = compile_dag_target(method_template_emit_source(), RenderTarget::Go);
     assert_no_diagnostics(&result);
-
     let go = result
         .files
         .iter()
@@ -3404,7 +3380,6 @@ fn go_method_template_consolidation_emit() {
         .expect("Go target should emit a user .go file");
     let c = &go.content;
     assert!(c.contains("len("), "count should render as len(...):\n{c}");
-
     assert!(
         c.contains("v2rt.Fold(") && c.contains("func("),
         "fold should render as a v2rt.Fold bridge call forwarding the closure:\n{c}"
@@ -3863,7 +3838,6 @@ fn function_calling_into_cycle_is_not_rejected() {
         .iter()
         .map(|d| d.module_name.clone())
         .collect();
-
     assert!(
         !result.diagnostics.iter().any(|d| {
             let msg = format!("{:?}", d.diagnostic);
@@ -3961,7 +3935,6 @@ fn cx_bound_mutual_descent_is_bounded() {
 fn cx_bound_metadata_field_is_not_descent_witness() {
     let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Present { value: next } => check_name(item: next)\n      Absent => false\n    }\n  }\n}\n";
     let result = compile_dag(source);
-
     assert_no_diagnostics(&result);
 }
 
@@ -4056,7 +4029,6 @@ fn count_b(y: Int) -> Int {
     let b_class = result.function_classes.get("count_b");
     assert!(a_class.is_some(), "count_a should have a complexity class");
     assert!(b_class.is_some(), "count_b should have a complexity class");
-
     let a_violation = result
         .violations
         .iter()
@@ -4085,7 +4057,6 @@ fn count_nodes(n: Node) -> Int {
 }
 "#;
     let result = compile_dag_with_complexity(source);
-
     let class = result.function_classes.get("count_nodes");
     assert!(
         class.is_some(),
@@ -4252,7 +4223,6 @@ fn optional_match_missing_absent_arm_produces_diagnostic() {
 fn service_with_operation_compiles_cleanly() {
     let source = "module svc\n\nservice WeatherService {\n  transport rest { base_url: \"https://api.weather.com\" }\n\n  operation get_forecast {\n    input { city: String }\n    output { temp: Float  description: String }\n  }\n}\n\nfn check_weather(ws: WeatherService, city: String) -> String {\n  let result = ws.get_forecast(city: city)\n  result.description\n}\n";
     let result = compile_dag(source);
-
     assert!(
         !result.files.is_empty() || !diagnostic_messages(&result).is_empty(),
         "service pipeline should produce output or diagnostics"
@@ -4280,7 +4250,6 @@ fn field_access_on_wrong_type_produces_diagnostic() {
         "module field\n\ntype Point { x: Int  y: Int }\n\nfn bad(p: Point) -> String {\n  p.z\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-
     assert!(
         result.files.is_empty() || msgs.iter().any(|m| m.contains("field") || m.contains("z")),
         "accessing non-existent field 'z' should produce diagnostic or fail emit, got: {:?}",
@@ -4441,12 +4410,10 @@ fn sh1_artifact_plan_valid() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let plan = &result.artifact_plan;
-
     assert!(
         !plan.artifacts.is_empty(),
         "artifact plan should contain at least one artifact"
     );
-
     let artifact_names: Vec<&str> = plan.artifacts.iter().map(|a| a.name.as_str()).collect();
     for b in plan.boundaries.iter() {
         assert!(
@@ -4474,7 +4441,6 @@ fn sh2_ownership_covers_all_functions() {
     let source = "module own_check\n\nfn add(a: Int, b: Int) -> Int { a + b }\n\nfn greet(name: String) -> String { name }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-
     let proof_names: Vec<&str> = result
         .ownership
         .iter()
@@ -4490,7 +4456,6 @@ fn sh2_ownership_covers_all_functions() {
         "ownership should cover 'greet', got: {:?}",
         proof_names
     );
-
     for proof in result.ownership.iter() {
         assert!(
             !proof.decisions.is_empty(),
@@ -4505,7 +4470,6 @@ fn sh3_complexity_report_consistent() {
     let source = "module cx_check\n\nfn identity(x: Int) -> Int { x }\n\nfn double(x: Int) -> Int { x + x }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-
     let _report = &result.complexity;
 }
 
@@ -4514,9 +4478,7 @@ fn sh7_parse_output_has_valid_structure() {
     let source = "module parse_check\n\ntype Foo { x: Int }\n\nfn bar() -> Int { 42 }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-
     assert!(!result.files.is_empty(), "compilation should produce files");
-
     for file in result.files.iter() {
         assert!(!file.path.is_empty(), "emitted file has empty path");
         assert!(
@@ -4533,7 +4495,6 @@ fn sh8_multi_module_imports_resolve() {
     let source_b = "module consumer_mod\n\nimport types_mod { Color }\n\nfn make_red() -> Color { Color { r: 255, g: 0, b: 0 } }\n";
     let result = compile_multi(&[("types_mod.dag", source_a), ("consumer_mod.dag", source_b)]);
     assert_no_diagnostics(&result);
-
     assert!(
         result.files.iter().any(|f| f.path.contains("types_mod")),
         "types_mod should produce an output file"
@@ -4542,7 +4503,6 @@ fn sh8_multi_module_imports_resolve() {
         result.files.iter().any(|f| f.path.contains("consumer_mod")),
         "consumer_mod should produce an output file"
     );
-
     assert!(
         result.diagnostics.is_empty(),
         "multi-module compilation should have 0 diagnostics"
@@ -4557,7 +4517,6 @@ fn sh4_resolved_graph_completeness() {
     let json_str = find_file(&result, "dag-artifact.json");
     let artifact: Value =
         serde_json::from_str(&json_str).expect("dag artifact should be valid JSON");
-
     assert!(
         artifact.get("version").is_some(),
         "artifact should have version"
@@ -4570,7 +4529,6 @@ fn sh4_resolved_graph_completeness() {
         .as_array()
         .expect("modules should be array");
     assert!(!modules.is_empty(), "modules should be non-empty");
-
     for module in modules {
         let mod_ref = module
             .get("module")
@@ -5123,7 +5081,6 @@ fn sort_json_arrays(value: &Value) -> Value {
         }
         Value::Array(arr) => {
             let sorted: Vec<Value> = arr.iter().map(sort_json_arrays).collect();
-
             if sorted.iter().all(|v| v.is_string()) {
                 let mut strs: Vec<String> = sorted
                     .iter()
@@ -5165,7 +5122,6 @@ fn greet(name: String) -> String { concat("Hello, ", name) }
         json1, json2,
         "compiling the same source twice should produce structurally identical typed graph JSON"
     );
-
     let modules = json1["modules"]
         .as_array()
         .expect("modules should be array");
@@ -5411,7 +5367,6 @@ fn rust_map_type_lowers_to_rc_hashmap() {
         "Map should lower to Rc<HashMap<...>> in Rust, got: {}",
         content
     );
-
     let has_raw_map = content.lines().any(|line| {
         if let Some(pos) = line.find("Map<") {
             pos == 0 || !line.as_bytes()[pos - 1].is_ascii_alphabetic()
@@ -5444,7 +5399,6 @@ fn rust_callable_renders_as_fn_trait() {
 fn rust_func_with_uses_emits_async_fn() {
     let source = "module test_async_func\n\nresource Net {}\n\nfunc do_work() -> String\n  uses net: Net\n{\n  \"done\"\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
-
     if has_file(&result, "src/test_async_func.rs") {
         let content = find_file(&result, "src/test_async_func.rs");
         assert!(
@@ -5537,13 +5491,11 @@ fn make_outer() -> Outer {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_struct.rs");
-
     assert!(
         content.contains("Rc<Inner>"),
         "struct field should be Rc<Inner>, got:\n{}",
         content
     );
-
     assert!(
         content.contains("Rc::new(Inner"),
         "struct construction should use Rc::new(Inner{{...}}), got:\n{}",
@@ -5565,7 +5517,6 @@ fn pick() -> Color { Red }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_unit_enum.rs");
-
     assert!(
         !content.contains("Rc<Color>"),
         "unit enum should not be Rc<Color>, got:\n{}",
@@ -5594,7 +5545,6 @@ type Drawing { shape: Shape }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_data_enum.rs");
-
     assert!(
         content.contains("Rc<Shape>"),
         "data enum field should be Rc<Shape>, got:\n{}",
@@ -5615,7 +5565,6 @@ type Bag { items: List<String> }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_list.rs");
-
     assert!(
         content.contains("Rc<Vec<") || content.contains("Rc<Vec<String>"),
         "list field should be Rc<Vec<...>>, got:\n{}",
@@ -5636,7 +5585,6 @@ type Config { entries: Map<String, String> }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_map.rs");
-
     assert!(
         content.contains("Rc<HashMap<"),
         "map field should be Rc<HashMap<...>>, got:\n{}",
@@ -5657,7 +5605,6 @@ type Stats { count: Int, active: Bool, ratio: Float }
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_primitives.rs");
-
     assert!(
         !content.contains("Rc<i64>"),
         "Int field should be bare i64, not Rc<i64>, got:\n{}",
@@ -5695,7 +5642,6 @@ fn unwrap(c: Container) -> Item {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_param_match.rs");
-
     let has_rc_field = content.contains("item: Rc<Item>");
     let has_rc_param = content.contains("i: Rc<Item>");
     assert_eq!(
@@ -5704,7 +5650,6 @@ fn unwrap(c: Container) -> Item {
          field has Rc: {}, param has Rc: {}\n{}",
         has_rc_field, has_rc_param, content
     );
-
     let has_rc_return = content.contains("-> Rc<Item>");
     assert_eq!(
         has_rc_field, has_rc_return,
@@ -5730,7 +5675,6 @@ fn empty_batch() -> Batch {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
-
     let has_rc_field = content.contains("Rc<Vec<");
     let has_rc_construction = content.contains("Rc::new(vec![");
     assert_eq!(
@@ -5739,7 +5683,6 @@ fn empty_batch() -> Batch {
          field has Rc: {}, construction has Rc: {}\n{}",
         has_rc_field, has_rc_construction, content
     );
-
     assert!(
         content.contains("Rc::new(vec!["),
         "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
@@ -5883,7 +5826,6 @@ type Bar<K, V> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test.rs");
     eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
-
     assert!(
         !content.contains(": Tuple") && !content.contains("<Tuple>"),
         "Tuple should not appear as bare type name, got:\n{}",
@@ -6111,7 +6053,6 @@ fn summarize(items: List<String>) -> Accum {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-
     let proof = result
         .ownership
         .iter()
@@ -6137,7 +6078,6 @@ fn process(items: List<String>) -> Accum {
 "#;
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-
     let proof = result
         .ownership
         .iter()
@@ -6158,7 +6098,6 @@ fn bool_is_not_valid_as_cast_target() {
         !can_cast(RenderTarget::Rust, "i64".to_string(), "bool".to_string()),
         "i64 as bool is invalid Rust"
     );
-
     assert!(
         !can_cast(RenderTarget::Rust, "f64".to_string(), "bool".to_string()),
         "f64 as bool is invalid Rust"
@@ -6174,12 +6113,10 @@ fn int_and_float_are_valid_as_cast_targets() {
         can_cast(RenderTarget::Rust, "i64".to_string(), "f64".to_string()),
         "i64 as f64 should be valid"
     );
-
     assert!(
         can_cast(RenderTarget::Rust, "f64".to_string(), "i64".to_string()),
         "f64 as i64 should be valid"
     );
-
     assert!(
         can_cast(RenderTarget::Rust, "i64".to_string(), "i64".to_string()),
         "i64 as i64 should be valid"
@@ -6225,7 +6162,6 @@ fn python_casts_use_explicit_rules() {
         ),
         "Python bool→float should be valid"
     );
-
     assert!(
         !can_cast(RenderTarget::Python, "dict".to_string(), "int".to_string()),
         "Python dict→int should not be valid (no cast rule)"
@@ -7394,7 +7330,6 @@ fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
     let dsl_root = ws.join("dsl");
     let v2_root = ws.join("src/v2");
-
     let overlay_roots = vec![dsl_root.clone(), v2_root.clone()];
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
@@ -7940,7 +7875,6 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let pos = content
         .find(enum_decl)
         .unwrap_or_else(|| panic!("expected {enum_decl} in emitted openai module"));
-
     let prelude = &content[..pos];
     let serde_snake = "#[serde(rename_all = \"snake_case\")]";
     let mut attrs_above: Vec<&str> = Vec::new();
@@ -7972,7 +7906,6 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         .find('{')
         .map(|i| pos + i)
         .expect("OpenAiChatMessageRole enum opening brace");
-
     let close_brace = content[open_brace + 1..]
         .find('}')
         .map(|i| open_brace + 1 + i)
@@ -10057,7 +9990,6 @@ fn countdown(n: Int) -> Int {
         .iter()
         .filter(|b| b.func_name == "countdown")
         .collect();
-
     assert!(
         !bounds.is_empty(),
         "arithmetic descent (n - 1) should produce O(n) structural bound"
@@ -10109,7 +10041,6 @@ fn sum_tree(t: Tree) -> Int {
         .iter()
         .filter(|b| b.func_name == "sum_tree")
         .collect();
-
     assert!(
         !bounds.is_empty(),
         "fold over children should produce catamorphism O(n) bound"
@@ -10293,7 +10224,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         .iter()
         .filter(|b| b.func_name == "binary_search")
         .collect();
-
     assert!(
         !bounds.is_empty(),
         "expected structural bound for binary_search, got none"
@@ -10344,7 +10274,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-
     let flatten_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -10355,7 +10284,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
         "expected structural bound for flatten"
     );
     assert_eq!(flatten_bounds[0].param, "tree");
-
     let search_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -10366,7 +10294,6 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
         "expected structural bound for list_contains"
     );
     assert_eq!(search_bounds[0].param, "xs");
-
     let tc_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -10512,7 +10439,6 @@ fn spin(x: Int) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     assert!(
         bounds.is_empty(),
         "infinite loop should produce no structural bound (fail-closed)"
@@ -10555,7 +10481,6 @@ fn odd_count(xs: MyList<Int>) -> Int {
         even_bounds.len(),
         odd_bounds.len()
     );
-
     assert!(
         even_bounds.is_empty(),
         "mutual recursion should produce no structural bound"
@@ -10582,7 +10507,6 @@ fn fib(n: Int) -> Int {
         .filter(|b| b.func_name == "fib")
         .collect();
     eprintln!("[adversarial] fib: {} bounds", bounds.len());
-
     assert!(
         bounds.is_empty(),
         "fibonacci on Int should produce no structural bound"
@@ -10615,7 +10539,6 @@ fn walk(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     assert!(
         bounds.is_empty(),
         "growing argument should produce no structural bound (fail-closed)"
@@ -10639,7 +10562,6 @@ fn ack(m: Int, n: Int) -> Int {
         .filter(|b| b.func_name == "ack")
         .collect();
     eprintln!("[adversarial] ackermann: {} bounds", bounds.len());
-
     assert!(
         bounds.is_empty(),
         "ackermann on Int should produce no structural bound"
@@ -10669,14 +10591,12 @@ fn quadratic_walk(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-
     let cl_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
         .filter(|b| b.func_name == "count_left")
         .collect();
     assert!(!cl_bounds.is_empty(), "count_left should be O(n)");
-
     let qw_bounds: Vec<_> = complexity
         .structural_bounds
         .iter()
@@ -10689,7 +10609,6 @@ fn quadratic_walk(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     assert_eq!(
         complexity
             .function_classes
@@ -10726,7 +10645,6 @@ fn bad(xs: MyList<Int>) -> Int {
         .iter()
         .filter(|b| b.func_name == "bad")
         .collect();
-
     assert!(
         bounds.is_empty(),
         "self-call with aliased same-size argument should produce no structural bound, got: {:?}",
@@ -10764,7 +10682,6 @@ fn last_elem(xs: MyList<Int>) -> Int {
         !bounds.is_empty(),
         "expected structural bound for last_elem"
     );
-
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -10781,7 +10698,6 @@ fn last_elem(xs: MyList<Int>) -> Int {
         },
         "last_elem time should be O(n)"
     );
-
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::ConstantBound,
@@ -10809,7 +10725,6 @@ fn size(t: BinTree<Int>) -> Int {
         .filter(|b| b.func_name == "size")
         .collect();
     assert!(!bounds.is_empty(), "expected structural bound for size");
-
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -10826,7 +10741,6 @@ fn size(t: BinTree<Int>) -> Int {
         },
         "size time should be O(n)"
     );
-
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -10875,7 +10789,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         !bounds.is_empty(),
         "expected structural bound for binary_search"
     );
-
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
@@ -10885,7 +10798,6 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         },
         "binary search time should be O(log n)"
     );
-
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::ConstantBound,
@@ -10919,7 +10831,6 @@ fn bad_split(xs: List<Int>) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     for b in &bounds {
         assert_ne!(
             *b.recurrence_bound,
@@ -10960,7 +10871,6 @@ fn bad_walk(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     for b in &bounds {
         assert_ne!(
             *b.recurrence_bound,
@@ -11008,7 +10918,6 @@ fn dup(t: Tree) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     for b in &bounds {
         assert_ne!(
             *b.recurrence_bound,
@@ -11059,7 +10968,6 @@ fn eval(e: Expr) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     assert!(!bounds.is_empty(), "eval should produce structural bound");
     assert_eq!(bounds[0].param, "e");
     assert_eq!(
@@ -11171,7 +11079,6 @@ fn count_items(item: Item) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     assert!(
         !bounds.is_empty(),
         "count_items should produce structural bound"
@@ -11223,7 +11130,6 @@ fn depth(w: Wrapper) -> Int {
             b.func_name, b.param, b.recurrence_bound
         );
     }
-
     if !bounds.is_empty() {
         assert_eq!(bounds[0].param, "w");
     }
@@ -11470,7 +11376,6 @@ fn diag_emitter_scc() {
             let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
             eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
         }
-
         let entry = func_index.get("emit_typed_expr");
         if let Some(entry) = entry {
             let target_evidence = collect_callee_evidence(

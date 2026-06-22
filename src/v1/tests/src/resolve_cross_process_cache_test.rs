@@ -162,7 +162,6 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         }
         for (entry, f, expected) in witnesses {
             let got = cached_verdict(&roots, entry, f, &order_cache);
-
             assert_eq!(
                 got, expected,
                 "cached verdict for {f} diverged from cold oracle in order {order:?}"
@@ -222,7 +221,6 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let subject = subject_digest_for_closure(&sources);
     let mut poisoned =
         build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
-
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");

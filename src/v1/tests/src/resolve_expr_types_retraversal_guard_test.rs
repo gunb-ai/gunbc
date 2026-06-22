@@ -13,7 +13,6 @@ use crate::helpers::workspace_root;
 
 const RESOLVE_DAG: &str = "src/v1/04_resolve.dag";
 const SELF_FN: &str = "resolve_expr_types";
-
 const PRE_FIX_REV: &str = "b7d11aa73";
 
 type SiMap = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -86,7 +85,6 @@ fn arm_retraversal_counts(content: &str) -> Vec<usize> {
     let (module, si) = parse_module_from_source(RESOLVE_DAG, content);
     let body = resolve_expr_types_body(&module, &si);
     let m = find_match(&body).unwrap_or_else(|| panic!("no match expr in {SELF_FN} body"));
-
     m.children
         .iter()
         .skip(1)

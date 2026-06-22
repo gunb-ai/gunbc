@@ -20,14 +20,19 @@ import sys
 def strip(src):
     out = []
     line_protected = [False]   # per output line: contains literal (string/raw/char) chars
+    line_had_comment = [False]  # per output line: a comment was stripped from it
 
     def emit(c):
         out.append(c)
         if c == "\n":
             line_protected.append(False)
+            line_had_comment.append(False)
 
     def protect():
         line_protected[-1] = True
+
+    def mark_comment():
+        line_had_comment[-1] = True
 
     i, n = 0, len(src)
     while i < n:
@@ -130,12 +135,14 @@ def strip(src):
                 continue
 
         if c == "/" and nxt == "/":
+            mark_comment()
             i += 2
             while i < n and src[i] != "\n":
                 i += 1
             continue
 
         if c == "/" and nxt == "*":
+            mark_comment()
             depth = 1
             i += 2
             while i < n and depth > 0:
@@ -147,6 +154,7 @@ def strip(src):
                     i += 2
                 elif src[i] == "\n":
                     emit("\n")
+                    mark_comment()
                     i += 1
                 else:
                     i += 1
@@ -158,12 +166,19 @@ def strip(src):
     lines = "".join(out).split("\n")
     if len(line_protected) < len(lines):
         line_protected += [False] * (len(lines) - len(line_protected))
+    if len(line_had_comment) < len(lines):
+        line_had_comment += [False] * (len(lines) - len(line_had_comment))
 
     result = []
     prev_blank = False
     for idx, line in enumerate(lines):
         prot = line_protected[idx]
         line = line if prot else line.rstrip()
+        # A line emptied solely by comment removal is dropped entirely (not left
+        # as a blank) — a blank where a comment sat between an attribute/doc and
+        # the item it applies to trips clippy::empty_line_after_outer_attr.
+        if line == "" and not prot and line_had_comment[idx]:
+            continue
         is_blank = (line == "") and not prot
         if is_blank and prev_blank:
             continue

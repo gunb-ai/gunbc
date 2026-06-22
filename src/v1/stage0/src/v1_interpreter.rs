@@ -40,18 +40,14 @@ pub struct Symbol(u32);
 pub struct SymbolInterner {
     strings: Vec<String>,
     index: HashMap<String, u32>,
-
     calls: u64,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct InternStats {
     pub calls: u64,
-
     pub distinct: u64,
-
     pub hits: u64,
-
     pub heap_bytes: u64,
 }
 
@@ -98,7 +94,6 @@ impl SymbolInterner {
 }
 
 thread_local! {
-
     static ACTIVE_CTX: std::cell::Cell<Option<*const InterpContext>> =
         const { std::cell::Cell::new(None) };
 }
@@ -263,19 +258,16 @@ fn value_hash(v: &Value) -> u64 {
         }
         Value::Float(f) => {
             4u8.hash(&mut h);
-
             let bits = if *f == 0.0 { 0u64 } else { f.to_bits() };
             bits.hash(&mut h);
         }
         Value::Set(members) => {
             5u8.hash(&mut h);
-
             members.len().hash(&mut h);
             for m in members.iter() {
                 m.hash(&mut h);
             }
         }
-
         Value::Record { fields, .. } => {
             6u8.hash(&mut h);
             hash_fields_commutative(fields).hash(&mut h);
@@ -291,7 +283,6 @@ fn value_hash(v: &Value) -> u64 {
         }
         Value::Map(m) => {
             8u8.hash(&mut h);
-
             let mut acc: u64 = 0;
             for (k, val) in m.iter() {
                 let mut eh = DefaultHasher::new();
@@ -301,10 +292,8 @@ fn value_hash(v: &Value) -> u64 {
             }
             acc.hash(&mut h);
         }
-
         Value::Closure { .. } => 9u8.hash(&mut h),
         Value::Fn { .. } => 10u8.hash(&mut h),
-
         Value::List(_) | Value::Str(_) => unreachable!("FreeMonoid handled above"),
     }
     h.finish()
@@ -329,10 +318,8 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Str(String),
-
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
-
     Set(Rc<BTreeSet<String>>),
     Record {
         type_name: Symbol,
@@ -348,7 +335,6 @@ pub enum Value {
         body: Rc<Node>,
         env: Rc<Env>,
     },
-
     Fn {
         node: Rc<Node>,
     },
@@ -520,14 +506,12 @@ impl PartialEq for Value {
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
             (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
-
             (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
                 match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
                     (Some(a), Some(b)) => a == b,
                     _ => false,
                 }
             }
-
             (Value::Str(_), Value::Variant { .. })
             | (Value::Variant { .. }, Value::Str(_))
             | (Value::Str(_), Value::List(_))
@@ -590,7 +574,6 @@ pub enum InterpError {
     NoSuchVariable { name: String },
     NoSuchField { type_name: String, field: String },
     TypeError { msg: String },
-
     CrossRepresentationEquality { detail: String },
     PatternMatchFailure { value: String },
     DivisionByZero,
@@ -628,9 +611,7 @@ type ServiceOp = (Rc<Node>, Rc<Node>);
 #[derive(Default)]
 struct PureCallMemo {
     map: HashMap<(usize, Vec<usize>), Value>,
-
     keepalive: Vec<Value>,
-
     keepalive_fns: Vec<Rc<Node>>,
 }
 
@@ -721,11 +702,8 @@ impl fmt::Display for MutationCounters {
 #[derive(Default, Clone)]
 pub struct VariantAccounting {
     pub occurrences: u64,
-
     pub unique_allocations: u64,
-
     pub shared_references: u64,
-
     pub heap_bytes: u64,
 }
 
@@ -842,7 +820,6 @@ fn account_value(
     acc.variant(label).occurrences += 1;
     match value {
         Value::Null | Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::Unit => {}
-
         Value::Str(s) => acc.add_unique(label, s.len() as u64),
         Value::List(items) => {
             if !accounting_first_visit(Rc::as_ptr(items) as usize, label, visited, acc) {
@@ -883,7 +860,6 @@ fn account_value(
         Value::Variant { fields, .. } => {
             account_named_fields(label, fields, visited, acc);
         }
-
         Value::Closure {
             params,
             env,
@@ -920,33 +896,19 @@ impl ExecutionMode {
 
 pub struct InterpContext {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
-
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-
     fn_nodes: HashMap<String, Rc<Node>>,
-
     service_ops: HashMap<String, ServiceOp>,
-
     pub execution_mode: ExecutionMode,
-
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
-
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
-
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
-
     mutation_counters: std::cell::RefCell<MutationCounters>,
-
     symbols: RefCell<SymbolInterner>,
-
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
-
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
 }
 
@@ -1045,7 +1007,6 @@ impl InterpContext {
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
                 }
-
                 if let Some(info) = graph.item_registry.get(&name) {
                     if info.kind == ItemKind::ServiceItem {
                         for op in item.children.iter() {
@@ -1057,7 +1018,6 @@ impl InterpContext {
                         }
                     }
                 }
-
                 if let Some(info) = graph.item_registry.get(&item.name) {
                     if info.kind == ItemKind::ServiceItem && !item.name.is_empty() {
                         for op in item.children.iter() {
@@ -1317,7 +1277,6 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let gross = start.elapsed().as_nanos();
     let children = CHILD_NANOS.get();
     let self_time = gross.saturating_sub(children);
-
     if let Some(subject) = ACTIVE_SUBJECT.with(|s| s.borrow().clone()) {
         SUBJECT_SELF_NANOS.with(|m| {
             *m.borrow_mut().entry(subject).or_insert(0) += self_time;
@@ -1459,7 +1418,6 @@ fn eval_var(
                             return Ok(Value::Str(name));
                         }
                     }
-
                     let key = Rc::as_ptr(fn_node) as usize;
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
@@ -1470,7 +1428,6 @@ fn eval_var(
                 }
             }
         }
-
         if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
             if let Some(fn_node) = ctx.lookup_fn(&name) {
                 return Ok(Value::Fn {
@@ -1562,7 +1519,6 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
         (Value::Float(a), Value::Float(b)) => eval_float_binop(op, *a, *b),
         (Value::Int(a), Value::Float(b)) => eval_float_binop(op, *a as f64, *b),
         (Value::Float(a), Value::Int(b)) => eval_float_binop(op, *a, *b as f64),
-
         (Value::Str(a), Value::Str(b)) => match op {
             BinOp::Lt => Ok(Value::Bool(a < b)),
             BinOp::Gt => Ok(Value::Bool(a > b)),
@@ -1598,7 +1554,6 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
                 describe_repr(b),
             ))
         }
-
         (
             Value::Int(_)
             | Value::Float(_)
@@ -1613,7 +1568,6 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
             | Value::Unit
             | Value::Str(_),
         ) => None,
-
         (
             Value::Variant {
                 variant_name: an,
@@ -1629,13 +1583,11 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
         (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
             fields_numeric_straddle(af, bf)
         }
-
         (Value::List(av), Value::List(bv)) => av
             .iter()
             .zip(bv.iter())
             .filter(|(x, y)| x != y)
             .find_map(|(x, y)| cross_representation_numeric_straddle(x, y)),
-
         _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
             (Some(av), Some(bv)) => av
                 .iter()
@@ -1918,13 +1870,11 @@ fn match_pattern(
                         .get(&ctx.sym(&field_name))
                         .cloned()
                         .unwrap_or(Value::Null);
-
                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
                     bindings.extend(sub_bindings);
                 }
                 Some(bindings)
             }
-
             Value::Record { type_name, fields } => {
                 if *type_name != ctx.sym(name) {
                     return None;
@@ -1942,7 +1892,6 @@ fn match_pattern(
                 }
                 Some(bindings)
             }
-
             Value::List(items) => match name.as_str() {
                 "Empty" => {
                     if items.is_empty() {
@@ -1965,7 +1914,6 @@ fn match_pattern(
                             let field_name =
                                 field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                             let fb_pat = field_binding_pattern(fb.clone());
-
                             let field_val = match field_name.as_str() {
                                 "head" => head.clone(),
                                 "tail" => tail.clone(),
@@ -1979,7 +1927,6 @@ fn match_pattern(
                 }
                 _ => None,
             },
-
             Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
                 "Empty" => {
                     if s.is_empty() {
@@ -2014,7 +1961,6 @@ fn match_pattern(
                 }
                 _ => None,
             },
-
             Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
                 "Zero" => {
                     if *n == 0 {
@@ -2044,7 +1990,6 @@ fn match_pattern(
                 }
                 _ => None,
             },
-
             Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
                 let mut bindings = HashMap::new();
                 for fb in field_bindings.iter() {
@@ -2059,11 +2004,9 @@ fn match_pattern(
                 }
                 Some(bindings)
             }
-
             Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
                 Some(HashMap::new())
             }
-
             Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
                 Some(HashMap::new())
             }
@@ -2079,7 +2022,6 @@ fn match_pattern(
                 }
                 Some(bindings)
             }
-
             _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
                 if matches!(value, Value::Null) {
                     return None;
@@ -2226,7 +2168,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     } else {
         match env.lookup(ctx.sym(&func_name)) {
             Some(Value::Fn { node }) => node.clone(),
-
             Some(closure @ Value::Closure { .. }) => {
                 let closure = closure.clone();
                 let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
@@ -2874,7 +2815,6 @@ fn eval_algebra_method(
                 let mut result = Vec::new();
                 for item in items.iter() {
                     let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-
                     if matches!(&mapped, Value::Str(_)) {
                         result.push(mapped);
                     } else {
@@ -2955,7 +2895,6 @@ fn eval_algebra_method(
             }
             if let Ok(items) = expect_list(&receiver, "concat") {
                 let mut result = (*items).clone();
-
                 let mut merged_items = 0usize;
                 let mut copied_items = 0usize;
                 for arg in args {
@@ -3122,7 +3061,6 @@ fn eval_algebra_method(
             let ck = CanonKey::new(key).ok_or_else(|| InterpError::TypeError {
                 msg: "insert key is not a valid map key (closure/fn/NaN)".to_string(),
             })?;
-
             let mut counters = ctx.mutation_counters.borrow_mut();
             counters.map_insert_calls += 1;
             drop(counters);
@@ -3132,7 +3070,6 @@ fn eval_algebra_method(
         "merge" => {
             let base = expect_map(&receiver, "merge")?;
             let overlay = expect_map(args.first().unwrap_or(&Value::Null), "merge")?;
-
             let mut counters = ctx.mutation_counters.borrow_mut();
             counters.map_merge_calls += 1;
             drop(counters);
@@ -3411,7 +3348,6 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
-
         eprintln!("[hermetic:mock] {}.{}", service_name, op_name);
         return eval_mock_response(op_node, ctx);
     }
@@ -3682,7 +3618,6 @@ fn map_shell_outputs(
     let mut fields = HashMap::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
-
         let from_key = extract_from_key(child, ctx);
         let value = match from_key.as_deref() {
             Some("stdout") => Value::Str(result.stdout.clone()),
@@ -3732,13 +3667,9 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
 
 struct FileResult {
     success: bool,
-
     byte_count: i64,
-
     path: String,
-
     error: String,
-
     content: String,
 }
 
@@ -4084,7 +4015,6 @@ fn resolve_auth(
                         env_var_name = extract_string_value(&field_val);
                     }
                 }
-
                 if env_var_name.is_none() {
                     env_var_name = extract_string_value(&val_node);
                 }
@@ -4115,13 +4045,11 @@ fn find_service_config_string(
         let name = field_init_node_name_at(prop.clone(), si.clone());
         if name == key {
             let val_node = field_init_node_value(prop.clone());
-
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
                     return Some(s.clone());
                 }
             }
-
             let authored = authored_name_at(si.clone(), val_node);
             if !authored.is_empty() {
                 return Some(authored);
@@ -4239,11 +4167,9 @@ fn map_response_to_value(
     if children.is_empty() {
         return Ok(Value::Str(text.to_string()));
     }
-
     if children.len() == 1 {
         return Ok(Value::Str(text.to_string()));
     }
-
     let mut fields = HashMap::new();
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
@@ -4367,7 +4293,6 @@ pub(crate) fn resolve_published_mock_keys(
         let Some(node) = ctx.lookup_fn(name) else {
             continue;
         };
-
         let Some(ty) = node.type_annotation.as_ref() else {
             continue;
         };
@@ -4556,7 +4481,6 @@ fn eval_builtin(
         "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
 
         "concat" => {
-
             if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
                 let mut result = String::new();
                 for v in &positional {
@@ -4566,7 +4490,6 @@ fn eval_builtin(
                 }
                 return Ok(Some(Value::Str(result)));
             }
-
             let record_push = |copied: usize| {
                 let mut counters = ctx.mutation_counters.borrow_mut();
                 counters.list_push_calls += 1;
@@ -4683,7 +4606,6 @@ fn eval_builtin(
 
         "list_push" | "append" => match positional.as_slice() {
             [list_val, item] if matches!(list_val, Value::Str(_)) => Ok(None),
-
             [list_val, item] => match value_to_list_carrier(list_val) {
                 Some((items, copied)) => {
                     let mut counters = ctx.mutation_counters.borrow_mut();
@@ -4701,7 +4623,6 @@ fn eval_builtin(
 
         "list_concat" => match positional.as_slice() {
             [a, b] if matches!(a, Value::Str(_)) || matches!(b, Value::Str(_)) => Ok(None),
-
             [a, b] => match (value_to_list_carrier(a), value_to_list_carrier(b)) {
                 (Some((a_items, a_copied)), Some((b_items, b_copied))) => {
                     let mut counters = ctx.mutation_counters.borrow_mut();
@@ -4753,10 +4674,8 @@ fn eval_builtin(
         },
 
         "map_insert" => match positional.as_slice() {
-
             [Value::Map(m), k, v] => match CanonKey::new((*k).clone()) {
                 Some(ck) => {
-
                     let mut counters = ctx.mutation_counters.borrow_mut();
                     counters.map_insert_calls += 1;
                     drop(counters);
@@ -4813,7 +4732,6 @@ fn eval_builtin(
 
         "map_merge" => match positional.as_slice() {
             [Value::Map(base), Value::Map(overlay)] => {
-
                 let mut counters = ctx.mutation_counters.borrow_mut();
                 counters.map_merge_calls += 1;
                 drop(counters);
@@ -4904,7 +4822,6 @@ fn eval_builtin(
         }
 
         "medium_structure_leak_facts" => {
-
             let emit_roots =
                 expect_str_list_flex(positional.first().copied(), "medium_structure_leak_facts")?;
             let check_roots =
@@ -5348,7 +5265,6 @@ fn apply_closure(
                 other => other,
             }
         }
-
         Value::Fn { node } => {
             let node = node.clone();
             let named: Vec<(Option<String>, Value)> =
@@ -5380,7 +5296,6 @@ where
 }
 
 thread_local! {
-
     static FLATTEN_COUNTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
 }
 
@@ -5453,18 +5368,13 @@ pub fn expr_variant_name(i: usize) -> &'static str {
 }
 
 thread_local! {
-
     static EVAL_COUNTS: RefCell<[u64; EXPR_VARIANT_COUNT]> =
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
     static EVAL_SELF_NANOS: RefCell<[u128; EXPR_VARIANT_COUNT]> =
         const { RefCell::new([0; EXPR_VARIANT_COUNT]) };
-
     static ACTIVE_SUBJECT: RefCell<Option<String>> = const { RefCell::new(None) };
-
     static SUBJECT_SELF_NANOS: RefCell<HashMap<String, u128>> = RefCell::new(HashMap::new());
-
     static CHILD_NANOS: Cell<u128> = const { Cell::new(0) };
-
     static PROFILE_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
 }
 
@@ -5562,7 +5472,6 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 record_flatten(out.len());
                 return Some(out);
             }
-
             Value::Str(s) => {
                 out.extend(s.chars().map(char_value));
                 record_flatten(out.len());
@@ -5651,7 +5560,6 @@ fn raw_map_lookup(
                 Some(_) => Err(InterpError::TypeError {
                     msg: "Map.lookup field is not callable".to_string(),
                 }),
-
                 None => match key {
                     Value::Str(s) => {
                         let k = ctx.sym(s);

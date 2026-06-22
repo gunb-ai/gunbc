@@ -731,7 +731,6 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     let DagCollectPatch { compile_text, .. } = patch_bootstrap_dag_collect_text(&text)?;
     fs::write(&compile_path, compile_text)
         .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
-
     Ok(())
 }
 

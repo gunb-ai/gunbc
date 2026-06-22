@@ -36,6 +36,5 @@ fn int_pow_bounded_degenerate_bases_do_not_deep_recurse_at_cap_exponent() {
 fn ceil_log_overflow_or_invalid_is_none() {
     assert_eq!(ceil_log(1, 10), None);
     assert_eq!(ceil_log(2, 0), None);
-
     assert_eq!(ceil_log(2, i64::MAX), None);
 }

@@ -56,7 +56,6 @@ fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'
             Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Empty") => {
                 return Ok(out);
             }
-
             Value::List(items) => {
                 out.extend(items.iter());
                 return Ok(out);
@@ -136,7 +135,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("RunnableDiscoveryBatch missing field `scan_dirs`".to_string()),
             };
-
             let explicit_entries = match ctx.field(fields, "explicit_entries") {
                 Some(v) => {
                     let mut out = Vec::new();
@@ -248,7 +246,6 @@ fn run_single_claim(source_roots: &[String], entry: String, function: String) ->
             }
         }
     };
-
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
     match run_claim(&ctx, &function) {
         ClaimOutcome::Pass => ClaimResult {
@@ -287,7 +284,6 @@ fn run_discovery_batch_node(
         explicit_entries.len(),
         spawn_width.max(1),
     );
-
     match run_discovery_corpus_with_options(
         &source_roots,
         &scan_dirs,
@@ -348,7 +344,6 @@ fn eval_plan(
     })?;
     let batches = batches_from_plan(&plan_value, &plan_ctx)
         .map_err(|msg| format!("malformed plan value: {}", msg))?;
-
     drop(plan_value);
     drop(plan_graph);
     Ok(batches)
@@ -405,7 +400,6 @@ fn read_host_memory_budget_bytes() -> Option<u64> {
             }
         }
     }
-
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
         for key in ["MemAvailable", "MemTotal"] {
             if let Some(kb) = meminfo
@@ -439,7 +433,6 @@ fn eval_spawn_width(
         ),
         b => eprintln!("claim_executor: live memory budget {b} bytes (cgroup memory.max / meminfo)"),
     }
-
     let budget_arg = i64::try_from(budget_bytes).unwrap_or(i64::MAX);
     let width_value = run_in_context_with_args(
         &plan_ctx,
@@ -512,7 +505,6 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
                 }
             }
         }
-
         if any_failed {
             eprintln!(
                 "claim_executor: batch {} had failures — stopping before dependent batches",
@@ -560,7 +552,6 @@ fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
 
 fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> {
     let text = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-
     let needle_fn = format!("fn {function}(");
     let needle_func = format!("func {function}(");
     let start = match (text.find(&needle_func), text.find(&needle_fn)) {
@@ -607,7 +598,6 @@ fn run_perturb_check(
             return Err(ExitCode::from(2));
         }
     };
-
     if batches.len() < 2 {
         eprintln!(
             "claim_executor: --perturb-check needs a plan with >= 2 batches to witness the \
@@ -616,7 +606,6 @@ fn run_perturb_check(
         );
         return Err(ExitCode::from(2));
     }
-
     let (gating_entry, gating_function) = match batches[0].first() {
         Some(Runnable::SingleClaim { entry, function }) if !entry.is_empty() => {
             (entry.clone(), function.clone())
@@ -801,7 +790,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
-
     match peak_rss_bytes() {
         Some(bytes) => eprintln!(
             "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"

@@ -21,7 +21,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut scan_dir = "src/v2/test/claim".to_string();
-
     let mut exclude_subpaths: Vec<String> = vec![
         "impossible_bug".to_string(),
         "glob_discovery.dag".to_string(),

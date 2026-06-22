@@ -13,7 +13,6 @@ fn faithful_string_leaf_base_is_freemonoid_char() {
         leaf, "FreeMonoid<Char>",
         "faithful String leaf must render the declared Char element (got {leaf:?})"
     );
-
     assert_ne!(
         leaf, "FreeMonoid<Nat>",
         "leaf must not bake the wrong Nat element"
@@ -34,7 +33,6 @@ fn faithful_string_applied_base_is_bare_freemonoid() {
         base, "FreeMonoid",
         "applied String base must be bare (element from the resolved child)"
     );
-
     assert!(
         !base.contains('<'),
         "applied base must hold no element literal (got {base:?})"
@@ -44,7 +42,6 @@ fn faithful_string_applied_base_is_bare_freemonoid() {
 #[test]
 fn faithful_string_applied_single_application_not_doubled() {
     let base = rust_applied_type_base("String".to_string(), RustCorpusRepr::FaithfulFreeMonoid);
-
     let applied = format!("{base}<{}>", "Char");
     assert_eq!(
         applied, "FreeMonoid<Char>",

@@ -41,7 +41,6 @@ fn read_magic() -> Int { magic }
     for (src, expected) in [(src_a, 41), (src_b, 42)] {
         let resolved = resolve(src);
         let graph = resolved.graph.as_ref().expect("graph");
-
         match v1_interpreter::run_with_options(
             graph,
             resolved.source_indices.clone(),

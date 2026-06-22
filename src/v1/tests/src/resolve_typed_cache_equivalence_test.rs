@@ -45,23 +45,19 @@ fn typed_module_cache_matches_cold_oracle_in_every_order() {
         type Box { v: Int }\n\
         fn boxed(n: Int) -> Box { Box { v: n } }\n\
         fn unbox(b: Box) -> Int { b.v }\n";
-
     let shared1 = "module test.shared1\nfn val() -> Int { 10 }\n";
     let shared2 = "module test.shared2\nfn val() -> Int { 20 }\n";
-
     let entry_a = "module test.a\n\
         import test.common { boxed, unbox }\n\
         import test.shared1 { val }\n\
         fn witness_a_true() -> Bool { (unbox(boxed(val())) + 0) == 10 }\n\
         fn witness_a_false() -> Bool { val() == 999 }\n";
-
     let extra = "module test.extra\nfn pad() -> Int { 7 }\n";
     let entry_b = "module test.b\n\
         import test.common { boxed, unbox }\n\
         import test.shared2 { val }\n\
         import test.extra { pad }\n\
         fn witness_b_true() -> Bool { (unbox(boxed(val())) + pad()) == 27 }\n";
-
     let entry_c = "module test.c\n\
         import test.common { boxed, unbox }\n\
         import test.shared1 { val }\n\
@@ -99,11 +95,9 @@ fn typed_module_cache_matches_cold_oracle_in_every_order() {
     let orders: [&[&str]; 3] = [&[&a, &b, &c], &[&c, &b, &a], &[&b, &a, &c]];
     for order in orders {
         let index = build_multi_entry_index(&roots);
-
         for entry in order {
             let _ = resolve_entry_with_index(&index, entry).expect("warm resolve");
         }
-
         for (entry, f, expected) in witnesses {
             let got = cached(&index, entry, f);
             assert_eq!(

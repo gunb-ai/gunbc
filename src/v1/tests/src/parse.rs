@@ -60,7 +60,6 @@ fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSp
             source.push('\n');
         }
         let name = format!("fn_{i}");
-
         let start = source.chars().count() as i64;
         source.push_str(&name);
         let end = source.chars().count() as i64;
@@ -303,12 +302,10 @@ type Foo { value: String }
     assert!(result.error.is_none(), "parse error: {:?}", result.error);
 
     let module = result.module.clone().expect("module");
-
     assert!(
         module.ident.is_some(),
         "module ident should be Some after parsing"
     );
-
     assert_ne!(module.ident.unwrap(), 0, "module ident should be non-zero");
 
     let imports = module.params.clone();
@@ -668,7 +665,6 @@ fn tokenizer_scanning_scales_linearly() {
 
 #[test]
 #[ignore]
-
 fn parser_scales_linearly_with_token_count() {
     use std::time::Instant;
 

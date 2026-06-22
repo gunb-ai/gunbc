@@ -292,7 +292,6 @@ fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
 
 fn tracked_extdep_rest_ops() -> Vec<RestOp> {
     let parsed = all_parsed_extdep_rest_ops();
-
     const TRACKED: &[(&str, &str)] = &[
         ("github.Pulls", "List"),
         ("github.Pulls", "Get"),

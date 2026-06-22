@@ -305,7 +305,6 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
     let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
     let poisoner_abs = ws.join(poisoner_rel);
     let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
-
     let data_line = fixture_line(&text, "data floor_corpus_node");
     let budget = ws
         .join("src/v2/compiler/complexity_gate/budget_roster_completeness_test.dag")

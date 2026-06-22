@@ -348,14 +348,12 @@ fn module_source_nickname_literal_projection_uses_constructed_qn_not_module_path
             ),
             0
         );
-
         assert_eq!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &coverage_qn,
             ),
             0
         );
-
         assert!(
             extdeps_shape_transport_policy_project::module_source_nickname_literal_count_for_qualified_name(
                 &local_red_qn,

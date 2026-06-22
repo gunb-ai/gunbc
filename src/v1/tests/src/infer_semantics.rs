@@ -1222,7 +1222,6 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         1,
         "keys result should have one child"
     );
-
     let elem_child = &result.result_type.children[0];
     let elem_type = resolved_type(elem_child.clone());
     assert_eq!(

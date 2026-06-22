@@ -20,7 +20,6 @@ use v1_compiler::v1_std_core::{
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-
     #[arg(long, global = true)]
     dry_run: bool,
 }
@@ -30,31 +29,23 @@ enum Commands {
     Compile {
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-
         #[arg(long = "source-dir")]
         source_dir: Option<String>,
         #[arg(long)]
         output_dir: String,
-
         #[arg(long, default_value = "rust")]
         target: String,
-
         #[arg(long = "dependency-pool-index", default_value = "strict")]
         dependency_pool_index: String,
     },
-
     Ci,
-
     Run {
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-
         #[arg(long, default_value = "main")]
         function: String,
-
         #[arg(long)]
         entry: Option<String>,
-
         #[arg(long)]
         claim_run: bool,
     },

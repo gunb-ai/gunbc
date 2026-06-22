@@ -115,9 +115,7 @@ struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
-
     execution_mode: ExecutionMode,
-
     fixture_store: Option<PathBuf>,
 }
 
@@ -132,7 +130,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut roster_from_discovery = false;
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "v2 CI claim gate".to_string();
-
     let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
 
@@ -187,7 +184,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 i += 1;
                 notice_title = require_value(args, i, "--notice-title")?;
             }
-
             "--claim-run" => {}
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,

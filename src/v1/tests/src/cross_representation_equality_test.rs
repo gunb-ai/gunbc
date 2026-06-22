@@ -88,7 +88,6 @@ fn grounded_numeric_tower_reconciles() {
                 ),
             }
         }
-
         match v1_interpreter::run_in_context(ctx, "reconciles_ne_path_false", false) {
             Ok(Value::Bool(false)) => {}
             other => panic!("reconciles_ne_path_false: expected Bool(false), got {other:?}"),

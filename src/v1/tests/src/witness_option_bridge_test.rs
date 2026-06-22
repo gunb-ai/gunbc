@@ -216,7 +216,6 @@ fn mark_excluded_no_longer_pattern_match_fails() {
     let entry = "src/v2/lens/affected_set/excluded_propagation_proof.dag";
     let content = std::fs::read_to_string(workspace_root().join(entry))
         .unwrap_or_else(|e| panic!("read {entry}: {e}"));
-
     match run_v4_module(entry, &content, "excluded_propagation_proof_claim_holds") {
         Value::Bool(_) => {}
         other => panic!("expected Bool witness from mark_excluded path, not crash; got {other:?}"),
