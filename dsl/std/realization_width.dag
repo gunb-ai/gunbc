@@ -73,6 +73,10 @@ fn memory_bounded_fit_count(budget: ByteSize, unit_peak: ByteSize, reserved: Byt
   )
 }
 
+fn measure_max(a: ByteSize, b: ByteSize) -> ByteSize {
+  if byte_size_count(b: a) >= byte_size_count(b: b) { a } else { b }
+}
+
 fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
   nat_max(
     a: memory_bounded_fit_count(budget: memory_budget, unit_peak: per_shard_peak, reserved: byte_size(0)),
