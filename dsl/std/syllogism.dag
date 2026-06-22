@@ -49,7 +49,6 @@ module std.syllogism
 import std.graph {
   GraphEdge,
   CallGraph,
-  CallGraphAdjacencyViews,
   DfsFinishAcc,
   build_adjacency_views,
   dfs_finish_order,
