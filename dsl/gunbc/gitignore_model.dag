@@ -1,0 +1,41 @@
+module gunbc.gitignore_model
+
+type DerivableProducerKind
+  = CargoArtifacts
+  | CargoCacheLocal
+  | CodegenSymlink
+  | CoverageReport
+  | GeneratorStamp
+  | WorkflowRuntime
+  | TestgenOutput
+  | RegenTempDir
+  | ClaudeCodeSession
+  | ClaimMapOutput
+  | OpenClawArtifact
+  | GithubCLICache
+  | AuthSessionTranscript
+
+type CitedProducerKind
+  = OperatingSystem
+  | EditorIDE
+  | NodeJS
+  | SecretsConvention
+  | PythonLang
+
+type Producer
+  = Derivable { kind: DerivableProducerKind }
+  | Cited { kind: CitedProducerKind, upstream: String }
+
+type IgnoreRationale = ReproducibleFromSource | EnvironmentSpecific
+
+type IgnoreRule {
+  pattern: String
+  producer: Producer
+  rationale: IgnoreRationale
+}
+
+type IgnoreGroup {
+  producer: Producer
+  rationale: IgnoreRationale
+  patterns: List<String>
+}
