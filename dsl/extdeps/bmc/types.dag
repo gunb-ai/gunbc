@@ -105,6 +105,13 @@ type RedfishAccountRole =
   | AccountRoleOperator
   | AccountRoleReadOnly
 
+type RedfishPrivilege =
+    PrivilegeLogin
+  | PrivilegeConfigureManager
+  | PrivilegeConfigureUsers
+  | PrivilegeConfigureComponents
+  | PrivilegeConfigureSelf
+
 fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
   match t {
     BootTargetNone => "None"
@@ -141,5 +148,15 @@ fn redfish_account_role_wire(role: RedfishAccountRole) -> NonEmptyStr {
     AccountRoleAdministrator => "Administrator"
     AccountRoleOperator => "Operator"
     AccountRoleReadOnly => "ReadOnly"
+  }
+}
+
+fn redfish_privilege_wire(p: RedfishPrivilege) -> NonEmptyStr {
+  match p {
+    PrivilegeLogin => "Login"
+    PrivilegeConfigureManager => "ConfigureManager"
+    PrivilegeConfigureUsers => "ConfigureUsers"
+    PrivilegeConfigureComponents => "ConfigureComponents"
+    PrivilegeConfigureSelf => "ConfigureSelf"
   }
 }

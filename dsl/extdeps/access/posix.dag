@@ -59,7 +59,3 @@ data posix_sudo_group: NonEmptyStr = "sudo"
 fn posix_user_is_root(user: PosixUser) -> Bool {
   user.uid == posix_root_uid
 }
-
-fn posix_membership_in_group(member: PosixGroupMembership, group: NonEmptyStr) -> Bool {
-  member.group == group
-}
