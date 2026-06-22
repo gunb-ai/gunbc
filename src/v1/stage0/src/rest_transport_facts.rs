@@ -1,21 +1,3 @@
-// rest_transport_facts.rs — Hand-maintained REST transport introspection.
-// Survives stage0 regeneration (see scripts/check-stage0-freshness.sh exclusions).
-//
-// Bounded substrate seed:
-// This file is a bootstrap-only bridge so tests can read `transport rest`
-// facts through the same `v1_std_core` accessors as the compiler. It is NOT
-// a second authority over service metadata.
-//
-// Dissolution trigger (Strict Forward Progress / scaffold boundaries):
-// Delete this module when REST operation facts are reachable from the typed
-// resolved graph (or a single declaration-driven export) such that
-// `effects` / derivation tests consume substrate facts without a parallel
-// AST walk. Tracked under L1.5 clean-bootstrap / facts-forward work.
-//
-// Surfaces declared `transport rest { method, path }` facts for service
-// operations using the same `v1_std_core` accessors as the compiler — not a
-// parallel text parser over raw `.dag` source.
-
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -25,7 +7,6 @@ use crate::v1_std_core::{
     transport_path_template_key, ExprData, NewlineIndex, Node,
 };
 
-/// One REST operation under a service scope (`service.operation` in `.dag`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclaredRestTransportOp {
     pub service: String,
@@ -34,7 +15,6 @@ pub struct DeclaredRestTransportOp {
     pub path: String,
 }
 
-/// Fail-closed record for malformed transport nodes (no panic in `collect`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestTransportFactError {
     MissingServiceScope { operation: String },
@@ -73,7 +53,6 @@ pub struct RestTransportCollectResult {
     pub errors: Vec<RestTransportFactError>,
 }
 
-/// String literal or keyword (`GET`, `POST`, …) for a transport property.
 fn transport_field_string(
     props: Rc<Vec<Rc<Node>>>,
     prop_name: String,
@@ -95,9 +74,6 @@ fn transport_field_string(
     })
 }
 
-/// Collect every `transport rest` operation in a parsed module tree, with
-/// enclosing service name (e.g. `github.Pulls`, `oauth2.Google`).
-/// Malformed nodes yield `errors` entries; they are never represented in `ops`.
 pub fn collect_rest_transport_operations(
     module: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

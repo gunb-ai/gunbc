@@ -1,9 +1,3 @@
-// Status: emit→ingest compare is W1b follow-up — claim label must not imply bit-identical fidelity until then.
-// Claim input embeds axis witnesses for IRT-4 frontier only — eval does not trust embedded ready atoms (P2).
-// Fixture: src/v2/test/fixture/dag_round_trip_mvp1.dag (committed wave-1 surface program).
-// Normalization budget: C5 trivia normalization from dag.dag only — whitespace and comments are
-//   DeclaredNormalized (TriviaRule-stripped); all other surface features are Modeled (lossless).
-
 module v2.test.round_trip.dag_ingest_round_trip
 
 import v2.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -27,10 +21,6 @@ import v2.std.verification {
   Integration,
   manual_claim_anchor
 }
-// Structural import: ties this claim to the fixture module identity.
-// If fixture/dag_round_trip_mvp1.dag is renamed or its exports change, this import breaks,
-// preventing silent drift.  Full source-text binding is deferred: String = FreeMonoid<Char>
-// where Char = Nat (Peano), making multi-line fixture embedding infeasible in the current
 
 fn dag_round_trip_input_node() -> Node {
   let lm = dag_language_model_wave1_modeled()

@@ -1,8 +1,4 @@
-// Scope: anti-laundering controls for project_to_core dispatch and integer value-set containment.
-// Status: executable Bool witnesses.
-
 module v2.test.manual.find_witness_project_to_core_controls
-
 
 import v2.test.fixture.derivable_coercion_task_id {
   account_id_wrong_inhabitant_node,
@@ -50,13 +46,11 @@ import v2.std.refinement_widening_predicate {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {
@@ -411,7 +405,6 @@ data witness_refinement_widening_refuses_semantically_equal_value_sets: Bool = !
     candidate_value_set: i32_value_set_interval_first()
   )
 )
-
 
 data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = match integer_interval_bound_compare(
     left: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),

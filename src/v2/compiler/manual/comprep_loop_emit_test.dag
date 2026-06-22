@@ -1,5 +1,3 @@
-// Scope: bounded Loop body emit through value-expression tier (.dag target).
-
 module v2.test.manual.comprep_loop_emit
 
 import v2.compiler.body_producer {

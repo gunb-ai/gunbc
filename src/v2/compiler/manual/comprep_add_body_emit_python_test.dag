@@ -1,9 +1,3 @@
-// Scope: §3 python-emit IC — keystone emit receipt for python_mvp1 add-fn through the
-//   grammar-inverse fold (grammar-relation → token-spine serialization).
-//   GREEN: emit(add) matches target_serialize_source authority (python_mvp1_source_text).
-//   RED: perturbed binding spellings (x→"a", y→"b") produce distinct source text.
-// Anchor: §3 emit-breadth MoA — N data rows NOT N×M hand-arms; new spelling variant = data.
-
 module v2.test.manual.comprep_add_body_emit_python
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -38,8 +32,6 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-// Perturbed spellings: param_x→"a", param_y→"b" instead of "x"/"y".
-// Produces distinct source text; fn_add spelling ("add") is unchanged.
 data comprep_python_add_emit_perturbed_source_text: String = "def add(a, b): return a + b"
 
 fn comprep_python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
@@ -69,7 +61,6 @@ fn comprep_python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<Stri
   emit(tree: mvp1_python_inferred_tree, target: target)
 }
 
-// GREEN: emit with canonical target matches the grammar-inverse authority serialization.
 fn comprep_python_add_emit_holds() -> Bool {
   match target_serialize_source_from_model(
     target: python_mvp1_target_model(),
@@ -85,7 +76,6 @@ fn comprep_python_add_emit_holds() -> Bool {
   }
 }
 
-// RED: perturbed binding spellings produce a distinct source text (not the canonical one).
 fn comprep_python_add_emit_perturbed_spellings_discriminates() -> Bool {
   match comprep_python_add_emit_from_tree(target: python_mvp1_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>

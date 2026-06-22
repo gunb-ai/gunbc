@@ -1,6 +1,4 @@
-
 module v2.test.generated.algebra_law_conformance
-
 
 import v2.lens.testgen {
   testgen_emit_algebra_law_claim
@@ -32,7 +30,6 @@ fn algebra_law_generated_atom(s: Symbol) -> Node {
 }
 }
 
-
 fn algebra_law_generated_nat_value(value: Nat) -> Node {
   match value {
     Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
@@ -48,7 +45,6 @@ fn algebra_law_generated_nat_value(value: Nat) -> Node {
   }
 }
 
-
 fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, result: Nat) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -62,56 +58,45 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
 }
 }
 
-
 fn t19_generated_nat_zero_value() -> Nat {
   Zero
 }
-
 
 fn t19_generated_nat_one_value() -> Nat {
   Succ { prev: t19_generated_nat_zero_value() }
 }
 
-
 fn t19_generated_nat_two_value() -> Nat {
   Succ { prev: t19_generated_nat_one_value() }
 }
-
 
 fn t19_generated_nat_three_value() -> Nat {
   Succ { prev: t19_generated_nat_two_value() }
 }
 
-
 fn t19_generated_nat_zero() -> Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_zero_value())
 }
-
 
 fn t19_generated_nat_one() -> Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_one_value())
 }
 
-
 fn t19_generated_nat_two() -> Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_two_value())
 }
-
 
 fn t19_generated_nat_three() -> Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_three_value())
 }
 
-
 fn t19_generated_nat_add(left: Node, right: Node, result: Nat) -> Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_add_application, left: left, right: right, result: result)
 }
 
-
 fn t19_generated_nat_mul(left: Node, right: Node, result: Nat) -> Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
 }
-
 
 data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddLeftIdentity,
@@ -124,7 +109,6 @@ data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_al
   rhs: t19_generated_nat_one(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
-
 
 data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddAssociativity,
@@ -156,7 +140,6 @@ data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_al
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
-
 data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatMulAnnihilator,
   label: "generated/algebra_law: Nat multiplication annihilator",
@@ -169,7 +152,6 @@ data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_alge
   classification: TestClassification { tier: Tier1, layer: Unit }
 )
 
-
 fn generated_algebra_law_claim_rows() -> List<Outcome<TestClaim>> {
   [
     generated_nat_add_left_identity_claim,
@@ -177,7 +159,6 @@ fn generated_algebra_law_claim_rows() -> List<Outcome<TestClaim>> {
     generated_nat_mul_annihilator_claim,
   ]
 }
-
 
 fn generated_algebra_law_sample_count_is_three() -> Bool {
   length(xs: generated_algebra_law_claim_rows()) == 3

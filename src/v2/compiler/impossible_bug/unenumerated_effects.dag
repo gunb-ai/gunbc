@@ -1,8 +1,4 @@
-// Anchor: enumerable impossible-bug classes (DESIGN.md §5, fail-closed) R2+ + lens/effect.dag (5-behavior compositional fold)
-
-
 module v2.test.impossible_bug.unenumerated_effects
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -33,7 +29,6 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
-
 fn effect_subject(signature: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -44,7 +39,6 @@ fn effect_subject(signature: Node, body: Node) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 data effect_derived_from_signature_input: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -61,9 +55,7 @@ data effect_derived_from_signature_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^explicit_reread_symbol))
-
 
 data falsification_redundant_read: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -74,7 +66,6 @@ data falsification_redundant_read: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data claim_effect_derived_from_signature: TestClaim = CompilesClaim {
   label: "effect lens derives read write shape from signature",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -83,7 +74,6 @@ data claim_effect_derived_from_signature: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
 
-
 data claim_explicit_reread_passes: TestClaim = CompilesClaim {
   label: "explicit reread primitive records intent without effect side taxonomy",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -91,7 +81,6 @@ data claim_explicit_reread_passes: TestClaim = CompilesClaim {
   expected_value: explicit_reread_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
 }
-
 
 data claim_redundant_read_caught: TestClaim = DiagnosticClaim {
   label: "redundant read without intervening write is rejected by effect lens",

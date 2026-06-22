@@ -1,6 +1,3 @@
-//     python source -> parse -> parse_tree_to_target_model_bridge -> emit -> python source
-// Status: EXECUTED Bool witness (fast selector bijectivity) + heavy by-execution source round-trip.
-
 module v2.test.manual.emit_ingest_python_same_language_round_trip
 
 import v2.compiler.ingest {
@@ -48,8 +45,6 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-// Project a grammar-relation row's token-spine to ordered token CLASSES (bindings dropped),
-// mirroring v2.compiler.ingest row_token_spine_classes — the frontier forward selection keys on.
 fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
@@ -83,9 +78,6 @@ fn emit_ingest_python_canonical_emitted() -> Node {
   python_mvp1_emitted_add_fn_node()
 }
 
-// Hermetic perturb token: not on the python_mvp1 add-fn production spine (bogus append target).
-
-// Backward selector (emit/serialize): keys on grammar_relation_field_emitted.
 fn emit_python_backward_selects_canonical_row_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
@@ -97,7 +89,6 @@ fn emit_python_backward_selects_canonical_row_holds() -> Bool {
   }
 }
 
-// Forward selector (ingest bridge): keys on token-spine frontier classes.
 fn ingest_python_forward_selects_canonical_emitted_holds() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
@@ -113,7 +104,6 @@ fn ingest_python_forward_selects_canonical_emitted_holds() -> Bool {
   }
 }
 
-// Bijectivity: backward(emitted) then forward(spine) = identity on emitted.
 fn emit_then_ingest_python_selector_identity_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
@@ -136,7 +126,6 @@ fn emit_then_ingest_python_selector_identity_holds() -> Bool {
   }
 }
 
-// Bijectivity: forward(spine) then backward(emitted) = identity on row.
 fn ingest_then_emit_python_selector_identity_holds() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
@@ -159,7 +148,6 @@ fn ingest_then_emit_python_selector_identity_holds() -> Bool {
   }
 }
 
-// Hermetic discriminator (per-merge vacuous-accept guard): canonical spine with a bogus extra token
 fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
   match emit_ingest_python_row_token_spine_classes(row: emit_ingest_python_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
@@ -174,12 +162,10 @@ fn emit_ingest_python_perturbed_frontier_fails_closed() -> Bool {
   }
 }
 
-// Positive control (perturb-RED other side): the UN-perturbed canonical frontier MUST select.
 fn emit_ingest_python_unperturbed_frontier_accepts() -> Bool {
   ingest_python_forward_selects_canonical_emitted_holds()
 }
 
-// Hermetic perturb-RED: a single-token frontier off the python_mvp1 add spine -> fail closed.
 fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   match grammar_relation_row_forward_selection(
     frontier: Cons { head: ^emit_ingest_python_perturb_bogus_tok, tail: Empty },
@@ -190,7 +176,6 @@ fn ingest_python_forward_fails_closed_off_frontier_holds() -> Bool {
   }
 }
 
-// Hermetic perturb-RED: backward selection on a foreign (dag) emitted against python rules -> fail closed.
 fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   match grammar_relation_row_for_emitted(
     rules: emit_ingest_python_shared_rules(),
@@ -201,7 +186,6 @@ fn emit_python_backward_fails_closed_on_foreign_emitted_holds() -> Bool {
   }
 }
 
-// Fast BoolWitness: python_mvp1 grammar-relation selector bijectivity (hermetic, sub-second).
 test fn emit_ingest_python_selector_bijectivity_holds() -> Bool {
   emit_python_backward_selects_canonical_row_holds()
     && ingest_python_forward_selects_canonical_emitted_holds()
@@ -212,12 +196,6 @@ test fn emit_ingest_python_selector_bijectivity_holds() -> Bool {
     && emit_python_backward_fails_closed_on_foreign_emitted_holds()
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HEAVY (real python parse, ~627s) — same-language round-trip on REAL source.
-// NOT BoolWitnessed: per-PR lens-gate time budget (see cross_language_add_python_to_typescript).
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Real python source parses; forward bridge recovers the canonical add-fn core node.
 fn python_same_language_parse_bridge_holds() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -233,8 +211,6 @@ fn python_same_language_parse_bridge_holds() -> Bool {
   }
 }
 
-// Real python source -> parse -> bridge -> emit(py) recovers canonical python_mvp1_source_text.
-// Bundles real-tree foreign-rules discrimination (grammar rows drive recovery, not fabrication).
 test fn python_same_language_source_emit_round_trip_holds() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -252,8 +228,6 @@ test fn python_same_language_source_emit_round_trip_holds() -> Bool {
   }
 }
 
-// Discrimination on the REAL tree: the same parsed python tree against a foreign row table
-// (dag_mvp1_target_model) matches no row -> fail closed. Proves recovery is frontier-driven.
 fn python_same_language_discriminates_on_real_tree() -> Bool {
   match python_mvp1_grammar_parse_fixture() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -268,7 +242,6 @@ fn python_same_language_discriminates_on_real_tree() -> Bool {
   }
 }
 
-// Composed heavy receipt: REAL python same-language emit↔ingest round-trip end-to-end.
 fn emit_ingest_python_same_language_round_trip_holds() -> Bool {
   emit_ingest_python_selector_bijectivity_holds()
     && python_same_language_parse_bridge_holds()

@@ -1,7 +1,3 @@
-//! Structural projection for `v2.lens.host_language_transport_script`.
-//! Finds `shell.Exec.Run(script: …)` and classifies the script argument by parse-tree
-//! shape only — never inspects string contents.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;

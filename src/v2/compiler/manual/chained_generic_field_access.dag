@@ -1,4 +1,3 @@
-// Repro for dep-graph §4a item (c): chained generic field access without stepped accessors.
 module v2.test.manual.chained_generic_field_access
 
 import v2.std.verification {

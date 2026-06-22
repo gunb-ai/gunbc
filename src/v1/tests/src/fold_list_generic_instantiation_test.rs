@@ -1,9 +1,3 @@
-//! v2 R2 generic instantiation — fold_list/fold_list_right cons|snoc callbacks bind T
-//! from xs: FreeMonoid<T> (dep-graph-2026-06-12 §4a / tidy-stag-172).
-//!
-//! Executes the v2 witness through the real v2 compile+interpret pipeline (same path as
-//! `gunbc run --source-root src/v2` claim runners).
-
 use std::rc::Rc;
 use std::sync::OnceLock;
 

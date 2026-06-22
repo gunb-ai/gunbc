@@ -1,6 +1,3 @@
-// Scope: COMPREP wave-1 runtime keystone — source-gated add body executes through eval callee dispatch.
-// Status: executable --claim-run witness; swapped operand bindings are the discriminating red.
-
 module v2.test.manual.comprep_eval_by_execution
 
 import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body }
@@ -214,10 +211,6 @@ fn comprep_eval_choose_branch(node: Node, _value: RuntimeValue, _env: Evaluation
   outcome_rejected(d: comprep_eval_runtime_diagnostic(n: node))
 }
 
-// Branch channel-suppression consumer (E-10 / node://adhoc-e80d87aa-297):
-// Always selects arm at positional index 1. Used in the channel-suppression discrimination
-// test. NOTE: arm bodies still execute during fold_node's bottom-up catamorphism; this stub
-// selects arm1 after the fold so eval_branch_node can call eval_runtime_node on the chosen arm.
 fn comprep_eval_choose_first_arm(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
     Present { value: arm } => outcome_accepted(value: arm)
@@ -245,10 +238,6 @@ fn comprep_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
   }
 }
 
-// Branch node: condition=literal_two, arm1=literal_five (selected), arm2=unknown-atom (rejects in
-// allocate_literal). Discriminating red: without channel suppression, arm2's Rejected short-circuits
-// child_values before eval_branch_node is reached. With it, the rejection is dropped from child_values
-// (arm2 still executes during the fold — channel suppression, not execution suppression).
 fn comprep_eval_lazy_arm_branch_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
@@ -514,9 +503,6 @@ fn comprep_swapped_add_arrow() -> Node {
   }
 }
 
-// Oversized signature: a fourth positional Int fact beyond the Int,Int->Int add shape.
-// The exact-arity gate must REFUSE this (it was previously admitted as add, dropping the
-// extra fact) — eval_wave1_add_signature now asserts no child at index 4.
 fn comprep_excess_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -531,7 +517,6 @@ fn comprep_excess_signature_arrow() -> Node {
   }
 }
 
-// Canonical add body [+, x, y] — exactly three children.
 fn comprep_eval_canonical_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -544,8 +529,6 @@ fn comprep_eval_canonical_body() -> Node {
   }
 }
 
-// Oversized body: a fourth operand beyond [+, x, y]. The exact-arity gate must REFUSE this
-// (eval_wave1_add_body now asserts no child at index 3).
 fn comprep_excess_body_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -572,9 +555,6 @@ fn comprep_excess_body() -> Node {
   }
 }
 
-// Oversized actuals: a third operand on the add call. The exact-arity gate must REFUSE this
-// (eval_bind_wave1_arguments now fails closed with eval_rejected_argument_arity_excess
-// rather than binding [0],[1] and silently dropping the third).
 fn comprep_excess_actual_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -643,8 +623,6 @@ fn comprep_eval_direct_runtime_holds() -> Bool {
   }
 }
 
-// resolve→body_producer bridge (node://adhoc-9a72d4fb-8c2): source-resolved MVP add Arrow
-// drives the executed callee body through eval; result == 5 BY EXECUTION.
 fn comprep_eval_source_driven_add_executes_holds() -> Bool {
   match comprep_source_bridged_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
@@ -684,9 +662,6 @@ fn comprep_eval_swapped_operands_claim_passes() -> Bool {
   )
 }
 
-// Exact-arity discriminating reds (P3/P5 / Facts Flow Forward): each presents an input that
-// prefix-matching would have admitted while silently dropping a beyond-shape fact. With the
-// exact-arity gates, every one must FAIL the run rather than execute to 5.
 fn comprep_excess_signature_red_holds() -> Bool {
   comprep_eval_run_passes(
     run: comprep_eval_run(
@@ -731,12 +706,6 @@ fn comprep_excess_actual_red_holds() -> Bool {
   comprep_excess_actual_executes_to_five() == false
 }
 
-// Channel-suppression discriminating test (node://adhoc-e80d87aa-297):
-// Branch with a failing arm evaluates to five_value via the selected arm.
-// Without eval_edge_is_runtime_argument Branch suppression, arm2's Rejected short-circuits
-// child_values before eval_branch_node is reached. This tests channel suppression ONLY —
-// arm2 still executes during fold_node's bottom-up catamorphism; its rejection is merely
-// dropped from child_values. Execution suppression requires demand-driven traversal (sharp-ibex-851).
 fn comprep_eval_lazy_arm_branch_suppression_holds() -> Bool {
   let branch = comprep_eval_lazy_arm_branch_node()
   let tree = comprep_eval_admitted_tree(root: branch)
@@ -751,9 +720,6 @@ fn comprep_eval_lazy_arm_branch_suppression_holds() -> Bool {
   }
 }
 
-// Loop channel-suppression: step_loop returns Continue { value: five_value } when reached,
-// so the path through eval_loop_node is distinguishable from short-circuit-Rejected.
-// Used only in comprep_eval_lazy_arm_loop_suppression_holds.
 fn comprep_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   outcome_accepted(value: Continue { value: comprep_eval_five_value() })
 }
@@ -769,11 +735,6 @@ fn comprep_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
   }
 }
 
-// Loop node with a positional body child that rejects in allocate_literal.
-// Discriminating red: without channel suppression the body's Rejected flows into child_values
-// and short-circuits before eval_loop_node is called. With suppression the Rejected is dropped
-// from child_values, eval_loop_node is called, step_loop_continue returns Continue { five_value },
-// and terminal_value converts that to Accepted { five_value }.
 fn comprep_eval_lazy_arm_loop_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
@@ -817,12 +778,6 @@ fn comprep_eval_loop_admitted_tree(root: Node) -> InferredTree {
   }
 }
 
-// Loop channel-suppression discriminating test (node://adhoc-edb982e2-4a4):
-// Loop with a failing body evaluates to five_value via step_loop_continue.
-// Without eval_edge_is_runtime_argument Loop suppression, the body's Rejected short-circuits
-// child_values before eval_loop_node is reached. This tests channel suppression ONLY —
-// the body still executes during fold_node's bottom-up catamorphism; its rejection is merely
-// dropped from child_values. Execution suppression requires demand-driven traversal (sharp-ibex-851).
 fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
   let loop_node = comprep_eval_lazy_arm_loop_node()
   let tree = comprep_eval_loop_admitted_tree(root: loop_node)
@@ -837,21 +792,17 @@ fn comprep_eval_lazy_arm_loop_suppression_holds() -> Bool {
   }
 }
 
-// COMPREP wave-1 runtime keystone, single Bool witness:
 test fn comprep_eval_by_execution_keystone_holds() -> Bool {
   comprep_eval_source_driven_add_executes_holds()
     && comprep_eval_direct_runtime_holds()
     && comprep_eval_source_pipeline_admits_add_holds()
     && comprep_eval_swapped_operands_red_holds()
-    // Exact-arity fail-closed reds: oversized signature / body / actuals each refuse rather
-    // than dropping the extra fact (P3/P5 / Facts Flow Forward).
+
     && comprep_excess_signature_red_holds()
     && comprep_excess_body_red_holds()
     && comprep_excess_actual_red_holds()
-    // Lazy-arm Branch suppression: failing arm body does not short-circuit the fold
-    // (node://adhoc-edb982e2-4a4).
+
     && comprep_eval_lazy_arm_branch_suppression_holds()
-    // Lazy-arm Loop suppression: failing loop body does not short-circuit the fold
-    // (node://adhoc-edb982e2-4a4).
+
     && comprep_eval_lazy_arm_loop_suppression_holds()
 }

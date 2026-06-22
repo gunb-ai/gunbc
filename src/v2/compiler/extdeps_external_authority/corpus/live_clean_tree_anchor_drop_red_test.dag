@@ -1,5 +1,3 @@
-// Scope: live-tree RED perturb — anchor-drop fixture is fail-closed under live policy.
-
 module v2.test.extdeps_external_authority.corpus.live_clean_tree_anchor_drop_red
 
 import v2.lens.extdeps_external_authority {

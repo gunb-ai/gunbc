@@ -1,5 +1,3 @@
-// Scope: TestClaim rows for TypeScript Wave 2a lex/grammar behavior.
-
 module v2.test.parse.typescript_wave2a
 
 import v2.compiler.tokenize { TokenStream, tokenize }
@@ -18,25 +16,15 @@ import v2.std.verification {
   Integration,
   manual_claim_anchor
 }
-// Round-trip target from task_manager_demo.dag Task — exercises type_alias_decl
-// (kw_type, ident, eq, type_annotation→record_type, semicolon), record_fields
-// comma-list (3 fields), type_name (TaskId, TaskStatus), and built-in type_string.
+
 data ts_wave2a_type_alias_task_source: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 
-// Minimal single-field alias — guards against the previously-shipped `type Foo { ... }`
-// form (without `=`) silently re-appearing.
 data ts_wave2a_type_alias_minimal_source: String = "type Box = { value: number };"
 
-// Negative regression — invalid `type Foo { ... }` (no `=`). Space before `{` matches the
-// interim `" { "` lbrace rule; tokenization succeeds and parse rejects missing ts_token_eq.
 data ts_wave2a_type_alias_missing_eq_source: String = "type Box { value: number };"
 
-// TaskStatus surface from src/v2/test/fixture/task_manager_demo.dag transcribed
-// to a TS const annotation: 3-variant string-literal union (Open/InProgress/Done).
 data ts_wave2a_union_task_status_source: String = "const status: 'Open' | 'InProgress' | 'Done' = status;"
 
-// Minimal two-variant union — guards against the left-recursive form silently
-// regressing to require ≥3 variants.
 data ts_wave2a_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 
 fn ts_wave2a_bool_atom(b: Bool) -> Node {

@@ -1,42 +1,3 @@
-//! Structural projection for `v2.lens.medium_structure_containment`.
-//!
-//! The `MediumStructureLeak` generalization of `RealizationVocabularyLeak` (DESIGN §5;
-//! `docs/plans/emission-ingestion-inverse.md` §5.1). The §5 guard catches a module
-//! *importing* a target AST it shouldn't; this catches the sin one rung earlier — a medium
-//! whose structure has leaked out of a `Node` into a raw string. Two faces of one leak:
-//!
-//!   (a) emit-side    — a string LITERAL whose text contains a grounded medium syntax
-//!                      marker (the GHA expression delimiter `${{`, cited from GitHub
-//!                      Actions' "Evaluate expressions" spec), authored OUTSIDE the
-//!                      realization edge. This reads AUTHORING source (the `.dag` the
-//!                      developer wrote) for a grounded token — NOT a re-ingest of emitted
-//!                      output (that would wall the realization edge it protects).
-//!   (b1) check-side  — a string-op call (`string_contains`/`starts_with`/…) whose RECEIVER
-//!                      (the `s:` subject, always the first arg) traces — directly or through
-//!                      at most one intra-function `let` hop — to a CALL of a grounded emit
-//!                      fn (`serialize_*`/`expected_ci_yml`/`serialize_expression`/…). The
-//!                      receiver is identified as an emitted-medium value by call-target
-//!                      PROVENANCE, NEVER by inspecting the string's contents — else the
-//!                      detector would become the ad-hoc re-ingest it forbids. (The heavier
-//!                      `(b2)` — receiver whose declared TYPE is `Medium<R>` — needs resolver
-//!                      type info and is a named follow-on, not built here.)
-//!
-//! Policy — the grounded marker set, the emit-fn roster, the string-op set, and the scan
-//! roots — is PASSED IN from the `.dag` single authority; this host does the mechanical
-//! `Node` walk only. Realization-edge and exception-roster filtering is the `.dag` lens's
-//! job (mirrors `layering_imports_project`: the host enumerates candidate facts, the lens
-//! applies the predicate). The output is sorted, so a Wet run is byte-identical.
-//!
-//! dissolve-on (this hand-Rust seam): the host-reflection projections (`layering_imports_project`,
-//!   `transport_script_position_project`, this) collapse when v2 self-hosts `.dag`-structural
-//!   reflection over its OWN parsed module `Node` set — ROADMAP §5 (self-host v2 → delete
-//!   `src/v1`), the same lane `layering_imports_project` names. It is the precedented additive
-//!   host-reflection sibling (no logic — enumerate + project facts; the predicate lives in the
-//!   `.dag` lens), not Rust cemented into a template. Per-medium, the LEAK dissolves once the
-//!   medium is a `Medium<R>` `Node` emitted via grammar rows (a check becomes a model walk or
-//!   unwritable — the ① wall); the same step lands the `(b2)` receiver-TYPE detector that retires
-//!   the hand-listed emit-fn roster.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -53,9 +14,6 @@ use crate::v1_std_core::{
 pub const FACE_INLINE_SYNTAX_LITERAL: &str = "InlineSyntaxLiteral";
 pub const FACE_EMITTED_MEDIUM_STRING_OP: &str = "EmittedMediumStringOp";
 
-/// One projected leak-candidate fact. `face` is the variant name of `MediumLeakFace`;
-/// `detail` carries the grounded marker (emit-side) or `op@emit_fn` (check-side) so the
-/// `.dag` lens can map it to a census medium and render the violation.
 pub struct MediumStructureLeakRaw {
     pub path: String,
     pub face: &'static str,
@@ -68,9 +26,6 @@ fn rel_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-/// Parse one `.dag` file into its top-level items. Returns `None` on read/parse error
-/// (a malformed sibling file must not abort a tree scan — fail-soft per file, like
-/// `collect_dag_files_tolerant`).
 fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
     let content = std::fs::read_to_string(path).ok()?;
     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
@@ -87,7 +42,6 @@ fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
     Some((module.children.clone(), source_indices))
 }
 
-/// Function bodies (check-side: receiver-provenance needs per-function `let` scope).
 fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
     let mut bodies = Vec::new();
     for item in items.iter() {
@@ -104,13 +58,9 @@ fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
     bodies
 }
 
-/// Every item value `Node` (emit-side: a `${{` literal can sit in a fn body OR a `data` decl
-/// value — both are stored in `item.body`, NOT `item.children`).
 fn item_value_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
     items.iter().filter_map(|item| item.body.clone()).collect()
 }
-
-// ── detector (a): emit-side marker-in-literal ──────────────────────────────────
 
 fn string_literal_text(node: &Rc<Node>) -> Option<String> {
     match node.expr_data.as_ref() {
@@ -144,16 +94,6 @@ fn emit_side_walk(
     }
 }
 
-// ── detector (b1): check-side string-op over an emitted-medium receiver ──────────
-
-/// Collect the `let` name → bound-value `Node` map for an ENTIRE function body — every `let`
-/// at any nesting depth (top block, `if`/`match`-arm blocks, lambda bodies), not just the
-/// top-level statements. This OVER-approximates scope on purpose: it ignores block boundaries
-/// and shadowing so a receiver `let`-bound inside an inner block still resolves to its emit-fn.
-/// The bias is deliberately fail-CLOSED for a leak detector — over-approximation can only make a
-/// receiver resolve to an emit fn it otherwise wouldn't (flag MORE, the safe direction for a
-/// shrinking-roster wall: a false positive goes RED and forces a roster/fix, while the missed
-/// inner-block `let` of a narrow per-block walk would silently DROP a real leak, fail-open).
 fn collect_let_values(
     body: &Rc<Node>,
     bindings: &mut HashMap<String, Rc<Node>>,
@@ -168,9 +108,6 @@ fn collect_let_values(
     }
 }
 
-/// The grounded-emit-fn name a receiver `Node` traces to: a direct emit-fn call, or a
-/// var let-bound (≤1 hop) to an emit-fn call. `None` ⇒ not an emitted-medium value (so
-/// NOT a leak — provenance gate, not a content guess).
 fn receiver_emit_fn(
     receiver: &Rc<Node>,
     bindings: &HashMap<String, Rc<Node>>,
@@ -209,7 +146,6 @@ fn check_side_walk(
     if let ExprData::ExprCall { .. } = node.expr_data.as_ref() {
         let callee = expr_call_func_at(node.clone(), si.clone());
         if string_ops.iter().any(|o| o == &callee) {
-            // Subject (`s:`) is the first arg of every std/text string op.
             if let Some(first) = node.children.first() {
                 let receiver = arg_value(first.clone());
                 if let Some(emit_fn) = receiver_emit_fn(&receiver, bindings, emit_fns, si) {
@@ -240,9 +176,6 @@ fn check_side_scan_function(
     check_side_walk(body, &bindings, emit_fns, string_ops, path, si, out);
 }
 
-// ── tree scan (text-prefiltered: a marker/op absent from the raw text cannot be in the
-//    parsed Node, so the prefilter never drops a real leak — it only skips clean files) ──
-
 fn any_present(text: &str, needles: &[String]) -> bool {
     needles
         .iter()
@@ -260,10 +193,6 @@ fn dag_files_sorted(root: &str) -> Vec<PathBuf> {
     files
 }
 
-/// Project `MediumStructureLeak` candidate facts:
-///   - emit-side over `emit_roots` (markers in string literals);
-///   - check-side over `check_roots` (string ops over emitted-medium receivers).
-/// All policy is supplied by the caller (the `.dag` single authority).
 pub fn medium_structure_leak_facts(
     emit_roots: &[String],
     check_roots: &[String],

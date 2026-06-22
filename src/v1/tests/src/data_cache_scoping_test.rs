@@ -1,13 +1,3 @@
-//! Regression: the interpreter's `data`-item cache is scoped to its
-//! `InterpContext` (graph-evaluation lifetime), not the process.
-//!
-//! The cache was previously a `thread_local!` that grew monotonically for the
-//! life of the process, with a `keepalive_fns` pin defending against node
-//! addresses being freed and reused by a later graph. Context scoping makes
-//! both properties structural: entries cannot outlive their graph's
-//! evaluation, and within one context a `data` item referenced by many runs
-//! still resolves to ONE shared value.
-
 use std::rc::Rc;
 
 use v1_compiler::cli_run;
@@ -38,10 +28,6 @@ fn resolve(src: &str) -> Rc<ResolvedPipelineResult> {
     resolved
 }
 
-/// Two graphs evaluated sequentially on one thread, each declaring a
-/// same-named `data` item with a different value. Each run must see its own
-/// graph's value — a process-scoped cache keyed by reused node addresses
-/// could alias the first graph's entry into the second.
 #[test]
 fn data_cache_does_not_leak_across_graphs_on_one_thread() {
     let src_a = r#"module test.cache_scope_a
@@ -55,8 +41,6 @@ fn read_magic() -> Int { magic }
     for (src, expected) in [(src_a, 41), (src_b, 42)] {
         let resolved = resolve(src);
         let graph = resolved.graph.as_ref().expect("graph");
-        // Lazy data-env (claim-run convention) so the lookup goes through the
-        // data cache, not the eager initial env.
         match v1_interpreter::run_with_options(
             graph,
             resolved.source_indices.clone(),
@@ -70,9 +54,6 @@ fn read_magic() -> Int { magic }
     }
 }
 
-/// Within ONE context, a `data` item read by two separate runs resolves to the
-/// SAME shared value (Rc identity), not a rebuild per run — the structural
-/// sharing `claim_batch` relies on across witnesses.
 #[test]
 fn data_value_is_shared_across_runs_in_one_context() {
     let src = r#"module test.cache_share
@@ -97,9 +78,6 @@ fn read_xs() -> List<Int> { xs }
     }
 }
 
-/// Two contexts over the same graph each evaluate independently and correctly
-/// (a fresh context starts with an empty cache; dropping the first releases
-/// its entries).
 #[test]
 fn fresh_context_reevaluates_data_independently() {
     let src = r#"module test.cache_fresh
@@ -113,7 +91,6 @@ fn read_xs() -> List<Int> { xs }
         let ctx =
             cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);
         v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("first context")
-        // ctx drops here, releasing its cache.
     };
     let ctx2 =
         cli_run::make_eval_context(graph, resolved.source_indices.clone(), ExecutionMode::Wet);

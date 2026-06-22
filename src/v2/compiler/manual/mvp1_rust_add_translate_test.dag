@@ -1,4 +1,3 @@
-
 module v2.test.manual.mvp1_rust_add_translate
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -131,7 +130,6 @@ data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-// Empty Conj bundle — missing target_model_edge_translation_rules; measure path must fail-closed.
 data mvp1_rust_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
@@ -195,7 +193,6 @@ fn mvp1_rust_canonical_grounding(
   }
 }
 
-// Per-node canonical grounding derived from rust_facts_i32 / inhabitant constructors (no Atom→i32 fabrication).
 fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == rust_mvp1_fixture_emitted_add_fn {
     Holds {
@@ -370,11 +367,8 @@ fn anchor_mvp1_compile_inferred_accepts() -> Outcome<CompileOutput> {
   )
 }
 
-// Typed emit receipt — preserves Outcome<Medium<String>> without Node fabrication.
 data mvp1_emit_receipt: Outcome<Medium<String>> = anchor_mvp1_emit_accepts()
 
-// R2 keystone execution witness — emit(add) must produce the canonical rust_mvp1 add-fn source
-// (`fn add(x: i32, y: i32) -> i32 { x + y }`), not a structural grep ratchet.
 test fn mvp1_rust_emit_add_fn_accepts_holds() -> Bool {
   match mvp1_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
@@ -383,11 +377,8 @@ test fn mvp1_rust_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-// Typed compile receipt — compile_inferred exercises compile → emit → translate → grammar inverse.
-// The target model intentionally poisons authority_source_text so a fallback read cannot pass.
 data mvp1_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_compile_inferred_accepts()
 
-// Project emit Outcome<Medium<String>> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
@@ -408,7 +399,6 @@ fn mvp1_emit_claim_outcome() -> Outcome<Node> {
   }
 }
 
-// Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_compile_inferred_claim_outcome() -> Outcome<Node> {
   match mvp1_compile_inferred_receipt {
     Accepted { value: compile_result, diagnostics: d } =>

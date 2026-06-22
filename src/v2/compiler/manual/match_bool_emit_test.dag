@@ -1,5 +1,3 @@
-// Scope: Bool match body emit through value-expression tier (.dag target).
-
 module v2.test.manual.match_bool_emit
 
 import v2.compiler.body_producer {
