@@ -152,6 +152,60 @@ fn memory_aware_spawn_width(
   }
 }
 
+// ── process/pids-budget width term (§1-C third bound) ────────────────────────
+// The memory term above bounds fan-out by RSS. A THIRD budget binds concurrent COMPILE jobs:
+// the host's process-spawn budget (cgroup pids.max / RLIMIT_NPROC). This is the bound that the
+// hand-set `CARGO_BUILD_JOBS=1` clamp exists to dodge — its trigger is an EAGAIN-on-spawn
+// ("Resource temporarily unavailable" / "failed to spawn"), a PROCESS-count limit, NOT memory:
+// each cargo job spawns `procs_per_job` processes (rustc + the sccache client it forks), and
+// `jobs × procs_per_job` over the pids budget is the spawn failure. Dimensionless cardinals
+// (process counts, like `shard_count`), so plain Int floor-divide — not the ByteSize measure
+// algebra. Fail-closed forward progress: a budget under one job, or a degenerate non-positive
+// per-job process count, still admits 1 (never 0, never a divide-by-zero). The "is it modeled
+// at all" question is answered ONE layer up by the caller's measurement carrier (a typed
+// Unmeasured refusal), never by guessing here.
+fn process_bounded_job_count(pids_budget: Int, procs_per_job: Int) -> Int {
+  if procs_per_job <= 0 {
+    1
+  } else {
+    let fits = pids_budget / procs_per_job
+    if fits < 1 { 1 } else { fits }
+  }
+}
+
+// Process- AND memory-aware compile-job width: min(cores, ⌊0.8·mem ÷ per_job_peak⌋,
+// ⌊pids ÷ procs_per_job⌋). The SAME min-fold + 0.8 safety fraction + fail-closed-on-zero-budget
+// shape as `memory_aware_spawn_width` — it does NOT fork a second formula, it adds the pids bound
+// as a third term and reuses `memory_bounded_shard_count` verbatim for the memory term. The
+// demand cap is `cores` directly (a compile never benefits from more jobs than hardware threads,
+// so there is no separate `shard_count` demand to min against — cores IS the demand). A zero-magnitude
+// memory budget OR a zero pids budget means the host could not read a live cap → fall back to the
+// caller's conservative committed width, never an OOM and never an EAGAIN storm (DESIGN §5; the host
+// supplies the fallback, this module never fabricates one).
+fn process_memory_aware_spawn_width(
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_job_peak: ByteSize,
+  pids_budget: Int,
+  procs_per_job: Int,
+  conservative_fallback_width: Int
+) -> HardwareThreadCount {
+  let mem_bytes = byte_size_count(b: memory_budget)
+  if mem_bytes == 0 {
+    hardware_thread_count(count: conservative_fallback_width)
+  } else if pids_budget == 0 {
+    hardware_thread_count(count: conservative_fallback_width)
+  } else {
+    let cores = hardware_thread_count_value(t: hardware_threads)
+    let mem_width = memory_bounded_shard_count(
+      memory_budget: memory_budget,
+      per_shard_peak: per_job_peak
+    )
+    let pids_width = process_bounded_job_count(pids_budget: pids_budget, procs_per_job: procs_per_job)
+    hardware_thread_count(count: int_min(a: int_min(a: cores, b: mem_width), b: pids_width))
+  }
+}
+
 // Pareto goals for width trade-off (wall-time ↓, peak-memory ↓) — reuse std.pareto vocabulary.
 fn width_fold_objective_goals() -> List<AxisGoal> {
   [LowerIsBetter, LowerIsBetter]
@@ -305,6 +359,80 @@ fn witness_subunit_budget_admits_one() -> Bool {
     hardware_threads: hardware_thread_count(128),
     memory_budget: byte_size(1000000000),
     per_shard_peak: byte_size(2100028416),
+    conservative_fallback_width: 4
+  ) == 1
+}
+
+// ── §1-C process/pids-budget term witnesses ──────────────────────────────────
+fn process_memory_aware_width_value(
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_job_peak: ByteSize,
+  pids_budget: Int,
+  procs_per_job: Int,
+  conservative_fallback_width: Int
+) -> Int {
+  hardware_thread_count_value(
+    t: process_memory_aware_spawn_width(
+      hardware_threads: hardware_threads,
+      memory_budget: memory_budget,
+      per_job_peak: per_job_peak,
+      pids_budget: pids_budget,
+      procs_per_job: procs_per_job,
+      conservative_fallback_width: conservative_fallback_width
+    )
+  )
+}
+
+// PIDS BINDS: cores 128 and memory admit far more than the process budget, so width = the pids
+// term. pids 4096 ÷ 3 procs/job = 1365, but memory 0.8×128GiB ÷ 2.1GB ≈ 48 and cores 128 — so a
+// SMALL pids budget is the discriminator: 24 pids ÷ 3 = 8 < 48 < 128 → width 8. RED if the pids
+// term is dropped (would give 48, the memory bound).
+fn witness_pids_term_binds_below_cores_and_memory() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 24,
+    procs_per_job: 3,
+    conservative_fallback_width: 1
+  ) == 8
+}
+
+// MEMORY still binds when it is the smallest term (the existing memory bound is preserved under the
+// 3-term fold): tight 6GiB budget → 0.8×6GiB ÷ 2.1GB = 2, below cores 128 and pids 4096÷3=1365.
+fn witness_memory_term_still_binds_under_three_term_fold() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(6442450944),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 4096,
+    procs_per_job: 3,
+    conservative_fallback_width: 1
+  ) == 2
+}
+
+// Fail-closed: an unreadable pids budget (0 sentinel from the host) → the conservative fallback,
+// never an unbounded width and never an EAGAIN storm. RED if a budget-blind fold ignored the sentinel.
+fn witness_unreadable_pids_budget_falls_back_conservative() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 0,
+    procs_per_job: 3,
+    conservative_fallback_width: 4
+  ) == 4
+}
+
+// Fail-closed forward progress: a pids budget under one job still admits width 1 (never 0).
+fn witness_subunit_pids_budget_admits_one() -> Bool {
+  process_memory_aware_width_value(
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    per_job_peak: byte_size(2100028416),
+    pids_budget: 2,
+    procs_per_job: 3,
     conservative_fallback_width: 4
   ) == 1
 }
