@@ -1,31 +1,3 @@
-// extdeps/languages/markdown.dag — Markdown as an emit medium: a row-driven
-// MarkdownDocument → markdown-SOURCE serializer.
-//
-// 🟡 SCAFFOLD — feature:markdown-source-medium; dissolve-on: the v2 06_translate Markdown
-// TargetModel (src/v2/extdeps/languages/markdown.dag) lands and these spelling ROWS relocate
-// into it as the grammar-inverse `target_model_edge_translation_rules` (they RELOCATE, no
-// rework — same rows, table-driven). Until then this is the near-term v1-seed realization
-// (the §6 displaced-cost path: the ROADMAP inverts BEFORE self-host, plan invert-hand-maintained
-// §7), the byte-for-byte clone of the ci.yml pattern (serialize_yaml ∘ project_workflow_to_yaml).
-//
-// Peer of extdeps/formats/yaml.dag `serialize_yaml`: a byte-faithful structural-value
-// serializer that lands on the gunbc/v1-seed (no std.unicode / std.render imports) so its
-// witnesses execute under the v1 interpreter. The convergent IR authority is std.markdown
-// (MarkdownDocument / MarkdownBlock / MarkdownInline, extended here's window with the GFM
-// task-list / table blocks); this module owns only the SOURCE medium — the inverse direction
-// of std.markdown's IR→HTML fold, over the same single IR (DESIGN §4: one grammar, both ways).
-//
-// ROW DISCIPLINE (the medium-as-Node guard, #5496): every construct→spelling lives in the
-// `MarkdownSpellings` ROW the fold LOOKS UP — `#`, `- `, `- [x] `, `[t](u)`, table pipes,
-// `*`/`**`, fences — never an inline string literal in the fold. Table-driven = reversible =
-// the same rows the future v2 06_translate Markdown target reuses (they RELOCATE, no rework).
-// Line breaks (`\n`) are structural layout, not construct spellings (cf. yaml.dag), so they
-// stay inline. SCOPE: EMIT only (IR→source). The round-trip (source→IR ingest + lex) is the
-// named ① dissolve-on, later, reusing these rows.
-//
-// Anchors: CommonMark 0.31.2 — https://spec.commonmark.org/0.31.2/
-//          GitHub Flavored Markdown 0.29-gfm — https://github.github.com/gfm/
-
 module extdeps.languages.markdown
 
 import extdeps.external_authority { ExternalAuthority }
@@ -71,9 +43,6 @@ import std.markdown {
   AlignRight,
 }
 
-// §3 grounding: the markdown medium cites CommonMark as a structured fact, not a
-// comment. GFM (the task-list / table extensions) extends this base spec — see the
-// per-construct GFM citations on the MarkdownSpellings rows below.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -81,41 +50,33 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// =========================================================================
-// The spelling rows — single authority for every markdown source delimiter.
-// Each field is the literal source spelling of one construct; the fold below
-// looks these up, so a wrong spelling is one row edit (and one RED witness),
-// never a literal buried in the fold.
-// =========================================================================
-
 type MarkdownSpellings {
-  heading_marker: String        // "#"  (repeated per level)        CommonMark §4.2 ATX headings
-  heading_sep: String           // " "  between markers and content
-  unordered_bullet: String      // "- " CommonMark §5.2 list items (GFM canonical dash)
-  ordered_suffix: String        // ". " after the ordinal           CommonMark §5.2
-  task_checked: String          // "[x] " GFM §5.3 task list items
-  task_unchecked: String        // "[ ] "
-  emphasis_delim: String        // "*"  CommonMark §6.2 emphasis (italic)
-  strong_delim: String          // "**" CommonMark §6.2 strong emphasis (bold)
-  code_span_delim: String       // "`"  CommonMark §6.3 code spans
-  code_fence: String            // "```" CommonMark §4.5 fenced code blocks
-  link_text_open: String        // "["  CommonMark §6.5 links
-  link_text_close: String       // "]"
-  link_url_open: String         // "("
-  link_url_close: String        // ")"
-  image_marker: String          // "!"  CommonMark §6.6 images
-  table_pipe: String            // "|"  GFM §4.10 tables
-  table_cell_pad: String        // " "  padding inside a cell
-  table_align_none: String      // "---" GFM §4.10 delimiter-row cell
-  table_align_left: String      // ":--"
-  table_align_center: String    // ":-:"
-  table_align_right: String     // "--:"
-  blockquote_marker: String     // "> " CommonMark §5.1 block quotes
-  list_indent: String           // "  " one nesting level of list indentation
-  block_separator: String       // "\n\n" blank line between top-level blocks
+  heading_marker: String
+  heading_sep: String
+  unordered_bullet: String
+  ordered_suffix: String
+  task_checked: String
+  task_unchecked: String
+  emphasis_delim: String
+  strong_delim: String
+  code_span_delim: String
+  code_fence: String
+  link_text_open: String
+  link_text_close: String
+  link_url_open: String
+  link_url_close: String
+  image_marker: String
+  table_pipe: String
+  table_cell_pad: String
+  table_align_none: String
+  table_align_left: String
+  table_align_center: String
+  table_align_right: String
+  blockquote_marker: String
+  list_indent: String
+  block_separator: String
 }
 
-// The CommonMark 0.31.2 + GFM 0.29 canonical spellings — the default medium.
 data commonmark_gfm_spellings: MarkdownSpellings = {
   heading_marker: "#",
   heading_sep: " ",
@@ -143,11 +104,6 @@ data commonmark_gfm_spellings: MarkdownSpellings = {
   block_separator: "\n\n",
 }
 
-// =========================================================================
-// Inlines.
-// =========================================================================
-
-// "[text](url)" / "![alt](url)" share this affix shape (the link form).
 fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
   join(
     [sp.link_text_open, text, sp.link_text_close, sp.link_url_open, url, sp.link_url_close],
@@ -174,12 +130,6 @@ fn md_inline(inline: MarkdownInline, sp: MarkdownSpellings) -> String {
 fn md_inlines(inlines: List<MarkdownInline>, sp: MarkdownSpellings) -> String {
   fold(inlines, init: "", f: (acc, i) => concat(acc, md_inline(inline: i, sp: sp)))
 }
-
-// =========================================================================
-// Lists (ordered / unordered / GFM task) — depth carries nesting indentation.
-// A list item leads with its first paragraph's inlines on the marker line;
-// any further blocks (nested lists) render indented one level deeper.
-// =========================================================================
 
 fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, depth: Int) -> String {
   let pad = repeat_string(s: sp.list_indent, n: depth)
@@ -227,7 +177,6 @@ fn md_tasklist(items: List<MarkdownTaskItem>, sp: MarkdownSpellings, depth: Int)
   }), "\n")
 }
 
-// A block nested inside a list item: lists indent one level; any other block renders flat.
 fn md_nested(block: MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String {
   match block {
     UnorderedListBlock { items } => md_unordered(items: items, sp: sp, depth: depth)
@@ -237,15 +186,10 @@ fn md_nested(block: MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String 
   }
 }
 
-// =========================================================================
-// Tables (GFM §4.10): header row, delimiter row (from alignments), body rows.
-// =========================================================================
-
 fn md_table_cell(cell: MarkdownTableCell, sp: MarkdownSpellings) -> String {
   md_inlines(inlines: cell.inlines, sp: sp)
 }
 
-// "| a | b |" — open pipe, then each cell padded and pipe-closed.
 fn md_table_row(row: MarkdownTableRow, sp: MarkdownSpellings) -> String {
   fold(row.cells, init: sp.table_pipe, f: (acc, c) =>
     join([acc, sp.table_cell_pad, md_table_cell(cell: c, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
@@ -281,10 +225,6 @@ fn md_table(
   }
 }
 
-// =========================================================================
-// Block quotes (CommonMark §5.1): prefix every inner line with "> ".
-// =========================================================================
-
 fn md_prefix_lines(text: String, prefix: String) -> String {
   join(map(split(s: text, delimiter: "\n"), line => concat(prefix, line)), "\n")
 }
@@ -293,10 +233,6 @@ fn md_blockquote(blocks: List<MarkdownBlock>, sp: MarkdownSpellings) -> String {
   let inner = join(map(blocks, b => md_block(block: b, sp: sp)), "\n")
   md_prefix_lines(text: inner, prefix: sp.blockquote_marker)
 }
-
-// =========================================================================
-// Top-level blocks.
-// =========================================================================
 
 fn heading_level_to_int(level: HeadingLevel) -> Int {
   match level {
@@ -326,8 +262,7 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
     TaskListBlock { items } =>
       md_tasklist(items: items, sp: sp, depth: 0)
     CodeBlock { code } =>
-      // The fenced block: code is expected to carry its own trailing newline
-      // (mirrors std.markdown's CodeBlock convention), so "```\n" + code + "```".
+
       join([sp.code_fence, "\n", code, sp.code_fence], "")
     TableBlock { header, alignments, rows } =>
       md_table(header: header, alignments: alignments, rows: rows, sp: sp)
@@ -336,11 +271,6 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
   }
 }
 
-// =========================================================================
-// Document entry — the medium serializer. Blocks separated by a blank line,
-// one trailing newline at EOF (byte-faithful, peer of serialize_yaml).
-// =========================================================================
-
 fn serialize_markdown_source_with(doc: MarkdownDocument, sp: MarkdownSpellings) -> String {
   concat(
     join(map(doc.blocks, b => md_block(block: b, sp: sp)), sp.block_separator),
@@ -348,58 +278,12 @@ fn serialize_markdown_source_with(doc: MarkdownDocument, sp: MarkdownSpellings) 
   )
 }
 
-// Total serializer: MarkdownDocument → byte-faithful markdown source (CommonMark + GFM).
 fn serialize_markdown_source(doc: MarkdownDocument) -> String {
   serialize_markdown_source_with(doc: doc, sp: commonmark_gfm_spellings)
 }
 
-// =========================================================================
-// INGEST — markdown SOURCE → MarkdownDocument (the §5.2 round-trip inverse).
-//
-// This is the "① dissolve-on" named in this file's header turned live: the
-// inverse direction of the emitter, reading the **same** `MarkdownSpellings`
-// rows (DESIGN §4: one grammar, both directions; §5.2: the round-trip law
-// `ingest ∘ emit = id` is the medium-completeness oracle). A spelling lives in
-// exactly one place — the row — and BOTH directions consult it, so a wrong
-// spelling is one row edit and one RED witness, never a literal forked between
-// an emitter and a parser (the N×M trap §4 forbids).
-//
-// FIDELITY BOUNDARY (DESIGN §4/§5/§7, `extdeps.communication.medium`):
-// `ingest ∘ emit = id` is proven **Lossless over the canonical core** — the
-// block grammar with plain-text inlines:
-//   headings, single-line paragraphs, flat unordered / ordered / GFM-task
-//   lists, and fenced code blocks; inlines are literal `TextInline` runs.
-// Inline markup (emphasis / strong / code spans / links / images), nested
-// lists, tables and block quotes are the **Lossy frontier**: the emitter is
-// total over them but their source is ambiguous on re-ingest (e.g. `*x*` could
-// be text or emphasis), so this ingest reads them as literal paragraph text and
-// the round-trip law is NOT claimed there. That residue is tagged `Lossy`
-// (see `markdown_medium_lossless` below) rather than fabricated — §5
-// fail-closed: a lossy decode is marked, never silently advertised exact.
-// Dissolve-on for the frontier: an inline tokenizer + indentation/table grammar
-// that recover those constructs, at which point their fidelity flips to Lossless.
-//
-// ROW-SHARING LEDGER (honest, per the §5 "inert lens" guard — claim only what
-// is exercised). The rows consulted in BOTH directions over the core, each
-// perturbation-discriminable: `heading_marker`, `heading_sep`, `unordered_bullet`,
-// `ordered_suffix`, `task_checked`, `task_unchecked`, `code_fence`,
-// `block_separator`. The remaining rows are NOT row-shared by this ingest because
-// the constructs they spell are the frontier above: `emphasis_delim`/`strong_delim`/
-// `code_span_delim`/`link_*`/`image_marker` (inline markup), `table_*` (tables),
-// `blockquote_marker` (block quotes), and `list_indent` (nested-list indentation —
-// flat core lists emit at depth 0 with empty indent, so the row is absent from both
-// directions in-core). They become row-shared when the frontier dissolves.
-// =========================================================================
-
-// A leading-run strip result: how many copies of a unit prefix were consumed,
-// and the remaining suffix. Reused for ATX heading markers and ordered-list
-// ordinals (the two leading-run constructs the core grammar reads back).
 type RepeatStrip { count: Int, rest: String }
 
-// Inverse of heading_level_to_int. The core grammar admits only depths 1..=6
-// (the emitter emits no others), so the catch-all is unreachable in-core; it
-// keeps the function total without fabricating a plausible wrong level (a 7-`#`
-// line is classified as a paragraph upstream, never reaching here).
 fn int_to_heading_level(n: Int) -> HeadingLevel {
   if n == 1 { H1 }
   else if n == 2 { H2 }
@@ -409,12 +293,10 @@ fn int_to_heading_level(n: Int) -> HeadingLevel {
   else { H6 }
 }
 
-// Drop a known prefix (caller has checked starts_with).
 fn md_drop_prefix(s: String, prefix: String) -> String {
   substring(s: s, start: prefix.length(), end: s.length())
 }
 
-// Consume a maximal run of `unit` from the front of `s`.
 fn md_strip_repeated(s: String, unit: String, n: Int) -> RepeatStrip {
   if (unit != "") && starts_with(s: s, prefix: unit) {
     md_strip_repeated(s: md_drop_prefix(s: s, prefix: unit), unit: unit, n: n + 1)
@@ -427,7 +309,6 @@ fn md_is_digit(c: String) -> Bool {
   (c != "") && string_contains(s: "0123456789", pattern: c)
 }
 
-// Consume a maximal run of decimal digits from the front of `s`.
 fn md_strip_digits(s: String, n: Int) -> RepeatStrip {
   let c = char_at(s, 0)
   if md_is_digit(c: c) {
@@ -437,24 +318,10 @@ fn md_strip_digits(s: String, n: Int) -> RepeatStrip {
   }
 }
 
-// Inline ingest over the canonical core: a content run is one literal TextInline
-// (the Lossless subset — see the FIDELITY BOUNDARY note above).
 fn md_ingest_inlines(text: String) -> List<MarkdownInline> {
   [ TextInline { text: text } ]
 }
 
-// --- block splitting: split source into top-level block-source strings -------
-//
-// The emitter joins top-level blocks with the `block_separator` ROW (:serialize_
-// markdown_source_with) and appends exactly one trailing newline at EOF. The
-// inverse READS the SAME row: strip the one trailing newline, then split on
-// `sp.block_separator`. This is row-shared in BOTH directions — perturb
-// block_separator and emit/ingest shift together (exercised by the witness).
-//
-// CORE BOUND: a fenced code block whose body contains the block_separator
-// sequence internally (e.g. a blank line when block_separator is "\n\n") would
-// be wrongly split here — that is the Lossy frontier (code with embedded
-// separators), not claimed. The core code-block body has no embedded separator.
 fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
   let trimmed = if ends_with(s: src, suffix: "\n") {
     substring(s: src, start: 0, end: src.length() - 1)
@@ -463,8 +330,6 @@ fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
   }
   split(s: trimmed, delimiter: sp.block_separator)
 }
-
-// --- per-block parse, dispatching on the leading spelling row ----------------
 
 fn md_is_heading(line: String, sp: MarkdownSpellings) -> Bool {
   let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
@@ -521,10 +386,6 @@ fn md_task_item(line: String, sp: MarkdownSpellings) -> MarkdownTaskItem {
   }
 }
 
-// A fenced code block source is `code_fence` + "\n" + code + `code_fence`, where
-// `code` carries its own trailing newline (the std.markdown convention the
-// emitter relies on). As grouped lines: [fence, ...code lines..., fence];
-// rejoin the inner lines and restore the trailing newline.
 fn md_parse_code(block_lines: List<String>) -> MarkdownBlock {
   let inner = block_lines.skip(n: 1).take(n: block_lines.length() - 2)
   CodeBlock {
@@ -546,31 +407,21 @@ fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> MarkdownBlock {
   } else if starts_with(s: first, prefix: sp.unordered_bullet) {
     UnorderedListBlock { items: map(lines, l => md_unordered_item(line: l, sp: sp)) }
   } else {
-    // Canonical-core paragraph: a single line of literal inline text. Frontier
-    // constructs (inline markup, tables, block quotes) also land here as literal
-    // text — the Lossy boundary, not an exact inverse (see FIDELITY BOUNDARY).
+
     ParagraphBlock { inlines: md_ingest_inlines(text: block_src) }
   }
 }
 
-// Ingest with an explicit spelling table (the inverse of
-// serialize_markdown_source_with over the same rows).
 fn ingest_markdown_source_with(src: String, sp: MarkdownSpellings) -> MarkdownDocument {
   MarkdownDocument {
     blocks: map(md_split_blocks(src: src, sp: sp), b => md_parse_block(block_src: b, sp: sp)),
   }
 }
 
-// Total ingest: byte-faithful markdown source → MarkdownDocument over the
-// CommonMark + GFM canonical spellings (the inverse of serialize_markdown_source).
 fn ingest_markdown_source(src: String) -> MarkdownDocument {
   ingest_markdown_source_with(src: src, sp: commonmark_gfm_spellings)
 }
 
-// The honest per-medium fidelity tag (DESIGN §4/§5.2 (B) decidability partition):
-// markdown is `Lossless` over the canonical core proven by the round-trip witness;
-// the carried representation is the IR recovered by ingest. The frontier residue
-// is the `Lossy` partition — never claimed by this Medium.
 fn markdown_medium_lossless(doc: MarkdownDocument) -> Medium<MarkdownDocument> {
   Medium { carried: doc, fidelity: Lossless }
 }

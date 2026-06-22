@@ -1,11 +1,3 @@
-// extdeps/render/terminal.dag — Terminal width composition over glyph realization.
-//
-// Anchor: https://www.unicode.org/reports/tr11/ (UAX #11 East Asian Width; sibling to std.unicode)
-//
-// Width-constrained frame/line composition depends on resolve_symbol (encoding-tier
-// dispatch in extdeps.render.glyphs). Lives in extdeps so std.render stays
-// realization-free (DESIGN.md §3).
-
 module extdeps.render.terminal
 
 import extdeps.render.glyphs { resolve_symbol }

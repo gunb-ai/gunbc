@@ -1,11 +1,3 @@
-// extdeps/render/unicode_glyph.dag — Unicode-tier glyph carrier.
-//
-// Anchor: https://www.unicode.org/versions/latest/
-//   (Unicode Standard — same authority as std.unicode UCD 15.x; no parallel model)
-//
-// dissolve-on: Q-Regex repertoire refinement — cited blocks (U+2500 Box Drawing,
-//   U+2800 Braille Patterns, …).
-
 module extdeps.render.unicode_glyph
 
 import std.unicode { string_display_width }
@@ -30,7 +22,6 @@ fn unicode_glyph_text(g: UnicodeGlyph) -> String {
   g
 }
 
-// Display-width dispatch for Unicode-tier glyphs defers to std.unicode (UAX #11).
 fn unicode_glyph_display_width(g: UnicodeGlyph) -> Int {
   string_display_width(s: unicode_glyph_text(g: g))
 }

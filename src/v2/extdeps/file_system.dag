@@ -1,101 +1,76 @@
-// src/v2/extdeps/file_system.dag
-// Scope: External file-system resource model + modeled file effects (read/write).
-// Status: scaffold — Wave-2 fail-closed boundary (POSIX substrate retained for posix/testgen consumers).
-
 module v2.extdeps.file_system
-
 
 import v2.std.algebra { FreeMonoid }
 import v2.std.diagnostic { Outcome }
 import v2.std.machine { Byte }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_241
 type PosixByteString = FreeMonoid<Byte>
 
 type NamedPathComponent {
   bytes: PosixByteString
 }
 
-// 🟡 coproduct dissolution — OS-1.
 type PathComponent
   = CurrentComponent
   | ParentComponent
   | NamedComponent { component: NamedPathComponent }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
 type AbsolutePath {
   components: List<PathComponent>
 }
 
-// 🟡 coproduct dissolution — OS-1.
 type RelativePathHead
   = ParentHead
   | NamedHead { component: NamedPathComponent }
 
-// 🟡 coproduct dissolution — OS-1.
 type RelativePath
   = CurrentDirectory
   | CurrentDescendant { first: RelativePathHead, rest: List<PathComponent> }
   | RelativeDescendant { first: RelativePathHead, rest: List<PathComponent> }
 
-// 🟡 coproduct dissolution — OS-1.
 type FilesystemPath
   = Absolute { path: AbsolutePath }
   | Relative { path: RelativePath }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html
-// 🟡 coproduct dissolution — OS-1.
 type FileKind
   = RegularFile
   | Directory
   | Symlink
 
-// 🟡 coproduct dissolution — OS-1.
 type FileKindResolutionPolicy
   = FollowSymlinks
   | DoNotFollowSymlinks
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/readdir.html
 type Filesystem
 
 type FileBody = FreeMonoid<Byte>
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
 type FileResource {
   filesystem: Filesystem
 }
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_271
 type FilePath {
   path: FilesystemPath
 }
 
 type FileContent = FileBody
 
-// 🟢 grounded.
 type FileRead {
   resource: FileResource,
   path: FilePath
 }
 
-// 🟢 grounded.
 type FileWrite {
   resource: FileResource,
   path: FilePath,
   content: FileContent
 }
 
-// 🟢 grounded.
 type FileReadReceipt {
   request: FileRead,
   content: FileContent
 }
 
-// 🟢 grounded.
 type FileWriteReceipt {
   request: FileWrite,
   resource: FileResource
@@ -110,12 +85,6 @@ type ModeledFileEffects {
   file_write: fn(FileWrite) -> FileWriteResult
 }
 
-// 🟡 P5 bridge — legacy POSIX operation payload table (consumer: v2.lens.testgen
-// only — CorpusEnumerationRequest.operations: FileSystemOperations). Dissolution
-// trigger: wave2-c2-testgen-modeled-file-effects — delete ReadFileRequest,
-// WriteFileRequest, ListDirRequest, FileKindRequest, and FileSystemOperations
-// when v2/lens/testgen.dag CorpusEnumerationRequest.operations is
-// ModeledFileEffects-only.
 type ReadFileRequest {
   filesystem: Filesystem
   path: AbsolutePath

@@ -1,19 +1,11 @@
-// src/v2/std/layer.dag
-// Single authority for the §3 4-tier layer DAG vocabulary.
-// "std ← extdeps ← compiler ← workflow, imports point toward std" (DESIGN.md §3).
-// Consumers: v2.lens.layering_imports, v2.std.cross_tree.import_model.
-
 module v2.std.layer
 
-// LayerPrefix — the closed 4-tier layer DAG from DESIGN.md §3.
-// A path outside these tiers is a host classification error (§5 loud fail), not a 5th tier.
 type LayerPrefix
   = LayerPrefixStd
   | LayerPrefixExtdeps
   | LayerPrefixCompiler
   | LayerPrefixWorkflow
 
-// layer_prefix_ordinal — std=0 (most fundamental) through workflow=3 (least fundamental).
 fn layer_prefix_ordinal(l: LayerPrefix) -> Int {
   match l {
     LayerPrefixStd => 0

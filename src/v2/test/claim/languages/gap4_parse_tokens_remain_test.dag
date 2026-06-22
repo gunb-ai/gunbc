@@ -1,7 +1,3 @@
-// Gap-4 unit witnesses — match arm stmt_seq (mirror v1 parse_match_arm_body).
-// Grammar: dag_production_match_arm arm body = expr | stmt_seq; stmt_seq unified with fn_body.
-// Authority: v1_compiler_parse.rs parse_match_arm_body / parse_match_arm_stmts.
-
 module v2.test.languages.gap4_parse_tokens_remain
 
 import v2.compiler.tokenize { tokenize }
@@ -37,35 +33,30 @@ fn rejects_parse_g0_tokens_remain(src: String) -> Bool {
   }
 }
 
-// 1. Minimal fix proof — let stmt in match arm parses (was gap-4 RED).
 test fn gap4_match_arm_let_stmt_parses_holds() -> Bool {
   parses(
     src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } => let stamped = inner\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
   )
 }
 
-// 2. Real construct — chained lets then tail record expr in match arm (parse_nonterminal_memoized shape).
 test fn gap4_match_arm_chained_lets_tail_record_parses_holds() -> Bool {
   parses(
     src: "module m.t\nfn f() -> Int {\n  match inner {\n    ParseExprRejected { diagnostics: diags } => ParseExprRejected { diagnostics: diags }\n    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>\n      let merged_prov = inner_prov\n      let stamped = captured\n      ParseExprAccepted {\n        remaining: remaining,\n        captured: stamped,\n        diagnostics: diags,\n        prov: merged_prov\n      }\n  }\n}\n"
   )
 }
 
-// 3. Multi-arm no-over-consume — arm1 let-stmt must not swallow arm2 constructor pattern.
 test fn gap4_multi_arm_let_then_next_arm_parses_holds() -> Bool {
   parses(
     src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } => let stamped = inner\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
   )
 }
 
-// 4. Expr-tail arm still parses (regression guard).
 test fn gap4_match_arm_expr_tail_parses_holds() -> Bool {
   parses(
     src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } => inner\n    Violates { diagnostic: _ } => 1\n  }\n}\n"
   )
 }
 
-// 5. Malformed arm rejects (missing fat-arrow) — must not Accept.
 test fn gap4_malformed_match_arm_missing_arrow_rejects_holds() -> Bool {
   match parses(
     src: "module m.t\nfn f() -> Int {\n  match lookup() {\n    Holds { value: inner } let x = inner\n  }\n}\n"
@@ -75,7 +66,6 @@ test fn gap4_malformed_match_arm_missing_arrow_rejects_holds() -> Bool {
   }
 }
 
-// 6. Tokenize-reject control — clearly invalid char, not parse_g0_tokens_remain fail-open.
 test fn gap4_unrecognized_char_rejects_not_tokens_remain_holds() -> Bool {
   match parses(src: "module m.t\nfn f() -> Int { `x }\n") {
     true => false
@@ -87,7 +77,6 @@ test fn gap4_unrecognized_char_rejects_not_tokens_remain_holds() -> Bool {
   }
 }
 
-// 7. Gap-5 — escaped quotes inside string literals (v2.bin.main trampoline shape).
 test fn gap5_string_escape_quote_in_literal_parses_holds() -> Bool {
   parses(
     src: "module m.t\ndata main_rs_trampoline_authority: String = \"include!(\\\"v2_main_generated.rs\\\");\"\n"

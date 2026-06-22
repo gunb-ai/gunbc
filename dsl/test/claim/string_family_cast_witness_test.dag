@@ -1,16 +1,3 @@
-// dsl/test/claim/string_family_cast_witness_test.dag — by-execution witness (DESIGN §5)
-// for String→String-family alias casts in v1 interpreter eval_cast.
-//
-// Infer admits narrowing casts to nominal_opaque / where / brand types whose underlying
-// base is String (Secret, NonEmptyStr, SecretValue, Url, …). Interpreter must mirror
-// emit's identity alias semantics by walking each target's alias chain to String.
-// Without that fold this witness aborts: type error: cannot cast String to <Target>.
-//
-// Consumers: std.credentials.env_credential (as Secret), gunbc.tools.bmc_first_contact
-// (host.value as NonEmptyStr).
-//
-// Run: gunbc run --source-root dsl --entry dsl/test/claim/string_family_cast_witness_test.dag --function string_family_cast_holds --claim-run
-
 module test.claim.string_family_cast
 
 import std.logic { Bool }
@@ -32,8 +19,6 @@ fn string_to_url(s: String) -> Url {
   s as Url
 }
 
-// RED without fix: interpreter TypeError aborts before returning Bool.
-// GREEN with fix: each cast is identity at the Str carrier; values round-trip.
 test fn string_family_cast_holds() -> Bool {
   string_to_secret("secret-token") == "secret-token"
     && string_to_nonempty("bmc-host") == "bmc-host"

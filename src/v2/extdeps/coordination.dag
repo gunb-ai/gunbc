@@ -1,7 +1,3 @@
-// src/v2/extdeps/coordination.dag
-// Scope: Multi-program coordination as effect-typed Bind composition.
-// Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows, with CoordinationEffectKind retained as a tracked bridge until binds reference canonical obligation rows directly.
-
 module v2.extdeps.coordination
 
 import v2.std.collection { List }
@@ -17,7 +13,6 @@ type FrameworkRef {
   identity: Symbol
 }
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type FrameworkBinding
   = HostedByFramework { framework: FrameworkRef }
   | NoFramework
@@ -45,26 +40,20 @@ type RequiredSettleBound {}
 
 type RequiredConvergeBound {}
 
-// Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type ExchangePattern
   = RequestReply
   | FireAndForget
   | StreamExchange
   | PublishSubscribe
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type SettlementGuarantee<Bound>
   = ImmediateSettlement
   | SettlesWithin { bound: Bound }
 
-// Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type ConsistencyGuarantee<Bound>
   = NoReplicaConvergence
   | EventuallyConsistent { bound: Bound }
 
-// 🟡 coproduct dissolution — consumer:coordination-bind-obligation-row-authority; dissolves when CoordinationBind references canonical CoordinationEffectObligation rows directly.
 type CoordinationEffectKind
   = Http
   | Queue
@@ -133,13 +122,11 @@ type WireContractFacts {
   consistency: ConsistencyGuarantee<ConvergeBound>
 }
 
-// Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
 type WireContract {
   facts: WireContractFacts,
   bind: CoordinationBind
 }
 
-// Anchor: https://en.wikipedia.org/wiki/Distributed_computing
 type DeploymentUnit {
   endpoints: List<Endpoint>,
   wire_contracts: List<WireContract>

@@ -1,15 +1,7 @@
-// src/v2/extdeps/formats/yaml.dag
-// Scope: YAML 1.2.2 structural value model — declarative only; parse/emit deferred.
-// Status: parse/emit axes (gated on lex/parse/emit pipeline substrate), numeric-lexeme profile (§10.3.2 core schema),
-//         canonical-key profile (§3.2.1.3 tag+canonical-content), anchor/alias resolution (§6.1/§7.1).
-// Anchor: https://yaml.org/spec/1.2.2/
-
 module v2.extdeps.formats.yaml
 
 import v2.std.grammar { GrammarSchema }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type YamlValue
   = YamlNull
   | YamlBool { value: Bool }
@@ -18,7 +10,6 @@ type YamlValue
   | YamlString { value: String }
   | YamlSequence { elements: List<YamlValue> }
   | YamlMapping { entries: Map<YamlValue, YamlValue> }
-
 
 type YamlIntBase10DecimalOptionalSignWitness {}
 
@@ -83,17 +74,9 @@ type YamlAnchorAliasResolutionFacts {
   alias_free_projection_by_construction: YamlAliasFreeProjectionByConstructionWitness,
 }
 
-
 type YamlDocument {
   grammar_schema: GrammarSchema,
   canonical_keys: YamlCanonicalKeyProfileFacts,
   anchor_alias_resolution: YamlAnchorAliasResolutionFacts,
   value: YamlValue,
 }
-
-
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
-// 🟡 gated — feature: canonical-key profile parse enforcement binding (YamlCanonicalKeyProfileFacts consumption at parse boundary) — SL-3229-YAML-CANONICAL-KEYS.
-// 🟡 gated — feature: anchor/alias resolution parse binding (YamlAnchorAliasResolutionFacts consumption at parse boundary) — SL-3229-YAML-ANCHOR-ALIAS.
-// 🟡 gated — feature: YAML representation graph carrier (node identity, anchors, aliases; cycles permitted per §6/§7) — SL-3229-YAML-REPRESENTATION-GRAPH.

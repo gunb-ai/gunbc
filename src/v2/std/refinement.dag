@@ -1,11 +1,4 @@
-// src/v2/std/refinement.dag
-// Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Status: T-25-core modeled; hoisted int refinement factories (§A1 substrate); structural ordered/unordered iteration refinement (IterationOrdering / IterationClassifier<B> / refine_ordered_iteration). Structural opacity for bare construction: T-25-tail.
-// Anchor: https://en.wikipedia.org/wiki/Refinement_type
-
-
 module v2.std.refinement
-
 
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -23,53 +16,35 @@ import v2.std.diagnostic {
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 
-
 fn refinement_authoritative_locus() -> Locus {
   port_locus(port: ^refinement_authoritative_locus)
 }
-
 
 type Validation<B> {
   reason: Symbol
   admits: fn(B) -> Bool
 }
 
-
-// Placeholder stubs only: binds VacuousValidation at oracle-terminal call sites so
-// real predicates cannot be wired into refined_vacuous_oracle_terminal without the marker.
-// Empty struct marker (gofmt_defaults pattern); cross-module import uses vacuous_admits_marker data.
 type VacuousAdmits {}
 
-
 data vacuous_admits_marker: VacuousAdmits = VacuousAdmits {}
-
 
 type VacuousValidation<B> {
   reason: Symbol
   vacuous: VacuousAdmits
 }
 
-
-// Substrate-owned admits for vacuous stubs only — not caller-supplied (VacuousAdmits is not a proof).
 fn vacuous_admits<B>(_: B) -> Bool {
   true
 }
-
 
 fn validation_from_vacuous<B>(by: VacuousValidation<B>) -> Validation<B> {
   Validation { reason: by.reason, admits: vacuous_admits }
 }
 
-
-// Inhabit via refine (fail-closed) or make_* packing an Accepted refine receipt.
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// compiler-enforced construction only via refine / make_* at consumer call sites;
-// forbidden: bare Refined { base } outside refine / make_* Accepted receipts and the
-// refined_vacuous_stub_pack totality scaffold (vacuous_admits-only, Rejected unreachable).
 type Refined<B> {
   base: B
 }
-
 
 fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   let admits = by.admits
@@ -91,16 +66,10 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
   }
 }
 
-
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
-
-// 🟡 gated — feature:refinement-vacuous-oracle-terminal — bind T-12/T-19 placeholder stubs —
-// dissolve-on-arrival: delete when vacuous admits placeholders are replaced; forbidden: consumer
-// bare Refined packs forbidden — use refined_vacuous_stub_pack (vacuous_admits only) or Outcome unwrap.
-// VacuousValidation carries reason + VacuousAdmits marker; admits fn is substrate vacuous_admits.
 fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Outcome<Refined<B>> {
   let validation = validation_from_vacuous(by: by)
   match refine(base: base, by: validation, at: at) {
@@ -109,14 +78,6 @@ fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: Loc
   }
 }
 
-
-// Vacuous placeholder stubs: unwrap oracle terminal (vacuous_admits always accepts).
-// Substrate self-exemption: bare Refined on Rejected is totality-only (unreachable while
-// validation_from_vacuous uses vacuous_admits). Dissolution cohort (this lane only):
-// v2.lens.complexity (T-12-COMPLEXITY-PROJECTION) and
-// v2.test.generated.testgen_category_wishlist (T-19 testgen follow-up) — no further
-// VacuousValidation call sites until T-12/T-19 deletes vacuous_admits, oracle_terminal, stub_pack,
-// and all cohort consumers together.
 fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) -> Refined<B> {
   match refined_vacuous_oracle_terminal(base: base, by: by, at: at) {
     Accepted { value: refined, diagnostics: _ } => refined
@@ -124,122 +85,90 @@ fn refined_vacuous_stub_pack<B>(base: B, by: VacuousValidation<B>, at: Locus) ->
   }
 }
 
-
 fn positive_int_admits(value: Int) -> Bool {
   value >= 1
 }
-
 
 fn non_negative_int_admits(value: Int) -> Bool {
   value >= 0
 }
 
-
 fn at_least_minus_one_int_admits(value: Int) -> Bool {
   value >= -1
 }
-
 
 fn at_least_minus_two_int_admits(value: Int) -> Bool {
   value >= -2
 }
 
-
 fn exact_one_int_admits(value: Int) -> Bool {
   value == 1
 }
-
 
 data positive_int_validation: Validation<Int> = Validation {
   reason: ^positive_int_out_of_range,
   admits: positive_int_admits
 }
 
-
 data non_negative_int_validation: Validation<Int> = Validation {
   reason: ^non_negative_int_out_of_range,
   admits: non_negative_int_admits
 }
-
 
 data at_least_minus_one_int_validation: Validation<Int> = Validation {
   reason: ^at_least_minus_one_int_out_of_range,
   admits: at_least_minus_one_int_admits
 }
 
-
 data at_least_minus_two_int_validation: Validation<Int> = Validation {
   reason: ^at_least_minus_two_int_out_of_range,
   admits: at_least_minus_two_int_admits
 }
-
 
 data exact_one_int_validation: Validation<Int> = Validation {
   reason: ^exact_one_int_out_of_range,
   admits: exact_one_int_admits
 }
 
-
-// Nominal ≥1 int — distinct from other int refinements (posix.dag / extdeps pattern).
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare PositiveInt { refined: Refined { base } }.
 type PositiveInt {
   refined: Refined<Int>
 }
 
-
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare NonNegativeInt { refined: Refined { base } }.
 type NonNegativeInt {
   refined: Refined<Int>
 }
 
-
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare AtLeastMinusOneInt { refined: Refined { base } }.
 type AtLeastMinusOneInt {
   refined: Refined<Int>
 }
 
-
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare AtLeastMinusTwoInt { refined: Refined { base } }.
 type AtLeastMinusTwoInt {
   refined: Refined<Int>
 }
 
-
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare ExactOneInt { refined: Refined { base } }.
 type ExactOneInt {
   refined: Refined<Int>
 }
-
 
 fn positive_int_value(p: PositiveInt) -> Int {
   refined_base(r: p.refined)
 }
 
-
 fn non_negative_int_value(p: NonNegativeInt) -> Int {
   refined_base(r: p.refined)
 }
-
 
 fn at_least_minus_one_int_value(p: AtLeastMinusOneInt) -> Int {
   refined_base(r: p.refined)
 }
 
-
 fn at_least_minus_two_int_value(p: AtLeastMinusTwoInt) -> Int {
   refined_base(r: p.refined)
 }
 
-
 fn exact_one_int_value(p: ExactOneInt) -> Int {
   refined_base(r: p.refined)
 }
-
 
 fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
   match refine(base: value, by: positive_int_validation, at: at) {
@@ -252,7 +181,6 @@ fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
   }
 }
 
-
 fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
   match refine(base: value, by: non_negative_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
@@ -263,7 +191,6 @@ fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
-
 
 fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOneInt> {
   match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
@@ -276,7 +203,6 @@ fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOne
   }
 }
 
-
 fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwoInt> {
   match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
@@ -287,7 +213,6 @@ fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwo
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
-
 
 fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
   match refine(base: value, by: exact_one_int_validation, at: at) {
@@ -300,85 +225,54 @@ fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
   }
 }
 
-
 fn make_positive_int_at_authoritative(value: Int) -> Outcome<PositiveInt> {
   make_positive_int(value: value, at: refinement_authoritative_locus())
 }
-
 
 fn make_non_negative_int_at_authoritative(value: Int) -> Outcome<NonNegativeInt> {
   make_non_negative_int(value: value, at: refinement_authoritative_locus())
 }
 
-
 fn make_at_least_minus_one_int_at_authoritative(value: Int) -> Outcome<AtLeastMinusOneInt> {
   make_at_least_minus_one_int(value: value, at: refinement_authoritative_locus())
 }
-
 
 fn make_at_least_minus_two_int_at_authoritative(value: Int) -> Outcome<AtLeastMinusTwoInt> {
   make_at_least_minus_two_int(value: value, at: refinement_authoritative_locus())
 }
 
-
 fn make_exact_one_int_at_authoritative(value: Int) -> Outcome<ExactOneInt> {
   make_exact_one_int(value: value, at: refinement_authoritative_locus())
 }
-
 
 fn positive_int_authoritative_literal(value: Int) -> Outcome<PositiveInt> {
   make_positive_int_at_authoritative(value: value)
 }
 
-
 fn non_negative_int_authoritative_literal(value: Int) -> Outcome<NonNegativeInt> {
   make_non_negative_int_at_authoritative(value: value)
 }
-
 
 fn at_least_minus_one_int_authoritative_literal(value: Int) -> Outcome<AtLeastMinusOneInt> {
   make_at_least_minus_one_int_at_authoritative(value: value)
 }
 
-
 fn at_least_minus_two_int_authoritative_literal(value: Int) -> Outcome<AtLeastMinusTwoInt> {
   make_at_least_minus_two_int_at_authoritative(value: value)
 }
-
 
 fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
   make_exact_one_int_at_authoritative(value: value)
 }
 
-
-// Formatter config fields use Outcome<Carrier>: *_authoritative_literal returns Outcome;
-// .dag data literals cannot unwrap Rejected at assignment. Witness-proved Accepted for catalog
-// values; runtime/user input uses make_* + Outcome. Bare-carrier catalog helpers that stripped
-// Rejected were removed (P3); T-25-tail adds structural opacity for bare Refined/PositiveInt.
-// Witnesses: refinement_authoritative_constants.dag (reject paths + one positive_int accept);
-// formatter catalog accept table deferred to docs/audit/v2-deferral-audit-2026-05-29.md §A1 /
-// Manual-corpus compile budget tracked under gunbc#4757 (not a separate filed PR).
-
-
-// 🟢 coproduct dissolution — TERMINAL. The ordered/unordered distinction is the irreducible
-// substrate fact; the gated debt below applies to the *classifier* (how the variant is
-// discharged from a carrier), not to this sum.
 type IterationOrdering
   = StructurallyOrdered
   | StructurallyUnordered
-// 🟡 gated — feature:iteration-ordering-carrier-keyed-witness-lookup — bind T-25-tail —
-// dissolve-on-arrival: substrate exports a carrier-keyed witness lookup so
-// IterationClassifier<B> is replaced by non-forgeable per-carrier
-// `Witness<StructurallyOrdered, B>`; forbidden: caller-supplied classifier function that
-// can return StructurallyOrdered for a hash-bucket carrier. Today the obligation is
-// discharged at the same caller-discipline boundary as `Validation<B>.admits` above; see
-// PR #3928 review thread.
+
 type IterationClassifier<B> {
   classify: fn(B) -> IterationOrdering
 }
-// Refinement constructor: admits a base collection for deterministic iteration only when
-// the supplied classifier derives `StructurallyOrdered` from `base`; unordered fails closed
-// with the `naming_the_leak` diagnostic. Shape mirrors `refine` above.
+
 fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: Locus) -> Outcome<Refined<B>> {
   let classify = by.classify
   match classify(base) {

@@ -1,4 +1,2 @@
-// FIXTURE — planted extdeps-layer module with a forbidden upward import (v2.compiler EXACT).
-// Read as TEXT by v2.lens.layering_imports.layer_import_facts_live (never module-resolved). DO NOT import.
 module v2.test.fixture.layering_scan.dsl_extdeps_v4_exact_plant
 import v2.compiler

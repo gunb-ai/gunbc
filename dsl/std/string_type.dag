@@ -1,21 +1,6 @@
-// std/string_type.dag -- String as FreeMonoid<Char>.
-//
-// String operations (concat, length, index, map, fold) emerge from
-// the FreeMonoid structure. The compiler sees String as a monoid and
-// derives sequence operations from the algebra.
-//
-// Char is a Unicode scalar value: registered `unicode_scalar` predicate over
-// abstract `Int` (excludes surrogate code points) plus `brand("Char")`.
-
 module std.string_type
 
 import std.algebra { FreeMonoid }
 import std.types { Char }
 
-// String is the free monoid over Char — a sequence of characters
-// under concatenation with empty string as identity.
 type String = FreeMonoid<Char>
-
-// Char is declared in std/types.dag as:
-//   type Char = Int where unicode_scalar, brand("Char")
-// Single authority — not redeclared here.

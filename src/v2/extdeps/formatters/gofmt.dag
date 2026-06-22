@@ -1,20 +1,12 @@
-// src/v2/extdeps/formatters/gofmt.dag
-// Scope: gofmt configuration carrier (no project config file; no configurable style options).
-// Status: T-4.16 scaffold — gofmt doc.go (no style configuration surface).
-// Anchor: https://go.dev/src/cmd/gofmt/doc.go
-
 module v2.extdeps.formatters.gofmt
 
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
-
 
 type GofmtConfig {}
 
 data gofmt_defaults: GofmtConfig = GofmtConfig {}
 
-
 type GofmtConfigPatch = ConfigPatchRecord<GofmtConfig>
-
 
 fn gofmt_layer(base: GofmtConfig, patch: GofmtConfigPatch) -> GofmtConfig {
   config_patch_layer(base: base, patch: patch)

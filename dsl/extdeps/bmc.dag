@@ -1,8 +1,3 @@
-// extdeps/bmc.dag — BMC telemetry projections over Redfish resource shapes.
-//
-// Types: extdeps.bmc.types. Per-firmware cited facts: extdeps.bmc.<family>.
-// Redfish projections: extdeps.bmc.redfish.
-
 module extdeps.bmc
 
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot }

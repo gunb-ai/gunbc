@@ -1,5 +1,3 @@
-// Scope: extdeps.uri scheme predicates — discriminating http(s) vs file without string prefix tests.
-
 module test.claim.uri_witness
 
 import extdeps.uri {

@@ -1,5 +1,3 @@
-// std/os/types.dag — OS surface + distribution taxonomy (no cited catalog data).
-
 module std.os.types
 
 import std.types { NonEmptyStr }
@@ -8,9 +6,6 @@ type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
 type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 
-// P-CF-OS: distro/version relaxed to optional (kernel T?, M9). Operator-fleet
-// distro/version binding (srv1/srv2) is operator-private — lives in gunb-ai/ctrl,
-// not gunbc std/. Hetzner OS is bound at provision time, so stays None on the offer surface.
 type OperatingSystemSurface {
   kernel: KernelFamily
   distro_or_product: NonEmptyStr?
@@ -19,10 +14,6 @@ type OperatingSystemSurface {
   process_semantics: ProcessSemantics
 }
 
-// Distribution identity — enum tag is stable id; extdeps catalog row is cited authority.
-// Leading pipe marks a single-variant nullary sum (a deliberate novel-tag
-// introduction), distinct from a bare alias `= T` which references an existing
-// type and fails closed (UnresolvedType) when the RHS is not a declared type.
 type UbuntuDistribution = | NobleNumbat2404Lts
 type WindowsDistribution = | Windows1124H2Build26100
 type MacosDistribution = | Sequoia15

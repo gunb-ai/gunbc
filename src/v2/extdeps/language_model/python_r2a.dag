@@ -1,5 +1,3 @@
-// Status: modeled claim + fixture pair, exercising python3.
-
 module v2.test.language_model.python_r2a
 
 import v2.extdeps.languages.python { python_integer_algebra_inhabitance_python_facts_int }
