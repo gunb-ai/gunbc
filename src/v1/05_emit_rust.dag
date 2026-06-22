@@ -111,7 +111,7 @@ import v1.compiler.infer {
   expand_type_for_field_access
 }
 import v1.compiler.infer_emit_info {
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
+  EmitGraphInfo, RustCorpusRepr, HostNative, FaithfulFreeMonoid, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key
 }
@@ -194,7 +194,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     }
   } else {
     let tn = authored_name_at(source_indices: source_indices, node: n)
-    if tn == "String" && n.children |> count == 0 && corpus_repr == FaithfulFreeMonoid {
+    if tn == "String" && n.children |> count == 0 && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
       render_rust_text_carrier(shared_types: shared_types)
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
@@ -234,7 +234,7 @@ fn render_rust_text_carrier(shared_types: Set<String>) -> String {
 // §2 — route ALL host→DAG String boundary bridges through HostStringText seam (one authority).
 // §7: seam wrappers are v2-self-host only; v1 seed keeps host String (no v2_std_text module).
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCorpusRepr) -> String {
-  if corpus_repr == FaithfulFreeMonoid {
+  if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
   } else {
     host_expr
@@ -242,7 +242,7 @@ fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCor
 }
 
 fn emit_rust_dag_string_to_host_via_seam(dag_expr: String, corpus_repr: RustCorpusRepr) -> String {
-  if corpus_repr == FaithfulFreeMonoid {
+  if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
   } else {
     dag_expr
@@ -288,7 +288,7 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
 // (E0277/E0369). DISSOLUTION: remove when the numeric tower gains a faithful
 // host-realization seam mirroring the text carrier (emit_rust_host_to_dag_string_via_seam).
 fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  if (name == "Nat" || name == "Int") && corpus_repr == HostNative {
+  if (name == "Nat" || name == "Int") && corpus_repr_is_host(corpus_repr: corpus_repr) {
     Present { value: "i64" }
   } else {
     none
@@ -303,7 +303,7 @@ fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -> St
 // preserve-nominal alias-RHS policy for non-container nominals (FreeMonoid/Box) or
 // the v2-TARGET faithful FreeMonoid representation. List ops stay Vec-based.
 fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> String? {
-  if name == "List" && corpus_repr == HostNative {
+  if name == "List" && corpus_repr_is_host(corpus_repr: corpus_repr) {
     Present { value: "Vec" }
   } else {
     none
@@ -313,7 +313,7 @@ fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) -> S
 fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
-  } else if name == "String" && corpus_repr == FaithfulFreeMonoid {
+  } else if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     "FreeMonoid<Nat>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
@@ -422,7 +422,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         name
-      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" && corpus_repr == FaithfulFreeMonoid {
+      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
         render_rust_text_carrier(shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum, env: env)
@@ -474,7 +474,7 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr == FaithfulFreeMonoid {
+  if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     render_rust_text_carrier(shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
     render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
@@ -512,7 +512,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent =>
-    if name == "String" && corpus_repr == FaithfulFreeMonoid {
+    if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
       render_rust_text_carrier(shared_types: shared_types)
     } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
@@ -3749,7 +3749,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let si = scope.type_env.source_indices
   match rust_host_string_seam_fn_emit(name: name) {
     Present { value: seam_fn } =>
-      if emit_info.corpus_repr == FaithfulFreeMonoid { seam_fn } else { "" }
+      if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) { seam_fn } else { "" }
     Absent => {
   let type_params = function_type_params(params: params)
   let value_params = function_value_params(params: params)
@@ -6578,7 +6578,7 @@ fn rust_zero_value(type_name: String, corpus_repr: RustCorpusRepr) -> String? {
   if type_name == "Int" { Present { value: "0" } }
   else if type_name == "Bool" { Present { value: "false" } }
   else if type_name == "String" {
-    if corpus_repr == FaithfulFreeMonoid {
+    if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
       Present { value: "crate::v2_std_algebra::freemonoid_empty::<crate::v2_std_nat::Nat>()" }
     } else {
       Present { value: "\"\".to_string()" }

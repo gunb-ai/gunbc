@@ -111,6 +111,7 @@ import v1.compiler.infer_sigs {
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  RustCorpusRepr, HostNative, FaithfulFreeMonoid,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary, derive_variant_to_enum
