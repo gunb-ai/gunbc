@@ -17,82 +17,63 @@ fn cp_in_any_range(cp: Int, ranges: List<CodePointRange>) -> Bool {
   any(ranges, predicate: r => in_cp_range(cp: cp, r: r))
 }
 
-// XID_Start ranges from UAX31 Unicode 15.1 (DerivedCoreProperties.txt).
-// These are the code points whose Unicode property XID_Start=Yes.
-// Programming extension: underscore (U+005F) is added per UAX31 §2.5
-// (connector punctuation is XID_Continue only, but conventional in all
-// major programming languages as an identifier-start character).
 data xid_start_ranges: List<CodePointRange> = [
-  // Basic Latin letters
-  { start: 65,    end_inclusive: 90 },    // A-Z
-  { start: 97,    end_inclusive: 122 },   // a-z
-  // Latin-1 Supplement letters
-  { start: 170,   end_inclusive: 170 },   // ª feminine ordinal indicator
-  { start: 181,   end_inclusive: 181 },   // µ micro sign
-  { start: 186,   end_inclusive: 186 },   // º masculine ordinal indicator
-  { start: 192,   end_inclusive: 214 },   // À..Ö
-  { start: 216,   end_inclusive: 246 },   // Ø..ö
-  { start: 248,   end_inclusive: 705 },   // ø..ƁExtended Latin-A/B + IPA + spacing modifiers
-  { start: 710,   end_inclusive: 721 },   // ˆ..ˑ spacing modifier letters
-  { start: 736,   end_inclusive: 740 },   // ˠ..ˤ modifier letters
-  { start: 748,   end_inclusive: 748 },   // ˬ
-  { start: 750,   end_inclusive: 750 },   // ˮ
-  // Greek
-  { start: 880,   end_inclusive: 884 },   // Ͱ..ͳ
-  { start: 886,   end_inclusive: 887 },   // Ͷ..ͷ
-  { start: 890,   end_inclusive: 893 },   // ͺ..ͽ
-  { start: 895,   end_inclusive: 895 },   // Ϳ
-  { start: 902,   end_inclusive: 902 },   // Ά
-  { start: 904,   end_inclusive: 906 },   // Έ..Ί
-  { start: 908,   end_inclusive: 908 },   // Ό
-  { start: 910,   end_inclusive: 929 },   // Ύ..Ρ
-  { start: 931,   end_inclusive: 1013 },  // Σ..ϵ
-  { start: 1015,  end_inclusive: 1153 },  // Ϸ..ͣ (Greek Extended + Coptic start)
-  // Cyrillic
-  { start: 1162,  end_inclusive: 1327 },  // Ҋ..ӿ + supplement
-  // Armenian
-  { start: 1329,  end_inclusive: 1366 },  // Ա..Ֆ
-  { start: 1369,  end_inclusive: 1369 },  // ։
-  { start: 1376,  end_inclusive: 1416 },  // ա..ֆ
-  // Hebrew
-  { start: 1488,  end_inclusive: 1514 },  // א..ת
-  { start: 1519,  end_inclusive: 1522 },  // ׯ..ׂ
-  // Arabic
-  { start: 1568,  end_inclusive: 1610 },  // ب..ي
-  { start: 1646,  end_inclusive: 1647 },  // ى..ي alt
-  { start: 1649,  end_inclusive: 1749 },  // ٱ..ۅ Arabic Extended
-  { start: 1765,  end_inclusive: 1766 },  // ۥ..ۦ
-  { start: 1774,  end_inclusive: 1775 },  // ۮ..ۯ
-  { start: 1786,  end_inclusive: 1788 },  // ۺ..ۼ
-  { start: 1791,  end_inclusive: 1791 },  // ۿ
-  // Thaana
-  { start: 1808,  end_inclusive: 1808 },  // ހ
-  { start: 1810,  end_inclusive: 1839 },  // ށ..ތ
-  // NKo, Samaritan, Mandaic
+  { start: 65,    end_inclusive: 90 },
+  { start: 97,    end_inclusive: 122 },
+  { start: 170,   end_inclusive: 170 },
+  { start: 181,   end_inclusive: 181 },
+  { start: 186,   end_inclusive: 186 },
+  { start: 192,   end_inclusive: 214 },
+  { start: 216,   end_inclusive: 246 },
+  { start: 248,   end_inclusive: 705 },
+  { start: 710,   end_inclusive: 721 },
+  { start: 736,   end_inclusive: 740 },
+  { start: 748,   end_inclusive: 748 },
+  { start: 750,   end_inclusive: 750 },
+  { start: 880,   end_inclusive: 884 },
+  { start: 886,   end_inclusive: 887 },
+  { start: 890,   end_inclusive: 893 },
+  { start: 895,   end_inclusive: 895 },
+  { start: 902,   end_inclusive: 902 },
+  { start: 904,   end_inclusive: 906 },
+  { start: 908,   end_inclusive: 908 },
+  { start: 910,   end_inclusive: 929 },
+  { start: 931,   end_inclusive: 1013 },
+  { start: 1015,  end_inclusive: 1153 },
+  { start: 1162,  end_inclusive: 1327 },
+  { start: 1329,  end_inclusive: 1366 },
+  { start: 1369,  end_inclusive: 1369 },
+  { start: 1376,  end_inclusive: 1416 },
+  { start: 1488,  end_inclusive: 1514 },
+  { start: 1519,  end_inclusive: 1522 },
+  { start: 1568,  end_inclusive: 1610 },
+  { start: 1646,  end_inclusive: 1647 },
+  { start: 1649,  end_inclusive: 1749 },
+  { start: 1765,  end_inclusive: 1766 },
+  { start: 1774,  end_inclusive: 1775 },
+  { start: 1786,  end_inclusive: 1788 },
+  { start: 1791,  end_inclusive: 1791 },
+  { start: 1808,  end_inclusive: 1808 },
+  { start: 1810,  end_inclusive: 1839 },
   { start: 1869,  end_inclusive: 1957 },
   { start: 1969,  end_inclusive: 1969 },
   { start: 1994,  end_inclusive: 2026 },
   { start: 2036,  end_inclusive: 2037 },
   { start: 2042,  end_inclusive: 2042 },
-  // Samaritan, Mandaic
   { start: 2048,  end_inclusive: 2069 },
   { start: 2074,  end_inclusive: 2074 },
   { start: 2084,  end_inclusive: 2084 },
   { start: 2088,  end_inclusive: 2088 },
   { start: 2112,  end_inclusive: 2136 },
   { start: 2144,  end_inclusive: 2154 },
-  // Arabic Extended-B
   { start: 2160,  end_inclusive: 2183 },
   { start: 2185,  end_inclusive: 2190 },
-  // Arabic Extended-A
   { start: 2208,  end_inclusive: 2249 },
-  // Devanagari (Hindi)
   { start: 2308,  end_inclusive: 2361 },
   { start: 2365,  end_inclusive: 2365 },
   { start: 2384,  end_inclusive: 2384 },
   { start: 2392,  end_inclusive: 2401 },
   { start: 2417,  end_inclusive: 2432 },
-  // Bengali
   { start: 2437,  end_inclusive: 2444 },
   { start: 2447,  end_inclusive: 2448 },
   { start: 2451,  end_inclusive: 2472 },
@@ -105,7 +86,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 2527,  end_inclusive: 2529 },
   { start: 2544,  end_inclusive: 2545 },
   { start: 2556,  end_inclusive: 2556 },
-  // Gurmukhi (Punjabi)
   { start: 2565,  end_inclusive: 2570 },
   { start: 2575,  end_inclusive: 2576 },
   { start: 2579,  end_inclusive: 2600 },
@@ -116,7 +96,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 2649,  end_inclusive: 2652 },
   { start: 2654,  end_inclusive: 2654 },
   { start: 2674,  end_inclusive: 2676 },
-  // Gujarati
   { start: 2693,  end_inclusive: 2701 },
   { start: 2703,  end_inclusive: 2705 },
   { start: 2707,  end_inclusive: 2728 },
@@ -127,7 +106,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 2768,  end_inclusive: 2768 },
   { start: 2784,  end_inclusive: 2785 },
   { start: 2809,  end_inclusive: 2809 },
-  // Oriya (Odia)
   { start: 2821,  end_inclusive: 2828 },
   { start: 2831,  end_inclusive: 2832 },
   { start: 2835,  end_inclusive: 2856 },
@@ -140,7 +118,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 2929,  end_inclusive: 2929 },
   { start: 2947,  end_inclusive: 2947 },
   { start: 2949,  end_inclusive: 2954 },
-  // Tamil
   { start: 2958,  end_inclusive: 2960 },
   { start: 2962,  end_inclusive: 2965 },
   { start: 2969,  end_inclusive: 2970 },
@@ -159,7 +136,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 3165,  end_inclusive: 3165 },
   { start: 3168,  end_inclusive: 3169 },
   { start: 3200,  end_inclusive: 3200 },
-  // Telugu
   { start: 3205,  end_inclusive: 3212 },
   { start: 3214,  end_inclusive: 3216 },
   { start: 3218,  end_inclusive: 3240 },
@@ -169,7 +145,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 3293,  end_inclusive: 3294 },
   { start: 3296,  end_inclusive: 3297 },
   { start: 3313,  end_inclusive: 3314 },
-  // Kannada
   { start: 3332,  end_inclusive: 3340 },
   { start: 3342,  end_inclusive: 3344 },
   { start: 3346,  end_inclusive: 3396 },
@@ -178,18 +153,15 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 3412,  end_inclusive: 3414 },
   { start: 3423,  end_inclusive: 3425 },
   { start: 3450,  end_inclusive: 3455 },
-  // Malayalam
   { start: 3461,  end_inclusive: 3478 },
   { start: 3482,  end_inclusive: 3505 },
   { start: 3507,  end_inclusive: 3515 },
   { start: 3517,  end_inclusive: 3517 },
   { start: 3520,  end_inclusive: 3526 },
-  // Sinhala
   { start: 3585,  end_inclusive: 3630 },
   { start: 3632,  end_inclusive: 3632 },
   { start: 3634,  end_inclusive: 3635 },
   { start: 3648,  end_inclusive: 3654 },
-  // Thai
   { start: 3713,  end_inclusive: 3714 },
   { start: 3716,  end_inclusive: 3716 },
   { start: 3718,  end_inclusive: 3722 },
@@ -201,12 +173,10 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 3776,  end_inclusive: 3780 },
   { start: 3782,  end_inclusive: 3782 },
   { start: 3804,  end_inclusive: 3807 },
-  // Tibetan
   { start: 3840,  end_inclusive: 3840 },
   { start: 3904,  end_inclusive: 3911 },
   { start: 3913,  end_inclusive: 3948 },
   { start: 3976,  end_inclusive: 3980 },
-  // Myanmar
   { start: 4096,  end_inclusive: 4138 },
   { start: 4159,  end_inclusive: 4159 },
   { start: 4176,  end_inclusive: 4181 },
@@ -216,13 +186,11 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 4206,  end_inclusive: 4208 },
   { start: 4213,  end_inclusive: 4225 },
   { start: 4238,  end_inclusive: 4238 },
-  // Georgian
   { start: 4256,  end_inclusive: 4293 },
   { start: 4295,  end_inclusive: 4295 },
   { start: 4301,  end_inclusive: 4301 },
   { start: 4304,  end_inclusive: 4346 },
   { start: 4348,  end_inclusive: 4680 },
-  // Ethiopic
   { start: 4682,  end_inclusive: 4685 },
   { start: 4688,  end_inclusive: 4694 },
   { start: 4696,  end_inclusive: 4696 },
@@ -239,32 +207,24 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 4882,  end_inclusive: 4885 },
   { start: 4888,  end_inclusive: 4954 },
   { start: 4992,  end_inclusive: 5007 },
-  // Cherokee
   { start: 5024,  end_inclusive: 5109 },
   { start: 5112,  end_inclusive: 5117 },
-  // Unified Canadian Aboriginal Syllabics
   { start: 5121,  end_inclusive: 5740 },
   { start: 5743,  end_inclusive: 5759 },
-  // Ogham
   { start: 5761,  end_inclusive: 5786 },
-  // Runic
   { start: 5792,  end_inclusive: 5866 },
   { start: 5870,  end_inclusive: 5880 },
-  // Tagalog, Hanunoo, Buhid, Tagbanwa
   { start: 5888,  end_inclusive: 5905 },
   { start: 5919,  end_inclusive: 5937 },
   { start: 5952,  end_inclusive: 5969 },
   { start: 5984,  end_inclusive: 5996 },
   { start: 5998,  end_inclusive: 6000 },
-  // Khmer
   { start: 6016,  end_inclusive: 6067 },
   { start: 6103,  end_inclusive: 6103 },
   { start: 6108,  end_inclusive: 6108 },
-  // Mongolian
   { start: 6176,  end_inclusive: 6264 },
   { start: 6272,  end_inclusive: 6314 },
   { start: 6320,  end_inclusive: 6389 },
-  // Limbu, Tai Le, Buginese
   { start: 6400,  end_inclusive: 6430 },
   { start: 6480,  end_inclusive: 6509 },
   { start: 6512,  end_inclusive: 6516 },
@@ -273,7 +233,6 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 6656,  end_inclusive: 6678 },
   { start: 6688,  end_inclusive: 6750 },
   { start: 6823,  end_inclusive: 6823 },
-  // Sundanese, Batak, Lepcha, Ol Chiki
   { start: 6917,  end_inclusive: 6963 },
   { start: 6981,  end_inclusive: 6988 },
   { start: 7043,  end_inclusive: 7072 },
@@ -286,14 +245,11 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 7312,  end_inclusive: 7354 },
   { start: 7357,  end_inclusive: 7359 },
   { start: 7401,  end_inclusive: 7418 },
-  { start: 7424,  end_inclusive: 7615 },  // Phonetic Extensions
-  // Latin Extended Additional, Greek Extended
+  { start: 7424,  end_inclusive: 7615 },
   { start: 7680,  end_inclusive: 8188 },
-  // Superscript/subscript letters
   { start: 8305,  end_inclusive: 8305 },
   { start: 8319,  end_inclusive: 8319 },
   { start: 8336,  end_inclusive: 8348 },
-  // Letterlike symbols
   { start: 8450,  end_inclusive: 8450 },
   { start: 8455,  end_inclusive: 8455 },
   { start: 8458,  end_inclusive: 8467 },
@@ -306,14 +262,11 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 8508,  end_inclusive: 8511 },
   { start: 8517,  end_inclusive: 8521 },
   { start: 8526,  end_inclusive: 8526 },
-  // Number Forms (Roman numerals)
   { start: 8544,  end_inclusive: 8584 },
-  // Glagolitic, Gothic, Ugaritic, Osage, etc.
   { start: 11264, end_inclusive: 11310 },
   { start: 11312, end_inclusive: 11492 },
   { start: 11499, end_inclusive: 11502 },
   { start: 11506, end_inclusive: 11507 },
-  // Old Perso, Elbasan, Caucasian Albanian, etc.
   { start: 11520, end_inclusive: 11557 },
   { start: 11559, end_inclusive: 11559 },
   { start: 11565, end_inclusive: 11565 },
@@ -329,29 +282,20 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 11728, end_inclusive: 11734 },
   { start: 11736, end_inclusive: 11742 },
   { start: 11823, end_inclusive: 11823 },
-  // CJK / CJK compatibility / CJK symbols
   { start: 12293, end_inclusive: 12295 },
   { start: 12321, end_inclusive: 12329 },
   { start: 12337, end_inclusive: 12341 },
   { start: 12344, end_inclusive: 12348 },
-  // Hiragana
   { start: 12353, end_inclusive: 12438 },
   { start: 12445, end_inclusive: 12447 },
-  // Katakana
   { start: 12449, end_inclusive: 12543 },
-  // Bopomofo
   { start: 12549, end_inclusive: 12591 },
-  // Hangul Compatibility Jamo
   { start: 12593, end_inclusive: 12686 },
   { start: 12704, end_inclusive: 12735 },
   { start: 12784, end_inclusive: 12799 },
-  // CJK Extension A
   { start: 13312, end_inclusive: 19903 },
-  // CJK Unified Ideographs
   { start: 19968, end_inclusive: 40959 },
-  // Yi
   { start: 40960, end_inclusive: 42191 },
-  // Lisu, Vai, Cyrillic Supplement, Bamum, etc.
   { start: 42192, end_inclusive: 42237 },
   { start: 42240, end_inclusive: 42508 },
   { start: 42512, end_inclusive: 42527 },
@@ -404,26 +348,19 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 43824, end_inclusive: 43866 },
   { start: 43868, end_inclusive: 43881 },
   { start: 43888, end_inclusive: 43970 },
-  // Hangul Syllables
   { start: 44032, end_inclusive: 55203 },
-  // Hangul Jamo Extended-B
   { start: 55216, end_inclusive: 55238 },
   { start: 55243, end_inclusive: 55291 },
-  // CJK Compatibility Ideographs
   { start: 63744, end_inclusive: 64109 },
   { start: 64112, end_inclusive: 64217 },
-  // Arabic Presentation Forms-A
   { start: 64467, end_inclusive: 64829 },
   { start: 64848, end_inclusive: 64911 },
   { start: 64914, end_inclusive: 64967 },
   { start: 65008, end_inclusive: 65019 },
-  // Arabic Presentation Forms-B
   { start: 65136, end_inclusive: 65140 },
   { start: 65142, end_inclusive: 65276 },
-  // Fullwidth Latin
   { start: 65313, end_inclusive: 65338 },
   { start: 65345, end_inclusive: 65370 },
-  // Halfwidth Katakana, Hangul
   { start: 65382, end_inclusive: 65470 },
   { start: 65474, end_inclusive: 65479 },
   { start: 65482, end_inclusive: 65487 },
@@ -431,31 +368,25 @@ data xid_start_ranges: List<CodePointRange> = [
   { start: 65498, end_inclusive: 65500 }
 ]
 
-// XID_Continue-only ranges: code points in XID_Continue but not XID_Start
-// (UAX31: digits, combining marks, connector punctuation).
-// The underscore U+005F is here (connector punctuation), but the programming
-// convention treats it as XID_Start too — see char_in_class below.
 data xid_continue_only_ranges: List<CodePointRange> = [
-  { start: 48,   end_inclusive: 57 },   // 0-9 decimal digits
-  { start: 95,   end_inclusive: 95 },   // _ LOW LINE (connector punctuation)
-  // Combining Diacritical Marks
+  { start: 48,   end_inclusive: 57 },
+  { start: 95,   end_inclusive: 95 },
   { start: 768,  end_inclusive: 879 },
-  // Combining marks for various scripts
   { start: 1155, end_inclusive: 1161 },
-  { start: 1425, end_inclusive: 1479 },  // Hebrew cantillation
-  { start: 1552, end_inclusive: 1562 },  // Syriac combining
-  { start: 1611, end_inclusive: 1631 },  // Arabic combining
-  { start: 1632, end_inclusive: 1641 },  // Arabic-Indic digits ٠-٩
-  { start: 1648, end_inclusive: 1648 },  // Arabic hamza above
-  { start: 1750, end_inclusive: 1756 },  // Arabic combining
-  { start: 1759, end_inclusive: 1764 },  // Arabic combining
-  { start: 1767, end_inclusive: 1768 },  // Arabic combining
-  { start: 1770, end_inclusive: 1773 },  // Arabic combining
-  { start: 1776, end_inclusive: 1785 },  // Extended Arabic-Indic digits
-  { start: 1809, end_inclusive: 1809 },  // Thaana combining
-  { start: 1840, end_inclusive: 1866 },  // Thaana digits
+  { start: 1425, end_inclusive: 1479 },
+  { start: 1552, end_inclusive: 1562 },
+  { start: 1611, end_inclusive: 1631 },
+  { start: 1632, end_inclusive: 1641 },
+  { start: 1648, end_inclusive: 1648 },
+  { start: 1750, end_inclusive: 1756 },
+  { start: 1759, end_inclusive: 1764 },
+  { start: 1767, end_inclusive: 1768 },
+  { start: 1770, end_inclusive: 1773 },
+  { start: 1776, end_inclusive: 1785 },
+  { start: 1809, end_inclusive: 1809 },
+  { start: 1840, end_inclusive: 1866 },
   { start: 1958, end_inclusive: 1968 },
-  { start: 1984, end_inclusive: 1993 },  // NKo digits
+  { start: 1984, end_inclusive: 1993 },
   { start: 2027, end_inclusive: 2035 },
   { start: 2045, end_inclusive: 2047 },
   { start: 2070, end_inclusive: 2073 },
@@ -465,7 +396,7 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 2137, end_inclusive: 2139 },
   { start: 2200, end_inclusive: 2207 },
   { start: 2250, end_inclusive: 2273 },
-  { start: 2275, end_inclusive: 2307 },  // various combining
+  { start: 2275, end_inclusive: 2307 },
   { start: 2362, end_inclusive: 2364 },
   { start: 2366, end_inclusive: 2383 },
   { start: 2385, end_inclusive: 2391 },
@@ -477,7 +408,7 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 2507, end_inclusive: 2509 },
   { start: 2519, end_inclusive: 2519 },
   { start: 2530, end_inclusive: 2531 },
-  { start: 2534, end_inclusive: 2543 },  // Bengali digits
+  { start: 2534, end_inclusive: 2543 },
   { start: 2558, end_inclusive: 2559 },
   { start: 2561, end_inclusive: 2563 },
   { start: 2620, end_inclusive: 2620 },
@@ -485,14 +416,14 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 2631, end_inclusive: 2632 },
   { start: 2635, end_inclusive: 2637 },
   { start: 2641, end_inclusive: 2641 },
-  { start: 2662, end_inclusive: 2677 },  // Gurmukhi digits
+  { start: 2662, end_inclusive: 2677 },
   { start: 2689, end_inclusive: 2691 },
   { start: 2748, end_inclusive: 2748 },
   { start: 2750, end_inclusive: 2757 },
   { start: 2759, end_inclusive: 2761 },
   { start: 2763, end_inclusive: 2765 },
   { start: 2786, end_inclusive: 2787 },
-  { start: 2790, end_inclusive: 2799 },  // Gujarati digits
+  { start: 2790, end_inclusive: 2799 },
   { start: 2817, end_inclusive: 2819 },
   { start: 2876, end_inclusive: 2876 },
   { start: 2878, end_inclusive: 2884 },
@@ -500,12 +431,12 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 2891, end_inclusive: 2893 },
   { start: 2901, end_inclusive: 2903 },
   { start: 2914, end_inclusive: 2915 },
-  { start: 2918, end_inclusive: 2935 },  // Oriya digits
+  { start: 2918, end_inclusive: 2935 },
   { start: 3006, end_inclusive: 3010 },
   { start: 3014, end_inclusive: 3016 },
   { start: 3018, end_inclusive: 3021 },
   { start: 3031, end_inclusive: 3031 },
-  { start: 3046, end_inclusive: 3066 },  // Tamil digits
+  { start: 3046, end_inclusive: 3066 },
   { start: 3072, end_inclusive: 3076 },
   { start: 3132, end_inclusive: 3132 },
   { start: 3134, end_inclusive: 3140 },
@@ -513,7 +444,7 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 3146, end_inclusive: 3149 },
   { start: 3157, end_inclusive: 3158 },
   { start: 3170, end_inclusive: 3171 },
-  { start: 3174, end_inclusive: 3183 },  // Telugu digits
+  { start: 3174, end_inclusive: 3183 },
   { start: 3201, end_inclusive: 3212 },
   { start: 3260, end_inclusive: 3260 },
   { start: 3263, end_inclusive: 3268 },
@@ -521,7 +452,7 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 3274, end_inclusive: 3277 },
   { start: 3285, end_inclusive: 3286 },
   { start: 3298, end_inclusive: 3299 },
-  { start: 3302, end_inclusive: 3311 },  // Kannada digits
+  { start: 3302, end_inclusive: 3311 },
   { start: 3328, end_inclusive: 3331 },
   { start: 3387, end_inclusive: 3388 },
   { start: 3390, end_inclusive: 3396 },
@@ -529,18 +460,18 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 3402, end_inclusive: 3406 },
   { start: 3415, end_inclusive: 3415 },
   { start: 3426, end_inclusive: 3427 },
-  { start: 3430, end_inclusive: 3455 },  // Malayalam digits
+  { start: 3430, end_inclusive: 3455 },
   { start: 3530, end_inclusive: 3530 },
   { start: 3535, end_inclusive: 3540 },
   { start: 3542, end_inclusive: 3542 },
   { start: 3544, end_inclusive: 3551 },
-  { start: 3558, end_inclusive: 3567 },  // Sinhala digits
+  { start: 3558, end_inclusive: 3567 },
   { start: 3655, end_inclusive: 3662 },
-  { start: 3664, end_inclusive: 3673 },  // Thai digits
+  { start: 3664, end_inclusive: 3673 },
   { start: 3784, end_inclusive: 3789 },
-  { start: 3792, end_inclusive: 3801 },  // Lao digits
+  { start: 3792, end_inclusive: 3801 },
   { start: 3864, end_inclusive: 3866 },
-  { start: 3872, end_inclusive: 3891 },  // Tibetan digits
+  { start: 3872, end_inclusive: 3891 },
   { start: 3953, end_inclusive: 3972 },
   { start: 3974, end_inclusive: 3975 },
   { start: 3981, end_inclusive: 3991 },
@@ -548,7 +479,7 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 4038, end_inclusive: 4038 },
   { start: 4141, end_inclusive: 4153 },
   { start: 4155, end_inclusive: 4159 },
-  { start: 4160, end_inclusive: 4169 },  // Myanmar digits
+  { start: 4160, end_inclusive: 4169 },
   { start: 4182, end_inclusive: 4185 },
   { start: 4190, end_inclusive: 4192 },
   { start: 4194, end_inclusive: 4196 },
@@ -559,18 +490,11 @@ data xid_continue_only_ranges: List<CodePointRange> = [
   { start: 4250, end_inclusive: 4253 }
 ]
 
-// Emoji characters allowed as identifiers (extension beyond UAX31 XID sets).
-// Covers Emoji_Presentation ranges from Unicode 15.1 emoji-data.txt.
-// Following Swift and other languages that allow emoji in identifiers.
 data emoji_ident_ranges: List<CodePointRange> = [
-  // Misc Symbols
   { start: 9728,   end_inclusive: 9983 },
-  // Dingbats
   { start: 9986,   end_inclusive: 10160 },
-  // Supplemental Arrows, enclosed alphanumerics
   { start: 11088,  end_inclusive: 11093 },
   { start: 11904,  end_inclusive: 11929 },
-  // Mahjong, Domino
   { start: 126976, end_inclusive: 127019 },
   { start: 127024, end_inclusive: 127123 },
   { start: 127136, end_inclusive: 127150 },
@@ -584,18 +508,12 @@ data emoji_ident_ranges: List<CodePointRange> = [
   { start: 127338, end_inclusive: 127343 },
   { start: 127344, end_inclusive: 127377 },
   { start: 127378, end_inclusive: 127386 },
-  // Misc Symbols and Pictographs
   { start: 127744, end_inclusive: 128383 },
-  // Emoticons 😀-😿
   { start: 128512, end_inclusive: 128591 },
-  // Transport and Map 🚀-🛿
   { start: 128640, end_inclusive: 128767 },
-  // Miscellaneous Symbols and Arrows
   { start: 128768, end_inclusive: 128883 },
   { start: 128896, end_inclusive: 128980 },
-  // Supplemental Symbols and Pictographs 🤀-🧿
   { start: 129280, end_inclusive: 129535 },
-  // Chess Symbols, Symbols and Pictographs Extended-A
   { start: 129648, end_inclusive: 129791 }
 ]
 
@@ -618,12 +536,10 @@ fn char_in_class(c: Char, class: CharClass) -> Bool =
       code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
       || code_point(c) == 13 || code_point(c) == 32
     Digit => code_point(c) >= 48 && code_point(c) <= 57
-    // XID_Start (UAX31) ∪ underscore (conventional extension) ∪ Emoji
     IdentStart =>
       code_point(c) == 95
       || is_xid_start(cp: code_point(c))
       || is_emoji_ident(cp: code_point(c))
-    // XID_Continue (UAX31, superset of XID_Start) ∪ Emoji
     IdentContinue =>
       is_xid_continue(cp: code_point(c))
       || is_emoji_ident(cp: code_point(c))

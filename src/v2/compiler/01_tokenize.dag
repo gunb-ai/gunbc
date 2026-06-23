@@ -60,10 +60,6 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-// SCAFFOLD: These are temporary v2-local range helpers, mirroring std.unicode.CodePointRange.
-// dissolve-on: de-fork v2.compiler.tokenize ↔ std.unicode when Char type unification lands
-// (blocked on generic-inference keystone #5552).
-// The single authority for these ranges is dsl/std/unicode.dag.
 type NatRange { lo: Nat, hi: Nat }
 
 fn nat_in_range(c: Nat, r: NatRange) -> Bool {
@@ -73,8 +69,6 @@ fn nat_in_range(c: Nat, r: NatRange) -> Bool {
 fn nat_in_any_range(c: Nat, ranges: List<NatRange>) -> Bool {
   fold_list(xs: ranges, empty: false, cons: fn(acc, r) { acc || nat_in_range(c: c, r: r) })
 }
-
-// XID_Start ranges — mirrors dsl/std/unicode.dag xid_start_ranges (UAX31 Unicode 15.1).
 fn xid_start_nat_ranges() -> List<NatRange> {
   [
     NatRange { lo: 65,    hi: 90 },
@@ -427,8 +421,6 @@ fn xid_start_nat_ranges() -> List<NatRange> {
     NatRange { lo: 65498, hi: 65500 }
   ]
 }
-
-// XID_Continue-only ranges (not in XID_Start): digits, combining marks, connector punct.
 fn xid_continue_only_nat_ranges() -> List<NatRange> {
   [
     NatRange { lo: 48,   hi: 57 },
@@ -553,8 +545,6 @@ fn xid_continue_only_nat_ranges() -> List<NatRange> {
   ]
 }
 
-// Emoji ranges for identifier use (UAX31 §2.5 programming extension).
-// Mirrors dsl/std/unicode.dag emoji_ident_ranges (Unicode 15.1 emoji-data.txt).
 fn emoji_ident_nat_ranges() -> List<NatRange> {
   [
     NatRange { lo: 9728,   hi: 9983 },
@@ -606,12 +596,12 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
       (nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57)) ||
       (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 70)) ||
       (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 102))
-    // XID_Start (UAX31) ∪ underscore (conventional extension) ∪ Emoji
+
     IdentStartChar =>
       c == 95 ||
       is_xid_start_nat(c: c) ||
       is_emoji_ident_nat(c: c)
-    // XID_Continue (UAX31, superset of XID_Start) ∪ Emoji
+
     IdentContinueChar =>
       is_xid_continue_nat(c: c) ||
       is_emoji_ident_nat(c: c)
