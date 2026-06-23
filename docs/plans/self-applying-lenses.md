@@ -1,5 +1,20 @@
 # Self-applying lenses — detect → generalize → emit → write
 
+**Crux (fractal intent-linearity).** A program's *description length should equal its irreducible
+information content* — the minimal generative template plus the genuinely-distinct data — **recursively
+at every nesting level**. Equivalently: the intent is 1:1 with its own inputs; the description grows
+*only* with distinct information, never with repetition. This is the decidable, enforceable shadow of
+§1's limit ("replace convention with necessity until nothing arbitrary survives"): redundancy is
+convention surviving where a reference was available, and super-linear description is exactly that
+convention made visible. Enforcing it over the code-as-its-own-input — fractally — is §2's master move
+turned into a construction wall, and the micro-scale twin of §7's seed-shrink (a compiler 1:1 with its
+inputs is the seed at its irreducible core). **Bound (do not let "linear" become a universal wall):** it
+is a *wall up to the substrate's expressible abstraction* (anti-unification computes the structural
+minimum relative to the available combinators) and a *ratchet beyond it* (true minimal description is
+Kolmogorov-uncomputable). The frontier advances as the catalog/combinators grow — which is §7's
+"language design opens up," measured. Prerequisite: the minimal form must be *expressible and ergonomic*
+to reference (the Ergonomics lane is what widens this wall).
+
 **Thesis.** A lens that only *flags* concedes the bad state is writable and leaves the fix to a
 human (who pays the §1 time, and re-introduces fail-open arms by hand). The next form of the lens
 **produces the correct pattern and applies it through our own write API** — it does not report a
@@ -46,6 +61,43 @@ decision procedure run in different directions, N models not N×M).
    scan (interleaved byte-decomp) · reduce (n-ary binary) · **table-lookup (if/else ladder)**. The
    ladder's correct fix is "these cited rows belong in `extdeps/` + one generic dispatch" (§3: dispatch
    lives in extdeps, not std) — **not** a fold. The lens must name the scheme so it emits the right form.
+
+## Collapse into complexity analysis (the same move, two axes)
+
+`cost.dag` computes runtime cost as a **`fold_node` over the AST** (`SumCost` for a sequence,
+`ProductCost` for a nested loop) → an `AsymptoticClass`. That is the *same catamorphism shape* this
+lens uses, measuring a different §1-time axis:
+
+- **complexity = run-time** (§1 *cost* axis — time to run).
+- **redundant intent = change-time** (§1 *complexity* axis — time to change; §2 "redundant work defers
+  cost into the future").
+
+Both are §2 *minimize redundancy*: DRY on the **execution** (don't compute the same thing twice) vs DRY
+on the **source** (don't write the same shape twice). So the unification is one engine:
+
+> **redundancy = (actual − minimal) along a §1 time-axis, computed by a catamorphism, closed by an
+> anti-unification `(pattern → minimal-form)` rewrite catalog, applied via the write API.**
+
+Parameterized by: (a) the **representation walked** — source-AST (redundant intent) vs cost-recurrence
+(complexity, the `SumCost`/`ProductCost` shape); (b) the **§1-axis minimized** — change-time vs run-time.
+Instances: `simulated_relationship` (unroll→fold) · `structural_similarity` (dup type→generic) · the §5
+`O(n²)→O(n)` catalog (redundant *computation* → memo / single-pass). One engine, N catalog rows
+(§2-horizontal) — not the N×M "per-idiom rules" §5 feared.
+
+**Decidability split (the expressibility frontier, §0):**
+- **WALL / self-applying** — source-redundancy + the *finite* rewrite catalog ("bulletproof where it
+  fires", §5). Decidable: pattern-match + rewrite.
+- **RATCHET / advisory** — *global* optimality (Rice: "is there ANY cheaper equivalent?"). `complexity.dag`
+  stays `RatchetForever` for that residue (§3 "synthesis stays advisory").
+
+**Honest disanalogy — the axes genuinely diverge, so a row must tag which one it improves:**
+- elf 8-byte unroll: high spec-redundancy, **O(1) runtime** (8 ops either way) — redundant-intent fires,
+  cost does **not**.
+- compact `for i: for j:`: **O(1) spec**, O(n²) runtime — cost fires, redundant-intent does **not**.
+
+The "minimal form" is axis-relative; some rewrites improve both axes, some only one. (And complexity
+anti-unifies the *cost-recurrence*, a derived representation — you fold to cost first, then match —
+whereas redundant-intent anti-unifies the source AST directly.)
 
 ## Dependencies
 
