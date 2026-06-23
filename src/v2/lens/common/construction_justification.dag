@@ -2,11 +2,13 @@ module v2.lens.common.construction_justification
 
 import v2.std.text { String }
 
+import std.disposition { ConstructionMechanism }
+
 type ConstructionClass
 
   = WallNow { construction: String }
 
-  | WallAfterGrounding { grounding_authority: String, dissolve_on: String }
+  | WallAfterGrounding { dissolves_to: ConstructionMechanism }
 
   | RatchetForever { undecidable_because: String }
 

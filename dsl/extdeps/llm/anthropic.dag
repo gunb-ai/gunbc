@@ -6,6 +6,7 @@ import std.types { NonEmptyStr }
 import std.disposition { Disposition, Scaffold, Terminal, DeclLocator, WholeDeclaration, NamedField, SingleAuthority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -277,78 +278,125 @@ type AnthropicMessages200Body {
   container: Json?
 }
 
-data structural_coverage_gap_anthropic_messages_200_residual: List<Disposition> = [
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "AnthropicContainerResponse",
-      field: WholeDeclaration
-    }
+data structural_coverage_gap_anthropic_messages_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200Body" },
+      JsonPending { field: "container" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller" },
+      JsonPending { field: "web_search_tool_result_payload" }
+    ],
+    trigger: "container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result"
   },
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "MessagesToolUseBlock",
-      field: NamedField { field_name: "caller_payload" }
-    }
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesToolUseBlock" },
+      Residue { description: "client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema" }
+    ],
+    trigger: "tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema"
   },
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "AnthropicServerToolUseSurface",
-      field: WholeDeclaration
-    }
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesServerToolUseBlock" },
+      Residue { description: "server_tool_input_and_optional_caller_payloads_unmodeled" }
+    ],
+    trigger: "fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName"
   },
-  Terminal {
-    reason: "external_spec_watch: fires when Anthropic publishes additional server_tool_use.name values beyond the typed AnthropicServerToolName closed enum"
+  {
+    facts: [
+      Subject { path: "AnthropicServerToolName" },
+      ExternalSpecWatch { item: "server_tool_use_name_set" }
+    ],
+    trigger: "Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set"
   },
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "AnthropicBetaContentBlock",
-      field: WholeDeclaration
-    }
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      VariantPending { variant: "web_fetch_tool_result" },
+      VariantPending { variant: "code_execution_tool_result" },
+      VariantPending { variant: "bash_code_execution_tool_result" },
+      VariantPending { variant: "text_editor_code_execution_tool_result" },
+      VariantPending { variant: "tool_search_tool_result" },
+      VariantPending { variant: "advisor_tool_result" },
+      VariantPending { variant: "mcp_tool_use" },
+      VariantPending { variant: "mcp_tool_result" },
+      VariantPending { variant: "container_upload" }
+    ],
+    trigger: "Anthropic beta/server-tool content-block surface modeled structurally"
   },
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "StructuralProjectionMetadata",
-      field: WholeDeclaration
-    }
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages.output.content" },
+      Blocked { reason: "variant_aware_typed_rest_response_projection" },
+      PathRef { path: "content/0/text" },
+      RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
+    ],
+    trigger: "structural projection metadata carrier lands"
   }
 ]
 
-data rest_request_wire_serde_alignment_receipt: List<Disposition> = [
-  Terminal { reason: "paid: AnthropicChatMessage role internally-tagged object user/assistant wire serde alignment" },
-  Terminal { reason: "paid: AnthropicUserContentBlock type internally-tagged text/tool_result wire serde alignment" },
-  Terminal { reason: "paid: AnthropicAssistantContentBlock type internally-tagged text/tool_use wire serde alignment" },
-  Terminal { reason: "paid: AnthropicUserContentBlock.UserToolResultBlock.content untagged scalar-or-block-array wire serde alignment" },
-  Terminal { reason: "paid: AnthropicToolResultBlock type internally-tagged tool_result nested blocks wire serde alignment" }
-]
-
-data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<Disposition> = [
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "FileImageSource",
-      field: WholeDeclaration
-    }
+data rest_request_wire_serde_alignment_receipt: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicChatMessage" },
+      Paid { item: "role_internally_tagged_object_user_assistant" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_result" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicAssistantContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_use" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock.UserToolResultBlock.content" },
+      Paid { item: "tool_result_content_untagged_scalar_or_block_array" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicToolResultBlock" },
+      Paid { item: "type_internally_tagged_object_tool_result_nested_blocks" }
+    ],
+    trigger: none
   }
 ]
 
-data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<Disposition> = [
-  Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclLocator {
-      module_path: "extdeps.llm.anthropic",
-      decl_name: "AnthropicMessages200ContentBlockWireContract",
-      field: WholeDeclaration
-    }
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ImageSource" },
+      VariantPending { variant: "FileImage" },
+      Residue { description: "file_source_requires_anthropic_beta_on_messages_transport" }
+    ],
+    trigger: "add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
+  }
+]
+
+data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      Residue { description: "messages_200_content_block_internally_tagged_object_unproved" }
+    ],
+    trigger: "generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
   }
 ]
