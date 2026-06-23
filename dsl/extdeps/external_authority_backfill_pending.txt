@@ -1,18 +1,3 @@
-extdeps.cache.cache
-extdeps.cache.catalog_io
-extdeps.cache.catalog_placement
-extdeps.cache.key_completeness
-extdeps.cache.types
-extdeps.gunbc
-extdeps.languages.dag.emit
-extdeps.languages.dag.syntax
-extdeps.languages.dag.types
-extdeps.llm.llm
-extdeps.realization.cache_purity
-extdeps.realization.hermetic_fixture
-extdeps.realization.parse_table_memo
-extdeps.realization.resolved_graph
-extdeps.realization.v1_handler
-extdeps.runtime.local
-extdeps.tools
-extdeps.transports.fidelity
+# Intentionally empty: every extdeps module now carries an external_authority_anchor
+# (real upstream where one exists; the gunbc repo for internal machinery). The
+# backfill scaffold is fully drained.
