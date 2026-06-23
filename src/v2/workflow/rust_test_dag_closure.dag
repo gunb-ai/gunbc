@@ -1,30 +1,11 @@
 module v2.workflow.rust_test_dag_closure
 
-// Edge-(b) coverage keystone -- slice 1 (the §1 coverage keystone, docs/plans/edge-b-rust-dag-provenance-brief.md).
-//
-// One declared structural fact -- a rust test's consumed-.dag closure -- recorded ONCE on
-// the EXISTING `NodeArtifactProvenance` carrier (DESIGN §3 single authority, no parallel
-// mint) and read in two directions (DESIGN §4 one grammar both directions):
-//   * COVERAGE / fire (this slice): a changed .dag inside the closure must re-run the test.
-//   * AFFORDABILITY / skip (later): a declared test whose closure the diff doesn't touch
-//     may be skipped.
-//
-// SOUNDNESS LABEL -- this slice's closure is HAND-LISTED, so it proves the WIRING
-// (fire/skip plumbing + fail-closed default), NOT the WALL (drift-proof completeness).
-// The coverage direction is only sound when `closure ⊇ actual-.dag-reads`; a hand-listed
-// closure can drift under-complete and silently re-open the .dag->rust fail-open. Making
-// the closure STRUCTURALLY DERIVED (so a newly-added .dag read is captured automatically)
-// is the Edge-(b) shared blocker, not slice 1. Until then the per-test fail-closed default
-// below keeps the SKIP direction safe: an undeclared (empty-closure) test is must-run.
-
-import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
-
-// --- The test's identity node (the LHS of every provenance row in its closure) ---
 
 data coproduct_reflection_conformance_test_identity: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^coproduct_reflection_conformance_test } },
@@ -39,12 +20,6 @@ fn rust_test_consumed_dag(id: Symbol, file_path: String) -> NodeArtifactProvenan
   }
 }
 
-// --- The declared closure (HAND-LISTED: the test's own file + its direct .dag imports) ---
-//
-// coproduct_reflection_conformance_test reflects over the `Connective` and `Behavior`
-// coproducts, both defined in src/v2/std/node.dag -- so node.dag is squarely in its closure
-// (the discriminating IN path below). The remaining rows are its direct module imports.
-
 data coproduct_reflection_conformance_closure: List<NodeArtifactProvenance> = [
   rust_test_consumed_dag(
     id: ^closure_row_own,
@@ -58,38 +33,24 @@ data coproduct_reflection_conformance_closure: List<NodeArtifactProvenance> = [
   rust_test_consumed_dag(id: ^closure_row_logic, file_path: "src/v2/std/logic.dag")
 ]
 
-// --- Read the carrier in the gate's direction: project the closure to its .dag paths ---
-
-fn rust_test_closure_dag_paths(closure: List<NodeArtifactProvenance>) -> List<String> {
+fn closure_contains_path(closure: List<NodeArtifactProvenance>, path: String) -> Bool {
   fold_list(
     xs: closure,
-    empty: [],
-    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.artifact.file_path) }
+    empty: false,
+    cons: fn(hit, row) { hit || (row.artifact.file_path == path) }
   )
-}
-
-fn rust_test_closure_path_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 fn rust_test_changed_in_closure(
   changed: List<String>,
   closure: List<NodeArtifactProvenance>
 ) -> Bool {
-  let paths = rust_test_closure_dag_paths(closure: closure)
   fold_list(
     xs: changed,
     empty: false,
-    cons: fn(hit, c) {
-      hit || contains(xs: paths, item: c, eq: rust_test_closure_path_eq)
-    }
+    cons: fn(hit, c) { hit || closure_contains_path(closure: closure, path: c) }
   )
 }
-
-// --- Per-test decision: fail-closed default is the soundness of the SKIP direction ---
-//
-// undeclared (empty closure) => must-run; git read failed => must-run (fail-closed);
-// declared => run iff a consumed .dag changed (coverage fire / affordability skip).
 
 fn rust_test_must_run(
   closure: List<NodeArtifactProvenance>,

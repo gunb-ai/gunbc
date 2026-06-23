@@ -15,13 +15,6 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
   fold(paths, false, fn(acc, p) { acc || path_is_rust_monolith(path: p) })
 }
 
-// Edge-(b) coverage keystone (DESIGN §5 fail-closed / §4 one-fact-two-directions):
-// a rust test can READ .dag via opaque host paths, so a .dag change can alter a rust
-// gate's verdict with no .rs/Cargo suffix to fire on. `closure_paths` is the union of the
-// declared rust-test consumed-.dag closures (projected from the NodeArtifactProvenance
-// carrier in v2.workflow.rust_test_dag_closure). A changed path inside that union ALSO
-// fires the gate -- purely additive, so an empty closure_paths is identical to the prior
-// behavior and can never make the gate skip something it used to run.
 fn any_path_in_closure(paths: List<String>, closure_paths: List<String>) -> Bool {
   fold(paths, false, fn(acc, p) {
     acc || fold(closure_paths, false, fn(hit, c) { hit || (c == p) })

@@ -17,12 +17,10 @@ fn w_dag_only_no_fire() -> Bool {
   should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true, closure_paths: []) == false
 }
 
-// Edge-(b): a changed .dag inside the declared rust-test closure ALSO fires the gate.
 fn w_closure_dag_fires() -> Bool {
   should_run_gates(paths: ["src/v2/std/node.dag"], git_success: true, closure_paths: ["src/v2/std/node.dag"])
 }
 
-// Discriminating control: a changed .dag OUTSIDE the declared closure does NOT fire.
 fn w_off_closure_dag_no_fire() -> Bool {
   should_run_gates(paths: ["src/v2/lens/cost.dag"], git_success: true, closure_paths: ["src/v2/std/node.dag"]) == false
 }
