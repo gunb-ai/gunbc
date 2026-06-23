@@ -174,3 +174,7 @@ fn container_state_wire_label(state: ContainerState) -> String {
     Restarting => "restarting"
   }
 }
+
+data dissolve_on_variant_wire_fork_container_state: List<String> = [
+  "closure:consolidate_variant_string_mapping|parse_container_state and container_state_wire_label are hand-forked forward/backward arms of one variant↔string table (§4 one grammar, read both directions); single rowset with derived bidirectional access dissolves the fork and eliminates silent divergence risk (§5)|trigger:B3 models ContainerState wire facts as single authority"
+]
