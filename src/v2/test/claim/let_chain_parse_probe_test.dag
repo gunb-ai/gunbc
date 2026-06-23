@@ -1,0 +1,41 @@
+module v2.test.claim.let_chain_parse_probe
+
+import v2.compiler.source_authority { parse_dag_source_ast, DagSourceAst }
+import extdeps.communication.medium { Medium }
+import extdeps.filesystem.filesystem_io
+import v2.std.diagnostic {
+  Outcome,
+  Accepted,
+  Rejected,
+  Diagnostic,
+  NonEmptyDiagnostics,
+}
+import v2.std.logic { Bool }
+
+// A module whose function body is a real let-chain:
+//   let x = foo();  let y = bar(x);   x + y
+// expressed in the dag surface (let stmt-seq form, no `in`).
+data let_chain_module_source: String =
+  "module probe.sample\n\nfn compute() -> Int {\n  let x = foo(a: 1)\n  let y = bar(b: x)\n  x + y\n}\n"
+
+fn wrap(s: String) -> Medium<String> {
+  Medium { carried: s }
+}
+
+fn outcome_is_accepted(o: Outcome<DagSourceAst>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// PROBE 1: parse the inline multi-let body module.
+func let_chain_inline_parses_accepted() -> Bool {
+  outcome_is_accepted(o: parse_dag_source_ast(source: wrap(s: let_chain_module_source)))
+}
+
+// PROBE 2: parse a real on-disk .dag file that itself contains let-chains.
+func real_file_with_let_chain_parses_accepted() -> Bool {
+  let result = filesystem_read(path: "dsl/test/claim/filesystem_read_hermetic_witness.dag")
+  outcome_is_accepted(o: parse_dag_source_ast(source: wrap(s: result.content)))
+}
