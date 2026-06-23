@@ -7,7 +7,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.github.com/en/rest/pulls/pulls#get-a-pull-request"
+    locator: "docs.github.com/en/graphql/reference/enums#mergeablestate"
   }
 }
 
