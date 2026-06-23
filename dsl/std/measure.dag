@@ -138,6 +138,8 @@ fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
 
 type ByteSize = Measure<Memory, One, Nat>
 
+type Kibibyte = Measure<Memory, Kibi, Nat>
+
 type Gibibyte = Measure<Memory, Gibi, Nat>
 
 fn gibibyte(count: Nat) -> Gibibyte {
@@ -244,4 +246,24 @@ fn bandwidth(count: Nat) -> Bandwidth {
 
 fn bandwidth_count(b: Bandwidth) -> Nat {
   measure_count(b)
+}
+
+type Nanosecond = Measure<Time, Nano, Nat>
+
+fn nanosecond(count: Nat) -> Nanosecond {
+  Nanosecond { count: count }
+}
+
+fn nanosecond_count(n: Nanosecond) -> Nat {
+  measure_count(n)
+}
+
+type Microsecond = Measure<Time, Micro, Nat>
+
+fn microsecond(count: Nat) -> Microsecond {
+  Microsecond { count: count }
+}
+
+fn microsecond_count(m: Microsecond) -> Nat {
+  measure_count(m)
 }
