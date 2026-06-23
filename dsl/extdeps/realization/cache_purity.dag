@@ -1,6 +1,16 @@
 module extdeps.realization.cache_purity
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 import std.types { NonEmptyStr, ContentHash, Bool }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
+}
 
 type CachePurityViolation {
   content_key: ContentHash
