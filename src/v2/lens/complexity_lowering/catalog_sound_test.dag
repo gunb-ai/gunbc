@@ -1,0 +1,31 @@
+module v2.test.lens_complexity_lowering.catalog_sound
+
+import v2.lens.complexity_lowering { ComplexityLowering, catalog_is_sound, strictly_lowers }
+import v2.lens.cost { ClassLinear, ClassPolynomial, polynomial_degree_two }
+import v2.std.logic { Bool }
+
+test fn catalog_is_sound_holds() -> Bool {
+  catalog_is_sound()
+}
+
+fn bogus_identity_lowering() -> ComplexityLowering {
+  ComplexityLowering {
+    name: ^bogus_identity,
+    before: ClassLinear,
+    after: ClassLinear
+  }
+}
+test fn identity_lowering_is_rejected() -> Bool {
+  !strictly_lowers(r: bogus_identity_lowering())
+}
+
+fn bogus_widening_lowering() -> ComplexityLowering {
+  ComplexityLowering {
+    name: ^bogus_widening,
+    before: ClassLinear,
+    after: ClassPolynomial { degree: polynomial_degree_two() }
+  }
+}
+test fn widening_lowering_is_rejected() -> Bool {
+  !strictly_lowers(r: bogus_widening_lowering())
+}

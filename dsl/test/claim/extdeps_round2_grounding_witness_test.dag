@@ -28,6 +28,17 @@ import extdeps.cloud.cloud {
   aws_region_wire_label,
   aws_service_wire_label,
 }
+import extdeps.cloud.gcp.errors {
+  GcpErrorShape,
+  GcpRpcCode,
+  GcpRpcCodePermissionDenied,
+  GcpRpcCodeNotFound,
+  GcpRpcCodeOk,
+  GcpRpcCodeOther,
+  gcp_error_example,
+  parse_gcp_rpc_code,
+  gcp_rpc_code_label,
+}
 import extdeps.cloud.gcp.gcp {
   GcpApiEndpoint,
   GcpProject,
@@ -129,6 +140,24 @@ fn w_gcp_project_id_refinement() -> Bool {
   project.project_id == "my-gcp-project"
 }
 
+fn w_gcp_rpc_code_grounded_and_other() -> Bool {
+  let example_ok = match gcp_error_example.error.status {
+    Present { value: c } => c == GcpRpcCodePermissionDenied
+    Absent => false
+  }
+  let label_ok = gcp_rpc_code_label(GcpRpcCodePermissionDenied) == "PERMISSION_DENIED"
+  let known_routes_to_known = match parse_gcp_rpc_code("NOT_FOUND") {
+    GcpRpcCodeNotFound => true
+    GcpRpcCodeOther { raw: _ } => false
+    _ => false
+  }
+  let unknown_routes_to_other = match parse_gcp_rpc_code("FUTURE_CODE_X") {
+    GcpRpcCodeOther { raw: r } => r == "FUTURE_CODE_X"
+    _ => false
+  }
+  example_ok && label_ok && known_routes_to_known && unknown_routes_to_other
+}
+
 fn w_service_account_email_grounded() -> Bool {
   let sa_row = GcpServiceAccount {
     email: "runner@my-project.iam.gserviceaccount.com",
@@ -208,6 +237,7 @@ test fn extdeps_round2_grounding_witnesses() -> Bool {
     && w_sigv4_auth_scheme_carries_enums()
     && w_gcp_api_endpoint_service_enum()
     && w_gcp_project_id_refinement()
+    && w_gcp_rpc_code_grounded_and_other()
     && w_service_account_email_grounded()
     && w_gpu_compute_capability_sm_label()
     && w_gpu_amd_label_distinct_from_nvidia()

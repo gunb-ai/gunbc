@@ -1,5 +1,6 @@
 module v2.lens.realization_vocabulary_containment
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.lens.layering_imports {
   LayerImportFact,
@@ -32,6 +33,7 @@ data realization_vocab_exception_roster: List<String> = [
   "dsl/gunbc/ci_spec.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
+  "dsl/tools/build_step_transport.dag",
   "dsl/tools/dsl_compile_clean_transport.dag",
   "dsl/tools/emit_host_transport.dag",
   "dsl/tools/extdeps_external_authority_transport.dag",
@@ -216,9 +218,6 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash)",
-    dissolve_on: "the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
-  },
-  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch },
+  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster. Grounding authority: the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash). Dissolves on: the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
 }
