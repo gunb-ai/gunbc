@@ -3566,10 +3566,7 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
-        let wire_context_items = v1_rt::concat(
-            typed_module.items.clone(),
-            sidecar_items.clone(),
-        );
+        let wire_context_items = v1_rt::concat(typed_module.items.clone(), sidecar_items.clone());
         let wire_context_imports = v1_rt::concat(
             module_import_items.clone(),
             contracts_imports_for_module(
