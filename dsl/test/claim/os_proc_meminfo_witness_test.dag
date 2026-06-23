@@ -1,0 +1,36 @@
+module test.claim.os_proc_meminfo_witness
+
+import extdeps.os.proc_meminfo {
+  ProcMeminfo,
+  MemoryMetric,
+  meminfo_field_names,
+}
+
+test fn valid_proc_meminfo_struct {
+  let info: ProcMeminfo = ProcMeminfo {
+    mem_total: 8012272,
+    mem_free: 4048136,
+    mem_available: 6144000,
+    buffers: 256000,
+    cached: 2048136,
+    swap_total: 2097152,
+    swap_free: 2097152,
+    all_metrics: [],
+  }
+
+  assert info.mem_total > 0
+  assert info.mem_available <= info.mem_total
+}
+
+test fn valid_memory_metric {
+  let metric: MemoryMetric = MemoryMetric {
+    key: "MemTotal",
+    value_kibibytes: 8012272,
+  }
+
+  assert metric.value_kibibytes > 0
+}
+
+test fn field_names_nonempty {
+  assert len(meminfo_field_names) > 0
+}

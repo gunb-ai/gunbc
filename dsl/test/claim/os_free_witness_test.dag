@@ -1,0 +1,72 @@
+module test.claim.os_free_witness
+
+import extdeps.os.free {
+  FreeOutput,
+  MemoryStats,
+  SwapStats,
+}
+
+test fn valid_memory_stats {
+  let stats: MemoryStats = MemoryStats {
+    total: 8192000000,
+    used: 1024000000,
+    free: 2048000000,
+    shared: 0,
+    buff_cache: 5120000000,
+    available: 3072000000,
+  }
+
+  assert stats.total > 0
+  assert stats.available <= stats.total
+  assert stats.free <= stats.total
+}
+
+test fn valid_swap_stats {
+  let stats: SwapStats = SwapStats {
+    total: 2048000000,
+    used: 0,
+    free: 2048000000,
+  }
+
+  assert stats.total >= 0
+  assert stats.used <= stats.total
+  assert stats.free <= stats.total
+}
+
+test fn valid_free_output {
+  let mem: MemoryStats = MemoryStats {
+    total: 8192000000,
+    used: 1024000000,
+    free: 2048000000,
+    shared: 0,
+    buff_cache: 5120000000,
+    available: 3072000000,
+  }
+
+  let swap: SwapStats = SwapStats {
+    total: 2048000000,
+    used: 0,
+    free: 2048000000,
+  }
+
+  let output: FreeOutput = FreeOutput {
+    memory: mem,
+    swap: swap,
+  }
+
+  assert output.memory.total > 0
+  assert output.swap.total >= 0
+}
+
+test fn memory_consistency {
+  let stats: MemoryStats = MemoryStats {
+    total: 8192000000,
+    used: 1024000000,
+    free: 2048000000,
+    shared: 0,
+    buff_cache: 5120000000,
+    available: 3072000000,
+  }
+
+  assert stats.available >= stats.free
+}
