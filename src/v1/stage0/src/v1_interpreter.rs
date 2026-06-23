@@ -4038,12 +4038,13 @@ fn resolve_auth(
         }
     }
 
-    // §3: a caller-supplied input token wins over an ambient env var.
+    // §3: a caller-supplied input token wins over an ambient env var. Extract the String
+    // payload explicitly (the token is a Secret = Value::Str) rather than relying on Display —
+    // a non-string Value must NOT produce a stringified-debug Bearer header; fall through instead.
     if let Some(field) = input_field_name {
-        if let Some(v) = param_env.lookup(ctx.sym(&field)) {
-            let tok = format!("{}", v);
+        if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(&field)) {
             if !tok.is_empty() {
-                return (header_name, Some(tok));
+                return (header_name, Some(tok.clone()));
             }
         }
     }
