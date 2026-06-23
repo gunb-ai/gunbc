@@ -4,6 +4,54 @@
 
 **Re-verified against the live tree on 2026-06-22 by execution** (decl-name set `comm` per concept + shared-type-body diff). This pass **corrected a load-bearing project assumption**: the dsl↔v2 std fork is *not* "mostly temporary v2 mirrors of dsl." It is **2 true mirrors + 2 pure name-collisions + 7 divergent groundings** — the same concepts grounded on *different axes/realizations*. The hard part of the de-fork is therefore a grounding-unification **design** (operator-owned, downstream of the numeric tower #5428 and the model↔realization grounding), not a mechanical sweep. The prior version of this doc ("11 mechanical PRs / 5 collapses / `Classical`↔`Bool` nickname") was wrong by execution and is superseded below.
 
+**Re-confirmed by execution 2026-06-23 (post-#5640), for the
+[#2 resolver-wall](resolver-type-name-collision-wall.md) (PR #5652) Q2 ruling — see §2A.** Net distribution now: **2 true mirrors** (`reducible` DONE #5507, `measure` in-flight
+#5509) **+ 6 divergent groundings** (`algebra`/`logic`/`nat`/`integer`/`float`/`effects`) **+ 2
+v1-artifact name-collisions** (`node`, `coercion`) **+ 1 RESOLVED** (`verification`, #5640 — it was a
+name-collision resolved by rename-apart, *not* a grounding-merge, so it leaves the cluster). **Executed
+verdict: cant-unify-yet (needs a milestone later than the grounding de-fork) == {node, coercion}
+exactly — no third stuck mirror — so the signed `flag-ANY + {node,coercion}` wall policy HOLDS.**
+
+---
+
+## 2A. 2026-06-23 executed Q2 confirmation (post-#5640) — supersedes the `verification` census row
+
+Read-only, by execution. Structural extraction of every top-level `type` decl in `dsl/std/<b>.dag`
+vs `src/v2/std/<b>.dag`; shared **unqualified type names** compared with the #2 guard's own
+`structural_inequality` predicate (normalized body equality) — this run is also the §5 proof that the
+predicate classifies correctly. Reachability = BFS of all **351** `_test.dag` floor entries' whole-module
+import closures testing whether `std.<b>` and `v2.std.<b>` co-occur in one closure (= the guard fires).
+
+| basename | shared type-names | structural verdict | floor co-occurrence | category | unify status |
+|---|---|---|---|---|---|
+| **algebra** | 16 (13 differ; 3 byte-identical `Lattice`/`Magma`/`Ordering`) | same concept, divergent **encoding** (dsl flat records vs v2 compositional/coproduct) | **LIVE — 75 entries** | grounding (Root-A: v2 coproduct authority RULED 2026-06-22) | cant-unify-yet, **has path** (de-fork-resolved, not exempted) |
+| **nat** | 1 (`Nat`: `= CommutativeSemiring<Magnitude>` vs `= Zero \| Succ`) | same concept, divergent **model** | **LIVE — 4 entries** | grounding (#5428 numeric tower; escalated smart-ant-466) | cant-unify-yet, has path; BLOCKED + LAST |
+| **effects** | 3 (`EffectShape`/`KeySource`/`CreateCause`; `EffectShape` body re-modeled on a different axis) | divergent **axis** (operation-kind vs idempotency-class) | latent (0) | grounding | cant-unify-yet, has path (axis-authority decision) |
+| **float** | 3 (2 differ; 1 byte-identical `Float = Float64`) | same concept, divergent encoding | latent (0) | grounding (#5428) | cant-unify-yet, has path |
+| **integer** | 14 (11 differ only on `MachineWidth<8>` vs `<Word8>`; 3 byte-identical) | same concept, near-identical (token diff) | latent (0) | grounding (#5428) | cant-unify-yet, has path (mechanical once the tower lands) |
+| **verification** | **0** (was 1: `TestClaim`) | **RESOLVED #5640** (dsl record renamed `TestClaim → AssertionClaim`) | none now | **RESOLVED name-collision** (not a grounding) | **DONE** |
+| **logic** | **0** (dsl `Classical` vs v2 `Bool`) | divergent concept, **no name overlap** | none (0 shared) | grounding-or-rename (undecided) | **no type-name collision → guard never fires** |
+| **coercion** | **0** (dsl cast vocab vs v2 `coercion_fold`) | divergent concept, **no name overlap** | none (0 shared) | v1-artifact name-collision | dissolve-on v1-delete; **0 type-name collisions → exemption vacuous for the guard** |
+| **node** | **0** (dsl v1-only `compiler_inductive_fields` vs v2 Node substrate) | divergent concept, **no name overlap** | none (0 shared) | v1-artifact name-collision | dissolve-on v1-delete; **0 type-name collisions → exemption vacuous for the guard** |
+
+**Confirms parent's derived distribution; cant-unify-yet == {node, coercion} exactly; flag-ANY +
+{node,coercion} HOLDS.** Two scope refinements (strengthen, do not refute the ruling):
+
+1. **The {node,coercion} exemption is VACUOUS for the type-name guard.** node/coercion (and logic,
+   and now verification) share **zero** type names — only the *basename*. The guard keys on a shared
+   unqualified **type name** within one closure, so it never fires on them; their de-fork is a
+   *module-basename* rename (Route-C / v1-delete), a different surface. The guard needs no
+   {node,coercion} roster entry to land green — keeping it would be a dead (non-firing) exemption,
+   itself a §5 smell. Recommend marking the roster entry explicitly "Route-C basename, non-firing"
+   or dropping it from the guard model.
+2. **The guard's real lands-green gate is the grounding de-fork of the shared-type-name basenames**,
+   fronted by the LIVE pair `{algebra (75 floor entries), nat (4)}` — they silently fail-open today
+   (benign only because they shadow record-with-record, not the coproduct-variant-drop that broke
+   `verification` under A1), and a flag-ANY wall reds them on landing. `{effects, float, integer}`
+   are latent (no co-occurrence today) but re-arm risks (exactly how verification went latent→LIVE
+   under A1). So the wall lands-already-green only after `{algebra, nat}` (then the latent three)
+   de-fork — that sequence, not the {node,coercion} exemption, gates activation.
+
 ---
 
 ## 0. Thesis — the only duplication is v2's bootstrap copies of dsl
