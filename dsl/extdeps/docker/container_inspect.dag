@@ -3,7 +3,6 @@ module extdeps.docker.container_inspect
 import std.types { Timestamp, String, Int, FilePath }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond_count }
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
 import extdeps.docker.endpoint { docker_default_endpoint, docker_external_authority_anchor }
 
 type ContainerState
