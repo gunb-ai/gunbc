@@ -93,8 +93,7 @@ data design_section_2_to_7_propositions: List<Proposition> = [
   }
 ]
 
-data design_propositions: List<Proposition> =
-  concat(design_section_1_propositions, design_section_2_to_7_propositions)
+data design_propositions: List<Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
 
 // The whole-document argument: A1–A3 + every section's headline claim. The syllogism lens
 // (std.syllogism.argument_form_is_valid) checks it is non-vacuous, orphan-free, acyclic, and
