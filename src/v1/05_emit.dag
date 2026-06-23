@@ -89,7 +89,7 @@ import v1.compiler.languages {
   NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   StringInterpSyntax, InterpStyle, FormatArgs, InlineExpr, EscapePair,
-  CharSanitization, EmojiCharEscape, EmojiEscape, NoCharSanitization,
+  CharSanitization, EmojiEscape, NoCharSanitization, canonical_emoji_char_escape,
   RecordLitSyntax,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
@@ -1609,9 +1609,10 @@ fn escape_emoji_codepoints(name: String, prefix: String, suffix: String) -> Stri
 }
 
 fn apply_char_sanitization(name: String, rule: CharSanitization) -> String {
+  let esc = canonical_emoji_char_escape()
   match rule {
     NoCharSanitization => name
-    EmojiEscape { rule: r } => escape_emoji_codepoints(name: name, prefix: r.prefix, suffix: r.suffix)
+    EmojiEscape => escape_emoji_codepoints(name: name, prefix: esc.prefix, suffix: esc.suffix)
   }
 }
 

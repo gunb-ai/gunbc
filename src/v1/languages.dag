@@ -394,7 +394,7 @@ fn canonical_emoji_char_escape() -> EmojiCharEscape {
 
 type CharSanitization
   = NoCharSanitization
-  | EmojiEscape { rule: EmojiCharEscape }
+  | EmojiEscape
 
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
@@ -537,7 +537,7 @@ fn rust_spec() -> LanguageSpec {
     },
     service_method: SelfInParams { self_param: "&self" },
     service_return: ArrowReturn,
-    char_sanitization: EmojiEscape { rule: canonical_emoji_char_escape() }
+    char_sanitization: EmojiEscape
   }
 }
 
@@ -682,7 +682,7 @@ fn python_spec() -> LanguageSpec {
     },
     service_method: SelfInParams { self_param: "self" },
     service_return: ArrowReturn,
-    char_sanitization: EmojiEscape { rule: canonical_emoji_char_escape() }
+    char_sanitization: EmojiEscape
   }
 }
 
@@ -827,7 +827,7 @@ fn go_spec() -> LanguageSpec {
     },
     service_method: ExternalReceiver { var_name: "c" },
     service_return: ErrorTupleReturn { error_type: "error" },
-    char_sanitization: EmojiEscape { rule: canonical_emoji_char_escape() }
+    char_sanitization: EmojiEscape
   }
 }
 
