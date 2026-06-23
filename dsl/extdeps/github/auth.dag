@@ -7,6 +7,7 @@ import std.types { NonEmptyStr, Timestamp }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -31,8 +32,15 @@ data default_github_auth_source: GitHubAuthSource = {
   }
 }
 
-data structural_coverage_gap_github_token_metadata_verification: List<String> = [
-  "closure:github_token_metadata_verification|GitHubAuthToken|declared_metadata:scopes|declared_metadata:expires_at|trigger:GitHub token introspection or installation-token issuance surface"
+data structural_coverage_gap_github_token_metadata_verification: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "GitHubAuthToken" },
+      DeclaredMetadata { field: "scopes" },
+      DeclaredMetadata { field: "expires_at" }
+    ],
+    trigger: "GitHub token introspection or installation-token issuance surface"
+  }
 ]
 
 func github_token() -> GitHubAuthToken
